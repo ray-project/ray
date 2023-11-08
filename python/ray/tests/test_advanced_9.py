@@ -209,8 +209,6 @@ def test_node_liveness_after_restart(ray_start_cluster):
 def test_worker_oom_score(shutdown_only):
     @ray.remote
     def get_oom_score():
-        import os
-
         pid = os.getpid()
         with open(f"/proc/{pid}/oom_score", "r") as f:
             oom_score = f.read()
@@ -384,7 +382,6 @@ def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
 
 @pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
 def test_redis_full(ray_start_cluster_head):
-    import os
     import redis
 
     gcs_address = ray_start_cluster_head.gcs_address
@@ -451,8 +448,6 @@ def test_gcs_fd_usage(shutdown_only):
     @ray.remote(runtime_env={"env_vars": {"Hello": "World"}})
     class A:
         def f(self):
-            import os
-
             return os.environ.get("Hello")
 
     # In case there are still some pre-start workers, consume all of them
@@ -519,7 +514,6 @@ def test_jemalloc_ray_start(monkeypatch, ray_start_cluster):
 
 if __name__ == "__main__":
     import pytest
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

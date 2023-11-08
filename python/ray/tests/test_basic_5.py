@@ -361,7 +361,6 @@ def test_head_node_resource_ray_start(call_ray_start):
     assert ray.cluster_resources()[HEAD_NODE_RESOURCE_NAME] == 1
 
 
-
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
