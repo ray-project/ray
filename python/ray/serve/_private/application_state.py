@@ -17,6 +17,7 @@ from ray.serve._private.common import (
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusTrigger,
     EndpointInfo,
     EndpointTag,
 )
@@ -421,18 +422,27 @@ class ApplicationState:
         if self._target_state.deleting:
             return ApplicationStatus.DELETING, ""
 
-        num_healthy_deployments = 0
+        num_healthy_or_autoscaling_deployment = 0
+        num_updating_deployments = 0
         unhealthy_deployment_names = []
 
         for deployment_status in self.get_deployments_statuses():
             if deployment_status.status == DeploymentStatus.UNHEALTHY:
                 unhealthy_deployment_names.append(deployment_status.name)
-            if deployment_status.status == DeploymentStatus.HEALTHY:
-                num_healthy_deployments += 1
+            elif (
+                deployment_status.status == DeploymentStatus.HEALTHY
+                or deployment_status.status_trigger == DeploymentStatusTrigger.AUTOSCALE
+            ):
+                # If all deployments are HEALTHY or autoscaling, then
+                # application is RUNNING
+                num_healthy_or_autoscaling_deployment += 1
+            else:
+                # If deployments are UPDATING or UPSCALING/DOWNSCALING
+                # with status trigger CONFIG_UPDATE, then application is
+                # still DEPLOYING
+                num_updating_deployments += 1
 
-        if num_healthy_deployments == len(self.target_deployments):
-            return ApplicationStatus.RUNNING, ""
-        elif len(unhealthy_deployment_names):
+        if len(unhealthy_deployment_names):
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
             if self._status in [
                 ApplicationStatus.DEPLOYING,
@@ -441,8 +451,11 @@ class ApplicationState:
                 return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
-        else:
+        elif num_updating_deployments > 0:
             return ApplicationStatus.DEPLOYING, ""
+        else:
+            assert num_healthy_or_autoscaling_deployment == len(self.target_deployments)
+            return ApplicationStatus.RUNNING, ""
 
     def _reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:
         """If necessary, reconcile the in-progress build task.

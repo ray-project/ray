@@ -16,6 +16,7 @@ from ray.serve._private.common import (
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusTrigger,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
@@ -235,6 +236,44 @@ class TestDetermineAppStatus:
         status, error_msg = app_state._determine_app_status()
         assert status == ApplicationStatus.UNHEALTHY
         assert error_msg
+
+    @patch.object(ApplicationState, "get_deployments_statuses")
+    def test_autoscaling(self, get_deployments_statuses, mocked_application_state):
+        app_state, _ = mocked_application_state
+        app_state._status = ApplicationStatus.RUNNING
+        get_deployments_statuses.return_value = [
+            DeploymentStatusInfo(
+                "a", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "b", DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALE
+            ),
+            DeploymentStatusInfo(
+                "c", DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALE
+            ),
+        ]
+        status, error_msg = app_state._determine_app_status()
+        assert status == ApplicationStatus.RUNNING
+
+    @patch.object(ApplicationState, "get_deployments_statuses")
+    def test_manual_scale_num_replicas(
+        self, get_deployments_statuses, mocked_application_state
+    ):
+        app_state, _ = mocked_application_state
+        app_state._status = ApplicationStatus.RUNNING
+        get_deployments_statuses.return_value = [
+            DeploymentStatusInfo(
+                "a", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "b", DeploymentStatus.UPSCALING, DeploymentStatusTrigger.CONFIG_UPDATE
+            ),
+            DeploymentStatusInfo(
+                "c", DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.CONFIG_UPDATE
+            ),
+        ]
+        status, error_msg = app_state._determine_app_status()
+        assert status == ApplicationStatus.DEPLOYING
 
 
 def test_deploy_and_delete_app(mocked_application_state):
