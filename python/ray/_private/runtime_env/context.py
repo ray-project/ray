@@ -51,7 +51,7 @@ class RuntimeEnvContext:
         # And the tree of another dir named "resource_dir2" is:
         # resource_dir2
         # └── file3.txt
-        # If you append this two dirs into `symlink_dirs_to_cwd`:
+        # If you append these two dirs into `symlink_dirs_to_cwd`:
         # self.symlink_dirs_to_cwd.append("/xxx/xxx/resource_dir1")
         # self.symlink_dirs_to_cwd.append("/xxx/xxx/resource_dir2")
         # The final working directory of the worker process will be:

@@ -7,7 +7,7 @@ import traceback
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Set, Tuple
+from typing import Callable, Dict, List, Set, Tuple, Optional
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
 )
@@ -51,10 +51,10 @@ class CreatedEnvResult:
     success: bool
     # If success is True, will be a RuntimeEnvContext
     # If success is False, will be None
-    context: RuntimeEnvContext
+    context: Optional[RuntimeEnvContext]
     # If success is True, will be None
     # If success is False, error message will be filled in
-    error_message: str
+    error_message: Optional[str]
     # The time to create a runtime env in ms.
     creation_time_ms: int
 
@@ -533,7 +533,7 @@ class RuntimeEnvAgent:
                 runtime_env_reply.serialized_runtime_env_context = (
                     runtime_env_context.serialize()
                 )
-                self._logger.info(
+                self._logger.debug(
                     "The serialized runtime env context for reply is "
                     f"{runtime_env_reply.serialized_runtime_env_context}."
                 )

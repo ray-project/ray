@@ -213,6 +213,10 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         if not runtime_env.working_dir():
             return
         default_logger.info(f"Creating working dir for worker {worker_id}.")
+        # TODO(SongGuyang): Currently, we create working dir for each worker process.
+        # But when multiple tasks share one process, the working dir still can't be
+        # isolated between different tasks. We should achieve absolute working dir
+        # isolation for both tasks and actors, instead of process level isolation.
         working_dir = os.path.join(self._working_dirs, worker_id)
         os.makedirs(working_dir, exist_ok=True)
         context.cwd = working_dir
