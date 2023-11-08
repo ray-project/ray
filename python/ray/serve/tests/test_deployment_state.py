@@ -204,6 +204,7 @@ class MockReplicaActorWrapper:
     def recover(self):
         self.recovering = True
         self.started = False
+        return True
 
     def check_ready(self) -> ReplicaStartupStatus:
         ready = self.ready
@@ -2392,6 +2393,111 @@ def test_recover_during_rolling_update(mock_deployment_state_manager_full):
         [ReplicaName.prefix + mocked_replica.replica_tag]
     )
     cluster_node_info_cache.alive_node_ids = {"node-id"}
+
+    # New deployment state should be created and one replica should
+    # be RECOVERING with last-checkpointed target version "2"
+    new_deployment_state = new_deployment_state_manager._deployment_states[
+        deployment_id
+    ]
+    check_counts(
+        new_deployment_state,
+        total=1,
+        version=version2,
+        by_state=[(ReplicaState.RECOVERING, 1)],
+    )
+
+    for _ in range(3):
+        new_deployment_state_manager.update()
+        check_counts(
+            new_deployment_state,
+            total=1,
+            version=version2,
+            by_state=[(ReplicaState.RECOVERING, 1)],
+        )
+
+    # Get the new mocked replica. Note that this represents a newly
+    # instantiated class keeping track of the state of the replica,
+    # but pointing to the same replica actor
+    new_mocked_replica = new_deployment_state._replicas.get()[0]
+    # Recover real version "1" (simulate previous actor not yet stopped)
+    new_mocked_replica._actor.set_ready(version1)
+    # At this point the replica is running
+    new_deployment_state_manager.update()
+    # Then deployment state manager notices the replica has outdated version -> stops it
+    new_deployment_state_manager.update()
+    check_counts(
+        new_deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.STOPPING, 1)],
+    )
+    new_mocked_replica._actor.set_done_stopping()
+
+    # Now that the replica of version "1" has been stopped, a new
+    # replica of version "2" should be started
+    new_deployment_state_manager.update()
+    check_counts(
+        new_deployment_state,
+        total=1,
+        version=version2,
+        by_state=[(ReplicaState.STARTING, 1)],
+    )
+    new_mocked_replica_version2 = new_deployment_state._replicas.get()[0]
+    new_mocked_replica_version2._actor.set_ready()
+    new_deployment_state_manager.update()
+    check_counts(
+        new_deployment_state,
+        total=1,
+        version=version2,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+    # Make sure replica name is different, meaning a different "actor" was started
+    assert mocked_replica.replica_tag != new_mocked_replica_version2.replica_tag
+
+
+def test_actor_died_before_recover(mock_deployment_state_manager_full):
+    """"""
+    deployment_id = DeploymentID("test_deployment", "test_app")
+    create_deployment_state_manager, _, _ = mock_deployment_state_manager_full
+    deployment_state_manager = create_deployment_state_manager()
+
+    # Step 1: Create some deployment info with actors in running state
+    info1, version1 = deployment_info(version="1")
+    updating = deployment_state_manager.deploy(deployment_id, info1)
+    deployment_state = deployment_state_manager._deployment_states[deployment_id]
+    assert updating
+
+    # Single replica of version `version1` should be created and in STARTING state
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.STARTING, 1)],
+    )
+    mocked_replica = deployment_state._replicas.get()[0]
+
+    # The same replica should transition to RUNNING
+    mocked_replica._actor.set_ready()
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+
+    # Now execute a rollout: upgrade the version to "2".
+    info2, version2 = deployment_info(version="2")
+    updating = deployment_state_manager.deploy(deployment_id, info2)
+    assert updating
+
+    # Before the replica could be stopped and restarted, simulate
+    # controller crashed! A new deployment state manager should be
+    # created, and it should call _recover_from_checkpoint
+    new_deployment_state_manager = create_deployment_state_manager(
+        [ReplicaName.prefix + mocked_replica.replica_tag]
+    )
 
     # New deployment state should be created and one replica should
     # be RECOVERING with last-checkpointed target version "2"

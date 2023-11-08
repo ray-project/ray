@@ -525,7 +525,7 @@ class ActorReplicaWrapper:
                 self._actor_name, namespace=SERVE_NAMESPACE
             )
         except ValueError:
-            logger.info(
+            logger.warning(
                 f"Failed to get handle to replica {self._actor_name} "
                 "during controller recovery. Marking as dead."
             )
@@ -1273,6 +1273,9 @@ class DeploymentState:
             # If replica is no longer alive, simply don't add it to the
             # deployment state manager to track.
             if not new_deployment_replica.recover():
+                logger.warning(
+                    f"Replica {replica_name} died before controller could recover it."
+                )
                 continue
 
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
