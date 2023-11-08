@@ -8,6 +8,7 @@ import traceback
 from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -1406,12 +1407,17 @@ class DeploymentState:
 
         The output will never be lower than `1`.
 
-        This uses default `round` behavior in Python, which rounds half to even.
+        Rather than using the default `round` behavior in Python, which rounds half to
+        even, uses the `decimal` module to round half up (standard rounding behavior).
         """
         if target_capacity is None or target_capacity == 100:
             return num_replicas
 
-        return max(1, int(round(num_replicas * target_capacity / 100.0, 0)))
+        adjusted_num_replicas = Decimal(num_replicas * target_capacity) / Decimal(100.0)
+        rounded_adjusted_num_replicas = adjusted_num_replicas.to_integral_value(
+            rounding=ROUND_HALF_UP
+        )
+        return max(1, int(rounded_adjusted_num_replicas))
 
     def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
