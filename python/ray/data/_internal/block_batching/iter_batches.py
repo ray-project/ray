@@ -255,7 +255,7 @@ def _format_in_threadpool(
                 stats_update_lock.release()
             else:
                 tt = time.perf_counter() - start
-            with lock_lock.acquire():
+            with lock_lock:
                 total[0] += tt
 
     logger.get_logger().info(f"LOCK OVERHEAD: {total[0]}")
