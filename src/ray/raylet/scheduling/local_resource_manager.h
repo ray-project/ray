@@ -99,6 +99,10 @@ class LocalResourceManager : public syncer::ReporterInterface {
                                                 const std::vector<double> &instances,
                                                 bool allow_going_negative = false);
 
+  
+  /// Update node label
+  void update_label(absl::flat_hash_map<std::string, std::string> new_labels);
+
   /// Subtract the resources required by a given resource request (resource_request) from
   /// the local node. This function also updates the local node resources at the instance
   /// granularity.
