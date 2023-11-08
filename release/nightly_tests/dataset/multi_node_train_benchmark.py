@@ -26,7 +26,7 @@ from dataset_benchmark_util import (
     get_prop_parquet_paths,
     get_prop_raw_image_paths,
     get_mosaic_epoch_size,
-    IMAGENET_WNID_TO_ID
+    IMAGENET_WNID_TO_ID,
 )
 
 
@@ -232,13 +232,15 @@ def train_loop_per_worker():
             inputs = torch.as_tensor(batch["image"], dtype=torch.float32).to(
                 device=device
             )
-            labels = torch.as_tensor(batch["label"], dtype=torch.int64).to(device=device)
+            labels = torch.as_tensor(batch["label"], dtype=torch.int64).to(
+                device=device
+            )
             # zero the parameter gradients
             optimizer.zero_grad()
 
             # forward + backward + optimize
             outputs = model(inputs)
-            
+
             output_classes = outputs.argmax(dim=1)
             loss = criterion(outputs, labels)
             loss.backward()
@@ -282,8 +284,10 @@ def train_loop_per_worker():
         all_workers_time_list_across_epochs.append(all_workers_time_list)
 
         print(
-            f"Epoch {epoch+1} of {args.num_epochs}, tput: {num_rows / (end_t - start_t)}, "
-            f"run time: {end_t - start_t}, accuracy: {num_correct / num_rows}"
+            f"Epoch {epoch+1} of {args.num_epochs}, "
+            f"tput: {num_rows / (end_t - start_t)}, "
+            f"run time: {end_t - start_t}, "
+            f"accuracy: {num_correct / num_rows}"
         )
     # Similar reporting for aggregating number of rows across workers
     all_num_rows = [
@@ -428,9 +432,12 @@ def benchmark_code(
                 )
 
                 def wnid_to_index(batch):
-                    batch["label"] = [IMAGENET_WNID_TO_ID[wnid] for wnid in batch["class"]]
+                    batch["label"] = [
+                        IMAGENET_WNID_TO_ID[wnid] for wnid in batch["class"]
+                    ]
                     batch.pop("class")
                     return batch
+
                 ray_dataset = ray_dataset.map_batches(wnid_to_index)
             elif args.file_type == "parquet":
                 ray_dataset = ray.data.read_parquet(
