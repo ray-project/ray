@@ -1989,7 +1989,16 @@ def test_new_version_and_scale_up(mock_deployment_state):
 
 @pytest.mark.parametrize("scale_direction", ["up", "down"])
 def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction):
-    """Test upscaling and downscaling the number of replicas manually."""
+    """Test upscaling and downscaling the number of replicas manually.
+
+    Upscaling version:
+    1. Deploy deployment with num_replicas=3.
+    2. 3 replicas starting, status=UPDATING, trigger=DEPLOY.
+    3. It becomes healthy with 3 running replicas.
+    4. Update deployment to num_replicas=5.
+    5. 2 replicas starting, status=UPSCALING, trigger=CONFIG_UPDATE.
+    6. It becomes healthy with 5 running replicas, status=HEALTHY, trigger=CONFIG_UPDATE
+    """
 
     # State
     version = get_random_letters()
@@ -2076,7 +2085,15 @@ def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction)
 
 @pytest.mark.parametrize("scale_direction", ["up", "down"])
 def test_autoscale(mock_deployment_state_manager_full, scale_direction):
-    """Test autoscaling up and down."""
+    """Test autoscaling up and down.
+
+    Upscaling version:
+    1. Deploy deployment with autoscaling limits [0,6], initial_replicas=3, target=1.
+    2. It becomes healthy with 3 running replicas.
+    3. Set average request metrics to 2 (compare to target=1).
+    4. Deployment autoscales, 3 replicas starting, status=UPSCALING, trigger=AUTOSCALE.
+    5. It becomes healthy with 6 running replicas, status=HEALTHY, trigger=UPSCALE.
+    """
 
     # State
     deployment_id = DeploymentID("test_deployment", "test_app")
@@ -2143,13 +2160,106 @@ def test_autoscale(mock_deployment_state_manager_full, scale_direction):
         else:
             replica._actor.set_done_stopping()
 
-    # status=HEALTHY, status_trigger=UPSCALE_COMPLETED/DOWNSCALE_COMPLETED
+    # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
     deployment_state_manager.update()
     assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
     assert depstate.curr_status_info.status_trigger == (
         DeploymentStatusTrigger.UPSCALE
         if scale_direction == "up"
         else DeploymentStatusTrigger.DOWNSCALE
+    )
+
+
+def test_update_autoscaling_config(mock_deployment_state_manager_full):
+    """Test updating the autoscaling config.
+
+    1. Deploy deployment with autoscaling limits [0,6] and initial replicas = 3.
+    2. It becomes healthy with 3 running replicas.
+    3. Update autoscaling config to limits [6,10].
+    4. 3 new replicas should be STARTING, and deployment status should be UPDATING.
+    5. It becomes healthy with 6 running replicas.
+    """
+
+    # State
+    deployment_id = DeploymentID("test_deployment", "test_app")
+
+    # Create deployment state manager
+    create_deployment_state_manager, timer, _ = mock_deployment_state_manager_full
+    deployment_state_manager: DeploymentStateManager = create_deployment_state_manager()
+
+    # Deploy deployment with 3 replicas
+    info1, _ = deployment_info(
+        autoscaling_config={
+            "target_num_ongoing_requests_per_replica": 1,
+            "min_replicas": 0,
+            "max_replicas": 6,
+            "initial_replicas": 3,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        },
+        version="1",
+    )
+    deployment_state_manager.deploy(deployment_id, info1)
+    depstate: DeploymentState = deployment_state_manager._deployment_states[
+        deployment_id
+    ]
+
+    # Set replicas ready
+    deployment_state_manager.update()
+    for replica in depstate._replicas.get():
+        replica._actor.set_ready()
+
+    # status=HEALTHY, status_trigger=DEPLOY
+    deployment_state_manager.update()
+    check_counts(depstate, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+    assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert depstate.curr_status_info.status_trigger == DeploymentStatusTrigger.DEPLOY
+
+    # Num ongoing requests = 1, status should remain HEALTHY
+    for replica in depstate._replicas.get():
+        deployment_state_manager.record_autoscaling_metrics(
+            (replica._actor.replica_tag, 1), None
+        )
+    check_counts(depstate, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+    assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert depstate.curr_status_info.status_trigger == DeploymentStatusTrigger.DEPLOY
+
+    # Update autoscaling config
+    info2, _ = deployment_info(
+        autoscaling_config={
+            "target_num_ongoing_requests_per_replica": 1,
+            "min_replicas": 6,
+            "max_replicas": 10,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        },
+        version="1",
+    )
+    deployment_state_manager.deploy(deployment_id, info2)
+
+    # 3 new replicas should be starting, status should be UPDATING (not upscaling)
+    deployment_state_manager.update()
+    check_counts(
+        depstate,
+        total=6,
+        by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
+    )
+    assert depstate.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        depstate.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE
+    )
+
+    # Set replicas ready
+    deployment_state_manager.update()
+    for replica in depstate._replicas.get():
+        replica._actor.set_ready()
+    deployment_state_manager.update()
+    check_counts(depstate, total=6, by_state=[(ReplicaState.RUNNING, 6)])
+    assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        depstate.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE
     )
 
 

@@ -422,7 +422,7 @@ class ApplicationState:
         if self._target_state.deleting:
             return ApplicationStatus.DELETING, ""
 
-        num_healthy_or_autoscaling_deployment = 0
+        num_healthy_or_autoscaling_deployments = 0
         num_updating_deployments = 0
         unhealthy_deployment_names = []
 
@@ -435,7 +435,7 @@ class ApplicationState:
             ):
                 # If all deployments are HEALTHY or autoscaling, then
                 # application is RUNNING
-                num_healthy_or_autoscaling_deployment += 1
+                num_healthy_or_autoscaling_deployments += 1
             else:
                 # If deployments are UPDATING or UPSCALING/DOWNSCALING
                 # with status trigger CONFIG_UPDATE, then application is
@@ -454,7 +454,9 @@ class ApplicationState:
         elif num_updating_deployments > 0:
             return ApplicationStatus.DEPLOYING, ""
         else:
-            assert num_healthy_or_autoscaling_deployment == len(self.target_deployments)
+            assert num_healthy_or_autoscaling_deployments == len(
+                self.target_deployments
+            )
             return ApplicationStatus.RUNNING, ""
 
     def _reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:

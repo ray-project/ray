@@ -127,19 +127,23 @@ class DeploymentTargetState:
         if not other_target_state.info:
             return False
 
-        return (
-            self.info.replica_config.ray_actor_options
-            == other_target_state.info.replica_config.ray_actor_options
-            and self.info.replica_config.placement_group_bundles
-            == other_target_state.info.replica_config.placement_group_bundles
-            and self.info.replica_config.placement_group_strategy
-            == other_target_state.info.replica_config.placement_group_strategy
-            and self.info.replica_config.max_replicas_per_node
-            == other_target_state.info.replica_config.max_replicas_per_node
-            and self.info.deployment_config.dict(exclude={"num_replicas"})
-            == other_target_state.info.deployment_config.dict(exclude={"num_replicas"})
-            and self.version
-            and self.version == other_target_state.version
+        return all(
+            [
+                self.info.replica_config.ray_actor_options
+                == other_target_state.info.replica_config.ray_actor_options,
+                self.info.replica_config.placement_group_bundles
+                == other_target_state.info.replica_config.placement_group_bundles,
+                self.info.replica_config.placement_group_strategy
+                == other_target_state.info.replica_config.placement_group_strategy,
+                self.info.replica_config.max_replicas_per_node
+                == other_target_state.info.replica_config.max_replicas_per_node,
+                self.info.deployment_config.dict(exclude={"num_replicas"})
+                == other_target_state.info.deployment_config.dict(
+                    exclude={"num_replicas"}
+                ),
+                self.version,
+                self.version == other_target_state.version,
+            ]
         )
 
 
@@ -1401,21 +1405,25 @@ class DeploymentState:
             ):
                 ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
-        # Determine whether the updated target state is simply upscaling/downscaling
+        # Determine whether the updated target state is simply scaling
         is_scale = target_state.compare_state_excluding_num_replicas(self._target_state)
+        # If deployment is not in the middle of updating, and this new
+        # target state only changes the number of replicas, then set
+        # status to be UPSCALING/DOWNSCALING
         if self._target_state.info and is_scale:
-            new, old = (target_state.num_replicas, self._target_state.num_replicas)
-            assert new != old
-            scaling_decision = (
-                DeploymentStatus.UPSCALING
-                if new > old
-                else DeploymentStatus.DOWNSCALING
-            )
-            self._curr_status_info.update(
-                status=scaling_decision,
-                status_trigger=status_trigger,
-                message=f"{scaling_decision.capitalize()} from {old} to {new} replicas.",  # noqa
-            )
+            if self._curr_status_info.status != DeploymentStatus.UPDATING:
+                new, old = (target_state.num_replicas, self._target_state.num_replicas)
+                assert new != old
+                scaling_decision = (
+                    DeploymentStatus.UPSCALING
+                    if new > old
+                    else DeploymentStatus.DOWNSCALING
+                )
+                self._curr_status_info.update(
+                    status=scaling_decision,
+                    status_trigger=status_trigger,
+                    message=f"{scaling_decision.capitalize()} from {old} to {new} replicas.",  # noqa
+                )
         # Otherwise, the deployment configuration has actually been updated.
         else:
             self._curr_status_info.update(
