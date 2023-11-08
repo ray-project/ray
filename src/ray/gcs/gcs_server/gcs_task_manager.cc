@@ -605,22 +605,7 @@ void GcsTaskManager::GcsTaskManagerStorage::JobTaskSummary::GcOldDroppedTaskAtte
                 << "RAY_task_events_max_dropped_task_attempts_tracked_per_job_in_gcs"
                 << " to a higher value to store more.";
 
-  // Pass 1: GC any dropped task attempt if they have not been updated.
-  for (auto itr = dropped_task_attempts_.begin(); itr != dropped_task_attempts_.end();) {
-    if (itr->second +
-            absl::Seconds(RayConfig::instance()
-                              .task_events_dropped_task_attempts_gc_threshold_s()) <
-        absl::Now()) {
-      // NOTE: this is special for absl::flat_hash_map:
-      // https://github.com/abseil/abseil-cpp/blob/master/absl/container/flat_hash_map.h#L211-L216
-      dropped_task_attempts_.erase(itr++);
-      num_dropped_task_attempts_evicted_++;
-    } else {
-      ++itr;
-    }
-  }
-
-  // Pass 2: If there's still more than
+  // If there's still more than
   // task_events_max_dropped_task_attempts_tracked_per_job_in_gcs, just take and evict
   // to prevent OOM.
   size_t num_to_evict = 0;

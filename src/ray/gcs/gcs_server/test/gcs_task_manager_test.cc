@@ -983,59 +983,6 @@ TEST_F(GcsTaskManagerTest, TestMultipleJobsDataLoss) {
   }
 }
 
-TEST_F(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsTimeout) {
-  // Test that when the number of dropped task attempts exceeds the limit,
-  // we should be them to prevent OOM.
-
-  // Generate 15 task attempts, 5 should be dropped.
-  {
-    for (int i = 0; i < 15; i++) {
-      auto t = GenTaskIDForJob(0);
-      SyncAddTaskEvent({t}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 0);
-    }
-  }
-
-  // Before GC we should have 5 dropped task attempts tracked.
-  auto job_summary =
-      task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
-  EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 5);
-
-  // Sleep for longer than the timeout (3 secs)
-  boost::asio::io_service io;
-  boost::asio::deadline_timer timer(
-      io,
-      boost::posix_time::seconds(
-          RayConfig::instance().task_events_dropped_task_attempts_gc_threshold_s()));
-  timer.wait();
-
-  // We should not have triggered GC yet.
-  {
-    auto job_summary =
-        task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
-    EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 5);
-  }
-
-  // Add one more to trigger threshold for GC
-  {
-    auto t = GenTaskIDForJob(0);
-    SyncAddTaskEvent({t}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 0);
-    auto job_summary =
-        task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
-    EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 6);
-  }
-
-  // When GC is triggered, those old ones should ALL be GCed, leaving only the recently
-  // added ones.
-  task_manager->task_event_storage_->GcJobSummary();
-  {
-    auto job_summary =
-        task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
-    EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 1);
-    EXPECT_EQ(job_summary.num_dropped_task_attempts_evicted_, 5);
-    EXPECT_EQ(job_summary.NumTaskAttemptsDropped(), 6);
-  }
-}
-
 TEST_F(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit) {
   // Test that when the number of dropped task attempts exceeds the limit,
   // we should be them to prevent OOM.

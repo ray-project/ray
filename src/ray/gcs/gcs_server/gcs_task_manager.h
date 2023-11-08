@@ -80,7 +80,6 @@ class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
 /// When the maximal number of task events tracked specified by
 /// `RAY_task_events_max_num_task_in_gcs` is exceeded, older events (approximately by
 /// insertion order) will be dropped.
-/// TODO(https://github.com/ray-project/ray/issues/31071): track per job.
 ///
 /// This class has its own io_context and io_thread, that's separate from other GCS
 /// services. All handling of all rpc should be posted to the single thread it owns.
@@ -347,7 +346,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
       ///
       /// \param task_attempt Task attempt.
       void RecordTaskAttemptDropped(const TaskAttempt &task_attempt) {
-        dropped_task_attempts_.insert({task_attempt, absl::Now()});
+        dropped_task_attempts_.insert(task_attempt);
         num_task_attempts_dropped_tracked_ = dropped_task_attempts_.size();
       }
 
@@ -369,7 +368,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
       }
 
       /// GC the currently tracked dropped task attempts.
-      void GcOldDroppedTaskAttempts(const JobID&job_id);
+      void GcOldDroppedTaskAttempts(const JobID &job_id);
 
       /// Callback when job is finished.
       ///
@@ -384,12 +383,11 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
       int64_t num_dropped_task_attempts_evicted_ = 0;
 
-      // A map of task attempts that are already dropped to the last modified timestamp.
-      absl::flat_hash_map<TaskAttempt, absl::Time> dropped_task_attempts_;
+      // A set of task attempts that are already being dropped.
+      absl::flat_hash_set<TaskAttempt> dropped_task_attempts_;
 
       FRIEND_TEST(GcsTaskManagerTest, TestMultipleJobsDataLoss);
       FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit);
-      FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsTimeout);
     };
 
     ///  Mark a task attempt as failed if needed.
@@ -486,7 +484,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     FRIEND_TEST(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded);
     FRIEND_TEST(GcsTaskManagerTest, TestMultipleJobsDataLoss);
     FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit);
-    FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsTimeout);
   };
 
  private:
@@ -545,7 +542,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   FRIEND_TEST(GcsTaskManagerTest, TestTaskDataLossWorker);
   FRIEND_TEST(GcsTaskManagerTest, TestMultipleJobsDataLoss);
   FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit);
-  FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsTimeout);
 };
 
 }  // namespace gcs
