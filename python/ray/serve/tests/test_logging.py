@@ -281,7 +281,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         check_log_file(resp2["log_file"], user_class_method_log_regexes)
 
 
-def test_extra_field(serve_and_ray_shutdown):
+@pytest.mark.parametrize("raise_error", [True, False])
+def test_extra_field(serve_and_ray_shutdown, raise_error):
     """Test ray serve extra logging"""
     ray.init(runtime_env={"env_vars": {"RAY_SERVE_ENABLE_JSON_LOGGING": "1"}})
 
@@ -289,19 +290,27 @@ def test_extra_field(serve_and_ray_shutdown):
 
     @serve.deployment
     def fn(*args):
-        logger.info(
-            "user_func", extra={"k1": "my_v1", SERVE_LOG_EXTRA_FIELDS: {"k2": "my_v2"}}
-        )
+        if raise_error:
+            logger.info("user_func", extra={SERVE_LOG_EXTRA_FIELDS: [123]})
+        else:
+            logger.info(
+                "user_func",
+                extra={"k1": "my_v1", SERVE_LOG_EXTRA_FIELDS: {"k2": "my_v2"}},
+            )
         return {
             "log_file": logger.handlers[1].baseFilename,
         }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
-    resp = requests.get("http://127.0.0.1:8000/fn").json()
-    with open(resp["log_file"], "r") as f:
-        s = f.read()
-        assert re.findall(".*my_v1.*", s) == []
-        assert re.findall('.*"k2": "my_v2".*', s) != []
+    resp = requests.get("http://127.0.0.1:8000/fn")
+    if raise_error:
+        resp.status_code == 500
+    else:
+        resp = resp.json()
+        with open(resp["log_file"], "r") as f:
+            s = f.read()
+            assert re.findall(".*my_v1.*", s) == []
+            assert re.findall('.*"k2": "my_v2".*', s) != []
 
 
 @pytest.mark.parametrize("is_deployment_type_component", [False, True])
