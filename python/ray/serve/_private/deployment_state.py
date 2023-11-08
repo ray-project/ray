@@ -1829,13 +1829,13 @@ class DeploymentState:
                 if self._curr_status_info.status == DeploymentStatus.UPSCALING:
                     self._curr_status_info.update(
                         status=DeploymentStatus.HEALTHY,
-                        status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED,
+                        status_trigger=DeploymentStatusTrigger.UPSCALE,
                         message="",
                     )
                 elif self._curr_status_info.status == DeploymentStatus.DOWNSCALING:
                     self._curr_status_info.update(
                         status=DeploymentStatus.HEALTHY,
-                        status_trigger=DeploymentStatusTrigger.DOWNSCALE_COMPLETED,
+                        status_trigger=DeploymentStatusTrigger.DOWNSCALE,
                         message="",
                     )
                 else:

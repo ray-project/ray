@@ -2068,9 +2068,9 @@ def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction)
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
     assert deployment_state.curr_status_info.status_trigger == (
-        DeploymentStatusTrigger.UPSCALE_COMPLETED
+        DeploymentStatusTrigger.UPSCALE
         if scale_direction == "up"
-        else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+        else DeploymentStatusTrigger.DOWNSCALE
     )
 
 
@@ -2147,9 +2147,9 @@ def test_autoscale(mock_deployment_state_manager_full, scale_direction):
     deployment_state_manager.update()
     assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
     assert depstate.curr_status_info.status_trigger == (
-        DeploymentStatusTrigger.UPSCALE_COMPLETED
+        DeploymentStatusTrigger.UPSCALE
         if scale_direction == "up"
-        else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+        else DeploymentStatusTrigger.DOWNSCALE
     )
 
 
