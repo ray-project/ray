@@ -1252,6 +1252,55 @@ class TestDeploywithLoggingConfig:
         resp = requests.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
+    def test_overwritting_logging_config2(self, client: ServeControllerClient):
+        """Test application config will overwrite the exist running deployment config
+        and not overrite the other deployment which has deployment config set"""
+
+        config_dict = self.get_deploy_config()
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+        )
+        # By default, log level is "INFO"
+        resp = requests.post("http://localhost:8000/app1").json()
+
+        # Make sure 'model_debug_level' log content does not exist
+        with pytest.raises(AssertionError):
+            check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+        with pytest.raises(AssertionError):
+            check_log_file(
+                resp["router_log_file"], [".*this_is_debug_info_from_router.*"]
+            )
+
+        # Add application logging config and set Model deployment logging config
+        # The router logging config should be set to DEBUG, and Model
+        # loging config should be INFO.
+        config_dict["applications"][0]["logging_config"] = {
+            "log_level": "DEBUG",
+        }
+        config_dict["applications"][0]["deployments"] = [
+            {
+                "name": "Model",
+                "logging_config": {
+                    "log_level": "INFO",
+                },
+            },
+        ]
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+            and requests.post("http://localhost:8000/app1").json()["router_log_level"]
+            == logging.DEBUG
+        )
+        resp = requests.post("http://localhost:8000/app1").json()
+        with pytest.raises(AssertionError):
+            check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+        # Router should print the information
+        check_log_file(resp["router_log_file"], [".*this_is_debug_info_from_router.*"])
+
     def test_not_overwritting_logging_config(self, client: ServeControllerClient):
         """Deployment logging config should not be overwritten
         by application logging config, when deployment config is explicitly set.

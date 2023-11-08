@@ -219,10 +219,7 @@ class ServeController:
         ).inc()
 
     def reconfigure_system_logging_config(self, logging_config: LoggingConfig):
-        if (
-            self.logging_config
-            and self.logging_config == logging_config
-        ):
+        if self.logging_config and self.logging_config == logging_config:
             return
         self.kv_store.put(LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(logging_config))
         self.logging_config = logging_config
@@ -1021,6 +1018,7 @@ class ServeController:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
         return self.logging_config, log_file_path
+
 
 @ray.remote(num_cpus=0)
 class ServeControllerAvatar:

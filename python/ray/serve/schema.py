@@ -2,7 +2,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Union, Any
+from typing import Any, Dict, List, Optional, Set, Union
 from zlib import crc32
 
 from ray._private.pydantic_compat import (

@@ -1,7 +1,5 @@
 import asyncio
-import logging
 import os
-import re
 import sys
 from typing import Dict, Optional
 
@@ -11,17 +9,12 @@ import starlette.responses
 from fastapi import FastAPI
 
 import ray
-import ray.util.state as state_api
 from ray import serve
 from ray._private.pydantic_compat import BaseModel, ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.logging_utils import (
-    get_component_log_file_name,
-    get_serve_logs_dir,
-)
 from ray.serve.deployment import Application
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
@@ -65,157 +58,6 @@ class AsyncCounter:
         self.count += 1
         await asyncio.sleep(0.01)
         return {"count": self.count}
-
-
-class TestLoggingAPI:
-    def test_start_serve_with_logging_config(self, serve_and_ray_shutdown):
-        serve.start(logging_config={"log_level": "DEBUG", "encoding": "JSON"})
-        serve_log_dir = get_serve_logs_dir()
-        # Check controller log
-        actors = state_api.list_actors()
-        expected_log_regex = [".*logger with logging config.*"]
-        for actor in actors:
-            print(actor["name"])
-            if "SERVE_CONTROLLER_ACTOR" == actor["name"]:
-                controller_pid = actor["pid"]
-        controller_log_file_name = get_component_log_file_name(
-            "controller", controller_pid, component_type=None, suffix=".log"
-        )
-        controller_log_path = os.path.join(serve_log_dir, controller_log_file_name)
-        check_log_file(controller_log_path, expected_log_regex)
-
-        # Check proxy log
-        nodes = state_api.list_nodes()
-        node_ip_address = nodes[0].node_ip
-        proxy_log_file_name = get_component_log_file_name(
-            "proxy", node_ip_address, component_type=None, suffix=".log"
-        )
-        proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
-        check_log_file(proxy_log_path, expected_log_regex)
-
-    @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
-    def test_encoding(self, serve_instance, encoding_type):
-        """Test serve.run logging API"""
-        logging_config = {"encoding": encoding_type}
-        logger = logging.getLogger("ray.serve")
-
-        @serve.deployment(logging_config=logging_config)
-        class Model:
-            def __call__(self, req: starlette.requests.Request):
-                return {
-                    "log_file": logger.handlers[1].baseFilename,
-                    "replica": serve.get_replica_context().replica_tag,
-                }
-
-        serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
-
-        if encoding_type == "JSON":
-            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
-        else:
-            expected_log_regex = [f'.*{resp["replica"]}.*']
-        check_log_file(resp["log_file"], expected_log_regex)
-
-    def test_log_level(self, serve_instance):
-        logger = logging.getLogger("ray.serve")
-
-        @serve.deployment
-        class Model:
-            def __call__(self, req: starlette.requests.Request):
-                logger.info("model_info_level")
-                logger.debug("model_debug_level")
-                return {
-                    "log_file": logger.handlers[1].baseFilename,
-                }
-
-        serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
-        expected_log_regex = [".*model_info_level.*"]
-        check_log_file(resp["log_file"], expected_log_regex)
-
-        # Make sure 'model_debug_level' log content does not exist
-        with pytest.raises(AssertionError):
-            check_log_file(resp["log_file"], [".*model_debug_level.*"])
-
-        serve.run(Model.options(logging_config={"log_level": "DEBUG"}).bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
-        expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
-        check_log_file(resp["log_file"], expected_log_regex)
-
-    def test_logs_dir(self, serve_instance):
-
-        logger = logging.getLogger("ray.serve")
-
-        @serve.deployment
-        class Model:
-            def __call__(self, req: starlette.requests.Request):
-                logger.info("model_info_level")
-                return {
-                    "logs_path": logger.handlers[1].baseFilename,
-                }
-
-        serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
-
-        paths = resp["logs_path"].split("/")
-        paths[-1] = "new_dir"
-        new_log_dir = "/".join(paths)
-
-        serve.run(Model.options(logging_config={"logs_dir": new_log_dir}).bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
-        assert "new_dir" in resp["logs_path"]
-
-        check_log_file(resp["logs_path"], [".*model_info_level.*"])
-
-    @pytest.mark.parametrize(
-        "access_type", ["ALL", "FILE_ONLY", "STREAM_ONLY", "DISABLE"]
-    )
-    def test_access_log(self, serve_instance, access_type):
-        logger = logging.getLogger("ray.serve")
-
-        @serve.deployment(logging_config={"access_log": access_type})
-        class Model:
-            def __call__(self, req: starlette.requests.Request):
-                if access_type == "ALL":
-                    assert len(logger.handlers) == 2
-                    assert isinstance(logger.handlers[0], logging.StreamHandler)
-                    assert isinstance(
-                        logger.handlers[1], logging.handlers.RotatingFileHandler
-                    )
-                elif access_type == "FILE_ONLY":
-                    assert len(logger.handlers) == 1
-                    assert isinstance(
-                        logger.handlers[0], logging.handlers.RotatingFileHandler
-                    )
-                elif access_type == "STREAM_ONLY":
-                    assert len(logger.handlers) == 1
-                    assert isinstance(logger.handlers[0], logging.StreamHandler)
-                else:
-                    assert len(logger.handlers) == 0
-                return
-
-        serve.run(Model.bind())
-
-        resp = requests.get("http://127.0.0.1:8000/")
-        assert resp.status_code == 200
-
-    def test_application_logging_overwrite(self, serve_instance):
-
-        logger = logging.getLogger("ray.serve")
-
-        @serve.deployment
-        class Model:
-            def __call__(self, req: starlette.requests.Request):
-                logger.info("model_info_level")
-                logger.debug("model_debug_level")
-                return {
-                    "log_file": logger.handlers[1].baseFilename,
-                }
-
-        serve.run(Model.bind(), logging_config={"log_level": "DEBUG"})
-        resp = requests.get("http://127.0.0.1:8000/").json()
-        expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
-        check_log_file(resp["log_file"], expected_log_regex)
 
 
 def test_e2e(serve_instance):
@@ -1174,13 +1016,6 @@ def test_deployment_handle_nested_in_obj(serve_instance):
     handle_wrapper = HandleWrapper(f.bind())
     h = serve.run(MyDriver.bind(handle_wrapper)).options(use_new_handle_api=True)
     assert h.remote().result() == "hi"
-
-
-def check_log_file(log_file: str, expected_regex: list):
-    with open(log_file, "r") as f:
-        s = f.read()
-        for regex in expected_regex:
-            assert re.findall(regex, s) != []
 
 
 if __name__ == "__main__":
