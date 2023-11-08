@@ -1,10 +1,11 @@
 import ray
 from ray import train
-from ray.train import DataConfig, ScalingConfig
+from ray.train import Checkpoint, DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
+from ray.data.datasource.partitioning import Partitioning
+import tempfile
 import os
-
-import torch.distributed as dist
+import time
 
 from benchmark import Benchmark, BenchmarkMetric
 from image_loader_microbenchmark import (
@@ -15,21 +16,24 @@ from image_loader_microbenchmark import (
 
 from image_loader_microbenchmark import get_mosaic_dataloader
 
-
-import time
 import torch
+import torch.distributed as dist
+from torchvision.models import resnet50
+import torch.nn as nn
+import torch.optim as optim
 
 from dataset_benchmark_util import (
     get_prop_parquet_paths,
     get_prop_raw_image_paths,
     get_mosaic_epoch_size,
+    IMAGENET_WNID_TO_ID
 )
 
 
 # This benchmark does the following:
 # 1) Read files (images or parquet) with ray.data
 # 2) Apply preprocessing with map()
-# 3) Train TorchTrainer on processed data
+# 3) Train TorchTrainer on processed data with resnet50 model
 # Metrics recorded to the output file are:
 # - ray.torchtrainer.fit: Throughput of the final epoch in
 #   TorchTrainer.fit() (step 3 above)
@@ -169,6 +173,12 @@ def train_loop_per_worker():
         it = train.get_dataset_shard("train")
     device = train.torch.get_device()
 
+    # Setup the model
+    raw_model = resnet50()
+    model = train.torch.prepare_model(raw_model)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+
     batch_iter = None
     if args.use_torch or args.use_mosaic:
         torch_num_workers = args.torch_num_workers or os.cpu_count()
@@ -205,31 +215,59 @@ def train_loop_per_worker():
 
     world_size = ray.train.get_context().get_world_size()
     all_workers_time_list_across_epochs = []
-    for i in range(args.num_epochs):
-        print(f"Epoch {i+1} of {args.num_epochs}")
-        num_rows = 0
-        start_t = time.time()
-
+    for epoch in range(args.num_epochs):
         # Ray Data needs to call iter_torch_batches on each epoch.
         if isinstance(it, ray.data.iterator.DataIterator):
             batch_iter = it.iter_torch_batches(
                 batch_size=args.batch_size,
             )
 
-        print_at_interval = 1000
-        print_at = print_at_interval
-        for batch in batch_iter:
+        print(f"Epoch {epoch+1} of {args.num_epochs}")
+        num_rows = 0
+        num_correct = 0
+        running_loss = 0.0
+        start_t = time.time()
+        for batch_idx, batch in enumerate(batch_iter):
+            # get the inputs; data is a list of [inputs, labels]
+            inputs = torch.as_tensor(batch["image"], dtype=torch.float32).to(
+                device=device
+            )
+            labels = torch.as_tensor(batch["label"], dtype=torch.int64).to(device=device)
+            # zero the parameter gradients
+            optimizer.zero_grad()
+
+            # forward + backward + optimize
+            outputs = model(inputs)
+            
+            output_classes = outputs.argmax(dim=1)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
             if not (args.use_torch or args.use_mosaic):
-                batch = batch["image"]
-            # `batch` should have tensor in `torch.Tensor` format.
-            num_rows += batch.size(dim=0)
-            if worker_rank == 0 and num_rows >= print_at:
+                num_rows += batch["image"].size(dim=0)
+            else:
+                num_rows += batch.size(dim=0)
+            num_correct += (output_classes == labels).sum().item()
+
+            # print statistics
+            running_loss += loss.item()
+            if batch_idx % 2000 == 1999:  # print every 2000 mini-batches
                 print(
-                    f"Read {num_rows} rows on rank "
-                    f"{train.get_context().get_world_rank()}, tput so far: "
-                    f"{num_rows / (time.time()  - start_t)}"
+                    f"[{epoch + 1}, {batch_idx + 1:5d}] loss: "
+                    f"{running_loss / 2000:.3f}, "
+                    f"accuracy: {num_correct / num_rows}"
                 )
-                print_at = ((num_rows // print_at_interval) + 1) * print_at_interval
+                running_loss = 0.0
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report(
+                dict(
+                    epoch_accuracy=(num_correct / num_rows),
+                    running_loss=running_loss,
+                ),
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
         end_t = time.time()
         # Workaround to report the epoch start/end time from each worker, so that we
         # can aggregate them at the end when calculating throughput.
@@ -244,8 +282,8 @@ def train_loop_per_worker():
         all_workers_time_list_across_epochs.append(all_workers_time_list)
 
         print(
-            f"Epoch {i+1} of {args.num_epochs}, tput: {num_rows / (end_t - start_t)}, "
-            f"run time: {end_t - start_t}"
+            f"Epoch {epoch+1} of {args.num_epochs}, tput: {num_rows / (end_t - start_t)}, "
+            f"run time: {end_t - start_t}, accuracy: {num_correct / num_rows}"
         )
     # Similar reporting for aggregating number of rows across workers
     all_num_rows = [
@@ -377,10 +415,23 @@ def benchmark_code(
 
             # 1) Read in data with read_images() / read_parquet()
             if args.file_type == "image":
+                # Obtain WNID from filepath, then convert to numerical class ID
+                partitioning = Partitioning(
+                    "dir",
+                    field_names=["class"],
+                    base_dir="s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/train",
+                )
                 ray_dataset = ray.data.read_images(
                     input_paths,
                     mode="RGB",
+                    partitioning=partitioning,
                 )
+
+                def wnid_to_index(batch):
+                    batch["label"] = [IMAGENET_WNID_TO_ID[wnid] for wnid in batch["class"]]
+                    batch.pop("class")
+                    return batch
+                ray_dataset = ray_dataset.map_batches(wnid_to_index)
             elif args.file_type == "parquet":
                 ray_dataset = ray.data.read_parquet(
                     args.data_root,
