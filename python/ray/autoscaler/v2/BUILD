@@ -63,14 +63,6 @@ py_test(
 )
 
 py_test(
-    name = "test_instance_manager",
-    size = "small",
-    srcs = ["tests/test_instance_manager.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
     name = "test_reconciler",
     size = "small",
     srcs = ["tests/test_reconciler.py"],
