@@ -296,8 +296,6 @@ class FileBasedDatasource(Datasource):
         return total_size
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        import numpy as np
-
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
         open_stream_args = self._open_stream_args
         partitioning = self._partitioning
