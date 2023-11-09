@@ -1070,7 +1070,7 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
-                logging_config=logging_config,
+                system_logging_config=logging_config,
             )
 
     def check_alive(self) -> None:
