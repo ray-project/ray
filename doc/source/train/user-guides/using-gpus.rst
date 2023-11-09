@@ -87,7 +87,7 @@ the ``resources_per_worker`` attribute:
         resources_per_worker={
             "CPU": 4,
             "GPU": 2,
-        }
+        },
         use_gpu=True,
     )
 
@@ -108,7 +108,7 @@ will be assigned the same CUDA device.
         resources_per_worker={
             "CPU": 4,
             "GPU": 0.5,
-        }
+        },
         use_gpu=True,
     )
 
@@ -188,4 +188,3 @@ resources to use 0 CPUs:
             "CPU": 0,
         }
     )
-

@@ -40,7 +40,10 @@ Compare a PyTorch Lightning training script with and without Ray Train.
 
     .. group-tab:: PyTorch Lightning
 
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
         .. testcode::
+            :skipif: True
 
             import torch
             from torchvision.models import resnet18
@@ -156,6 +159,7 @@ First, update your training code to support distributed training.
 Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
 .. testcode::
+    :skipif: True
 
     def train_func(config):
         # Your PyTorch Lightning training code here.
@@ -416,9 +420,11 @@ control over their native Lightning code.
 
     .. group-tab:: (Deprecating) LightningTrainer
 
+        .. We're not testing this snippet because it raises a hard deprecation warning.
 
         .. testcode::
-            
+            :skipif: True
+
             from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 
             config_builder = LightningConfigBuilder()
@@ -458,9 +464,13 @@ control over their native Lightning code.
 
     .. group-tab:: (New API) TorchTrainer
 
+        .. We're not testing this snippet because it runs with 4 GPUs, and CI is only run with 1.
+
         .. testcode::
+            :skipif: True
             
             import lightning.pytorch as pl
+            from ray.air import CheckpointConfig, RunConfig
             from ray.train.torch import TorchTrainer
             from ray.train.lightning import (
                 RayDDPStrategy, 

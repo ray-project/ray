@@ -39,7 +39,10 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
 
     .. group-tab:: Hugging Face Transformers
 
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
         .. testcode::
+            :skipif: True
 
             # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
 
@@ -180,6 +183,7 @@ First, update your training code to support distributed training.
 You can begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
 .. testcode::
+    :skipif: True
 
     def train_func(config):
         # Your Transformers training code here.
@@ -264,6 +268,14 @@ Tying this all together, you can now launch a distributed training job
 with a :class:`~ray.train.torch.TorchTrainer`.
 
 .. testcode::
+    :hide:
+
+    from ray.train import ScalingConfig
+
+    train_func = lambda: None
+    scaling_config = ScalingConfig(num_workers=1)
+
+.. testcode::
 
     from ray.train.torch import TorchTrainer
 
@@ -315,9 +327,11 @@ native Transformers training code.
 
     .. group-tab:: (Deprecating) TransformersTrainer
 
+        .. This snippet isn't tested because it contains skeleton code.
 
         .. testcode::
-            
+            :skipif: True
+
             import transformers
             from transformers import AutoConfig, AutoModelForCausalLM
             from datasets import load_dataset
@@ -369,8 +383,11 @@ native Transformers training code.
 
     .. group-tab:: (New API) TorchTrainer
 
+        .. This snippet isn't tested because it contains skeleton code.
+
         .. testcode::
-            
+            :skipif: True
+
             import transformers
             from transformers import AutoConfig, AutoModelForCausalLM
             from datasets import load_dataset

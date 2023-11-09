@@ -41,7 +41,10 @@ Compare a PyTorch training script with and without Ray Train.
 
     .. group-tab:: PyTorch
 
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
         .. testcode::
+            :skipif: True
 
             import tempfile
             import torch
@@ -140,6 +143,7 @@ First, update your training code to support distributed training.
 Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
 .. testcode::
+    :skipif: True
 
     def train_func(config):
         # Your PyTorch training code here.
@@ -214,11 +218,7 @@ See :ref:`data-ingest-torch`.
     The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
 
     .. testcode::
-        :hide:
-
-        worker_batch_size = 1
-
-    .. testcode::
+        :skipif: True
         
         global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 

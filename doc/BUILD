@@ -334,12 +334,8 @@ doctest(
             "source/train/**/*.md"
         ],
         exclude=[
-            # Quarantined
-            "source/train/user-guides/data-loading-preprocessing.rst",
             # GPU
-            "source/train/getting-started-pytorch-lightning.rst",
-            "source/train/getting-started-pytorch.rst",
-            "source/train/getting-started-transformers.rst",
+            "source/train/user-guides/data-loading-preprocessing.rst",
             "source/train/user-guides/using-gpus.rst"
         ]
     ),
@@ -347,17 +343,17 @@ doctest(
 )
 
 doctest(
-    name="doctest[train][gpu]",
-    files = glob(
-        include=[
-            "source/train/getting-started-pytorch-lightning.rst",
-            "source/train/getting-started-pytorch.rst",
-            "source/train/getting-started-transformers.rst",
-            "source/train/user-guides/using-gpus.rst"
-        ]
-    ),
+    name="data-loading-preprocessing.rst",
+    files = ["source/train/user-guides/data-loading-preprocessing.rst"],
     tags = ["team:ml"],
-    gpu = True
+    gpu = True,
+)
+
+doctest(
+    name="using-gpus.rst",
+    files = ["source/train/user-guides/using-gpus.rst"],
+    tags = ["team:ml"],
+    gpu = True,
 )
 
 
@@ -397,10 +393,3 @@ doctest(
     gpu = True
 )
 
-doctest(
-    name="quarantine",
-    files = [
-	"source/train/user-guides/data-loading-preprocessing.rst",
-    ],
-    tags = ["team:data"],
-)
