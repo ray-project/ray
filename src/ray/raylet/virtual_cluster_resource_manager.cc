@@ -30,8 +30,8 @@ VirtualClusterResourceManager::VirtualClusterResourceManager(
 
 bool VirtualClusterResourceManager::PrepareBundle(
     const VirtualClusterBundleSpec &bundle_spec) {
-  auto bundle_id = bundle_spec.GetBundleId();
-  auto iter = vc_bundles_.find(bundle_id);
+  const auto vc_id = bundle_spec.GetVirtualClusterId();
+  auto iter = vc_bundles_.find(vc_id);
   if (iter != vc_bundles_.end()) {
     if (iter->second->state_ ==
         VirtualClusterBundleTransactionState::CommitState::COMMITTED) {
@@ -43,7 +43,7 @@ bool VirtualClusterResourceManager::PrepareBundle(
     } else {
       // If there was a bundle in prepare state, it already locked resources, we will
       // return bundle resources so that we can start from the prepare phase again.
-      ReturnBundle(bundle_spec);
+      ReturnBundle(vc_id);
     }
   }
 
@@ -60,68 +60,28 @@ bool VirtualClusterResourceManager::PrepareBundle(
     return false;
   }
 
-  auto bundle_state = std::make_shared<VirtualClusterBundleTransactionState>(
-      VirtualClusterBundleTransactionState::CommitState::PREPARED, resource_instances);
-  vc_bundles_[bundle_id] = bundle_state;
-  bundle_spec_map_.emplace(bundle_id,
-                           // the bundle_spec is copied.
-                           std::make_shared<VirtualClusterBundleSpec>(bundle_spec));
-
+  vc_bundles_[vc_id] = std::make_shared<VirtualClusterBundleTransactionState>(
+      bundle_spec, resource_instances);
   return true;
 }
 
-void VirtualClusterResourceManager::ReturnUnusedBundle(
-    const std::unordered_set<VirtualClusterBundleID, pair_hash> &in_use_bundles) {
-  for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
-    if (0 == in_use_bundles.count(iter->first)) {
-      ReturnBundle(*iter->second);
-      bundle_spec_map_.erase(iter++);
-    } else {
-      iter++;
+void VirtualClusterResourceManager::ReturnUnusedBundles(
+    const std::unordered_set<VirtualClusterID> &in_use_bundles) {
+  for (auto iter = vc_bundles_.begin(); iter != vc_bundles_.end();) {
+    VirtualClusterID vc_id = iter->first;
+    iter++;
+    if (0 == in_use_bundles.count(vc_id)) {
+      ReturnBundle(vc_id);
     }
   }
 }
 
-bool VirtualClusterResourceManager::PrepareBundles(
-    const std::vector<std::shared_ptr<const VirtualClusterBundleSpec>> &bundle_specs) {
-  std::vector<std::shared_ptr<const VirtualClusterBundleSpec>> prepared_bundles;
-  for (const auto &bundle_spec : bundle_specs) {
-    if (PrepareBundle(*bundle_spec)) {
-      prepared_bundles.emplace_back(bundle_spec);
-    } else {
-      // Terminate the preparation phase if any of bundle cannot be prepared.
-      break;
-    }
-  }
-
-  if (prepared_bundles.size() != bundle_specs.size()) {
-    RAY_LOG(DEBUG)
-        << "There are one or more virtual cluster bundles request resource failed, will "
-           "release the requested resources before.";
-    for (const auto &bundle : prepared_bundles) {
-      ReturnBundle(*bundle);
-      // Erase from `bundle_spec_map_`.
-      const auto &iter = bundle_spec_map_.find(bundle->GetBundleId());
-      if (iter != bundle_spec_map_.end()) {
-        bundle_spec_map_.erase(iter);
-      }
-    }
-    return false;
-  }
-  return true;
-}
-
-void VirtualClusterResourceManager::CommitBundle(
-    const VirtualClusterBundleSpec &bundle_spec) {
-  auto bundle_id = bundle_spec.GetBundleId();
-
-  auto it = vc_bundles_.find(bundle_id);
+void VirtualClusterResourceManager::CommitBundle(VirtualClusterID vc_id) {
+  auto it = vc_bundles_.find(vc_id);
   if (it == vc_bundles_.end()) {
     // We should only ever receive a commit for a non-existent virtual cluster when a
     // virtual cluster is created and removed in quick succession.
-    RAY_LOG(DEBUG)
-        << "Received a commit message for an unknown VC bundle. The bundle info is "
-        << bundle_spec.DebugString();
+    RAY_LOG(DEBUG) << "Received a commit message for an unknown vc_id = " << vc_id;
     return;
   } else {
     // Ignore request If the bundle state is already committed.
@@ -136,15 +96,16 @@ void VirtualClusterResourceManager::CommitBundle(
   bundle_state->state_ = VirtualClusterBundleTransactionState::CommitState::COMMITTED;
 
   const auto &task_resource_instances = *bundle_state->resources_;
+  const auto &bundle_spec = bundle_state->bundle_spec_;
 
-  // For each resource {"CPU": 2} allocated, add a {"CPU_vc_1_vchex": 2} and a
-  // {"CPU_vc_vchex": 2}. For the resource "vcbundle" we did not allocate but we will add
-  // 1000 for both Indexed and Wildcard anyway. I feel we can write it better by adding a
-  // ResourceSet of {"vcbundle":1000} in prepare time so we won't need the `if` here.
+  // For each resource {"CPU": 2} allocated, add a {"CPU_vc_vchex": 2}. For the resource
+  // "vcbundle" we did not allocate but we will add 1000 anyway. I feel we can write it
+  // better by adding a ResourceSet of {"vcbundle":1000} in prepare time so we won't need
+  // the `if` here.
   const auto &resources = bundle_spec.GetFormattedResources();
   for (const auto &resource : resources) {
     const std::string &resource_name = resource.first;
-    auto label = VirtualClusterBundleResourceLabel::ParseFromEither(resource_name);
+    auto label = VirtualClusterBundleResourceLabel::Parse(resource_name);
     RAY_CHECK(label.has_value());
     const std::string &original_resource_name = label->original_resource;
     if (original_resource_name != kVirtualClusterBundle_ResourceLabel) {
@@ -159,20 +120,10 @@ void VirtualClusterResourceManager::CommitBundle(
   }
 }
 
-void VirtualClusterResourceManager::CommitBundles(
-    const std::vector<std::shared_ptr<const VirtualClusterBundleSpec>> &bundle_specs) {
-  for (const auto &bundle_spec : bundle_specs) {
-    CommitBundle(*bundle_spec);
-  }
-}
-
-void VirtualClusterResourceManager::ReturnBundle(
-    const VirtualClusterBundleSpec &bundle_spec) {
-  auto bundle_id = bundle_spec.GetBundleId();
-
-  auto it = vc_bundles_.find(bundle_id);
+void VirtualClusterResourceManager::ReturnBundle(VirtualClusterID vc_id) {
+  auto it = vc_bundles_.find(vc_id);
   if (it == vc_bundles_.end()) {
-    RAY_LOG(DEBUG) << "Duplicate cancel request, skip it directly.";
+    RAY_LOG(DEBUG) << " VirtualClusterResourceManager::ReturnBundle vc_id not found";
     return;
   }
   const auto &bundle_state = it->second;
@@ -180,7 +131,7 @@ void VirtualClusterResourceManager::ReturnBundle(
       VirtualClusterBundleTransactionState::CommitState::PREPARED) {
     // Commit bundle first so that we can remove the bundle with consistent
     // implementation.
-    CommitBundle(bundle_spec);
+    CommitBundle(vc_id);
   }
 
   // Return original resources to resource allocator `ClusterResourceScheduler`.
@@ -190,6 +141,7 @@ void VirtualClusterResourceManager::ReturnBundle(
 
   // Substract virtual cluster resources from resource allocator
   // `ClusterResourceScheduler`.
+  const auto &bundle_spec = bundle_state->bundle_spec_;
   // TODO: what if the tasks and actors in the VC has not yet been killed?
   const auto &virtual_cluster_resources = bundle_spec.GetFormattedResources();
 

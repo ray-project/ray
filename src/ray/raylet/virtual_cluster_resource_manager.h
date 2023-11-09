@@ -28,21 +28,35 @@ namespace raylet {
 
 struct VirtualClusterBundleTransactionState {
   enum CommitState {
-    /// Resources are prepared.
+    // The bundle has been prepared.
+    // Invariant: resources_ is non empty, and holds the resources as requested by the
+    // bundle.
     PREPARED,
-    /// Resources are COMMITTED.
+    // The bundle has been committed.
+    // Invariant: resources_ is non empty, and holds the resources as requested by the
+    // bundle.
     COMMITTED
   };
 
-  VirtualClusterBundleTransactionState(CommitState state,
-                                       std::shared_ptr<TaskResourceInstances> &resources)
-      : state_(state), resources_(resources) {}
+  explicit VirtualClusterBundleTransactionState(
+      const VirtualClusterBundleSpec &bundle_spec,
+      std::shared_ptr<TaskResourceInstances> resources)
+      : state_(PREPARED), bundle_spec_(bundle_spec), resources_(resources) {}
   CommitState state_;
+  VirtualClusterBundleSpec bundle_spec_;
   std::shared_ptr<TaskResourceInstances> resources_;
 };
 
 /// `VirtualClusterResourceManager` responsible for managing the resources that
 /// about allocated for virtual cluster bundles.
+///
+/// Each Virtual Cluster may ask to prepare 1 bundle. Lifetime of a bundle:
+///
+/// - "PrepareBundle": (empty) -> (resources allocated)
+/// - "CommitBundle": (resources allocated) -> (renamed resources added)
+/// - "ReturnBundle": (renamed resources added) -> (empty)
+///
+/// TODO: later we will be able to adjust the bundle resources.
 class VirtualClusterResourceManager {
  public:
   /// Create a virtual cluster resource manager.
@@ -51,32 +65,36 @@ class VirtualClusterResourceManager {
   VirtualClusterResourceManager(
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler);
 
-  /// Prepare a list of bundles. It is guaranteed that all bundles are atomically
-  /// prepared.
-  ///(e.g., if one of bundle cannot be prepared, all bundles are failed to be prepared)
+  /// Prepare a bundle.
+  /// If this vc_id already exists in `vc_bundles_`, and
+  /// - if the pre-existing vc is COMMITTED -> fast return true;
+  /// - if the pre-existing vc is PREPARED -> return it first to re-prepare.
+  ///
+  /// WARNING: no checks on the resource amounts are done. If a 2nd request has a
+  /// different amount of resources, it is IGNORED and the resources is kept as the old
+  /// request.
   ///
   /// \param bundle_specs A set of bundles that waiting to be prepared.
   /// \return bool True if all bundles successfully reserved resources, otherwise false.
-  virtual bool PrepareBundles(
-      const std::vector<std::shared_ptr<const VirtualClusterBundleSpec>> &bundle_specs);
+  virtual bool PrepareBundle(const VirtualClusterBundleSpec &bundle_spec);
 
   /// Convert the required resources to virtual cluster resources(like CPU ->
   /// CPU_cluster_i). This is phase two of 2PC.
   ///
   /// \param bundle_spec Specification of bundle whose resources will be commited.
-  virtual void CommitBundles(
-      const std::vector<std::shared_ptr<const VirtualClusterBundleSpec>> &bundle_specs);
+  void CommitBundle(VirtualClusterID vc_id);
 
   /// Return back all the bundle resource.
+  /// Removes the added renamed resources, releases the original resources, and erases the
+  /// entry in `vc_bundles_`.
   ///
   /// \param bundle_spec Specification of bundle whose resources will be returned.
-  virtual void ReturnBundle(const VirtualClusterBundleSpec &bundle_spec);
+  virtual void ReturnBundle(VirtualClusterID vc_id);
 
   /// Return back all the bundle(which is unused) resource.
   ///
   /// \param bundle_spec A set of bundles which in use.
-  void ReturnUnusedBundle(
-      const std::unordered_set<VirtualClusterBundleID, pair_hash> &in_use_bundles);
+  void ReturnUnusedBundles(const std::unordered_set<VirtualClusterID> &in_use_bundles);
 
   const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const {
     return cluster_resource_scheduler_;
@@ -85,23 +103,12 @@ class VirtualClusterResourceManager {
   virtual ~VirtualClusterResourceManager() {}
 
  private:
-  void CommitBundle(const VirtualClusterBundleSpec &bundle_spec);
-
-  bool PrepareBundle(const VirtualClusterBundleSpec &bundle_spec);
-
-  /// Save `VirtualClusterBundleSpec` for cleaning leaked bundles after GCS restart.
-  absl::flat_hash_map<VirtualClusterBundleID,
-                      std::shared_ptr<VirtualClusterBundleSpec>,
-                      pair_hash>
-      bundle_spec_map_;
-
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 
   /// Tracking virtual cluster bundles and their states. This mapping is the source of
   /// truth for the scheduler.
-  absl::flat_hash_map<VirtualClusterBundleID,
-                      std::shared_ptr<VirtualClusterBundleTransactionState>,
-                      pair_hash>
+  absl::flat_hash_map<VirtualClusterID,
+                      std::shared_ptr<VirtualClusterBundleTransactionState>>
       vc_bundles_;
 };
 

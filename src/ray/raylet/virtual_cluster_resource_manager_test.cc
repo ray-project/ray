@@ -18,7 +18,6 @@
 #include <memory>
 
 #include "gtest/gtest.h"
-#include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -32,7 +31,7 @@ class VirtualClusterResourceManagerTest : public ::testing::Test {
   instrumented_io_context io_context;
   std::unique_ptr<raylet::VirtualClusterResourceManager>
       virtual_cluster_resource_manager_;
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> vc_resource_scheduler_;
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   std::function<bool(scheduling::NodeID)> is_node_available_fn_;
   rpc::GcsNodeInfo node_info_;
@@ -46,158 +45,123 @@ class VirtualClusterResourceManagerTest : public ::testing::Test {
   }
   void InitLocalAvailableResource(
       absl::flat_hash_map<std::string, double> &unit_resource) {
-    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+    vc_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
         io_context, scheduling::NodeID("local"), unit_resource, is_node_available_fn_);
     virtual_cluster_resource_manager_ =
-        std::make_unique<raylet::VirtualClusterResourceManager>(
-            cluster_resource_scheduler_);
+        std::make_unique<raylet::VirtualClusterResourceManager>(vc_resource_scheduler_);
   }
 
   void CheckAvailableResourceEmpty(const std::string &resource) {
     ASSERT_TRUE(
-        cluster_resource_scheduler_->GetLocalResourceManager().IsAvailableResourceEmpty(
+        vc_resource_scheduler_->GetLocalResourceManager().IsAvailableResourceEmpty(
             scheduling::ResourceID(resource)));
   }
 
   void CheckRemainingResourceCorrect(NodeResources &node_resources) {
     auto local_node_resource =
-        cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
+        vc_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
             scheduling::NodeID("local"));
     ASSERT_EQ(local_node_resource, node_resources)
         << "expected " << node_resources.DebugString() << ", got "
         << local_node_resource.DebugString();
   }
-
-  // TODO(@clay4444): Remove this once we did the batch rpc request refactor!
-  std::vector<std::shared_ptr<const VirtualClusterBundleSpec>>
-  ConvertSingleSpecToVectorPtrs(const VirtualClusterBundleSpec &bundle_spec) {
-    std::vector<std::shared_ptr<const VirtualClusterBundleSpec>> bundle_specs;
-    // Copies!
-    bundle_specs.push_back(std::make_shared<const VirtualClusterBundleSpec>(bundle_spec));
-    return bundle_specs;
-  }
 };
 
-TEST_F(VirtualClusterResourceManagerTest, TestParseFromWildcard) {
-  ASSERT_FALSE(VirtualClusterBundleResourceLabel::ParseFromWildcard(
+TEST_F(VirtualClusterResourceManagerTest, TestParse) {
+  ASSERT_FALSE(VirtualClusterBundleResourceLabel::Parse(
                    "CPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
                    .has_value());
-  ASSERT_FALSE(VirtualClusterBundleResourceLabel::ParseFromWildcard("CPU").has_value());
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::ParseFromWildcard(
+  ASSERT_FALSE(VirtualClusterBundleResourceLabel::Parse("CPU").has_value());
+  ASSERT_EQ(VirtualClusterBundleResourceLabel::Parse(
                 "CPU_vc_4482dec0faaf5ead891ff1659a9501000000")
                 ->original_resource,
             "CPU");
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::ParseFromWildcard(
+  ASSERT_EQ(VirtualClusterBundleResourceLabel::Parse(
                 "GPU_vc_4482dec0faaf5ead891ff1659a9501000000")
                 ->original_resource,
             "GPU");
-  ASSERT_FALSE(VirtualClusterBundleResourceLabel::ParseFromWildcard(
+  ASSERT_FALSE(VirtualClusterBundleResourceLabel::Parse(
                    "GPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
                    .has_value());
 }
 
 TEST_F(VirtualClusterResourceManagerTest, TestParseVirtualClusterBundleResourceLabel) {
   // Test indexed resources
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::ParseFromIndexed(
-                "CPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
-                ->original_resource,
-            "CPU");
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::ParseFromIndexed(
-                "custom_vc_0_4482dec0faaf5ead891ff1659a9501000000")
-                ->original_resource,
-            "custom");
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::ParseFromIndexed(
-                "GPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
-                ->original_resource,
-            "GPU");
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::ParseFromIndexed(
-                "CPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
-                ->bundle_index.value(),
-            0);
-  ASSERT_TRUE(!VirtualClusterBundleResourceLabel::ParseFromWildcard(
-      "CPU_vc_0_4482dec0faaf5ead891ff1659a9501000000"));
+  ASSERT_FALSE(VirtualClusterBundleResourceLabel::Parse(
+                   "CPU_vc_0_4482dec0faaf5ead891ff1659a9501000000")
+                   .has_value());
 
   // Parse incorrect resource parsing.
-  ASSERT_TRUE(!VirtualClusterBundleResourceLabel::ParseFromEither("CPU"));
-  ASSERT_TRUE(!VirtualClusterBundleResourceLabel::ParseFromIndexed("CPU"));
-  ASSERT_TRUE(!VirtualClusterBundleResourceLabel::ParseFromWildcard("CPU"));
+  ASSERT_FALSE(VirtualClusterBundleResourceLabel::Parse("CPU").has_value());
 
   // Parse wildcard resources.
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::ParseFromWildcard(
+  ASSERT_EQ(VirtualClusterBundleResourceLabel::Parse(
                 "CPU_vc_4482dec0faaf5ead891ff1659a9501000000")
                 ->original_resource,
             "CPU");
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::ParseFromWildcard(
+  ASSERT_EQ(VirtualClusterBundleResourceLabel::Parse(
                 "custom_vc_4482dec0faaf5ead891ff1659a9501000000")
                 ->original_resource,
             "custom");
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::ParseFromWildcard(
+  ASSERT_EQ(VirtualClusterBundleResourceLabel::Parse(
                 "GPU_vc_4482dec0faaf5ead891ff1659a9501000000")
                 ->original_resource,
             "GPU");
-  ASSERT_EQ(VirtualClusterBundleResourceLabel::ParseFromWildcard(
-                "CPU_vc_4482dec0faaf5ead891ff1659a9501000000")
-                ->bundle_index,
-            std::nullopt);
-  ASSERT_TRUE(!VirtualClusterBundleResourceLabel::ParseFromIndexed(
-      "CPU_vc_4482dec0faaf5ead891ff1659a9501000000"));
 }
 
 TEST_F(VirtualClusterResourceManagerTest, TestPrepareBundleResource) {
   // 1. create bundle spec.
-  auto cluster_id = VirtualClusterID::Of(JobID::FromInt(1));
+  auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenVirtualClusterBundleSpecs(cluster_id, unit_resource, 1);
+  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare bundle resource.
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundle(bundle_spec));
   /// 4. check remaining resources is correct.
   CheckAvailableResourceEmpty("CPU");
 }
 
 TEST_F(VirtualClusterResourceManagerTest, TestPrepareBundleWithInsufficientResource) {
   // 1. create bundle spec.
-  auto cluster_id = VirtualClusterID::Of(JobID::FromInt(1));
+  auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 2.0});
-  auto bundle_specs = Mocker::GenVirtualClusterBundleSpecs(cluster_id, unit_resource, 1);
+  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> init_unit_resource;
   init_unit_resource.insert({"CPU", 1.0});
   InitLocalAvailableResource(init_unit_resource);
   /// 3. prepare bundle resource.
-  ASSERT_FALSE(virtual_cluster_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_FALSE(virtual_cluster_resource_manager_->PrepareBundle(bundle_spec));
 }
 
 TEST_F(VirtualClusterResourceManagerTest, TestPrepareBundleDuringDraining) {
   // 1. create bundle spec.
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto cluster1_id = VirtualClusterID::Of(JobID::FromInt(1));
-  auto bundle1_specs =
-      Mocker::GenVirtualClusterBundleSpecs(cluster1_id, unit_resource, 1);
-  auto cluster2_id = VirtualClusterID::Of(JobID::FromInt(2));
-  auto bundle2_specs =
-      Mocker::GenVirtualClusterBundleSpecs(cluster2_id, unit_resource, 1);
+  auto vc1_id = VirtualClusterID::Of(JobID::FromInt(1));
+  auto bundle1_spec = Mocker::GenVirtualClusterBundle(vc1_id, unit_resource);
+
+  auto vc2_id = VirtualClusterID::Of(JobID::FromInt(2));
+  auto bundle2_spec = Mocker::GenVirtualClusterBundle(vc2_id, unit_resource);
+
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> init_unit_resource;
   init_unit_resource.insert({"CPU", 2.0});
   InitLocalAvailableResource(init_unit_resource);
 
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(bundle1_specs));
+  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundle(bundle1_spec));
   // Drain the node,  bundle prepare will fail.
-  cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
-  ASSERT_FALSE(virtual_cluster_resource_manager_->PrepareBundles(bundle2_specs));
-  // Prepared bundles can still be committed.
-  virtual_cluster_resource_manager_->CommitBundles(bundle1_specs);
+  vc_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+  ASSERT_FALSE(virtual_cluster_resource_manager_->PrepareBundle(bundle2_spec));
+  // Prepared bundle can still be committed.
+  virtual_cluster_resource_manager_->CommitBundle(bundle1_spec.GetVirtualClusterId());
   absl::flat_hash_map<std::string, double> remaining_resources = {
-      {"CPU_vc_" + cluster1_id.Hex(), 1.0},
-      {"CPU_vc_1_" + cluster1_id.Hex(), 1.0},
+      {"CPU_vc_" + vc1_id.Hex(), 1.0},
       {"CPU", 2.0},
-      {"vcbundle_vc_1_" + cluster1_id.Hex(), 1000},
-      {"vcbundle_vc_" + cluster1_id.Hex(), 1000}};
+      {"vcbundle_vc_" + vc1_id.Hex(), 1000}};
   auto remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
                                                  scheduling::NodeID("remaining"),
@@ -216,22 +180,18 @@ TEST_F(VirtualClusterResourceManagerTest, TestPrepareBundleDuringDraining) {
 
 TEST_F(VirtualClusterResourceManagerTest, TestCommitBundleResource) {
   // 1. create bundle spec.
-  auto cluster_id = VirtualClusterID::Of(JobID::FromInt(1));
+  auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenVirtualClusterBundleSpecs(cluster_id, unit_resource, 1);
+  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(bundle_specs));
-  virtual_cluster_resource_manager_->CommitBundles(bundle_specs);
+  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundle(bundle_spec));
+  virtual_cluster_resource_manager_->CommitBundle(bundle_spec.GetVirtualClusterId());
   /// 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {
-      {"CPU_vc_" + cluster_id.Hex(), 1.0},
-      {"CPU_vc_1_" + cluster_id.Hex(), 1.0},
-      {"CPU", 1.0},
-      {"vcbundle_vc_1_" + cluster_id.Hex(), 1000},
-      {"vcbundle_vc_" + cluster_id.Hex(), 1000}};
+      {"CPU_vc_" + vc_id.Hex(), 1.0}, {"CPU", 1.0}, {"vcbundle_vc_" + vc_id.Hex(), 1000}};
   auto remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
                                                  scheduling::NodeID("remaining"),
@@ -250,19 +210,17 @@ TEST_F(VirtualClusterResourceManagerTest, TestCommitBundleResource) {
 
 TEST_F(VirtualClusterResourceManagerTest, TestReturnBundleResource) {
   // 1. create bundle spec.
-  auto cluster_id = VirtualClusterID::Of(JobID::FromInt(1));
+  auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_spec = Mocker::GenVirtualClusterBundle(cluster_id, 1, unit_resource);
+  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(
-      ConvertSingleSpecToVectorPtrs(bundle_spec)));
-  virtual_cluster_resource_manager_->CommitBundles(
-      ConvertSingleSpecToVectorPtrs(bundle_spec));
+  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundle(bundle_spec));
+  virtual_cluster_resource_manager_->CommitBundle(bundle_spec.GetVirtualClusterId());
   /// 4. return bundle resource.
-  virtual_cluster_resource_manager_->ReturnBundle(bundle_spec);
+  virtual_cluster_resource_manager_->ReturnBundle(bundle_spec.GetVirtualClusterId());
   /// 5. check remaining resources is correct.
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
       io_context, scheduling::NodeID("remaining"), unit_resource, is_node_available_fn_);
@@ -272,101 +230,19 @@ TEST_F(VirtualClusterResourceManagerTest, TestReturnBundleResource) {
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
-TEST_F(VirtualClusterResourceManagerTest, TestMultipleBundlesCommitAndReturn) {
-  // 1. create two bundles spec.
-  auto cluster_id = VirtualClusterID::Of(JobID::FromInt(1));
-  absl::flat_hash_map<std::string, double> unit_resource;
-  unit_resource.insert({"CPU", 1.0});
-  auto first_bundle_spec = Mocker::GenVirtualClusterBundle(cluster_id, 1, unit_resource);
-  auto second_bundle_spec = Mocker::GenVirtualClusterBundle(cluster_id, 2, unit_resource);
-  /// 2. init local available resource.
-  absl::flat_hash_map<std::string, double> init_unit_resource;
-  init_unit_resource.insert({"CPU", 2.0});
-  InitLocalAvailableResource(init_unit_resource);
-  /// 3. prepare and commit two bundle resource.
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(
-      ConvertSingleSpecToVectorPtrs(first_bundle_spec)));
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(
-      ConvertSingleSpecToVectorPtrs(second_bundle_spec)));
-  virtual_cluster_resource_manager_->CommitBundles(
-      ConvertSingleSpecToVectorPtrs(first_bundle_spec));
-  virtual_cluster_resource_manager_->CommitBundles(
-      ConvertSingleSpecToVectorPtrs(second_bundle_spec));
-  /// 4. check remaining resources is correct after commit phase.
-  absl::flat_hash_map<std::string, double> remaining_resources = {
-      {"CPU_vc_" + cluster_id.Hex(), 2.0},
-      {"CPU_vc_1_" + cluster_id.Hex(), 1.0},
-      {"CPU_vc_2_" + cluster_id.Hex(), 1.0},
-      {"CPU", 2.0},
-      {"vcbundle_vc_1_" + cluster_id.Hex(), 1000},
-      {"vcbundle_vc_2_" + cluster_id.Hex(), 1000},
-      {"vcbundle_vc_" + cluster_id.Hex(), 2000}};
-  auto remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          init_unit_resource, resource_instances));
-  auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
-
-  CheckRemainingResourceCorrect(remaining_resource_instance);
-  /// 5. return second bundle.
-  virtual_cluster_resource_manager_->ReturnBundle(second_bundle_spec);
-  /// 6. check remaining resources is correct after return second bundle.
-  remaining_resources = {{"CPU_vc_" + cluster_id.Hex(), 2.0},
-                         {"CPU_vc_1_" + cluster_id.Hex(), 1.0},
-                         {"CPU", 2.0},
-                         {"vcbundle_vc_1_" + cluster_id.Hex(), 1000},
-                         {"vcbundle_vc_" + cluster_id.Hex(), 2000}};
-  remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          {{"CPU_vc_" + cluster_id.Hex(), 1.0},
-           {"CPU", 1.0},
-           {"vcbundle_vc_" + cluster_id.Hex(), 1000}},
-          resource_instances));
-  remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
-  CheckRemainingResourceCorrect(remaining_resource_instance);
-  /// 7. return first bundle.
-  virtual_cluster_resource_manager_->ReturnBundle(first_bundle_spec);
-  /// 8. check remaining resources is correct after all bundle returned.
-  remaining_resources = {{"CPU", 2.0}};
-  remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
-  CheckRemainingResourceCorrect(remaining_resource_instance);
-}
-
 TEST_F(VirtualClusterResourceManagerTest, TestIdempotencyWithMultiPrepare) {
   // 1. create one bundle spec.
-  auto cluster_id = VirtualClusterID::Of(JobID::FromInt(1));
+  auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenVirtualClusterBundleSpecs(cluster_id, unit_resource, 1);
+  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("CPU", 3.0)};
   InitLocalAvailableResource(available_resource);
   /// 3. prepare bundle resource 10 times.
   for (int i = 0; i < 10; i++) {
-    ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(bundle_specs));
+    ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundle(bundle_spec));
   }
   /// 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {{"CPU", 3.0}};
@@ -388,28 +264,21 @@ TEST_F(VirtualClusterResourceManagerTest, TestIdempotencyWithMultiPrepare) {
 
 TEST_F(VirtualClusterResourceManagerTest, TestIdempotencyWithRandomOrder) {
   // 1. create one bundle spec.
-  auto cluster_id = VirtualClusterID::Of(JobID::FromInt(1));
+  auto vc_id = VirtualClusterID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_spec = Mocker::GenVirtualClusterBundle(cluster_id, 1, unit_resource);
+  auto bundle_spec = Mocker::GenVirtualClusterBundle(vc_id, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("CPU", 3.0)};
   InitLocalAvailableResource(available_resource);
   /// 3. prepare bundle -> commit bundle -> prepare bundle.
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(
-      ConvertSingleSpecToVectorPtrs(bundle_spec)));
-  virtual_cluster_resource_manager_->CommitBundles(
-      ConvertSingleSpecToVectorPtrs(bundle_spec));
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(
-      ConvertSingleSpecToVectorPtrs(bundle_spec)));
+  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundle(bundle_spec));
+  virtual_cluster_resource_manager_->CommitBundle(bundle_spec.GetVirtualClusterId());
+  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundle(bundle_spec));
   /// 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {
-      {"CPU_vc_" + cluster_id.Hex(), 1.0},
-      {"CPU_vc_1_" + cluster_id.Hex(), 1.0},
-      {"CPU", 3.0},
-      {"vcbundle_vc_1_" + cluster_id.Hex(), 1000},
-      {"vcbundle_vc_" + cluster_id.Hex(), 1000}};
+      {"CPU_vc_" + vc_id.Hex(), 1.0}, {"CPU", 3.0}, {"vcbundle_vc_" + vc_id.Hex(), 1000}};
   auto remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
                                                  scheduling::NodeID("remaining"),
@@ -424,23 +293,18 @@ TEST_F(VirtualClusterResourceManagerTest, TestIdempotencyWithRandomOrder) {
       remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID("remaining"));
   CheckRemainingResourceCorrect(remaining_resource_instance);
-  virtual_cluster_resource_manager_->ReturnBundle(bundle_spec);
+  virtual_cluster_resource_manager_->ReturnBundle(bundle_spec.GetVirtualClusterId());
   // 5. prepare bundle -> commit bundle -> commit bundle.
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(
-      ConvertSingleSpecToVectorPtrs(bundle_spec)));
-  virtual_cluster_resource_manager_->CommitBundles(
-      ConvertSingleSpecToVectorPtrs(bundle_spec));
-  virtual_cluster_resource_manager_->CommitBundles(
-      ConvertSingleSpecToVectorPtrs(bundle_spec));
+  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundle(bundle_spec));
+  virtual_cluster_resource_manager_->CommitBundle(bundle_spec.GetVirtualClusterId());
+  virtual_cluster_resource_manager_->CommitBundle(bundle_spec.GetVirtualClusterId());
   // 6. check remaining resources is correct.
   CheckRemainingResourceCorrect(remaining_resource_instance);
-  virtual_cluster_resource_manager_->ReturnBundle(bundle_spec);
+  virtual_cluster_resource_manager_->ReturnBundle(bundle_spec.GetVirtualClusterId());
   // 7. prepare bundle -> return bundle -> commit bundle.
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(
-      ConvertSingleSpecToVectorPtrs(bundle_spec)));
-  virtual_cluster_resource_manager_->ReturnBundle(bundle_spec);
-  virtual_cluster_resource_manager_->CommitBundles(
-      ConvertSingleSpecToVectorPtrs(bundle_spec));
+  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundle(bundle_spec));
+  virtual_cluster_resource_manager_->ReturnBundle(bundle_spec.GetVirtualClusterId());
+  virtual_cluster_resource_manager_->CommitBundle(bundle_spec.GetVirtualClusterId());
   // 8. check remaining resources is correct.
   remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
@@ -450,120 +314,6 @@ TEST_F(VirtualClusterResourceManagerTest, TestIdempotencyWithRandomOrder) {
   remaining_resource_instance =
       remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID("remaining"));
-  CheckRemainingResourceCorrect(remaining_resource_instance);
-}
-
-TEST_F(VirtualClusterResourceManagerTest, TestPreparedResourceBatched) {
-  // 1. create a virtual cluster spec with 4 bundles and each required 1 CPU.
-  auto cluster_id = VirtualClusterID::Of(JobID::FromInt(1));
-  absl::flat_hash_map<std::string, double> unit_resource;
-  unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenVirtualClusterBundleSpecs(cluster_id, unit_resource, 4);
-  // 2. init local available resource with 3 CPUs.
-  absl::flat_hash_map<std::string, double> available_resource = {
-      std::make_pair("CPU", 3.0)};
-  InitLocalAvailableResource(available_resource);
-  // 3. prepare resources for the four bundles.
-  ASSERT_FALSE(virtual_cluster_resource_manager_->PrepareBundles(bundle_specs));
-  // make sure it keeps Idempotency.
-  ASSERT_FALSE(virtual_cluster_resource_manager_->PrepareBundles(bundle_specs));
-  // 4. check remaining resources is correct.
-  absl::flat_hash_map<std::string, double> remaining_resources = {{"CPU", 3.0}};
-  auto remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
-  CheckRemainingResourceCorrect(remaining_resource_instance);
-  // 5. re-init the local available resource with 4 CPUs.
-  available_resource = {std::make_pair("CPU", 4.0)};
-  InitLocalAvailableResource(available_resource);
-  // 6. re-prepare resources for the four bundles, but this time it should be
-  // successfully.
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(bundle_specs));
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(bundle_specs));
-  virtual_cluster_resource_manager_->CommitBundles(bundle_specs);
-  // 7. re-check remaining resources is correct.
-  remaining_resources = {{"CPU_vc_" + cluster_id.Hex(), 4.0},
-                         {"CPU_vc_1_" + cluster_id.Hex(), 1.0},
-                         {"CPU_vc_2_" + cluster_id.Hex(), 1.0},
-                         {"CPU_vc_3_" + cluster_id.Hex(), 1.0},
-                         {"CPU_vc_4_" + cluster_id.Hex(), 1.0},
-                         {"CPU", 4.0},
-                         {"vcbundle_vc_1_" + cluster_id.Hex(), 1000},
-                         {"vcbundle_vc_2_" + cluster_id.Hex(), 1000},
-                         {"vcbundle_vc_3_" + cluster_id.Hex(), 1000},
-                         {"vcbundle_vc_4_" + cluster_id.Hex(), 1000},
-                         {"vcbundle_vc_" + cluster_id.Hex(), 4000}};
-  remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  absl::flat_hash_map<std::string, double> allocating_resource;
-  allocating_resource.insert({"CPU", 4.0});
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          allocating_resource, resource_instances));
-  remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
-  RAY_LOG(INFO) << "The current local resource view: "
-                << cluster_resource_scheduler_->DebugString();
-  CheckRemainingResourceCorrect(remaining_resource_instance);
-}
-
-TEST_F(VirtualClusterResourceManagerTest, TestCommiteResourceBatched) {
-  // 1. create a virtual cluster spec with 4 bundles and each required 1 CPU.
-  auto cluster_id = VirtualClusterID::Of(JobID::FromInt(1));
-  absl::flat_hash_map<std::string, double> unit_resource;
-  unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenVirtualClusterBundleSpecs(cluster_id, unit_resource, 4);
-  // 2. init local available resource with 4 CPUs.
-  absl::flat_hash_map<std::string, double> available_resource = {
-      std::make_pair("CPU", 4.0)};
-  InitLocalAvailableResource(available_resource);
-  // 3. prepare resources for the four bundles and make sure it succeeds.
-  ASSERT_TRUE(virtual_cluster_resource_manager_->PrepareBundles(bundle_specs));
-  // 4. prepare resources for the four bundles.
-  virtual_cluster_resource_manager_->CommitBundles(bundle_specs);
-  // make sure it keeps Idempotency.
-  virtual_cluster_resource_manager_->CommitBundles(bundle_specs);
-  // 5. check remaining resources is correct.
-  absl::flat_hash_map<std::string, double> remaining_resources = {
-      {"CPU_vc_" + cluster_id.Hex(), 4.0},
-      {"CPU_vc_1_" + cluster_id.Hex(), 1.0},
-      {"CPU_vc_2_" + cluster_id.Hex(), 1.0},
-      {"CPU_vc_3_" + cluster_id.Hex(), 1.0},
-      {"CPU_vc_4_" + cluster_id.Hex(), 1.0},
-      {"CPU", 4.0},
-      {"vcbundle_vc_1_" + cluster_id.Hex(), 1000},
-      {"vcbundle_vc_2_" + cluster_id.Hex(), 1000},
-      {"vcbundle_vc_3_" + cluster_id.Hex(), 1000},
-      {"vcbundle_vc_4_" + cluster_id.Hex(), 1000},
-      {"vcbundle_vc_" + cluster_id.Hex(), 4000}};
-  auto remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  absl::flat_hash_map<std::string, double> allocating_resource;
-  allocating_resource.insert({"CPU", 4.0});
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          allocating_resource, resource_instances));
-  auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
-  RAY_LOG(INFO) << "The current local resource view: "
-                << cluster_resource_scheduler_->DebugString();
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 

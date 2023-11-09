@@ -567,7 +567,7 @@ message VirtualClusterBundle {
   map<string, double> resources = 1;
 }
 
-// Specification of a virtual cluster. 
+// Specification of a virtual cluster. Each Bundle is scheduled atomically to 1 node.
 message VirtualClusterSpec {
   bytes virtual_cluster_id = 1;
   repeated VirtualClusterBundle bundles = 2;

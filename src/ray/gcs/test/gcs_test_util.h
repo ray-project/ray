@@ -197,29 +197,15 @@ struct Mocker {
     return request;
   }
 
-  static std::vector<std::shared_ptr<const VirtualClusterBundleSpec>>
-  GenVirtualClusterBundleSpecs(const VirtualClusterID &vc_id,
-                               absl::flat_hash_map<std::string, double> &unit_resource,
-                               int bundles_size = 1) {
-    std::vector<std::shared_ptr<const VirtualClusterBundleSpec>> bundle_specs;
-    for (int i = 0; i < bundles_size; i++) {
-      bundle_specs.emplace_back(std::make_shared<const VirtualClusterBundleSpec>(
-          // The bundle index starts from 1.
-          GenVirtualClusterBundle(vc_id, i + 1, unit_resource)));
-    }
-    return bundle_specs;
-  }
-
   static VirtualClusterBundleSpec GenVirtualClusterBundle(
       const VirtualClusterID &vc_id,
-      const int bundle_index,
       absl::flat_hash_map<std::string, double> &unit_resource) {
     rpc::VirtualClusterBundle bundle;
     auto mutable_resources = bundle.mutable_resources();
     for (auto &resource : unit_resource) {
       mutable_resources->insert({resource.first, resource.second});
     }
-    return VirtualClusterBundleSpec(bundle, {vc_id, bundle_index});
+    return VirtualClusterBundleSpec(bundle, vc_id);
   }
 
   static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(

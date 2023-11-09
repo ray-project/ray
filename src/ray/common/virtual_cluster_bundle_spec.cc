@@ -18,26 +18,8 @@
 
 namespace ray {
 
-std::optional<VirtualClusterBundleResourceLabel>
-VirtualClusterBundleResourceLabel::ParseFromIndexed(const std::string &resource) {
-  // Check if it is a wildcard pg resource.
-  VirtualClusterBundleResourceLabel data;
-  std::smatch match_groups;
-
-  static const std::regex vc_resource_pattern("^(.+)_vc_(\\d+)_([0-9a-zA-Z]+)$");
-  if (std::regex_match(resource, match_groups, vc_resource_pattern) &&
-      match_groups.size() == 4) {
-    data.original_resource = match_groups[1].str();
-    data.vc_id = VirtualClusterID::FromHex(match_groups[3].str());
-    data.bundle_index = stoi(match_groups[2].str());
-    return data;
-  }
-  return {};
-}
-
-std::optional<VirtualClusterBundleResourceLabel>
-VirtualClusterBundleResourceLabel::ParseFromWildcard(const std::string &resource) {
-  // Check if it is a wildcard pg resource.
+std::optional<VirtualClusterBundleResourceLabel> VirtualClusterBundleResourceLabel::Parse(
+    const std::string &resource) {
   VirtualClusterBundleResourceLabel data;
   std::smatch match_groups;
 
@@ -51,15 +33,6 @@ VirtualClusterBundleResourceLabel::ParseFromWildcard(const std::string &resource
   return {};
 }
 
-std::optional<VirtualClusterBundleResourceLabel>
-VirtualClusterBundleResourceLabel::ParseFromEither(const std::string &resource) {
-  auto maybe_indexed = ParseFromIndexed(resource);
-  if (maybe_indexed.has_value()) {
-    return maybe_indexed;
-  }
-  return ParseFromWildcard(resource);
-}
-
 ResourceRequest VirtualClusterBundleSpec::ComputeResources(
     const rpc::VirtualClusterBundle &message) {
   auto unit_resource = MapFromProtobuf(message.resources());
@@ -69,29 +42,20 @@ ResourceRequest VirtualClusterBundleSpec::ComputeResources(
 
 absl::flat_hash_map<std::string, double>
 VirtualClusterBundleSpec::ComputeFormattedBundleResourceLabels(
-    const ray::ResourceRequest &request, VirtualClusterBundleID vc_bundle_id) {
+    const ray::ResourceRequest &request, VirtualClusterID vc_id) {
   absl::flat_hash_map<std::string, double> labels;
 
   for (auto &resource_id : request.ResourceIds()) {
     auto resource_name = resource_id.Binary();
     auto resource_value = request.Get(resource_id);
 
-    /// With bundle index (e.g., CPU_vc_i_vchex).
-    const std::string &resource_label =
-        FormatVirtualClusterResource(resource_name, vc_bundle_id);
-    labels[resource_label] = resource_value.Double();
-
-    /// Without bundle index (e.g., CPU_group_zzz).
     const std::string &wildcard_label =
-        FormatVirtualClusterResource(resource_name, vc_bundle_id.first);
+        FormatVirtualClusterResource(resource_name, vc_id);
     labels[wildcard_label] = resource_value.Double();
   }
-  auto bundle_label =
-      FormatVirtualClusterResource(kVirtualClusterBundle_ResourceLabel, vc_bundle_id);
-  labels[bundle_label] = 1000;
 
-  auto bundle_wildcard_label = FormatVirtualClusterResource(
-      kVirtualClusterBundle_ResourceLabel, vc_bundle_id.first);
+  auto bundle_wildcard_label =
+      FormatVirtualClusterResource(kVirtualClusterBundle_ResourceLabel, vc_id);
   labels[bundle_wildcard_label] = 1000;
 
   return labels;
@@ -99,25 +63,9 @@ VirtualClusterBundleSpec::ComputeFormattedBundleResourceLabels(
 
 std::string VirtualClusterBundleSpec::DebugString() const {
   std::ostringstream stream;
-  auto bundle_id = GetBundleId();
-  stream << "virtual cluster id={" << bundle_id.first << "}, bundle index={"
-         << bundle_id.second << "}";
+  auto bundle_id = GetVirtualClusterId();
+  stream << "bundle with virtual cluster id={" << bundle_id << "}";
   return stream.str();
-}
-
-std::string FormatVirtualClusterResource(const std::string &original_resource_name,
-                                         const VirtualClusterBundleID &vc_bundle_id) {
-  std::stringstream os;
-
-  const auto &[vc_id, bundle_index] = vc_bundle_id;
-  os << original_resource_name << kVirtualClusterKeyword << std::to_string(bundle_index)
-     << "_" << vc_id.Hex();
-  std::string result = os.str();
-  RAY_DCHECK(
-      VirtualClusterBundleResourceLabel::ParseFromIndexed(result)->original_resource ==
-      original_resource_name)
-      << "Generated: " << result << " Original: " << original_resource_name;
-  return result;
 }
 
 std::string FormatVirtualClusterResource(const std::string &original_resource_name,
@@ -126,9 +74,8 @@ std::string FormatVirtualClusterResource(const std::string &original_resource_na
   os << original_resource_name << kVirtualClusterKeyword << vc_id.Hex();
 
   std::string result = os.str();
-  RAY_DCHECK(
-      VirtualClusterBundleResourceLabel::ParseFromWildcard(result)->original_resource ==
-      original_resource_name)
+  RAY_DCHECK(VirtualClusterBundleResourceLabel::Parse(result)->original_resource ==
+             original_resource_name)
       << "Generated: " << result << " Original: " << original_resource_name;
   return result;
 }

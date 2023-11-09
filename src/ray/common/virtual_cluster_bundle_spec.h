@@ -34,13 +34,10 @@ constexpr static size_t kVirtualClusterKeywordSize = kVirtualClusterKeyword.size
 struct VirtualClusterBundleResourceLabel {
   std::string original_resource;
   VirtualClusterID vc_id;
-  std::optional<size_t> bundle_index;
 
-  static std::optional<VirtualClusterBundleResourceLabel> ParseFromIndexed(
-      const std::string &resource);
-  static std::optional<VirtualClusterBundleResourceLabel> ParseFromWildcard(
-      const std::string &resource);
-  static std::optional<VirtualClusterBundleResourceLabel> ParseFromEither(
+  // Parses from "CPU_vc_vchex" to
+  // {.original_resource = "CPU", .vc_id = VirtualClusterID::FromHex("vchex")}
+  static std::optional<VirtualClusterBundleResourceLabel> Parse(
       const std::string &resource);
 };
 
@@ -51,16 +48,16 @@ class VirtualClusterBundleSpec : public MessageWrapper<rpc::VirtualClusterBundle
   ///
   /// \param message The protobuf message.
   explicit VirtualClusterBundleSpec(rpc::VirtualClusterBundle message,
-                                    VirtualClusterBundleID vc_bundle_id)
+                                    VirtualClusterID vc_id)
       : MessageWrapper(std::move(message)),
-        vc_bundle_id_(vc_bundle_id),
+        vc_id_(vc_id),
         unit_resource_(ComputeResources(*message_)),
         bundle_resource_labels_(
-            ComputeFormattedBundleResourceLabels(unit_resource_, vc_bundle_id_)) {}
+            ComputeFormattedBundleResourceLabels(unit_resource_, vc_id_)) {}
 
   explicit VirtualClusterBundleSpec(const VirtualClusterBundleSpec &) = default;
 
-  VirtualClusterBundleID GetBundleId() const { return vc_bundle_id_; }
+  VirtualClusterID GetVirtualClusterId() const { return vc_id_; }
 
   std::string DebugString() const;
 
@@ -70,26 +67,20 @@ class VirtualClusterBundleSpec : public MessageWrapper<rpc::VirtualClusterBundle
   const ResourceRequest &GetRequiredResources() const { return unit_resource_; }
 
   /// Get all virtual cluster bundle resource labels.
-  /// When a bundle is commited on a node, we'll add the following special resources on
+  /// When a bundle is commited on a node, we'll add the following special resource on
   /// that node:
-  /// 1) `CPU_vc_${vc_id}`: this is the requested resource when the actor
-  /// or task specifies virtual cluster without bundle id.
-  /// 2) `CPU_vc_${bundle_index}_${vc_id}`: this is the requested resource
-  /// when the actor or task specifies virtual cluster with bundle id.
+  /// - `CPU_vc_${vc_id}`: this is the requested resource when the actor or task specifies
+  /// virtual cluster without bundle id.
   ///
   /// Other than the resources asked by the user (e.g. `CPU`) we will also implicitly make
   /// resources named `vcbundle` for 1000. For example:
-  /// 1) `vcbundle_vc_1_vchex`: 1000
-  /// 1) `vcbundle_vc_vchex`: 1000
+  /// - `vcbundle_vc_vchex`: 1000
   const absl::flat_hash_map<std::string, double> &GetFormattedResources() const {
     return bundle_resource_labels_;
   }
 
  private:
-  // First: VC ID.
-  // Second: This bundle's index in the virtual cluster's bundle requirements, starting
-  // from 0.
-  const VirtualClusterBundleID vc_bundle_id_;
+  const VirtualClusterID vc_id_;
 
   /// Field storing unit resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
@@ -102,19 +93,10 @@ class VirtualClusterBundleSpec : public MessageWrapper<rpc::VirtualClusterBundle
 
   static ResourceRequest ComputeResources(const rpc::VirtualClusterBundle &);
 
-  /// When a bundle is assigned on a node, we'll add the following special resources on
-  /// that node:
-  /// 1) `CPU_vc_${vc_id_hex}`: this is the requested resource when the actor
-  /// or task specifies virtual cluster without bundle id.
-  /// 2) `CPU_vc_${bundle_index}_${vc_id_hex}`: this is the requested resource
-  /// when the actor or task specifies virtual cluster with bundle id.
+  /// Computes the labels for `GetFormattedResources()`.
   static absl::flat_hash_map<std::string, double> ComputeFormattedBundleResourceLabels(
-      const ray::ResourceRequest &, VirtualClusterBundleID);
+      const ray::ResourceRequest &, VirtualClusterID);
 };
-
-/// Format a virtual cluster resource, e.g., CPU -> CPU_vc_i_vchex
-std::string FormatVirtualClusterResource(const std::string &original_resource_name,
-                                         const VirtualClusterBundleID &vc_bundle_id);
 
 /// Format a virtual cluster resource, e.g., CPU -> CPU_vc_vchex
 std::string FormatVirtualClusterResource(const std::string &original_resource_name,
