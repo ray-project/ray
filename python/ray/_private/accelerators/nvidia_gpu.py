@@ -97,38 +97,35 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
     def get_current_node_accelerator_type() -> Optional[str]:
         try:
             pynvml.nvmlInit()
-            device_count = pynvml.nvmlDeviceGetCount()
-            cuda_devices_names = []
-            for index in range(device_count):
-                handle = pynvml.nvmlDeviceGetHandleByIndex(index)
-                mig_enabled = os.environ.get(
-                    ray_constants.RAY_ENABLE_MIG_DETECTION_ENV_VAR, False
-                )
-                if mig_enabled:
-                    try:
-                        max_mig_count = pynvml.nvmlDeviceGetMaxMigDeviceCount(handle)
-                    except pynvml.NVMLError_NotSupported:
-                        cuda_devices_names.append(pynvml.nvmlDeviceGetName(handle))
-                        continue
-                    for mig_index in range(max_mig_count):
-                        try:
-                            mig_handle = pynvml.nvmlDeviceGetMigDeviceHandleByIndex(
-                                handle, mig_index
-                            )
-                            cuda_devices_names.append(
-                                pynvml.nvmlDeviceGetName(mig_handle)
-                            )
-                        except pynvml.NVMLError:
-                            break
-                else:
-                    cuda_devices_names.append(pynvml.nvmlDeviceGetName(handle))
-            pynvml.nvmlShutdown()
-            return NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                cuda_devices_names.pop()
+        except pynvml.NVMLError:
+            return None  # pynvml init failed
+        device_count = pynvml.nvmlDeviceGetCount()
+        cuda_devices_names = []
+        for index in range(device_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+            mig_enabled = os.environ.get(
+                ray_constants.RAY_ENABLE_MIG_DETECTION_ENV_VAR, False
             )
-        except Exception:
-            logger.exception("Could not parse gpu information.")
-        return None
+            if mig_enabled:
+                try:
+                    max_mig_count = pynvml.nvmlDeviceGetMaxMigDeviceCount(handle)
+                except pynvml.NVMLError_NotSupported:
+                    cuda_devices_names.append(pynvml.nvmlDeviceGetName(handle))
+                    continue
+                for mig_index in range(max_mig_count):
+                    try:
+                        mig_handle = pynvml.nvmlDeviceGetMigDeviceHandleByIndex(
+                            handle, mig_index
+                        )
+                        cuda_devices_names.append(pynvml.nvmlDeviceGetName(mig_handle))
+                    except pynvml.NVMLError:
+                        break
+            else:
+                cuda_devices_names.append(pynvml.nvmlDeviceGetName(handle))
+        pynvml.nvmlShutdown()
+        return NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
+            cuda_devices_names.pop()
+        )
 
     @staticmethod
     def _gpu_name_to_accelerator_type(name):
