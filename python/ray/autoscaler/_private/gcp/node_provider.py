@@ -280,7 +280,26 @@ class GCPNodeProvider(NodeProvider):
     def fillout_available_node_types_resources(
         cluster_config: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Fill out TPU resources to the cluster config."""
+        """Fill out TPU resources to the cluster config.
+
+        To enable TPU pod autoscaling, we provide the TPU accelerator
+        type as a resource that only exists on worker 0 of the pod slice.
+        For instance, a v4-16 should have the resource labels:
+            worker 0: resources = {"TPU": 4, "TPU-v4-16": 1}
+            worker 1: resources = {"TPU": 4}
+
+        For the autoscaler to correctly process the demands of
+        creating a new TPU pod, then the autoscaler must know what
+        a TPU pod is in the form of the TPU accelerator resource.
+
+        Therefore we fill out TPU pods appropriately by providing the
+        expected resource which we can deduce from the cluster config.
+
+        Note that during the TPU resource detection phase (in
+        accelerators/tpu.py), we remove the TPU accelerator resource
+        for all workers that are not worker 0.
+
+        """
         if "available_node_types" not in cluster_config:
             return cluster_config
         cluster_config = copy.deepcopy(cluster_config)

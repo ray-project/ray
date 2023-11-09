@@ -287,6 +287,19 @@ class TPUAcceleratorManager(AcceleratorManager):
     def get_current_node_accelerator_type() -> Optional[str]:
         """Attempt to detect the TPU accelerator type.
 
+        The output of this function will return the "ray accelerator type"
+        resource (e.g. TPU-V4) that indicates the TPU version.
+
+        We also expect that our TPU nodes contain a "TPU accelerator type"
+        resource, which indicates information about the topology of
+        the TPU pod slice.
+
+        We expect that the "TPU accelerator type" resource to be used when
+        running multi host workers, i.e. when TPU units are pod slices.
+
+        We expect that the "ray accelerator type" resource to be used when
+        running single host workers, i.e. when TPU units are single hosts.
+
         Returns:
             A string representing the TPU accelerator type,
             e.g. "TPU-V2", "TPU-V3", "TPU-V4" if applicable, else None.
