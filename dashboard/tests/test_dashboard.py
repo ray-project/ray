@@ -10,7 +10,6 @@ import sys
 import time
 import warnings
 
-import numpy as np
 import pytest
 import requests
 import socket
@@ -50,10 +49,9 @@ import psutil
 
 try:
     import aiohttp.web
-
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
-    routes = dashboard_optional_utils.ClassMethodRouteTable
+    head_routes = dashboard_optional_utils.DashboardHeadRouteTable
 except Exception:
     pass
 
@@ -376,7 +374,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-def test_class_method_route_table(enable_test_module):
+def test_method_route_table(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
     agent_cls_list = dashboard_utils.get_all_modules(
         dashboard_utils.DashboardAgentModule
@@ -406,34 +404,46 @@ def test_class_method_route_table(enable_test_module):
                 return True
         return False
 
-    all_routes = dashboard_optional_utils.ClassMethodRouteTable.routes()
-    assert any(_has_route(r, "HEAD", "/test/route_head") for r in all_routes)
-    assert any(_has_route(r, "GET", "/test/route_get") for r in all_routes)
-    assert any(_has_route(r, "POST", "/test/route_post") for r in all_routes)
-    assert any(_has_route(r, "PUT", "/test/route_put") for r in all_routes)
-    assert any(_has_route(r, "PATCH", "/test/route_patch") for r in all_routes)
-    assert any(_has_route(r, "DELETE", "/test/route_delete") for r in all_routes)
-    assert any(_has_route(r, "*", "/test/route_view") for r in all_routes)
+    # Check agent routes
+    unbound_agent_routes = dashboard_optional_utils.DashboardAgentRouteTable.routes()
+    assert any(_has_route(r, "HEAD", "/test/route_head") for r in unbound_agent_routes)
+    assert any(_has_route(r, "POST", "/test/route_post") for r in unbound_agent_routes)
+    assert any(
+        _has_route(r, "PATCH", "/test/route_patch") for r in unbound_agent_routes
+    )
+
+    # Check head routes
+    unbound_head_routes = dashboard_optional_utils.DashboardHeadRouteTable.routes()
+    assert any(_has_route(r, "GET", "/test/route_get") for r in unbound_head_routes)
+    assert any(_has_route(r, "PUT", "/test/route_put") for r in unbound_head_routes)
+    assert any(
+        _has_route(r, "DELETE", "/test/route_delete") for r in unbound_head_routes
+    )
+    assert any(_has_route(r, "*", "/test/route_view") for r in unbound_head_routes)
 
     # Test bind()
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
-    assert len(bound_routes) == 0
-    dashboard_optional_utils.ClassMethodRouteTable.bind(
+    bound_agent_routes = (
+        dashboard_optional_utils.DashboardAgentRouteTable.bound_routes()
+    )
+    assert len(bound_agent_routes) == 0
+    dashboard_optional_utils.DashboardAgentRouteTable.bind(
         test_agent_cls.__new__(test_agent_cls)
     )
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
-    assert any(_has_route(r, "POST", "/test/route_post") for r in bound_routes)
-    assert all(not _has_route(r, "PUT", "/test/route_put") for r in bound_routes)
+    bound_agent_routes = (
+        dashboard_optional_utils.DashboardAgentRouteTable.bound_routes()
+    )
+    assert any(_has_route(r, "POST", "/test/route_post") for r in bound_agent_routes)
+    assert all(not _has_route(r, "PUT", "/test/route_put") for r in bound_agent_routes)
 
     # Static def should be in bound routes.
-    routes.static("/test/route_static", "/path")
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
-    assert any(_has_static(r, "/path", "/test/route_static") for r in bound_routes)
+    head_routes.static("/test/route_static", "/path")
+    bound_head_routes = dashboard_optional_utils.DashboardHeadRouteTable.bound_routes()
+    assert any(_has_static(r, "/path", "/test/route_static") for r in bound_head_routes)
 
     # Test duplicated routes should raise exception.
     try:
 
-        @routes.get("/test/route_get")
+        @head_routes.get("/test/route_get")
         def _duplicated_route(req):
             pass
 
@@ -445,7 +455,7 @@ def test_class_method_route_table(enable_test_module):
 
     # Test exception in handler
     post_handler = None
-    for r in bound_routes:
+    for r in bound_agent_routes:
         if _has_route(r, "POST", "/test/route_post"):
             post_handler = r.handler
             break
@@ -754,14 +764,6 @@ def test_immutable_types():
     with pytest.raises(AttributeError):
         immutable_dict["list"].insert(1, 2)
 
-    d2 = dashboard_utils.ImmutableDict({1: np.zeros([3, 5])})
-    with pytest.raises(TypeError):
-        print(d2[1])
-
-    d3 = dashboard_utils.ImmutableList([1, np.zeros([3, 5])])
-    with pytest.raises(TypeError):
-        print(d3[1])
-
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
@@ -909,12 +911,11 @@ def test_dashboard_does_not_depend_on_serve():
 
     ctx = ray.init()
 
-    # Ensure standard dashboard features, like snapshot, still work
-    response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")
+    # Ensure standard dashboard features, like component_activities, still work
+    response = requests.get(f"http://{ctx.dashboard_url}/api/component_activities")
     assert response.status_code == 200
 
-    assert response.json()["result"] is True
-    assert "snapshot" in response.json()["data"]
+    assert "driver" in response.json()
 
     agent_url = (
         ctx.address_info["node_ip_address"]
@@ -924,7 +925,7 @@ def test_dashboard_does_not_depend_on_serve():
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+        response = requests.get(f"http://{agent_url}/api/serve/applications/")
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -962,7 +963,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+        response = requests.get(f"http://{agent_url}/api/serve/applications/")
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -988,7 +989,7 @@ def test_agent_port_conflict(shutdown_only):
     node = ray._private.worker._global_node
     agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
     wait_for_condition(
-        lambda: requests.get(f"http://{agent_url}/api/serve/deployments/").status_code
+        lambda: requests.get(f"http://{agent_url}/api/serve/applications/").status_code
         == 200
     )
     ray.shutdown()
@@ -1026,7 +1027,7 @@ def test_agent_port_conflict(shutdown_only):
     try:
         wait_for_condition(
             lambda: requests.get(
-                f"http://{agent_url}/api/serve/deployments/"
+                f"http://{agent_url}/api/serve/applications/"
             ).status_code
             == 200
         )

@@ -1,10 +1,9 @@
 import asyncio
-import socket
-from dataclasses import dataclass
 import inspect
 import json
 import logging
 import pickle
+import socket
 from typing import Any, List, Optional, Type
 
 import starlette
@@ -13,18 +12,13 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
+from ray._private.pydantic_compat import IS_PYDANTIC_2
 from ray.actor import ActorHandle
-from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-
+from ray.serve._private.utils import serve_encoders
+from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-@dataclass
-class HTTPRequestWrapper:
-    scope: Scope
-    body: bytes
 
 
 def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
@@ -50,6 +44,45 @@ def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
     return mock_receive
 
 
+def convert_object_to_asgi_messages(
+    obj: Optional[Any] = None, status_code: int = 200
+) -> List[Message]:
+    """Serializes the provided object and converts it to ASGI messages.
+
+    These ASGI messages can be sent via an ASGI `send` interface to comprise an HTTP
+    response.
+    """
+    body = None
+    content_type = None
+    if obj is None:
+        body = b""
+        content_type = b"text/plain"
+    elif isinstance(obj, bytes):
+        body = obj
+        content_type = b"text/plain"
+    elif isinstance(obj, str):
+        body = obj.encode("utf-8")
+        content_type = b"text/plain; charset=utf-8"
+    else:
+        # `separators=(",", ":")` will remove all whitespaces between separators in the
+        # json string and return a minimized json string. This helps to reduce the size
+        # of the response similar to Starlette's JSONResponse.
+        body = json.dumps(
+            jsonable_encoder(obj, custom_encoder=serve_encoders),
+            separators=(",", ":"),
+        ).encode()
+        content_type = b"application/json"
+
+    return [
+        {
+            "type": "http.response.start",
+            "status": status_code,
+            "headers": [[b"content-type", content_type]],
+        },
+        {"type": "http.response.body", "body": body},
+    ]
+
+
 class Response:
     """ASGI compliant response class.
 
@@ -68,46 +101,14 @@ class Response:
             content: Any JSON serializable object.
             status_code (int, optional): Default status code is 200.
         """
-        self.status_code = status_code
-        self.raw_headers = []
-
-        if content is None:
-            self.body = b""
-            self.set_content_type("text")
-        elif isinstance(content, bytes):
-            self.body = content
-            self.set_content_type("text")
-        elif isinstance(content, str):
-            self.body = content.encode("utf-8")
-            self.set_content_type("text-utf8")
-        else:
-            # Delayed import since utils depends on http_util
-            from ray.serve._private.utils import serve_encoders
-
-            self.body = json.dumps(
-                jsonable_encoder(content, custom_encoder=serve_encoders)
-            ).encode()
-            self.set_content_type("json")
-
-    def set_content_type(self, content_type):
-        if content_type == "text":
-            self.raw_headers.append([b"content-type", b"text/plain"])
-        elif content_type == "text-utf8":
-            self.raw_headers.append([b"content-type", b"text/plain; charset=utf-8"])
-        elif content_type == "json":
-            self.raw_headers.append([b"content-type", b"application/json"])
-        else:
-            raise ValueError("Invalid content type {}".format(content_type))
+        self._messages = convert_object_to_asgi_messages(
+            obj=content,
+            status_code=status_code,
+        )
 
     async def send(self, scope, receive, send):
-        await send(
-            {
-                "type": "http.response.start",
-                "status": self.status_code,
-                "headers": self.raw_headers,
-            }
-        )
-        await send({"type": "http.response.body", "body": self.body})
+        for message in self._messages:
+            await send(message)
 
 
 async def receive_http_body(scope, receive, send):
@@ -121,42 +122,6 @@ async def receive_http_body(scope, receive, send):
         body_buffer.append(message["body"])
 
     return b"".join(body_buffer)
-
-
-class RawASGIResponse(ASGIApp):
-    """Implement a raw ASGI response interface.
-
-    We have to build this because starlette's base response class is
-    still too smart and perform header inference.
-    """
-
-    def __init__(self, messages):
-        self.messages = messages
-
-    async def __call__(self, scope, receive, send):
-        for message in self.messages:
-            await send(message)
-
-    @property
-    def status_code(self):
-        return self.messages[0]["status"]
-
-
-class BufferedASGISender(Send):
-    """Implements the ASGI sender interface by buffering messages.
-
-    The messages can be built into an ASGI response.
-    """
-
-    def __init__(self) -> None:
-        self.messages = []
-
-    async def __call__(self, message):
-        assert message["type"] in ("http.response.start", "http.response.body")
-        self.messages.append(message)
-
-    def build_asgi_response(self) -> RawASGIResponse:
-        return RawASGIResponse(self.messages)
 
 
 class ASGIMessageQueue(Send):
@@ -295,7 +260,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     >>> # now app can be run properly
     """
     # Delayed import to prevent ciruclar imports in workers.
-    from fastapi import Depends, APIRouter
+    from fastapi import APIRouter, Depends
     from fastapi.routing import APIRoute, APIWebSocketRoute
 
     def get_current_servable_instance():
@@ -361,7 +326,13 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
 
         # If there is a response model, FastAPI creates a copy of the fields.
         # But FastAPI creates the field incorrectly by missing the outer_type_.
-        if isinstance(route, APIRoute) and route.response_model:
+        if (
+            # TODO(edoakes): I don't think this check is complete because we need
+            # to support v1 models in v2 (from pydantic.v1 import *).
+            not IS_PYDANTIC_2
+            and isinstance(route, APIRoute)
+            and route.response_model
+        ):
             route.secure_cloned_response_field.outer_type_ = (
                 route.response_field.outer_type_
             )

@@ -24,7 +24,7 @@ class XGBoostCheckpoint(FrameworkCheckpoint):
         *,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "XGBoostCheckpoint":
-        """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores an XGBoost
+        """Create a :py:class:`~ray.train.Checkpoint` that stores an XGBoost
         model.
 
         Args:

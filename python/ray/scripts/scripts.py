@@ -436,6 +436,12 @@ def debug(address):
     help="The port for the dashboard head to listen for grpc on.",
 )
 @click.option(
+    "--runtime-env-agent-port",
+    type=int,
+    default=None,
+    help="The port for the runtime enviroment agents to listen for http on.",
+)
+@click.option(
     "--block",
     is_flag=True,
     default=False,
@@ -566,6 +572,7 @@ def start(
     dashboard_agent_listen_port,
     dashboard_agent_grpc_port,
     dashboard_grpc_port,
+    runtime_env_agent_port,
     block,
     plasma_directory,
     autoscaling_config,
@@ -664,6 +671,7 @@ def start(
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
         dashboard_grpc_port=dashboard_grpc_port,
+        runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,

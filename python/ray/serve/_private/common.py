@@ -1,21 +1,25 @@
-from enum import Enum
-from dataclasses import dataclass, field, asdict
 import json
-from typing import Any, List, Dict, Optional, NamedTuple
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from typing import Any, Dict, List, NamedTuple, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve.generated.serve_pb2 import (
-    DeploymentInfo as DeploymentInfoProto,
-    DeploymentStatusInfo as DeploymentStatusInfoProto,
-    DeploymentStatus as DeploymentStatusProto,
-    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
-    ApplicationStatus as ApplicationStatusProto,
-    ApplicationStatusInfo as ApplicationStatusInfoProto,
-    StatusOverview as StatusOverviewProto,
-)
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
+from ray.serve.generated.serve_pb2 import (
+    ApplicationStatusInfo as ApplicationStatusInfoProto,
+)
+from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
+from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfo as DeploymentStatusInfoProto,
+)
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+)
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 
 
 class DeploymentID(NamedTuple):
@@ -152,7 +156,6 @@ class StatusOverview:
         return None
 
     def to_proto(self):
-
         # Create a protobuf for the Serve Application info
         app_status_proto = self.app_status.to_proto()
 
@@ -176,7 +179,6 @@ class StatusOverview:
 
     @classmethod
     def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
-
         # Recreate Serve Application info
         app_status = ApplicationStatusInfo.from_proto(proto.app_status)
 
@@ -211,7 +213,6 @@ class DeploymentInfo:
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
-        is_driver_deployment: Optional[bool] = False,
         route_prefix: str = None,
         docs_path: str = None,
         ingress: bool = False,
@@ -228,8 +229,6 @@ class DeploymentInfo:
 
         # ephermal state
         self._cached_actor_def = None
-
-        self.is_driver_deployment = is_driver_deployment
 
         self.route_prefix = route_prefix
         self.docs_path = docs_path
@@ -262,7 +261,6 @@ class DeploymentInfo:
         deployment_config: DeploymentConfig = None,
         replica_config: ReplicaConfig = None,
         version: str = None,
-        is_driver_deployment: bool = None,
         route_prefix: str = None,
     ) -> "DeploymentInfo":
         return DeploymentInfo(
@@ -273,9 +271,6 @@ class DeploymentInfo:
             actor_name=self.actor_name,
             version=version or self.version,
             end_time_ms=self.end_time_ms,
-            is_driver_deployment=is_driver_deployment
-            if is_driver_deployment is not None
-            else self.is_driver_deployment,
             route_prefix=route_prefix or self.route_prefix,
             docs_path=self.docs_path,
             ingress=self.ingress,
@@ -436,8 +431,6 @@ class RunningReplicaInfo:
 
 
 class ServeDeployMode(str, Enum):
-    UNSET = "UNSET"
-    SINGLE_APP = "SINGLE_APP"
     MULTI_APP = "MULTI_APP"
 
 

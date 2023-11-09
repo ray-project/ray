@@ -1,12 +1,13 @@
 import os
-import pytest
 import sys
 import threading
 from time import sleep
 
-from ray.tests.conftest_docker import *  # noqa
-from ray._private.test_utils import wait_for_condition
+import pytest
+
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._private.test_utils import wait_for_condition
+from ray.tests.conftest_docker import *  # noqa
 
 scripts = """
 import json

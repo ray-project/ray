@@ -26,7 +26,6 @@
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
-#include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -110,6 +109,13 @@ class GcsServer {
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
 
+  void UpdateGcsResourceManagerInTest(
+      const NodeID &node_id,
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+    RAY_CHECK(gcs_resource_manager_ != nullptr);
+    gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
+  }
+
  protected:
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;
@@ -150,7 +156,7 @@ class GcsServer {
   void InitGcsTaskManager();
 
   /// Initialize gcs autoscaling manager.
-  void InitGcsAutoscalerStateManager();
+  void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
 
   /// Initialize usage stats client.
   void InitUsageStatsClient();
@@ -252,7 +258,7 @@ class GcsServer {
   /// Monitor service for monitor server
   std::unique_ptr<rpc::MonitorGrpcService> monitor_grpc_service_;
 
-  /// Ray Syncer realted fields.
+  /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
   std::unique_ptr<std::thread> ray_syncer_thread_;

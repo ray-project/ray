@@ -113,23 +113,26 @@ public class GcsClient {
     return new ArrayList<>(nodes.values());
   }
 
-  public List<ActorInfo> getAllActorInfo() {
+  public List<ActorInfo> getAllActorInfo(JobId jobId, ActorState actorState) {
     List<ActorInfo> actorInfos = new ArrayList<>();
-    List<byte[]> results = globalStateAccessor.getAllActorInfo();
+    List<byte[]> results = globalStateAccessor.getAllActorInfo(jobId, actorState);
     results.forEach(
         result -> {
           try {
             Gcs.ActorTableData info = Gcs.ActorTableData.parseFrom(result);
+            UniqueId nodeId = UniqueId.NIL;
+            if (!info.getAddress().getRayletId().isEmpty()) {
+              nodeId =
+                  UniqueId.fromByteBuffer(
+                      ByteBuffer.wrap(info.getAddress().getRayletId().toByteArray()));
+            }
             actorInfos.add(
                 new ActorInfo(
                     ActorId.fromBytes(info.getActorId().toByteArray()),
                     ActorState.fromValue(info.getState().getNumber()),
                     info.getNumRestarts(),
                     new Address(
-                        UniqueId.fromByteBuffer(
-                            ByteBuffer.wrap(info.getAddress().getRayletId().toByteArray())),
-                        info.getAddress().getIpAddress(),
-                        info.getAddress().getPort()),
+                        nodeId, info.getAddress().getIpAddress(), info.getAddress().getPort()),
                     info.getName()));
           } catch (InvalidProtocolBufferException e) {
             throw new RayException("Failed to parse actor info.", e);

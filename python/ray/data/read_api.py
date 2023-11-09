@@ -1,12 +1,13 @@
 import collections
 import logging
-import math
+import os
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     List,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -30,24 +31,22 @@ from ray.data._internal.logical.operators.from_operators import (
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.planner.plan_read_op import (
-    apply_output_blocks_handling_to_read_task,
-)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
-    _is_local_scheme,
     _lazy_import_pyarrow_dataset,
+    _warn_on_high_parallelism,
     get_table_block_metadata,
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import WARN_PREFIX, DataContext
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
+    BigQueryDatasource,
     BinaryDatasource,
     Connection,
     CSVDatasource,
@@ -64,6 +63,7 @@ from ray.data.datasource import (
     SQLDatasource,
     TextDatasource,
     TFRecordDatasource,
+    TorchDatasource,
     WebDatasetDatasource,
 )
 from ray.data.datasource._default_metadata_providers import (
@@ -79,8 +79,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.util.placement_group import PlacementGroup
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -141,7 +140,7 @@ def from_items(
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
-    detected_parallelism, _, _ = _autodetect_parallelism(
+    detected_parallelism, _, _, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DataContext.get_current(),
@@ -184,8 +183,6 @@ def from_items(
             DatasetStats(stages={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
-        True,
         logical_plan,
     )
 
@@ -225,18 +222,8 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
                     Call this method for creating synthetic datasets of tensor data.
 
     """
-    return read_datasource(
-        RangeDatasource(),
-        parallelism=parallelism,
-        n=n,
-        block_format="arrow",
-        column_name="id",
-    )
-
-
-@Deprecated
-def range_table(n: int, *, parallelism: int = -1) -> Dataset:
-    raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
+    datasource = RangeDatasource(n=n, block_format="arrow", column_name="id")
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI
@@ -282,14 +269,10 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
                     Call this method to create synthetic datasets of integer data.
 
     """
-    return read_datasource(
-        RangeDatasource(),
-        parallelism=parallelism,
-        n=n,
-        block_format="tensor",
-        column_name="data",
-        tensor_shape=tuple(shape),
+    datasource = RangeDatasource(
+        n=n, block_format="tensor", column_name="data", tensor_shape=tuple(shape)
     )
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI
@@ -321,24 +304,16 @@ def read_datasource(
     if ray_remote_args is None:
         ray_remote_args = {}
 
-    local_uri = False
-    paths = read_args.get("paths", None)
-    if paths and _is_local_scheme(paths):
-        if ray.util.client.ray.is_connected():
-            raise ValueError(
-                f"The local scheme paths {paths} are not supported in Ray Client."
-            )
+    if not datasource.supports_distributed_reads:
         ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-        local_uri = True
 
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
     force_local = False
-    cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
         partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
@@ -350,12 +325,11 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        (
-            requested_parallelism,
-            min_safe_parallelism,
-            inmemory_size,
-            reader,
-        ) = _get_reader(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
+        datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
+            datasource,
+            ctx,
+            read_args,
+        )
     else:
         # Prepare read in a remote task at same node.
         # NOTE: in Ray client mode, this is expected to be run on head node.
@@ -364,79 +338,35 @@ def read_datasource(
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-        get_reader = cached_remote_fn(
-            _get_reader, retry_exceptions=False, num_cpus=0
+        get_datasource_or_legacy_reader = cached_remote_fn(
+            _get_datasource_or_legacy_reader, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        (requested_parallelism, min_safe_parallelism, inmemory_size, reader,) = ray.get(
-            get_reader.remote(
+        datasource_or_legacy_reader = ray.get(
+            get_datasource_or_legacy_reader.remote(
                 datasource,
                 ctx,
-                cur_pg,
-                parallelism,
-                local_uri,
                 _wrap_arrow_serialization_workaround(read_args),
             )
         )
 
+    cur_pg = ray.util.get_current_placement_group()
+    requested_parallelism, _, _, inmemory_size = _autodetect_parallelism(
+        parallelism,
+        ctx.target_max_block_size,
+        DataContext.get_current(),
+        datasource_or_legacy_reader,
+        placement_group=cur_pg,
+    )
+
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
-    read_tasks = reader.get_read_tasks(requested_parallelism)
+    read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
-    # Compute the number of blocks the read will return. If the number of blocks is
-    # expected to be less than the requested parallelism, boost the number of blocks
-    # by adding an additional split into `k` pieces to each read task.
-    additional_split_factor = None
-    if read_tasks:
-        if inmemory_size:
-            expected_block_size = inmemory_size / len(read_tasks)
-            logger.debug(f"Expected block size {expected_block_size}")
-            size_based_splits = round(
-                max(1, expected_block_size / ctx.target_max_block_size)
-            )
-        else:
-            size_based_splits = 1
-        logger.debug(f"Size based split factor {size_based_splits}")
-        estimated_num_blocks = len(read_tasks) * size_based_splits
-        logger.debug(f"Blocks after size splits {estimated_num_blocks}")
-
-        # Add more output splitting for each read task if needed.
-        if estimated_num_blocks < requested_parallelism:
-            k = math.ceil(requested_parallelism / estimated_num_blocks)
-            logger.info(
-                f"To satisfy the requested parallelism of {requested_parallelism}, "
-                f"each read task output is split into {k} smaller blocks."
-            )
-            estimated_num_blocks = estimated_num_blocks * k
-            additional_split_factor = k
-        logger.debug("Estimated num output blocks {estimated_num_blocks}")
-
-    else:
-        estimated_num_blocks = 0
-
-    for read_task in read_tasks:
-        apply_output_blocks_handling_to_read_task(
-            read_task,
-            additional_split_factor,
-        )
+    if not ctx.use_streaming_executor:
+        _warn_on_high_parallelism(requested_parallelism, len(read_tasks))
 
     read_stage_name = f"Read{datasource.get_name()}"
-    available_cpu_slots = ray.available_resources().get("CPU", 1)
-    if (
-        requested_parallelism
-        and len(read_tasks) > available_cpu_slots * 4
-        and len(read_tasks) >= 5000
-    ):
-        logger.warn(
-            f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
-            "is more than 4x the number of available CPU slots in the cluster of "
-            f"{available_cpu_slots}. This can "
-            "lead to slowdowns during the data reading phase due to excessive "
-            "task creation. Reduce the parallelism to match with the available "
-            "CPU slots in the cluster, or set parallelism to -1 for Ray Data "
-            "to automatically determine the parallelism. "
-            "You can ignore this message if the cluster is expected to autoscale."
-        )
 
     block_list = LazyBlockList(
         read_tasks,
@@ -444,21 +374,20 @@ def read_datasource(
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )
-    block_list._estimated_num_blocks = estimated_num_blocks
+    block_list._estimated_num_blocks = len(read_tasks) if read_tasks else 0
 
     read_op = Read(
         datasource,
-        reader,
-        requested_parallelism,
-        additional_split_factor,
+        datasource_or_legacy_reader,
+        parallelism,
+        inmemory_size,
         ray_remote_args,
     )
+
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(
         plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
-        epoch=0,
-        lazy=True,
         logical_plan=logical_plan,
     )
 
@@ -541,16 +470,78 @@ def read_mongo(
         ValueError: if ``database`` doesn't exist.
         ValueError: if ``collection`` doesn't exist.
     """
-    return read_datasource(
-        MongoDatasource(),
-        parallelism=parallelism,
+    datasource = MongoDatasource(
         uri=uri,
         database=database,
         collection=collection,
         pipeline=pipeline,
         schema=schema,
-        ray_remote_args=ray_remote_args,
         **mongo_args,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_bigquery(
+    project_id: str,
+    dataset: Optional[str] = None,
+    query: Optional[str] = None,
+    *,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+) -> Dataset:
+    """Create a dataset from BigQuery.
+
+    The data to read from is specified via the ``project_id``, ``dataset``
+    and/or ``query``parameters. The dataset is created from the results of
+    executing``query`` if a query is provided. Otherwise, the entire
+    ``dataset`` is read.
+
+    For more information about BigQuery, see the following concepts:
+    - Project id: `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>` # noqa: E501
+    - Dataset: `Datasets Intro <https://cloud.google.com/bigquery/docs/datasets-intro>` # noqa: E501
+    - Query: `Query Syntax <https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax>` # noqa: E501
+
+    This method uses the BigQuery Storage Read API which reads in parallel,
+    with a Ray read task to handle each stream. The number of streams is
+    determined by ``parallelism`` which can be requested from this interface
+    or automatically chosen if unspecified (see the ``parallelism`` arg below).
+
+    .. warning::
+        The maximum query response size is 10GB. For more information, see `BigQuery response too large to return <https://cloud.google.com/knowledge/kb/bigquery-response-too-large-to-return-consider-setting-allowlargeresults-to-true-in-your-job-configuration-000004266>` # noqa: E501
+
+    Examples:
+        .. testcode::
+            :skipif: True
+
+            import ray
+            # Users will need to authenticate beforehand (https://cloud.google.com/sdk/gcloud/reference/auth/login)
+            ds = ray.data.read_bigquery(
+                project_id="my_project",
+                query="SELECT * FROM `bigquery-public-data.samples.gsod` LIMIT 1000",
+            )
+
+    Args:
+        project_id: The name of the associated Google Cloud Project that hosts the dataset to read.
+            For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+        dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
+            Both the dataset_id and table_id must exist otherwise an exception will be raised.
+        parallelism: The requested parallelism of the read. If -1, it will be
+            automatically chosen based on the available cluster resources and estimated
+            in-memory data size.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+
+    Returns:
+        Dataset producing rows from the results of executing the query (or reading the entire dataset)
+        on the specified BigQuery dataset.
+    """
+    datasource = BigQueryDatasource(project_id=project_id, dataset=dataset, query=query)
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -565,6 +556,7 @@ def read_parquet(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    shuffle: Union[Literal["files"], None] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -584,15 +576,17 @@ def read_parquet(
         petal.width   double
         variety       string
 
-
         Read a directory in remote storage.
+
         >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris-parquet/")
 
         Read multiple local files.
+
         >>> ray.data.read_parquet(
         ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
 
         Specify a schema for the parquet file.
+
         >>> import pyarrow as pa
         >>> fields = [("sepal.length", pa.float32()),
         ...           ("sepal.width", pa.float32()),
@@ -609,7 +603,6 @@ def read_parquet(
         petal.length  float
         petal.width   float
         variety       string
-
 
         The Parquet reader also supports projection and filter pushdown, allowing column
         selection and row filtering to be pushed down to the file scan.
@@ -670,6 +663,8 @@ def read_parquet(
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
@@ -685,16 +680,26 @@ def read_parquet(
         tensor_column_schema,
         **arrow_parquet_args,
     )
-    return read_datasource(
-        ParquetDatasource(),
-        parallelism=parallelism,
-        paths=paths,
-        filesystem=filesystem,
+
+    dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
+    _block_udf = arrow_parquet_args.pop("_block_udf", None)
+    schema = arrow_parquet_args.pop("schema", None)
+    datasource = ParquetDatasource(
+        paths,
         columns=columns,
-        ray_remote_args=ray_remote_args,
+        dataset_kwargs=dataset_kwargs,
+        to_batch_kwargs=arrow_parquet_args,
+        _block_udf=_block_udf,
+        filesystem=filesystem,
+        schema=schema,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
-        **arrow_parquet_args,
+        shuffle=shuffle,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -715,6 +720,7 @@ def read_images(
     mode: Optional[str] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -807,6 +813,8 @@ def read_images(
             stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
@@ -819,20 +827,22 @@ def read_images(
     """
     if meta_provider is None:
         meta_provider = get_image_metadata_provider()
-    return read_datasource(
-        ImageDatasource(),
-        paths=paths,
-        filesystem=filesystem,
-        parallelism=parallelism,
-        meta_provider=meta_provider,
-        ray_remote_args=ray_remote_args,
-        open_stream_args=arrow_open_file_args,
-        partition_filter=partition_filter,
-        partitioning=partitioning,
+
+    datasource = ImageDatasource(
+        paths,
         size=size,
         mode=mode,
         include_paths=include_paths,
+        filesystem=filesystem,
+        meta_provider=meta_provider,
+        open_stream_args=arrow_open_file_args,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -850,6 +860,7 @@ def read_parquet_bulk(
     partition_filter: Optional[PathPartitionFilter] = (
         ParquetBaseDatasource.file_extension_filter()
     ),
+    shuffle: Union[Literal["files"], None] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Create :class:`~ray.data.Dataset` from parquet files without reading metadata.
@@ -918,6 +929,8 @@ def read_parquet_bulk(
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.parquet*".
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see
             the `PyArrow API <https://arrow.apache.org/docs/python/generated/\
@@ -932,17 +945,21 @@ def read_parquet_bulk(
         tensor_column_schema,
         **arrow_parquet_args,
     )
-    return read_datasource(
-        ParquetBaseDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = ParquetBaseDatasource(
+        paths,
+        read_table_args=arrow_parquet_args,
         filesystem=filesystem,
-        columns=columns,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_file_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        shuffle=shuffle,
         **arrow_parquet_args,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -960,6 +977,7 @@ def read_json(
     ] = JSONDatasource.file_extension_filter(),
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
     **arrow_json_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from JSON and JSONL files.
@@ -1045,6 +1063,8 @@ def read_json(
                 hive-style-partitioning/>`_.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
         arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
             arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
             json.read_json>`_.
@@ -1054,18 +1074,20 @@ def read_json(
     """  # noqa: E501
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(JSONDatasource._FILE_EXTENSION)
-    return read_datasource(
-        JSONDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = JSONDatasource(
+        paths,
+        arrow_json_args=arrow_json_args,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
-        **arrow_json_args,
+        shuffle=shuffle,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -1081,6 +1103,7 @@ def read_csv(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
     **arrow_csv_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from CSV files.
@@ -1194,6 +1217,8 @@ def read_csv(
                 hive-style-partitioning/>`_.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
         arrow_csv_args: CSV read options to pass to
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
             pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
@@ -1205,18 +1230,22 @@ def read_csv(
     """
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(CSVDatasource._FILE_EXTENSION)
-    return read_datasource(
-        CSVDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = CSVDatasource(
+        paths,
+        arrow_csv_args=arrow_csv_args,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
-        **arrow_csv_args,
+        shuffle=shuffle,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -1234,6 +1263,7 @@ def read_text(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
@@ -1292,6 +1322,8 @@ def read_text(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
@@ -1299,19 +1331,21 @@ def read_text(
     """
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(TextDatasource._FILE_EXTENSION)
-    return read_datasource(
-        TextDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = TextDatasource(
+        paths,
+        drop_empty_lines=drop_empty_lines,
+        encoding=encoding,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
-        drop_empty_lines=drop_empty_lines,
-        encoding=encoding,
         ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -1328,6 +1362,7 @@ def read_numpy(
     ] = NumpyDatasource.file_extension_filter(),
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
@@ -1367,23 +1402,29 @@ def read_numpy(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(NumpyDatasource._FILE_EXTENSION)
-    return read_datasource(
-        NumpyDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = NumpyDatasource(
+        paths,
+        numpy_load_args=numpy_load_args,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
-        **numpy_load_args,
+        shuffle=shuffle,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
     )
 
 
@@ -1398,6 +1439,7 @@ def read_tfrecords(
     partition_filter: Optional[PathPartitionFilter] = None,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
+    shuffle: Union[Literal["files"], None] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1469,6 +1511,8 @@ def read_tfrecords(
             found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
             of the underlying Dataset.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1480,17 +1524,18 @@ def read_tfrecords(
         meta_provider = get_generic_metadata_provider(
             TFRecordDatasource._FILE_EXTENSION
         )
-    return read_datasource(
-        TFRecordDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = TFRecordDatasource(
+        paths,
+        tf_schema=tf_schema,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
-        tf_schema=tf_schema,
+        shuffle=shuffle,
     )
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI(stability="alpha")
@@ -1507,6 +1552,7 @@ def read_webdataset(
     filerename: Optional[Union[list, callable]] = None,
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
@@ -1532,6 +1578,8 @@ def read_webdataset(
         filerename: A function or list of tuples to rename files prior to grouping.
         suffixes: A function or list of suffixes to select for creating samples.
         verbose_open: Whether to print the file names as they are opened.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1545,20 +1593,21 @@ def read_webdataset(
         meta_provider = get_generic_metadata_provider(
             WebDatasetDatasource._FILE_EXTENSION
         )
-    return read_datasource(
-        WebDatasetDatasource(),
-        parallelism=parallelism,
-        paths=paths,
-        filesystem=filesystem,
-        open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
-        partition_filter=partition_filter,
+
+    datasource = WebDatasetDatasource(
+        paths,
         decoder=decoder,
         fileselect=fileselect,
         filerename=filerename,
         suffixes=suffixes,
         verbose_open=verbose_open,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        shuffle=shuffle,
     )
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI
@@ -1574,6 +1623,7 @@ def read_binary_files(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from binary files of arbitrary contents.
 
@@ -1638,26 +1688,28 @@ def read_binary_files(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
-    output_arrow_format = True
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(BinaryDatasource._FILE_EXTENSION)
-    return read_datasource(
-        BinaryDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = BinaryDatasource(
+        paths,
         include_paths=include_paths,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
-        output_arrow_format=output_arrow_format,
+        shuffle=shuffle,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -1745,17 +1797,138 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    datasource = SQLDatasource(connection_factory)
+    datasource = SQLDatasource(sql=sql, connection_factory=connection_factory)
     return read_datasource(
         datasource,
-        sql=sql,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
     )
 
 
+@PublicAPI(stability="alpha")
+def read_databricks_tables(
+    *,
+    warehouse_id: str,
+    table: Optional[str] = None,
+    query: Optional[str] = None,
+    catalog: Optional[str] = None,
+    schema: Optional[str] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+) -> Dataset:
+    """Read a Databricks unity catalog table or Databricks SQL execution result.
+
+    Before calling this API, set the ``DATABRICKS_HOST`` environment
+    variable to your Databricks warehouse access token.
+
+    .. code-block:: console
+
+        export DATABRICKS_TOKEN=...
+
+    If you're running your program on the Databricks runtime, also set the
+    ``DATABRICKS_HOST`` environment variable.
+
+    .. code-block:: console
+
+        export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
+
+    .. note::
+
+        This function is built on the
+        `Databricks statement execution API <https://docs.databricks.com/api/workspace/statementexecution>`_.
+
+    Examples:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            ds = ray.data.read_databricks_tables(
+                warehouse_id='a885ad08b64951ad',
+                catalog='catalog_1',
+                schema='db_1',
+                query='select id from table_1 limit 750000',
+            )
+
+    Args:
+        warehouse_id: The ID of the Databricks warehouse. The query statement is
+            executed on this warehouse.
+        table: The name of UC table you want to read. If this argument is set,
+            you can't set ``query`` argument, and the reader generates query
+            of ``select * from {table_name}`` under the hood.
+        query: The query you want to execute. If this argument is set,
+            you can't set ``table_name`` argument.
+        catalog: (Optional) The default catalog name used by the query.
+        schema: (Optional) The default schema used by the query.
+        parallelism: The requested parallelism of the read. Defaults to -1,
+            which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see :ref:`Tuning read parallelism
+            <read_parallelism>`.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
+    Returns:
+        A :class:`Dataset` containing the queried data.
+    """  # noqa: E501
+    from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
+    from ray.util.spark.databricks_hook import get_dbutils
+    from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
+
+    token = os.environ.get("DATABRICKS_TOKEN")
+
+    if not token:
+        raise ValueError(
+            "Please set environment variable 'DATABRICKS_TOKEN' to "
+            "databricks workspace access token."
+        )
+
+    host = os.environ.get("DATABRICKS_HOST")
+    if not host:
+        if is_in_databricks_runtime():
+            ctx = (
+                get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
+            )
+            host = ctx.tags().get("browserHostName").get()
+        else:
+            raise ValueError(
+                "You are not in databricks runtime, please set environment variable "
+                "'DATABRICKS_HOST' to databricks workspace URL"
+                '(e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").'
+            )
+
+    spark = get_spark_session()
+    if not catalog:
+        catalog = spark.sql("SELECT CURRENT_CATALOG()").collect()[0][0]
+
+    if not schema:
+        schema = spark.sql("SELECT CURRENT_DATABASE()").collect()[0][0]
+
+    if query is not None and table is not None:
+        raise ValueError("Only one of 'query' and 'table' arguments can be set.")
+
+    if table:
+        query = f"select * from {table}"
+
+    if query is None:
+        raise ValueError("One of 'query' and 'table_name' arguments should be set.")
+
+    datasource = DatabricksUCDatasource(
+        host=host,
+        token=token,
+        warehouse_id=warehouse_id,
+        catalog=catalog,
+        schema=schema,
+        query=query,
+    )
+    return read_datasource(
+        datasource=datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
+    )
+
+
 @PublicAPI
-def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
+def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
 
@@ -1791,7 +1964,7 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
 
 
 @PublicAPI
-def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
+def from_mars(df: "mars.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
 
@@ -1808,7 +1981,7 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
 
 
 @PublicAPI
-def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
+def from_modin(df: "modin.pandas.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 
@@ -1915,8 +2088,6 @@ def from_pandas_refs(
                 DatasetStats(stages={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
-            0,
-            True,
             logical_plan,
         )
 
@@ -1932,8 +2103,6 @@ def from_pandas_refs(
             DatasetStats(stages={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
-        True,
         logical_plan,
     )
 
@@ -2021,8 +2190,6 @@ def from_numpy_refs(
             DatasetStats(stages={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
-        True,
         logical_plan,
     )
 
@@ -2103,8 +2270,6 @@ def from_arrow_refs(
             DatasetStats(stages={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
-        True,
         logical_plan,
     )
 
@@ -2190,10 +2355,7 @@ def from_huggingface(
         from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
         # For an IterableDataset, we can use a streaming implementation to read data.
-        return read_datasource(
-            HuggingFaceDatasource(),
-            dataset=dataset,
-        )
+        return read_datasource(HuggingFaceDatasource(dataset=dataset))
     if isinstance(dataset, datasets.Dataset):
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g., train_test_split(), shard(), select()),
@@ -2282,20 +2444,13 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
-) -> MaterializedDataset:
+) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
 
-    This function is inefficient. Use it to read small datasets or prototype.
-
-    .. warning::
-        If your dataset is large, this function may execute slowly or raise an
-        out-of-memory error. To avoid issues, read the underyling data with a function
-        like :meth:`~ray.data.read_images`.
-
     .. note::
-        This function isn't parallelized. It loads the entire dataset into the head
-        node's memory before moving the data to the distributed object store.
+        The input dataset can either be map-style or iterable-style, and can have arbitrarily large amount of data.
+        The data will be sequentially streamed with one single read task.
 
     Examples:
         >>> import ray
@@ -2311,50 +2466,50 @@ def from_torch(
         dataset: A `Torch Dataset`_.
 
     Returns:
-        A :class:`MaterializedDataset` containing the Torch dataset samples.
+        A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
-    return from_items(list(dataset))
+
+    # Files may not be accessible from all nodes, run the read task on current node.
+    ray_remote_args = {
+        "scheduling_strategy": NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+    }
+    return read_datasource(
+        TorchDatasource(dataset=dataset),
+        # Only non-parallel, streaming read is currently supported
+        parallelism=1,
+        ray_remote_args=ray_remote_args,
+    )
 
 
-def _get_reader(
+def _get_datasource_or_legacy_reader(
     ds: Datasource,
     ctx: DataContext,
-    cur_pg: Optional[PlacementGroup],
-    parallelism: int,
-    local_uri: bool,
     kwargs: dict,
-) -> Tuple[int, int, Optional[int], Reader]:
+) -> Union[Datasource, Reader]:
     """Generates reader.
 
     Args:
         ds: Datasource to read from.
         ctx: Dataset config to use.
-        cur_pg: The current placement group, if any.
-        parallelism: The user-requested parallelism, or -1 for autodetection.
-        kwargs: Additional kwargs to pass to the reader.
+        kwargs: Additional kwargs to pass to the legacy reader if
+            `Datasource.create_reader` is implemented.
 
     Returns:
-        Request parallelism from the datasource, the min safe parallelism to avoid
-        OOM, the estimated inmemory data size, and the reader generated.
+        The datasource or a generated legacy reader.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-    # NOTE: `ParquetDatasource` has separate steps to fetch metadata and sample rows,
-    # so it needs `local_uri` parameter for now.
-    # TODO(chengsu): stop passing `local_uri` parameter to
-    # `ParquetDatasource.create_reader()`.
-    if local_uri and isinstance(ds, ParquetDatasource):
-        kwargs["local_uri"] = local_uri
+
     DataContext._set_current(ctx)
-    reader = ds.create_reader(**kwargs)
-    requested_parallelism, min_safe_parallelism, mem_size = _autodetect_parallelism(
-        parallelism, cur_pg, DataContext.get_current(), reader
-    )
-    return (
-        requested_parallelism,
-        min_safe_parallelism,
-        mem_size,
-        reader,
-    )
+
+    if ds.should_create_reader:
+        datasource_or_legacy_reader = ds.create_reader(**kwargs)
+    else:
+        datasource_or_legacy_reader = ds
+
+    return datasource_or_legacy_reader
 
 
 def _resolve_parquet_args(

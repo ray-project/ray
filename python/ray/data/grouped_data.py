@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from ._internal.table_block import TableBlockAccessor
 from ray.data._internal import sort
@@ -114,7 +114,7 @@ class GroupedData:
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, dataset: Dataset, key: str):
+    def __init__(self, dataset: Dataset, key: Union[str, List[str]]):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
@@ -198,8 +198,6 @@ class GroupedData:
             logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
-            self._dataset._epoch,
-            self._dataset._lazy,
             logical_plan,
         )
 
@@ -229,6 +227,8 @@ class GroupedData:
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
@@ -280,6 +280,8 @@ class GroupedData:
                 select ``pyarrow.Table``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
+            fn_args: Arguments to `fn`.
+            fn_kwargs: Keyword arguments to `fn`.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -311,7 +313,7 @@ class GroupedData:
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
-        def group_fn(batch):
+        def group_fn(batch, *args, **kwargs):
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
             if self._key:
@@ -327,7 +329,7 @@ class GroupedData:
                 # block format here can be different from batch format
                 # (e.g. block is Arrow format, and batch is NumPy format).
                 group_batch = group_block_accessor.to_batch_format(batch_format)
-                applied = fn(group_batch)
+                applied = fn(group_batch, *args, **kwargs)
                 builder.add_batch(applied)
                 start = end
             rs = builder.build()
@@ -340,6 +342,8 @@ class GroupedData:
             batch_size=None,
             compute=compute,
             batch_format=batch_format,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
             **ray_remote_args,
         )
 

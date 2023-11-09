@@ -243,6 +243,14 @@ bool TaskSpecification::IsStreamingGenerator() const {
   return message_->streaming_generator();
 }
 
+int64_t TaskSpecification::GeneratorBackpressureNumObjects() const {
+  auto result = message_->generator_backpressure_num_objects();
+  // generator_backpressure_num_objects == 0 makes no sense.
+  // it means it pauses the generator even before it starts.
+  RAY_CHECK_NE(result, 0);
+  return result;
+}
+
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());
   std::vector<ObjectID> dynamic_return_ids;

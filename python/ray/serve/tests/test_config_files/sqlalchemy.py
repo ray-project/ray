@@ -4,8 +4,8 @@ from ray import serve
 @serve.deployment
 class TestDeployment:
     def __init__(self):
-        from sqlalchemy import create_engine
         import pymysql
+        from sqlalchemy import create_engine
 
         pymysql.install_as_MySQLdb()
 

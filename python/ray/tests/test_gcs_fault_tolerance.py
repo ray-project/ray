@@ -18,6 +18,8 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     run_string_as_driver,
 )
+from ray.job_submission import JobSubmissionClient, JobStatus
+from ray._raylet import GcsClient
 
 import psutil
 
@@ -100,6 +102,53 @@ def test_gcs_server_restart_during_actor_creation(
     print("Ready objects is {}.".format(ready))
     print("Unready objects is {}.".format(unready))
     assert len(unready) == 0
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=2,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=3,
+            enable_autoscaler_v2=True,
+        ),
+    ],
+    indirect=True,
+)
+def test_autoscaler_init(
+    ray_start_cluster_head_with_external_redis,
+):
+    """
+    Checks that autoscaler initializes properly after GCS restarts.
+    """
+    cluster = ray_start_cluster_head_with_external_redis
+    cluster.add_node()
+    cluster.wait_for_nodes()
+
+    # Make sure both head and worker node are alive.
+    nodes = ray.nodes()
+    assert len(nodes) == 2
+    assert nodes[0]["alive"] and nodes[1]["alive"]
+
+    head_node = cluster.head_node
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+    # Kill gcs server.
+    cluster.head_node.kill_gcs_server()
+    # Wait to prevent the gcs server process becoming zombie.
+    gcs_server_process.wait()
+    wait_for_pid_to_exit(gcs_server_pid, 300)
+
+    # Restart gcs server process.
+    cluster.head_node.start_gcs_server()
+
+    from ray.autoscaler.v2.sdk import get_cluster_status
+
+    status = get_cluster_status(ray.get_runtime_context().gcs_address)
+    assert len(status.idle_nodes) == 2
 
 
 @pytest.mark.parametrize(
@@ -973,6 +1022,77 @@ def test_redis_logs(external_redis):
                 "--force",
             ],
         )
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=2,
+        )
+    ],
+    indirect=True,
+)
+def test_job_finished_after_head_node_restart(
+    ray_start_cluster_head_with_external_redis,
+):
+    cluster = ray_start_cluster_head_with_external_redis
+    head_node = cluster.head_node
+
+    # submit job
+    client = JobSubmissionClient(head_node.address)
+    submission_id = client.submit_job(
+        entrypoint="python -c 'import ray; ray.init(); print(ray.cluster_resources()); \
+            import time; time.sleep(1000)'"
+    )
+
+    def get_job_info(submission_id):
+        gcs_client = GcsClient(cluster.address)
+        all_job_info = gcs_client.get_all_job_info()
+
+        return list(
+            filter(
+                lambda job_info: "job_submission_id" in job_info.config.metadata
+                and job_info.config.metadata["job_submission_id"] == submission_id,
+                list(all_job_info.values()),
+            )
+        )
+
+    def _check_job_running(submission_id: str) -> bool:
+        job_infos = get_job_info(submission_id)
+        if len(job_infos) == 0:
+            return False
+        job_info = job_infos[0].job_info
+        return job_info.status == JobStatus.RUNNING
+
+    # wait until job info is written in redis
+    wait_for_condition(_check_job_running, submission_id=submission_id, timeout=10)
+
+    # kill head node
+    ray.shutdown()
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    cluster.remove_node(head_node)
+
+    # Wait to prevent the gcs server process becoming zombie.
+    gcs_server_process.wait()
+    wait_for_pid_to_exit(gcs_server_pid, 1000)
+
+    # restart head node
+    cluster.add_node()
+    ray.init(cluster.address)
+
+    # verify if job is finished, which marked is_dead
+    def _check_job_is_dead(submission_id: str) -> bool:
+        job_infos = get_job_info(submission_id)
+        if len(job_infos) == 0:
+            return False
+        job_info = job_infos[0]
+        return job_info.is_dead
+
+    wait_for_condition(_check_job_is_dead, submission_id=submission_id, timeout=10)
 
 
 if __name__ == "__main__":

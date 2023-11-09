@@ -8,6 +8,7 @@ DataIterator API
 .. autoclass:: DataIterator
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    DataIterator.iter_batches

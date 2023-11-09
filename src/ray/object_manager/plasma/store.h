@@ -174,10 +174,12 @@ class PlasmaStore {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Record the fact that a particular client is no longer using an object.
+  /// This function is idempotent thus can be called multiple times.
   ///
   /// \param object_id The object ID of the object that is being released.
   /// \param client The client making this request.
-  void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
+  /// \return bool The client should unmap the mmap section for this object.
+  bool ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Connect a new client to the PlasmaStore.
@@ -207,13 +209,15 @@ class PlasmaStore {
                            uint64_t req_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void AddToClientObjectIds(const ObjectID &object_id,
+                            std::optional<MEMFD_TYPE> fallback_allocated_fd,
                             const std::shared_ptr<ClientInterface> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ReturnFromGet(const std::shared_ptr<GetRequest> &get_request);
 
-  int RemoveFromClientObjectIds(const ObjectID &object_id,
-                                const std::shared_ptr<Client> &client)
+  // Returns: the client should unmap the mmap section for this object.
+  bool RemoveFromClientObjectIds(const ObjectID &object_id,
+                                 const std::shared_ptr<Client> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Start listening for clients.

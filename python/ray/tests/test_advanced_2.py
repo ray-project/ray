@@ -147,7 +147,7 @@ def test_zero_cpus_actor(ray_start_cluster):
 
 
 def test_fractional_resources(shutdown_only):
-    ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 1})
+    ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 3, "Custom2": 3, "TPU": 3})
 
     @ray.remote(num_gpus=0.5)
     class Foo1:
@@ -168,7 +168,7 @@ def test_fractional_resources(shutdown_only):
             pass
 
     # Create an actor that requires 0.7 of the custom resource.
-    f1 = Foo2._remote([], {}, resources={"Custom": 0.7})
+    f1 = Foo2._remote([], {}, resources={"Custom": 2.7})
     ray.get(f1.method.remote())
     # Make sure that we cannot create an actor that requires 0.7 of the
     # custom resource. TODO(rkn): Re-enable this once ray.wait is
@@ -183,18 +183,25 @@ def test_fractional_resources(shutdown_only):
 
     del f1, f3
 
-    # Make sure that we get exceptions if we submit tasks that require a
-    # fractional number of resources greater than 1.
+    # Non unit resources (e.g. CPU, ) allow fractional
+    # number of resources greather than 1.
+    @ray.remote(num_cpus=1.5, resources={"Custom2": 2.5})
+    def test_frac_cpu():
+        return True
 
-    @ray.remote(num_cpus=1.5)
-    def test():
+    assert ray.get(test_frac_cpu.remote())
+
+    # Unit instance resources (GPU, TPU, neuron_core) throw exceptions
+    # for fractional number of resources greater than 1.
+    @ray.remote(num_gpus=1.5)
+    def test_frac_gpu():
         pass
 
     with pytest.raises(ValueError):
-        test.remote()
+        test_frac_gpu.remote()
 
     with pytest.raises(ValueError):
-        Foo2._remote([], {}, resources={"Custom": 1.5})
+        Foo2._remote([], {}, resources={"TPU": 2.5})
 
 
 def test_fractional_memory_round_down(shutdown_only):
@@ -645,7 +652,6 @@ def test_neuron_core_with_placement_group(shutdown_only):
 def test_gpu_and_neuron_cores(shutdown_only):
     num_gpus = 2
     num_nc = 2
-    nc_accelerator_type = AWS_NEURON_CORE
     ray.init(num_cpus=2, num_gpus=num_gpus, resources={"neuron_cores": num_nc})
 
     def get_gpu_ids(num_gpus_per_worker):
@@ -677,36 +683,6 @@ def test_gpu_and_neuron_cores(shutdown_only):
     assert ray.get(gpu_f.remote()) == 2
     nc_f = ray.remote(resources={"neuron_cores": 2})(lambda: get_neuron_core_ids(2))
     assert ray.get(nc_f.remote()) == 2
-
-    with pytest.raises(ValueError):
-        ray.remote(resources={"neuron_cores": 2}, num_gpus=1)(
-            lambda: get_neuron_core_ids(2)
-        )
-
-    with pytest.raises(ValueError):
-        ray.remote(accelerator_type=nc_accelerator_type, num_gpus=1)(
-            lambda: get_neuron_core_ids(2)
-        )
-
-    with pytest.raises(ValueError):
-
-        @ray.remote(resources={"neuron_cores": 2}, num_gpus=2)
-        class IncorrectNeuronCoreActorWithGPU:
-            def test(self):
-                neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
-                    "neuron_cores"
-                ]
-                return len(neuron_core_ids)
-
-    with pytest.raises(ValueError):
-
-        @ray.remote(accelerator_type=nc_accelerator_type, num_gpus=2)
-        class IncorrectNeuronCoreAcceleratorWithGPU:
-            def test(self):
-                neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
-                    "neuron_cores"
-                ]
-                return len(neuron_core_ids)
 
 
 # TODO: 5 retry attempts may be too little for Travis and we may need to

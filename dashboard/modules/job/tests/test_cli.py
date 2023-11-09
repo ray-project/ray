@@ -157,6 +157,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -172,6 +173,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -186,6 +188,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -207,6 +210,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -223,6 +227,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -264,6 +269,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -287,6 +293,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -304,6 +311,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -319,6 +327,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -339,6 +348,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=2,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
             )
 
@@ -359,6 +369,28 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=2,
+                entrypoint_memory=None,
+                entrypoint_resources=None,
+            )
+
+    def test_entrypoint_memory(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", "--entrypoint-memory=4", "--", "echo hello"],
+            )
+            assert result.exit_code == 0
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                metadata=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_memory=4,
                 entrypoint_resources=None,
             )
 
@@ -391,6 +423,7 @@ class TestSubmit:
                 "metadata": None,
                 "entrypoint_num_cpus": None,
                 "entrypoint_num_gpus": None,
+                "entrypoint_memory": None,
                 "entrypoint_resources": None,
             }
             expected_kwargs.update(resources[1])
@@ -435,6 +468,7 @@ class TestSubmit:
                 runtime_env={},
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
+                entrypoint_memory=None,
                 entrypoint_resources=None,
                 metadata={"key": "value"},
             )

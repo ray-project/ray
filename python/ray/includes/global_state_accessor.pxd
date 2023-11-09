@@ -2,7 +2,7 @@ from libcpp.string cimport string as c_string
 from libcpp cimport bool as c_bool
 from libcpp.vector cimport vector as c_vector
 from libcpp.memory cimport unique_ptr
-from libc.stdint cimport int32_t as c_int32_t
+from libc.stdint cimport int32_t as c_int32_t, uint32_t as c_uint32_t
 from ray.includes.unique_ids cimport (
     CActorID,
     CJobID,
@@ -38,6 +38,8 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         unique_ptr[c_string] GetWorkerInfo(const CWorkerID &worker_id)
         c_vector[c_string] GetAllWorkerInfo()
         c_bool AddWorkerInfo(const c_string &serialized_string)
+        c_bool UpdateWorkerDebuggerPort(const CWorkerID &worker_id,
+                                        const c_uint32_t debuger_port)
         unique_ptr[c_string] GetPlacementGroupInfo(
             const CPlacementGroupID &placement_group_id)
         unique_ptr[c_string] GetPlacementGroupByName(
@@ -80,10 +82,7 @@ cdef extern from * namespace "ray::gcs" nogil:
 
       auto redis_client = std::make_shared<RedisClient>(options);
       auto status = redis_client->Connect(io_service);
-      if(!status.ok()) {
-        RAY_LOG(ERROR) << "Failed to connect to redis: " << status.ToString();
-        return false;
-      }
+      RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
 
       auto cli = std::make_unique<StoreClientInternalKV>(
         std::make_unique<RedisStoreClient>(std::move(redis_client)));
@@ -152,10 +151,7 @@ cdef extern from * namespace "ray::gcs" nogil:
       });
 
       auto status = cli->Connect(io_service);
-      if(!status.ok()) {
-        RAY_LOG(ERROR) << "Failed to connect to redis: " << status.ToString();
-        return false;
-      }
+      RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
 
       auto context = cli->GetShardContext(key);
       auto cmd = std::vector<std::string>{"DEL", key};

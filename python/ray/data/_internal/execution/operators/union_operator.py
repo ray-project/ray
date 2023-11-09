@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -46,18 +46,13 @@ class UnionOperator(NAryOperator):
         self._preserve_order = options.preserve_order
         super().start(options)
 
-    def num_outputs_total(self) -> Optional[int]:
+    def num_outputs_total(self) -> int:
         num_outputs = 0
         for input_op in self.input_dependencies:
-            op_num_outputs = input_op.num_outputs_total()
-            # If at least one of the input ops has an unknown number of outputs,
-            # the number of outputs of the union operator is unknown.
-            if op_num_outputs is None:
-                return None
-            num_outputs += op_num_outputs
+            num_outputs += input_op.num_outputs_total()
         return num_outputs
 
-    def add_input(self, refs: RefBundle, input_index: int) -> None:
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
 
@@ -100,7 +95,7 @@ class UnionOperator(NAryOperator):
         # Check if the output buffer still contains at least one block.
         return len(self._output_buffer) > 0
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         return self._output_buffer.pop(0)
 
     def get_stats(self) -> StatsDict:

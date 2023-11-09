@@ -37,7 +37,7 @@ describe("ServeSystemDetails", () => {
             },
           ] as any
         }
-        httpProxies={
+        proxies={
           [
             {
               status: ServeSystemActorStatus.HEALTHY,

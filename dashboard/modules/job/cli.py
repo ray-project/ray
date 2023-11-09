@@ -176,6 +176,14 @@ def job_cli_group():
     "separately from any tasks or actors that are launched by it",
 )
 @click.option(
+    "--entrypoint-memory",
+    required=False,
+    type=int,
+    help="the amount of memory to reserve "
+    "for the entrypoint command, separately from any tasks or actors that are "
+    "launched by it",
+)
+@click.option(
     "--entrypoint-resources",
     required=False,
     type=str,
@@ -205,6 +213,7 @@ def submit(
     entrypoint: Tuple[str],
     entrypoint_num_cpus: Optional[Union[int, float]],
     entrypoint_num_gpus: Optional[Union[int, float]],
+    entrypoint_memory: Optional[int],
     entrypoint_resources: Optional[str],
     no_wait: bool,
     verify: Union[bool, str],
@@ -246,6 +255,7 @@ def submit(
             entrypoint=entrypoint,
             entrypoint_num_cpus=entrypoint_num_cpus,
             entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
             no_wait=no_wait,
         )
@@ -266,6 +276,7 @@ def submit(
         metadata=metadata_json,
         entrypoint_num_cpus=entrypoint_num_cpus,
         entrypoint_num_gpus=entrypoint_num_gpus,
+        entrypoint_memory=entrypoint_memory,
         entrypoint_resources=entrypoint_resources,
     )
 

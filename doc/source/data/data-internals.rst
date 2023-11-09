@@ -77,10 +77,13 @@ For an in-depth guide on shuffle performance, see :ref:`Performance Tips and Tun
 Scheduling
 ==========
 
-Ray Data uses Ray Core for execution, and is subject to the same scheduling considerations as normal Ray Tasks and Actors. Ray Data uses the following custom scheduling settings by default for improved performance:
+Ray Data uses Ray Core for execution. Below is a summary of the :ref:`scheduling strategy <ray-scheduling-strategies>` for Ray Data:
 
 * The ``SPREAD`` scheduling strategy ensures that data blocks and map tasks are evenly balanced across the cluster.
 * Dataset tasks ignore placement groups by default, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
+* Map operations use the ``SPREAD`` scheduling strategy if the total argument size is less than 50 MB; otherwise, they use the ``DEFAULT`` scheduling strategy.
+* Read operations use the ``SPREAD`` scheduling strategy.
+* All other operations, such as split, sort, and shuffle, use the ``DEFAULT`` scheduling strategy.
 
 .. _datasets_pg:
 
@@ -133,9 +136,9 @@ Lazy Execution
 Lazy execution offers opportunities for improved performance and memory stability due
 to stage fusion optimizations and aggressive garbage collection of intermediate results.
 
-Dataset creation and transformation APIs are lazy, with execution only triggered via "sink"
+Dataset creation and transformation APIs are lazy, with execution only triggered by "sink"
 APIs, such as consuming (:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`),
-writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), or manually triggering via
+writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), or manually triggering with
 :meth:`ds.materialize() <ray.data.Dataset.materialize>`. There are a few
 exceptions to this rule, where transformations such as :meth:`ds.union()
 <ray.data.Dataset.union>` and
@@ -249,7 +252,7 @@ This section describes how Ray Data manages execution and object store memory.
 Execution Memory
 ----------------
 
-During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory via Ray's object store.
+During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
 
 Ray Data attempts to bound its heap memory usage to ``num_execution_slots * max_block_size``. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified. The maximum block size is set by the configuration parameter `ray.data.DataContext.target_max_block_size` and is set to 512MiB by default. When a task's output is larger than this value, the worker automatically splits the output into multiple smaller blocks to avoid running out of heap memory.
 

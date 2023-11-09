@@ -16,6 +16,7 @@
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
@@ -26,6 +27,7 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
@@ -774,12 +776,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// report from the caller side.
   /// \param[in] attempt_number The number of time the current task is retried.
   /// 0 means it is the first attempt.
+  /// \param[in] waiter The class to pause the thread if generator backpressure limit
+  /// is reached.
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,
-      uint64_t attempt_number);
+      uint64_t attempt_number,
+      std::shared_ptr<GeneratorBackpressureWaiter> waiter);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
@@ -1334,7 +1339,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &serialized_runtime_env_info,
       const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",
-      bool include_job_config = false);
+      bool include_job_config = false,
+      int64_t generator_backpressure_num_objects = -1);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);

@@ -1,24 +1,18 @@
 import asyncio
-import pytest
-from typing import List
 import os
+from typing import List
+
+import pytest
 import requests
 
 import ray
 from ray import serve
-
-from ray._private.test_utils import (
-    wait_for_condition,
-    SignalActor,
-)
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import RayServeHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
-    SERVE_MULTIPLEXED_MODEL_ID,
-)
 
 
 @pytest.fixture()
@@ -324,25 +318,18 @@ def test_multiplexed_replica_info(serve_instance):
             return _get_internal_replica_context().replica_tag
 
     handle = serve.run(MyModel.bind())
-    replica_tag = ray.get(handle.remote("model1"))
+    replica_tag = handle.remote("model1").result()
 
     def check_replica_information(
         model_ids: List[str],
     ):
-        replica_scheduler = handle._get_or_create_router()._replica_scheduler
-        if RAY_SERVE_ENABLE_NEW_ROUTING:
-            for replica in replica_scheduler.curr_replicas.values():
-                if (
-                    replica.replica_id != replica_tag
-                    or model_ids != replica.multiplexed_model_ids
-                ):
-                    return False
-        else:
-            for replica in replica_scheduler.in_flight_queries.keys():
-                if replica.replica_tag != replica_tag or model_ids != set(
-                    replica.multiplexed_model_ids
-                ):
-                    return False
+        replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
+        for replica in replica_scheduler.curr_replicas.values():
+            if (
+                replica.replica_id != replica_tag
+                or model_ids != replica.multiplexed_model_ids
+            ):
+                return False
 
         return True
 
@@ -353,7 +340,7 @@ def test_multiplexed_replica_info(serve_instance):
         },
     )
 
-    ray.get(handle.remote("model2"))
+    handle.remote("model2").result()
     wait_for_condition(
         check_replica_information,
         model_ids={
@@ -363,7 +350,7 @@ def test_multiplexed_replica_info(serve_instance):
     )
 
     # LRU remove the model1
-    ray.get(handle.remote("model3"))
+    handle.remote("model3").result()
     wait_for_condition(
         check_replica_information,
         model_ids={
@@ -374,21 +361,17 @@ def test_multiplexed_replica_info(serve_instance):
 
 
 def check_model_id_in_replicas(handle: RayServeHandle, model_id: str) -> bool:
-    replica_scheduler = handle._get_or_create_router()._replica_scheduler
-    if RAY_SERVE_ENABLE_NEW_ROUTING:
-        replica_to_model_ids = {
-            tag: replica.multiplexed_model_ids
-            for tag, replica in replica_scheduler.curr_replicas.items()
-        }
-        msg = (
-            f"Model ID '{model_id}' not found in replica_to_model_ids: "
-            f"{replica_to_model_ids}"
-        )
-        assert any(model_id in rep for rep in replica_to_model_ids.values()), msg
-        return True
-    else:
-        assert model_id in replica_scheduler.multiplexed_replicas_table
-        return True
+    replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
+    replica_to_model_ids = {
+        tag: replica.multiplexed_model_ids
+        for tag, replica in replica_scheduler.curr_replicas.items()
+    }
+    msg = (
+        f"Model ID '{model_id}' not found in replica_to_model_ids: "
+        f"{replica_to_model_ids}"
+    )
+    assert any(model_id in rep for rep in replica_to_model_ids.values()), msg
+    return True
 
 
 def test_multiplexed_e2e(serve_instance):
@@ -421,7 +404,7 @@ def test_multiplexed_e2e(serve_instance):
 
     for _ in range(10):
         assert (
-            ray.get(handle.options(multiplexed_model_id="1").remote("blabla"))
+            handle.options(multiplexed_model_id="1").remote("blabla").result()
             == initial_pid
         )
 
@@ -460,10 +443,6 @@ def test_multiplexed_lru_policy(serve_instance):
     )
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="Old routing not enforcing `max_concurrent_queries` properly.",
-)
 def test_multiplexed_multiple_replicas(serve_instance):
     """Test multiplexed traffic can be sent to multiple replicas"""
     signal = SignalActor.remote()
@@ -481,10 +460,10 @@ def test_multiplexed_multiple_replicas(serve_instance):
             # return pid to check if the same model is used
             return os.getpid()
 
-    handle = serve.run(Model.bind())
-    pid1_ref = handle.options(multiplexed_model_id="1").remote()
+    handle = serve.run(Model.bind()).options(multiplexed_model_id="1")
+    pid1_ref = handle.remote()._to_object_ref_sync()
     # Second request should be sent to the second replica
-    pid2_ref = handle.options(multiplexed_model_id="1").remote()
+    pid2_ref = handle.remote()._to_object_ref_sync()
     signal.send.remote()
     assert ray.get(pid1_ref) != ray.get(pid2_ref)
 
@@ -511,8 +490,8 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
             model_id_before = serve.get_multiplexed_model_id()
 
             # Make a call with another model ID, verify it's set properly.
-            ref = await self._h.options(multiplexed_model_id="bar").remote()
-            assert await ref == "bar"
+            other_model_id = await self._h.options(multiplexed_model_id="bar").remote()
+            assert other_model_id == "bar"
 
             # Model ID shouldn't change after the handle call.
             model_id_after = serve.get_multiplexed_model_id()
@@ -521,7 +500,7 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
             return model_id_before
 
     handle = serve.run(Upstream.bind(Downstream.bind()))
-    assert ray.get(handle.options(multiplexed_model_id="foo").remote()) == "foo"
+    assert handle.options(multiplexed_model_id="foo").remote().result() == "foo"
 
 
 def test_replica_upgrade_to_cleanup_resource(serve_instance):
@@ -573,9 +552,9 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
     model_id = "1"
     headers = {"serve_multiplexed_model_id": model_id}
     requests.get("http://localhost:8000", headers=headers)
-    assert ray.get(record_handle.get_call_record.remote()) == set()
+    assert record_handle.get_call_record.remote().result() == set()
     serve.run(Model.bind(record_handle))
-    assert ray.get(record_handle.get_call_record.remote()) == {"1"}
+    assert record_handle.get_call_record.remote().result() == {"1"}
 
 
 if __name__ == "__main__":

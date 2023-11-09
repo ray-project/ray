@@ -3,6 +3,7 @@ This file stores global state for a Serve application. Deployment replicas
 can use this state to access metadata or the Serve controller.
 """
 
+import contextvars
 import logging
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -14,7 +15,6 @@ from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
 from ray.util.annotations import DeveloperAPI
-import contextvars
 
 logger = logging.getLogger(__file__)
 
@@ -143,7 +143,6 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
     client = ServeControllerClient(
         controller,
         controller_name,
-        detached=True,
     )
     _set_global_client(client)
     return client

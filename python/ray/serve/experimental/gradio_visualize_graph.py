@@ -1,29 +1,22 @@
+import logging
 from collections import defaultdict
 from io import BytesIO
-import logging
 from pydoc import locate
 from typing import Any, Dict, Optional
 
 import ray
 from ray import cloudpickle
-from ray.experimental.gradio_utils import type_to_string
-
-from ray.dag import (
-    DAGNode,
-    InputNode,
-    InputAttributeNode,
-)
+from ray.dag import DAGNode, InputAttributeNode, InputNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.dag.vis_utils import _dag_to_dot
-
-from ray.serve.handle import RayServeHandle
+from ray.experimental.gradio_utils import type_to_string
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
 from ray.serve._private.deployment_method_executor_node import (
     DeploymentMethodExecutorNode,
 )
-
+from ray.serve.handle import RayServeHandle
 
 logger = logging.getLogger(__name__)
 _gradio = None
@@ -313,7 +306,11 @@ class GraphVisualizer:
         self.handle = driver_handle
 
         # Load the root DAG node from handle.
-        pickled_dag_node = ray.get(self.handle.get_pickled_dag_node.remote())
+        pickled_dag_node = ray.get(
+            self.handle.get_pickled_dag_node.remote()._to_object_ref_sync(
+                _allow_running_in_asyncio_loop=True
+            )
+        )
         self.dag = cloudpickle.loads(pickled_dag_node)
 
         # Get level for each node in dag
@@ -361,7 +358,7 @@ class GraphVisualizer:
             # Add event listeners that resolve object refs for each of the nodes
             for node, block in self.node_to_block.items():
                 trigger.change(
-                    self._get_result, gr.Variable(node.get_stable_uuid()), block
+                    self._get_result, gr.State(node.get_stable_uuid()), block
                 )
 
             # Resets all blocks if Clear button is clicked
