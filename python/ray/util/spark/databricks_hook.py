@@ -9,25 +9,15 @@ import time
 _logger = logging.getLogger(__name__)
 
 
-class _NoDbutilsError(Exception):
-    pass
-
-
-def get_dbutils():
+def get_db_entry_point():
     """
-    Get databricks runtime dbutils module.
+    Return databricks entry_point instance, it is for calling some
+    internal API in databricks runtime
     """
-    try:
-        import IPython
+    from dbruntime import UserNamespaceInitializer
 
-        ip_shell = IPython.get_ipython()
-        if ip_shell is None:
-            raise _NoDbutilsError
-        return ip_shell.ns_table["user_global"]["dbutils"]
-    except ImportError:
-        raise _NoDbutilsError
-    except KeyError:
-        raise _NoDbutilsError
+    user_namespace_initializer = UserNamespaceInitializer.getOrCreate()
+    return user_namespace_initializer.get_spark_entry_point()
 
 
 def display_databricks_driver_proxy_url(spark_context, port, title):
@@ -80,6 +70,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         )
 
     def on_cluster_created(self, ray_cluster_handler):
+        db_api_entry = get_db_entry_point()
         if ray_cluster_handler.autoscale:
             # Disable auto shutdown if autoscaling enabled.
             # because in autoscaling mode, background spark job will be killed
