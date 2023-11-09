@@ -196,7 +196,7 @@ class ServeController:
         self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
-        # The target capacity percentage for all replicas across the cluster.
+        # The target capacity percentage for all deployments across the cluster.
         self._target_capacity: Optional[float] = None
         self._recover_config_from_checkpoint()
 
@@ -341,7 +341,9 @@ class ServeController:
 
             try:
                 dsm_update_start_time = time.time()
-                any_recovering = self.deployment_state_manager.update()
+                any_recovering = self.deployment_state_manager.update(
+                    target_capacity=self._target_capacity
+                )
                 self.dsm_update_duration_gauge_s.set(
                     time.time() - dsm_update_start_time
                 )
@@ -690,6 +692,12 @@ class ServeController:
                 (deployment_time, config.target_capacity, new_config_checkpoint)
             ),
         )
+
+        if self._target_capacity != config.target_capacity:
+            logger.info(
+                "target_capacity updated from "
+                f"'{self._target_capacity}' to '{config.target_capacity}'."
+            )
 
         self._target_capacity = config.target_capacity
 
