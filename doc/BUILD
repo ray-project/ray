@@ -343,15 +343,11 @@ doctest(
 )
 
 doctest(
-    name="data-loading-preprocessing.rst",
-    files = ["source/train/user-guides/data-loading-preprocessing.rst"],
-    tags = ["team:ml"],
-    gpu = True,
-)
-
-doctest(
-    name="using-gpus.rst",
-    files = ["source/train/user-guides/using-gpus.rst"],
+    name="doctest[train]",
+    files = [
+        "source/train/user-guides/data-loading-preprocessing.rst",
+        "source/train/user-guides/using-gpus.rst"
+    ],
     tags = ["team:ml"],
     gpu = True,
 )
