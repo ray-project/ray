@@ -6,6 +6,7 @@ import ray._private.thirdparty.pynvml as pynvml
 from pkg_resources import packaging
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+import ray._private.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,9 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         cuda_devices = []
         for index in range(device_count):
             handle = pynvml.nvmlDeviceGetHandleByIndex(index)
-            mig_enabled = False
+            mig_enabled = os.environ.get(
+                ray_constants.RAY_ENABLE_MIG_DETECTION_ENV_VAR, False
+            )
             if mig_enabled:
                 try:
                     max_mig_count = pynvml.nvmlDeviceGetMaxMigDeviceCount(handle)
@@ -100,7 +103,9 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             cuda_devices_names = []
             for index in range(device_count):
                 handle = pynvml.nvmlDeviceGetHandleByIndex(index)
-                mig_enabled = False
+                mig_enabled = os.environ.get(
+                    ray_constants.RAY_ENABLE_MIG_DETECTION_ENV_VAR, False
+                )
                 if mig_enabled:
                     try:
                         max_mig_count = pynvml.nvmlDeviceGetMaxMigDeviceCount(handle)
