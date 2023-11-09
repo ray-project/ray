@@ -5,7 +5,7 @@ from ray import serve
 from ray._private.test_utils import SignalActor
 from ray.anyscale._private.constants import ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL
 from ray.cluster_utils import Cluster
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 from ray.tests.conftest import *  # noqa
 
 
@@ -68,11 +68,11 @@ def test_handle_prefers_same_az(ray_cluster):
         num_replicas=1, ray_actor_options={"num_cpus": 0, "resources": {"head": 1}}
     )
     class Outer:
-        def __init__(self, inner_handle: RayServeHandle):
+        def __init__(self, inner_handle: DeploymentHandle):
             self._h = inner_handle.options(_prefer_local_routing=True)
 
         async def __call__(self, block_on_signal: bool = False) -> str:
-            return await (await self._h.remote(block_on_signal))
+            return await self._h.remote(block_on_signal)
 
     # Outer deployment will be on head node, inner deployment will have 3 replicas
     # across all 3 nodes
@@ -80,29 +80,29 @@ def test_handle_prefers_same_az(ray_cluster):
 
     # Requests should be sent to inner replica on head node
     for _ in range(10):
-        assert ray.get(h.remote()) == head_node_id
+        assert h.remote().result() == head_node_id
 
     blocked_ref_head = h.remote(block_on_signal=True)
     with pytest.raises(TimeoutError):
-        ray.get(blocked_ref_head, timeout=1)
+        blocked_ref_head.result(timeout_s=1)
 
     # With inner replica on head node blocked, requests should be sent
     # to inner replica on worker node 1
     for _ in range(10):
-        assert ray.get(h.remote()) == worker1_node_id
+        assert h.remote().result() == worker1_node_id
 
     blocked_ref_worker1 = h.remote(block_on_signal=True)
     with pytest.raises(TimeoutError):
-        ray.get(blocked_ref_worker1, timeout=1)
+        blocked_ref_worker1.result(timeout_s=1)
 
     # With inner replica on head node and worker node 1 blocked,
     # requests should be sent to inner replica on worker node 2
     for _ in range(10):
-        assert ray.get(h.remote()) == worker2_node_id
+        assert h.remote().result() == worker2_node_id
 
     ray.get(signal.send.remote())
-    assert ray.get(blocked_ref_head) == head_node_id
-    assert ray.get(blocked_ref_worker1) == worker1_node_id
+    assert blocked_ref_head.result() == head_node_id
+    assert blocked_ref_worker1.result() == worker1_node_id
 
 
 def test_handle_prefers_same_az_without_prefer_node(ray_cluster):
@@ -155,11 +155,11 @@ def test_handle_prefers_same_az_without_prefer_node(ray_cluster):
         num_replicas=1, ray_actor_options={"num_cpus": 0, "resources": {"head": 1}}
     )
     class Outer:
-        def __init__(self, inner_handle: RayServeHandle):
+        def __init__(self, inner_handle: DeploymentHandle):
             self._h = inner_handle.options(_prefer_local_routing=False)
 
         async def __call__(self, block_on_signal: bool = False) -> str:
-            return await (await self._h.remote(block_on_signal))
+            return await self._h.remote(block_on_signal)
 
     # Outer deployment will be on head node, inner deployment will have 3 replicas
     # across all 3 nodes
@@ -167,16 +167,16 @@ def test_handle_prefers_same_az_without_prefer_node(ray_cluster):
 
     # Requests should be sent to nodes in the same AZ (and since node locality is off,
     # requests should be spread across both nodes)
-    nodes_requested = {ray.get(h.remote()) for _ in range(10)}
+    nodes_requested = {h.remote().result() for _ in range(10)}
     assert nodes_requested == {head_node_id, worker1_node_id}
 
     blocked_ref1 = h.remote(block_on_signal=True)
     with pytest.raises(TimeoutError):
-        ray.get(blocked_ref1, timeout=1)
+        blocked_ref1.result(timeout_s=1)
 
     # With inner replica on one node blocked, requests should be sent to
     # the other node in the same AZ
-    nodes_requested = {ray.get(h.remote()) for _ in range(10)}
+    nodes_requested = {h.remote().result() for _ in range(10)}
     assert len(nodes_requested) == 1 and nodes_requested < {
         head_node_id,
         worker1_node_id,
@@ -184,17 +184,17 @@ def test_handle_prefers_same_az_without_prefer_node(ray_cluster):
 
     blocked_ref2 = h.remote(block_on_signal=True)
     with pytest.raises(TimeoutError):
-        ray.get(blocked_ref2, timeout=1)
+        blocked_ref2.result(timeout_s=1)
 
     # With inner replica on head node and worker node 1 blocked,
     # requests should be sent to inner replica on worker node 2
     for _ in range(10):
-        assert ray.get(h.remote()) == worker2_node_id
+        assert h.remote().result() == worker2_node_id
 
     ray.get(signal.send.remote())
-    assert ray.get(blocked_ref1) in {head_node_id, worker1_node_id}
-    assert ray.get(blocked_ref2) in {head_node_id, worker1_node_id}
-    assert ray.get(blocked_ref1) != ray.get(blocked_ref2)
+    assert blocked_ref1.result() in {head_node_id, worker1_node_id}
+    assert blocked_ref2.result() in {head_node_id, worker1_node_id}
+    assert blocked_ref1.result() != blocked_ref2.result()
 
 
 if __name__ == "__main__":
