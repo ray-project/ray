@@ -247,7 +247,7 @@ class SchedulingNode:
         )
 
 
-class SimpleResourceScheduler(IResourceScheduler):
+class ResourceDemandScheduler(IResourceScheduler):
     """
     A "simple" resource scheduler that schedules resource requests based on the
     following rules:
@@ -411,6 +411,7 @@ class SimpleResourceScheduler(IResourceScheduler):
             ),
             infeasible_gang_resource_requests=infeasible_gang_requests,
             infeasible_cluster_resource_constraints=infeasible_constraints,
+            target_cluster_shape=self._ctx.get_cluster_shape(),
         )
 
         return reply
