@@ -24,8 +24,6 @@ if __name__ == "__main__":
         spec.loader.exec_module(mod)
     else:
         module, func = args.worker_entry.rsplit(".", 1)
-        print("DBG:", args.worker_entry, module, func)
         m = __import__(module)
-        print("DBGG:", m, func)
         f = getattr(m, func)
         f()
