@@ -2154,6 +2154,16 @@ class TuneController:
         self._cleanup_trials()
         self.end_experiment_callbacks()
 
+        # Upload train logdir in /tmp/ray/session_*/train
+        from ray.train._internal.storage import _upload_to_fs_path, get_train_logdir
+
+        logger.info(f"Copying logs from {get_train_logdir()} to storage...")
+        _upload_to_fs_path(
+            get_train_logdir(),
+            fs=self._storage.storage_filesystem,
+            fs_path=self._storage.experiment_fs_path,
+        )
+
     def __getstate__(self):
         """Gets state for trial.
 

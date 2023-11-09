@@ -216,13 +216,14 @@ class _TrainSession:
 
         # Change the working directory to the local trial directory.
         # -> All workers on the same node share a working directory.
-        os.makedirs(storage.trial_local_path, exist_ok=True)
-        if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
-            logger.debug(
-                "Switching the working directory to the trial directory: "
-                f"{storage.trial_local_path}"
-            )
-            os.chdir(storage.trial_local_path)
+        # TODO(justinvyu): Should all worker still get switched to some (artifact) dir?
+        # os.makedirs(storage.trial_local_path, exist_ok=True)
+        # if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+        #     logger.debug(
+        #         "Switching the working directory to the trial directory: "
+        #         f"{storage.trial_local_path}"
+        #     )
+        #     os.chdir(storage.trial_local_path)
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""

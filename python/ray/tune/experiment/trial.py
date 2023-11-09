@@ -25,7 +25,7 @@ from ray.train import Checkpoint, CheckpointConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
-from ray.train._internal.storage import StorageContext
+from ray.train._internal.storage import StorageContext, get_train_logdir
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
 from ray.tune.logger import NoopLogger
@@ -190,13 +190,13 @@ def _noop_logger_creator(config: Dict[str, Any], logdir: str):
     # changing to the Tune logdir
     os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
 
-    os.makedirs(logdir, exist_ok=True)
+    # os.makedirs(logdir, exist_ok=True)
 
-    if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
-        # Set the working dir to the trial directory in the remote process,
-        # for user file writes
-        if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-            os.chdir(logdir)
+    # if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+    #     # Set the working dir to the trial directory in the remote process,
+    #     # for user file writes
+    #     if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
+    #         os.chdir(logdir)
 
     return NoopLogger(config, logdir)
 
@@ -638,6 +638,11 @@ class Trial:
             self.storage.trial_dir_name = self.relative_logdir
 
         assert self.local_path
+
+        # Initialize /tmp/ray/session_*/train/<trial_dir_name>
+        os.makedirs(
+            os.path.join(get_train_logdir(), self.storage.trial_dir_name), exist_ok=True
+        )
         # logdir_path = Path(self.local_path)
         # max_path_length = _get_max_path_length()
         # if len(str(logdir_path)) >= max_path_length:
@@ -739,15 +744,29 @@ class Trial:
 
     @property
     def error_file(self):
-        if not self.local_path or not self.run_metadata.error_filename:
+        # if not self.local_path or not self.run_metadata.error_filename:
+        #     return None
+        # return os.path.join(self.local_path, self.run_metadata.error_filename)
+        if not self.run_metadata.error_filename:
             return None
-        return os.path.join(self.local_path, self.run_metadata.error_filename)
+        return os.path.join(
+            get_train_logdir(),
+            self.storage.trial_dir_name,
+            self.run_metadata.error_filename,
+        )
 
     @property
     def pickled_error_file(self):
-        if not self.local_path or not self.run_metadata.pickled_error_filename:
+        # if not self.local_path or not self.run_metadata.pickled_error_filename:
+        #     return None
+        # return os.path.join(self.local_path, self.run_metadata.pickled_error_filename)
+        if not self.run_metadata.pickled_error_filename:
             return None
-        return os.path.join(self.local_path, self.run_metadata.pickled_error_filename)
+        return os.path.join(
+            get_train_logdir(),
+            self.storage.trial_dir_name,
+            self.run_metadata.pickled_error_filename,
+        )
 
     def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
         if isinstance(exc, _TuneRestoreError):

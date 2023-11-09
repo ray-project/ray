@@ -132,6 +132,7 @@ class Trainable:
         self._stderr_context = self._stderr_fp = self._stderr_stream = None
         self._stderr_logging_handler = None
 
+        # TODO(justinvyu): Remove these -- it's just overlapping with Ray Core logs.
         stdout_file = self.config.pop(STDOUT_FILE, None)
         stderr_file = self.config.pop(STDERR_FILE, None)
 

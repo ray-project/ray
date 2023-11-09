@@ -30,6 +30,7 @@ from pathlib import Path
 import tempfile
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, Union
 
+import ray
 from ray._private.storage import _get_storage_uri
 from ray.air._internal.filelock import TempFileLock
 from ray.train._internal.syncer import SyncConfig, Syncer, _BackgroundSyncer
@@ -339,6 +340,10 @@ class _FilesystemSyncer(_BackgroundSyncer):
     def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
         fs_path = uri
         return _delete_fs_path, dict(fs=self.storage_filesystem, fs_path=fs_path)
+
+
+def get_train_logdir():
+    return os.path.join(ray._private.worker._global_node.get_logs_dir_path(), "train")
 
 
 class StorageContext:

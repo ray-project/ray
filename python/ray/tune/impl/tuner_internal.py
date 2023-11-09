@@ -472,7 +472,7 @@ class TunerInternal:
             Path(storage_local_path).joinpath(experiment_dir_name).as_posix()
         )
 
-        os.makedirs(experiment_path, exist_ok=True)
+        # os.makedirs(experiment_path, exist_ok=True)
         return experiment_path, experiment_dir_name
 
     # This has to be done through a function signature (@property won't do).
