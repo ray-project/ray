@@ -154,20 +154,24 @@ const useStyles = makeStyles((theme) =>
 );
 
 const DataRow = ({
-  data,
-  isDatasetRow,
+  datasetMetrics,
+  operatorMetrics,
   isExpanded,
   setIsExpanded,
 }: {
-  data: DatasetMetrics | OperatorMetrics;
+  datasetMetrics?: DatasetMetrics;
+  operatorMetrics?: OperatorMetrics;
   isDatasetRow: boolean;
   isExpanded?: boolean;
   setIsExpanded?: CallableFunction;
 }) => {
   const classes = useStyles();
-
-  const dataset = data as DatasetMetrics;
-  const operator = data as OperatorMetrics;
+  const isDatasetRow = datasetMetrics !== undefined;
+  const isOperatorRow = operatorMetrics !== undefined;
+  if ((isDatasetRow && isOperatorRow) || !(isDatasetRow || isOperatorRow)) {
+    throw new Error("Exactly one of datasetMetrics or operatorMetrics musts be given.");
+  }
+  const data = (datasetMetrics || operatorMetrics)!;
   return (
     <TableRow>
       <TableCell align="center">
@@ -175,20 +179,21 @@ const DataRow = ({
           setIsExpanded !== undefined &&
           (isExpanded ? (
             <RiArrowDownSLine
-              title={"Collapse Dataset " + dataset.dataset}
+              title={"Collapse Dataset " + datasetMetrics.dataset}
               className={classes.icon}
               onClick={() => setIsExpanded(false)}
             />
           ) : (
             <RiArrowRightSLine
-              title={"Expand Dataset " + dataset.dataset}
+              title={"Expand Dataset " + datasetMetrics.dataset}
               className={classes.icon}
               onClick={() => setIsExpanded(true)}
             />
           ))}
       </TableCell>
       <TableCell align="left">
-        {isDatasetRow ? dataset.dataset : operator.operator}
+        {isDatasetRow && datasetMetrics.dataset}
+        {isOperatorRow && operatorMetrics.operator}
       </TableCell>
       <TableCell align="right" size={"small"}>
         <TaskProgressBar
@@ -217,12 +222,12 @@ const DataRow = ({
         {memoryConverter(Number(data.ray_data_spilled_bytes.max))}
       </TableCell>
       <TableCell align="center">
-        {isDatasetRow && formatDateFromTimeMs(dataset.start_time * 1000)}
+        {isDatasetRow && formatDateFromTimeMs(datasetMetrics.start_time * 1000)}
       </TableCell>
       <TableCell align="center">
         {isDatasetRow &&
-          dataset.end_time &&
-          formatDateFromTimeMs(dataset.end_time * 1000)}
+          datasetMetrics.end_time &&
+          formatDateFromTimeMs(datasetMetrics.end_time * 1000)}
       </TableCell>
     </TableRow>
   );
@@ -240,12 +245,12 @@ const DatasetTable = ({
   const operatorRows =
     isExpanded &&
     datasetMetrics.operators.map((operator) => (
-      <DataRow data={operator} isDatasetRow={false} key={operator.operator} />
+      <DataRow operatorMetrics={operator} isDatasetRow={false} key={operator.operator} />
     ));
   return (
     <React.Fragment>
       <DataRow
-        data={datasetMetrics}
+        datasetMetrics={datasetMetrics}
         isDatasetRow={true}
         isExpanded={isExpanded}
         setIsExpanded={setIsExpanded}
