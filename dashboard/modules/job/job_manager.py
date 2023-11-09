@@ -43,6 +43,7 @@ from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray._private.event.event_logger import get_event_logger
 from ray.core.generated.event_pb2 import Event
+from ray.util.virtual_cluster import virtual_cluster
 
 logger = logging.getLogger(__name__)
 
@@ -157,12 +158,14 @@ class JobSupervisor:
         entrypoint: str,
         user_metadata: Dict[str, str],
         gcs_address: str,
+        virtual_cluster_id: str,
     ):
         self._job_id = job_id
         gcs_aio_client = GcsAioClient(address=gcs_address)
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
+        self._virtual_cluster_id = virtual_cluster_id
 
         # Default metadata if not passed by the user.
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
@@ -319,6 +322,7 @@ class JobSupervisor:
             # Set PYTHONUNBUFFERED=1 to stream logs during the job instead of
             # only streaming them upon completion of the job.
             "PYTHONUNBUFFERED": "1",
+            ray_constants.RAY_JOB_VIRTUAL_CLUSTER_ID: self._virtual_cluster_id,
         }
 
     async def _polling(self, child_process: subprocess.Popen) -> int:
@@ -872,6 +876,7 @@ class JobManager:
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
+        virtual_cluster_config: List[Dict[str, float]] = None,
     ) -> str:
         """
         Job execution happens asynchronously.
@@ -947,6 +952,7 @@ class JobManager:
                 "Please use a different submission_id."
             )
 
+        vc = virtual_cluster(virtual_cluster_config)
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
         # up.
@@ -978,7 +984,9 @@ class JobManager:
                     runtime_env, resources_specified
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-            ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
+            ).remote(
+                submission_id, entrypoint, metadata or {}, self._gcs_address, vc.id
+            )
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,
                 resources_specified=resources_specified,

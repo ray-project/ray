@@ -138,6 +138,7 @@ class JobSubmissionClient(SubmissionClient):
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
+        virtual_cluster_config: List[Dict[str, float]],
     ) -> str:
         """Submit and execute a job asynchronously.
 
@@ -227,6 +228,7 @@ class JobSubmissionClient(SubmissionClient):
             entrypoint_num_gpus=entrypoint_num_gpus,
             entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
+            virtual_cluster_config=virtual_cluster_config,
         )
 
         # Remove keys with value None so that new clients with new optional fields

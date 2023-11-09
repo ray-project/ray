@@ -5,8 +5,8 @@ from typing import Dict, List
 class VirtualCluster:
     """A handle to a virtual cluster."""
 
-    def __init__(self, id):
-        self._id = id
+    def __init__(self, id: str):
+        self.id = id
 
 
 def virtual_cluster(bundles: List[Dict[str, float]]) -> VirtualCluster:
@@ -15,4 +15,4 @@ def virtual_cluster(bundles: List[Dict[str, float]]) -> VirtualCluster:
 
     virtual_cluster_id = worker.core_worker.create_virtual_cluster(bundles)
 
-    return VirtualCluster(virtual_cluster_id)
+    return VirtualCluster(virtual_cluster_id.hex())

@@ -51,6 +51,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 entrypoint_num_gpus=submit_request.entrypoint_num_gpus,
                 entrypoint_memory=submit_request.entrypoint_memory,
                 entrypoint_resources=submit_request.entrypoint_resources,
+                virtual_cluster_config=submit_request.virtual_cluster_config,
             )
 
             resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)

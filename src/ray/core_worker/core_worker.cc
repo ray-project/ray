@@ -2115,6 +2115,15 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   return Status::OK();
 }
 
+Status CoreWorker::CreateVirtualCluster(
+    const std::vector<std::unordered_map<std::string, double>> &bundles,
+    VirtualClusterID *virtual_cluster_id) {
+  *virtual_cluster_id = VirtualClusterID::FromRandom();
+  VirtualClusterSpecBuilder builder;
+  builder.SetVirtualClusterSpec(*virtual_cluster_id, bundles);
+  return gcs_client_->VirtualClusters().SyncCreateVirtualCluster(builder.Build());
+}
+
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {

@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, replace, asdict
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union, List
 
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
@@ -351,6 +351,7 @@ class JobSubmitRequest:
     # to reserve for the entrypoint command, separately from any Ray tasks
     # or actors that are created by it.
     entrypoint_resources: Optional[Dict[str, float]] = None
+    virtual_cluster_config: List[Dict[str, float]] = None
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):

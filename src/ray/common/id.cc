@@ -305,20 +305,6 @@ uint32_t JobID::ToInt() {
   return value;
 }
 
-VirtualClusterID VirtualClusterID::Of(const JobID &job_id) {
-  std::string data(VirtualClusterID::kUniqueBytesLength, 0);
-  FillRandom(&data);
-  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
-  RAY_CHECK(data.size() == kLength);
-  return VirtualClusterID::FromBinary(data);
-}
-
-JobID VirtualClusterID::JobId() const {
-  RAY_CHECK(!IsNil());
-  return JobID::FromBinary(std::string(
-      reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
-}
-
 PlacementGroupID PlacementGroupID::Of(const JobID &job_id) {
   // No need to set transport type for a random object id.
   // No need to assign put_index/return_index bytes.
@@ -351,7 +337,6 @@ ID_OSTREAM_OPERATOR(ActorID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
 ID_OSTREAM_OPERATOR(PlacementGroupID);
-ID_OSTREAM_OPERATOR(VirtualClusterID);
 
 const NodeID kGCSNodeID = NodeID::FromBinary(std::string(kUniqueIDSize, 0));
 

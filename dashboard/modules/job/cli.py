@@ -198,6 +198,11 @@ def job_cli_group():
     default=False,
     help="If set, will not stream logs and wait for the job to exit.",
 )
+@click.option(
+    "--virtual-cluster-config",
+    required=True,
+    type=str,
+)
 @add_common_job_options
 @add_click_logging_options
 @click.argument("entrypoint", nargs=-1, required=True, type=click.UNPROCESSED)
@@ -218,6 +223,7 @@ def submit(
     no_wait: bool,
     verify: Union[bool, str],
     headers: Optional[str],
+    virtual_cluster_config,
 ):
     """Submits a job to be run on the cluster.
 
@@ -239,6 +245,7 @@ def submit(
         metadata_json = parse_metadata_json(
             metadata_json, cli_logger, cf, command_arg="metadata-json"
         )
+    virtual_cluster_config = json.loads(virtual_cluster_config)
 
     submission_id = submission_id or job_id
 
@@ -278,6 +285,7 @@ def submit(
         entrypoint_num_gpus=entrypoint_num_gpus,
         entrypoint_memory=entrypoint_memory,
         entrypoint_resources=entrypoint_resources,
+        virtual_cluster_config=virtual_cluster_config,
     )
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")

@@ -1705,6 +1705,11 @@ def init(
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
+
+    ray.get_runtime_context()._set_virtual_cluster_id(
+        os.environ.get(ray_constants.RAY_JOB_VIRTUAL_CLUSTER_ID, None)
+    )
+
     return RayContext(dict(global_node_address_info, node_id=node_id.hex()))
 
 

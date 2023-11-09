@@ -18,6 +18,14 @@ class RuntimeContext(object):
     def __init__(self, worker):
         assert worker is not None
         self.worker = worker
+        self._current_virtual_cluster_id = None
+
+    def get_virtual_cluster_id(self):
+        return self._current_virtual_cluster_id
+
+    def _set_virtual_cluster_id(self, virtual_cluster_id) -> None:
+        logger.info(f"Setting current virtual cluster id to {virtual_cluster_id}")
+        self._current_virtual_cluster_id = virtual_cluster_id
 
     @Deprecated(
         message="Use get_xxx_id() methods to get relevant ids instead", warning=True
