@@ -89,6 +89,10 @@ class TesterContainer(Container):
                     "trap cleanup EXIT",
                 ]
             )
+        if self.build_type == "ubsan":
+            # clang currently runs into problems with ubsan builds, this will revert to
+            # using GCC instead.
+            commands.append("unset CC CXX")
         # note that we run tests serially within each docker, since we already use
         # multiple dockers to shard tests
         test_cmd = "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
@@ -100,6 +104,10 @@ class TesterContainer(Container):
             test_cmd += "--config=llvm "
         if self.build_type == "asan-clang":
             test_cmd += "--config=asan-clang "
+        if self.build_type == "ubsan":
+            test_cmd += "--config=ubsan "
+        if self.build_type == "tsan-clang":
+            test_cmd += "--config=tsan-clang "
         for env in test_envs:
             test_cmd += f"--test_env {env} "
         if test_arg:
