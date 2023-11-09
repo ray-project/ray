@@ -192,8 +192,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # timestep mappings.
         for agent_id in episode._agent_ids:
             self.assertEqual(
-                len(episode.global_rewards[agent_id]),
-                len(episode.global_rewards_t[agent_id]),
+                len(episode.partial_rewards[agent_id]),
+                len(episode.partial_rewards_t[agent_id]),
             )
 
         # Test now intiializing an episode and setting the starting timestep at once.
@@ -511,6 +511,120 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 episode_1.agent_episodes[agent_id].states,
                 episode_2.agent_episodes[agent_id].states,
             )
+
+        # Now test the buffers.
+        for agent_id, agent_buffer in episode_1.agent_buffers.items():
+            self.assertDictEqual(agent_buffer, episode_2.agent_buffers[agent_id])
+        # Test also the reward histories
+
+        # Now test, if the specific values in the buffers are correct.
+        observations = [
+            {"agent_1": 0, "agent_2": 0, "agent_3": 0},
+            {"agent_1": 1, "agent_3": 1, "agent_4": 1},
+            # Here agents 1 and 3 have stepped, but received no next
+            # observation. their actions should go into the buffers.
+            {"agent_2": 2, "agent_4": 2},
+        ]
+        actions = [
+            {"agent_1": 0, "agent_2": 0, "agent_3": 0},
+            {"agent_1": 1, "agent_3": 1, "agent_4": 1},
+        ]
+        rewards = [
+            {"agent_1": 1.0, "agent_3": 1.0, "agent_4": 1.0},
+            {"agent_2": 1.0, "agent_4": 1.0},
+        ]
+        infos = [
+            {"agent_1": {}, "agent_2": {}, "agent_3": {}},
+            {"agent_1": {}, "agent_3": {}, "agent_4": {}},
+            {"agent_2": {}, "agent_4": {}},
+        ]
+        is_terminated = [
+            {"__all__": False, "agent_1": False, "agent_3": False, "agent_4": False},
+            {"__all__": False, "agent_2": False, "agent_4": False},
+        ]
+        is_truncated = [
+            {"__all__": False, "agent_1": False, "agent_3": False, "agent_4": False},
+            {"__all__": False, "agent_2": False, "agent_4": False},
+        ]
+
+        # Create the episode.
+        episode_1 = MultiAgentEpisode(
+            agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            infos=infos,
+            is_terminated=is_terminated,
+            is_truncated=is_truncated,
+        )
+
+        # Assert that agents 1 and 3's buffers are indeed full.
+        for agent_id in ["agent_1", "agent_3"]:
+            self.assertEqual(
+                actions[1][agent_id],
+                episode_1.agent_buffers[agent_id]["actions"].get_nowait(),
+            )
+            # Put the action back into the buffer.
+            episode_1.agent_buffers[agent_id]["actions"].put_nowait(
+                actions[1][agent_id]
+            )
+
+        # Now step once.
+        action = {"agent_2": 3, "agent_4": 3}
+        # This time agent 4 should have the buffer full, while agent 1 has emptied
+        # its buffer.
+        observation = {"agent_1": 3, "agent_2": 3}
+        # Agents 1 and 2 add the reward to its timestep, but agent 3 and agent 5
+        # add this to the buffer and to the global reward history.
+        reward = {"agent_1": 1.0, "agent_2": 1.0, "agent_3": 1.0, "agent_5": 1.0}
+        infos = {"agent_1": {}, "agent_2": {}}
+        is_terminated = {k: False for k in observation.keys()}
+        is_terminated.update({"__all__": False})
+        is_truncated = {k: False for k in observation.keys()}
+        is_truncated.update({"__all__": False})
+        episode_1.add_timestep(
+            observation=observation,
+            action=action,
+            reward=reward,
+            info=info,
+            is_terminated=is_terminated,
+            is_truncated=is_truncated,
+        )
+
+        # Check that the partial reward history is correct.
+        self.assertEqual(len(episode_1.partial_rewards_t["agent_3"]), 1)
+        self.assertEqual(len(episode_1.partial_rewards_t["agent_5"]), 1)
+        self.assertEqual(len(episode_1.partial_rewards["agent_3"]), 1)
+        self.assertEqual(len(episode_1.partial_rewards["agent_5"]), 1)
+
+        # Now check that the reward buffers are full.
+        for agent_id in ["agent_3", "agent_5"]:
+            self.assertEqual(
+                episode_1.agent_buffers[agent_id]["rewards"].get_nowait(), 1.0
+            )
+            episode_1.agent_buffers[agent_id]["rewards"].put_nowait(reward[agent_id])
+            # Check that the reward history is correctly recorded.
+            self.assertEqual(episode_1.partial_rewards_t[agent_id][-1], episode_1.t)
+            self.assertEqual(episode_1.partial_rewards[agent_id][-1], 1.0)
+
+        # Now create the successor.
+        episode_2 = episode_1.create_successor()
+        # The successor's first observations should be the predecessor's last.
+        for agent_id, agent_eps in episode_2.agent_episodes.items():
+            if len(agent_eps.observations) > 0:
+                self.assertEqual(
+                    agent_eps.observations[0],
+                    episode_1.agent_episodes[agent_id].observations[-1],
+                )
+                # The successor's global timestep mapping should contain exactly these
+                # obhservations' timestep.
+                self.assertEqual(
+                    episode_2.global_t_to_local_t[agent_id][-1], episode_2.t_started
+                )
+                self.assertEqual(
+                    episode_2.global_t_to_local_t[agent_id][-1],
+                    episode_1.global_t_to_local_t[agent_id][-1],
+                )
 
 
 if __name__ == "__main__":

@@ -110,6 +110,8 @@ class MultiAgentEpisode:
         # Keeps track of the correspondence between agent steps and environment steps.
         # This is a mapping from agents to `IndexMapping`. The latter keeps
         # track of the global timesteps at which an agent stepped.
+        # Note, global (env) timesteps are values, while local (agent) steps are the
+        # indices at which these global steps are recorded.
         self.global_t_to_local_t: Dict[str, List[int]] = self._generate_ts_mapping(
             observations
         )
@@ -142,8 +144,10 @@ class MultiAgentEpisode:
         # is specific to multi-agent environemnts.
         # TODO (simon): implement into `get_rewards()`, `concat_episode`,
         # and `create_successor`. Add there also the buffers.
-        self.global_rewards = {agent_id: [] for agent_id in self._agent_ids}
-        self.global_rewards_t = {agent_id: [] for agent_id in self._agent_ids}
+        self.partial_rewards = {agent_id: [] for agent_id in self._agent_ids}
+        self.partial_rewards_t = {
+            agent_id: _IndexMapping() for agent_id in self._agent_ids
+        }
 
         # If this is an ongoing episode than the last `__all__` should be `False`
         self.is_terminated: bool = (
@@ -552,9 +556,9 @@ class MultiAgentEpisode:
                     if agent_id in reward:
                         agent_reward += reward[agent_id]
                         # Also add to the global reward list.
-                        self.global_rewards[agent_id].append(reward[agent_id])
+                        self.partial_rewards[agent_id].append(reward[agent_id])
                         # And add to the global reward timestep mapping.
-                        self.global_rewards_t[agent_id].append(self.t)
+                        self.partial_rewards_t[agent_id].append(self.t)
 
                     # Refill the reward buffer with the default value of zero.
                     self.agent_buffers[agent_id]["rewards"].put_nowait(0.0)
@@ -658,9 +662,9 @@ class MultiAgentEpisode:
                             + reward[agent_id]
                         )
                         # Add to the global reward list.
-                        self.global_rewards[agent_id].append(reward[agent_id])
+                        self.partial_rewards[agent_id].append(reward[agent_id])
                         # Add also to the global reward timestep mapping.
-                        self.global_rewards_t[agent_id].append(self.t)
+                        self.partial_rewards_t[agent_id].append(self.t)
                     # If not available set reward to zero.
                     # TODO (simon): Check, if this is okay for training.
                     # else:
@@ -720,9 +724,9 @@ class MultiAgentEpisode:
                     if agent_id in reward:
                         agent_reward += reward[agent_id]
                         # Add to the global reward list.
-                        self.global_rewards[agent_id].append(reward[agent_id])
+                        self.partial_rewards[agent_id].append(reward[agent_id])
                         # Add also to the global reward timestep mapping.
-                        self.global_rewards_t[agent_id].append(self.t)
+                        self.partial_rewards_t[agent_id].append(self.t)
 
                     # If this was indeed the agent's last step, we need to record
                     # it in the timestep mapping.
@@ -758,9 +762,9 @@ class MultiAgentEpisode:
                             + reward[agent_id]
                         )
                         # Add to the global reward list.
-                        self.global_rewards[agent_id].append(reward[agent_id])
+                        self.partial_rewards[agent_id].append(reward[agent_id])
                         # Add also to the global reward timestep mapping.
-                        self.global_rewards_t[agent_id].append(self.t)
+                        self.partial_rewards_t[agent_id].append(self.t)
             # CASE 4: Observation and action.
             # We have an observation and an action. Then we can simply add the
             # complete information to the episode.
@@ -775,9 +779,9 @@ class MultiAgentEpisode:
                 # If the agent stepped we need to keep track in the timestep mapping.
                 self.global_t_to_local_t[agent_id].append(self.t)
                 # Also add to the global reward list.
-                self.global_rewards[agent_id].append(reward[agent_id])
+                self.partial_rewards[agent_id].append(reward[agent_id])
                 # And add to the global reward timestep mapping.
-                self.global_rewards_t[agent_id].append(self.t)
+                self.partial_rewards_t[agent_id].append(self.t)
                 # Add timestep to `SingleAgentEpisode`.
                 self.agent_episodes[agent_id].add_timestep(
                     observation[agent_id],
@@ -854,7 +858,7 @@ class MultiAgentEpisode:
         # of truth always the `global_t_to_local_t` timestep mapping.
         # TODO (sven, simon): Maybe we better create an episode with only the
         # agent that are still alive.
-        return MultiAgentEpisode(
+        successor = MultiAgentEpisode(
             id_=self.id_,
             agent_ids=self._agent_ids,
             agent_episode_ids={
@@ -868,6 +872,52 @@ class MultiAgentEpisode:
             states=states,
             t_started=self.t,
         )
+        # Now add the buffers.
+        # TODO (simon): Refactor to helper function
+        successor.agent_buffers = self.agent_buffers.copy()
+        # for agent_id, agent_rewards in self.global_rewards.items():
+        #     indices_to_keep = self.global_rewards_t[
+        #         agent_id
+        #     ].find_indices_with_greater_values(self.global_t_to_local_t[agent_id][-1])
+        #     # indices_to_keep = [
+        #     #     self.global_rewards_t[agent_id].index(i)
+        #     #     for i in self.global_t_to_local_t[agent_id]
+        #     #     if i > self.global_t_to_local_t[agent_id][-1]
+        #     # ]
+        #     successor.global_rewards_t[agent_id] = _IndexMapping(
+        #         map(self.global_rewards_t[agent_id].__getitem__, indices_to_keep)
+        #     )
+        #     successor.global_rewards[agent_id] = list(
+        #         map(agent_rewards.__getitem__, indices_to_keep)
+        #     )
+        (
+            successor.partial_rewards_t,
+            successor.partial_rewards,
+        ) = self._generate_agent_rewards()
+
+        return successor
+
+    def _generate_agent_rewards(self):
+        successor_global_rewards_t = {}
+        successor_global_rewards = {}
+        for agent_id, agent_global_rewards in self.partial_rewards.items():
+            if self.global_t_to_local_t[agent_id]:
+                indices_to_keep = self.partial_rewards_t[
+                    agent_id
+                ].find_indices_with_greater_values(
+                    self.global_t_to_local_t[agent_id][-1]
+                )
+            else:
+                indices_to_keep = []
+
+            successor_global_rewards_t[agent_id] = _IndexMapping(
+                map(self.partial_rewards_t[agent_id].__getitem__, indices_to_keep)
+            )
+            successor_global_rewards[agent_id] = list(
+                map(agent_global_rewards.__getitem__, indices_to_keep)
+            )
+
+        return successor_global_rewards_t, successor_global_rewards
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of a multi-agent episode.
@@ -1149,33 +1199,39 @@ class MultiAgentEpisode:
                 # Put the last action into the buffer.
                 self.agent_buffers[agent_id]["actions"].put_nowait(agent_actions.pop())
 
-                # Now check, if there had been rewards for the agent without him acting
-                # or receiving observations.
-                if len(agent_rewards) >= len(agent_observations):
-                    # In this case we have to make use of the timestep mapping.
-                    global_rewards_t = []
-                    global_agent_rewards = []
-                    agent_rewards = []
-                    agent_reward = 0.0
-                    for t, reward in enumerate(rewards):
-                        if agent_id in reward:
-                            global_agent_rewards.append(reward[agent_id])
-                            # Then add the reward.
-                            agent_reward += reward[agent_id]
-                            global_rewards_t.append(t)
-                            if t in self.global_t_to_local_t[agent_id]:
-                                agent_rewards.append(agent_reward)
-                                agent_reward = 0.0
-                                continue
-                    # If the agent reward is not zero, we must have rewards that came
-                    # after the last observation. Then we buffer this reward.
-                    self.agent_buffers[agent_id]["rewards"].put_nowait(
-                        self.agent_buffers[agent_id]["rewards"].get_nowait()
-                        + agent_reward
-                    )
-                    # Now save away the original rewards and the reward timesteps.
-                    self.global_rewards_t[agent_id] = global_rewards_t
-                    self.global_rewards[agent_id] = global_agent_rewards
+            # Now check, if there had been rewards for the agent without him acting
+            # or receiving observations.
+            if (agent_rewards and not observations) or (
+                agent_rewards
+                and observations
+                and len(agent_rewards) >= len(agent_observations)
+            ):
+                # In this case we have to make use of the timestep mapping.
+                # Note, this mapping does then only contain the rewards that are not
+                # stored in the agent's `SingleAgentEpisode`, i.e. the rewards
+                # received in between to observations, but not with the observations.
+                global_rewards_t = _IndexMapping()
+                global_agent_rewards = []
+                agent_rewards = []
+                agent_reward = 0.0
+                for t, reward in enumerate(rewards):
+                    if agent_id in reward:
+                        global_agent_rewards.append(reward[agent_id])
+                        # Then add the reward.
+                        agent_reward += reward[agent_id]
+                        global_rewards_t.append(t)
+                        if t in self.global_t_to_local_t[agent_id]:
+                            agent_rewards.append(agent_reward)
+                            agent_reward = 0.0
+                            continue
+                # If the agent reward is not zero, we must have rewards that came
+                # after the last observation. Then we buffer this reward.
+                self.agent_buffers[agent_id]["rewards"].put_nowait(
+                    self.agent_buffers[agent_id]["rewards"].get_nowait() + agent_reward
+                )
+                # Now save away the original rewards and the reward timesteps.
+                self.partial_rewards_t[agent_id] = global_rewards_t
+                self.partial_rewards[agent_id] = global_agent_rewards
 
             return SingleAgentEpisode(
                 id_=episode_id,
@@ -1360,3 +1416,11 @@ class _IndexMapping(list):
             if num in self:
                 indices.append(self.index(num))
         return indices
+
+    def find_indices_with_greater_values(self, threshold):
+        indices = []
+        for num in reversed(self):
+            if num <= threshold:
+                break
+            indices.append(self.index(num))
+        return reversed(indices)
