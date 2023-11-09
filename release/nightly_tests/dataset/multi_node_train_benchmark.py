@@ -52,6 +52,13 @@ def parse_args():
         help="Input file type; choose from: ['image', 'parquet']",
     )
     parser.add_argument(
+        "--skip-train-model",
+        default=False,
+        type=bool,
+        help="Whether to skip training a model (i.e. only consume data). "
+        "Set to True if file_type == 'parquet'."
+    )
+    parser.add_argument(
         "--repeat-ds",
         default=1,
         type=int,
@@ -74,9 +81,9 @@ def parse_args():
     )
     parser.add_argument(
         "--num-epochs",
-        # Use 5 epochs and report the avg per-epoch throughput
+        # Use 7 epochs and report the avg per-epoch throughput
         # (excluding first epoch in case there is warmup).
-        default=5,
+        default=7,
         type=int,
         help="Number of epochs to run. The avg per-epoch throughput will be reported.",
     )
@@ -158,6 +165,10 @@ def parse_args():
             )
         if args.repeat_ds > 1:
             args.data_root = [args.data_root] * args.repeat_ds
+    if args.file_type == "parquet":
+        # Training model is only supported for images currently.
+        # Parquet files do not have labels.
+        args.skip_train_model = True
     return args
 
 
@@ -228,32 +239,34 @@ def train_loop_per_worker():
         running_loss = 0.0
         start_t = time.time()
         for batch_idx, batch in enumerate(batch_iter):
-            # get the inputs; data is a list of [inputs, labels]
-            inputs = torch.as_tensor(batch["image"], dtype=torch.float32).to(
-                device=device
-            )
-            labels = torch.as_tensor(batch["label"], dtype=torch.int64).to(
-                device=device
-            )
-            # zero the parameter gradients
-            optimizer.zero_grad()
-
-            # forward + backward + optimize
-            outputs = model(inputs)
-
-            output_classes = outputs.argmax(dim=1)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
             if not (args.use_torch or args.use_mosaic):
                 num_rows += batch["image"].size(dim=0)
             else:
                 num_rows += batch.size(dim=0)
-            num_correct += (output_classes == labels).sum().item()
+
+            if not args.skip_train_model:
+                # get the inputs; data is a list of [inputs, labels]
+                inputs = torch.as_tensor(batch["image"], dtype=torch.float32).to(
+                    device=device
+                )
+                labels = torch.as_tensor(batch["label"], dtype=torch.int64).to(
+                    device=device
+                )
+                # zero the parameter gradients
+                optimizer.zero_grad()
+
+                # forward + backward + optimize
+                outputs = model(inputs)
+
+                output_classes = outputs.argmax(dim=1)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+
+                running_loss += loss.item()
+                num_correct += (output_classes == labels).sum().item()
 
             # print statistics
-            running_loss += loss.item()
             if batch_idx % 2000 == 1999:  # print every 2000 mini-batches
                 print(
                     f"[{epoch + 1}, {batch_idx + 1:5d}] loss: "
@@ -443,7 +456,6 @@ def benchmark_code(
                 )
             else:
                 raise Exception(f"Unknown file type {args.file_type}")
-
             if cache_input_ds:
                 ray_dataset = ray_dataset.materialize()
 
