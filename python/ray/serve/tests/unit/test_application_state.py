@@ -63,6 +63,9 @@ class MockDeploymentStateManager:
             self.deployment_statuses[deployment_id] = DeploymentStatusInfo(
                 name=deployment_id.name,
                 status=DeploymentStatus.UPDATING,
+                status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE
+                if existing_info
+                else DeploymentStatusTrigger.DEPLOY,
                 message="",
             )
 
@@ -185,9 +188,15 @@ class TestDetermineAppStatus:
     def test_running(self, get_deployments_statuses, mocked_application_state):
         app_state, _ = mocked_application_state
         get_deployments_statuses.return_value = [
-            DeploymentStatusInfo("a", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("c", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo(
+                "a", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "b", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "c", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
         ]
         assert app_state._determine_app_status() == (ApplicationStatus.RUNNING, "")
 
@@ -196,9 +205,15 @@ class TestDetermineAppStatus:
         app_state, _ = mocked_application_state
         app_state._status = ApplicationStatus.RUNNING
         get_deployments_statuses.return_value = [
-            DeploymentStatusInfo("a", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("c", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo(
+                "a", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "b", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "c", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
         ]
         assert app_state._determine_app_status() == (ApplicationStatus.RUNNING, "")
 
@@ -206,9 +221,15 @@ class TestDetermineAppStatus:
     def test_deploying(self, get_deployments_statuses, mocked_application_state):
         app_state, _ = mocked_application_state
         get_deployments_statuses.return_value = [
-            DeploymentStatusInfo("a", DeploymentStatus.UPDATING),
-            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("c", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo(
+                "a", DeploymentStatus.UPDATING, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "b", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "c", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
         ]
         assert app_state._determine_app_status() == (ApplicationStatus.DEPLOYING, "")
 
@@ -216,9 +237,15 @@ class TestDetermineAppStatus:
     def test_deploy_failed(self, get_deployments_statuses, mocked_application_state):
         app_state, _ = mocked_application_state
         get_deployments_statuses.return_value = [
-            DeploymentStatusInfo("a", DeploymentStatus.UPDATING),
-            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("c", DeploymentStatus.UNHEALTHY),
+            DeploymentStatusInfo(
+                "a", DeploymentStatus.UPDATING, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "b", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "c", DeploymentStatus.UNHEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
         ]
         status, error_msg = app_state._determine_app_status()
         assert status == ApplicationStatus.DEPLOY_FAILED
@@ -229,9 +256,15 @@ class TestDetermineAppStatus:
         app_state, _ = mocked_application_state
         app_state._status = ApplicationStatus.RUNNING
         get_deployments_statuses.return_value = [
-            DeploymentStatusInfo("a", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
-            DeploymentStatusInfo("c", DeploymentStatus.UNHEALTHY),
+            DeploymentStatusInfo(
+                "a", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "b", DeploymentStatus.HEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
+            DeploymentStatusInfo(
+                "c", DeploymentStatus.UNHEALTHY, DeploymentStatusTrigger.DEPLOY
+            ),
         ]
         status, error_msg = app_state._determine_app_status()
         assert status == ApplicationStatus.UNHEALTHY
