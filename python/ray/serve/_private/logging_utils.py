@@ -146,14 +146,11 @@ def log_to_stderr_filter(record: logging.LogRecord) -> bool:
 
 
 def log_access_log_filter(record: logging.LogRecord) -> bool:
-    """Filters ray serve access log"""
-    if (
-        not hasattr(record, "ray_serve_access_log")
-        or record.ray_serve_access_log is None
-    ):
+    """Filters ray serve access log based on 'serve_access_log' key in `extra` dict."""
+    if not hasattr(record, "serve_access_log") or record.serve_access_log is None:
         return True
 
-    return record.ray_serve_access_log
+    return not record.serve_access_log
 
 
 def get_component_logger_file_path() -> Optional[str]:
@@ -244,7 +241,7 @@ def configure_component_logger(
     else:
         file_handler.setFormatter(ServeFormatter(component_name, component_id))
 
-    if logging_config.enable_access_log:
+    if logging_config.enable_access_log is False:
         file_handler.addFilter(log_access_log_filter)
 
     logger.addHandler(file_handler)

@@ -718,7 +718,7 @@ class RayServeReplica:
 
         logger.info(
             f"Started executing request {request_metadata.request_id}",
-            extra={"log_to_stderr": False},
+            extra={"log_to_stderr": False, "serve_access_log": True},
         )
         start_time = time.time()
         user_exception = None
@@ -748,7 +748,7 @@ class RayServeReplica:
                 status=status_str,
                 latency_ms=latency_ms,
             ),
-            extra={"ray_serve_access_log": True},
+            extra={"serve_access_log": True},
         )
         if user_exception is None:
             self.request_counter.inc(tags={"route": request_metadata.route})

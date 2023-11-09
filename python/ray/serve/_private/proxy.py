@@ -481,7 +481,7 @@ class GenericProxy(ABC):
                     status=str(status.code),
                     latency_ms=latency_ms,
                 ),
-                extra={"log_to_stderr": False, "ray_serve_access_log": True},
+                extra={"log_to_stderr": False, "serve_access_log": True},
             )
 
         if response_handler_info.should_record_request_metrics:

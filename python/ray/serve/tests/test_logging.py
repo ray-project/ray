@@ -393,23 +393,30 @@ class TestLoggingAPI:
 
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
 
-    @pytest.mark.parametrize("enable_access_type", [True, False])
-    def test_access_log(self, serve_and_ray_shutdown, enable_access_type):
+    @pytest.mark.parametrize("enable_access_log", [True, False])
+    def test_access_log(self, serve_and_ray_shutdown, enable_access_log):
         logger = logging.getLogger("ray.serve")
 
-        @serve.deployment(logging_config={"enable_access_log": enable_access_type})
+        @serve.deployment(logging_config={"enable_access_log": enable_access_log})
         class Model:
             def __call__(self, req: starlette.requests.Request):
-                if enable_access_type:
-                    assert len(logger.handlers) == 2
-                else:
-                    assert len(logger.handlers) == 1
-                return
+                logger.info("model_info_level")
+                logger.info("model_not_show", extra={"serve_access_log": True})
+                return {
+                    "logs_path": logger.handlers[1].baseFilename,
+                }
 
         serve.run(Model.bind())
 
         resp = requests.get("http://127.0.0.1:8000/")
         assert resp.status_code == 200
+        resp = resp.json()
+        check_log_file(resp["logs_path"], [".*model_info_level.*"])
+        if enable_access_log:
+            check_log_file(resp["logs_path"], [".*model_not_show.*"])
+        else:
+            with pytest.raises(AssertionError):
+                check_log_file(resp["logs_path"], [".*model_not_show.*"])
 
     def test_application_logging_overwrite(self, serve_and_ray_shutdown):
         @serve.deployment
