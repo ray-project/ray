@@ -25,6 +25,6 @@ xgboost_ray==0.1.18
 lightgbm_ray==0.1.9
 
 # Datasets
-pyarrow==6.0.1
+pyarrow==14.0.1
 
 ray[tune,data]
