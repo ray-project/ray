@@ -74,7 +74,7 @@ class ArrowTensorType(pa.ExtensionType):
             dtype: pyarrow dtype of tensor elements.
         """
         self._shape = shape
-        super().__init__(pa.list_(dtype))
+        super().__init__(pa.list_(dtype), "ray.data.arrow_tensor")
 
     @property
     def shape(self):
@@ -558,7 +558,8 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         """
         self._ndim = ndim
         super().__init__(
-            pa.struct([("data", pa.list_(dtype)), ("shape", pa.list_(pa.int64()))])
+            pa.struct([("data", pa.list_(dtype)), ("shape", pa.list_(pa.int64()))]),
+            "ray.data.arrow_variable_shaped_tensor",
         )
 
     def to_pandas_dtype(self):
@@ -901,3 +902,9 @@ def _to_ndarray_helper(shape, value_type, offset, data_buffer):
     if pa.types.is_fixed_size_binary(value_type):
         ext_dtype = np.dtype(f"<U{value_type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}")
     return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset)
+
+
+# Registration needs an extension type instance, but then works for any instance of the
+# same subclass regardless of parametrization of the type.
+pa.register_extension_type(ArrowTensorType((0,), pa.int64()))
+pa.register_extension_type(ArrowVariableShapedTensorType(pa.int64(), 0))
