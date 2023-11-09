@@ -24,6 +24,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/common/virtual_cluster_bundle_spec.h"
 #include "ray/gcs/pb_util.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -195,6 +196,32 @@ struct Mocker {
         placement_group_creation_spec.GetMessage());
     return request;
   }
+
+  static std::vector<std::shared_ptr<const VirtualClusterBundleSpec>>
+  GenVirtualClusterBundleSpecs(const VirtualClusterID &vc_id,
+                               absl::flat_hash_map<std::string, double> &unit_resource,
+                               int bundles_size = 1) {
+    std::vector<std::shared_ptr<const VirtualClusterBundleSpec>> bundle_specs;
+    for (int i = 0; i < bundles_size; i++) {
+      bundle_specs.emplace_back(std::make_shared<const VirtualClusterBundleSpec>(
+          // The bundle index starts from 1.
+          GenVirtualClusterBundle(vc_id, i + 1, unit_resource)));
+    }
+    return bundle_specs;
+  }
+
+  static VirtualClusterBundleSpec GenVirtualClusterBundle(
+      const VirtualClusterID &vc_id,
+      const int bundle_index,
+      absl::flat_hash_map<std::string, double> &unit_resource) {
+    rpc::VirtualClusterBundle bundle;
+    auto mutable_resources = bundle.mutable_resources();
+    for (auto &resource : unit_resource) {
+      mutable_resources->insert({resource.first, resource.second});
+    }
+    return VirtualClusterBundleSpec(bundle, {vc_id, bundle_index});
+  }
+
   static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
       uint16_t port = 0,
       const std::string address = "127.0.0.1",

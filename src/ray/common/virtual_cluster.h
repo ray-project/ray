@@ -17,7 +17,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "src/ray/protobuf/gcs_service.pb.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 

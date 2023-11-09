@@ -146,7 +146,6 @@ ray_cc_library(
         "bundle_spec.cc",
         "function_descriptor.cc",
         "placement_group.cc",
-        "virtual_cluster.cc",
         "scheduling/cluster_resource_data.cc",
         "scheduling/fixed_point.cc",
         "scheduling/scheduling_ids.cc",
@@ -154,13 +153,14 @@ ray_cc_library(
         "scheduling/resource_instance_set.cc",
         "task/task.cc",
         "task/task_spec.cc",
+        "virtual_cluster.cc",
+        "virtual_cluster_bundle_spec.cc",
     ],
     hdrs = [
         "bundle_location_index.h",
         "bundle_spec.h",
         "function_descriptor.h",
         "placement_group.h",
-        "virtual_cluster.h",
         "scheduling/cluster_resource_data.h",
         "scheduling/fixed_point.h",
         "scheduling/scheduling_ids.h",
@@ -170,6 +170,8 @@ ray_cc_library(
         "task/task_common.h",
         "task/task_spec.h",
         "task/task_util.h",
+        "virtual_cluster.h",
+        "virtual_cluster_bundle_spec.h",
     ],
     deps = [
         ":event_stats",
@@ -184,7 +186,7 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/protobuf:common_cc_proto",
     ],
 )
 

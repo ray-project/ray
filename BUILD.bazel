@@ -1363,6 +1363,21 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "virtual_cluster_resource_manager_test",
+    size = "small",
+    srcs = ["src/ray/raylet/virtual_cluster_resource_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "gcs_test_util_lib",
+        "ray_common",
+        "raylet_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+
+ray_cc_test(
     name = "runtime_env_agent_client_test",
     size = "small",
     srcs = ["src/ray/raylet/runtime_env_agent_client_test.cc"],

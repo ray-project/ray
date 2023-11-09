@@ -563,6 +563,16 @@ message PlacementGroupSpec {
   double max_cpu_fraction_per_node = 10;
 }
 
+message VirtualClusterBundle {
+  map<string, double> resources = 1;
+}
+
+// Specification of a virtual cluster. 
+message VirtualClusterSpec {
+  bytes virtual_cluster_id = 1;
+  repeated VirtualClusterBundle bundles = 2;
+}
+
 message ObjectReference {
   // ObjectID that the worker has a reference to.
   bytes object_id = 1;

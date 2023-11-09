@@ -24,7 +24,7 @@ const std::string MAIN_SERVER_NAME = "main_actor";
 // Name of the backup server actor.
 const std::string BACKUP_SERVER_NAME = "backup_actor";
 // Resources that each actor needs: 1 CPU core and 1 GB memory.
-const std::unordered_map<std::string, double> RESOUECES{
+const std::unordered_map<std::string, double> RESOURCES{
     {"CPU", 1.0}, {"memory", 1024.0 * 1024.0 * 1024.0}};
 
 namespace common {
@@ -149,7 +149,7 @@ void StartServer() {
   // Each of them needs 1 cpu core and 1 GB memory.
   // We use Ray's placement group to make sure that the 2 actors will be scheduled to 2
   // different nodes if possible.
-  std::vector<std::unordered_map<std::string, double>> bundles{RESOUECES, RESOUECES};
+  std::vector<std::unordered_map<std::string, double>> bundles{RESOURCES, RESOURCES};
 
   ray::PlacementGroupCreationOptions options{
       "kv_server_pg", bundles, ray::PlacementStrategy::SPREAD};
@@ -160,14 +160,14 @@ void StartServer() {
   // Create the main server actor and backup server actor.
   ray::Actor(CreateMainServer)
       .SetName(MAIN_SERVER_NAME)              // Set name of this actor.
-      .SetResources(RESOUECES)                // Set the resources that this actor needs.
+      .SetResources(RESOURCES)                // Set the resources that this actor needs.
       .SetPlacementGroup(placement_group, 0)  // Set the corresponding placement group.
       .SetMaxRestarts(-1)  // Tell Ray to restart this actor automatically upon failures.
       .Remote();
 
   ray::Actor(CreateBackupServer)
       .SetName(BACKUP_SERVER_NAME)
-      .SetResources(RESOUECES)
+      .SetResources(RESOURCES)
       .SetPlacementGroup(placement_group, 1)
       .SetMaxRestarts(-1)
       .Remote();
