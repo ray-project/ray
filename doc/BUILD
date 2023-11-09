@@ -339,7 +339,7 @@ doctest(
             # GPU
             "source/train/getting-started-pytorch-lightning.rst",
             "source/train/getting-started-pytorch.rst",
-            "source/train/getting-started-transformers.rst"
+            "source/train/getting-started-transformers.rst",
             "source/train/using-gpus.rst"
         ]
     ),
@@ -352,7 +352,7 @@ doctest(
         include=[
             "source/train/getting-started-pytorch-lightning.rst",
             "source/train/getting-started-pytorch.rst",
-            "source/train/getting-started-transformers.rst"
+            "source/train/getting-started-transformers.rst",
             "source/train/using-gpus.rst"
         ]
     ),
