@@ -1,46 +1,35 @@
-from collections import defaultdict
 import copy
 import logging
 import time
 import uuid
-from abc import ABCMeta, abstractmethod
-from typing import Any, Dict, List, Optional
+from abc import ABC, abstractmethod
+from typing import Dict, List, Optional, Tuple
 
+from ray.autoscaler.v2.instance_manager.config import InstancesConfigReader
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
     InstanceUpdatedSubscriber,
 )
 from ray.core.generated.instance_manager_pb2 import (
-    Status,
     GetInstanceManagerStateReply,
+    GetInstanceManagerStateRequest,
+    GetInstancesConfigReply,
+    GetInstancesConfigRequest,
     Instance,
-    InstanceManagerState,
+    InstancesConfig,
+    LaunchRequest,
+    Status,
+    StatusCode,
     UpdateInstanceManagerStateReply,
     UpdateInstanceManagerStateRequest,
-    LaunchRequest,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class InstanceManager(metaclass=ABCMeta):
+class InstanceManager(ABC):
     """
     See `InstanceManagerService` in instance_manager.proto
-    """
-
-    @abstractmethod
-    def update_instance_manager_state(
-        self, request: UpdateInstanceManagerStateRequest
-    ) -> UpdateInstanceManagerStateReply:
-        pass
-
-    @abstractmethod
-    def get_instance_manager_state(self) -> GetInstanceManagerStateReply:
-        pass
-
-
-class SimpleInstanceManager(InstanceManager):
-    """Simple instance manager that manages instances in memory.
 
     This handles the following updates to an instance:
         1. when creating new instances
@@ -57,26 +46,94 @@ class SimpleInstanceManager(InstanceManager):
             to be stopped.
             status = (Instance.ALLOCATED, Instance.RAY_STOPPED)
 
-        The instance manager should not update the instance status directly,
-        but instead, it should update the instance's ray status. And
-        the reconciler/instance launcher will update the instance status
-        based on the ray status and the instance status with the underlying
-        node provider.
-
     For full status transitions, see:
     https://docs.google.com/document/d/1NzQjA8Mh-oMc-QxXOa529oneWCoA8sDiVoNkBqqDb4U/edit#heading=h.k9a1sp4qpqj4
+    """
+
+    @abstractmethod
+    def update_instance_manager_state(
+        self, request: UpdateInstanceManagerStateRequest
+    ) -> UpdateInstanceManagerStateReply:
+        pass
+
+    @abstractmethod
+    def get_instance_manager_state(
+        self, request: GetInstanceManagerStateRequest
+    ) -> GetInstanceManagerStateReply:
+        pass
+
+    @abstractmethod
+    def get_instances_config(
+        self, request: GetInstancesConfigRequest
+    ) -> GetInstancesConfigReply:
+        pass
+
+
+class InMemoryInstanceManager(InstanceManager):
+    """An instance manager implementation that manages instances in memory.
+
+    It uses direct method calls instead of rpc since
+    it works with an in-memory local instance storage.
+
     """
 
     def __init__(
         self,
         instance_storage: InstanceStorage,
-        available_node_types: Dict[str, Any],
+        instances_config_reader: InstancesConfigReader,
         status_change_subscribers: Optional[List[InstanceUpdatedSubscriber]] = None,
     ) -> None:
+        """
+        Args:
+            instance_storage: The instance storage to use.
+            instances_config_reader: The instance config reader that would yield the
+                updated instances config.
+            status_change_subscribers: The subscribers to notify when an instance's
+                status changes.
+        """
         super().__init__()
-        self._instance_configs = available_node_types
+        self._instances_config_reader = instances_config_reader
         self._instance_storage = instance_storage
         instance_storage.add_status_change_subscribers(status_change_subscribers)
+
+    def get_instances_config(
+        self, request: GetInstancesConfigRequest
+    ) -> GetInstancesConfigReply:
+        """
+        Gets the instances config.
+
+        Override:
+            Overrides the base class method.
+
+        Returns:
+            GetInstancesConfigReply: The instances config reply containing
+            the most recent instances config if successful, otherwise the error
+            message.
+        """
+        reply = GetInstancesConfigReply()
+        config, error = self._get_instances_config()
+        if config is None:
+            reply.status = Status.UNAVAILABLE
+            reply.error_message = error
+        else:
+            reply.status = Status.OK
+            reply.config.CopyFrom(config)
+
+        return reply
+
+    def _get_instances_config(self) -> Tuple[Optional[InstancesConfig], Optional[str]]:
+        """Gets the instances config.
+
+        Returns:
+            - A valid instances config if successful, otherwise None.
+            - The error message if failed, otherwise None.
+        """
+        try:
+            config = self._instances_config_reader.get_instances_config()
+        except Exception as e:
+            return None, str(e)
+        else:
+            return config, None
 
     def update_instance_manager_state(
         self, request: UpdateInstanceManagerStateRequest
@@ -89,28 +146,51 @@ class SimpleInstanceManager(InstanceManager):
             Overrides the base class method.
         """
 
-        # 1. Handle instance status updates.
+        def _reply(status: Status, version: int) -> UpdateInstanceManagerStateReply:
+            reply = UpdateInstanceManagerStateReply()
+            reply.status.CopyFrom(status)
+            reply.version = version
+            return reply
+
+        # 0. Get the instances config.
+        instances_config, err = self._get_instances_config()
+
+        if instances_config is None:
+            return _reply(
+                Status(code=StatusCode.UNAVAILABLE, message=err),
+                request.expected_version,
+            )
+
+        # 1. Get instances to be updated.
         ids_to_updates = {update.instance_id: update for update in request.updates}
-        if len(ids_to_updates) == 0:
-            to_update_instances, version = {}, request.expected_version
-        else:
+        to_update_instances = {}
+        if len(ids_to_updates) > 0:
             to_update_instances, version = self._instance_storage.get_instances(
                 ids_to_updates.keys()
             )
             if request.expected_version >= 0 and request.expected_version != version:
-                reply = UpdateInstanceManagerStateReply()
-                reply.status = Status.OK
-                reply.version = version
-                return reply
+                # Version mismatch will fail the entire operations.
+                return _reply(
+                    Status(
+                        code=StatusCode.VERSION_MISMATCH, message="version mismatched"
+                    ),
+                    version,
+                )
 
-        for instance in to_update_instances.values():
-            update = ids_to_updates[instance.instance_id]
-            InstanceUtil.set_status(instance, new_ray_status=update.new_ray_status)
+            for instance in to_update_instances.values():
+                update = ids_to_updates[instance.instance_id]
+                InstanceUtil.set_status(
+                    instance,
+                    new_ray_status=update.new_ray_status,
+                    new_instance_status=update.new_instance_status,
+                )
 
-        # 2. Handle new instances to start
+        # 2. Get new instances to start.
         new_instances = []
         for launch_request in request.launch_requests:
-            instances = self._create_instances(launch_request)
+            # TODO: we will need to log in autoscaler events for any failure in
+            # creating instances.
+            instances = self._create_instances(launch_request, instances_config)
             new_instances.extend(instances)
 
         expected_version = (
@@ -124,19 +204,20 @@ class SimpleInstanceManager(InstanceManager):
         )
 
         if ok:
-            reply.status = Status.OK
+            code = StatusCode.OK
+            msg = ""
+        elif version != expected_version:
+            code = StatusCode.VERSION_MISMATCH
+            msg = f"expected({expected_version}) != actual ({version})"
         else:
-            if version != expected_version:
-                reply.status = Status.VERSION_MISMATCH
-            else:
-                reply.status = Status.UNKNOWN_ERROR
+            code = StatusCode.UNAVAILABLE
+            msg = "unable to update instance storage"
 
-        reply = UpdateInstanceManagerStateReply()
-        reply.state.CopyFrom(self.get_instance_manager_state().state)
-        reply.version = reply.state.version
-        return reply
+        return _reply(Status(code=code, message=msg), version)
 
-    def get_instance_manager_state(self) -> GetInstanceManagerStateReply:
+    def get_instance_manager_state(
+        self, request: GetInstanceManagerStateRequest
+    ) -> GetInstanceManagerStateReply:
         """
         Returns:
             GetInstanceManagerStateReply: The current instance manager state.
@@ -144,36 +225,43 @@ class SimpleInstanceManager(InstanceManager):
         Override:
             Overrides the base class method.
         """
+        instances, version = self._instance_storage.get_instances()
         reply = GetInstanceManagerStateReply()
-        reply.state.CopyFrom(self._get_instance_manager_state())
-        reply.status = Status.OK
+        reply.state.version = version
+        reply.state.instances.extend(instances.values())
+        reply.status.code = StatusCode.OK
         return reply
 
-    def _get_instance_manager_state(self) -> InstanceManagerState:
+    def _create_instances(
+        self, request: LaunchRequest, config: InstancesConfig
+    ) -> List[Instance]:
         """
-        Utility function to get the current instance manager state.
-        """
-        instances, version = self._instance_storage.get_instances()
-        state = InstanceManagerState()
-        state.version = version
-        state.instances.extend(instances.values())
-        return state
+        Utility function to create instances from a launch request.
 
-    def _create_instances(self, request: LaunchRequest) -> List[Instance]:
+        Args:
+            request: The launch request.
+            config: The instances config.
+
+        Returns:
+            List[Instance]: The list of instances created.
+        """
         instances = []
         instance_type = request.instance_type
-        assert instance_type in self._instance_configs, (
-            f"instance type {instance_type} not found in "
-            f"instance configs {self._instance_configs}"
+
+        instance_type_config = config.available_node_type_configs.get(
+            instance_type, None
         )
+        if instance_type_config is None:
+            return []
+
+        resources = dict(instance_type_config.resources)
         for _ in range(request.count):
-            instance = self.new_instance(
+            # Create an autoscaler Instance object, note the actual
+            # cloud instance is not requested yet.
+            instance = InstanceUtil.new_instance(
                 instance_id=str(uuid.uuid4()),
                 instance_type=instance_type,
-                # TODO: do we always have the "resources" field?
-                resources=copy.deepcopy(
-                    self._instance_configs[instance_type]["resources"]
-                ),
+                resources=copy.deepcopy(resources),
                 request_id=request.id,
             )
 

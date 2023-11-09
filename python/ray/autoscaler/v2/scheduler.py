@@ -14,7 +14,11 @@ from ray.core.generated.autoscaler_pb2 import (
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import (
+    ClusterConfig,
+    Instance,
+    NodeTypeConfig,
+)
 
 # ============= Resource Scheduling Service API =======================
 #
@@ -23,28 +27,6 @@ from ray.core.generated.instance_manager_pb2 import Instance
 #  to determine the desired cluster size to satisfy the current resource
 #  demands.
 #
-
-
-@dataclass
-class NodeTypeConfig:
-    # Node type name
-    name: NodeType
-    # The minimal number of workers to be launched for this node type.
-    min_workers: int
-    # The maximal number of workers can be launched for this node type.
-    max_workers: int
-    # The total resources on the node.
-    resources: Dict[str, float] = field(default_factory=dict)
-    # The labels on the node.
-    labels: Dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class ClusterConfig:
-    # The node type configs.
-    node_type_configs: Dict[NodeType, NodeTypeConfig] = field(default_factory=dict)
-    # The max number of worker nodes to be launched for the entire cluster.
-    max_num_worker_nodes: Optional[int]
 
 
 @dataclass

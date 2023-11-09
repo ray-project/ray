@@ -63,7 +63,7 @@ py_test(
 )
 
 py_test(
-    name = "test_instance_launcher",
+    name = "test_instance_manager",
     size = "small",
     srcs = ["tests/test_instance_manager.py"],
     tags = ["team:core"],

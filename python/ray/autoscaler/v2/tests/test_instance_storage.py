@@ -28,7 +28,6 @@ def create_instance(instance_id, status=Instance.UNKNOWN, version=0):
         instance_id=instance_id,
         status=status,
         version=version,
-        timestamp_since_last_modified=1,
     )
 
 

@@ -1,25 +1,35 @@
 # coding: utf-8
-import copy
 import os
 import sys
-from unittest import mock
+from typing import Any, Dict
 
 import pytest
-
 from google.protobuf.json_format import ParseDict
-from ray.autoscaler.v2.instance_manager.instance_manager import (
-    SimpleInstanceManager,
-)  # noqa
 
+from ray.autoscaler.v2.instance_manager.config import InstancesConfigReader
+from ray.autoscaler.v2.instance_manager.instance_manager import (  # noqa
+    InMemoryInstanceManager,
+)
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
     InstanceUpdatedSubscriber,
 )
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.core.generated.instance_manager_pb2 import (
+    GetInstanceManagerStateRequest,
     Instance,
+    InstancesConfig,
+    StatusCode,
     UpdateInstanceManagerStateRequest,
 )
+
+
+class DummyConfigReader(InstancesConfigReader):
+    def __init__(self, config_dict: Dict[str, Any]):
+        self._config = ParseDict(config_dict, InstancesConfig())
+
+    def get_instances_config(self) -> InstancesConfig:
+        return self._config
 
 
 class DummySubscriber(InstanceUpdatedSubscriber):
@@ -32,23 +42,27 @@ class DummySubscriber(InstanceUpdatedSubscriber):
 
 def test_update_instance_states():
     subscriber = DummySubscriber()
-    instance_configs = {
-        "type_1": {
-            "resources": {"CPU": 1},
+    config_reader = DummyConfigReader(
+        {
+            "available_node_type_configs": {
+                "type_1": {
+                    "resources": {"CPU": 1},
+                }
+            },
         }
-    }
+    )
     ins_storage = InstanceStorage(
         cluster_id="test-cluster",
         storage=InMemoryStorage(),
     )
-    manager = SimpleInstanceManager(
+    manager = InMemoryInstanceManager(
         instance_storage=ins_storage,
-        available_node_types=instance_configs,
+        instances_config_reader=config_reader,
         status_change_subscribers=[subscriber],
     )
 
     # Start with no instances
-    reply = manager.get_instance_manager_state()
+    reply = manager.get_instance_manager_state(GetInstanceManagerStateRequest())
     assert reply.state.version == 0
     assert len(reply.state.instances) == 0
 
@@ -64,8 +78,12 @@ def test_update_instance_states():
 
     reply = manager.update_instance_manager_state(request)
 
-    assert reply.success
-    assert reply.state.version == 1
+    assert reply.status.code == StatusCode.OK
+    version = reply.version
+
+    # Get the instances.
+    reply = manager.get_instance_manager_state(GetInstanceManagerStateRequest())
+    assert reply.state.version == version
     assert len(reply.state.instances) == 1
     assert reply.state.instances[0].instance_type == "type_1"
     assert reply.state.instances[0].status == Instance.UNKNOWN
@@ -80,6 +98,7 @@ def test_update_instance_states():
                 {
                     "instance_id": reply.state.instances[0].instance_id,
                     "new_ray_status": Instance.RAY_RUNNING,
+                    "new_instance_status": Instance.ALLOCATED,
                 }
             ],
         },
@@ -88,10 +107,15 @@ def test_update_instance_states():
 
     reply = manager.update_instance_manager_state(request)
 
-    assert reply.success
-    assert reply.state.version == 2
+    assert reply.status.code == StatusCode.OK
+    version = reply.version
+
+    # Get the instances.
+    reply = manager.get_instance_manager_state(GetInstanceManagerStateRequest())
+    assert reply.state.version == version
     assert len(reply.state.instances) == 1
     assert reply.state.instances[0].ray_status == Instance.RAY_RUNNING
+    assert reply.state.instances[0].status == Instance.ALLOCATED
 
 
 if __name__ == "__main__":

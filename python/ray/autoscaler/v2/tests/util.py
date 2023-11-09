@@ -35,7 +35,6 @@ def create_instance(
         version=version,
         instance_type=instance_type,
         ray_status=ray_status,
-        timestamp_since_last_modified=1,
     )
 
 

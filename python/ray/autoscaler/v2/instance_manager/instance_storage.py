@@ -1,6 +1,5 @@
 import copy
 import logging
-import time
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
@@ -82,7 +81,6 @@ class InstanceStorage:
             # the instance version is set to 0, it will be
             # populated by the storage entry's verion on read
             instance.version = 0
-            instance.timestamp_since_last_modified = int(time.time())
             mutations[instance.instance_id] = instance.SerializeToString()
 
         result, version = self._storage.batch_update(
@@ -132,7 +130,6 @@ class InstanceStorage:
         # the instance version is set to 0, it will be
         # populated by the storage entry's verion on read
         instance.version = 0
-        instance.timestamp_since_last_modified = int(time.time())
         result, version = self._storage.update(
             self._table_name,
             key=instance.instance_id,
