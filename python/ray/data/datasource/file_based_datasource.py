@@ -153,7 +153,7 @@ class FileBasedDatasource(Datasource):
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        self._paths, self._file_sizes = map(
+        paths, file_sizes = map(
             list,
             zip(
                 *meta_provider.expand_paths(
@@ -165,7 +165,7 @@ class FileBasedDatasource(Datasource):
             ),
         )
 
-        if ignore_missing_paths and len(self._paths) == 0:
+        if ignore_missing_paths and len(paths) == 0:
             raise ValueError(
                 "None of the provided paths exist. "
                 "The 'ignore_missing_paths' field is set to True."
@@ -181,21 +181,34 @@ class FileBasedDatasource(Datasource):
 
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
-            path_to_size = dict(zip(self._paths, self._file_sizes))
-            self._paths = self._partition_filter(self._paths)
-            self._file_sizes = [path_to_size[p] for p in self._paths]
-            if len(self._paths) == 0:
+            path_to_size = dict(zip(paths, file_sizes))
+            paths = self._partition_filter(paths)
+            file_sizes = [path_to_size[p] for p in paths]
+            if len(paths) == 0:
                 raise ValueError(
                     "No input files found to read. Please double check that "
                     "'partition_filter' field is set properly."
                 )
+
         self._file_metadata_shuffler = None
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 
+        # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
+        # can be large. To avoid slow serialization speeds, we store a reference to
+        # the paths rather than the paths themselves.
+        self._paths_ref = ray.put(paths)
+        self._file_sizes_ref = ray.put(file_sizes)
+
+    def paths(self) -> List[str]:
+        return ray.get(self._paths_ref)
+
+    def file_sizes(self) -> List[float]:
+        return ray.get(self._file_sizes_ref)
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
-        for sz in self._file_sizes:
+        for sz in self.file_sizes():
             if sz is not None:
                 total_size += sz
         return total_size
@@ -207,15 +220,16 @@ class FileBasedDatasource(Datasource):
         open_stream_args = self._open_stream_args
         partitioning = self._partitioning
 
+        paths = self.paths()
+        file_sizes = self.file_sizes()
+
         if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(self._paths, self._file_sizes))
+            files_metadata = list(zip(paths, file_sizes))
             shuffled_files_metadata = [
                 files_metadata[i]
                 for i in self._file_metadata_shuffler.permutation(len(files_metadata))
             ]
             paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
-        else:
-            paths, file_sizes = self._paths, self._file_sizes
 
         read_stream = self._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
