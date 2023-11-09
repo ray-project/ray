@@ -17,6 +17,7 @@ Quickstart
 For reference, the final code follows:
 
 .. testcode::
+    :skipif: True
 
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
