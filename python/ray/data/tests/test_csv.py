@@ -30,6 +30,12 @@ from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 
 
+def test_arrow_version():
+    import pyarrow as pa
+
+    assert False, pa.__version__
+
+
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
 
