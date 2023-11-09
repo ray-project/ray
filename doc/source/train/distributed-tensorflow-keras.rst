@@ -233,6 +233,7 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
 
 .. testcode::
 
+    import json
     import os
     import tempfile
 

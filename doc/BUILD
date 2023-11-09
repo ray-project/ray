@@ -340,6 +340,7 @@ doctest(
             "source/train/getting-started-pytorch-lightning.rst",
             "source/train/getting-started-pytorch.rst",
             "source/train/getting-started-transformers.rst"
+            "source/train/using-gpus.rst"
         ]
     ),
     tags = ["team:ml"]
@@ -352,6 +353,7 @@ doctest(
             "source/train/getting-started-pytorch-lightning.rst",
             "source/train/getting-started-pytorch.rst",
             "source/train/getting-started-transformers.rst"
+            "source/train/using-gpus.rst"
         ]
     ),
     tags = ["team:ml"]
