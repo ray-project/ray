@@ -420,7 +420,7 @@ control over their native Lightning code.
 
     .. group-tab:: (Deprecating) LightningTrainer
 
-        .. We're not testing this snippet because it raises a hard deprecation warning.
+        .. This snippet isn't tested because it raises a hard deprecation warning.
 
         .. testcode::
             :skipif: True
@@ -464,7 +464,7 @@ control over their native Lightning code.
 
     .. group-tab:: (New API) TorchTrainer
 
-        .. We're not testing this snippet because it runs with 4 GPUs, and CI is only run with 1.
+        .. This snippet isn't tested because it runs with 4 GPUs, and CI is only run with 1.
 
         .. testcode::
             :skipif: True
