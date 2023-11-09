@@ -18,13 +18,14 @@ Quickstart
 For reference, the final code is as follows:
 
 .. testcode::
+    :skipif: True
 
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
     def train_func(config):
         # Your PyTorch Lightning training code here.
-    
+
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
