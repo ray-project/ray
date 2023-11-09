@@ -640,7 +640,8 @@ def start(
 
     redirect_output = None if not no_redirect_output else True
 
-    os.environ[ray_constants.RAY_ENABLE_MIG_DETECTION_ENV_VAR] = enable_mig_detection
+    if enable_mig_detection:
+        os.environ[ray_constants.RAY_ENABLE_MIG_DETECTION_ENV_VAR] = "True"
 
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001

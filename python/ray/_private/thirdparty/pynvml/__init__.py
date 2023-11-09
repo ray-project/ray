@@ -1,1 +1,1 @@
-from pynvml import *
+from ray._private.thirdparty.pynvml.pynvml import *

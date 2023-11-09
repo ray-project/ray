@@ -173,9 +173,6 @@ class ResourceSpec(
                     accelerator_resource_name
                 )
             )
-            from pdb import set_trace as bp
-
-            bp()
             num_accelerators = None
             if accelerator_resource_name == "GPU":
                 num_accelerators = self.num_gpus

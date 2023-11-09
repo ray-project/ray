@@ -3,7 +3,7 @@ import os
 import logging
 from typing import Optional, List, Tuple
 import ray._private.thirdparty.pynvml as pynvml
-from pkg_resources import packaging
+from packaging.version import Version
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 import ray._private.ray_constants as ray_constants
@@ -74,9 +74,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
                             handle, mig_index
                         )
                         mig_uuid = ""
-                        if packaging.version(driver_version) >= packaging.version(
-                            MIG_UUID_DRIVER_VERSION
-                        ):
+                        if Version(driver_version) >= Version(MIG_UUID_DRIVER_VERSION):
                             mig_uuid = pynvml.nvmlDeviceGetUUID(mig_handle)
                         else:
                             mig_uuid = (
@@ -85,7 +83,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
                                 f"/{pynvml.nvmlDeviceGetGpuInstanceId(mig_handle)}"
                             )
                         cuda_devices.append(mig_uuid)
-                    except pynvml.NVMError_:
+                    except pynvml.NVMLError:
                         break
             else:
                 cuda_devices.append(str(index))
@@ -120,7 +118,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
                             cuda_devices_names.append(
                                 pynvml.nvmlDeviceGetName(mig_handle)
                             )
-                        except pynvml.NVMError_:
+                        except pynvml.NVMLError:
                             break
                 else:
                     cuda_devices_names.append(pynvml.nvmlDeviceGetName(handle))
