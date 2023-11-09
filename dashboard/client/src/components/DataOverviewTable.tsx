@@ -18,7 +18,7 @@ import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { formatDateFromTimeMs } from "../common/formatUtils";
 import rowStyles from "../common/RowStyles";
 import { TaskProgressBar } from "../pages/job/TaskProgressBar";
-import { DatasetMetrics } from "../type/data";
+import { DatasetMetrics, OperatorMetrics } from "../type/data";
 import { memoryConverter } from "../util/converter";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
@@ -66,7 +66,9 @@ const DataOverviewTable = ({
   const { changeFilter, filterFunc } = useFilter();
   const pageSize = 10;
   const datasetList = datasets.filter(filterFunc);
-  const [expanded, setExpanded] = useState({});
+  const [expandedDatasets, setExpandedDatasets] = useState<
+    Record<string, boolean>
+  >({});
 
   const list = datasetList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
 
@@ -124,10 +126,13 @@ const DataOverviewTable = ({
             {list.map((dataset, index) => (
               <DatasetTable
                 datasetMetrics={dataset}
-                isExpanded={expanded[dataset.dataset as keyof {}]}
+                isExpanded={expandedDatasets[dataset.dataset]}
                 setIsExpanded={(isExpanded: boolean) => {
-                  const copy = { ...expanded, [dataset.dataset]: isExpanded };
-                  setExpanded(copy);
+                  const copy = {
+                    ...expandedDatasets,
+                    [dataset.dataset]: isExpanded,
+                  };
+                  setExpandedDatasets(copy);
                 }}
                 key={dataset.dataset}
               />
@@ -148,6 +153,81 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
+const DataRow = ({
+  data,
+  isDatasetRow,
+  isExpanded,
+  setIsExpanded,
+}: {
+  data: DatasetMetrics | OperatorMetrics;
+  isDatasetRow: boolean;
+  isExpanded?: boolean;
+  setIsExpanded?: CallableFunction;
+}) => {
+  const classes = useStyles();
+
+  const dataset = data as DatasetMetrics;
+  const operator = data as OperatorMetrics;
+  return (
+    <TableRow>
+      <TableCell align="center">
+        {isDatasetRow &&
+          setIsExpanded !== undefined &&
+          (isExpanded ? (
+            <RiArrowDownSLine
+              title={"Collapse Dataset " + dataset.dataset}
+              className={classes.icon}
+              onClick={() => setIsExpanded(false)}
+            />
+          ) : (
+            <RiArrowRightSLine
+              title={"Expand Dataset " + dataset.dataset}
+              className={classes.icon}
+              onClick={() => setIsExpanded(true)}
+            />
+          ))}
+      </TableCell>
+      <TableCell align="left">
+        {isDatasetRow ? dataset.dataset : operator.operator}
+      </TableCell>
+      <TableCell align="right" size={"small"}>
+        <TaskProgressBar
+          showLegend={false}
+          numFinished={data.progress}
+          numRunning={
+            data.state === "RUNNING" ? data.total - data.progress : undefined
+          }
+          numCancelled={
+            data.state === "FAILED" ? data.total - data.progress : undefined
+          }
+          total={data.total}
+        />
+      </TableCell>
+      <TableCell align="center">
+        <StatusChip type="task" status={data.state} />
+      </TableCell>
+      <TableCell align="right">
+        {memoryConverter(Number(data.ray_data_output_bytes.max))}
+      </TableCell>
+      <TableCell align="right">
+        {memoryConverter(Number(data.ray_data_current_bytes.value))}/
+        {memoryConverter(Number(data.ray_data_current_bytes.max))}
+      </TableCell>
+      <TableCell align="right">
+        {memoryConverter(Number(data.ray_data_spilled_bytes.max))}
+      </TableCell>
+      <TableCell align="center">
+        {isDatasetRow && formatDateFromTimeMs(dataset.start_time * 1000)}
+      </TableCell>
+      <TableCell align="center">
+        {isDatasetRow &&
+          dataset.end_time &&
+          formatDateFromTimeMs(dataset.end_time * 1000)}
+      </TableCell>
+    </TableRow>
+  );
+};
+
 const DatasetTable = ({
   datasetMetrics,
   isExpanded,
@@ -157,107 +237,19 @@ const DatasetTable = ({
   isExpanded: boolean;
   setIsExpanded: CallableFunction;
 }) => {
-  const classes = useStyles();
-  const {
-    dataset,
-    state,
-    progress,
-    total,
-    ray_data_current_bytes,
-    ray_data_output_bytes,
-    ray_data_spilled_bytes,
-    start_time,
-    end_time,
-    operators,
-  } = datasetMetrics;
   const operatorRows =
     isExpanded &&
-    operators.map((operator) => (
-      <TableRow key={operator.operator}>
-        <TableCell></TableCell>
-        <TableCell align="left">{operator.operator}</TableCell>
-        <TableCell align="right" size={"small"}>
-          <TaskProgressBar
-            showLegend={false}
-            numFinished={operator.progress}
-            numRunning={
-              operator.state === "RUNNING"
-                ? operator.total - operator.progress
-                : undefined
-            }
-            numCancelled={
-              operator.state === "FAILED"
-                ? operator.total - operator.progress
-                : undefined
-            }
-            total={operator.total}
-          />
-        </TableCell>
-        <TableCell align="center">
-          <StatusChip type="task" status={operator.state} />
-        </TableCell>
-        <TableCell align="right">
-          {memoryConverter(Number(operator.ray_data_output_bytes.max))}
-        </TableCell>
-        <TableCell align="right">
-          {memoryConverter(Number(operator.ray_data_current_bytes.value))}/
-          {memoryConverter(Number(operator.ray_data_current_bytes.max))}
-        </TableCell>
-        <TableCell align="right">
-          {memoryConverter(Number(operator.ray_data_spilled_bytes.max))}
-        </TableCell>
-        <TableCell></TableCell>
-        <TableCell></TableCell>
-      </TableRow>
+    datasetMetrics.operators.map((operator) => (
+      <DataRow data={operator} isDatasetRow={false} key={operator.operator} />
     ));
   return (
     <React.Fragment>
-      <TableRow key={dataset}>
-        <TableCell align="center">
-          {isExpanded ? (
-            <RiArrowDownSLine
-              title={"Collapse Dataset " + dataset}
-              className={classes.icon}
-              onClick={() => setIsExpanded(false)}
-            />
-          ) : (
-            <RiArrowRightSLine
-              title={"Expand Dataset " + dataset}
-              className={classes.icon}
-              onClick={() => setIsExpanded(true)}
-            />
-          )}
-        </TableCell>
-        <TableCell align="left">{dataset}</TableCell>
-        <TableCell align="right" size={"small"}>
-          <TaskProgressBar
-            showLegend={false}
-            numFinished={progress}
-            numRunning={state === "RUNNING" ? total - progress : undefined}
-            numCancelled={state === "FAILED" ? total - progress : undefined}
-            total={total}
-          />
-        </TableCell>
-        <TableCell align="center">
-          <StatusChip type="task" status={state} />
-        </TableCell>
-        <TableCell align="right">
-          {memoryConverter(Number(ray_data_output_bytes.max))}
-        </TableCell>
-        <TableCell align="right">
-          {memoryConverter(Number(ray_data_current_bytes.value))}/
-          {memoryConverter(Number(ray_data_current_bytes.max))}
-        </TableCell>
-        <TableCell align="right">
-          {memoryConverter(Number(ray_data_spilled_bytes.max))}
-        </TableCell>
-        <TableCell align="center">
-          {formatDateFromTimeMs(start_time * 1000)}
-        </TableCell>
-        <TableCell align="center">
-          {end_time && formatDateFromTimeMs(end_time * 1000)}
-        </TableCell>
-      </TableRow>
+      <DataRow
+        data={datasetMetrics}
+        isDatasetRow={true}
+        isExpanded={isExpanded}
+        setIsExpanded={setIsExpanded}
+      />
       {operatorRows}
     </React.Fragment>
   );
