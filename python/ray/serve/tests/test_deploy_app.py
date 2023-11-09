@@ -1184,8 +1184,11 @@ def check_log_file(log_file: str, expected_regex: list):
 
 
 class TestDeploywithLoggingConfig:
-    def get_deploy_config(self):
-        path = "ray.serve.tests.test_config_files.logging_config_test.model"
+    def get_deploy_config(self, model_within_logging_config: bool = False):
+        if model_within_logging_config:
+            path = "ray.serve.tests.test_config_files.logging_config_test.model2"
+        else:
+            path = "ray.serve.tests.test_config_files.logging_config_test.model"
         return {
             "applications": [
                 {
@@ -1224,7 +1227,7 @@ class TestDeploywithLoggingConfig:
     def test_deploy_app_with_deployment_logging_config(
         self, client: ServeControllerClient, encoding_type: str
     ):
-        """Deploy application with deployment logging config"""
+        """Deploy application with deployment logging config inside the yaml"""
         config_dict = self.get_deploy_config()
 
         config_dict["applications"][0]["deployments"] = [
@@ -1233,7 +1236,6 @@ class TestDeploywithLoggingConfig:
                 "logging_config": {
                     "encoding": encoding_type,
                 },
-                "autoscaling_config": {"min_replicas": 1, "max_replicas": 2},
             },
         ]
         config = ServeDeploySchema.parse_obj(config_dict)
@@ -1249,6 +1251,20 @@ class TestDeploywithLoggingConfig:
         else:
             expected_log_regex = [f'.*{resp["replica"]}.*']
         check_log_file(resp["log_file"], expected_log_regex)
+
+    def test_deploy_app_with_deployment_logging_config_in_code(
+        self,
+        client: ServeControllerClient,
+    ):
+        """Deploy application with deployment logging config inside the code"""
+        config_dict = self.get_deploy_config(model_within_logging_config=True)
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+        )
+        resp = requests.post("http://localhost:8000/app1").json()
+        check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
     def test_overwritting_logging_config(self, client: ServeControllerClient):
         """Overwrite the default logging config with application logging config"""
@@ -1282,58 +1298,11 @@ class TestDeploywithLoggingConfig:
         resp = requests.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
-    def test_overwritting_logging_config2(self, client: ServeControllerClient):
-        """Test application config will overwrite the exist running deployment config
-        and not overrite the other deployment which has deployment config set"""
-
-        config_dict = self.get_deploy_config()
-        config = ServeDeploySchema.parse_obj(config_dict)
-        client.deploy_apps(config)
-
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
-        )
-        # By default, log level is "INFO"
-        resp = requests.post("http://localhost:8000/app1").json()
-
-        # Make sure 'model_debug_level' log content does not exist
-        with pytest.raises(AssertionError):
-            check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
-        with pytest.raises(AssertionError):
-            check_log_file(
-                resp["router_log_file"], [".*this_is_debug_info_from_router.*"]
-            )
-
-        # Add application logging config and set Model deployment logging config
-        # The router logging config should be set to DEBUG, and Model
-        # loging config should be INFO.
-        config_dict["applications"][0]["logging_config"] = {
-            "log_level": "DEBUG",
-        }
-        config_dict["applications"][0]["deployments"] = [
-            {
-                "name": "Model",
-                "logging_config": {
-                    "log_level": "INFO",
-                },
-            },
-        ]
-        config = ServeDeploySchema.parse_obj(config_dict)
-        client.deploy_apps(config)
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
-            and requests.post("http://localhost:8000/app1").json()["router_log_level"]
-            == logging.DEBUG
-        )
-        resp = requests.post("http://localhost:8000/app1").json()
-        with pytest.raises(AssertionError):
-            check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
-        # Router should print the information
-        check_log_file(resp["router_log_file"], [".*this_is_debug_info_from_router.*"])
-
-    def test_not_overwritting_logging_config(self, client: ServeControllerClient):
-        """Deployment logging config should not be overwritten
-        by application logging config, when deployment config is explicitly set.
+    def test_not_overwritting_logging_config_in_yaml(
+        self, client: ServeControllerClient
+    ):
+        """Deployment logging config in yaml should not be overwritten
+        by application logging config.
         """
         config_dict = self.get_deploy_config()
         config_dict["applications"][0]["deployments"] = [
@@ -1344,6 +1313,25 @@ class TestDeploywithLoggingConfig:
                 },
             },
         ]
+        config_dict["applications"][0]["logging_config"] = {
+            "log_level": "INFO",
+        }
+
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+        )
+        resp = requests.post("http://localhost:8000/app1").json()
+        check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+
+    def test_not_overwritting_logging_config_in_code(
+        self, client: ServeControllerClient
+    ):
+        """Deployment logging config in code should not be overwritten
+        by application logging config.
+        """
+        config_dict = self.get_deploy_config(model_within_logging_config=True)
         config_dict["applications"][0]["logging_config"] = {
             "log_level": "INFO",
         }
@@ -1390,23 +1378,26 @@ class TestDeploywithLoggingConfig:
         # log content should be redirected to new file
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
-    @pytest.mark.parametrize("enable_access_type", [True, False])
-    def test_access_log(self, client: ServeControllerClient, enable_access_type: bool):
+    @pytest.mark.parametrize("enable_access_log", [True, False])
+    def test_access_log(self, client: ServeControllerClient, enable_access_log: bool):
 
         config_dict = self.get_deploy_config()
         config_dict["applications"][0]["logging_config"] = {
-            "enable_access_log": enable_access_type,
+            "enable_access_log": enable_access_log,
         }
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1").status_code == 200
         )
-        resp = requests.get("http://127.0.0.1:8000/app1").json()
-        if enable_access_type:
-            assert resp["num_handlers"] == 2
+        resp = requests.get("http://127.0.0.1:8000/app1")
+        assert resp.status_code == 200
+        resp = resp.json()
+        if enable_access_log:
+            check_log_file(resp["log_file"], [".*this_is_access_log.*"])
         else:
-            assert resp["num_handlers"] == 1
+            with pytest.raises(AssertionError):
+                check_log_file(resp["log_file"], [".*this_is_access_log.*"])
 
 
 if __name__ == "__main__":
