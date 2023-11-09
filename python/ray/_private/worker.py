@@ -467,6 +467,8 @@ class Worker:
         # different drivers that connect to the same Serve instance.
         # See https://github.com/ray-project/ray/pull/35070.
         self._filter_logs_by_job = True
+        # the debugger port for this worker
+        self._debugger_port = None
 
     @property
     def connected(self):
@@ -540,6 +542,16 @@ class Worker:
     def runtime_env(self):
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
+
+    @property
+    def debugger_port(self):
+        """Get the debugger port for this worker"""
+        return self._debugger_port
+
+    def set_debugger_port(self, port):
+        worker_id = self.core_worker.get_worker_id()
+        ray._private.state.update_worker_debugger_port(worker_id, port)
+        self._debugger_port = port
 
     def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
         """Set the worker's err file where stderr is redirected to"""
