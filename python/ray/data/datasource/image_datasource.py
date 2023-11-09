@@ -104,24 +104,6 @@ class ImageDatasource(FileBasedDatasource):
     def _rows_per_file(self):
         return 1
 
-    def _write_row(
-        self,
-        f: "pyarrow.NativeFile",
-        row,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        column: str = None,
-        file_format: str = None,
-        **writer_args,
-    ):
-        import io
-
-        from PIL import Image
-
-        image = Image.fromarray(row[column])
-        buffer = io.BytesIO()
-        image.save(buffer, format=file_format)
-        f.write(buffer.getvalue())
-
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
         for file_size in self._file_sizes:
