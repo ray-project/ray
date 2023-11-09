@@ -37,7 +37,7 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import DeploymentDetails, LoggingConfig, ServeApplicationSchema
+from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -287,6 +287,7 @@ class ApplicationState:
             )
 
         deployment_id = DeploymentID(deployment_name, self._name)
+
         self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
         if deployment_info.route_prefix is not None:
@@ -572,6 +573,15 @@ class ApplicationState:
 
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
+            if (
+                self._target_state.config
+                and self._target_state.config.logging_config
+                and info.deployment_config.logging_config is None
+            ):
+                info.deployment_config.logging_config = (
+                    self._target_state.config.logging_config
+                )
+
             self.apply_deployment_info(deployment_name, info)
 
         # Delete outdated deployments
@@ -957,15 +967,7 @@ def override_deployment_info(
         return deployment_infos
 
     config_dict = override_config.dict(exclude_unset=True)
-    app_logging_config = config_dict.get("logging_config", None)
     deployment_override_options = config_dict.get("deployments", [])
-
-    # If application loggin config is set, apply to all existing deployment config
-    if app_logging_config:
-        for _, info in deployment_infos.items():
-            info.deployment_config.logging_config = LoggingConfig(
-                **app_logging_config
-            ).dict()
 
     # Override options for each deployment listed in the config.
     for options in deployment_override_options:

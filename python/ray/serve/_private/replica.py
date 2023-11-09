@@ -747,7 +747,8 @@ class RayServeReplica:
                 method=request_metadata.call_method,
                 status=status_str,
                 latency_ms=latency_ms,
-            )
+            ),
+            extra={"ray_serve_access_log": True},
         )
         if user_exception is None:
             self.request_counter.inc(tags={"route": request_metadata.route})

@@ -145,6 +145,17 @@ def log_to_stderr_filter(record: logging.LogRecord) -> bool:
     return record.log_to_stderr
 
 
+def log_access_log_filter(record: logging.LogRecord) -> bool:
+    """Filters ray serve access log"""
+    if (
+        not hasattr(record, "ray_serve_access_log")
+        or record.ray_serve_access_log is None
+    ):
+        return True
+
+    return record.ray_serve_access_log
+
+
 def get_component_logger_file_path() -> Optional[str]:
     """Returns the relative file path for the Serve logger, if it exists.
 
@@ -174,8 +185,6 @@ def configure_component_logger(
     using the provided name and unique ID for this instance (e.g., replica ID).
 
     This logger will *not* propagate its log messages to the parent logger(s).
-
-    RotatingFileHandler will not be set if enable_access_log is False.
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
@@ -202,44 +211,43 @@ def configure_component_logger(
     stream_handler.addFilter(log_to_stderr_filter)
     logger.addHandler(stream_handler)
 
+    if logging_config.logs_dir:
+        logs_dir = logging_config.logs_dir
+    else:
+        logs_dir = get_serve_logs_dir()
+    os.makedirs(logs_dir, exist_ok=True)
+
+    max_bytes = ray._private.worker._global_node.max_bytes
+    backup_count = ray._private.worker._global_node.backup_count
+
+    log_file_name = get_component_log_file_name(
+        component_name=component_name,
+        component_id=component_id,
+        component_type=component_type,
+        suffix=".log",
+    )
+
+    file_handler = logging.handlers.RotatingFileHandler(
+        os.path.join(logs_dir, log_file_name),
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+    )
+    if RAY_SERVE_ENABLE_JSON_LOGGING:
+        logger.warning(
+            "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
+            "'LoggingConfig' to enable json format."
+        )
+    if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
+        file_handler.setFormatter(
+            ServeJSONFormatter(component_name, component_id, component_type)
+        )
+    else:
+        file_handler.setFormatter(ServeFormatter(component_name, component_id))
+
     if logging_config.enable_access_log:
+        file_handler.addFilter(log_access_log_filter)
 
-        if logging_config.logs_dir:
-            logs_dir = logging_config.logs_dir
-        else:
-            logs_dir = get_serve_logs_dir()
-        os.makedirs(logs_dir, exist_ok=True)
-
-        max_bytes = ray._private.worker._global_node.max_bytes
-        backup_count = ray._private.worker._global_node.backup_count
-
-        log_file_name = get_component_log_file_name(
-            component_name=component_name,
-            component_id=component_id,
-            component_type=component_type,
-            suffix=".log",
-        )
-
-        file_handler = logging.handlers.RotatingFileHandler(
-            os.path.join(logs_dir, log_file_name),
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-        )
-        if RAY_SERVE_ENABLE_JSON_LOGGING:
-            logger.warning(
-                "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
-                "'LoggingConfig' to enable json format."
-            )
-        if (
-            RAY_SERVE_ENABLE_JSON_LOGGING
-            or logging_config.encoding == EncodingType.JSON
-        ):
-            file_handler.setFormatter(
-                ServeJSONFormatter(component_name, component_id, component_type)
-            )
-        else:
-            file_handler.setFormatter(ServeFormatter(component_name, component_id))
-        logger.addHandler(file_handler)
+    logger.addHandler(file_handler)
 
 
 def configure_component_memory_profiler(
