@@ -1592,7 +1592,7 @@ py4j==0.10.9.7
     #   pyspark
 pyaml==23.9.7
     # via scikit-optimize
-pyarrow==12.0.1 ; platform_system != "Windows"
+pyarrow==14.0.1 ; platform_system != "Windows"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   datasets
