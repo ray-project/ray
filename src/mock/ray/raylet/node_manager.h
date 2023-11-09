@@ -28,12 +28,6 @@ namespace raylet {
 class MockNodeManager : public NodeManager {
  public:
   MOCK_METHOD(void,
-              HandleUpdateResourceUsage,
-              (rpc::UpdateResourceUsageRequest request,
-               rpc::UpdateResourceUsageReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
               HandleGetResourceLoad,
               (rpc::GetResourceLoadRequest request,
                rpc::GetResourceLoadReply *reply,

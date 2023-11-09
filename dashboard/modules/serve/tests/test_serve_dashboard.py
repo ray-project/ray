@@ -26,9 +26,8 @@ from ray.serve._private.common import (
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 
-# For local testing. If you're running these tests locally on a Macbook, set
-# this variable to False to enable tests.
-DISABLE_DARWIN = True
+# For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
+TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 
 
 SERVE_AGENT_URL = "http://localhost:52365/api/serve/applications/"
@@ -41,7 +40,9 @@ def deploy_config_multi_app(config: Dict, url: str):
     print("PUT request sent successfully.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 @pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
 def test_put_get_multi_app(ray_start_stop, url):
     pizza_import_path = (
@@ -138,7 +139,9 @@ def test_put_get_multi_app(ray_start_stop, url):
         print("Deployments are live and reachable over HTTP.\n")
 
 
-@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 @pytest.mark.parametrize(
     "put_url",
     [
@@ -153,7 +156,9 @@ def test_put_bad_schema(ray_start_stop, put_url: str):
     assert put_response.status_code == 400
 
 
-@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 @pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
 def test_put_duplicate_apps(ray_start_stop, url):
     """If a config with duplicate app names is deployed, the PUT request should fail.
@@ -178,7 +183,9 @@ def test_put_duplicate_apps(ray_start_stop, url):
     assert put_response.status_code == 400 and "ValidationError" in put_response.text
 
 
-@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 @pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
 def test_put_duplicate_routes(ray_start_stop, url):
     """If a config with duplicate routes is deployed, the PUT request should fail.
@@ -203,7 +210,9 @@ def test_put_duplicate_routes(ray_start_stop, url):
     assert put_response.status_code == 400 and "ValidationError" in put_response.text
 
 
-@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 @pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
 def test_delete_multi_app(ray_start_stop, url):
     py_module = (
@@ -289,15 +298,19 @@ def test_delete_multi_app(ray_start_stop, url):
         print("Deployments have been deleted and are not reachable.\n")
 
 
-@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 @pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
 def test_get_serve_instance_details_not_started(ray_start_stop, url):
     """Test REST API when Serve hasn't started yet."""
-
+    # Parse the response to ensure it's formatted correctly.
     ServeInstanceDetails(**requests.get(url).json())
 
 
-@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 @pytest.mark.parametrize(
     "f_deployment_options",
     [
@@ -443,7 +456,9 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     print("Finished checking application details.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 def test_serve_namespace(ray_start_stop):
     """Check that the driver can interact with Serve using the Python API."""
 
@@ -620,7 +635,9 @@ def test_default_dashboard_agent_listen_port():
     assert ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT == 52365
 
 
-@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 @pytest.mark.parametrize(
     "ray_start_regular_with_external_redis",
     [
@@ -655,6 +672,74 @@ def test_get_applications_while_gcs_down(
         assert requests.get(url, timeout=30).status_code == 200
 
     serve.shutdown()
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
+def test_target_capacity_field(ray_start_stop, url: str):
+    """Test that the `target_capacity` field is always populated as expected."""
+
+    raw_json = requests.get(url).json()
+
+    # `target_capacity` should be present in the response before deploying anything.
+    assert raw_json["target_capacity"] is None
+
+    config = {
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8000,
+        },
+        "applications": [],
+    }
+    deploy_config_multi_app(config, url)
+
+    # `target_capacity` should be present in the response even if not set.
+    raw_json = requests.get(url).json()
+    assert raw_json["target_capacity"] is None
+    details = ServeInstanceDetails(**raw_json)
+    assert details.target_capacity is None
+    assert details.http_options.host == "127.0.0.1"
+    assert details.http_options.port == 8000
+    assert details.applications == {}
+
+    # Set `target_capacity`, ensure it is returned properly.
+    config["target_capacity"] = 20
+    deploy_config_multi_app(config, url)
+    raw_json = requests.get(url).json()
+    assert raw_json["target_capacity"] == 20
+    details = ServeInstanceDetails(**raw_json)
+    assert details.target_capacity == 20
+    assert details.http_options.host == "127.0.0.1"
+    assert details.http_options.port == 8000
+    assert details.applications == {}
+
+    # Update `target_capacity`, ensure it is returned properly.
+    config["target_capacity"] = 40
+    deploy_config_multi_app(config, url)
+    raw_json = requests.get(url).json()
+    assert raw_json["target_capacity"] == 40
+    details = ServeInstanceDetails(**raw_json)
+    assert details.target_capacity == 40
+    assert details.http_options.host == "127.0.0.1"
+    assert details.http_options.port == 8000
+    assert details.applications == {}
+
+    # Reset `target_capacity` by omitting it, ensure it is returned properly.
+    del config["target_capacity"]
+    deploy_config_multi_app(config, url)
+    raw_json = requests.get(url).json()
+    assert raw_json["target_capacity"] is None
+    details = ServeInstanceDetails(**raw_json)
+    assert details.target_capacity is None
+    assert details.http_options.host == "127.0.0.1"
+    assert details.http_options.port == 8000
+    assert details.applications == {}
+
+    # Try to set an invalid `target_capacity`, ensure a `400` status is returned.
+    config["target_capacity"] = 101
+    assert requests.put(url, json=config, timeout=30).status_code == 400
 
 
 if __name__ == "__main__":
