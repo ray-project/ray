@@ -24,6 +24,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/virtual_cluster_bundle_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -142,6 +143,46 @@ class ResourceReserveInterface {
   virtual void ReleaseUnusedBundles(
       const std::vector<rpc::Bundle> &bundles_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
+
+  /// Request a raylet to prepare resources for a virtual cluster bundle. This is used for
+  /// the first phase of atomic virtual cluster bundle creation. The callback will be sent
+  /// via gRPC.
+  /// \param bundle_spec Specification of the virtual cluster bundle to be scheduled.
+  /// \return ray::Status
+  virtual void PrepareVirtualClusterBundle(
+      const VirtualClusterBundleSpec &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::PrepareVirtualClusterBundleReply>
+          &callback) = 0;
+
+  /// Request a raylet to commit resources for a virtual cluster bundle. This is used for
+  /// the second phase of atomic virtual cluster bundle creation. The callback will be
+  /// sent via gRPC. \param virtual_cluster_id Identifier of the virtual cluster. \return
+  /// ray::Status
+  virtual void CommitVirtualClusterBundle(
+      const VirtualClusterID &virtual_cluster_id,
+      const ray::rpc::ClientCallback<ray::rpc::CommitVirtualClusterBundleReply>
+          &callback) = 0;
+
+  /// Request a raylet to return resources reserved for a virtual cluster bundle. The
+  /// callback will be sent via gRPC.
+  /// \param virtual_cluster_id Identifier of the virtual cluster.
+  /// \return ray::Status
+  virtual void ReturnVirtualClusterBundle(
+      const VirtualClusterID &virtual_cluster_id,
+      const ray::rpc::ClientCallback<ray::rpc::ReturnVirtualClusterBundleReply>
+          &callback) = 0;
+
+  /// Request a raylet to release unused virtual cluster bundles based on virtual cluster
+  /// IDs. This is used to clean up resources that are no longer in use by any virtual
+  /// cluster. The callback will be sent via gRPC.
+  ///
+  /// \param virtual_cluster_ids Identifiers of virtual clusters whose unused bundles
+  /// should be released.
+  /// \return ray::Status
+  virtual void ReleaseUnusedVirtualClusterBundles(
+      const std::vector<VirtualClusterID> &virtual_cluster_ids,
+      const ray::rpc::ClientCallback<ray::rpc::ReleaseUnusedVirtualClusterBundlesReply>
+          &callback) = 0;
 
   virtual ~ResourceReserveInterface(){};
 };
@@ -458,6 +499,30 @@ class RayletClient : public RayletClientInterface {
   void ReleaseUnusedBundles(
       const std::vector<rpc::Bundle> &bundles_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
+
+  /// Implements PrepareVirtualClusterBundleInterface.
+  void PrepareVirtualClusterBundle(
+      const VirtualClusterBundleSpec &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::PrepareVirtualClusterBundleReply>
+          &callback) override;
+
+  /// Implements CommitVirtualClusterBundleInterface.
+  void CommitVirtualClusterBundle(
+      const VirtualClusterID &virtual_cluster_id,
+      const ray::rpc::ClientCallback<ray::rpc::CommitVirtualClusterBundleReply> &callback)
+      override;
+
+  /// Implements ReturnVirtualClusterBundleInterface.
+  void ReturnVirtualClusterBundle(
+      const VirtualClusterID &virtual_cluster_id,
+      const ray::rpc::ClientCallback<ray::rpc::ReturnVirtualClusterBundleReply> &callback)
+      override;
+
+  /// Implements ReleaseUnusedVirtualClusterBundlesInterface.
+  void ReleaseUnusedVirtualClusterBundles(
+      const std::vector<VirtualClusterID> &virtual_cluster_ids,
+      const ray::rpc::ClientCallback<ray::rpc::ReleaseUnusedVirtualClusterBundlesReply>
+          &callback) override;
 
   void PinObjectIDs(
       const rpc::Address &caller_address,

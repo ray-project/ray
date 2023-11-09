@@ -47,6 +47,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
+#include "ray/raylet/virtual_cluster_resource_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 // clang-format on
 
@@ -525,6 +526,33 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleCancelResourceReserve(rpc::CancelResourceReserveRequest request,
                                    rpc::CancelResourceReserveReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `ReleaseUnusedBundles` request.
+  void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
+                                  rpc::ReleaseUnusedBundlesReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `PrepareVirtualClusterBundle` request.
+  void HandlePrepareVirtualClusterBundle(
+      rpc::PrepareVirtualClusterBundleRequest request,
+      rpc::PrepareVirtualClusterBundleReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `CommitVirtualClusterBundle` request.
+  void HandleCommitVirtualClusterBundle(
+      rpc::CommitVirtualClusterBundleRequest request,
+      rpc::CommitVirtualClusterBundleReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `ReturnVirtualClusterBundle` request.
+  void HandleReturnVirtualClusterBundle(
+      rpc::ReturnVirtualClusterBundleRequest request,
+      rpc::ReturnVirtualClusterBundleReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `ReleaseUnusedVirtualClusterBundles` request.
+  void HandleReleaseUnusedVirtualClusterBundles(
+      rpc::ReleaseUnusedVirtualClusterBundlesRequest request,
+      rpc::ReleaseUnusedVirtualClusterBundlesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
@@ -585,11 +613,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleRequestObjectSpillage(rpc::RequestObjectSpillageRequest request,
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `ReleaseUnusedBundles` request.
-  void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
-                                  rpc::ReleaseUnusedBundlesReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetSystemConfig` request.
   void HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
@@ -856,8 +879,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Number of tasks that are spilled back to other nodes.
   uint64_t metrics_num_task_spilled_back_;
 
-  /// Managers all bundle-related operations.
+  /// Manages all bundle-related operations.
   std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
+
+  /// Manages all virtual cluster bundle-related operations.
+  std::shared_ptr<VirtualClusterResourceManager> virtual_cluster_resource_manager_;
 
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).

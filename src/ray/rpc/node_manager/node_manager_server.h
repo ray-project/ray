@@ -28,28 +28,32 @@ namespace rpc {
   RPC_SERVICE_HANDLER_CUSTOM_AUTH(NodeManagerService, METHOD, -1, AuthType::NO_AUTH)
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_NODE_MANAGER_RPC_HANDLERS                          \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetResourceLoad)        \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(NotifyGCSRestart)       \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestWorkerLease)     \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReportWorkerBacklog)    \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorker)           \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedWorkers)   \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelWorkerLease)      \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PinObjectIDs)           \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetNodeStats)           \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GlobalGC)               \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo) \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources) \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)  \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)  \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestObjectSpillage)  \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)   \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)        \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)         \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)            \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTasksInfo)           \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)         \
+#define RAY_NODE_MANAGER_RPC_HANDLERS                                      \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetResourceLoad)                    \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(NotifyGCSRestart)                   \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestWorkerLease)                 \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReportWorkerBacklog)                \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorker)                       \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedWorkers)               \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelWorkerLease)                  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PinObjectIDs)                       \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetNodeStats)                       \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GlobalGC)                           \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo)             \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources)             \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)               \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareVirtualClusterBundle)        \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitVirtualClusterBundle)         \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnVirtualClusterBundle)         \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedVirtualClusterBundles) \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestObjectSpillage)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)                    \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)                     \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)                        \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTasksInfo)                       \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)                     \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTaskFailureCause)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
@@ -140,6 +144,29 @@ class NodeManagerServiceHandler {
   virtual void HandleReleaseUnusedBundles(ReleaseUnusedBundlesRequest request,
                                           ReleaseUnusedBundlesReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
+  /// Handle a `PrepareVirtualClusterBundle` request.
+  virtual void HandlePrepareVirtualClusterBundle(
+      rpc::PrepareVirtualClusterBundleRequest request,
+      rpc::PrepareVirtualClusterBundleReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  /// Handle a `CommitVirtualClusterBundle` request.
+  virtual void HandleCommitVirtualClusterBundle(
+      rpc::CommitVirtualClusterBundleRequest request,
+      rpc::CommitVirtualClusterBundleReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  /// Handle a `ReturnVirtualClusterBundle` request.
+  virtual void HandleReturnVirtualClusterBundle(
+      rpc::ReturnVirtualClusterBundleRequest request,
+      rpc::ReturnVirtualClusterBundleReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  /// Handle a `ReleaseUnusedVirtualClusterBundles` request.
+  virtual void HandleReleaseUnusedVirtualClusterBundles(
+      rpc::ReleaseUnusedVirtualClusterBundlesRequest request,
+      rpc::ReleaseUnusedVirtualClusterBundlesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetSystemConfig(GetSystemConfigRequest request,
                                      GetSystemConfigReply *reply,

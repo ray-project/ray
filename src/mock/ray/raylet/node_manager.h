@@ -58,6 +58,30 @@ class MockNodeManager : public NodeManager {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
+              HandlePrepareVirtualClusterBundle,
+              (rpc::PrepareVirtualClusterBundleRequest request,
+               rpc::PrepareVirtualClusterBundleReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
+              HandleCommitVirtualClusterBundle,
+              (rpc::CommitVirtualClusterBundleRequest request,
+               rpc::CommitVirtualClusterBundleReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
+              HandleReturnVirtualClusterBundle,
+              (rpc::ReturnVirtualClusterBundleRequest request,
+               rpc::ReturnVirtualClusterBundleReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
+              HandleReleaseUnusedVirtualClusterBundles,
+              (rpc::ReleaseUnusedVirtualClusterBundlesRequest request,
+               rpc::ReleaseUnusedVirtualClusterBundlesReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
               HandleRequestWorkerLease,
               (rpc::RequestWorkerLeaseRequest request,
                rpc::RequestWorkerLeaseReply *reply,

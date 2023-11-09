@@ -484,6 +484,44 @@ void raylet::RayletClient::ReleaseUnusedBundles(
       });
 }
 
+void raylet::RayletClient::PrepareVirtualClusterBundle(
+    const VirtualClusterBundleSpec &bundle_spec,
+    const ray::rpc::ClientCallback<ray::rpc::PrepareVirtualClusterBundleReply>
+        &callback) {
+  rpc::PrepareVirtualClusterBundleRequest request;
+  request.set_virtual_cluster_id(bundle_spec.GetVirtualClusterId().Binary());
+  *request.mutable_bundle_spec() = bundle_spec.GetMessage();
+  grpc_client_->PrepareVirtualClusterBundle(request, callback);
+}
+
+void raylet::RayletClient::CommitVirtualClusterBundle(
+    const VirtualClusterID &virtual_cluster_id,
+    const ray::rpc::ClientCallback<ray::rpc::CommitVirtualClusterBundleReply> &callback) {
+  rpc::CommitVirtualClusterBundleRequest request;
+  request.set_virtual_cluster_id(virtual_cluster_id.Binary());
+
+  grpc_client_->CommitVirtualClusterBundle(request, callback);
+}
+
+void raylet::RayletClient::ReturnVirtualClusterBundle(
+    const VirtualClusterID &virtual_cluster_id,
+    const ray::rpc::ClientCallback<ray::rpc::ReturnVirtualClusterBundleReply> &callback) {
+  rpc::ReturnVirtualClusterBundleRequest request;
+  request.set_virtual_cluster_id(virtual_cluster_id.Binary());
+  grpc_client_->ReturnVirtualClusterBundle(request, callback);
+}
+
+void raylet::RayletClient::ReleaseUnusedVirtualClusterBundles(
+    const std::vector<VirtualClusterID> &virtual_cluster_ids,
+    const ray::rpc::ClientCallback<ray::rpc::ReleaseUnusedVirtualClusterBundlesReply>
+        &callback) {
+  rpc::ReleaseUnusedVirtualClusterBundlesRequest request;
+  for (const auto &vc_id : virtual_cluster_ids) {
+    request.add_virtual_cluster_ids(vc_id.Binary());
+  }
+  grpc_client_->ReleaseUnusedVirtualClusterBundles(request, callback);
+}
+
 void raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address,
     const std::vector<ObjectID> &object_ids,

@@ -120,6 +120,35 @@ message CancelResourceReserveRequest {
 message CancelResourceReserveReply {
 }
 
+message PrepareVirtualClusterBundleRequest {
+  bytes virtual_cluster_id = 1;
+  // 1 virtual cluster can only have 1 bundle on a node.
+  VirtualClusterBundle bundle_spec = 2;
+}
+
+message PrepareVirtualClusterBundleReply {
+  // The status if prepare request was successful.
+  bool success = 1;
+}
+
+message CommitVirtualClusterBundleRequest {
+  bytes virtual_cluster_id = 1;
+}
+
+message CommitVirtualClusterBundleReply {}
+
+message ReturnVirtualClusterBundleRequest {
+  bytes virtual_cluster_id = 1;
+}
+
+message ReturnVirtualClusterBundleReply {}
+
+message ReleaseUnusedVirtualClusterBundlesRequest {
+  repeated bytes virtual_cluster_ids = 1;
+}
+message ReleaseUnusedVirtualClusterBundlesReply {}
+
+
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
   // Port of the leased worker that we are now returning.
@@ -396,6 +425,22 @@ service NodeManagerService {
   // Return resource for the raylet.
   rpc CancelResourceReserve(CancelResourceReserveRequest)
       returns (CancelResourceReserveReply);
+  // Begins the reservation of resources for a virtual cluster bundle on a node.
+  // This is the initial phase of the two-phase commit (2PC) for atomic virtual cluster
+  // bundle creation.
+  rpc PrepareVirtualClusterBundle(PrepareVirtualClusterBundleRequest)
+      returns (PrepareVirtualClusterBundleReply);
+  // Finalizes the reservation of resources for a virtual cluster bundle on a node.
+  // This is the commit phase of the two-phase commit (2PC) for atomic virtual cluster
+  // bundle creation.
+  rpc CommitVirtualClusterBundle(CommitVirtualClusterBundleRequest)
+      returns (CommitVirtualClusterBundleReply);
+  // Releases the resources reserved for a virtual cluster bundle on a node.
+  rpc ReturnVirtualClusterBundle(ReturnVirtualClusterBundleRequest)
+      returns (ReturnVirtualClusterBundleReply);
+  // Release unused virtual cluster bundles identified by virtual_cluster_ids.
+  rpc ReleaseUnusedVirtualClusterBundles(ReleaseUnusedVirtualClusterBundlesRequest)
+      returns (ReleaseUnusedVirtualClusterBundlesReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
