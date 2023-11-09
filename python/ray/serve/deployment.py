@@ -330,6 +330,7 @@ class Deployment:
             app_name="",
             missing_ok=True,
             sync=sync,
+            use_new_handle_api=False,
         )
 
     def options(
@@ -338,8 +339,6 @@ class Deployment:
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-        init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-        init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
@@ -354,6 +353,8 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+        _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+        _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
@@ -423,11 +424,11 @@ class Deployment:
         if version is DEFAULT.VALUE:
             version = self._version
 
-        if init_args is DEFAULT.VALUE:
-            init_args = self._replica_config.init_args
+        if _init_args is DEFAULT.VALUE:
+            _init_args = self._replica_config.init_args
 
-        if init_kwargs is DEFAULT.VALUE:
-            init_kwargs = self._replica_config.init_kwargs
+        if _init_kwargs is DEFAULT.VALUE:
+            _init_kwargs = self._replica_config.init_kwargs
 
         if route_prefix is DEFAULT.VALUE:
             # Default is to keep the previous value
@@ -466,8 +467,8 @@ class Deployment:
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
+            init_args=_init_args,
+            init_kwargs=_init_kwargs,
             ray_actor_options=ray_actor_options,
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
@@ -495,8 +496,6 @@ class Deployment:
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-        init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-        init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
@@ -528,8 +527,6 @@ class Deployment:
             func_or_class=func_or_class,
             name=name,
             version=version,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
             route_prefix=route_prefix,
             num_replicas=num_replicas,
             ray_actor_options=ray_actor_options,

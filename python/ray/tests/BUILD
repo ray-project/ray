@@ -15,7 +15,6 @@ py_library(
 py_test_module_list(
   files = [
     "test_dashboard.py",
-    "test_ray_cluster_with_external_redis.py",
   ],
   size = "large",
   tags = ["exclusive", "manual", "team:serverless"],
@@ -80,7 +79,7 @@ py_test_module_list(
     "test_client_reconnect.py",
   ],
   size = "large",
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -96,7 +95,7 @@ py_test_module_list(
     "test_client_library_integration.py",
   ],
   size = "medium",
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -122,6 +121,8 @@ py_test_module_list(
     "accelerators/test_neuron.py",
     "accelerators/test_tpu.py",
     "accelerators/test_nvidia_gpu.py",
+    "accelerators/test_hpu.py",
+    "accelerators/test_intel_gpu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -262,6 +263,7 @@ py_test_module_list(
     "test_top_level_api.py",
     "test_unhandled_error.py",
     "test_widgets.py",
+    "accelerators/test_accelerators.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -347,7 +349,7 @@ py_test_module_list(
     "test_dataclient_disconnect.py",
   ],
   size = "medium",
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:serverless"],
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -583,7 +585,7 @@ py_test_module_list(
   size = "large",
   name_suffix = "_client_mode",
   env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

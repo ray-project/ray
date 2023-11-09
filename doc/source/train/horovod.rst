@@ -37,7 +37,12 @@ Create a HorovodTrainer
 execute training. For Horovod, use a :class:`~ray.train.horovod.HorovodTrainer`
 that you can setup like this:
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    train_func = lambda: None
+
+.. testcode::
 
     from ray.train import ScalingConfig
     from ray.train.horovod import HorovodTrainer
@@ -54,7 +59,8 @@ irrespective of the training framework, for example, PyTorch or TensorFlow.
 To customize the backend setup, you can pass a
 :class:`~ray.train.horovod.HorovodConfig`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.train import ScalingConfig
     from ray.train.horovod import HorovodTrainer, HorovodConfig
@@ -73,7 +79,8 @@ Run a training function
 With a distributed training function and a Ray Train ``Trainer``, you are now
 ready to start training.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     trainer.fit()
 

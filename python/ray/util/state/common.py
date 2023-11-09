@@ -645,6 +645,8 @@ class WorkerState(StateSchema):
     end_time_ms: Optional[int] = state_column(
         filterable=False, detail=True, format_fn=Humanify.timestamp
     )
+    # the debugger port of the worker
+    debugger_port: Optional[int] = state_column(filterable=True, detail=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)

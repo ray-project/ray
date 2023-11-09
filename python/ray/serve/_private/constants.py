@@ -156,12 +156,6 @@ MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-# Message
-MULTI_APP_MIGRATION_MESSAGE = (
-    "Please see the documentation for ServeDeploySchema for more details on multi-app "
-    "config files."
-)
-
 DAG_DEPRECATION_MESSAGE = (
     "The DAG API is deprecated. Please use the recommended model composition pattern "
     "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
@@ -197,7 +191,7 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
 # Feature flag to enable new handle API.
 RAY_SERVE_ENABLE_NEW_HANDLE_API = (
-    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "0") == "1"
+    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "1") == "1"
 )
 
 # Feature flag to turn on node locality routing for proxies. Off by default.

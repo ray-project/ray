@@ -904,3 +904,12 @@ footer.col.footer > p {
     display: flex;
     align-items: stretch;
 }
+
+/* Kapa Ask AI button */
+#kapa-widget-container figure {
+    padding: 0 !important;
+  }
+  
+  .mantine-Modal-root figure {
+    padding: 0 !important;
+  }

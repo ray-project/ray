@@ -22,13 +22,15 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-    _resolve_paths_and_filesystem,
-    _unwrap_protocol,
 )
 from ray.data.datasource.file_meta_provider import (
     _get_file_infos_common_path_prefix,
     _get_file_infos_parallel,
     _get_file_infos_serial,
+)
+from ray.data.datasource.path_util import (
+    _resolve_paths_and_filesystem,
+    _unwrap_protocol,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
