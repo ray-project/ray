@@ -51,6 +51,7 @@ def test_fastapi_detected(manage_ray_with_telemetry):
         assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 1
         assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
         return True
+
     wait_for_condition(check_report_before_fastapi)
 
     app = FastAPI()
