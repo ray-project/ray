@@ -573,16 +573,18 @@ class ApplicationState:
 
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
+            deploy_info = deepcopy(info)
+            # Apply the application logging config to the deployment logging config
+            # if it is not set.
             if (
                 self._target_state.config
                 and self._target_state.config.logging_config
-                and info.deployment_config.logging_config is None
+                and deploy_info.deployment_config.logging_config is None
             ):
-                info.deployment_config.logging_config = (
+                deploy_info.deployment_config.logging_config = (
                     self._target_state.config.logging_config
                 )
-
-            self.apply_deployment_info(deployment_name, info)
+            self.apply_deployment_info(deployment_name, deploy_info)
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
@@ -1031,7 +1033,6 @@ def override_deployment_info(
         options.pop("name", None)
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
-
         deployment_infos[deployment_name] = info.update(**override_options)
 
     # Overwrite ingress route prefix
