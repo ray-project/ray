@@ -1,0 +1,13 @@
+group: others
+steps:
+  # test
+  - label: ":java: java tests"
+    tags: java
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... core --build-only
+      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail 
+        "./java/test.sh"
+    depends_on: corebuild
+    job_env: forge

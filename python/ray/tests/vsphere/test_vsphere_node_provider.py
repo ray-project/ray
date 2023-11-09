@@ -1,4 +1,5 @@
 import copy
+import time
 from threading import RLock
 import pytest
 import threading
@@ -14,6 +15,7 @@ from ray.autoscaler._private.vsphere.config import (
 from ray.autoscaler._private.vsphere.gpu_utils import (
     split_vm_2_gpu_ids_map,
 )
+from ray.autoscaler._private.vsphere.utils import singleton_client
 
 _CLUSTER_NAME = "test"
 _PROVIDER_CONFIG = {
@@ -30,13 +32,14 @@ _PROVIDER_CONFIG = {
 
 def mock_vsphere_node_provider():
     def __init__(self, provider_config: dict, cluster_name: str):
-        self.vsphere_sdk_client = MagicMock()
         self.cluster_name = cluster_name
         self.tag_cache = {}
         self.cached_nodes = {}
-        self.vsphere_config = {}
-        self.vsphere_credentials = {}
-        self.pyvmomi_sdk_provider = MagicMock()
+        vsphere_credentials = provider_config["vsphere_config"]["credentials"]
+        self.vsphere_credentials = vsphere_credentials
+        self.vsphere_config = provider_config["vsphere_config"]
+        self.get_pyvmomi_sdk_provider = MagicMock()
+        self.get_vsphere_sdk_client = MagicMock()
 
     with patch.object(VsphereNodeProvider, "__init__", __init__):
         node_provider = VsphereNodeProvider(_PROVIDER_CONFIG, _CLUSTER_NAME)
@@ -45,10 +48,9 @@ def mock_vsphere_node_provider():
 
 def test_non_terminated_nodes_returns_no_node():
     """There is no node in vSphere"""
-
     vnp = mock_vsphere_node_provider()
     vnp.lock = RLock()
-    vnp.vsphere_sdk_client.vcenter.VM.list.return_value = []
+    vnp.get_vsphere_sdk_client().vcenter.VM.list.return_value = []
 
     nodes = vnp.non_terminated_nodes({})  # assert
     assert len(nodes) == 0
@@ -57,11 +59,11 @@ def test_non_terminated_nodes_returns_no_node():
 def test_non_terminated_nodes_returns_nodes_in_powered_off_creating_state():
     vnp = mock_vsphere_node_provider()
     vnp.lock = RLock()
-    vnp.vsphere_sdk_client.vcenter.VM.list.return_value = [
+    vnp.get_vsphere_sdk_client().vcenter.VM.list.return_value = [
         MagicMock(vm="vm1"),
         MagicMock(vm="vm2"),
     ]
-    vnp.vsphere_sdk_client.vcenter.vm.Power.get.side_effect = [
+    vnp.get_vsphere_sdk_client().vcenter.vm.Power.get.side_effect = [
         MagicMock(state="POWERED_ON"),
         MagicMock(state="POWERED_OFF"),
     ]
@@ -85,11 +87,11 @@ def test_non_terminated_nodes_with_custom_tag_filters():
     """Test nodes with custom tag filters"""
     vnp = mock_vsphere_node_provider()
     vnp.lock = RLock()
-    vnp.vsphere_sdk_client.vcenter.VM.list.return_value = [
+    vnp.get_vsphere_sdk_client().vcenter.VM.list.return_value = [
         MagicMock(vm="vm1"),
         MagicMock(vm="vm2"),
     ]
-    vnp.vsphere_sdk_client.vcenter.vm.Power.get.side_effect = [
+    vnp.get_vsphere_sdk_client().vcenter.vm.Power.get.side_effect = [
         MagicMock(state="POWERED_ON"),
         MagicMock(state="POWERED_OFF"),
     ]
@@ -114,11 +116,11 @@ def test_non_terminated_nodes_with_multiple_filters_not_matching():
     """Test nodes with tag filters not matching"""
     vnp = mock_vsphere_node_provider()
     vnp.lock = RLock()
-    vnp.vsphere_sdk_client.vcenter.VM.list.return_value = [
+    vnp.get_vsphere_sdk_client().vcenter.VM.list.return_value = [
         MagicMock(vm="vm1"),
         MagicMock(vm="vm2"),
     ]
-    vnp.vsphere_sdk_client.vcenter.vm.Power.get.side_effect = [
+    vnp.get_vsphere_sdk_client().vcenter.vm.Power.get.side_effect = [
         MagicMock(state="POWERED_ON"),
         MagicMock(state="POWERED_OFF"),
     ]
@@ -173,7 +175,7 @@ def test_create_nodes():
     mock_vm2.name = "test-node-2"
     mock_vm2.vm = "node-2"
 
-    c = vnp.vsphere_sdk_client
+    c = vnp.get_vsphere_sdk_client()
     c.vcenter.VM.list.return_value = [mock_vm1, mock_vm2]
     c.tagging.TagAssociation.list_attached_tags.return_value = ["test_tag_id1"]
 
@@ -213,15 +215,15 @@ def test_get_vm():
 def test_create_instant_clone_node(mock_wait_task, mock_ic_spec, mock_relo_spec):
     vnp = mock_vsphere_node_provider()
     VM.InstantCloneSpec = MagicMock(return_value="Clone Spec")
-    vnp.vsphere_sdk_client.vcenter.VM.instant_clone.return_value = "test_id_1"
-    vnp.vsphere_sdk_client.vcenter.vm.Power.stop.return_value = None
+    vnp.get_vsphere_sdk_client().vcenter.VM.instant_clone.return_value = "test_id_1"
+    vnp.get_vsphere_sdk_client().vcenter.vm.Power.stop.return_value = None
     vnp.get_pyvmomi_obj = MagicMock(return_value=MagicMock())
     vnp.set_node_tags = MagicMock(return_value=None)
-    vnp.vsphere_sdk_client.vcenter.VM.list = MagicMock(
+    vnp.get_vsphere_sdk_client().vcenter.VM.list = MagicMock(
         return_value=[MagicMock(vm="test VM")]
     )
     vnp.connect_nics = MagicMock(return_value=None)
-    vnp.vsphere_sdk_client.vcenter.vm.hardware.Ethernet.list.return_value = None
+    vnp.get_vsphere_sdk_client().vcenter.vm.hardware.Ethernet.list.return_value = None
     vnp.get_vm = MagicMock(return_value="test VM")
 
     vm_clone_from = MagicMock(vm="test-1")
@@ -252,10 +254,10 @@ def test__create_node():
         side_effect=mock_create_instant_clone_node()
     )
 
-    vnp.vsphere_sdk_client.vcenter.vm.Power.get.return_value = HardPower.Info(
+    vnp.get_vsphere_sdk_client().vcenter.vm.Power.get.return_value = HardPower.Info(
         state=HardPower.State.POWERED_OFF
     )
-    vnp.vsphere_sdk_client.vcenter.vm.Power.start.return_value = None
+    vnp.get_vsphere_sdk_client().vcenter.vm.Power.start.return_value = None
 
     vnp.get_category = MagicMock(return_value=None)
     vnp.create_category = MagicMock(return_value="category_id")
@@ -282,8 +284,10 @@ def test_get_tag():
     vnp = mock_vsphere_node_provider()
     mock_tag = MagicMock()
     mock_tag.name = "ray-node-name"
-    vnp.vsphere_sdk_client.tagging.Tag.list_tags_for_category.return_value = ["tag_1"]
-    vnp.vsphere_sdk_client.tagging.Tag.get.return_value = mock_tag
+    vnp.get_vsphere_sdk_client().tagging.Tag.list_tags_for_category.return_value = [
+        "tag_1"
+    ]
+    vnp.get_vsphere_sdk_client().tagging.Tag.get.return_value = mock_tag
     assert vnp.get_tag("ray-node-name", "test_category_id") == "tag_1"
 
 
@@ -291,26 +295,28 @@ def test_get_tag_return_none():
     vnp = mock_vsphere_node_provider()
     mock_tag = MagicMock()
     mock_tag.name = "ray-node-name"
-    vnp.vsphere_sdk_client.tagging.Tag.list_tags_for_category.return_value = ["tag_1"]
-    vnp.vsphere_sdk_client.tagging.Tag.get.return_value = mock_tag
+    vnp.get_vsphere_sdk_client().tagging.Tag.list_tags_for_category.return_value = [
+        "tag_1"
+    ]
+    vnp.get_vsphere_sdk_client().tagging.Tag.get.return_value = mock_tag
     assert vnp.get_tag("ray-node-name1", "test_category_id") is None
 
 
 def test_create_node_tag():
     vnp = mock_vsphere_node_provider()
-    vnp.vsphere_sdk_client.tagging.Tag.CreateSpec.return_value = "tag_spec"
-    vnp.vsphere_sdk_client.tagging.Tag.create.return_value = "tag_id_1"
+    vnp.get_vsphere_sdk_client().tagging.Tag.CreateSpec.return_value = "tag_spec"
+    vnp.get_vsphere_sdk_client().tagging.Tag.create.return_value = "tag_id_1"
     tag_id = vnp.create_node_tag("ray_node_tag", "test_category_id")
     assert tag_id == "tag_id_1"
 
 
 def test_get_category():
     vnp = mock_vsphere_node_provider()
-    vnp.vsphere_sdk_client.tagging.Category.list.return_value = ["category_1"]
+    vnp.get_vsphere_sdk_client().tagging.Category.list.return_value = ["category_1"]
 
     mock_category = MagicMock()
     mock_category.name = "ray"
-    vnp.vsphere_sdk_client.tagging.Category.get.return_value = mock_category
+    vnp.get_vsphere_sdk_client().tagging.Category.get.return_value = mock_category
     category = vnp.get_category()
     assert category == "category_1"
     mock_category.name = "default"
@@ -321,8 +327,10 @@ def test_get_category():
 def test_create_category():
     vnp = mock_vsphere_node_provider()
 
-    vnp.vsphere_sdk_client.tagging.Category.CreateSpec.return_value = "category_spec"
-    vnp.vsphere_sdk_client.tagging.Category.create.return_value = "category_id_1"
+    vnp.get_vsphere_sdk_client().tagging.Category.CreateSpec.return_value = (
+        "category_spec"
+    )
+    vnp.get_vsphere_sdk_client().tagging.Category.create.return_value = "category_id_1"
     category_id = vnp.create_category()
     assert category_id == "category_id_1"
 
@@ -339,20 +347,20 @@ def test_terminate_node():
 
     vnp._get_cached_node = MagicMock(side_effect=side_effect)
     vnp.cached_nodes = cached_vms
-    vnp.vsphere_sdk_client.vcenter.vm.Power.stop = MagicMock()
+    vnp.get_vsphere_sdk_client().vcenter.vm.Power.stop = MagicMock()
     vnp.tag_cache = {}
     vnp.terminate_node("vm_2")
-    vnp.vsphere_sdk_client.vcenter.vm.Power.stop.assert_called_once_with("vm_2")
+    vnp.get_vsphere_sdk_client().vcenter.vm.Power.stop.assert_called_once_with("vm_2")
     assert len(vnp.cached_nodes) == 1
 
 
 def test__get_node():
     vnp = mock_vsphere_node_provider()
     vnp.non_terminated_nodes = MagicMock()
-    vnp.vsphere_sdk_client.vcenter.VM.list.return_value = ["vm_1"]
+    vnp.get_vsphere_sdk_client().vcenter.VM.list.return_value = ["vm_1"]
     vm = vnp._get_node("node_id_1")
     assert vm == "vm_1"
-    vnp.vsphere_sdk_client.vcenter.VM.list.return_value = []
+    vnp.get_vsphere_sdk_client().vcenter.VM.list.return_value = []
     vm = vnp._get_node("node_id_1")
     assert vm is None
 
@@ -545,7 +553,6 @@ def test_split_vm_2_gpu_ids_map():
         "frozen-vm-3": ["0000:3b:00.5"],
     }
     requested_gpu_num = 1
-    node_number = 3
     expected_result = [
         {"frozen-vm-1": ["0000:3b:00.0"]},
         {"frozen-vm-1": ["0000:3b:00.1"]},
@@ -555,23 +562,53 @@ def test_split_vm_2_gpu_ids_map():
         {"frozen-vm-3": ["0000:3b:00.5"]},
     ]
 
-    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
+    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num)
     assert result == expected_result
 
     # Test a valid case 2
     requested_gpu_num = 2
-    node_number = 2
     expected_result = [
         {"frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1"]},
         {"frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"]},
     ]
-    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
+    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num)
     assert result == expected_result
 
-    # Test an invalid case: No enough available GPU cards to assigned to nodes
-    node_number = 30
-    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
-    assert result == []
+
+def test_set_placeholder():
+    vnp = mock_vsphere_node_provider()
+    data = [
+        {"frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1"]},
+        {"frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"]},
+    ]
+    place_holder_number = 3
+    expected_result = [
+        {"frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1"]},
+        {"frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"]},
+        {},
+        {},
+        {},
+    ]
+
+    vnp.set_placeholder(data, place_holder_number)
+    assert data == expected_result
+
+
+def test_singleton():
+    @singleton_client
+    class SingletonClass:
+        def __init__(self, value):
+            self.value = value
+
+    singleton1 = SingletonClass(1)
+    singleton1.ensure_connect = MagicMock()
+    singleton2 = SingletonClass(2)
+
+    assert singleton1 is singleton2
+    singleton2.ensure_connect.assert_not_called()
+    with patch("time.time", return_value=time.time() + 1000):
+        singleton3 = SingletonClass(3)
+        singleton3.ensure_connect.assert_called_once()
 
 
 if __name__ == "__main__":

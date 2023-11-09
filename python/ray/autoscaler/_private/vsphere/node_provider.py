@@ -27,11 +27,9 @@ from ray.autoscaler._private.vsphere.gpu_utils import (
     get_vm_2_gpu_ids_map,
     split_vm_2_gpu_ids_map,
 )
-from ray.autoscaler._private.vsphere.sdk_provider import (
-    ClientType,
-    VmwSdkProviderFactory,
-)
+from ray.autoscaler._private.vsphere.pyvmomi_sdk_provider import PyvmomiSdkProvider
 from ray.autoscaler._private.vsphere.utils import Constants, is_ipv4
+from ray.autoscaler._private.vsphere.vsphere_sdk_provider import VsphereSdkProvider
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
@@ -67,20 +65,6 @@ class VsphereNodeProvider(NodeProvider):
         self.vsphere_credentials = vsphere_credentials
         self.vsphere_config = provider_config["vsphere_config"]
 
-        self.vsphere_sdk_provider = VmwSdkProviderFactory(
-            vsphere_credentials["server"],
-            vsphere_credentials["user"],
-            vsphere_credentials["password"],
-            ClientType.AUTOMATION_SDK,
-        ).sdk_provider
-        self.vsphere_sdk_client = self.vsphere_sdk_provider.vsphere_sdk_client
-        self.pyvmomi_sdk_provider = VmwSdkProviderFactory(
-            vsphere_credentials["server"],
-            vsphere_credentials["user"],
-            vsphere_credentials["password"],
-            ClientType.PYVMOMI_SDK,
-        ).sdk_provider
-
         # Tags that we believe to actually be on VM.
         self.tag_cache = {}
         # Tags that we will soon upload.
@@ -92,13 +76,29 @@ class VsphereNodeProvider(NodeProvider):
         # excessive DescribeInstances requests.
         self.cached_nodes: Dict[str, VM] = {}
 
+    def get_vsphere_sdk_client(self):
+        return VsphereSdkProvider(
+            self.vsphere_credentials["server"],
+            self.vsphere_credentials["user"],
+            self.vsphere_credentials["password"],
+            Constants.SessionType.UNVERIFIED,
+        ).vsphere_sdk_client
+
+    def get_pyvmomi_sdk_provider(self):
+        return PyvmomiSdkProvider(
+            self.vsphere_credentials["server"],
+            self.vsphere_credentials["user"],
+            self.vsphere_credentials["password"],
+            Constants.SessionType.UNVERIFIED,
+        )
+
     def check_frozen_vm_status(self, frozen_vm_name):
         """
         This function will help check if the frozen VM with the specific name is
         existing and in the frozen state. If the frozen VM is existing and off, this
         function will also help to power on the frozen VM and wait until it is frozen.
         """
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        vm = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
             [vim.VirtualMachine], frozen_vm_name
         )
 
@@ -126,10 +126,14 @@ class VsphereNodeProvider(NodeProvider):
         matched_tags = {}
         all_tags = {}
 
-        for tag_id in self.vsphere_sdk_client.tagging.TagAssociation.list_attached_tags(
+        for (
+            tag_id
+        ) in self.get_vsphere_sdk_client().tagging.TagAssociation.list_attached_tags(
             dynamic_id
         ):
-            vsphere_vm_tag = self.vsphere_sdk_client.tagging.Tag.get(tag_id=tag_id).name
+            vsphere_vm_tag = (
+                self.get_vsphere_sdk_client().tagging.Tag.get(tag_id=tag_id).name
+            )
             tag_key_value = vsphere_tag_to_kv_pair(vsphere_vm_tag)
             if tag_key_value:
                 tag_key, tag_value = tag_key_value[0], tag_key_value[1]
@@ -149,7 +153,7 @@ class VsphereNodeProvider(NodeProvider):
         """
         with self.lock:
             nodes = []
-            vms = self.vsphere_sdk_client.vcenter.VM.list()
+            vms = self.get_vsphere_sdk_client().vcenter.VM.list()
             filters = tag_filters.copy()
             if TAG_RAY_CLUSTER_NAME not in tag_filters:
                 filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
@@ -163,7 +167,9 @@ class VsphereNodeProvider(NodeProvider):
 
                 if len(matched_tags) == len(filters):
                     # All the tags in the filters are matched on this vm
-                    power_status = self.vsphere_sdk_client.vcenter.vm.Power.get(vm_id)
+                    power_status = self.get_vsphere_sdk_client().vcenter.vm.Power.get(
+                        vm_id
+                    )
 
                     # Return VMs in powered-on and creating state
                     vsphere_node_status = all_tags.get(Constants.VSPHERE_NODE_STATUS)
@@ -176,13 +182,13 @@ class VsphereNodeProvider(NodeProvider):
             return nodes
 
     def is_running(self, node_id):
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        vm = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
             [vim.VirtualMachine], obj_id=node_id
         )
         return vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn
 
     def is_terminated(self, node_id):
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        vm = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
             [vim.VirtualMachine], obj_id=node_id
         )
         if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
@@ -208,7 +214,7 @@ class VsphereNodeProvider(NodeProvider):
     def external_ip(self, node_id):
         # Return the external IP of the VM
         # Fetch vSphere VM object
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        vm = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
             [vim.VirtualMachine], obj_id=node_id
         )
         if vm.guest.net:
@@ -217,8 +223,8 @@ class VsphereNodeProvider(NodeProvider):
                     logger.debug("Fetch IP {} for VM {}".format(ipaddr, vm.name))
                     return ipaddr
         else:
-            logger.warning("VM Net is not ready")
-        logger.warning("External IPv4 address is not available")
+            logger.warning(f"Net of VM {vm.name} is not ready")
+        logger.warning(f"External IPv4 address of VM {vm.name} is not available")
         return None
 
     def internal_ip(self, node_id):
@@ -268,7 +274,7 @@ class VsphereNodeProvider(NodeProvider):
         number_of_reused_nodes = 0
         # Try to reuse previously stopped nodes with compatible configs
         if self.cache_stopped_nodes:
-            vms = self.vsphere_sdk_client.vcenter.VM.list(
+            vms = self.get_vsphere_sdk_client().vcenter.VM.list(
                 VM.FilterSpec(
                     power_states={
                         HardPower.State.POWERED_OFF,
@@ -302,7 +308,7 @@ class VsphereNodeProvider(NodeProvider):
                 )
                 for node_id in reuse_node_ids:
                     logger.debug("Powering on VM with id {}".format(node_id))
-                    self.vsphere_sdk_client.vcenter.vm.Power.start(node_id)
+                    self.get_vsphere_sdk_client().vcenter.vm.Power.start(node_id)
                 to_be_launched_node_count -= len(reuse_node_ids)
 
         created_nodes_dict = {}
@@ -333,7 +339,9 @@ class VsphereNodeProvider(NodeProvider):
     def attach_tag(self, vm_id, resource_type, tag_id):
         dynamic_id = DynamicID(type=resource_type, id=vm_id)
         try:
-            self.vsphere_sdk_client.tagging.TagAssociation.attach(tag_id, dynamic_id)
+            self.get_vsphere_sdk_client().tagging.TagAssociation.attach(
+                tag_id, dynamic_id
+            )
             logger.debug(f"Tag {tag_id} attached on VM {dynamic_id}")
         except Exception as e:
             logger.warning(f"Check that the tag is attachable to {resource_type}")
@@ -347,22 +355,26 @@ class VsphereNodeProvider(NodeProvider):
         dynamic_id = DynamicID(type=Constants.TYPE_OF_RESOURCE, id=vm_id)
 
         # List all the tags present on the VM.
-        for tag_id in self.vsphere_sdk_client.tagging.TagAssociation.list_attached_tags(
+        for (
+            tag_id
+        ) in self.get_vsphere_sdk_client().tagging.TagAssociation.list_attached_tags(
             dynamic_id
         ):
-            vsphere_vm_tag = self.vsphere_sdk_client.tagging.Tag.get(tag_id=tag_id).name
+            vsphere_vm_tag = (
+                self.get_vsphere_sdk_client().tagging.Tag.get(tag_id=tag_id).name
+            )
             tag_key_value = vsphere_tag_to_kv_pair(vsphere_vm_tag)
             tag_key = tag_key_value[0] if tag_key_value else None
             if tag_key == tag_key_to_remove:
                 # Remove the tag matching the key passed.
                 logger.debug("Removing tag {} from the VM {}".format(tag_key, vm_id))
-                self.vsphere_sdk_client.tagging.TagAssociation.detach(
+                self.get_vsphere_sdk_client().tagging.TagAssociation.detach(
                     tag_id, dynamic_id
                 )
                 break
 
     def get_frozen_vm_obj(self):
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        vm = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
             [vim.VirtualMachine], self.frozen_vm_name
         )
         return vm
@@ -382,7 +394,9 @@ class VsphereNodeProvider(NodeProvider):
         # it as a formal constant.
         while time.time() - start < Constants.CREATING_TAG_TIMEOUT:
             time.sleep(0.5)
-            vms = self.vsphere_sdk_client.vcenter.VM.list(VM.FilterSpec(names=names))
+            vms = self.get_vsphere_sdk_client().vcenter.VM.list(
+                VM.FilterSpec(names=names)
+            )
 
             if len(vms) == 1:
                 vm_id = vms[0].vm
@@ -400,7 +414,7 @@ class VsphereNodeProvider(NodeProvider):
         # If resource pool is not provided in the config yaml, then the resource pool
         # of the frozen VM will also be the resource pool of the new VM.
         resource_pool = (
-            self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
                 [vim.ResourcePool], node_config["resource_pool"]
             )
             if "resource_pool" in node_config and node_config["resource_pool"]
@@ -409,7 +423,7 @@ class VsphereNodeProvider(NodeProvider):
         # If datastore is not provided in the config yaml, then the datastore
         # of the frozen VM will also be the resource pool of the new VM.
         datastore = (
-            self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
                 [vim.Datastore], node_config["datastore"]
             )
             if "datastore" in node_config and node_config["datastore"]
@@ -429,8 +443,16 @@ class VsphereNodeProvider(NodeProvider):
 
         requested_gpu_num = resources.get("GPU", 0)
         if requested_gpu_num > 0:
+            if not gpu_ids_map:
+                logger.error(
+                    f"No available GPU card to assigned to node {vm_name_target}"
+                )
+                raise ValueError(
+                    f"No available GPU card to assigned to node {vm_name_target}"
+                )
+
             for vm_name in gpu_ids_map:
-                parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+                parent_vm = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
                     [vim.VirtualMachine], vm_name
                 )
                 to_be_plugged_gpu = gpu_ids_map[vm_name]
@@ -447,7 +469,7 @@ class VsphereNodeProvider(NodeProvider):
         WaitForTask(parent_vm.InstantClone_Task(spec=instant_clone_spec))
         logger.info(f"Clone VM {vm_name_target} from Frozen-VM {parent_vm.name}")
 
-        cloned_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        cloned_vm = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
             [vim.VirtualMachine], vm_name_target
         )
 
@@ -462,7 +484,9 @@ class VsphereNodeProvider(NodeProvider):
             logger.debug(
                 "vm.hardware.Cpu.update({}, {})".format(cloned_vm.name, update_spec)
             )
-            self.vsphere_sdk_client.vcenter.vm.hardware.Cpu.update(vm_id, update_spec)
+            self.get_vsphere_sdk_client().vcenter.vm.hardware.Cpu.update(
+                vm_id, update_spec
+            )
 
         if "Memory" in resources:
             # Update Memory
@@ -470,12 +494,14 @@ class VsphereNodeProvider(NodeProvider):
             logger.debug(
                 "vm.hardware.Memory.update({}, {})".format(cloned_vm.name, update_spec)
             )
-            self.vsphere_sdk_client.vcenter.vm.hardware.Memory.update(
+            self.get_vsphere_sdk_client().vcenter.vm.hardware.Memory.update(
                 vm_id, update_spec
             )
 
         if to_be_plugged_gpu:
-            add_gpus_to_vm(cloned_vm.name, to_be_plugged_gpu)
+            add_gpus_to_vm(
+                self.get_pyvmomi_sdk_provider(), cloned_vm.name, to_be_plugged_gpu
+            )
 
         return vm
 
@@ -488,7 +514,7 @@ class VsphereNodeProvider(NodeProvider):
         exception_happened = False
         vm_names = []
 
-        res_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        res_pool = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
             [vim.ResourcePool], node_config["frozen_vm"]["resource_pool"]
         )
         # In vSphere, for any user-created resource pool, the cluster object is the
@@ -496,7 +522,7 @@ class VsphereNodeProvider(NodeProvider):
         cluster = res_pool.parent.parent
 
         host_filter_spec = Host.FilterSpec(clusters={cluster._moId})
-        hosts = self.vsphere_sdk_client.vcenter.Host.list(host_filter_spec)
+        hosts = self.get_vsphere_sdk_client().vcenter.Host.list(host_filter_spec)
 
         futures_frozen_vms = []
         with ThreadPoolExecutor(max_workers=len(hosts)) as executor:
@@ -546,7 +572,7 @@ class VsphereNodeProvider(NodeProvider):
                 "The datastore name must be provided when deploying frozen"
                 "VM from OVF"
             )
-        datastore_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        datastore_mo = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
             [vim.Datastore], datastore_name
         )
         datastore_id = datastore_mo._moId
@@ -554,8 +580,8 @@ class VsphereNodeProvider(NodeProvider):
             rp_filter_spec = ResourcePool.FilterSpec(
                 names={node_config["frozen_vm"]["resource_pool"]}
             )
-            resource_pool_summaries = self.vsphere_sdk_client.vcenter.ResourcePool.list(
-                rp_filter_spec
+            resource_pool_summaries = (
+                self.get_vsphere_sdk_client().vcenter.ResourcePool.list(rp_filter_spec)
             )
             if not resource_pool_summaries:
                 raise ValueError(
@@ -570,7 +596,7 @@ class VsphereNodeProvider(NodeProvider):
                     "The cluster name must be provided when deploying a single frozen"
                     " VM from OVF"
                 )
-            cluster_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            cluster_mo = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
                 [vim.ClusterComputeResource], cluster_name
             )
             node_config["host_id"] = cluster_mo.host[0]._moId
@@ -579,7 +605,7 @@ class VsphereNodeProvider(NodeProvider):
         # Find and use the OVF library item defined in the manifest file.
         lib_item = node_config["frozen_vm"]["library_item"]
         find_spec = Item.FindSpec(name=lib_item)
-        item_ids = self.vsphere_sdk_client.content.library.Item.find(find_spec)
+        item_ids = self.get_vsphere_sdk_client().content.library.Item.find(find_spec)
 
         if len(item_ids) < 1:
             raise ValueError(
@@ -598,7 +624,7 @@ class VsphereNodeProvider(NodeProvider):
             resource_pool_id=resource_pool_id,
             host_id=node_config.get("host_id"),
         )
-        ovf_summary = self.vsphere_sdk_client.vcenter.ovf.LibraryItem.filter(
+        ovf_summary = self.get_vsphere_sdk_client().vcenter.ovf.LibraryItem.filter(
             ovf_library_item_id=lib_item_id, target=deployment_target
         )
         logger.info("Found an OVF template: {} to deploy.".format(ovf_summary.name))
@@ -619,7 +645,7 @@ class VsphereNodeProvider(NodeProvider):
         )
 
         # Deploy the ovf template
-        result = self.vsphere_sdk_client.vcenter.ovf.LibraryItem.deploy(
+        result = self.get_vsphere_sdk_client().vcenter.ovf.LibraryItem.deploy(
             lib_item_id,
             deployment_target,
             deployment_spec,
@@ -652,32 +678,36 @@ class VsphereNodeProvider(NodeProvider):
 
         vm_id = result.resource_id.id
 
-        status = self.vsphere_sdk_client.vcenter.vm.Power.get(vm_id)
+        status = self.get_vsphere_sdk_client().vcenter.vm.Power.get(vm_id)
         if status.state != HardPower.State.POWERED_ON:
-            self.vsphere_sdk_client.vcenter.vm.Power.start(vm_id)
+            self.get_vsphere_sdk_client().vcenter.vm.Power.start(vm_id)
             logger.info("vm.Power.start({})".format(vm_id))
 
         # Get the created vm object
         vm = self.get_vm(result.resource_id.id)
-        vm_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj([vim.VirtualMachine], vm.name)
+        vm_mo = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
+            [vim.VirtualMachine], vm.name
+        )
         if wait_until_frozen:
             self.wait_until_vm_is_frozen(vm_mo)
 
         return vm_mo
 
     def delete_vm(self, vm_name):
-        vms = self.vsphere_sdk_client.vcenter.VM.list(VM.FilterSpec(names={vm_name}))
+        vms = self.get_vsphere_sdk_client().vcenter.VM.list(
+            VM.FilterSpec(names={vm_name})
+        )
 
         if len(vms) > 0:
             vm_id = vms[0].vm
 
-            status = self.vsphere_sdk_client.vcenter.vm.Power.get(vm_id)
+            status = self.get_vsphere_sdk_client().vcenter.vm.Power.get(vm_id)
 
             if status.state != HardPower.State.POWERED_OFF:
-                self.vsphere_sdk_client.vcenter.vm.Power.stop(vm_id)
+                self.get_vsphere_sdk_client().vcenter.vm.Power.stop(vm_id)
 
             logger.info("Deleting VM {}".format(vm_name))
-            self.vsphere_sdk_client.vcenter.VM.delete(vm_id)
+            self.get_vsphere_sdk_client().vcenter.VM.delete(vm_id)
 
     def wait_until_vm_is_frozen(self, vm):
         """The function waits until a VM goes into the frozen state."""
@@ -701,7 +731,7 @@ class VsphereNodeProvider(NodeProvider):
             if "schedule_policy" in self.vsphere_config
             else ""
         )
-        self.frozen_vms_resource_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        self.frozen_vms_resource_pool = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
             [vim.ResourcePool], self.frozen_vm_resource_pool_name
         )
         # Make all frozen vms on resource pool are power on and frozen
@@ -760,6 +790,10 @@ class VsphereNodeProvider(NodeProvider):
 
         return frozen_vm_obj
 
+    def set_placeholder(self, array_obj, place_holder_number):
+        for i in range(place_holder_number):
+            array_obj.append({})
+
     def _create_node(self, node_config, tags, count):
         created_nodes_dict = {}
         exception_happened = False
@@ -785,7 +819,9 @@ class VsphereNodeProvider(NodeProvider):
             # Fetch all availble frozen-vm + gpu-ids info into `vm_2_gpu_ids_map``
             if "resource_pool" in node_config["frozen_vm"]:
                 vm_2_gpu_ids_map = get_vm_2_gpu_ids_map(
-                    node_config["frozen_vm"]["resource_pool"], requested_gpu_num
+                    self.get_pyvmomi_sdk_provider(),
+                    node_config["frozen_vm"]["resource_pool"],
+                    requested_gpu_num,
                 )
             else:
                 gpu_ids = get_gpu_ids_from_vm(frozen_vm_obj, requested_gpu_num)
@@ -793,14 +829,19 @@ class VsphereNodeProvider(NodeProvider):
 
             # Split `vm_2_gpu_ids_map` for nodes
             gpu_ids_map_array = split_vm_2_gpu_ids_map(
-                vm_2_gpu_ids_map, requested_gpu_num, count
+                vm_2_gpu_ids_map, requested_gpu_num
             )
-            if not gpu_ids_map_array:
-                raise ValueError("No enough available GPU cards for all nodes")
+            if len(gpu_ids_map_array) < count:
+                logger.warning(
+                    f"The GPU card number cannot fulfill {count} Ray nodes, "
+                    f"but can fulfill {len(gpu_ids_map_array)} Ray nodes. "
+                    f"gpu_ids_map_array: {gpu_ids_map_array}"
+                )
+                # Avoid invalid index when accessing gpu_ids_map_array[i]
+                self.set_placeholder(gpu_ids_map_array, count - len(gpu_ids_map_array))
         else:
             # CPU node: Avoid invalid index when accessing gpu_ids_map_array[i]
-            for i in range(count):
-                gpu_ids_map_array.append([])
+            self.set_placeholder(gpu_ids_map_array, count)
 
         with ThreadPoolExecutor(max_workers=count) as executor:
             futures = [
@@ -814,7 +855,9 @@ class VsphereNodeProvider(NodeProvider):
                 )
                 for i in range(count)
             ]
-        for future in futures:
+        failed_vms_index = []
+        for i in range(count):
+            future = futures[i]
             try:
                 vm = future.result()
                 k = Constants.VSPHERE_NODE_STATUS
@@ -823,40 +866,46 @@ class VsphereNodeProvider(NodeProvider):
                 # if create succeed, we add a "created" tag
                 self.set_node_tags(vm.vm, vsphere_node_created_tag)
                 created_nodes_dict[vm.name] = vm
+                logger.info(f"VM {vm.name} is created.")
             except Exception as e:
                 logger.error(
                     "Exception occurred while creating or tagging VMs {}".format(e)
                 )
                 exception_happened = True
+                failed_vms_index.append(i)
+                logger.error(f"Failed creating VM {vm_names[i]}")
 
-        # We clean up all the created VMs if any exception occurs.
+        # We clean up the created VMs if any exception occurs to them
         if exception_happened:
             with ThreadPoolExecutor(max_workers=count) as executor:
                 futures = [
-                    executor.submit(self.delete_vm, vm_names[i]) for i in range(count)
+                    executor.submit(self.delete_vm, vm_names[i])
+                    for i in failed_vms_index
                 ]
             for future in futures:
                 _ = future.result()
-            raise RuntimeError("Failed creating VMs, exiting!")
+
+            if len(failed_vms_index) == count:
+                raise RuntimeError("Failed creating all VMs, exiting!")
 
         return created_nodes_dict
 
     def get_tag(self, tag_name, category_id):
-        for id in self.vsphere_sdk_client.tagging.Tag.list_tags_for_category(
+        for id in self.get_vsphere_sdk_client().tagging.Tag.list_tags_for_category(
             category_id
         ):
-            if tag_name == self.vsphere_sdk_client.tagging.Tag.get(id).name:
+            if tag_name == self.get_vsphere_sdk_client().tagging.Tag.get(id).name:
                 return id
         return None
 
     def create_node_tag(self, ray_node_tag, category_id):
         logger.debug(f"Creating {ray_node_tag} tag")
-        tag_spec = self.vsphere_sdk_client.tagging.Tag.CreateSpec(
+        tag_spec = self.get_vsphere_sdk_client().tagging.Tag.CreateSpec(
             ray_node_tag, "Ray node tag", category_id
         )
         tag_id = None
         try:
-            tag_id = self.vsphere_sdk_client.tagging.Tag.create(tag_spec)
+            tag_id = self.get_vsphere_sdk_client().tagging.Tag.create(tag_spec)
         except ErrorClients.Unauthorized as e:
             cli_logger.abort(f"Unathorised to create the tag. Exception: {e}")
         except Exception as e:
@@ -866,9 +915,9 @@ class VsphereNodeProvider(NodeProvider):
         return tag_id
 
     def get_category(self):
-        for id in self.vsphere_sdk_client.tagging.Category.list():
+        for id in self.get_vsphere_sdk_client().tagging.Category.list():
             if (
-                self.vsphere_sdk_client.tagging.Category.get(id).name
+                self.get_vsphere_sdk_client().tagging.Category.get(id).name
                 == Constants.NODE_CATEGORY
             ):
                 return id
@@ -878,7 +927,7 @@ class VsphereNodeProvider(NodeProvider):
         # Create RAY_NODE category. This category is associated with VMs and supports
         # multiple tags e.g. "Ray-Head-Node, Ray-Worker-Node-1 etc."
         cli_logger.info(f"Creating {Constants.NODE_CATEGORY} category")
-        category_spec = self.vsphere_sdk_client.tagging.Category.CreateSpec(
+        category_spec = self.get_vsphere_sdk_client().tagging.Category.CreateSpec(
             name=Constants.NODE_CATEGORY,
             description="Identifies Ray head node and worker nodes",
             cardinality=CategoryModel.Cardinality.MULTIPLE,
@@ -887,7 +936,9 @@ class VsphereNodeProvider(NodeProvider):
         category_id = None
 
         try:
-            category_id = self.vsphere_sdk_client.tagging.Category.create(category_spec)
+            category_id = self.get_vsphere_sdk_client().tagging.Category.create(
+                category_spec
+            )
         except ErrorClients.Unauthorized as e:
             cli_logger.abort(f"Unathorised to create the category. Exception: {e}")
         except Exception as e:
@@ -901,13 +952,13 @@ class VsphereNodeProvider(NodeProvider):
         if node_id is None:
             return
 
-        status = self.vsphere_sdk_client.vcenter.vm.Power.get(node_id)
+        status = self.get_vsphere_sdk_client().vcenter.vm.Power.get(node_id)
 
         if status.state != HardPower.State.POWERED_OFF:
-            self.vsphere_sdk_client.vcenter.vm.Power.stop(node_id)
+            self.get_vsphere_sdk_client().vcenter.vm.Power.stop(node_id)
             logger.debug("vm.Power.stop({})".format(node_id))
 
-        self.vsphere_sdk_client.vcenter.VM.delete(node_id)
+        self.get_vsphere_sdk_client().vcenter.VM.delete(node_id)
         logger.info("Deleted vm {}".format(node_id))
 
         # Pop node_id from cached_nodes and tag_cache only if not present
@@ -926,7 +977,9 @@ class VsphereNodeProvider(NodeProvider):
 
     def _get_node(self, node_id):
         """Get the node object from vSphere."""
-        vms = self.vsphere_sdk_client.vcenter.VM.list(VM.FilterSpec(vms={node_id}))
+        vms = self.get_vsphere_sdk_client().vcenter.VM.list(
+            VM.FilterSpec(vms={node_id})
+        )
         if len(vms) == 0:
             logger.warning("VM with name ({}) not found".format(node_id))
             return None

@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import Dict, List
+from typing import Dict, List, Optional, Union
 
 import pytest
 
@@ -571,6 +571,47 @@ class TestServeDeploySchema:
             "applications": [],
         }
         ServeDeploySchema.parse_obj(deploy_config_dict)
+
+    @pytest.mark.parametrize(
+        "input_val,error,output_val",
+        [
+            # Can be omitted and defaults to `None`.
+            (None, False, None),
+            # Can be an int or a float.
+            (50, False, 50),
+            (33.33, False, 33.33),  # "... repeating, of course."
+            # Can be 0 or 100, inclusive.
+            (0, False, 0.0),
+            (0.0, False, 0.0),
+            (100, False, 100.0),
+            (100.0, False, 100.0),
+            # Cannot be < 0 or > 100.
+            (-0.1, True, None),
+            (-1, True, None),
+            (100.1, True, None),
+            (101, True, None),
+        ],
+    )
+    def test_target_capacity(
+        self,
+        input_val: Union[None, int, float],
+        error: bool,
+        output_val: Optional[float],
+    ):
+        """Test validation of `target_capacity` field."""
+
+        deploy_config_dict = {
+            "applications": [],
+        }
+        if input_val is not None:
+            deploy_config_dict["target_capacity"] = input_val
+
+        if error:
+            with pytest.raises(ValidationError):
+                ServeDeploySchema.parse_obj(deploy_config_dict)
+        else:
+            s = ServeDeploySchema.parse_obj(deploy_config_dict)
+            assert s.target_capacity == output_val
 
 
 class TestLoggingConfig:
