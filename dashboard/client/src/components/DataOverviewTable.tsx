@@ -168,10 +168,12 @@ const DataRow = ({
   const classes = useStyles();
   const isDatasetRow = datasetMetrics !== undefined;
   const isOperatorRow = operatorMetrics !== undefined;
-  if ((isDatasetRow && isOperatorRow) || !(isDatasetRow || isOperatorRow)) {
-    throw new Error("Exactly one of datasetMetrics or operatorMetrics musts be given.");
+  const data = datasetMetrics || operatorMetrics;
+  if ((isDatasetRow && isOperatorRow) || data === undefined) {
+    throw new Error(
+      "Exactly one of datasetMetrics or operatorMetrics musts be given.",
+    );
   }
-  const data = (datasetMetrics || operatorMetrics)!;
   return (
     <TableRow>
       <TableCell align="center">
@@ -245,7 +247,11 @@ const DatasetTable = ({
   const operatorRows =
     isExpanded &&
     datasetMetrics.operators.map((operator) => (
-      <DataRow operatorMetrics={operator} isDatasetRow={false} key={operator.operator} />
+      <DataRow
+        operatorMetrics={operator}
+        isDatasetRow={false}
+        key={operator.operator}
+      />
     ));
   return (
     <React.Fragment>
