@@ -278,3 +278,8 @@ def add_gpus_to_vm(pyvmomi_sdk_provider, vm_name: str, gpu_ids: list):
     logger.debug(f"Power on VM {vm_name}...")
     WaitForTask(vm_obj.PowerOnVM_Task())
     logger.debug(f"VM {vm_name} is power on. Done.")
+
+
+def set_gpu_placeholder(array_obj, place_holder_number):
+    for i in range(place_holder_number):
+        array_obj.append({})
