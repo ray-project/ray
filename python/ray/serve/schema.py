@@ -1,4 +1,3 @@
-import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
@@ -15,23 +14,32 @@ from ray._private.pydantic_compat import (
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
-    ApplicationStatusInfo,
     DeploymentInfo,
     DeploymentStatus,
-    DeploymentStatusInfo,
     ProxyStatus,
     ReplicaState,
     ServeDeployMode,
-    StatusOverview,
 )
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
+from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
+
+# Shared amongst multiple schemas.
+TARGET_CAPACITY_FIELD = Field(
+    default=None,
+    description=(
+        "[EXPERIMENTAL]: the target capacity percentage for all replicas across the "
+        "cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for each "
+        "deployment will be scaled by this percentage."
+    ),
+    ge=0,
+    le=100,
+)
 
 
 def _route_prefix_format(cls, v):
@@ -185,6 +193,7 @@ class RayActorOptionsSchema(BaseModel):
         default=None,
         description=(
             "Forces replicas to run on nodes with the specified accelerator type."
+            "See :ref:`accelerator types <accelerator_types>`."
         ),
     )
 
@@ -400,8 +409,6 @@ class ServeApplicationSchema(BaseModel):
     """
     Describes one Serve application, and currently can also be used as a standalone
     config to deploy a single application to a Ray cluster.
-
-    This is the request JSON schema for the v1 REST API `PUT "/api/serve/deployments/"`.
     """
 
     name: str = Field(
@@ -542,51 +549,6 @@ class ServeApplicationSchema(BaseModel):
             "deployments": [],
         }
 
-    def kubernetes_dict(self, **kwargs) -> Dict:
-        """Returns dictionary in Kubernetes format.
-
-        Dictionary can be yaml-dumped to a Serve config file directly and then
-        copy-pasted into a RayService Kubernetes config.
-
-        Args: all kwargs are passed directly into schema's dict() function.
-        """
-
-        config = self.dict(**kwargs)
-        for idx, deployment in enumerate(config["deployments"]):
-            if isinstance(deployment.get("ray_actor_options"), dict):
-                # JSON-serialize ray_actor_options' resources dictionary
-                if isinstance(deployment["ray_actor_options"].get("resources"), dict):
-                    deployment["ray_actor_options"]["resources"] = json.dumps(
-                        deployment["ray_actor_options"]["resources"]
-                    )
-
-                # JSON-serialize ray_actor_options' runtime_env dictionary
-                if isinstance(deployment["ray_actor_options"].get("runtime_env"), dict):
-                    deployment["ray_actor_options"]["runtime_env"] = json.dumps(
-                        deployment["ray_actor_options"]["runtime_env"]
-                    )
-
-                # Convert ray_actor_options' keys
-                deployment["ray_actor_options"] = dict_keys_snake_to_camel_case(
-                    deployment["ray_actor_options"]
-                )
-
-            # JSON-serialize user_config dictionary
-            if isinstance(deployment.get("user_config"), dict):
-                deployment["user_config"] = json.dumps(deployment["user_config"])
-
-            # Convert deployment's keys
-            config["deployments"][idx] = dict_keys_snake_to_camel_case(deployment)
-
-        # Convert top-level runtime_env
-        if isinstance(config.get("runtime_env"), dict):
-            config["runtime_env"] = json.dumps(config["runtime_env"])
-
-        # Convert top-level option's keys
-        config = dict_keys_snake_to_camel_case(config)
-
-        return config
-
 
 @PublicAPI(stability="alpha")
 class gRPCOptionsSchema(BaseModel):
@@ -689,6 +651,7 @@ class ServeDeploySchema(BaseModel):
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
     )
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
     @validator("applications")
     def application_names_unique(cls, v):
@@ -804,10 +767,13 @@ class ServeStatus:
         proxies: The proxy actors running on each node in the cluster.
             A map from node ID to proxy status.
         applications: The live applications in the cluster.
+        target_capacity: the target capacity percentage for all replicas across the
+            cluster.
     """
 
     proxies: Dict[str, ProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
 
 @PublicAPI(stability="stable")
@@ -983,14 +949,16 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         )
     )
     deploy_mode: ServeDeployMode = Field(
+        default=ServeDeployMode.MULTI_APP,
         description=(
-            "Whether a single-app config of format ServeApplicationSchema or multi-app "
-            "config of format ServeDeploySchema was deployed to the cluster."
-        )
+            "[DEPRECATED]: single-app configs are removed, so this is always "
+            "MULTI_APP. This field will be removed in a future release."
+        ),
     )
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
@@ -1000,14 +968,16 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         """
 
         return {
-            "deploy_mode": "UNSET",
+            "deploy_mode": "MULTI_APP",
             "controller_info": {},
             "proxies": {},
             "applications": {},
+            "target_capacity": None,
         }
 
     def _get_status(self) -> ServeStatus:
         return ServeStatus(
+            target_capacity=self.target_capacity,
             proxies={node_id: proxy.status for node_id, proxy in self.proxies.items()},
             applications={
                 app_name: ApplicationStatusOverview(
@@ -1028,57 +998,3 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                 for app_name, app in self.applications.items()
             },
         )
-
-
-@PublicAPI(stability="beta")
-class ServeStatusSchema(BaseModel, extra=Extra.forbid):
-    """
-    Describes the status of an application and all its deployments.
-
-    This is the response JSON schema for the v1 REST API
-    `GET /api/serve/deployments/status`.
-    """
-
-    name: str = Field(description="Application name", default="")
-    app_status: ApplicationStatusInfo = Field(
-        ...,
-        description=(
-            "Describes if the Serve application is DEPLOYING, if the "
-            "DEPLOY_FAILED, or if the app is RUNNING. Includes a timestamp of "
-            "when the application was deployed."
-        ),
-    )
-    deployment_statuses: List[DeploymentStatusInfo] = Field(
-        default=[],
-        description=(
-            "List of statuses for all the deployments running in this Serve "
-            "application. Each status contains the deployment name, the "
-            "deployment's status, and a message providing extra context on "
-            "the status."
-        ),
-    )
-
-    @staticmethod
-    def get_empty_schema_dict() -> Dict:
-        """Returns an empty status schema dictionary.
-
-        Schema represents Serve status for a Ray cluster where Serve hasn't
-        started yet.
-        """
-
-        return {
-            "app_status": {
-                "status": ApplicationStatus.NOT_STARTED.value,
-                "message": "",
-                "deployment_timestamp": 0,
-            },
-            "deployment_statuses": [],
-        }
-
-
-def _serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
-    return ServeStatusSchema(
-        name=serve_status.name,
-        app_status=serve_status.app_status,
-        deployment_statuses=serve_status.deployment_statuses,
-    )

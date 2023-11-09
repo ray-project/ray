@@ -52,11 +52,11 @@ def plan_read_op(op: Read) -> PhysicalOperator:
             op._parallelism,
             target_max_block_size,
             DataContext.get_current(),
-            op._reader,
+            op._datasource_or_legacy_reader,
             op._mem_size,
         )
 
-        read_tasks = op._reader.get_read_tasks(parallelism)
+        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
         return [

@@ -46,15 +46,16 @@ def attempt_count_timesteps(tensor_dict: dict):
     # Try to infer the "length" of the SampleBatch by finding the first
     # value that is actually a ndarray/tensor.
     # Skip manual counting routine if we can directly infer count from sequence lengths
+    seq_lens = tensor_dict.get(SampleBatch.SEQ_LENS)
     if (
-        tensor_dict.get(SampleBatch.SEQ_LENS) is not None
-        and not (tf and tf.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]))
-        and len(tensor_dict[SampleBatch.SEQ_LENS]) > 0
+        seq_lens is not None
+        and not (tf and tf.is_tensor(seq_lens) and not hasattr(seq_lens, "numpy"))
+        and len(seq_lens) > 0
     ):
-        if torch and torch.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]):
-            return tensor_dict[SampleBatch.SEQ_LENS].sum().item()
+        if torch and torch.is_tensor(seq_lens):
+            return seq_lens.sum().item()
         else:
-            return sum(tensor_dict[SampleBatch.SEQ_LENS])
+            return int(sum(seq_lens))
 
     for k, v in tensor_dict.items():
         if k == SampleBatch.SEQ_LENS:

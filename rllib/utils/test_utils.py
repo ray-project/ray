@@ -1560,7 +1560,7 @@ def check_supported_spaces(
         except UnsupportedSpaceException:
             stat = "unsupported"
         else:
-            if alg not in ["DDPG", "ES", "ARS", "SAC", "PPO"]:
+            if alg not in ["SAC", "PPO"]:
                 # 2D (image) input: Expect VisionNet.
                 if o_name in ["atari", "image"]:
                     if fw == "torch":

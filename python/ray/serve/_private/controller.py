@@ -20,13 +20,11 @@ from ray.serve._private.common import (
     MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
-    ServeDeployMode,
     StatusOverview,
 )
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     CONTROLLER_MAX_CONCURRENCY,
-    MULTI_APP_MIGRATION_MESSAGE,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
@@ -55,7 +53,6 @@ from ray.serve._private.utils import (
     get_head_node_id,
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
-from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     DeploymentArgs,
@@ -183,8 +180,6 @@ class ServeController:
             self.deployment_state_manager, self.endpoint_state, self.kv_store
         )
 
-        # Keep track of single-app vs multi-app
-        self.deploy_mode = ServeDeployMode.UNSET
         # Controller actor details
         self._actor_details = ServeActorDetails(
             node_id=ray.get_runtime_context().get_node_id(),
@@ -201,7 +196,10 @@ class ServeController:
         self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
+        # The target capacity percentage for all deployments across the cluster.
+        self._target_capacity: Optional[float] = None
         self._recover_config_from_checkpoint()
+
         # Nodes where proxy actors should run.
         self._proxy_nodes = set()
         self._update_proxy_nodes()
@@ -343,7 +341,9 @@ class ServeController:
 
             try:
                 dsm_update_start_time = time.time()
-                any_recovering = self.deployment_state_manager.update()
+                any_recovering = self.deployment_state_manager.update(
+                    target_capacity=self._target_capacity
+                )
                 self.dsm_update_duration_gauge_s.set(
                     time.time() - dsm_update_start_time
                 )
@@ -446,20 +446,16 @@ class ServeController:
             logger.info(
                 "Recovering config from checkpoint.", extra={"log_to_stderr": False}
             )
-            deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
+            deployment_time, target_capacity, config_checkpoints_dict = pickle.loads(
                 checkpoint
             )
-            applications = list(config_checkpoints_dict.values())
-            if deploy_mode == ServeDeployMode.SINGLE_APP:
-                self.deploy_config(
-                    ServeApplicationSchema.parse_obj(applications[0]),
-                    deployment_time,
-                )
-            else:
-                self.deploy_config(
-                    ServeDeploySchema.parse_obj({"applications": applications}),
-                    deployment_time,
-                )
+            self.deploy_config(
+                ServeDeploySchema(
+                    applications=list(config_checkpoints_dict.values()),
+                    target_capacity=target_capacity,
+                ),
+                deployment_time=deployment_time,
+            )
 
     def _all_running_replicas(self) -> Dict[DeploymentID, List[RunningReplicaInfo]]:
         """Used for testing.
@@ -656,82 +652,23 @@ class ServeController:
 
     def deploy_config(
         self,
-        config: Union[ServeApplicationSchema, ServeDeploySchema],
-        deployment_time: float = 0,
+        config: ServeDeploySchema,
+        deployment_time: float = 0.0,
     ) -> None:
-        """Kicks off a task that deploys a set of Serve applications.
+        """Apply the config described in `ServeDeploySchema`.
 
-        Cancels in-progress tasks that are deploying Serve applications with the same
-        name as newly deployed applications.
+        This is idempotent and will upgrade the applications to the goal state
+        specified in the config.
 
-        Args:
-            config:
-                [if ServeApplicationSchema]
-                    name: Application name. If not provided, it is empty string.
-                    import_path: Serve deployment graph's import path
-                    runtime_env: runtime_env to run the deployment graph in
-                    deployments: Dictionaries that contain argument-value options
-                        that can be passed directly into a set_options() call. Overrides
-                        deployment options set in the graph's code itself.
-                [if ServeDeploySchema]
-                    applications: Dictionaries of the format ServeApplicationSchema.
-
-            deployment_time: set deployment_timestamp. If not provided, time.time() is
-                used to indicate the deployment time.
+        If `deployment_time` is not provided, `time.time()` is used.
         """
         ServeUsageTag.API_VERSION.record("v2")
-        # TODO (zcin): We should still support single-app mode, i.e.
-        # ServeApplicationSchema. Eventually, after migration is complete, we should
-        # deprecate such usage.
-        if isinstance(config, ServeApplicationSchema):
-            if "name" in config.dict(exclude_unset=True):
-                error_msg = (
-                    "Specifying the name of an application is only allowed for apps "
-                    "that are listed as part of a multi-app config file. "
-                ) + MULTI_APP_MIGRATION_MESSAGE
-                logger.warning(error_msg)
-                raise RayServeException(error_msg)
-
-            applications = [config]
-            if self.deploy_mode == ServeDeployMode.MULTI_APP:
-                raise RayServeException(
-                    "You are trying to deploy a single-application config, however "
-                    "a multi-application config has been deployed to the current "
-                    "Serve instance already. Mixing single-app and multi-app is not "
-                    "allowed. Please either redeploy using the multi-application "
-                    "config format `ServeDeploySchema`, or shutdown and restart Serve "
-                    "to submit a single-app config of format `ServeApplicationSchema`. "
-                    "If you are using the REST API, you can submit a single-app config "
-                    "to the single-app API endpoint `/api/serve/deployments/`."
-                )
-            logger.warning(
-                "The single-application config format is DEPRECATED and will be "
-                "removed in a future version. Please switch to using the multi-"
-                "application config (see "
-                "https://docs.ray.io/en/latest/serve/multi-app.html)."
-            )
-            self.deploy_mode = ServeDeployMode.SINGLE_APP
-        else:
-            applications = config.applications
-            if self.deploy_mode == ServeDeployMode.SINGLE_APP:
-                raise RayServeException(
-                    "You are trying to deploy a multi-application config, however "
-                    "a single-application config has been deployed to the current "
-                    "Serve instance already. Mixing single-app and multi-app is not "
-                    "allowed. Please either redeploy using the single-application "
-                    "config format `ServeApplicationSchema`, or shutdown and restart "
-                    "Serve to submit a multi-app config of format `ServeDeploySchema`. "
-                    "If you are using the REST API, you can submit a multi-app config "
-                    "to the the multi-app API endpoint `/api/serve/applications/`."
-                )
-            self.deploy_mode = ServeDeployMode.MULTI_APP
-
         if not deployment_time:
             deployment_time = time.time()
 
         new_config_checkpoint = {}
 
-        for app_config in applications:
+        for app_config in config.applications:
             for deployments in app_config.deployments:
                 if deployments.route_prefix != DEFAULT.VALUE:
                     logger.warning(
@@ -751,14 +688,24 @@ class ServeController:
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps((deployment_time, self.deploy_mode, new_config_checkpoint)),
+            pickle.dumps(
+                (deployment_time, config.target_capacity, new_config_checkpoint)
+            ),
         )
 
-        # Delete live applications not listed in config
+        if self._target_capacity != config.target_capacity:
+            logger.info(
+                "target_capacity updated from "
+                f"'{self._target_capacity}' to '{config.target_capacity}'."
+            )
+
+        self._target_capacity = config.target_capacity
+
+        # Delete live applications not listed in the config.
         existing_applications = set(
             self.application_state_manager._application_states.keys()
         )
-        new_applications = {app_config.name for app_config in applications}
+        new_applications = {app_config.name for app_config in config.applications}
         self.delete_apps(existing_applications.difference(new_applications))
 
     def delete_deployment(self, name: str):
@@ -893,6 +840,7 @@ class ServeController:
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
+            target_capacity=self._target_capacity,
             controller_info=self._actor_details,
             proxy_location=http_config.location,
             http_options=http_options,
@@ -900,7 +848,6 @@ class ServeController:
             proxies=self.proxy_state_manager.get_proxy_details()
             if self.proxy_state_manager
             else None,
-            deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)
 
