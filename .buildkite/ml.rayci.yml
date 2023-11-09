@@ -11,6 +11,43 @@ steps:
     depends_on: mlbuild
     job_env: forge
 
+  - label: ":train: ml: air tests"
+    tags: ml
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/air/... ml 
+        --parallelism-per-worker 3
+        --except-tags gpu,hdfs
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... ml 
+        --parallelism-per-worker 3
+        --only-tags ray_air
+        --skip-ray-installation
+    depends_on: mlbuild
+    job_env: forge
+
+  - label: ":train: ml: tune tests"
+    tags: train
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
+        --parallelism-per-worker 3
+        --only-tags tune
+        --except-tags gpu_only,ray_air,gpu,doctest,needs_credentials
+    depends_on: mlbuild
+    job_env: forge
+
+  - label: ":train: ml: release tests"
+    tags:
+      - ml
+      - python
+      - release_tests
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //release/... ml 
+        --parallelism-per-worker 3
+    depends_on: mlbuild
+    job_env: forge
+
   - label: ":train: ml: train gpu tests"
     tags: 
       - train

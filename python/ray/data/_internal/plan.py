@@ -1,7 +1,6 @@
 import copy
 import functools
 import itertools
-import uuid
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -110,7 +109,6 @@ class ExecutionPlan:
         self,
         in_blocks: BlockList,
         stats: DatasetStats,
-        dataset_uuid=None,
         *,
         run_by_consumer: bool,
     ):
@@ -135,9 +133,8 @@ class ExecutionPlan:
         self._last_optimized_stages = None
         # Cached schema.
         self._schema = None
-        self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
-        if not stats.dataset_uuid:
-            stats.dataset_uuid = self._dataset_uuid
+        # Set when a Dataset is constructed with this plan
+        self._dataset_uuid = None
 
         self._run_by_consumer = run_by_consumer
 
@@ -323,27 +320,20 @@ class ExecutionPlan:
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
         return plan_copy
 
-    def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionPlan":
+    def deep_copy(self) -> "ExecutionPlan":
         """Create a deep copy of this execution plan.
 
         This copy can be executed AND cleared without mutating the original.
 
-        Args:
-            preserve_uuid: Whether to preserve the original UUID in the copy.
-
         Returns:
             A deep copy of this execution plan.
         """
-        dataset_uuid = None
-        if preserve_uuid:
-            dataset_uuid = self._dataset_uuid
         in_blocks = self._in_blocks
         if isinstance(in_blocks, BlockList):
             in_blocks = in_blocks.copy()
         plan_copy = ExecutionPlan(
             in_blocks,
             copy.copy(self._in_stats),
-            dataset_uuid=dataset_uuid,
             run_by_consumer=self._run_by_consumer,
         )
         if self._snapshot_blocks:

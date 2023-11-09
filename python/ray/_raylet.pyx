@@ -384,8 +384,10 @@ class StreamingObjectRefGenerator:
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait([self.suppress_exceptions(ref)],
-                                            timeout=timeout_s)
+        ready, unready = await asyncio.wait(
+            [asyncio.create_task(self.suppress_exceptions(ref))],
+            timeout=timeout_s
+        )
         if len(unready) > 0:
             return ObjectRef.nil()
 
@@ -4624,4 +4626,5 @@ def get_session_key_from_storage(host, port, password, use_ssl, config, key):
     if result:
         return data
     else:
+        logger.info("Could not retrieve session key from storage.")
         return None

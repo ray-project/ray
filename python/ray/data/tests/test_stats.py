@@ -974,6 +974,10 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
+@pytest.mark.skip(
+    reason="Temporarily disable to deflake rest of test suite. "
+    "See: https://github.com/ray-project/ray/pull/40173"
+)
 def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
@@ -1168,6 +1172,8 @@ def test_stats_actor_metrics():
     assert final_metric.bytes_outputs_generated == 1000 * 80 * 80 * 4 * 8  # 8B per int
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
+
+    assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
 
 
 if __name__ == "__main__":

@@ -1896,7 +1896,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   auto constrained_resources =
       AddPlacementGroupConstraint(task_options.resources, scheduling_strategy);
 
-  const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
@@ -1916,7 +1915,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       args,
                       task_options.num_returns,
                       constrained_resources,
-                      required_resources,
+                      constrained_resources,
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info,

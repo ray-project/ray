@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from typing import Optional
+from typing import Dict, Optional
 
 import pytest
 import requests
@@ -719,7 +719,40 @@ class TestAppBuilder:
     def test_args_typed(self):
         args_dict = {"message": "hiya", "num_replicas": "3"}
 
+        def build(args):
+            """Builder with no type hint."""
+
+            return self.A.options(num_replicas=args["num_replicas"]).bind(
+                args["message"]
+            )
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
+        def build(args: Dict[str, str]):
+            """Builder with vanilla type hint."""
+
+            return self.A.options(num_replicas=args["num_replicas"]).bind(
+                args["message"]
+            )
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
+        class ForwardRef:
+            def build(args: "ForwardRef"):
+                """Builder with forward reference as type hint."""
+
+                return self.A.options(num_replicas=args["num_replicas"]).bind(
+                    args["message"]
+                )
+
+        app = call_app_builder_with_args_if_necessary(ForwardRef.build, args_dict)
+        assert isinstance(app, Application)
+
         def build(args: self.TypedArgs):
+            """Builder with Pydantic model type hint."""
+
             assert isinstance(args, self.TypedArgs)
             assert args.message == "hiya"
             assert args.num_replicas == 3

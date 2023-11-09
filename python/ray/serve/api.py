@@ -31,7 +31,6 @@ from ray.serve._private.utils import (
     ensure_serialization_context,
     extract_self_if_method_call,
     get_random_letters,
-    install_serve_encoders_to_fastapi,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -231,7 +230,6 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                 cls.__init__(self, *args, **kwargs)
 
                 ServeUsageTag.FASTAPI_USED.record("1")
-                install_serve_encoders_to_fastapi()
                 ASGIAppReplicaWrapper.__init__(self, frozen_app)
 
             async def __del__(self):
@@ -473,7 +471,7 @@ def run(
     Returns:
         RayServeSyncHandle: A handle that can be used to call the application.
     """
-    # trigger tests
+
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 

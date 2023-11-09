@@ -49,7 +49,7 @@ class Container:
             stderr=sys.stderr,
         )
 
-    def install_ray(self) -> None:
+    def install_ray(self, build_type: Optional[str] = None) -> None:
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
         subprocess.check_call(
@@ -59,6 +59,8 @@ class Container:
                 "--pull",
                 "--build-arg",
                 f"BASE_IMAGE={self._get_docker_image()}",
+                "--build-arg",
+                f"BUILD_TYPE={build_type or ''}",
                 "-t",
                 self._get_docker_image(),
                 "-f",

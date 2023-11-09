@@ -23,6 +23,67 @@ steps:
     depends_on: corebuild
     job_env: forge
 
+  - label: ":ray: core: debug test"
+    tags: python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core 
+        --build-type debug
+        --parallelism-per-worker 3
+        --only-tags debug_tests
+        --except-tags kubernetes
+    depends_on: corebuild
+    job_env: forge
+
+  - label: ":ray: core: asan tests"
+    tags: python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core 
+        --build-type asan
+        --parallelism-per-worker 2
+        --only-tags asan_tests
+        --except-tags kubernetes 
+    depends_on: corebuild
+    job_env: forge
+
+  - label: ":ray: core: minimal tests {{matrix}}"
+    tags: python
+    instance_type: medium
+    commands:
+      # validate minimal installation
+      - python ./ci/env/check_minimal_install.py
+      # core tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
+        --parallelism-per-worker 3
+        --build-name minbuild-py{{matrix}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
+        --only-tags minimal
+      # core redis tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
+        --parallelism-per-worker 3
+        --build-name minbuild-py{{matrix}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=TEST_EXTERNAL_REDIS=1
+        --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
+        --only-tags minimal
+        --skip-ray-installation
+      # serve tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve 
+        --parallelism-per-worker 3
+        --build-name minbuild-py{{matrix}}
+        --test-env=RAY_MINIMAL=1
+        --only-tags minimal
+        --skip-ray-installation
+    depends_on: minbuild
+    job_env: forge
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
   - label: ":ray: core: flaky tests"
     tags: python
     instance_type: large

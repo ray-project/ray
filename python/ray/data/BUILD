@@ -489,3 +489,11 @@ py_test(
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_backpressure_policies",
+    size = "small",
+    srcs = ["tests/test_backpressure_policies.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)

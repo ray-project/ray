@@ -79,7 +79,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_dashboard.py"],
     deps = [":conftest"],
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "minimal"],
 )
 
 py_test(

@@ -2,9 +2,11 @@ import {
   Button,
   createStyles,
   makeStyles,
+  Menu,
   MenuItem,
   Paper,
   TextField,
+  Tooltip,
 } from "@material-ui/core";
 import { Alert, AlertProps } from "@material-ui/lab";
 import React, { useContext, useEffect, useState } from "react";
@@ -19,29 +21,6 @@ import { MAIN_NAV_HEIGHT } from "../layout/MainNavLayout";
 const useStyles = makeStyles((theme) =>
   createStyles({
     metricsRoot: { margin: theme.spacing(1) },
-    metricsSection: {
-      marginTop: theme.spacing(3),
-    },
-    grafanaEmbedsContainer: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing(3),
-      marginTop: theme.spacing(2),
-    },
-    chart: {
-      width: "100%",
-      height: 400,
-      overflow: "hidden",
-      [theme.breakpoints.up("md")]: {
-        // Calculate max width based on 1/3 of the total width minus padding between cards
-        width: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
-      },
-    },
-    grafanaEmbed: {
-      width: "100%",
-      height: "100%",
-    },
     topBar: {
       position: "sticky",
       top: MAIN_NAV_HEIGHT,
@@ -193,15 +172,46 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
   },
 ];
 
+const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
+  {
+    title: "Ray Data Metrics",
+    contents: [
+      {
+        title: "Bytes Spilled",
+        pathParams: "orgId=1&theme=light&panelId=1",
+      },
+      {
+        title: "Bytes Allocated",
+        pathParams: "orgId=1&theme=light&panelId=2",
+      },
+      {
+        title: "Bytes Freed",
+        pathParams: "orgId=1&theme=light&panelId=3",
+      },
+      {
+        title: "Object Store Memory",
+        pathParams: "orgId=1&theme=light&panelId=4",
+      },
+      {
+        title: "CPUs (logical slots)",
+        pathParams: "orgId=1&theme=light&panelId=5",
+      },
+      {
+        title: "GPUs (logical slots)",
+        pathParams: "orgId=1&theme=light&panelId=6",
+      },
+      {
+        title: "Bytes Outputted",
+        pathParams: "orgId=1&theme=light&panelId=7",
+      },
+    ],
+  },
+];
+
 export const Metrics = () => {
   const classes = useStyles();
-  const {
-    grafanaHost,
-    sessionName,
-    prometheusHealth,
-    dashboardUids,
-    dashboardDatasource,
-  } = useContext(GlobalContext);
+  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
+    useContext(GlobalContext);
 
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
@@ -219,6 +229,9 @@ export const Metrics = () => {
     const from = TIME_RANGE_TO_FROM_VALUE[timeRangeOption];
     setTimeRange([from, "now"]);
   }, [timeRangeOption]);
+
+  const [viewInGrafanaMenuRef, setViewInGrafanaMenuRef] =
+    useState<HTMLButtonElement | null>(null);
 
   const fromParam = from !== null ? `&from=${from}` : "";
   const toParam = to !== null ? `&to=${to}` : "";
@@ -239,13 +252,45 @@ export const Metrics = () => {
         <div>
           <Paper className={classes.topBar}>
             <Button
-              href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?var-datasource=${grafanaDefaultDatasource}`}
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={({ currentTarget }) => {
+                setViewInGrafanaMenuRef(currentTarget);
+              }}
               endIcon={<RiExternalLinkLine />}
             >
               View in Grafana
             </Button>
+            {viewInGrafanaMenuRef && (
+              <Menu
+                open
+                anchorEl={viewInGrafanaMenuRef}
+                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                transformOrigin={{ vertical: "top", horizontal: "right" }}
+                onClose={() => {
+                  setViewInGrafanaMenuRef(null);
+                }}
+              >
+                <MenuItem
+                  component="a"
+                  href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?var-datasource=${grafanaDefaultDatasource}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Core Dashboard
+                </MenuItem>
+                {dashboardUids?.["data"] && (
+                  <Tooltip title="The Ray Data dashboard has a dropdown to filter the data metrics by Dataset ID">
+                    <MenuItem
+                      component="a"
+                      href={`${grafanaHost}/d/${dashboardUids["data"]}/?var-datasource=${grafanaDefaultDatasource}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Ray Data Dashboard
+                    </MenuItem>
+                  </Tooltip>
+                )}
+              </Menu>
+            )}
             <TextField
               className={classes.timeRangeButton}
               select
@@ -269,43 +314,109 @@ export const Metrics = () => {
             line in the time-series graph.
           </Alert>
           <div className={classes.metricsRoot}>
-            {METRICS_CONFIG.map(({ title, contents }) => (
-              <CollapsibleSection
-                key={title}
-                title={title}
-                startExpanded
-                className={classes.metricsSection}
-                keepRendered
-              >
-                <div className={classes.grafanaEmbedsContainer}>
-                  {contents.map(({ title, pathParams }) => {
-                    const path =
-                      `/d-solo/${grafanaDefaultDashboardUid}?${pathParams}` +
-                      `&refresh${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
-                    return (
-                      <Paper
-                        key={pathParams}
-                        className={classes.chart}
-                        elevation={1}
-                        variant="outlined"
-                      >
-                        <iframe
-                          key={title}
-                          title={title}
-                          className={classes.grafanaEmbed}
-                          src={`${grafanaHost}${path}`}
-                          frameBorder="0"
-                        />
-                      </Paper>
-                    );
-                  })}
-                </div>
-              </CollapsibleSection>
+            {METRICS_CONFIG.map((config) => (
+              <MetricsSection
+                key={config.title}
+                metricConfig={config}
+                timeRangeParams={timeRangeParams}
+                dashboardUid={grafanaDefaultDashboardUid}
+                dashboardDatasource={grafanaDefaultDatasource}
+              />
             ))}
+            {dashboardUids?.["data"] &&
+              DATA_METRICS_CONFIG.map((config) => (
+                <MetricsSection
+                  key={config.title}
+                  metricConfig={config}
+                  timeRangeParams={timeRangeParams}
+                  dashboardUid={dashboardUids["data"]}
+                  dashboardDatasource={grafanaDefaultDatasource}
+                />
+              ))}
           </div>
         </div>
       )}
     </div>
+  );
+};
+
+const useMetricsSectionStyles = makeStyles((theme) =>
+  createStyles({
+    metricsSection: {
+      marginTop: theme.spacing(3),
+    },
+    grafanaEmbedsContainer: {
+      display: "flex",
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.spacing(3),
+      marginTop: theme.spacing(2),
+    },
+    chart: {
+      width: "100%",
+      height: 400,
+      overflow: "hidden",
+      [theme.breakpoints.up("md")]: {
+        // Calculate max width based on 1/3 of the total width minus padding between cards
+        width: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+      },
+    },
+    grafanaEmbed: {
+      width: "100%",
+      height: "100%",
+    },
+  }),
+);
+
+type MetricsSectionProps = {
+  metricConfig: MetricsSectionConfig;
+  timeRangeParams: string;
+  dashboardUid: string;
+  dashboardDatasource: string;
+};
+
+const MetricsSection = ({
+  metricConfig: { title, contents },
+  timeRangeParams,
+  dashboardUid,
+  dashboardDatasource,
+}: MetricsSectionProps) => {
+  const { grafanaHost, sessionName } = useContext(GlobalContext);
+
+  const classes = useMetricsSectionStyles();
+
+  return (
+    <CollapsibleSection
+      key={title}
+      title={title}
+      startExpanded
+      className={classes.metricsSection}
+      keepRendered
+    >
+      <div className={classes.grafanaEmbedsContainer}>
+        {contents.map(({ title, pathParams }) => {
+          const path =
+            `/d-solo/${dashboardUid}?${pathParams}` +
+            `&refresh${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
+          return (
+            <Paper
+              key={pathParams}
+              className={classes.chart}
+              elevation={1}
+              variant="outlined"
+            >
+              <iframe
+                key={title}
+                title={title}
+                className={classes.grafanaEmbed}
+                src={`${grafanaHost}${path}`}
+                frameBorder="0"
+              />
+            </Paper>
+          );
+        })}
+      </div>
+    </CollapsibleSection>
   );
 };
 

@@ -167,16 +167,6 @@ def test_node_tags():
     assert tags == vnp.tag_cache["test_vm_id_1"]
 
 
-def test_external_ip():
-    vnp = mock_vsphere_node_provider()
-    vm = MagicMock()
-    vm.ip_address = "10.123.234.255"
-    vnp.vsphere_sdk_client.vcenter.vm.guest.Identity.get.return_value = vm
-
-    ip_address = vnp.external_ip("test_id")
-    assert ip_address == "10.123.234.255"
-
-
 def test_create_nodes():
     vnp = mock_vsphere_node_provider()
     vnp.lock = RLock()
@@ -232,7 +222,7 @@ def test_create_instant_clone_node(mock_wait_task, mock_ic_spec, mock_relo_spec)
     VM.InstantCloneSpec = MagicMock(return_value="Clone Spec")
     vnp.vsphere_sdk_client.vcenter.VM.instant_clone.return_value = "test_id_1"
     vnp.vsphere_sdk_client.vcenter.vm.Power.stop.return_value = None
-    vnp.get_pyvmomi_obj = MagicMock(return_value=MagicMock())
+    vnp.get_pyvmomi_obj_by_name = MagicMock(return_value=MagicMock())
     vnp.set_node_tags = MagicMock(return_value=None)
     vnp.vsphere_sdk_client.vcenter.VM.list = MagicMock(
         return_value=[MagicMock(vm="test VM")]

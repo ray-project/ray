@@ -8,7 +8,6 @@ from ray import cloudpickle, serve
 from ray.serve._private.constants import DAG_DEPRECATION_MESSAGE, SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers_utils import load_http_adapter
 from ray.serve.exceptions import RayServeException
@@ -42,7 +41,6 @@ class DAGDriver(ASGIAppReplicaWrapper):
         if http_adapter is not None:
             ServeUsageTag.HTTP_ADAPTER_USED.record("1")
 
-        install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
         app = FastAPI()
 

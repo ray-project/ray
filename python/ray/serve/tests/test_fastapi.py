@@ -3,7 +3,6 @@ import tempfile
 import time
 from typing import Any, List, Optional
 
-import numpy as np
 import pytest
 import requests
 import starlette.responses
@@ -25,7 +24,7 @@ from starlette.routing import Route
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import IS_PYDANTIC_2, BaseModel, Field
+from ray._private.pydantic_compat import BaseModel, Field
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
@@ -672,28 +671,6 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
     ]
     for path in should_404:
         assert requests.get("http://localhost:8000" + path).status_code == 404, path
-
-
-@pytest.mark.skipif(
-    IS_PYDANTIC_2,
-    reason="We don't currently install custom encoders for pydantic >= 2.",
-)
-def test_fastapi_custom_serializers(serve_instance):
-    app = FastAPI()
-
-    @serve.deployment
-    @serve.ingress(app)
-    class D:
-        @app.get("/np_array")
-        def incr(self):
-            return np.zeros(2)
-
-    serve.run(D.bind())
-
-    resp = requests.get("http://localhost:8000/np_array")
-    print(resp.text)
-    resp.raise_for_status()
-    assert resp.json() == [0, 0]
 
 
 @pytest.mark.parametrize("two_fastapi", [True, False])

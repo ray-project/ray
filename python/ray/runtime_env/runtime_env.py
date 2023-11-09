@@ -240,7 +240,7 @@ class RuntimeEnv(dict):
             The value has to be a callable when passed to the Job, Task, or Actor.
             The callable is then exported and this value is converted to
             the setup hook's function name for observability.
-        nsight: Dictionary mapping nsight profile options to it's value.
+        nsight: Dictionary mapping nsight profile option name to it's value.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
