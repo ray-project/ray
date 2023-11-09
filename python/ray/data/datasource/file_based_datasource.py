@@ -113,189 +113,24 @@ class FileExtensionFilter(PathPartitionFilter):
 
 
 @DeveloperAPI
-class FileBasedDatasource(Datasource):
-    """File-based datasource, for reading and writing files.
+class FileReader:
+    def read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+        """Streaming read a single file.
 
-    This class should not be used directly, and should instead be subclassed
-    and tailored to particular file formats. Classes deriving from this class
-    must implement _read_file().
+        By default, delegates to :meth:`~FileReader.read_file`.
+        """
+        yield self.read_file(f, path)
 
-    If the _FILE_EXTENSION is defined, per default only files with this extension
-    will be read. If None, no default filter is used.
-    """
+    def read_file(self, f: "pyarrow.NativeFile", path: str) -> Block:
+        """Reads a single file.
 
-    # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
-    # each row to a file. Otherwise, this datasource calls `_write_block` and writes
-    # each block to a file.
-    _WRITE_FILE_PER_ROW = False
-    _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
-    # Number of threads for concurrent reading within each read task.
-    # If zero or negative, reading will be performed in the main thread.
-    _NUM_THREADS_PER_TASK = 0
-
-    def __init__(
-        self,
-        paths: Union[str, List[str]],
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-        open_stream_args: Optional[Dict[str, Any]] = None,
-        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-        partition_filter: PathPartitionFilter = None,
-        partitioning: Partitioning = None,
-        ignore_missing_paths: bool = False,
-        shuffle: Union[Literal["files"], None] = None,
-    ):
-        _check_pyarrow_version()
-        self._schema = schema
-        self._open_stream_args = open_stream_args
-        self._meta_provider = meta_provider
-        self._partition_filter = partition_filter
-        self._partitioning = partitioning
-        self._ignore_missing_paths = ignore_missing_paths
-        paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        self._paths, self._file_sizes = map(
-            list,
-            zip(
-                *meta_provider.expand_paths(
-                    paths,
-                    self._filesystem,
-                    partitioning,
-                    ignore_missing_paths=ignore_missing_paths,
-                )
-            ),
+        This method should be implemented by subclasses.
+        """
+        raise NotImplementedError(
+            "Subclasses of `FileReader` must implement `read_file()`."
         )
 
-        if ignore_missing_paths and len(self._paths) == 0:
-            raise ValueError(
-                "None of the provided paths exist. "
-                "The 'ignore_missing_paths' field is set to True."
-            )
-
-        self._supports_distributed_reads = not _is_local_scheme(paths)
-        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
-            raise ValueError(
-                "Because you're using Ray Client, read tasks scheduled on the Ray "
-                "cluster can't access your local files. To fix this issue, store "
-                "files in cloud storage or a distributed filesystem like NFS."
-            )
-
-        if self._partition_filter is not None:
-            # Use partition filter to skip files which are not needed.
-            path_to_size = dict(zip(self._paths, self._file_sizes))
-            self._paths = self._partition_filter(self._paths)
-            self._file_sizes = [path_to_size[p] for p in self._paths]
-            if len(self._paths) == 0:
-                raise ValueError(
-                    "No input files found to read. Please double check that "
-                    "'partition_filter' field is set properly."
-                )
-        self._file_metadata_shuffler = None
-        if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
-
-    def estimate_inmemory_data_size(self) -> Optional[int]:
-        total_size = 0
-        for sz in self._file_sizes:
-            if sz is not None:
-                total_size += sz
-        return total_size
-
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        import numpy as np
-
-        ctx = DataContext.get_current()
-        open_stream_args = self._open_stream_args
-        partitioning = self._partitioning
-
-        if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(self._paths, self._file_sizes))
-            shuffled_files_metadata = [
-                files_metadata[i]
-                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
-            ]
-            paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
-        else:
-            paths, file_sizes = self._paths, self._file_sizes
-
-        read_stream = self._read_stream
-        filesystem = _wrap_s3_serialization_workaround(self._filesystem)
-
-        if open_stream_args is None:
-            open_stream_args = {}
-
-        open_input_source = self._open_input_source
-
-        def read_files(
-            read_paths: Iterable[str],
-        ) -> Iterable[Block]:
-            nonlocal filesystem, open_stream_args, partitioning
-
-            DataContext._set_current(ctx)
-            fs = _unwrap_s3_serialization_workaround(filesystem)
-            for read_path in read_paths:
-                partitions: Dict[str, str] = {}
-                if partitioning is not None:
-                    parse = PathPartitionParser(partitioning)
-                    partitions = parse(read_path)
-
-                with _open_file_with_retry(
-                    read_path,
-                    lambda: open_input_source(fs, read_path, **open_stream_args),
-                ) as f:
-                    for data in read_stream(f, read_path):
-                        if partitions:
-                            data = _add_partitions(data, partitions)
-                        yield data
-
-        def create_read_task_fn(read_paths, num_threads):
-            def read_task_fn():
-                nonlocal num_threads, read_paths
-
-                if num_threads > 0:
-                    if len(read_paths) < num_threads:
-                        num_threads = len(read_paths)
-
-                    logger.get_logger().debug(
-                        f"Reading {len(read_paths)} files with {num_threads} threads."
-                    )
-
-                    yield from make_async_gen(
-                        iter(read_paths),
-                        read_files,
-                        num_workers=num_threads,
-                    )
-                else:
-                    logger.get_logger().debug(f"Reading {len(read_paths)} files.")
-                    yield from read_files(read_paths)
-
-            return read_task_fn
-
-        # fix https://github.com/ray-project/ray/issues/24296
-        parallelism = min(parallelism, len(paths))
-
-        read_tasks = []
-        for read_paths, file_sizes in zip(
-            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
-        ):
-            if len(read_paths) <= 0:
-                continue
-
-            meta = self._meta_provider(
-                read_paths,
-                self._schema,
-                rows_per_file=self._rows_per_file(),
-                file_sizes=file_sizes,
-            )
-
-            read_task_fn = create_read_task_fn(read_paths, self._NUM_THREADS_PER_TASK)
-
-            read_task = ReadTask(read_task_fn, meta)
-
-            read_tasks.append(read_task)
-
-        return read_tasks
-
-    def _open_input_source(
+    def open_input_source(
         self,
         filesystem: "pyarrow.fs.FileSystem",
         path: str,
@@ -359,25 +194,197 @@ class FileBasedDatasource(Datasource):
 
         return file
 
+
+@DeveloperAPI
+class FileBasedDatasource(Datasource):
+    """File-based datasource, for reading and writing files.
+
+    To read a particular file format, subclass `FileReader` and pass an instance to the
+    `FileBasedDatasource` constructor.
+
+    If the _FILE_EXTENSION is defined, per default only files with this extension
+    will be read. If None, no default filter is used.
+    """
+
+    # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
+    # each row to a file. Otherwise, this datasource calls `_write_block` and writes
+    # each block to a file.
+    _WRITE_FILE_PER_ROW = False
+    _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
+    # Number of threads for concurrent reading within each read task.
+    # If zero or negative, reading will be performed in the main thread.
+    _NUM_THREADS_PER_TASK = 0
+
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        reader: FileReader,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+        partition_filter: PathPartitionFilter = None,
+        partitioning: Partitioning = None,
+        ignore_missing_paths: bool = False,
+        shuffle: Union[Literal["files"], None] = None,
+    ):
+        _check_pyarrow_version()
+
+        if open_stream_args is None:
+            open_stream_args = {}
+
+        self._reader = reader
+        self._schema = schema
+        self._open_stream_args = open_stream_args
+        self._meta_provider = meta_provider
+        self._partition_filter = partition_filter
+        self._partitioning = partitioning
+        self._ignore_missing_paths = ignore_missing_paths
+        paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        self._paths, self._file_sizes = map(
+            list,
+            zip(
+                *meta_provider.expand_paths(
+                    paths,
+                    self._filesystem,
+                    partitioning,
+                    ignore_missing_paths=ignore_missing_paths,
+                )
+            ),
+        )
+
+        if ignore_missing_paths and len(self._paths) == 0:
+            raise ValueError(
+                "None of the provided paths exist. "
+                "The 'ignore_missing_paths' field is set to True."
+            )
+
+        self._supports_distributed_reads = not _is_local_scheme(paths)
+        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the Ray "
+                "cluster can't access your local files. To fix this issue, store "
+                "files in cloud storage or a distributed filesystem like NFS."
+            )
+
+        if self._partition_filter is not None:
+            # Use partition filter to skip files which are not needed.
+            path_to_size = dict(zip(self._paths, self._file_sizes))
+            self._paths = self._partition_filter(self._paths)
+            self._file_sizes = [path_to_size[p] for p in self._paths]
+            if len(self._paths) == 0:
+                raise ValueError(
+                    "No input files found to read. Please double check that "
+                    "'partition_filter' field is set properly."
+                )
+
+        if shuffle == "files":
+            files_metadata = list(zip(self._paths, self._file_sizes))
+            shuffled_files_metadata = [
+                files_metadata[i]
+                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
+            ]
+            self._paths, self._file_sizes = list(
+                map(list, zip(*shuffled_files_metadata))
+            )
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        total_size = 0
+        for sz in self._file_sizes:
+            if sz is not None:
+                total_size += sz
+        return total_size
+
+    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        import numpy as np
+
+        filesystem = _wrap_s3_serialization_workaround(self._filesystem)
+        open_stream_args = self._open_stream_args
+        partitioning = self._partitioning
+
+        ctx = DataContext.get_current()
+
+        # NOTE: If we don't assign `read_stream` and `open_input_source` to local
+        # variables, `self` gets pickled with the read tasks. Because `self` stores a
+        # list of a file paths, `self` can be very large. This can cause a performance
+        # issue when scheduling tasks.
+        read_stream = self._reader.read_stream
+        open_input_source = self._reader.open_input_source
+
+        def read_files(
+            read_paths: Iterable[str],
+        ) -> Iterable[Block]:
+            nonlocal filesystem, open_stream_args, partitioning
+
+            DataContext._set_current(ctx)
+            fs = _unwrap_s3_serialization_workaround(filesystem)
+            for read_path in read_paths:
+                partitions: Dict[str, str] = {}
+                if partitioning is not None:
+                    parse = PathPartitionParser(partitioning)
+                    partitions = parse(read_path)
+
+                with _open_file_with_retry(
+                    read_path,
+                    lambda: open_input_source(fs, read_path, **open_stream_args),
+                ) as f:
+                    for data in read_stream(f, read_path):
+                        if partitions:
+                            data = _add_partitions(data, partitions)
+                        yield data
+
+        def create_read_task_fn(read_paths, num_threads):
+            def read_task_fn():
+                nonlocal num_threads, read_paths
+
+                if num_threads > 0:
+                    if len(read_paths) < num_threads:
+                        num_threads = len(read_paths)
+
+                    logger.get_logger().debug(
+                        f"Reading {len(read_paths)} files with {num_threads} threads."
+                    )
+
+                    yield from make_async_gen(
+                        iter(read_paths),
+                        read_files,
+                        num_workers=num_threads,
+                    )
+                else:
+                    logger.get_logger().debug(f"Reading {len(read_paths)} files.")
+                    yield from read_files(read_paths)
+
+            return read_task_fn
+
+        # fix https://github.com/ray-project/ray/issues/24296
+        parallelism = min(parallelism, len(self._paths))
+
+        read_tasks = []
+        for read_paths, file_sizes in zip(
+            np.array_split(self._paths, parallelism),
+            np.array_split(self._file_sizes, parallelism),
+        ):
+            if len(read_paths) <= 0:
+                continue
+
+            meta = self._meta_provider(
+                read_paths,
+                self._schema,
+                rows_per_file=self._rows_per_file(),
+                file_sizes=file_sizes,
+            )
+
+            read_task_fn = create_read_task_fn(read_paths, self._NUM_THREADS_PER_TASK)
+
+            read_task = ReadTask(read_task_fn, meta)
+
+            read_tasks.append(read_task)
+
+        return read_tasks
+
     def _rows_per_file(self):
         """Returns the number of rows per file, or None if unknown."""
         return None
-
-    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
-        """Streaming read a single file, passing all kwargs to the reader.
-
-        By default, delegates to self._read_file().
-        """
-        yield self._read_file(f, path)
-
-    def _read_file(self, f: "pyarrow.NativeFile", path: str) -> Block:
-        """Reads a single file, passing all kwargs to the reader.
-
-        This method should be implemented by subclasses.
-        """
-        raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _read_file()."
-        )
 
     def on_write_start(
         self,

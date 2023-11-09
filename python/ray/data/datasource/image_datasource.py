@@ -8,7 +8,7 @@ import numpy as np
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.datasource.file_based_datasource import FileBasedDatasource, FileReader
 from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
 from ray.util.annotations import DeveloperAPI
 
@@ -44,9 +44,8 @@ class ImageDatasource(FileBasedDatasource):
         include_paths: bool = False,
         **file_based_datasource_kwargs,
     ):
-        super().__init__(paths, **file_based_datasource_kwargs)
-
-        _check_import(self, module="PIL", package="Pillow")
+        reader = _ImageReader(size=size, mode=mode, include_paths=include_paths)
+        super().__init__(paths, reader, **file_based_datasource_kwargs)
 
         if size is not None and len(size) != 2:
             raise ValueError(
@@ -69,37 +68,6 @@ class ImageDatasource(FileBasedDatasource):
             meta_provider._set_encoding_ratio(self._encoding_ratio)
         else:
             self._encoding_ratio = IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
-
-    def _read_file(
-        self,
-        f: "pyarrow.NativeFile",
-        path: str,
-    ) -> "pyarrow.Table":
-        from PIL import Image, UnidentifiedImageError
-
-        data = f.readall()
-
-        try:
-            image = Image.open(io.BytesIO(data))
-        except UnidentifiedImageError as e:
-            raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
-
-        if self.size is not None:
-            height, width = self.size
-            image = image.resize((width, height))
-        if self.mode is not None:
-            image = image.convert(self.mode)
-
-        builder = DelegatingBlockBuilder()
-        array = np.array(image)
-        if self.include_paths:
-            item = {"image": array, "path": path}
-        else:
-            item = {"image": array}
-        builder.add(item)
-        block = builder.build()
-
-        return block
 
     def _rows_per_file(self):
         return 1
@@ -177,6 +145,52 @@ class ImageDatasource(FileBasedDatasource):
             )
         logger.debug(f"Estimated image encoding ratio from sampling is {ratio}.")
         return max(ratio, IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+
+
+class _ImageReader(FileReader):
+    def __init__(
+        self,
+        *,
+        size: Optional[Tuple[int, int]],
+        mode: Optional[str],
+        include_paths: bool,
+    ):
+        _check_import(self, module="PIL", package="Pillow")
+
+        self.size = size
+        self.mode = mode
+        self.include_paths = include_paths
+
+    def read_file(
+        self,
+        f: "pyarrow.NativeFile",
+        path: str,
+    ) -> "pyarrow.Table":
+        from PIL import Image, UnidentifiedImageError
+
+        data = f.readall()
+
+        try:
+            image = Image.open(io.BytesIO(data))
+        except UnidentifiedImageError as e:
+            raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
+
+        if self.size is not None:
+            height, width = self.size
+            image = image.resize((width, height))
+        if self.mode is not None:
+            image = image.convert(self.mode)
+
+        builder = DelegatingBlockBuilder()
+        array = np.array(image)
+        if self.include_paths:
+            item = {"image": array, "path": path}
+        else:
+            item = {"image": array}
+        builder.add(item)
+        block = builder.build()
+
+        return block
 
 
 class _ImageFileMetadataProvider(DefaultFileMetadataProvider):
