@@ -16,6 +16,12 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
+# Install podman
+RUN echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /" | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+RUN curl -L "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/Release.key" | sudo apt-key add -
+RUN sudo apt update && sudo apt upgrade -y
+RUN sudo apt install -y podman
+
 RUN <<EOF
 #!/bin/bash
 
