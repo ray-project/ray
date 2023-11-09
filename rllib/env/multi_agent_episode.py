@@ -11,6 +11,13 @@ from ray.rllib.utils.typing import MultiAgentDict
 
 # TODO (simon): Include cases in which the number of agents in an
 # episode are shrinking or growing during the episode itself.
+# TODO (simon): When creating a successor we do start the global
+# timestep mapping at 0 again, even though along the episode this
+# is not the case.
+# TODO (simon): When creating a successor we copy over the rewards
+# and the partial reward timestep mapping, this however might not toally
+# match with the global timestep mapping - plays a role when we create
+# another successor from that one and concatenate episodes.
 class MultiAgentEpisode:
     """Stores multi-agent episode data.
 
@@ -321,6 +328,7 @@ class MultiAgentEpisode:
             timestep, rewards are returned (i.e. not all agent ids are
             necessarily in the keys).
         """
+        # TODO (simon): Add partial rewards.
         return self._getattr_by_index("rewards", indices, global_ts, as_list)
 
     def get_infos(
@@ -908,7 +916,10 @@ class MultiAgentEpisode:
                     self.global_t_to_local_t[agent_id][-1]
                 )
             else:
-                indices_to_keep = []
+                if self.partial_rewards_t[agent_id]:
+                    indices_to_keep = list(range(len(self.partial_rewards_t[agent_id])))
+                else:
+                    indices_to_keep = []
 
             successor_global_rewards_t[agent_id] = _IndexMapping(
                 map(self.partial_rewards_t[agent_id].__getitem__, indices_to_keep)
@@ -993,6 +1004,7 @@ class MultiAgentEpisode:
 
         Returns: A float. The aggregate return from all agents.
         """
+        # TODO (simon): Also include the partial rewards.
         return sum(
             [agent_eps.get_return() for agent_eps in self.agent_episodes.values()]
         )
@@ -1216,6 +1228,11 @@ class MultiAgentEpisode:
                 agent_reward = 0.0
                 for t, reward in enumerate(rewards):
                     if agent_id in reward:
+                        # TODO (simon): This has to be put into the
+                        # if clause below. There is some inconsistency as here
+                        # we add all rewards not only partial ones and in
+                        # add_timestep and create_successor we use only
+                        # partial ones.
                         global_agent_rewards.append(reward[agent_id])
                         # Then add the reward.
                         agent_reward += reward[agent_id]
