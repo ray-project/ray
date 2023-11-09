@@ -418,14 +418,113 @@ def test_operation_stats(monkeypatch, shutdown_only):
         m.setenv("RAY_event_stats_metrics", "1")
         addr = ray.init()
 
-        @ray.remote
-        def f():
-            pass
+        signal = SignalActor.remote()
 
-        ray.get(f.remote())
+        @ray.remote
+        class Actor:
+            def __init__(self, signal):
+                self.signal = signal
+
+            def get_worker_id(self):
+                return ray.get_runtime_context().get_worker_id()
+
+            def wait(self):
+                ray.get(self.signal.wait.remote())
+
+        actor = Actor.remote(signal)
+        worker_id = ray.get(actor.get_worker_id.remote())
+        obj_ref = actor.wait.remote()
 
         def verify():
             metrics = raw_metrics(addr)
+            samples = metrics["ray_operation_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 1
+            if not found:
+                return False
+
+            samples = metrics["ray_operation_active_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 1
+            if not found:
+                return False
+
+            return True
+
+        wait_for_condition(verify, timeout=60)
+
+        ray.get(signal.send.remote())
+        ray.get(obj_ref)
+
+        def verify():
+            metrics = raw_metrics(addr)
+
+            samples = metrics["ray_operation_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 1
+            if not found:
+                return False
+
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"]
+                    == "CoreWorkerService.grpc_client.PushTask.OnReplyReceived"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 1
+            if not found:
+                return False
+
+            samples = metrics["ray_operation_active_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 0
+            if not found:
+                return False
+
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"]
+                    == "CoreWorkerService.grpc_client.PushTask.OnReplyReceived"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 0
+            if not found:
+                return False
+
             metric_names = set(metrics.keys())
             for op_metric in operation_metrics:
                 assert op_metric in metric_names

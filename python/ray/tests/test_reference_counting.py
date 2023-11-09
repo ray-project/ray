@@ -45,7 +45,10 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
         )
     else:
         wait_for_condition(
-            lambda: not ray._private.worker.global_worker.core_worker.object_exists(obj)
+            lambda: not ray._private.worker.global_worker.core_worker.object_exists(
+                obj
+            ),
+            timeout=30,
         )
 
 
