@@ -56,7 +56,7 @@ def parse_args():
         default=False,
         type=bool,
         help="Whether to skip training a model (i.e. only consume data). "
-        "Set to True if file_type == 'parquet'."
+        "Set to True if file_type == 'parquet'.",
     )
     parser.add_argument(
         "--repeat-ds",

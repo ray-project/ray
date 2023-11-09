@@ -5737,7 +5737,7 @@
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 3600
+    timeout: 7200
     script: python multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 7
 
   variations:
@@ -5761,7 +5761,7 @@
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 4800
+    timeout: 7200
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --use-gpu --num-epochs 7
 
   variations:
@@ -5809,7 +5809,7 @@
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 3600
+    timeout: 7200
     script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet --target-worker-gb 50 --use-gpu --num-epochs 7
 
   variations:
@@ -5833,7 +5833,7 @@
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 4800
+    timeout: 7200
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet --target-worker-gb 50 --use-gpu --num-epochs 7
 
   variations:
