@@ -199,9 +199,6 @@ class ResourceSpec(
                 num_accelerators = (
                     accelerator_manager.get_current_node_num_accelerators()
                 )
-                visible_accelerator_ids = (
-                    accelerator_manager.get_current_process_visible_accelerator_ids()
-                )
                 # Don't use more accelerators than allowed by visible accelerator ids.
                 if visible_accelerator_ids is not None:
                     num_accelerators = min(
