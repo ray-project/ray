@@ -992,10 +992,10 @@ Status PlacementGroupInfoAccessor::SyncWaitUntilReady(
   return status;
 }
 
-VirtualClusterAccessor::VirtualClusterAccessor(GcsClient *client_impl)
+VirtualClusterInfoAccessor::VirtualClusterInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status VirtualClusterAccessor::SyncCreateVirtualCluster(
+Status VirtualClusterInfoAccessor::SyncCreateVirtualCluster(
     const ray::VirtualClusterSpecification &virtual_cluster_spec) {
   rpc::CreateVirtualClusterRequest request;
   rpc::CreateVirtualClusterReply reply;
@@ -1014,7 +1014,7 @@ Status VirtualClusterAccessor::SyncCreateVirtualCluster(
   return status;
 }
 
-Status VirtualClusterAccessor::SyncRemoveVirtualCluster(
+Status VirtualClusterInfoAccessor::SyncRemoveVirtualCluster(
     const ray::VirtualClusterID &virtual_cluster_id) {
   rpc::RemoveVirtualClusterRequest request;
   rpc::RemoveVirtualClusterReply reply;
@@ -1024,7 +1024,7 @@ Status VirtualClusterAccessor::SyncRemoveVirtualCluster(
   return status;
 }
 
-// Status VirtualClusterAccessor::AsyncGet(
+// Status VirtualClusterInfoAccessor::AsyncGet(
 //     const VirtualClusterID &virtual_cluster_id,
 //     const OptionalItemCallback<rpc::VirtualClusterTableData> &callback) {
 //   RAY_LOG(DEBUG) << "Getting virtual cluster info, virtual cluster id = "
@@ -1047,7 +1047,7 @@ Status VirtualClusterAccessor::SyncRemoveVirtualCluster(
 //   return Status::OK();
 // }
 
-// Status VirtualClusterAccessor::AsyncGetByName(
+// Status VirtualClusterInfoAccessor::AsyncGetByName(
 //     const std::string &name,
 //     const std::string &ray_namespace,
 //     const OptionalItemCallback<rpc::VirtualClusterTableData> &callback,
@@ -1072,7 +1072,7 @@ Status VirtualClusterAccessor::SyncRemoveVirtualCluster(
 //   return Status::OK();
 // }
 
-// Status VirtualClusterAccessor::AsyncGetAll(
+// Status VirtualClusterInfoAccessor::AsyncGetAll(
 //     const MultiItemCallback<rpc::VirtualClusterTableData> &callback) {
 //   RAY_LOG(DEBUG) << "Getting all virtual cluster info.";
 //   rpc::GetAllVirtualClusterRequest request;
@@ -1086,7 +1086,7 @@ Status VirtualClusterAccessor::SyncRemoveVirtualCluster(
 //   return Status::OK();
 // }
 
-// Status VirtualClusterAccessor::SyncWaitUntilReady(
+// Status VirtualClusterInfoAccessor::SyncWaitUntilReady(
 //     const VirtualClusterID &virtual_cluster_id, int64_t timeout_seconds) {
 //   rpc::WaitVirtualClusterUntilReadyRequest request;
 //   rpc::WaitVirtualClusterUntilReadyReply reply;

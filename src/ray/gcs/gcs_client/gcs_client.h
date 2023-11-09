@@ -157,6 +157,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *placement_group_accessor_;
   }
 
+  VirtualClusterInfoAccessor &VirtualClusters() {
+    RAY_CHECK(virtual_cluster_accessor_ != nullptr);
+    return *virtual_cluster_accessor_;
+  }
+
   const ClusterID &GetClusterId() {
     RAY_CHECK(client_call_manager_) << "Cannot retrieve cluster ID before it is set.";
     return client_call_manager_->GetClusterId();
@@ -180,6 +185,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<ErrorInfoAccessor> error_accessor_;
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
+  std::unique_ptr<VirtualClusterInfoAccessor> virtual_cluster_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
 
   std::unique_ptr<TaskInfoAccessor> task_accessor_;

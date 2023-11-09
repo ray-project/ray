@@ -671,11 +671,11 @@ class PlacementGroupInfoAccessor {
   GcsClient *client_impl_;
 };
 
-class VirtualClusterAccessor {
+class VirtualClusterInfoAccessor {
  public:
-  VirtualClusterAccessor() = default;
-  explicit VirtualClusterAccessor(GcsClient *client_impl);
-  virtual ~VirtualClusterAccessor() = default;
+  VirtualClusterInfoAccessor() = default;
+  explicit VirtualClusterInfoAccessor(GcsClient *client_impl);
+  virtual ~VirtualClusterInfoAccessor() = default;
 
   /// Create a virtual cluster to GCS synchronously.
   ///

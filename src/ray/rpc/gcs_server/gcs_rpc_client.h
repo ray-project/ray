@@ -232,6 +232,9 @@ class GcsRpcClient {
     placement_group_info_grpc_client_ =
         std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(channel_,
                                                                    client_call_manager);
+    virtual_cluster_info_grpc_client_ =
+        std::make_unique<GrpcClient<VirtualClusterInfoGcsService>>(channel_,
+                                                                   client_call_manager);
     internal_kv_grpc_client_ =
         std::make_unique<GrpcClient<InternalKVGcsService>>(channel_, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
@@ -606,6 +609,8 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
+  std::unique_ptr<GrpcClient<VirtualClusterInfoGcsService>>
+      virtual_cluster_info_grpc_client_;
   std::unique_ptr<GrpcClient<VirtualClusterInfoGcsService>> virtual_cluster_grpc_client_;
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
