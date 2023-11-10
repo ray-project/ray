@@ -71,10 +71,6 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
     return nullptr;
   }
 
-  auto plasma_header = entry->GetPlasmaObjectHeader();
-  RAY_CHECK(sem_wait(&plasma_header->can_read) == 0);
-  RAY_CHECK(plasma_header->max_readers == -1) << plasma_header->max_readers;
-
   entry->state = ObjectState::PLASMA_SEALED;
   entry->construct_duration = std::time(nullptr) - entry->create_time;
   return entry;
@@ -85,6 +81,7 @@ bool ObjectStore::DeleteObject(const ObjectID &object_id) {
   if (entry == nullptr) {
     return false;
   }
+  // TODO(swang): Make sure Seal coroutine is done before deleting.
   auto plasma_header = entry->GetPlasmaObjectHeader();
   plasma_header->Destroy();
 

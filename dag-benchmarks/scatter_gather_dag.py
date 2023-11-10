@@ -38,9 +38,9 @@ def run_benchmark(num_actors, num_trials):
     with InputNode() as dag_input:
         # 1 task for each actor.
         outputs = [a.inc.bind(dag_input) for a in actors]
-    refs = ray.execute_dag(outputs, args=(1, ))
+    refs = ray.execute_dag(outputs, args=(1,))
     # Caller can also change the DAG by doing this.
-    refs = ray.execute_dag(outputs[1:], args=(1, ))
+    refs = ray.execute_dag(outputs[1:], args=(1,))
 
     # Instead we want to make sure that the exact same DAG is executed each
     # time.

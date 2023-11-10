@@ -676,19 +676,22 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   sem_post(&plasma_header->can_read);
 
   object_entry->second->is_sealed = true;
-  /// Send the seal request to Plasma.
-  RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
-  ObjectID sealed_id;
-  RAY_RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
-  RAY_CHECK(sealed_id == object_id);
-  // We call PlasmaClient::Release to decrement the number of instances of this
-  // object
-  // that are currently being used by this client. The corresponding increment
-  // happened in plasma_create and was used to ensure that the object was not
-  // released before the call to PlasmaClient::Seal.
-  return Release(object_id);
+  //// Send the seal request to Plasma.
+  //RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
+  //std::vector<uint8_t> buffer;
+  //RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
+  //ObjectID sealed_id;
+  //RAY_RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
+  //RAY_CHECK(sealed_id == object_id);
+  //// We call PlasmaClient::Release to decrement the number of instances of this
+  //// object
+  //// that are currently being used by this client. The corresponding increment
+  //// happened in plasma_create and was used to ensure that the object was not
+  //// released before the call to PlasmaClient::Seal.
+  //return Release(object_id);
+
+  // TODO(swang): Release the object if the ref count == 0.
+  return Status::OK();
 }
 
 Status PlasmaClient::Impl::Abort(const ObjectID &object_id) {

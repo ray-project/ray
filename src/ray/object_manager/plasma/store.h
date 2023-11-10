@@ -106,6 +106,8 @@ class PlasmaStore {
     return available;
   }
 
+  void WaitForSeal(const ObjectID &object_id, const std::shared_ptr<Client> &client);
+
  private:
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.

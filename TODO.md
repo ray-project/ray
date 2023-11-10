@@ -1,11 +1,14 @@
 [x] Write benchmark script with Ray DAG
-[ ] Add "max readers" header to each Plasma buffer. max readers cases:
+[x] Add "max readers" header to each Plasma buffer. max readers cases:
     - -1: Normal Ray path, created and sealed object, can be read "infinity" times
     - 0: Unsealed object
     - N: Object that can be read at most N times
-[ ] Implement normal Seal path with shared memory instead of IPC, using max readers header
+[x] Implement normal Seal path with shared memory instead of IPC, using max readers header
     - CoreWorker is the "writer"
     - plasma store is the "reader"
+[ ] Harden shared-memory based Seal
+    - [ ] edge case: object aborted/client dies while waiting for seal
+    - [ ] shared-memory plasma client ref counting
 [ ] Implement max readers=N semaphore pattern and test with ray.put/ray.get
     - Sender CoreWorker actor is the "writer"
     - Receiver CoreWorker actor(s) is the "reader"

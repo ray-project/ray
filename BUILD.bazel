@@ -415,6 +415,9 @@ ray_cc_library(
     deps = [
         ":plasma_client",
         ":stats_lib",
+        "@boost//:asio",
+        "@boost//:context",
+        "@boost//:coroutine",
     ],
 )
 
