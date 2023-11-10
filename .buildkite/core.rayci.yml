@@ -184,6 +184,16 @@ steps:
       - "3.10"
       - "3.11"
 
+  # cpp tests
+  - label: ":ray: core: cpp worker tests"
+    tags: core_cpp
+    instance_type: small
+    commands:
+      - ci/ci.sh build
+      - ci/ci.sh test_cpp
+    depends_on: oss-ci-base_build
+    job_env: oss-ci-base_build
+
   - label: ":ray: core: cpp tests"
     tags: core_cpp
     instance_type: small
@@ -198,6 +208,26 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type asan-clang
+        --parallelism-per-worker 2
+    depends_on: corebuild
+    job_env: forge
+
+  - label: ":ray: core: cpp ubsan tests"
+    tags: core_cpp
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type ubsan
+        --except-tags no_ubsan
+        --parallelism-per-worker 2
+    depends_on: corebuild
+    job_env: forge
+
+  - label: ":ray: core: cpp tsan tests"
+    tags: core_cpp
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type tsan-clang
+        --except-tags no_tsan
         --parallelism-per-worker 2
     depends_on: corebuild
     job_env: forge
