@@ -29,6 +29,10 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
                  << object_info.data_size;
   RAY_CHECK(object_table_.count(object_info.object_id) == 0)
       << object_info.object_id << " already exists!";
+
+  RAY_LOG(DEBUG) << "ALLOCATING " << sizeof(ray::PlasmaObjectHeader) << " "
+                 << object_info.data_size << " " << object_info.metadata_size;
+
   auto object_size = object_info.GetObjectSize();
   auto allocation = fallback_allocate ? allocator_.FallbackAllocate(object_size)
                                       : allocator_.Allocate(object_size);

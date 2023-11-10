@@ -136,7 +136,8 @@ class LocalObject {
     object->store_fd = GetAllocation().fd;
     object->header_offset = GetAllocation().offset;
     object->data_offset = GetAllocation().offset + sizeof(ray::PlasmaObjectHeader);
-    object->metadata_offset = GetAllocation().offset + sizeof(ray::PlasmaObjectHeader) + GetObjectInfo().data_size;
+    object->metadata_offset = GetAllocation().offset + sizeof(ray::PlasmaObjectHeader) +
+                              GetObjectInfo().data_size;
     object->data_size = GetObjectInfo().data_size;
     object->metadata_size = GetObjectInfo().metadata_size;
     object->device_num = GetAllocation().device_num;

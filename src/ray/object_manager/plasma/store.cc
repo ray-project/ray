@@ -33,8 +33,8 @@
 #include <string.h>
 #include <sys/eventfd.h>
 
-#include <boost/bind/bind.hpp>
 #include <boost/asio/spawn.hpp>
+#include <boost/bind/bind.hpp>
 #include <chrono>
 #include <ctime>
 #include <deque>
@@ -531,7 +531,8 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   }
 }
 
-void PlasmaStore::WaitForSeal(const ObjectID &object_id, const std::shared_ptr<Client> &client) {
+void PlasmaStore::WaitForSeal(const ObjectID &object_id,
+                              const std::shared_ptr<Client> &client) {
   auto entry = object_lifecycle_mgr_.GetObject(object_id);
   RAY_CHECK(entry);
   auto plasma_header = entry->GetPlasmaObjectHeader();
@@ -547,19 +548,22 @@ void PlasmaStore::WaitForSeal(const ObjectID &object_id, const std::shared_ptr<C
 
   auto wait_thread = std::make_shared<std::thread>(wait_fn);
 
-  boost::asio::spawn(io_context_, [this, event_fd, object_id, plasma_header, wait_thread, client](boost::asio::yield_context yield) {
-      boost::asio::posix::stream_descriptor event_stream(io_context_, event_fd);
-      event_stream.async_wait(boost::asio::posix::stream_descriptor::wait_read, yield);
-      close(event_fd);
-      RAY_CHECK(plasma_header->max_readers == -1) << plasma_header->max_readers;
+  boost::asio::spawn(
+      io_context_,
+      [this, event_fd, object_id, plasma_header, wait_thread, client](
+          boost::asio::yield_context yield) {
+        boost::asio::posix::stream_descriptor event_stream(io_context_, event_fd);
+        event_stream.async_wait(boost::asio::posix::stream_descriptor::wait_read, yield);
+        close(event_fd);
+        RAY_CHECK(plasma_header->max_readers == -1) << plasma_header->max_readers;
 
-      {
-        absl::MutexLock lock(&mutex_);
-        SealObjects({object_id});
-      }
+        {
+          absl::MutexLock lock(&mutex_);
+          SealObjects({object_id});
+        }
 
-      RAY_LOG(INFO) << "DONE " << object_id;
-      wait_thread->join();
+        RAY_LOG(INFO) << "DONE " << object_id;
+        wait_thread->join();
       });
 }
 

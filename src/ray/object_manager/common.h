@@ -14,10 +14,11 @@
 
 #pragma once
 
-#include <boost/asio.hpp>
-#include <atomic>
-#include <functional>
 #include <semaphore.h>
+
+#include <atomic>
+#include <boost/asio.hpp>
+#include <functional>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -44,10 +45,9 @@ struct PlasmaObjectHeader {
   int64_t max_readers = 0;
 
   void Init() {
-    sem_init(
-        &can_write,
-        /*pshared=*/1,
-        /*value=*/1);
+    sem_init(&can_write,
+             /*pshared=*/1,
+             /*value=*/1);
     sem_init(&can_read, /*pshared=*/1, /*value=*/0);
   }
 
@@ -71,7 +71,9 @@ struct ObjectInfo {
   /// Owner's worker ID.
   WorkerID owner_worker_id;
 
-  int64_t GetObjectSize() const { return sizeof(PlasmaObjectHeader) + data_size + metadata_size; }
+  int64_t GetObjectSize() const {
+    return sizeof(PlasmaObjectHeader) + data_size + metadata_size;
+  }
 
   bool operator==(const ObjectInfo &other) const {
     return ((object_id == other.object_id) && (data_size == other.data_size) &&
