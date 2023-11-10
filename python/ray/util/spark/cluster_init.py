@@ -1446,8 +1446,7 @@ class AutoscalingCluster:
         }
 
         custom_config["max_workers"] = sum(
-            v["max_workers"]
-            for _, v in worker_node_types.items()
+            v["max_workers"] for _, v in worker_node_types.items()
         )
 
         custom_config["provider"].update(extra_provider_config)
