@@ -1,44 +1,13 @@
-import os
+from unittest import mock
 
-import pyarrow
 import pytest
 
 import ray
-from ray.data.block import BlockAccessor
-from ray.data.datasource import FileBasedDatasource
 from ray.data.datasource.file_based_datasource import (
     OPEN_FILE_MAX_ATTEMPTS,
     _open_file_with_retry,
 )
-
-
-class MockFileBasedDatasource(FileBasedDatasource):
-    def _write_block(
-        self, f: "pyarrow.NativeFile", block: BlockAccessor, **writer_args
-    ):
-        f.write(b"")
-
-
-@pytest.mark.parametrize("num_rows", [0, 1])
-def test_write_preserves_user_directory(num_rows, tmp_path, ray_start_regular_shared):
-    ds = ray.data.range(num_rows)
-    path = os.path.join(tmp_path, "test")
-    os.mkdir(path)  # User-created directory
-
-    ds.write_datasource(MockFileBasedDatasource(), dataset_uuid=ds._uuid, path=path)
-
-    assert os.path.isdir(path)
-
-
-def test_write_creates_dir(tmp_path, ray_start_regular_shared):
-    ds = ray.data.range(1)
-    path = os.path.join(tmp_path, "test")
-
-    ds.write_datasource(
-        MockFileBasedDatasource(), dataset_uuid=ds._uuid, path=path, try_create_dir=True
-    )
-
-    assert os.path.isdir(path)
+from ray.data.datasource.path_util import _is_local_windows_path
 
 
 def test_open_file_with_retry(ray_start_regular_shared):
@@ -71,6 +40,13 @@ def test_open_file_with_retry(ray_start_regular_shared):
         ray.data.datasource.file_based_datasource.OPEN_FILE_MAX_ATTEMPTS = (
             original_max_attempts
         )
+
+
+def test_windows_path():
+    with mock.patch("sys.platform", "win32"):
+        assert _is_local_windows_path("c:/some/where")
+        assert _is_local_windows_path("c:\\some\\where")
+        assert _is_local_windows_path("c:\\some\\where/mixed")
 
 
 if __name__ == "__main__":

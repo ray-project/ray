@@ -108,6 +108,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         )
 
         config = {
+            "env": "test",
             "env_config": {
                 "num_agents": 1,
             },
@@ -125,7 +126,7 @@ class TestBackwardCompatibility(unittest.TestCase):
                 "policies_to_train": ["policy1"],
             },
         }
-        algo = DQN(config=config, env="test")
+        algo = DQN(config=config)
         self.assertTrue(algo.config.lr == 0.001)
         self.assertTrue(algo.config.evaluation_num_workers == 1)
         self.assertTrue(list(algo.config.policies.keys()) == ["policy1"])

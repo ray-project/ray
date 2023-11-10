@@ -40,6 +40,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (int worker_port,
                const WorkerID &worker_id,
                bool disconnect_worker,
+               const std::string &disconnect_worker_error_detail,
                bool worker_exiting),
               (override));
   MOCK_METHOD(void,
@@ -90,11 +91,6 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(void,
               GetSystemConfig,
               (const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback),
-              (override));
-  MOCK_METHOD(void,
-              UpdateResourceUsage,
-              (std::string & serialized_resource_usage_batch,
-               const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback),
               (override));
   MOCK_METHOD(void,
               GetResourceLoad,
