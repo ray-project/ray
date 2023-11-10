@@ -750,7 +750,6 @@ class ExecutionPlan:
                 logical_op._parallelism,
                 logical_op._mem_size,
                 ctx.target_max_block_size,
-                cur_additional_split_factor=None,
             )
             if logical_op._parallelism == -1:
                 assert reason != ""
