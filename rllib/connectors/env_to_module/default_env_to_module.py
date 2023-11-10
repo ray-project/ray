@@ -63,7 +63,7 @@ class DefaultEnvToModule(ConnectorV2):
             input_ = tree.map_structure(lambda s: np.expand_dims(s, axis=1), input_)
 
             # Batch states (from list of individual vector sub-env states).
-            # Note thatstate ins should NOT have the extra time dimension.
+            # Note that state ins should NOT have the extra time dimension.
             input_[STATE_IN] = batch(states)
 
         return input_

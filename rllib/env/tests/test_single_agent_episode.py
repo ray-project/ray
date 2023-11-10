@@ -71,8 +71,8 @@ class TestSingelAgentEpisode(unittest.TestCase):
         rewards = []
         actions = []
         infos = []
-        extra_model_outputs = []
-        states = np.random.random(10)
+        extra_model_outputs = {"extra_1": []}
+        #states = np.random.random(10)
 
         # Initialize observation and info.
         init_obs, init_info = env.reset()
@@ -86,7 +86,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
             actions.append(action)
             rewards.append(reward)
             infos.append(info)
-            extra_model_outputs.append({"extra_1": np.random.random()})
+            extra_model_outputs["extra_1"].append(np.random.random())
 
         # Build the episode.
         episode = SingleAgentEpisode(
@@ -94,7 +94,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
             actions=actions,
             rewards=rewards,
             infos=infos,
-            states=states,
+            #states=states,
             is_terminated=is_terminated,
             is_truncated=is_truncated,
             extra_model_outputs=extra_model_outputs,
@@ -219,6 +219,9 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertTrue(episode_1.observations[-1] == episode_2.observations[0])
         # Assert that the last info of `episode_1` is the first of episode_2`.
         self.assertTrue(episode_1.infos[-1] == episode_2.infos[0])
+        # Assert that rewards and actions are empty in the new chunk.
+        self.assertTrue(episode_2.actions == [])
+        self.assertTrue(episode_2.rewards == [])
 
         # Test immutability.
         action = 100

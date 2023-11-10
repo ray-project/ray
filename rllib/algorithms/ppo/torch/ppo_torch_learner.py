@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Dict, Mapping
 
+import tree  # pip install dm_tree
+
 from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
@@ -9,7 +11,7 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     PPOLearner,
     PPOLearnerHyperparameters,
 )
-from ray.rllib.utils.torch_utils import sequence_mask
+from ray.rllib.core.models.base import ENCODER_OUT, CRITIC
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
@@ -50,7 +52,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # simplify the actual computation.
 
         def possibly_masked_mean(data_):
-            return torch.sum(data_[batch["loss_mask"]]) / num_valid
+            return torch.sum(data_[batch["loss_mask"]]) / torch.sum(batch["loss_mask"])
 
         ## RNN case: Mask away 0-padded chunks at end of time axis.
         #if self.module[module_id].is_stateful():
@@ -181,6 +183,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
     @override(PPOLearner)
     def _compute_values(self, batch):
+        batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
+
         # TODO (sven): Make multi-agent capable.
         module = self.module[DEFAULT_POLICY_ID]
         # Shared encoder.
@@ -188,4 +192,4 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # Value head.
         vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
         # Squeeze out last dimension (single node value head).
-        batch[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
+        return vf_out.squeeze(-1)

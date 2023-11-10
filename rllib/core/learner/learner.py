@@ -39,7 +39,7 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -1310,6 +1310,14 @@ class Learner:
             episodes=episodes,
             ctx=self._learner_connector_ctx,
         )
+
+        # TODO (sven): Thus far, processing from episodes and the learner connector are solely
+        # single-agent.
+        if episodes is not None:
+            batch = MultiAgentBatch(
+                policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
+                env_steps=sum(len(e) for e in episodes),
+            )
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator

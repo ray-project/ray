@@ -1,9 +1,10 @@
+from collections import defaultdict
 import numpy as np
 import uuid
 
 from gymnasium.core import ActType, ObsType
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Optional, SupportsFloat
+from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
 from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -104,8 +105,7 @@ class SingleAgentEpisode:
         self.t = self.t_started = (
             t_started if t_started is not None else max(len(self.observations) - 1, 0)
         )
-        if self.t_started < len(self.observations) - 1:
-            self.t = len(self.observations) - 1
+        self._len_pre_buffer = len(self.rewards)
 
         # obs[-1] is the final observation in the episode.
         self.is_terminated = is_terminated
@@ -117,9 +117,7 @@ class SingleAgentEpisode:
         assert render_images is None or observations is not None
         self.render_images = [] if render_images is None else render_images
         # Extra model outputs, e.g. `action_dist_input` needed in the batch.
-        self.extra_model_outputs = (
-            {} if extra_model_outputs is None else extra_model_outputs
-        )
+        self.extra_model_outputs = defaultdict(list, extra_model_outputs or {})
 
     def concat_episode(self, episode_chunk: "SingleAgentEpisode"):
         """Adds the given `episode_chunk` to the right side of self.
@@ -252,10 +250,7 @@ class SingleAgentEpisode:
             self.render_images.append(render_image)
         if extra_model_output is not None:
             for k, v in extra_model_output.items():
-                if k not in self.extra_model_outputs:
-                    self.extra_model_outputs[k] = [v]
-                else:
-                    self.extra_model_outputs[k].append(v)
+                self.extra_model_outputs[k].append(v)
         self.is_terminated = is_terminated
         self.is_truncated = is_truncated
         self.validate()
@@ -277,6 +272,8 @@ class SingleAgentEpisode:
         )
         for k, v in self.extra_model_outputs.items():
             assert len(v) == len(self.observations) - 1
+        # Make sure, length of pre-buffer and len(self) make sense.
+        assert self._len_pre_buffer + len(self) == len(self.rewards)
 
     @property
     def is_numpy(self) -> bool:
@@ -300,11 +297,12 @@ class SingleAgentEpisode:
     def convert_lists_to_numpy(
         self,
         # TODO (sven): One of the few hard-coded hacks left. Problem: Doing this
-        #  reduction saves a lot of space/network transfer from EnvRunner workers to
-        #  Learners, but adds this knowledge requirement (which is only relevant for
-        #  the Learner) into the EnvRunner (which should NOT be involved in Learner-specific
-        #  logic). So this extra arg is good for performance, but bad for transparency.
-        keep_every_n_state_out: Optional[int] = None,
+        #  reduction, on the one hand, saves a lot of space/network transfer (from
+        #  EnvRunner workers to Learners), however, on the other hand, it adds this
+        #  knowledge requirement by the Learner into the EnvRunner (which should NOT be
+        #  involved in Learner-specific logic). So this extra arg is good for
+        #  performance, but bad for transparency.
+        #keep_every_n_state_out: Optional[int] = None,
     ) -> "SingleAgentEpisode":
         """Converts this Episode's list attributes to numpy arrays.
 
@@ -316,13 +314,13 @@ class SingleAgentEpisode:
         Note that INFOS are not numpy'ized and will remain as list type (normally, a
         list of the original, env-returned dicts).
 
-        Args:
-            keep_every_n_state_out: Optional int to indicate, every how many STATE_OUT
-                data we should keep (found in `self.extra_model_outputs[STATE_OUT]`)
-                after numpy conversion. This might make sense to save space and network
-                time as well as make sure that an RNN-based model can still use these
-                reduced state data for a (B, T, ...) forward pass (where state
-                inputs have the shape (B, ...)).
+        #Args:
+        #    keep_every_n_state_out: Optional int to indicate, every how many STATE_OUT
+        #        data we should keep (found in `self.extra_model_outputs[STATE_OUT]`)
+        #        after numpy conversion. This might make sense to save space and network
+        #        time as well as make sure that an RNN-based model can still use these
+        #        reduced state data for a (B, T, ...) forward pass (where state
+        #        inputs have the shape (B, ...)).
 
         Returns:
              This `SingleAgentEpisode` object with the converted data.
@@ -333,8 +331,8 @@ class SingleAgentEpisode:
         self.rewards = np.array(self.rewards)
         self.render_images = np.array(self.render_images, dtype=np.uint8)
         for k, v in self.extra_model_outputs.items():
-            if keep_every_n_state_out and k == STATE_OUT:
-                v = v[::keep_every_n_state_out]
+            #if keep_every_n_state_out and k == STATE_OUT:
+            #    v = v[::keep_every_n_state_out]
             self.extra_model_outputs[k] = batch(v)
 
         return self
@@ -367,67 +365,138 @@ class SingleAgentEpisode:
         """
         assert not self.is_done
 
+        indices_obs_and_infos = slice(-overlap-1, None)
+        indices_rest = slice(-overlap, None) if overlap > 0 else slice(None, 0)
+
         return SingleAgentEpisode(
             # Same ID.
             id_=self.id_,
-            # First (and only) observation of successor is this episode's last obs.
-            observations=[tree.map_structure(lambda s: s[-1], self.observations)],
-            # First (and only) info of successor is this episode's last info.
-            infos=[self.infos[-1]],
+            observations=self.get_observations(indices=indices_obs_and_infos),
+            infos=self.get_infos(indices=indices_obs_and_infos),
+            actions=self.get_actions(indices=indices_rest),
+            rewards=self.get_rewards(indices=indices_rest),
+            extra_model_outputs={
+                k: self.get_extra_model_outputs(k, indices_rest)
+                for k in self.extra_model_outputs.keys()
+            },
             # Same state.
             #states=self.states,
             # Continue with self's current timestep.
             t_started=self.t,
         )
 
-    def to_sample_batch(self) -> SampleBatch:
+    def get_data_dict(self): #, max_seq_len: Optional[int] = None) -> Dict[str, Any]:
+        """Converts a `SingleAgentEpisode` into a data dict mapping str keys to data.
+
+        The keys used are:
+        SampleBatch.EPS_ID, T, OBS, INFOS, ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS,
+        and those in `self.extra_model_outputs`.
+
+        #Args:
+        #    max_seq_len: If provided, will add an extra time axis (T=`max_seq_len`) to
+        #        the returned data chunks (under each key), as well as zero-pad the
+        #        possibly remaining space in each row.
+
+        Returns:
+            A data dict mapping str keys to data records.
+        """
+        t = list(range(self.t_started, self.t))
+        terminateds = [False] * (len(self) - 1) + [self.is_terminated]
+        truncateds = [False] * (len(self) - 1) + [self.is_truncated]
+        eps_id = [self.id_] * len(self)
+
+        if self.is_numpy:
+            t = np.array(t)
+            terminateds = np.array(terminateds)
+            truncateds = np.array(truncateds)
+            eps_id = np.array(eps_id)
+
+        return dict(
+            {
+                # Trivial 1D data (compiled above).
+                SampleBatch.TERMINATEDS: terminateds,
+                SampleBatch.TRUNCATEDS: truncateds,
+                SampleBatch.T: t,
+                SampleBatch.EPS_ID: eps_id,
+                # Retrieve obs, infos, actions, rewards using our get_... APIs,
+                # which return all relevant timesteps (excluding the lookback
+                # buffer!).
+                SampleBatch.OBS: self.get_observations(),
+                SampleBatch.INFOS: self.get_infos(),
+                SampleBatch.ACTIONS: self.get_actions(),
+                SampleBatch.REWARDS: self.get_rewards(),
+            },
+            # All `extra_model_outs`: Same as obs: Use get_... API.
+            **{
+                k: self.get_extra_model_outputs(k)
+                for k in self.extra_model_outputs.keys()
+            },
+        )
+
+    def get_sample_batch(self) -> SampleBatch:
         """Converts a `SingleAgentEpisode` into a `SampleBatch`.
 
         Returns:
             A SampleBatch containing all of this episode's data.
         """
-        return SampleBatch({
-            key: self.get_data(key) for key in [
-                SampleBatch.EPS_ID,
-                SampleBatch.T,
-                SampleBatch.OBS,
-                SampleBatch.INFOS,
-                SampleBatch.ACTIONS,
-                SampleBatch.REWARDS,
-                SampleBatch.TERMINATEDS,
-                SampleBatch.TRUNCATEDS,
-                *self.extra_model_outputs.keys()
-            ]
-        })
+        return SampleBatch(self.get_data_dict())
 
-    def get_data(self, key):
-        """TODO (sven): """
-        if key == SampleBatch.OBS:
-            if self.is_numpy:
-                return tree.map_structure(lambda s: s[:-1], self.observations)
-            else:
-                return self.observations[:-1]
-        elif key == SampleBatch.INFOS:
-            return self.infos[:-1]
-        elif key == SampleBatch.ACTIONS:
-            return self.actions
-        elif key == SampleBatch.REWARDS:
-            return self.rewards
-        elif key == SampleBatch.TERMINATEDS:
-            return np.array(
-                [False] * (len(self) - 1) + [self.is_terminated]
-            )
-        elif key == SampleBatch.TRUNCATEDS:
-            return np.array(
-                [False] * (len(self) - 1) + [self.is_truncated]
-            )
-        elif key == SampleBatch.T:
-            return np.array(list(range(self.t_started, self.t)))
-        elif key == SampleBatch.EPS_ID:
-            return np.array([self.id_] * len(self))
+    def get_observations(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
+        if indices is None:
+            slice_ = slice(self._len_pre_buffer, -1)
+        elif isinstance(indices, list) and not self.is_numpy:
+            return [self.observations[i] for i in indices]
         else:
-            assert key in self.extra_model_outputs
-            return self.extra_model_outputs[key]
+            slice_ = indices
+    
+        if self.is_numpy:
+            return tree.map_structure(lambda s: s[slice_], self.observations)
+        else:
+            return self.observations[slice_]
+
+    def get_infos(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
+        if indices is None:
+            slice_ = slice(self._len_pre_buffer, -1)
+        elif isinstance(indices, int):
+            slice_ = slice(indices, indices + 1)
+        elif isinstance(indices, list):
+            return [self.infos[i] for i in indices]
+        else:
+            slice_ = indices
+        return self.infos[slice_]
+
+    def get_actions(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
+        if indices is None:
+            slice_ = slice(self._len_pre_buffer, None)
+        elif isinstance(indices, list) and not self.is_numpy:
+            return [self.actions[i] for i in indices]
+        else:
+            slice_ = indices
+        return self.actions[slice_]
+
+    def get_rewards(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
+        if indices is None:
+            slice_ = slice(self._len_pre_buffer, None)
+        elif isinstance(indices, list) and not self.is_numpy:
+            return [self.rewards[i] for i in indices]
+        else:
+            slice_ = indices
+        return self.rewards[slice_]
+
+    def get_extra_model_outputs(self, key: str, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
+        assert key in self.extra_model_outputs
+        data = self.extra_model_outputs[key]
+        if indices is None:
+            slice_ = slice(self._len_pre_buffer, None)
+        elif isinstance(indices, list) and not self.is_numpy:
+            return [data[i] for i in indices]
+        else:
+            slice_ = indices
+
+        if self.is_numpy:
+            return tree.map_structure(lambda s: s[slice_], data)
+        else:
+            return data[slice_]
 
     #@staticmethod
     #def from_sample_batch(batch: SampleBatch) -> "SingleAgentEpisode":
@@ -575,10 +644,10 @@ class SingleAgentEpisode:
         Raises:
             AssertionError: If episode has never been stepped so far.
         """
-        len = self.t - self.t_started
-        assert len >= 0, (
+        length = self.t - self.t_started
+        assert length >= 0 and len(self.observations), (
             "ERROR: Cannot determine length of episode that hasn't started yet! Call "
             "`SingleAgentEpisode.add_initial_observation(initial_observation=...)` "
             "first (after which `len(SingleAgentEpisode)` will be 0)."
         )
-        return len
+        return length

@@ -172,10 +172,7 @@ class SingleAgentEnvRunner(EnvRunner):
             for i in range(self.num_envs):
                 # TODO (sven): Maybe move this into connector pipeline
                 # (even if automated).
-                self._episodes[i].add_initial_observation(
-                    initial_observation=obs[i],
-                    initial_info=infos[i],
-                )
+                self._episodes[i].add_env_reset(observation=obs[i], info=infos[i])
 
         # Loop through env in enumerate.(self._episodes):
         ts = 0
@@ -224,7 +221,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 if terminateds[i] or truncateds[i]:
                     # Finish the episode with the actual terminal observation stored in
                     # the info dict.
-                    self._episodes[i].add_timestep(
+                    self._episodes[i].add_env_step(
                         # Gym vector env provides the `"final_observation"`.
                         infos[i]["final_observation"],
                         actions[i],
@@ -243,7 +240,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     done_episodes_to_return.append(
                         self._episodes[i].convert_lists_to_numpy(
-                            keep_every_n_state_out=self.config.model.get("max_seq_len"),
+                            #keep_every_n_state_out=self.config.model.get("max_seq_len"),
                         )
                     )
                     # Create a new episode object.
@@ -251,7 +248,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         observations=[obs[i]], infos=[infos[i]], #states=s
                     )
                 else:
-                    self._episodes[i].add_timestep(
+                    self._episodes[i].add_env_step(
                         obs[i],
                         actions[i],
                         rewards[i],
@@ -265,22 +262,25 @@ class SingleAgentEnvRunner(EnvRunner):
         # ... and all ongoing episode chunks.
         # Initialized episodes do not have recorded any step and lack
         # `extra_model_outputs`.
-        ongoing_episodes = [
+        ongoing_episodes_to_return = [
             episode.convert_lists_to_numpy(
-                keep_every_n_state_out=self.config.model.get(STATE_OUT)
+                #keep_every_n_state_out=self.config.model.get("max_seq_len")
             )
             for episode in self._episodes if episode.t > 0
         ]
         # Also, make sure, we return a copy and start new chunks so that callers
         # of this function do not alter the ongoing and returned Episode objects.
-        self._episodes = [eps.create_successor() for eps in self._episodes]
-        for eps in ongoing_episodes:
+        self._episodes = [
+            eps.cut(overlap=self.config.episode_lookback_horizon)
+            for eps in self._episodes
+        ]
+        for eps in ongoing_episodes_to_return:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
         # Record last metrics collection.
         self._ts_since_last_metrics += ts
 
-        return done_episodes_to_return + ongoing_episodes
+        return done_episodes_to_return + ongoing_episodes_to_return
 
     def _sample_episodes(
         self,
@@ -316,11 +316,11 @@ class SingleAgentEnvRunner(EnvRunner):
         for i in range(self.num_envs):
             # TODO (sven): Maybe move this into connector pipeline
             # (even if automated).
-            episodes[i].add_initial_observation(
-                initial_observation=obs[i],
-                initial_info=infos[i],
+            episodes[i].add_env_reset(
+                observation=obs[i],
+                info=infos[i],
                 #initial_state={k: s[i] for k, s in states.items()},
-                initial_render_image=render_images[i],
+                render_image=render_images[i],
             )
 
         eps = 0
@@ -373,7 +373,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 if terminateds[i] or truncateds[i]:
                     eps += 1
 
-                    episodes[i].add_timestep(
+                    episodes[i].add_env_step(
                         infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
@@ -406,7 +406,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         else [render_images[i]],
                     )
                 else:
-                    episodes[i].add_timestep(
+                    episodes[i].add_env_step(
                         obs[i],
                         actions[i],
                         rewards[i],

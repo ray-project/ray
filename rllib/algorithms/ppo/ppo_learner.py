@@ -9,10 +9,11 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
-from ray.rllib.evaluation.postprocessing_v2 import compute_advantages, Postprocessing
+#from ray.rllib.evaluation.postprocessing_v2 import compute_advantages, Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import EpisodeType
 
@@ -52,20 +53,6 @@ class PPOLearner(Learner):
     def build(self) -> None:
         super().build()
 
-        ## Expand the (user defined) learner connector by PPO's advantage computing
-        ## connectors.
-        ## The 1st one (placed at the beginning) artificially increments all episodes
-        ## by an additional timestep, such that the module batch is created properly
-        ## (e.g. according to the user's custom module requirements) for the extra
-        ## bootstrapped value function computation.
-        ## The 2nd one (placed at the end) then computes all the advantages and
-        #self._learner_connector.prepend(
-        #    PPOLearnerConnector_1(ctx=self._learner_connector_ctx)
-        #)
-        #self._learner_connector.append(
-        #    PPOLearnerConnector_2(ctx=self._learner_connector_ctx)
-        #)
-
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
             ModuleID, Scheduler
@@ -96,42 +83,59 @@ class PPOLearner(Learner):
         batch,
         episodes,
     ):
+        batch = batch or {}
+
         # Make all episodes one ts longer in order to just have a single batch
         # for both vf predictions AND the bootstrap vf computations.
-        for episode in episodes:
-            self._add_ts_to_episode(episode)
+        self._add_ts_to_episodes(episodes)
 
         # Call the learner connector (on the artificially elongated episodes)
         # in order to get the batch to pass through the module for vf (and
         # bootstrapped vf) computations.
-        batch = self._learner_connector(
+        batch_for_vf = self._learner_connector(
             input_={},
             episodes=episodes,
             ctx=self._learner_connector_ctx,
         )
-        batch[SampleBatch.VF_PREDS] = self._compute_values(batch)
-
+        # Perform the value model's forward pass.
+        vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
         # Compute advantages.
-        batch[Postprocessing.ADVANTAGES] = compute_advantages(
-            batch=batch,
+        advantages = compute_advantages(
+            values=vf_preds,
+            rewards=batch_for_vf[SampleBatch.REWARDS],
+            terminateds=batch_for_vf[SampleBatch.TERMINATEDS],
             gamma=self.hps.gamma,
             lambda_=self.hps.lambda_,
             standardize_advantages=True,
         )
-        # Mask out the extra (artificial) timesteps again at the end of the episodes.
-        batch["loss_mask"] = np.ones(shape=(batch[SampleBatch.REWARDS]))
-        sum_ = 0
-        for episode in episodes:
-            sum_ += len(episode)
-            episode.t -= 1
-            batch["loss_mask"][sum_ - 1] = 0.0
-            # Fix the shifted terminateds/truncateds flags.
-            batch[SampleBatch.TERMINATEDS][sum_ - 2] = (
-                batch[SampleBatch.TERMINATEDS][sum_ - 1]
-            )
-            batch[SampleBatch.TRUNCATEDS][sum_ - 2] = (
-                batch[SampleBatch.TRUNCATEDS][sum_ - 1]
-            )
+
+        # Remove the extra timesteps again from vf_preds and advantages and
+        # un-zero-pad, if applicable.
+        # This makes sure that the new computed data (advantages, value targets, etc..)
+        # is in the plain 1D format (no time axis) as other custom connector created
+        # data would be in during the upcoming pass through the learner connector.
+        orig_shape = vf_preds.shape
+        episode_lens = [len(e) for e in episodes]
+        if len(orig_shape) == 2:
+            (
+                batch[SampleBatch.VF_PREDS],
+                batch[Postprocessing.ADVANTAGES],
+            ) = self._remove_last_values_2d_and_unpad(episode_lens, vf_preds, advantages)
+        else:
+            (
+                batch[SampleBatch.VF_PREDS],
+                batch[Postprocessing.ADVANTAGES],
+            ) = self._remove_last_values_1d(episode_lens, vf_preds, advantages)
+
+        # Compute value targets as sum of advantages + vf predictions.
+        batch[Postprocessing.VALUE_TARGETS] = (
+            batch[Postprocessing.ADVANTAGES] + batch[SampleBatch.VF_PREDS]
+        )
+
+        # Remove the extra (artificial) timesteps again at the end of the episodes.
+        self._remove_ts_episodes(episodes)
+
+        return batch, episodes
 
     @override(Learner)
     def remove_module(self, module_id: str):
@@ -178,7 +182,7 @@ class PPOLearner(Learner):
         """
 
     @staticmethod
-    def _add_ts_to_episode(episode):
+    def _add_ts_to_episodes(episodes):
         """Adds an additional (artificial) timestep to an episode.
 
         Useful for value function bootstrapping, where it is required to compute
@@ -190,22 +194,85 @@ class PPOLearner(Learner):
           etc..
         }
         """
-        # Make sure the episode is already in numpy format.
-        assert episode.is_numpy
-        # Add timestep.
-        episode.t += 1
-        episode.observations = tree.map_structure(
-            lambda s: np.concatenate([s, [s[-1]]]),
-            episode.observations,
-        )
-        # Infos are always lists.
-        episode.infos.append(episode.infos[-1])
-        episode.actions = tree.map_structure(
-            lambda s: np.concatenate([s, [s[-1]]]),
-            episode.actions,
-        )
-        episode.rewards = np.concatenate([episode.rewards, [episode.rewards[-1]]])
-        episode.extra_model_outputs = tree.map_structure(
-            lambda s: np.concatenate([s, [s[-1]]], axis=0),
-            episode.extra_model_outputs,
-        )
+        for episode in episodes:
+            # Make sure the episode is already in numpy format.
+            assert episode.is_numpy
+            # Add timestep.
+            episode.t += 1
+            episode.observations = tree.map_structure(
+                lambda s: np.concatenate([s, [s[-1]]]),
+                episode.observations,
+            )
+            # Infos are always lists.
+            episode.infos.append(episode.infos[-1])
+            episode.actions = tree.map_structure(
+                lambda s: np.concatenate([s, [s[-1]]]),
+                episode.actions,
+            )
+            episode.rewards = np.concatenate([episode.rewards, [episode.rewards[-1]]])
+            episode.extra_model_outputs = tree.map_structure(
+                lambda s: np.concatenate([s, [s[-1]]], axis=0),
+                episode.extra_model_outputs,
+            )
+
+    @staticmethod
+    def _remove_ts_episodes(episodes):
+        # Fix episodes (remove the extra timestep).
+        for episode in episodes:
+            episode.t -= 1
+            episode.observations = tree.map_structure(
+                lambda s: s[:-1],
+                episode.observations,
+            )
+            # Infos are always lists.
+            episode.infos = episode.infos[:-1]
+            episode.actions = tree.map_structure(lambda s: s[:-1], episode.actions)
+            episode.rewards = episode.rewards[:-1]
+            episode.extra_model_outputs = tree.map_structure(
+                lambda s: s[:-1],
+                episode.extra_model_outputs,
+            )
+
+    @staticmethod
+    def _remove_last_values_1d(episode_lens, *data):
+        slices = []
+        sum = 0
+        for len_ in episode_lens:
+            slices.append(slice(sum, sum + len_ - 1))
+            sum += len_
+        ret = []
+        for d in data:
+            ret.append(np.concatenate([d[s] for s in slices]))
+        return tuple(ret)
+
+    @staticmethod
+    def _remove_last_values_2d_and_unpad(episode_lens, *data_zero_padded):
+        ret = []
+        for data in data_zero_padded:
+            new_data = []
+            row_idx = 0
+            T = data.shape[1]
+            for len_ in episode_lens:
+                # Calculate how many full rows this array occupies and how many elements are
+                # in the last, potentially partial row.
+                num_rows, col_idx = divmod(len_, T)
+                if col_idx == 0:
+                    num_rows -= 1
+                col_idx -= 1
+    
+                # If the array spans multiple full rows, fully include these rows.
+                for i in range(num_rows):
+                    new_data.append(data[row_idx + i])
+                row_idx += num_rows
+    
+                # If there are elements in the last, potentially partial row, find the
+                # column index and replace the last element with 0.
+                #data[row_idx, col_idx] = 0.0
+                new_data.append(data[row_idx, :col_idx])
+    
+                # Move to the next row for the next array.
+                row_idx += 1
+
+            ret.append(np.concatenate(new_data))
+
+        return tuple(ret)
