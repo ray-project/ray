@@ -59,6 +59,12 @@ class TestRayDockerContainer(RayCITestBase):
             container = RayDockerContainer("3.8", "cpu", "ray")
             assert container._get_canonical_tag() == "1.0.0.123456-py38-cpu"
 
+        with mock.patch.dict(
+            os.environ, {"BUILDKITE_BRANCH": "abc", "BUILDKITE_PULL_REQUEST": "123"}
+        ):
+            container = RayDockerContainer("3.8", "cpu", "ray")
+            assert container._get_canonical_tag() == "pr-123.123456-py38-cpu"
+
     def test_get_image_tags(self) -> None:
         # bulk logic of _get_image_tags is tested in its callers (get_image_name and
         # get_canonical_tag), so we only test the basic cases here

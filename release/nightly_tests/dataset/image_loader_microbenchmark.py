@@ -206,7 +206,7 @@ class MdsDatasource(ray.data.datasource.FileBasedDatasource):
     _FILE_EXTENSION = "mds"
 
     def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
+        self, f: "pyarrow.NativeFile", path: str
     ) -> Iterator[ray.data.block.Block]:
         file_info = streaming.base.format.base.reader.FileInfo(
             basename=os.path.basename(path), bytes=os.stat(path).st_size, hashes={}
@@ -333,8 +333,8 @@ def get_mosaic_dataloader(
 
 
 def get_ray_mosaic_dataset(mosaic_data_root):
-    mds_source = MdsDatasource()
-    return ray.data.read_datasource(mds_source, paths=mosaic_data_root)
+    mds_source = MdsDatasource(mosaic_data_root)
+    return ray.data.read_datasource(mds_source)
 
 
 def get_ray_parquet_dataset(parquet_data_root, parallelism=None):
@@ -539,10 +539,8 @@ if __name__ == "__main__":
         # ray.data.
         use_s3 = args.mosaic_data_root.startswith("s3://")
         if not use_s3:
-            mds_source = MdsDatasource()
-            ray_dataset = ray.data.read_datasource(
-                mds_source, paths=args.mosaic_data_root
-            )
+            mds_source = MdsDatasource(args.mosaic_data_root)
+            ray_dataset = ray.data.read_datasource(mds_source)
             ray_dataset = ray_dataset.map(crop_and_flip_image)
             for i in range(args.num_epochs):
                 benchmark.run_iterate_ds(

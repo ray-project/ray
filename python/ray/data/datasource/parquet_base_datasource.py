@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import (
@@ -21,6 +21,19 @@ class ParquetBaseDatasource(FileBasedDatasource):
 
     _FILE_EXTENSION = "parquet"
 
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        read_table_args: Optional[Dict[str, Any]] = None,
+        **file_based_datasource_kwargs,
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        if read_table_args is None:
+            read_table_args = {}
+
+        self.read_table_args = read_table_args
+
     def get_name(self):
         """Return a human-readable name for this datasource.
         This will be used as the names of the read tasks.
@@ -28,11 +41,11 @@ class ParquetBaseDatasource(FileBasedDatasource):
         """
         return "ParquetBulk"
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+    def _read_file(self, f: "pyarrow.NativeFile", path: str):
         import pyarrow.parquet as pq
 
-        use_threads = reader_args.pop("use_threads", False)
-        return pq.read_table(f, use_threads=use_threads, **reader_args)
+        use_threads = self.read_table_args.pop("use_threads", False)
+        return pq.read_table(f, use_threads=use_threads, **self.read_table_args)
 
     def _open_input_source(
         self,

@@ -164,10 +164,6 @@ class DependencyWaiterInterface {
 /// Inteface for getting resource reports.
 class ResourceTrackingInterface {
  public:
-  virtual void UpdateResourceUsage(
-      std::string &serialized_resource_usage_batch,
-      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) = 0;
-
   virtual void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
 
@@ -478,10 +474,6 @@ class RayletClient : public RayletClientInterface {
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
-
-  void UpdateResourceUsage(
-      std::string &serialized_resource_usage_batch,
-      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override;
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;

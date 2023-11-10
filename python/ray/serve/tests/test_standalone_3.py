@@ -230,7 +230,7 @@ def test_handle_early_detect_failure(shutdown_ray):
         return os.getpid()
 
     handle = serve.run(f.bind())
-    pids = ray.get([handle.remote() for _ in range(2)])
+    pids = ray.get([handle.remote()._to_object_ref_sync() for _ in range(2)])
     assert len(set(pids)) == 2
 
     client = _get_global_client()
@@ -239,9 +239,9 @@ def test_handle_early_detect_failure(shutdown_ray):
     ray.kill(client._controller, no_restart=True)
 
     with pytest.raises(RayActorError):
-        ray.get(handle.remote(do_crash=True))
+        handle.remote(do_crash=True).result()
 
-    pids = ray.get([handle.remote() for _ in range(10)])
+    pids = ray.get([handle.remote()._to_object_ref_sync() for _ in range(10)])
     assert len(set(pids)) == 1
 
     # Restart the controller, and then clean up all the replicas

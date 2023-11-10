@@ -172,10 +172,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # Create a rollout worker and using it to collect experiences.
         import gymnasium as gym
         from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+        from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
         worker = RolloutWorker(
           env_creator=lambda _: gym.make("CartPole-v1"),
-          default_policy_class=PGTF1Policy)
+          default_policy_class=PPOTF1Policy)
         print(worker.sample())
 
         # Creating a multi-agent rollout worker
@@ -680,10 +680,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy,
+              default_policy_class=PPOTF1Policy,
               config=AlgorithmConfig(),
             )
             print(worker.sample())
@@ -767,10 +767,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTFPolicy)
+              default_policy_class=PPOTFPolicy)
             print(worker.sample_with_count())
 
         .. testoutput::
@@ -797,10 +797,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy)
+              default_policy_class=PPOTF1Policy)
             batch = worker.sample()
             info = worker.learn_on_batch(samples)
         """
@@ -921,10 +921,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy)
+              default_policy_class=PPOTF1Policy)
             batch = worker.sample()
             grads, info = worker.compute_gradients(samples)
         """
@@ -992,10 +992,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy)
+              default_policy_class=PPOTF1Policy)
             samples = worker.sample()
             grads, info = worker.compute_gradients(samples)
             worker.apply_gradients(grads)
