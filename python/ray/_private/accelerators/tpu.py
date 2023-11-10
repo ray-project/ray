@@ -196,7 +196,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = None
 
     @staticmethod
-    def _get_tpu_accelerator_type() -> Optional[str]:
+    def _get_current_node_tpu_pod_type() -> Optional[str]:
         """Get the TPU accelerator type if applicable.
 
         Individual TPU VMs within a TPU pod must know what type
@@ -229,7 +229,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         return None
 
     @staticmethod
-    def get_tpu_id() -> Optional[str]:
+    def get_current_node_tpu_id() -> Optional[str]:
         """Return the name of the TPU pod that this worker node is a part of.
 
         For instance, if the TPU was created with name "my-tpu", this function
@@ -255,7 +255,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             return None
 
     @staticmethod
-    def _get_tpu_worker_id() -> Optional[int]:
+    def _get_current_node_tpu_worker_id() -> Optional[int]:
         """Return the worker index of the TPU pod."""
         try:
             # Start with GKE-based check
@@ -271,7 +271,7 @@ class TPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def num_workers_in_tpu_pod() -> Optional[int]:
         """Return the total number of workers in a TPU pod."""
-        accelerator_type = TPUAcceleratorManager._get_tpu_accelerator_type()
+        accelerator_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
         if accelerator_type:
             version = accelerator_type.split("-")[0]
             num_chips_or_cores = int(accelerator_type.split("-")[1])
@@ -312,7 +312,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             return "TPU-" + str(tpu_accelerator_type.split("-")[0].upper())
 
         ray_accelerator_type = None
-        tpu_accelerator_type = TPUAcceleratorManager._get_tpu_accelerator_type()
+        tpu_accelerator_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
 
         if tpu_accelerator_type is not None:
             ray_accelerator_type = tpu_accelerator_type_to_ray_accelerator_type(
@@ -366,9 +366,9 @@ class TPUAcceleratorManager(AcceleratorManager):
             return [tpu_executable.remote() for _ in range(num_workers)]
 
         """
-        tpu_id = TPUAcceleratorManager.get_tpu_id()
-        worker_id = TPUAcceleratorManager._get_tpu_worker_id()
-        tpu_accelerator_type = TPUAcceleratorManager._get_tpu_accelerator_type()
+        tpu_id = TPUAcceleratorManager.get_current_node_tpu_id()
+        worker_id = TPUAcceleratorManager._get_current_node_tpu_worker_id()
+        tpu_accelerator_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
 
         if tpu_id and worker_id is not None and tpu_accelerator_type:
             pod_resource_name = f"TPU-{tpu_accelerator_type}"
@@ -379,6 +379,10 @@ class TPUAcceleratorManager(AcceleratorManager):
                 resources[pod_resource_name] = 1
             else:
                 if pod_resource_name in resources:
+                    # We need to remove the TPU accelerator type resource from
+                    # non worker 0 worker nodes. This will ensure that TPU pod
+                    # workloads schedule on worker 0 in the cluster.
+                    # See the function description for more details.
                     resources.pop(pod_resource_name)
         else:
             logging.info(
