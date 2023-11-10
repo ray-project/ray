@@ -123,12 +123,18 @@ class LocalObject {
 
   const plasma::flatbuf::ObjectSource &GetSource() const { return source; }
 
+  ray::PlasmaObjectHeader *GetPlasmaObjectHeader() const {
+    auto header_ptr = static_cast<uint8_t *>(allocation.address);
+    return reinterpret_cast<ray::PlasmaObjectHeader *>(header_ptr);
+  }
+
   void ToPlasmaObject(PlasmaObject *object, bool check_sealed) const {
     RAY_DCHECK(object != nullptr);
     if (check_sealed) {
       RAY_DCHECK(Sealed());
     }
     object->store_fd = GetAllocation().fd;
+    object->header_offset = GetAllocation().offset;
     object->data_offset = GetAllocation().offset + sizeof(ray::PlasmaObjectHeader);
     object->metadata_offset = GetAllocation().offset + sizeof(ray::PlasmaObjectHeader) + GetObjectInfo().data_size;
     object->data_size = GetObjectInfo().data_size;

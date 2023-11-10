@@ -15,7 +15,9 @@
 #pragma once
 
 #include <boost/asio.hpp>
+#include <atomic>
 #include <functional>
+#include <semaphore.h>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -37,8 +39,22 @@ using RestoreSpilledObjectCallback =
                        std::function<void(const ray::Status &)>)>;
 
 struct PlasmaObjectHeader {
-  // TODO(swang): This needs to be atomic.
-  int64_t max_readers = -1;
+  sem_t can_write;
+  sem_t can_read;
+  int64_t max_readers = 0;
+
+  void Init() {
+    sem_init(
+        &can_write,
+        /*pshared=*/1,
+        /*value=*/1);
+    sem_init(&can_read, /*pshared=*/1, /*value=*/0);
+  }
+
+  void Destroy() {
+    RAY_CHECK(sem_destroy(&can_write) == 0);
+    RAY_CHECK(sem_destroy(&can_read) == 0);
+  }
 };
 
 /// A struct that includes info about the object.

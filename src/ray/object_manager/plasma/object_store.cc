@@ -39,10 +39,6 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
     return nullptr;
   }
 
-  auto header_ptr = static_cast<uint8_t *>(allocation->address) + allocation->offset;
-  auto max_readers_ptr = reinterpret_cast<int64_t *>(header_ptr);
-  *max_readers_ptr = 0;
-
   auto ptr = std::make_unique<LocalObject>(std::move(allocation.value()));
   auto entry =
       object_table_.emplace(object_info.object_id, std::move(ptr)).first->second.get();
@@ -51,6 +47,11 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   entry->create_time = std::time(nullptr);
   entry->construct_duration = -1;
   entry->source = source;
+
+  auto plasma_header = entry->GetPlasmaObjectHeader();
+  *plasma_header = ray::PlasmaObjectHeader{};
+  plasma_header->Init();
+  sem_post(&plasma_header->can_write);
 
   RAY_LOG(DEBUG) << "create object " << object_info.object_id << " succeeded";
   return entry;
@@ -69,6 +70,11 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
   if (entry == nullptr || entry->state == ObjectState::PLASMA_SEALED) {
     return nullptr;
   }
+
+  auto plasma_header = entry->GetPlasmaObjectHeader();
+  RAY_CHECK(sem_wait(&plasma_header->can_read) == 0);
+  RAY_CHECK(plasma_header->max_readers == -1) << plasma_header->max_readers;
+
   entry->state = ObjectState::PLASMA_SEALED;
   entry->construct_duration = std::time(nullptr) - entry->create_time;
   return entry;
@@ -79,6 +85,9 @@ bool ObjectStore::DeleteObject(const ObjectID &object_id) {
   if (entry == nullptr) {
     return false;
   }
+  auto plasma_header = entry->GetPlasmaObjectHeader();
+  plasma_header->Destroy();
+
   allocator_.Free(std::move(entry->allocation));
   object_table_.erase(object_id);
   return true;

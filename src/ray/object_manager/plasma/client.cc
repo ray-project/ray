@@ -32,6 +32,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -195,7 +196,9 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                     ObjectBuffer *object_buffers,
                     bool is_from_worker);
 
-  uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val);
+  uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val) const;
+
+  ray::PlasmaObjectHeader *GetPlasmaObjectHeader(const PlasmaObject &object) const;
 
   void IncrementObjectCount(const ObjectID &object_id,
                             PlasmaObject *object,
@@ -257,10 +260,16 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
 
 // Get a pointer to a file that we know has been memory mapped in this client
 // process before.
-uint8_t *PlasmaClient::Impl::LookupMmappedFile(MEMFD_TYPE store_fd_val) {
+uint8_t *PlasmaClient::Impl::LookupMmappedFile(MEMFD_TYPE store_fd_val) const {
   auto entry = mmap_table_.find(store_fd_val);
   RAY_CHECK(entry != mmap_table_.end());
   return entry->second->pointer();
+}
+
+ray::PlasmaObjectHeader *PlasmaClient::Impl::GetPlasmaObjectHeader(const PlasmaObject &object) const {
+  auto base_ptr = LookupMmappedFile(object.store_fd);
+  auto header_ptr = base_ptr + object.header_offset;
+  return reinterpret_cast<ray::PlasmaObjectHeader *>(header_ptr);
 }
 
 bool PlasmaClient::Impl::IsInUse(const ObjectID &object_id) {
@@ -661,6 +670,10 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   if (object_entry->second->is_sealed) {
     return Status::ObjectAlreadySealed("Seal() called on an already sealed object");
   }
+
+  auto plasma_header = GetPlasmaObjectHeader(object_entry->second->object);
+  plasma_header->max_readers = -1;
+  sem_post(&plasma_header->can_read);
 
   object_entry->second->is_sealed = true;
   /// Send the seal request to Plasma.
