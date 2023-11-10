@@ -1444,6 +1444,12 @@ class AutoscalingCluster:
             "node_config": {},
             "max_workers": 0,
         }
+
+        custom_config["max_workers"] = sum(
+            v["max_workers"]
+            for _, v in worker_node_types
+        )
+
         custom_config["provider"].update(extra_provider_config)
 
         custom_config["upscaling_speed"] = upscaling_speed
