@@ -200,15 +200,15 @@ class FileBasedDatasource(Datasource):
         self._paths_ref = ray.put(paths)
         self._file_sizes_ref = ray.put(file_sizes)
 
-    def paths(self) -> List[str]:
+    def _paths(self) -> List[str]:
         return ray.get(self._paths_ref)
 
-    def file_sizes(self) -> List[float]:
+    def _file_sizes(self) -> List[float]:
         return ray.get(self._file_sizes_ref)
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
-        for sz in self.file_sizes():
+        for sz in self._file_sizes():
             if sz is not None:
                 total_size += sz
         return total_size
@@ -220,8 +220,8 @@ class FileBasedDatasource(Datasource):
         open_stream_args = self._open_stream_args
         partitioning = self._partitioning
 
-        paths = self.paths()
-        file_sizes = self.file_sizes()
+        paths = self._paths()
+        file_sizes = self._file_sizes()
 
         if self._file_metadata_shuffler is not None:
             files_metadata = list(zip(paths, file_sizes))
