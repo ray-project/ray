@@ -244,6 +244,8 @@ message TaskStateUpdate {
   optional string actor_repr_name = 11;
   // Worker Pid.
   optional int32 worker_pid = 12;
+  // Is task paused by debugger.
+  optional bool is_debugger_paused = 13;
 }
 
 // Represents events and state changes from a single task run.

@@ -307,6 +307,8 @@ class StateDataSourceClient:
                 req_filters.job_id = JobID(hex_to_binary(value)).binary()
             elif key == "task_id":
                 req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
+            elif key == "is_debugger_paused":
+                req_filters.is_debugger_paused = value == "True"
             else:
                 continue
 
