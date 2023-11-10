@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
     # TODO (sven): This gives a tricky circular import that goes
-    # deep into the library. We have to see, where to dissolve it.
+    #  deep into the library. We have to see, where to dissolve it.
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 _, tf, _ = try_import_tf()
@@ -41,56 +41,48 @@ class SingleAgentEnvRunner(EnvRunner):
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
 
+        # Create the vectorized gymnasium env.
+
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        gym.register(
-            "custom-env-v0",
-            partial(
+        if (
+            isinstance(self.config.env, str)
+            and _global_registry.contains(ENV_CREATOR, self.config.env)
+        ):
+            entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
                 self.config.env_config,
             )
-            if _global_registry.contains(ENV_CREATOR, self.config.env)
-            else partial(
+
+        else:
+            entry_point = partial(
                 _gym_env_creator,
                 env_context=self.config.env_config,
                 env_descriptor=self.config.env,
-            ),
-        )
+            )
+        gym.register("rllib-single-agent-env-runner-v0", entry_point=entry_point)
 
-        # Create the vectorized gymnasium env.
         # Wrap into `VectorListInfo`` wrapper to get infos as lists.
         self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
             gym.vector.make(
-                "custom-env-v0",
+                "rllib-single-agent-env-runner-v0",
                 num_envs=self.config.num_envs_per_worker,
                 asynchronous=self.config.remote_worker_envs,
             )
         )
-
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
-        # Create our own instance of the single-agent `RLModule` (which
+        # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
-        # TODO (sven, simon): We need to get rid here of the policy_dict,
-        # but the 'RLModule' takes the 'policy_spec.observation_space'
-        # from it.
-        # Below is the non nice solution.
-        # policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
         module_spec: SingleAgentRLModuleSpec = self.config.get_default_rl_module_spec()
         module_spec.observation_space = self.env.envs[0].observation_space
         # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
-        # actually hold the spaces for a single env, but for boxes the
-        # shape is (1, 1) which brings a problem with the action dists.
-        # shape=(1,) is expected.
+        #  actually hold the spaces for a single env, but for boxes the
+        #  shape is (1, 1) which brings a problem with the action dists.
+        #  shape=(1,) is expected.
         module_spec.action_space = self.env.envs[0].action_space
         module_spec.model_config_dict = self.config.model
-
-        # TODO (sven): By time the `AlgorithmConfig` will get rid of `PolicyDict`
-        # as well. Then we have to change this function parameter.
-        # module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-        #     policy_dict=module_dict
-        # )
         self.module: RLModule = module_spec.build()
 
         # This should be the default.
@@ -103,6 +95,11 @@ class SingleAgentEnvRunner(EnvRunner):
         self._ongoing_episodes_for_metrics: Dict[List] = defaultdict(list)
         self._ts_since_last_metrics: int = 0
         self._weights_seq_no: int = 0
+
+        # TODO (sven): This is a temporary solution. STATE_OUTs
+        #  will be resolved entirely as `extra_model_outputs` and
+        #  not be stored separately inside Episodes.
+        self._states = [None for _ in range(self.num_envs)]
 
     @override(EnvRunner)
     def sample(
@@ -181,13 +178,11 @@ class SingleAgentEnvRunner(EnvRunner):
             for i in range(self.num_envs):
                 # TODO (sven): Maybe move this into connector pipeline
                 # (even if automated).
-                self._episodes[i].add_initial_observation(
-                    initial_observation=obs[i],
-                    initial_info=infos[i],
-                    # TODO (simon): Check, if this works for the default
-                    # stateful encoders.
-                    initial_state={k: s[i] for k, s in states.items()},
+                self._episodes[i].add_env_reset(
+                    observation=obs[i],
+                    info=infos[i],
                 )
+                self._states[i] = {k: s[i] for k, s in states.items()}
         # Do not reset envs, but instead continue in already started episodes.
         else:
             # Pick up stored observations and states from previous timesteps.
@@ -198,8 +193,8 @@ class SingleAgentEnvRunner(EnvRunner):
             states = {
                 k: np.stack(
                     [
-                        initial_states[k][i] if eps.states is None else eps.states[k]
-                        for i, eps in enumerate(self._episodes)
+                        initial_states[k][i] if state is None else state[k]
+                        for i, state in enumerate(self._states)
                     ]
                 )
                 for k in initial_states.keys()
@@ -208,7 +203,6 @@ class SingleAgentEnvRunner(EnvRunner):
         # Loop through env in enumerate.(self._episodes):
         ts = 0
 
-        # print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
@@ -265,54 +259,62 @@ class SingleAgentEnvRunner(EnvRunner):
                 if terminateds[i] or truncateds[i]:
                     # Finish the episode with the actual terminal observation stored in
                     # the info dict.
-                    self._episodes[i].add_timestep(
+                    self._episodes[i].add_env_step(
                         # Gym vector env provides the `"final_observation"`.
                         infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
                         info=infos[i]["final_info"],
-                        state=s,
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
                     )
+                    self._states[i] = s
 
                     # Reset h-states to nthe model's intiial ones b/c we are starting a
                     # new episode.
                     for k, v in self.module.get_initial_state().items():
                         states[k][i] = convert_to_numpy(v)
 
-                    done_episodes_to_return.append(self._episodes[i])
-                    # Create a new episode object.
-                    self._episodes[i] = SingleAgentEpisode(
-                        observations=[obs[i]], infos=[infos[i]], states=s
+                    done_episodes_to_return.append(
+                        self._episodes[i].convert_lists_to_numpy()
                     )
+                    # Create a new episode object with already the reset data in it.
+                    self._episodes[i] = SingleAgentEpisode(
+                        observations=[obs[i]], infos=[infos[i]]
+                    )
+                    self._states[i] = s
                 else:
-                    self._episodes[i].add_timestep(
+                    self._episodes[i].add_env_step(
                         obs[i],
                         actions[i],
                         rewards[i],
                         info=infos[i],
-                        state=s,
                         extra_model_output=extra_model_output,
                     )
+                    self._states[i] = s
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks.
         # Initialized episodes do not have recorded any step and lack
         # `extra_model_outputs`.
-        ongoing_episodes = [episode for episode in self._episodes if episode.t > 0]
+        ongoing_episodes_to_return = [
+            episode.convert_lists_to_numpy(
+                #keep_every_n_state_out=self.config.model.get("max_seq_len")
+            )
+            for episode in self._episodes if episode.t > 0
+        ]
         # Also, make sure, we return a copy and start new chunks so that callers
         # of this function do not alter the ongoing and returned Episode objects.
-        self._episodes = [eps.create_successor() for eps in self._episodes]
-        for eps in ongoing_episodes:
+        self._episodes = [eps.cut() for eps in self._episodes]
+        for eps in ongoing_episodes_to_return:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
         # Record last metrics collection.
         self._ts_since_last_metrics += ts
 
-        return done_episodes_to_return + ongoing_episodes
+        return done_episodes_to_return + ongoing_episodes_to_return
 
     def _sample_episodes(
         self,
@@ -346,14 +348,13 @@ class SingleAgentEnvRunner(EnvRunner):
             render_images = [e.render() for e in self.env.envs]
 
         for i in range(self.num_envs):
-            # TODO (sven): Maybe move this into connector pipeline
-            # (even if automated).
-            episodes[i].add_initial_observation(
-                initial_observation=obs[i],
-                initial_info=infos[i],
-                initial_state={k: s[i] for k, s in states.items()},
-                initial_render_image=render_images[i],
+            # TODO (sven): Maybe move this into connector pipeline (even if automated).
+            episodes[i].add_env_reset(
+                observation=obs[i],
+                info=infos[i],
+                render_image=render_images[i],
             )
+            states[i] = {k: s[i] for k, s in states.items()}
 
         eps = 0
         while eps < num_episodes:
@@ -381,9 +382,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 if STATE_OUT in fwd_out:
                     states = convert_to_numpy(fwd_out[STATE_OUT])
-                    # states = tree.map_structure(
-                    #     lambda s: s.numpy(), fwd_out[STATE_OUT]
-                    # )
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             if with_render_data:
@@ -405,16 +403,16 @@ class SingleAgentEnvRunner(EnvRunner):
                 if terminateds[i] or truncateds[i]:
                     eps += 1
 
-                    episodes[i].add_timestep(
+                    episodes[i].add_env_step(
                         infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
                         info=infos[i]["final_info"],
-                        state=s,
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
                     )
+                    states[i] = s
 
                     done_episodes_to_return.append(episodes[i])
 
@@ -432,21 +430,21 @@ class SingleAgentEnvRunner(EnvRunner):
                     episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]],
                         infos=[infos[i]],
-                        states=s,
                         render_images=None
                         if render_images[i] is None
                         else [render_images[i]],
                     )
+                    states[i] = s
                 else:
-                    episodes[i].add_timestep(
+                    episodes[i].add_env_step(
                         obs[i],
                         actions[i],
                         rewards[i],
                         info=infos[i],
-                        state=s,
                         render_image=render_images[i],
                         extra_model_output=extra_model_output,
                     )
+                    states[i] = s
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         self._ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)
