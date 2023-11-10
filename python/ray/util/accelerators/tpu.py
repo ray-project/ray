@@ -1,7 +1,9 @@
 from typing import Optional
 from ray._private.accelerators import TPUAcceleratorManager
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 def pod_name() -> Optional[str]:
     """Return the name of the TPU pod that the worker is a part of.
     Returns:
@@ -13,6 +15,7 @@ def pod_name() -> Optional[str]:
     return tpu_id
 
 
+@PublicAPI(stability="alpha")
 def pod_worker_count() -> Optional[int]:
     """Count the number of workers associated with the TPU pod that the worker belongs to.
     Returns:
