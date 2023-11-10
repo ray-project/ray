@@ -271,10 +271,10 @@ class TPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def num_workers_in_tpu_pod() -> Optional[int]:
         """Return the total number of workers in a TPU pod."""
-        accelerator_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
-        if accelerator_type:
-            version = accelerator_type.split("-")[0]
-            num_chips_or_cores = int(accelerator_type.split("-")[1])
+        tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
+        if tpu_pod_type:
+            version = tpu_pod_type.split("-")[0]
+            num_chips_or_cores = int(tpu_pod_type.split("-")[1])
             if version in TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP:
                 return num_chips_or_cores // 8
             else:
@@ -306,22 +306,22 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         """
 
-        def tpu_accelerator_type_to_ray_accelerator_type(
-            tpu_accelerator_type: str,
+        def tpu_pod_type_to_ray_accelerator_type(
+            tpu_pod_type: str,
         ) -> Optional[str]:
-            return "TPU-" + str(tpu_accelerator_type.split("-")[0].upper())
+            return "TPU-" + str(tpu_pod_type.split("-")[0].upper())
 
         ray_accelerator_type = None
-        tpu_accelerator_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
+        tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
 
-        if tpu_accelerator_type is not None:
-            ray_accelerator_type = tpu_accelerator_type_to_ray_accelerator_type(
-                tpu_accelerator_type
+        if tpu_pod_type is not None:
+            ray_accelerator_type = tpu_pod_type_to_ray_accelerator_type(
+                tpu_pod_type=tpu_pod_type
             )
             if ray_accelerator_type is None:
                 logger.info(
                     "While trying to autodetect a TPU type, "
-                    f"received malformed accelerator_type: {tpu_accelerator_type}"
+                    f"received malformed accelerator_type: {tpu_pod_type}"
                 )
 
         if ray_accelerator_type is None:
@@ -372,13 +372,13 @@ class TPUAcceleratorManager(AcceleratorManager):
         """
         tpu_id = TPUAcceleratorManager.get_current_node_tpu_id()
         worker_id = TPUAcceleratorManager._get_current_node_tpu_worker_id()
-        tpu_accelerator_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
+        tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
 
-        if tpu_id and worker_id is not None and tpu_accelerator_type:
-            pod_resource_name = f"TPU-{tpu_accelerator_type}"
+        if tpu_id and worker_id is not None and tpu_pod_type:
+            pod_resource_name = f"TPU-{tpu_pod_type}"
             # Add the name of the TPU ID to the resource.
             resources[tpu_id] = 1
-            # Only add in the TPU pod resource type to worker 0.
+            # Only add in the TPU pod type resource to worker 0.
             if worker_id == 0:
                 resources[pod_resource_name] = 1
             else:
@@ -394,5 +394,5 @@ class TPUAcceleratorManager(AcceleratorManager):
                 "tpu_id: %s, worker_id: %s, accelerator_type: %s",
                 tpu_id,
                 worker_id,
-                tpu_accelerator_type,
+                tpu_pod_type,
             )
