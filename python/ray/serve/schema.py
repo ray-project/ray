@@ -2,7 +2,8 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
+from zlib import crc32
 
 from ray._private.pydantic_compat import (
     BaseModel,
@@ -96,7 +97,7 @@ class LoggingConfig(BaseModel):
         ),
     )
     log_level: Union[int, str] = Field(
-        default=logging.INFO,
+        default="INFO",
         description=(
             "Log level for the serve logs. Defaults to INFO. You can set it to "
             "'DEBUG' to get more detailed debug logs."
@@ -131,14 +132,34 @@ class LoggingConfig(BaseModel):
     @validator("log_level")
     def valid_log_level(cls, v):
         if isinstance(v, int):
-            return v
+            if v not in logging._levelToName:
+                raise ValueError(
+                    f'Got "{v}" for log_level. log_level must be one of '
+                    f"{list(logging._levelToName.keys())}."
+                )
+            return logging._levelToName[v]
 
         if v not in logging._nameToLevel:
             raise ValueError(
                 f'Got "{v}" for log_level. log_level must be one of '
                 f"{list(logging._nameToLevel.keys())}."
             )
-        return logging._nameToLevel[v]
+        return v
+
+    def _compute_hash(self) -> int:
+        return crc32(
+            (
+                str(self.encoding)
+                + str(self.log_level)
+                + str(self.logs_dir)
+                + str(self.enable_access_log)
+            ).encode("utf-8")
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, LoggingConfig):
+            return False
+        return self._compute_hash() == other._compute_hash()
 
 
 @PublicAPI(stability="stable")
