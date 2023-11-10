@@ -9,7 +9,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
-#from ray.rllib.evaluation.postprocessing_v2 import compute_advantages, Postprocessing
+from ray.rllib.evaluation.postprocessing_v2 import compute_advantages, Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
@@ -87,6 +87,7 @@ class PPOLearner(Learner):
 
         # Make all episodes one ts longer in order to just have a single batch
         # for both vf predictions AND the bootstrap vf computations.
+        orig_truncateds = [episode.is_truncated for episode in episodes]
         self._add_ts_to_episodes(episodes)
 
         # Call the learner connector (on the artificially elongated episodes)
@@ -100,14 +101,16 @@ class PPOLearner(Learner):
         # Perform the value model's forward pass.
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
         # Compute advantages.
-        advantages = compute_advantages(
+        advantages, value_targets = compute_advantages(
             values=vf_preds,
             rewards=batch_for_vf[SampleBatch.REWARDS],
             terminateds=batch_for_vf[SampleBatch.TERMINATEDS],
+            truncateds=batch_for_vf[SampleBatch.TRUNCATEDS],
             gamma=self.hps.gamma,
             lambda_=self.hps.lambda_,
-            standardize_advantages=True,
         )
+        # Compute value targets as sum of advantages + vf predictions.
+        #value_targets = advantages + vf_preds
 
         # Remove the extra timesteps again from vf_preds and advantages and
         # un-zero-pad, if applicable.
@@ -116,24 +119,25 @@ class PPOLearner(Learner):
         # data would be in during the upcoming pass through the learner connector.
         orig_shape = vf_preds.shape
         episode_lens = [len(e) for e in episodes]
-        if len(orig_shape) == 2:
-            (
-                batch[SampleBatch.VF_PREDS],
-                batch[Postprocessing.ADVANTAGES],
-            ) = self._remove_last_values_2d_and_unpad(episode_lens, vf_preds, advantages)
-        else:
-            (
-                batch[SampleBatch.VF_PREDS],
-                batch[Postprocessing.ADVANTAGES],
-            ) = self._remove_last_values_1d(episode_lens, vf_preds, advantages)
-
-        # Compute value targets as sum of advantages + vf predictions.
-        batch[Postprocessing.VALUE_TARGETS] = (
-            batch[Postprocessing.ADVANTAGES] + batch[SampleBatch.VF_PREDS]
+        (
+            batch[SampleBatch.VF_PREDS],
+            advantages,
+            batch[Postprocessing.VALUE_TARGETS],
+        ) = (
+            self._remove_last_values_2d_and_unpad(
+                episode_lens, vf_preds, advantages, value_targets
+            ) if len(orig_shape) == 2 else self._remove_last_values_1d(
+                episode_lens, vf_preds, advantages, value_targets
+            )
+        )
+        # Standardize advantages (used for more stable and better weighted
+        # policy gradient computations).
+        batch[Postprocessing.ADVANTAGES] = (
+            (advantages - advantages.mean()) / max(1e-4, advantages.std())
         )
 
         # Remove the extra (artificial) timesteps again at the end of the episodes.
-        self._remove_ts_episodes(episodes)
+        self._remove_ts_episodes(episodes, orig_truncateds)
 
         return batch, episodes
 
@@ -214,12 +218,18 @@ class PPOLearner(Learner):
                 lambda s: np.concatenate([s, [s[-1]]], axis=0),
                 episode.extra_model_outputs,
             )
+            # Artificially make this episode truncated for the upcoming
+            # GAE computations.
+            if not episode.is_done:
+                episode.is_truncated = True
 
     @staticmethod
-    def _remove_ts_episodes(episodes):
+    def _remove_ts_episodes(episodes, truncateds):
         # Fix episodes (remove the extra timestep).
-        for episode in episodes:
+        for episode, truncated in zip(episodes, truncateds):
             episode.t -= 1
+            # Fix the truncateds flag again.
+            episode.is_truncated = truncated
             episode.observations = tree.map_structure(
                 lambda s: s[:-1],
                 episode.observations,

@@ -125,9 +125,9 @@ def compute_advantages(
 
     if use_gae:
         vpred_t = np.concatenate([vf_preds, np.array([last_r])])
-        print("vpred_t=", vpred_t)#TODO
+        #print("vpred_t=", vpred_t)#TODO
         delta_t = rewards + gamma * vpred_t[1:] - vpred_t[:-1]
-        print("delta_t=", delta_t)#TODO
+        #print("delta_t=", delta_t)#TODO
         # This formula for the advantage comes from:
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
         rollout[Postprocessing.ADVANTAGES] = discount_cumsum(delta_t, gamma * lambda_)
