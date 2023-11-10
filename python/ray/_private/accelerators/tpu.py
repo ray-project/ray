@@ -197,7 +197,7 @@ class TPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def _get_current_node_tpu_pod_type() -> Optional[str]:
-        """Get the TPU accelerator type if applicable.
+        """Get the TPU pod type of the current node if applicable.
 
         Individual TPU VMs within a TPU pod must know what type
         of pod it is a part of. This is necessary for the
@@ -212,7 +212,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         - GKE VMS will have environment variables preset.
 
         Returns:
-            A string representing the TPU accelerator type, e.g.
+            A string representing the current TPU pod type, e.g.
             v4-16.
 
         """
@@ -230,7 +230,7 @@ class TPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_tpu_id() -> Optional[str]:
-        """Return the name of the TPU pod that this worker node is a part of.
+        """Return the id of the TPU pod that this worker node is a part of.
 
         For instance, if the TPU was created with name "my-tpu", this function
         will return "my-tpu".
@@ -290,11 +290,11 @@ class TPUAcceleratorManager(AcceleratorManager):
         The output of this function will return the "ray accelerator type"
         resource (e.g. TPU-V4) that indicates the TPU version.
 
-        We also expect that our TPU nodes contain a "TPU accelerator type"
+        We also expect that our TPU nodes contain a "TPU pod type"
         resource, which indicates information about the topology of
         the TPU pod slice.
 
-        We expect that the "TPU accelerator type" resource to be used when
+        We expect that the "TPU pod type" resource to be used when
         running multi host workers, i.e. when TPU units are pod slices.
 
         We expect that the "ray accelerator type" resource to be used when
@@ -383,7 +383,7 @@ class TPUAcceleratorManager(AcceleratorManager):
                 resources[pod_resource_name] = 1
             else:
                 if pod_resource_name in resources:
-                    # We need to remove the TPU accelerator type resource from
+                    # We need to remove the TPU pod type resource from
                     # non worker 0 worker nodes. This will ensure that TPU pod
                     # workloads schedule on worker 0 in the cluster.
                     # See the function description for more details.
