@@ -10,8 +10,10 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 """  # noqa: E501
 
 import logging
-from typing import List, Optional, Type, Callable
+from typing import List, Optional, Type, Callable, Literal
 import numpy as np
+from collections import deque
+from scipy.stats import norm
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
@@ -23,7 +25,7 @@ from ray.rllib.algorithms.simple_q.simple_q import (
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
@@ -138,6 +140,14 @@ class DQNConfig(SimpleQConfig):
         }
         # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
+        # SUPER is disabled by default
+        self.SUPER = False
+        # Default SUPER mode
+        self.SUPER_mode = "quantile"
+        # Default SUPER bandwidth
+        self.SUPER_bandwidth = 0.01
+        # Default SUPER window size
+        self.SUPER_window = 1500
         # fmt: on
         # __sphinx_doc_end__
 
@@ -161,6 +171,12 @@ class DQNConfig(SimpleQConfig):
         training_intensity: Optional[float] = NotProvided,
         td_error_loss_fn: Optional[str] = NotProvided,
         categorical_distribution_temperature: Optional[float] = NotProvided,
+        SUPER: Optional[bool] = NotProvided,
+        SUPER_mode: Optional[
+            Literal["quantile", "gaussian", "stochastic"]
+        ] = NotProvided,
+        SUPER_bandwidth: Optional[float] = NotProvided,
+        SUPER_window: Optional[int] = NotProvided,
         **kwargs,
     ) -> "DQNConfig":
         """Sets the training related configuration.
@@ -238,6 +254,11 @@ class DQNConfig(SimpleQConfig):
                 by Categorical action distribution. A valid temperature is in the range
                 of [0, 1]. Note that this mostly affects evaluation since TD error uses
                 argmax for return calculation.
+            SUPER: Whether to use SUPER (https://arxiv.org/abs/2311.00865).
+            SUPER_mode: SUPER experience selection mode to use. One of "quantile",
+                "gaussian", or "stochastic".
+            SUPER_bandwidth: SUPER bandwidth parameter, as fraction of experiences.
+            SUPER_window: SUPER window size for quantile or mean / stddev calculation.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -273,6 +294,14 @@ class DQNConfig(SimpleQConfig):
             self.categorical_distribution_temperature = (
                 categorical_distribution_temperature
             )
+        if SUPER is not NotProvided:
+            self.SUPER = SUPER
+        if SUPER_mode is not NotProvided:
+            self.SUPER_mode = SUPER_mode
+        if SUPER_bandwidth is not NotProvided:
+            self.SUPER_bandwidth = SUPER_bandwidth
+        if SUPER_window is not NotProvided:
+            self.SUPER_window = SUPER_window
 
         return self
 
@@ -395,6 +424,9 @@ class DQN(SimpleQ):
             # Store new samples in replay buffer.
             self.local_replay_buffer.add(new_sample_batch)
 
+            # Now we run our SUPER experience broadcasting.
+            self._SUPER(new_sample_batch)
+
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
@@ -455,3 +487,167 @@ class DQN(SimpleQ):
 
         # Return all collected metrics for the iteration.
         return train_results
+
+    def _SUPER(self, new_sample_batch):
+        """Runs a single iteration of the SUPER algorithm experience sharing.
+
+        Args:
+            new_sample_batch: batch of samples from all agents"""
+
+        # On first run, initialize a helper deque for keeping
+        # track of td errors in quantile and gaussian modes.
+        if not hasattr(self, "_td_error_deque") and (
+            self.config.get("SUPER_mode", "quantile") == "quantile"
+            or self.config.get("SUPER_mode", "quantile") == "gaussian"
+        ):
+            self._td_error_deque = {
+                agent: deque(maxlen=self.config["SUPER_window"])
+                for agent in self.config["policies"]
+            }
+
+        # We first create a dict of (initially empty) lists of samples for each agent.
+        # This will hold the samples that each agent wants to broadcast.
+        broadcast_samples = {agent: None for agent in new_sample_batch.policy_batches}
+
+        # We loop through all the agents in the sample batch.
+        # For each agent, we first calculate all the td-errors
+        # for the entire sample batch.
+        # Then we decide which samples to broadcast,
+        # and insert those ito the broadcast_samples dict.
+        for agent in new_sample_batch.policy_batches:
+            agent_policy = self.workers.local_worker().policy_map[agent]
+            agent_batch = new_sample_batch.policy_batches[agent].copy()
+
+            # Calculate all td-errors for the entire batch, and convert to numpy array.
+            if self.config["framework"] == "torch":
+                agent_batch["td_errors"] = np.array(
+                    agent_policy.compute_td_error(
+                        agent_batch["obs"],
+                        agent_batch["actions"],
+                        agent_batch["rewards"],
+                        agent_batch["new_obs"],
+                        agent_batch["dones"],
+                        agent_batch["weights"],
+                    )
+                    .detach()
+                    .cpu()
+                )
+            else:
+                agent_batch["td_errors"] = np.array(
+                    agent_policy.compute_td_error(
+                        agent_batch["obs"],
+                        agent_batch["actions"],
+                        agent_batch["rewards"],
+                        agent_batch["new_obs"],
+                        agent_batch["dones"],
+                        agent_batch["weights"],
+                    )
+                )
+
+            broadcast_samples[agent] = self._super_get_samples_to_broadcast(
+                agent, agent_batch
+            )
+
+            # We need to remove the td_errors again, so we can concatenate
+            # this directly to other sample batches that don't have
+            # td-errors calculated.
+            if (broadcast_samples[agent] is not None) and (
+                "td_errors" in broadcast_samples[agent]
+            ):
+                broadcast_samples[agent].pop("td_errors")
+
+        # Finally, we insert all the broadcast samples into the replay buffer
+        # of all agents.
+        for agent in broadcast_samples:
+            # Get the agent_index of this agent
+            this_agent_index = new_sample_batch.policy_batches[agent]["agent_index"][0]
+            # Concatenate all the samples broadcast by all the *other* agents.
+            this_agent_received_samples = concat_samples(
+                [
+                    broadcast_samples[other_agent]
+                    for other_agent in broadcast_samples
+                    if other_agent != agent
+                    and broadcast_samples[other_agent] is not None
+                ]
+            )
+
+            if this_agent_received_samples.count > 0:
+                # We need to adjust the agent index from the *other* agents' ID to
+                # *this* agent's ID.
+                this_agent_received_samples["agent_index"] = np.full(
+                    this_agent_received_samples["agent_index"].shape, this_agent_index
+                )
+                # Insert into replay buffer, after making it a MultiAgentBatch again.
+                ma_batch = MultiAgentBatch(
+                    {agent: this_agent_received_samples},
+                    this_agent_received_samples.count,
+                )
+                self.local_replay_buffer.add(ma_batch)
+
+    def _super_get_samples_to_broadcast(self, agent_id, agent_batch):
+        """Given an agent batch with td-errors already calculate, decide which
+        transitions to broadcast.
+
+        Args:
+            agent_id: agent ID string
+            agent_batch: batch of samples from an agent
+
+        Returns:
+            SampleBatch: batch of samples to broadcast
+        """
+
+        # Stochastic mode
+        if self.config.get("SUPER_mode", "quantile") == "stochastic":
+            # First figure out how many samples to broadcast -
+            # for randomised it's easy, just bandwidth * batch size.
+            num_samples_to_broadcast = self.config.get("SUPER_bandwidth", 0.01) * len(
+                agent_batch
+            )
+            total_td_error = np.sum(np.abs(agent_batch["td_errors"]))
+            batches = []
+            for i in range(len(agent_batch)):
+                # The probability of sampling this transition is proportional to the
+                # td-error, divided by the total td_error, and multiplied by the number
+                # of samples we would like to broadcast.
+                p = np.min(
+                    [
+                        1.0,
+                        num_samples_to_broadcast
+                        * np.abs(agent_batch["td_errors"][i])
+                        / total_td_error,
+                    ]
+                )
+                if np.isnan(p) or p < 0:
+                    p = 0.0
+                if np.random.binomial(1, p) == 1:
+                    batches.append(agent_batch.slice(i, i + 1))
+            if len(batches) > 0:
+                return concat_samples(batches)
+        # Quantile and Gaussian modes
+        else:
+            # Add sample batch td errors to the running td error accumulator.
+            self._td_error_deque[agent_id].extend(np.abs(agent_batch["td_errors"]))
+            mean = np.mean(self._td_error_deque[agent_id])
+            var = np.var(self._td_error_deque[agent_id])
+            if self.config.get("SUPER_mode", "quantile") == "gaussian":
+                # We use the "inverse survival function" to figure out what the
+                # constant c needs to be such that (for normally dist. td-errors),
+                # the expected number of transitions with
+                # td-error >= mean + c * std is the configured bandwidth.
+                c = norm.isf(
+                    self.config.get("SUPER_bandwidth", 0.01), loc=mean, scale=var
+                )
+            else:
+                # Alternatively, we could use a percentile:
+                c = np.percentile(
+                    self._td_error_deque[agent_id],
+                    (1 - self.config.get("SUPER_bandwidth", 0.01)) * 100,
+                )
+            batches = []
+            for i in range(len(agent_batch)):
+                if np.abs(agent_batch["td_errors"][i]) > c:
+                    batches.append(agent_batch.slice(i, i + 1))
+            if len(batches) > 0:
+                return concat_samples(batches)
+        # If nothing was shared, return None
+        return None

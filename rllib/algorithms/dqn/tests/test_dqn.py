@@ -10,6 +10,10 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
+from ray.rllib.examples.env.multi_agent import (
+    BasicMultiAgent,
+)
+from ray.tune.registry import register_env
 
 
 class TestDQN(unittest.TestCase):
@@ -163,6 +167,37 @@ class TestDQN(unittest.TestCase):
             for _ in range(300):
                 actions.append(algo.compute_single_action(obs))
             check(np.std(actions), 0.0, false=True)
+            algo.stop()
+
+    def test_dqn_super(self):
+        """Tests DQN with SUPER multiagent algorithm."""
+        num_iterations = 1
+        register_env("basic_multi_agent", lambda _: BasicMultiAgent(4))
+        env = BasicMultiAgent(4)
+        config = (
+            dqn.dqn.DQNConfig()
+            .environment("basic_multi_agent")
+            .rollouts(num_rollout_workers=0)
+            .training(
+                num_steps_sampled_before_learning_starts=0,
+                SUPER=True,
+            )
+            .multi_agent(
+                policies=[str(i) for i in env.get_agent_ids()],
+                policy_mapping_fn=(lambda agent_id, *args, **kwargs: str(agent_id)),
+            )
+            .framework("torch")
+        )
+        # Check that SUPER runs for all super modes.
+        for super_mode in ["quantile", "gaussian", "stochastic"]:
+            this_config = deepcopy(config).training(SUPER_mode=super_mode)
+            algo = this_config.build()
+            for i in range(num_iterations):
+                results = algo.train()
+                check_train_results(results)
+                print(results)
+
+            check_compute_single_action(algo)
             algo.stop()
 
 
