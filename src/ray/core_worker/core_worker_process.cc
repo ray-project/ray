@@ -77,7 +77,7 @@ WorkerID GetWorkerID() {
   auto worker_id_env = std::getenv(kEnvVarKeyWorkerId);
   if (worker_id_env) {
     RAY_LOG(DEBUG) << "Using worker ID " << worker_id_env << " from env var "
-                  << kEnvVarKeyWorkerId << ".";
+                   << kEnvVarKeyWorkerId << ".";
     return WorkerID(UniqueID::FromHex(std::string(worker_id_env)));
   } else {
     return WorkerID::FromRandom();
