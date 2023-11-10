@@ -592,15 +592,19 @@ class A:
 
 serve.run(A.bind())"""
 
-    run_string_as_driver(
-        driver_template.format(address=address, namespace="test_namespace1", port=8000)
+    wait_for_condition(
+        run_string_as_driver(
+            driver_template.format(address=address, namespace="test_namespace1", port=8000)
+        )
     )
-    run_string_as_driver(
-        driver_template.format(address=address, namespace="test_namespace2", port=8001)
+    wait_for_condition(
+        run_string_as_driver(
+            driver_template.format(address=address, namespace="test_namespace2", port=8001)
+        )
     )
 
 
-def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
+def test_serve_start_different_http_checkpoint_options_warning(ray_shutdown, propagate_logs, caplog):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
@@ -626,11 +630,8 @@ def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, c
                 continue
             assert test_msg in msg
 
-    serve.shutdown()
-    ray.shutdown()
 
-
-def test_recovering_controller_no_redeploy():
+def test_recovering_controller_no_redeploy(ray_shutdown):
     """Ensure controller doesn't redeploy running deployments when recovering."""
     ray_context = ray.init(namespace="x")
     address = ray_context.address_info["address"]
@@ -659,9 +660,6 @@ def test_recovering_controller_no_redeploy():
             > num_actors,
             timeout=5,
         )
-
-    serve.shutdown()
-    ray.shutdown()
 
 
 def test_updating_status_message(lower_slow_startup_threshold_and_reset):
