@@ -74,21 +74,19 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
         head_nodes.push_back(node.first);
       }
     }
-    std::function<void(int)> kill_node_chain_callback =
-        [this, &kill_node_chain_callback, head_nodes, on_done, request, node_id](
-            const auto &node_idx) {
-          if (node_idx < static_cast<int>(head_nodes.size())) {
-            OnNodeFailure(head_nodes[node_idx],
-                          [kill_node_chain_callback, node_idx](const Status &status) {
-                            RAY_CHECK_OK(status);
-                            kill_node_chain_callback(node_idx + 1);
-                          });
-          } else {
-            RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-                node_id, request.node_info(), on_done));
-          }
-        };
-    kill_node_chain_callback(0);
+
+    assert(head_nodes.size() <= 1);
+    if (head_nodes.size() == 1) {
+      OnNodeFailure(head_nodes[0],
+                    [this, request, on_done, node_id](const Status &status) {
+                      RAY_CHECK_OK(status);
+                      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+                          node_id, request.node_info(), on_done));
+                    });
+    } else {
+      RAY_CHECK_OK(
+          gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+    }
   } else {
     RAY_CHECK_OK(
         gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
