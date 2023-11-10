@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Mapping, Tuple
+from typing import Optional, List, Tuple
 
 
 class AcceleratorManager(ABC):
