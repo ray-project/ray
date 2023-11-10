@@ -278,6 +278,17 @@ message AddWorkerInfoReply {
   GcsStatus status = 1;
 }
 
+message UpdateWorkerDebuggerPortRequest {
+  // ID of this worker.
+  bytes worker_id = 1;
+  // Debugger port
+  uint32 debugger_port = 2;
+}
+
+message UpdateWorkerDebuggerPortReply {
+  GcsStatus status = 1;
+}
+
 // Service for worker info access.
 service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.
@@ -288,6 +299,9 @@ service WorkerInfoGcsService {
   rpc GetAllWorkerInfo(GetAllWorkerInfoRequest) returns (GetAllWorkerInfoReply);
   // Add worker information to GCS Service.
   rpc AddWorkerInfo(AddWorkerInfoRequest) returns (AddWorkerInfoReply);
+  // Update worker debugger port in the GCS Service.
+  rpc UpdateWorkerDebuggerPort(UpdateWorkerDebuggerPortRequest)
+      returns (UpdateWorkerDebuggerPortReply);
 }
 
 message CreateActorRequest {

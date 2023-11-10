@@ -62,6 +62,22 @@ message AutoscalingConfig {
   optional double downscale_smoothing_factor = 11;
 }
 
+//[Begin] LOGGING CONFIG
+// Encoding type
+enum EncodingType {
+  TEXT = 0;
+  JSON = 1;
+}
+
+message LoggingConfig {
+  EncodingType encoding = 1;
+  string log_level = 2;
+  string logs_dir = 3;
+  bool enable_access_log = 4;
+}
+
+//[End] Logging Config
+
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
   // The number of processes to start up that will handle requests to this deployment.
@@ -101,6 +117,8 @@ message DeploymentConfig {
   string version = 11;
 
   repeated string user_configured_option_names = 12;
+
+  LoggingConfig logging_config = 13;
 }
 
 // Deployment language.
