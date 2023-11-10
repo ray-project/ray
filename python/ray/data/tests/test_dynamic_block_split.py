@@ -100,8 +100,8 @@ class RandomBytesReader(Reader):
 
 
 class SlowCSVDatasource(CSVDatasource):
-    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
-        for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+    def _read_stream(self, f: "pa.NativeFile", path: str):
+        for block in super()._read_stream(f, path):
             time.sleep(3)
             yield block
 
@@ -121,9 +121,7 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     if not block_split:
         # Setting infinite block size effectively disables block splitting.
         ctx.target_max_block_size = float("inf")
-    ds = ray.data.read_datasource(
-        SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
-    )
+    ds = ray.data.read_datasource(SlowCSVDatasource(str(tmp_path)), parallelism=8)
 
     start = time.time()
     ds.map(lambda x: x)
