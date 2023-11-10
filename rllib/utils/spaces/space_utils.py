@@ -206,6 +206,56 @@ def flatten_to_single_ndarray(input_):
 
 
 @DeveloperAPI
+def batch(list_of_structs, individual_items_already_have_batch_1: bool = False):
+    """Converts input from a list of (nested) structs to (nested) struct of batches.
+
+    Input: Batch (list) of structs (each of these structs representing a
+        single item).
+        [
+            {"a": 1, "b": (4, 7.0)},  <- item 1
+            {"a": 2, "b": (5, 8.0)},  <- item 2
+            {"a": 3, "b": (6, 9.0)},  <- item 3
+        ]
+
+    Output: Struct of different batches (each batch has size=3 b/c there were 3 items
+        in the original list):
+        {
+            "a": np.array([1, 2, 3]),
+            "b": (np.array([4, 5, 6]), np.array([7.0, 8.0, 9.0]))
+        }
+
+    Args:
+        list_of_structs: The list of rows. Each item
+            in this list represents a single (maybe complex) struct.
+        individual_items_already_have_batch_1: True, if the individual items in
+            `list_of_structs` already have a batch dim (of 1). In this case, we will
+            concatenate (instead of stack) at the end.
+
+    Returns:
+        The struct of component batches. Each leaf item
+        in this struct represents the batch for a single component
+        (in case struct is tuple/dict). Alternatively, a simple batch of
+        primitives (non tuple/dict) might be returned.
+    """
+    flat = item = None
+
+    for item in list_of_structs:
+        flattened_item = tree.flatten(item)
+        # Create the main list, in which each slot represents one leaf in the (nested)
+        # struct. Each slot holds a list of batch values.
+        if flat is None:
+            flat = [[] for _ in range(len(flattened_item))]
+        for i, value in enumerate(flattened_item):
+            flat[i].append(value)
+
+    # Unflatten everything into the
+    out = tree.unflatten_as(item, flat)
+    np_func = np.stack if not individual_items_already_have_batch_1 else np.concatenate
+    out = tree.map_structure_up_to(item, lambda s: np_func(s, axis=0), out)
+    return out
+
+
+@DeveloperAPI
 def unbatch(batches_struct):
     """Converts input from (nested) struct of batches to batch of structs.
 

@@ -319,26 +319,37 @@ class AlgorithmConfig(_Config):
         # If not specified, we will try to auto-detect this.
         self._is_atari = None
 
+        # TODO (sven): Rename this method into `AlgorithmConfig.sampling()`
         # `self.rollouts()`
         self.env_runner_cls = None
+        # TODO (sven): Rename into `num_env_runner_workers`.
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
-        self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
-        self.sample_async = False
         self.enable_connectors = True
-        self.update_worker_filter_stats = True
-        self.use_worker_filter_stats = True
+        # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
+        #  and `sample_duration_unit` (replacing batch_mode), like we do it
+        #  in the evaluation config).
         self.rollout_fragment_length = 200
+        # TODO (sven): Rename into `sample_mode`.
         self.batch_mode = "truncate_episodes"
+        # TODO (sven): Rename into `validate_env_runner_workers_after_construction`.
+        self.validate_workers_after_construction = True
+        self.compress_observations = False
+        # TODO (sven): Rename into `env_runner_perf_stats_ema_coef`.
+        self.sampler_perf_stats_ema_coef = None
+
+        # TODO (sven): Deprecate together with old API stack.
+        self.sample_async = False
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
-        self.validate_workers_after_construction = True
+        self.enable_tf1_exec_eagerly = False
+        self.sample_collector = SimpleListCollector
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
-        self.compress_observations = False
-        self.enable_tf1_exec_eagerly = False
-        self.sampler_perf_stats_ema_coef = None
+        self.update_worker_filter_stats = True
+        self.use_worker_filter_stats = True
+        # TODO (sven): End: deprecate.
 
         # `self.training()`
         self.gamma = 0.99
@@ -890,7 +901,7 @@ class AlgorithmConfig(_Config):
                 error=True,
             )
 
-        # RLModule API only works with connectors and with Learner API.
+        # New API stack (RLModule, Learner APIs) only works with connectors.
         if not self.enable_connectors and self._enable_new_api_stack:
             raise ValueError(
                 "The new API stack (RLModule and Learner APIs) only works with "
@@ -937,6 +948,8 @@ class AlgorithmConfig(_Config):
                 "https://github.com/ray-project/ray/issues/35409 for more details."
             )
 
+        # TODO (sven): Remove this hack. We should not have env-var dependent logic
+        #  in the codebase.
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # Enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
@@ -1764,6 +1777,8 @@ class AlgorithmConfig(_Config):
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
+            learner_class: The `Learner` class to use for (distributed) updating of the
+                RLModule. Only used when `_enable_new_api_stack=True`.
 
         Returns:
             This updated AlgorithmConfig object.
