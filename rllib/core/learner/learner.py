@@ -197,10 +197,6 @@ class LearnerHyperparameters:
         [RLModule], Tuple[ConnectorV2, ConnectorContextV2]
     ] = None
 
-    #sampling_connector: Callable[
-    #    [RLModule], Tuple[ConnectorV2, ConnectorContextV2]
-    #] = None
-
     # Maps ModuleIDs to LearnerHyperparameters that are to be used for that particular
     # module.
     # You can access the module-specific `LearnerHyperparameters` object for a given
@@ -1258,8 +1254,8 @@ class Learner:
         reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
             _reduce_mean_results
         ),
-        # TODO (sven): Deprecate these in favor of learner hyperparams for those algos
-        #  that actually need to do minibatching.
+        # TODO (sven): Deprecate these in favor of learner hyperparams for only those
+        #  algos actually that need to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
@@ -1311,8 +1307,8 @@ class Learner:
             ctx=self._learner_connector_ctx,
         )
 
-        # TODO (sven): Thus far, processing from episodes and the learner connector are solely
-        # single-agent.
+        # TODO (sven): Thus far, processing from episodes and the learner connector are
+        #  solely single-agent.
         if episodes is not None:
             batch = MultiAgentBatch(
                 policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
@@ -1362,7 +1358,6 @@ class Learner:
             #  step here.
             results.append(convert_to_numpy(result))
 
-        # TODO (sven): Deprecate this, b/c it is hacky and intransparent.
         batch = self._set_slicing_by_batch_id(batch, value=False)
 
         # Reduce results across all minibatches, if necessary.
@@ -1431,6 +1426,7 @@ class Learner:
                 2) the loss_per_module dictionary mapping module IDs to individual loss
                     tensors
                 3) a metrics dict mapping module IDs to metrics key/value pairs.
+
         """
 
     def set_state(self, state: Mapping[str, Any]) -> None:

@@ -319,7 +319,7 @@ class AlgorithmConfig(_Config):
         # If not specified, we will try to auto-detect this.
         self._is_atari = None
 
-        # TODO (sven): Rename into `sampling()`
+        # TODO (sven): Rename this method into `AlgorithmConfig.sampling()`
         # `self.rollouts()`
         self.env_runner_cls = None
         # TODO (sven): Rename into `num_env_runner_workers`.
@@ -373,6 +373,7 @@ class AlgorithmConfig(_Config):
             self.model = copy.deepcopy(MODEL_DEFAULTS)
         except AttributeError:
             pass
+
         self.learner_connector = None
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2

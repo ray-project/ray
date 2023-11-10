@@ -224,8 +224,9 @@ class EnvToModulePipeline(ConnectorPipelineV2):
         # Add the default final connector piece for env-to-module pipelines:
         # Extracting last obs from episodes and add them to input, iff this has not
         # happened in any connector piece in this pipeline before.
-        if len(self.connectors) == 0 or not isinstance(
-            self.connectors[-1], DefaultEnvToModule
+        if (
+            len(self.connectors) == 0
+            or type(self.connectors[-1]) is not DefaultEnvToModule
         ):
             self.append(DefaultEnvToModule(ctx=ctx))
 
@@ -239,6 +240,7 @@ class EnvToModulePipeline(ConnectorPipelineV2):
             **kwargs,
         )
 
+
 class ModuleToEnvPipeline(ConnectorPipelineV2):
     def __init__(self, *, ctx, connectors: Optional[List[ConnectorV2]] = None, **kwargs):
         super().__init__(ctx=ctx, connectors=connectors, **kwargs)
@@ -246,7 +248,8 @@ class ModuleToEnvPipeline(ConnectorPipelineV2):
         # Add the default final connector piece for env-to-module pipelines:
         # Sampling actions from action_dist_inputs and add them to input, iff this has
         # not happened in any connector piece in this pipeline before.
-        if len(self.connectors) == 0 or not isinstance(
-            self.connectors[-1], DefaultModuleToEnv
+        if (
+            len(self.connectors) == 0
+            or type(self.connectors[-1]) is not DefaultModuleToEnv
         ):
             self.append(DefaultModuleToEnv(ctx=ctx))
