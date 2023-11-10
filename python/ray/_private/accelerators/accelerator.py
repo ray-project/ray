@@ -52,11 +52,6 @@ class AcceleratorManager(ABC):
         """
 
     @staticmethod
-    def postprocess_resources(resources: Mapping[str, float]):
-        """Apply accelerator specific postprocessing, if applicable."""
-        return
-
-    @staticmethod
     @abstractmethod
     def validate_resource_request_quantity(
         quantity: float,

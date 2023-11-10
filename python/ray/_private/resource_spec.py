@@ -218,7 +218,8 @@ class ResourceSpec(
                     resources[
                         f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
                     ] = 1
-                accelerator_manager.postprocess_resources(resources=resources)
+                if accelerator_resource_name == "TPU":
+                    accelerator_manager.postprocess_resources(resources=resources)
 
         # Choose a default object store size.
         system_memory = ray._private.utils.get_system_memory()
