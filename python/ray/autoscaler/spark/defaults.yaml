@@ -3,7 +3,6 @@
 # ray start --autoscaling-config=default.yaml --head --block
 #
 cluster_name: spark
-max_workers: 8
 provider:
     type: spark
     # This must be true since the nodes share the same ip!
