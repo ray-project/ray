@@ -3,7 +3,6 @@ import sys
 import urllib
 from typing import TYPE_CHECKING, List, Tuple, Union
 
-from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.util import _resolve_custom_scheme
 
 if TYPE_CHECKING:
@@ -152,6 +151,23 @@ def _unwrap_protocol(path):
 
 def _is_url(path) -> bool:
     return urllib.parse.urlparse(path).scheme != ""
+
+
+def _is_local_windows_path(path: str) -> bool:
+    """Determines if path is a Windows file-system location."""
+    if sys.platform != "win32":
+        return False
+
+    if len(path) >= 1 and path[0] == "\\":
+        return True
+    if (
+        len(path) >= 3
+        and path[1] == ":"
+        and (path[2] == "/" or path[2] == "\\")
+        and path[0].isalpha()
+    ):
+        return True
+    return False
 
 
 def _encode_url(path):
