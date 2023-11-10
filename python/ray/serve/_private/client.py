@@ -37,7 +37,7 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import DeploymentHandle, RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
 
 logger = logging.getLogger(__file__)
 
@@ -588,3 +588,8 @@ class ServeControllerClient:
                 model ids.
         """
         self._controller.record_multiplexed_replica_info.remote(info)
+
+    @_ensure_connected
+    def update_system_logging_config(self, logging_config: LoggingConfig):
+        """Reconfigure the logging config for the controller & proxies."""
+        self._controller.reconfigure_system_logging_config.remote(logging_config)
