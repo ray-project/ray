@@ -450,12 +450,12 @@ class GcsRpcClient {
   /// Operations for virtual cluster (Create, Remove)
   VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
                              CreateVirtualCluster,
-                             virtual_cluster_grpc_client_,
+                             virtual_cluster_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
                              RemoveVirtualCluster,
-                             virtual_cluster_grpc_client_,
+                             virtual_cluster_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Operations for kv (Get, Put, Del, Exists)
@@ -611,7 +611,6 @@ class GcsRpcClient {
       placement_group_info_grpc_client_;
   std::unique_ptr<GrpcClient<VirtualClusterInfoGcsService>>
       virtual_cluster_info_grpc_client_;
-  std::unique_ptr<GrpcClient<VirtualClusterInfoGcsService>> virtual_cluster_grpc_client_;
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
 

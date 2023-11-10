@@ -139,6 +139,11 @@ namespace rpc {
                       HANDLER,                            \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
+#define VIRTUAL_CLUSTER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(VirtualClusterInfoGcsService,       \
+                      HANDLER,                            \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
+
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
@@ -505,6 +510,19 @@ class WorkerInfoGrpcService : public GrpcService {
   WorkerInfoGcsServiceHandler &service_handler_;
 };
 
+class VirtualClusterInfoGcsServiceHandler {
+ public:
+  virtual ~VirtualClusterInfoGcsServiceHandler() = default;
+
+  virtual void HandleCreateVirtualCluster(CreateVirtualClusterRequest request,
+                                          CreateVirtualClusterReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRemoveVirtualCluster(RemoveVirtualClusterRequest request,
+                                          RemoveVirtualClusterReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+};
+
 class PlacementGroupInfoGcsServiceHandler {
  public:
   virtual ~PlacementGroupInfoGcsServiceHandler() = default;
@@ -533,6 +551,28 @@ class PlacementGroupInfoGcsServiceHandler {
   virtual void HandleGetNamedPlacementGroup(GetNamedPlacementGroupRequest request,
                                             GetNamedPlacementGroupReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
+};
+
+class VirtualClusterInfoGrpcService : public GrpcService {
+ public:
+  explicit VirtualClusterInfoGrpcService(instrumented_io_context &io_service,
+                                         VirtualClusterInfoGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override {
+    VIRTUAL_CLUSTER_INFO_SERVICE_RPC_HANDLER(CreateVirtualCluster);
+    VIRTUAL_CLUSTER_INFO_SERVICE_RPC_HANDLER(RemoveVirtualCluster);
+  }
+
+ private:
+  VirtualClusterInfoGcsService::AsyncService service_;
+  VirtualClusterInfoGcsServiceHandler &service_handler_;
 };
 
 /// The `GrpcService` for `PlacementGroupInfoGcsService`.
@@ -736,6 +776,7 @@ using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
+using VirtualClusterInfoHandler = VirtualClusterInfoGcsServiceHandler;
 using InternalKVHandler = InternalKVGcsServiceHandler;
 using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
 using RuntimeEnvHandler = RuntimeEnvGcsServiceHandler;

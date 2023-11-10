@@ -67,6 +67,7 @@ class GcsJobManager;
 class GcsWorkerManager;
 class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
+class GcsVirtualClusterManager;
 class GcsTaskManager;
 class GcsAutoscalerStateManager;
 
@@ -147,6 +148,8 @@ class GcsServer {
 
   /// Initialize gcs placement group manager.
   void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
+
+  void InitGcsVirtualClusterManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
@@ -241,6 +244,7 @@ class GcsServer {
   std::shared_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
   /// The gcs placement group manager.
   std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
+  std::shared_ptr<GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
   /// Job info handler and service.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
@@ -274,6 +278,7 @@ class GcsServer {
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Placement Group info handler and service.
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
+  std::unique_ptr<rpc::VirtualClusterInfoGrpcService> virtual_cluster_info_service_;
   /// Global KV storage handler and service.
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;

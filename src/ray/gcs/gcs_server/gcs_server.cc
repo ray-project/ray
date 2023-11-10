@@ -27,6 +27,7 @@
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
@@ -217,6 +218,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs placement group manager.
   InitGcsPlacementGroupManager(gcs_init_data);
+
+  InitGcsVirtualClusterManager(gcs_init_data);
 
   // Init gcs actor manager.
   InitGcsActorManager(gcs_init_data);
@@ -496,6 +499,14 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   actor_info_service_.reset(
       new rpc::ActorInfoGrpcService(main_service_, *gcs_actor_manager_));
   rpc_server_.RegisterService(*actor_info_service_);
+}
+
+void GcsServer::InitGcsVirtualClusterManager(const GcsInitData &gcs_init_data) {
+  gcs_virtual_cluster_manager_ =
+      std::make_shared<GcsVirtualClusterManager>(main_service_);
+  virtual_cluster_info_service_.reset(new rpc::VirtualClusterInfoGrpcService(
+      main_service_, *gcs_virtual_cluster_manager_));
+  rpc_server_.RegisterService(*virtual_cluster_info_service_);
 }
 
 void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
