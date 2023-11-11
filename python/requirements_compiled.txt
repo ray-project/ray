@@ -372,7 +372,7 @@ dask==2022.10.1
     #   distributed
 databricks-cli==0.18.0
     # via mlflow
-datasets==2.0.0
+datasets==2.14.0
     # via
     #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
     #   -r /ray/ci/../python/requirements/ml/train-requirements.txt
