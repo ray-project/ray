@@ -676,18 +676,58 @@ class GlobalState:
         """
         self._check_connected()
 
-        resources = defaultdict(int)
-        nodes = self.node_table()
-        for node in nodes:
-            # Only count resources from latest entries of live nodes.
-            if node["Alive"]:
-                for key, value in node["Resources"].items():
-                    resources[key] += value
-        return dict(resources)
+        virtual_cluster_id = ray.get_runtime_context().get_virtual_cluster_id()
+        if not virtual_cluster_id:
+            resources = defaultdict(int)
+            nodes = self.node_table()
+            for node in nodes:
+                # Only count resources from latest entries of live nodes.
+                if node["Alive"]:
+                    for key, value in node["Resources"].items():
+                        resources[key] += value
+            return dict(resources)
+
+        total_resources_by_id = self._total_resources_per_node()
+        # Calculate total resources.
+        total_total_resources = defaultdict(int)
+        for total_resources in total_resources_by_id.values():
+            for resource_id, num_total in total_resources.items():
+                if virtual_cluster_id in resource_id and "vcbundle" not in resource_id:
+                    total_total_resources[
+                        resource_id.replace(f"_vc_{virtual_cluster_id}", "")
+                    ] += num_total
+
+        return dict(total_total_resources)
 
     def _live_node_ids(self):
         """Returns a set of node IDs corresponding to nodes still alive."""
         return {node["NodeID"] for node in self.node_table() if (node["Alive"])}
+
+    def _total_resources_per_node(self):
+        self._check_connected()
+        total_resources_by_id = {}
+
+        all_available_resources = (
+            self.global_state_accessor.get_all_available_resources()
+        )
+        for available_resource in all_available_resources:
+            message = gcs_pb2.AvailableResources.FromString(available_resource)
+            # Calculate available resources for this node.
+            dynamic_resources = {}
+            for resource_id, capacity in message.resources_total.items():
+                dynamic_resources[resource_id] = capacity
+            # Update available resources for this node.
+            node_id = ray._private.utils.binary_to_hex(message.node_id)
+            total_resources_by_id[node_id] = dynamic_resources
+
+        # Update nodes in cluster.
+        node_ids = self._live_node_ids()
+        # Remove disconnected nodes.
+        for node_id in list(total_resources_by_id.keys()):
+            if node_id not in node_ids:
+                del total_resources_by_id[node_id]
+
+        return total_resources_by_id
 
     def _available_resources_per_node(self):
         """Returns a dictionary mapping node id to avaiable resources."""
@@ -731,12 +771,21 @@ class GlobalState:
         self._check_connected()
 
         available_resources_by_id = self._available_resources_per_node()
-
+        virtual_cluster_id = ray.get_runtime_context().get_virtual_cluster_id()
         # Calculate total available resources.
         total_available_resources = defaultdict(int)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
-                total_available_resources[resource_id] += num_available
+                if virtual_cluster_id:
+                    if (
+                        virtual_cluster_id in resource_id
+                        and "vcbundle" not in resource_id
+                    ):
+                        total_available_resources[
+                            resource_id.replace(f"_vc_{virtual_cluster_id}", "")
+                        ] += num_available
+                else:
+                    total_available_resources[resource_id] += num_available
 
         return dict(total_available_resources)
 

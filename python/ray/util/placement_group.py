@@ -8,6 +8,7 @@ from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.virtual_cluster import rewrite_virtual_cluster_placement_group_bundles
 
 bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"
@@ -241,6 +242,10 @@ def placement_group(
             "placement group `lifetime` argument must be either `None` or 'detached'"
         )
 
+    if ray.get_runtime_context().get_virtual_cluster_id():
+        bundles = rewrite_virtual_cluster_placement_group_bundles(
+            ray.get_runtime_context().get_virtual_cluster_id(), bundles
+        )
     placement_group_id = worker.core_worker.create_placement_group(
         name,
         bundles,
