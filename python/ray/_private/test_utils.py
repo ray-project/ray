@@ -415,10 +415,6 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     with proc:
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
-            print("proc.returncode!!!!!!\n\n\n", proc.returncode)
-            print("proc.args!!!!!!\n\n\n", proc.args)
-            print("proc.stderr!!!!!!\n\n\n", proc.stderr)
-            print("output!!!!!!\n\n\n", output)
             print(ray._private.utils.decode(output, encode_type=encode))
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr

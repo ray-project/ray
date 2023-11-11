@@ -594,17 +594,23 @@ serve.run(A.bind())"""
 
     wait_for_condition(
         run_string_as_driver(
-            driver_template.format(address=address, namespace="test_namespace1", port=8000)
+            driver_template.format(
+                address=address, namespace="test_namespace1", port=8000
+            )
         )
     )
     wait_for_condition(
         run_string_as_driver(
-            driver_template.format(address=address, namespace="test_namespace2", port=8001)
+            driver_template.format(
+                address=address, namespace="test_namespace2", port=8001
+            )
         )
     )
 
 
-def test_serve_start_different_http_checkpoint_options_warning(ray_shutdown, propagate_logs, caplog):
+def test_serve_start_different_http_checkpoint_options_warning(
+    ray_shutdown, propagate_logs, caplog
+):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
