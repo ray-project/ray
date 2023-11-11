@@ -124,7 +124,7 @@ class ImageDatasource(FileBasedDatasource):
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
-        for file_size in self._file_sizes:
+        for file_size in self._file_sizes():
             # NOTE: check if file size is not None, because some metadata provider
             # such as FastFileMetadataProvider does not provide file size information.
             if file_size is not None:
@@ -136,7 +136,7 @@ class ImageDatasource(FileBasedDatasource):
         start_time = time.perf_counter()
         # Filter out empty file to avoid noise.
         non_empty_path_and_size = list(
-            filter(lambda p: p[1] > 0, zip(self._paths, self._file_sizes))
+            filter(lambda p: p[1] > 0, zip(self._paths(), self._file_sizes()))
         )
         num_files = len(non_empty_path_and_size)
         if num_files == 0:
