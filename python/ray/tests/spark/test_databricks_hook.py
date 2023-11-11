@@ -53,7 +53,7 @@ class TestDatabricksHook:
         monkeypatch.setenv("DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES", "0.5")
         db_api_entry = MockDbApiEntry()
         monkeypatch.setattr(
-            "ray.util.spark.databricks_hook._get_db_api_entry", lambda: db_api_entry
+            "ray.util.spark.databricks_hook.get_db_entry_point", lambda: db_api_entry
         )
         try:
             setup_ray_cluster(
