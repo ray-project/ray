@@ -3762,6 +3762,16 @@ cdef class CoreWorker:
 
         return VirtualClusterID(c_virtual_cluster_id.Binary())
 
+    def remove_virtual_cluster(self, VirtualClusterID virtual_cluster_id):
+        cdef:
+            CVirtualClusterID c_virtual_cluster_id = \
+                virtual_cluster_id.native()
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().
+                RemoveVirtualCluster(c_virtual_cluster_id))
+
     def create_placement_group(
                             self,
                             c_string name,

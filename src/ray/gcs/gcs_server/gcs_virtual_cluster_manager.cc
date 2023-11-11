@@ -45,6 +45,16 @@ void GcsVirtualClusterManager::HandleRemoveVirtualCluster(
     rpc::RemoveVirtualClusterReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   io_context_.post([] {}, "");
+  VirtualClusterID vc_id = VirtualClusterID::FromBinary(request.virtual_cluster_id());
+  RAY_LOG(INFO) << "Removing virtual cluster " << vc_id;
+  for (const auto &entry : gcs_node_manager_.GetAllAliveNodes()) {
+    const auto lease_client = GetLeaseClientFromNode(entry.second);
+    lease_client->ReturnVirtualClusterBundle(
+        vc_id,
+        [](const Status &status, const rpc::ReturnVirtualClusterBundleReply &reply) {
+          RAY_CHECK(status.ok());
+        });
+  }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 

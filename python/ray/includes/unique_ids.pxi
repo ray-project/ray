@@ -347,12 +347,16 @@ cdef class ActorClassID(UniqueID):
 # This type alias is for backward compatibility.
 ObjectID = ObjectRef
 
-cdef class VirtualClusterID(BaseID):
-    cdef CVirtualClusterID data
+cdef class VirtualClusterID(UniqueID):
 
     def __init__(self, id):
         check_id(id, CVirtualClusterID.Size())
         self.data = CVirtualClusterID.FromBinary(<c_string>id)
+
+    @classmethod
+    def from_hex(cls, hex_id):
+        binary_id = CVirtualClusterID.FromHex(<c_string>hex_id).Binary()
+        return cls(binary_id)
 
     cdef CVirtualClusterID native(self):
         return <CVirtualClusterID>self.data

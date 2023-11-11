@@ -43,7 +43,7 @@ from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray._private.event.event_logger import get_event_logger
 from ray.core.generated.event_pb2 import Event
-from ray.util.virtual_cluster import virtual_cluster
+from ray.util.virtual_cluster import virtual_cluster, remove_virtual_cluster
 
 logger = logging.getLogger(__name__)
 
@@ -518,6 +518,7 @@ class JobSupervisor:
                     f"Exception: {traceback.format_exc()}"
                 )
         finally:
+            remove_virtual_cluster(self._virtual_cluster_id)
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 
@@ -985,7 +986,11 @@ class JobManager:
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(
-                submission_id, entrypoint, metadata or {}, self._gcs_address, vc.id
+                submission_id,
+                entrypoint,
+                metadata or {},
+                self._gcs_address,
+                vc.id.hex(),
             )
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,

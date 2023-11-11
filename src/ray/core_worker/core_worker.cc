@@ -2124,6 +2124,10 @@ Status CoreWorker::CreateVirtualCluster(
   return gcs_client_->VirtualClusters().SyncCreateVirtualCluster(builder.Build());
 }
 
+Status CoreWorker::RemoveVirtualCluster(const VirtualClusterID &virtual_cluster_id) {
+  return gcs_client_->VirtualClusters().SyncRemoveVirtualCluster(virtual_cluster_id);
+}
+
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
