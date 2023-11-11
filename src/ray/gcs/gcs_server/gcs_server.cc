@@ -503,7 +503,10 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsVirtualClusterManager(const GcsInitData &gcs_init_data) {
   gcs_virtual_cluster_manager_ =
-      std::make_shared<GcsVirtualClusterManager>(main_service_);
+      std::make_shared<GcsVirtualClusterManager>(main_service_,
+                                                 *gcs_node_manager_,
+                                                 *cluster_resource_scheduler_,
+                                                 raylet_client_pool_);
   virtual_cluster_info_service_.reset(new rpc::VirtualClusterInfoGrpcService(
       main_service_, *gcs_virtual_cluster_manager_));
   rpc_server_.RegisterService(*virtual_cluster_info_service_);

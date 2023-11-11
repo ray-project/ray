@@ -391,6 +391,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       local_task_manager_);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
+  virtual_cluster_resource_manager_ = std::make_shared<VirtualClusterResourceManager>(
+      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 
   periodical_runner_.RunFnPeriodically(
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
@@ -1898,6 +1900,7 @@ void NodeManager::HandlePrepareVirtualClusterBundle(
     rpc::PrepareVirtualClusterBundleRequest request,
     rpc::PrepareVirtualClusterBundleReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "HandlePrepareVirtualClusterBundle " << request.DebugString();
   auto vc_id = VirtualClusterID::FromBinary(request.virtual_cluster_id());
   auto bundle_spec = VirtualClusterBundleSpec(request.bundle_spec(), vc_id);
   RAY_LOG(DEBUG) << "Request to prepare resources for virtual cluster bundle: "
