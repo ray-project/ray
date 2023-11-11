@@ -2511,7 +2511,7 @@ websockets==11.0.3
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
-werkzeug==2.1.2
+werkzeug==3.0.1
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   flask
