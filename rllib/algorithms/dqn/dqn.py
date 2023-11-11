@@ -424,8 +424,9 @@ class DQN(SimpleQ):
             # Store new samples in replay buffer.
             self.local_replay_buffer.add(new_sample_batch)
 
-            # Now we run our SUPER experience broadcasting.
-            self._SUPER(new_sample_batch)
+            if self.config.get("SUPER", False):
+                # Now we run our SUPER experience broadcasting.
+                self._SUPER(new_sample_batch)
 
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
