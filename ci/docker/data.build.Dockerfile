@@ -22,7 +22,6 @@ RUN <<EOF
 
 DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
   ARROW_MONGO_VERSION=$ARROW_MONGO_VERSION ./ci/env/install-dependencies.sh
-pip install "datasets==2.14.0"
 
 # Install MongoDB
 sudo apt-get purge -y mongodb*
