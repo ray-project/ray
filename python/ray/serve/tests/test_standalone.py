@@ -592,20 +592,15 @@ class A:
 
 serve.run(A.bind())"""
 
-    wait_for_condition(
-        run_string_as_driver(
-            driver_template.format(
-                address=address, namespace="test_namespace1", port=8000
-            )
-        )
+    driver_script = driver_template.format(
+        address=address, namespace="test_namespace1", port=8000
     )
-    wait_for_condition(
-        run_string_as_driver(
-            driver_template.format(
-                address=address, namespace="test_namespace2", port=8001
-            )
-        )
+    wait_for_condition(run_string_as_driver, driver_script=driver_script)
+
+    driver_script2 = driver_template.format(
+        address=address, namespace="test_namespace2", port=8001
     )
+    wait_for_condition(run_string_as_driver, driver_script=driver_script2)
 
 
 def test_serve_start_different_http_checkpoint_options_warning(
