@@ -538,10 +538,10 @@ void raylet::RayletClient::UpdateResourceUsage(
 
 
 void raylet::RayletClient::UpdateLabel(
-    std::unordered_map<std::string, std::string>  &huili,
+    std::unordered_map<std::string, std::string>  &new_labels,
     const rpc::ClientCallback<rpc::UpdateLabelReply> &callback) {
   rpc::UpdateLabelRequest request;
-  // request.set_huili(huili);
+  request.mutable_new_labels()->insert(new_labels.begin(),new_labels.end());
   grpc_client_->UpdateLabel(request, callback);
 }
 

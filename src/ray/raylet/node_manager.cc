@@ -2688,8 +2688,8 @@ void NodeManager::HandleUpdateLabel(rpc::UpdateLabelRequest request,
                                        rpc::SendReplyCallback send_reply_callback) {
     // Update node labels when node added.
 
-    absl::flat_hash_map<std::string, std::string> labels(request.huili().begin(),
-                                                       request.huili().end());
+    absl::flat_hash_map<std::string, std::string> labels(request.new_labels().begin(),
+                                                       request.new_labels().end());
     cluster_resource_scheduler_->GetLocalResourceManager().update_label(labels);
 
     send_reply_callback(Status::OK(), nullptr, nullptr);
