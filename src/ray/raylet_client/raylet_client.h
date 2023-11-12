@@ -201,6 +201,7 @@ class RayletClientInterface : public PinObjectsInterface,
 
   virtual void UpdateLabel(
       std::unordered_map<std::string, std::string> &new_labels,
+      const NodeID &node_id,
       const rpc::ClientCallback<rpc::UpdateLabelReply> &callback)=0;
 
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
@@ -492,6 +493,7 @@ class RayletClient : public RayletClientInterface {
   void UpdateLabel(
       
       std::unordered_map<std::string, std::string>  &new_labels,
+      const NodeID &node_id,
       const rpc::ClientCallback<rpc::UpdateLabelReply> &callback) override;
 
   void NotifyGCSRestart(

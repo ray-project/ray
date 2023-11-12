@@ -363,6 +363,7 @@ message DrainRayletReply {
 message UpdateLabelRequest{
   // New key-value labels of this node.
   map<string, string> new_labels = 1;
+  bytes node_id=2;
 
 }
 

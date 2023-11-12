@@ -59,10 +59,6 @@ void LocalResourceManager::DeleteLocalResource(scheduling::ResourceID resource_i
   OnResourceOrStateChanged();
 }
 
-void LocalResourceManager::update_label(absl::flat_hash_map<std::string, std::string> new_labels){
-  local_resources_.labels=new_labels;
-}
-
 bool LocalResourceManager::IsAvailableResourceEmpty(
     scheduling::ResourceID resource_id) const {
   return local_resources_.available.Sum(resource_id) <= 0;
