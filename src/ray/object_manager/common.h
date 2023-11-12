@@ -39,22 +39,40 @@ using RestoreSpilledObjectCallback =
                        const std::string &,
                        std::function<void(const ray::Status &)>)>;
 
+
 struct PlasmaObjectHeader {
-  sem_t can_write;
-  sem_t can_read;
+  // Protects all following state. We use a mutex and conditional variable here
+  // because there can be multiple readers and:
+  // - we should not write again until all readers are done.
+  // - we should not read again until a write is done.
+  pthread_mutex_t mut;
+  pthread_cond_t cond;
+  int64_t version = 0;
+  // Max number of reads allowed before the writer can write
+  // again. This value should be set by the writer before
+  // posting to can_read. reader_mut must be held when
+  // reading.
   int64_t max_readers = 0;
+  // Readers increment once they are done reading. Once this value reaches
+  // max_readers, the last reader should signal to the writer.
+  int64_t num_reads_remaining = 0;
+  // Number of readers currently reading. Not necessary for synchronization,
+  // but useful for debugging.
+  int64_t num_readers_acquired = 0;
 
-  void Init() {
-    sem_init(&can_write,
-             /*pshared=*/1,
-             /*value=*/1);
-    sem_init(&can_read, /*pshared=*/1, /*value=*/0);
-  }
-
-  void Destroy() {
-    RAY_CHECK(sem_destroy(&can_write) == 0);
-    RAY_CHECK(sem_destroy(&can_read) == 0);
-  }
+  void Init();
+  void Destroy();
+  // Blocks until there are no more readers.
+  // NOTE: This does not protect against multiple writers.
+  void WriteAcquire(int64_t write_version);
+  // Call after completing a write to signal to max_readers many readers.
+  void WriteRelease(int64_t write_version, int64_t max_readers);
+  // Blocks until the given version is ready to read.
+  void ReadAcquire(int64_t read_version);
+  // Finishes the read. If all reads are done, signals to the
+  // writer. This is not necessary to call for objects that have
+  // max_readers=-1.
+  void ReadRelease(int64_t read_version);
 };
 
 /// A struct that includes info about the object.

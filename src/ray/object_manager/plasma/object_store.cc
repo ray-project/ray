@@ -55,7 +55,6 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   auto plasma_header = entry->GetPlasmaObjectHeader();
   *plasma_header = ray::PlasmaObjectHeader{};
   plasma_header->Init();
-  sem_post(&plasma_header->can_write);
 
   RAY_LOG(DEBUG) << "create object " << object_info.object_id << " succeeded";
   return entry;

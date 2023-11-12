@@ -13,6 +13,7 @@
     - Sender CoreWorker actor is the "writer"
     - Receiver CoreWorker actor(s) is the "reader"
 [ ] Connect actors and driver
+    - Receiver CoreWorker actor selects between normal task queue and signals from shared-memory objects
 
 
 

@@ -537,11 +537,12 @@ void PlasmaStore::WaitForSeal(const ObjectID &object_id,
   RAY_CHECK(entry);
   auto plasma_header = entry->GetPlasmaObjectHeader();
 
-  int event_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+  int event_fd = eventfd(0, EFD_CLOEXEC);
   RAY_CHECK(event_fd != -1);
 
   auto wait_fn = [event_fd, plasma_header]() {
-    RAY_CHECK(sem_wait(&plasma_header->can_read) == 0);
+    plasma_header->ReadAcquire(/*read_version=*/1);
+
     uint64_t data = 1;
     RAY_CHECK(write(event_fd, &data, sizeof(data)) == sizeof(data));
   };
@@ -562,7 +563,6 @@ void PlasmaStore::WaitForSeal(const ObjectID &object_id,
           SealObjects({object_id});
         }
 
-        RAY_LOG(INFO) << "DONE " << object_id;
         wait_thread->join();
       });
 }
