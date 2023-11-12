@@ -2690,7 +2690,7 @@ void NodeManager::HandleUpdateLabel(rpc::UpdateLabelRequest request,
     const NodeID node_id = NodeID::FromBinary(request.node_id());
     absl::flat_hash_map<std::string, std::string> labels(request.new_labels().begin(),
                                                        request.new_labels().end());
-    cluster_resource_scheduler_->GetLocalResourceManager().SetNodeLabels(scheduling::NodeID(node_id.Binary()),labels);
+    cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(scheduling::NodeID(node_id.Binary()),labels);
 
     send_reply_callback(Status::OK(), nullptr, nullptr);
                                        
