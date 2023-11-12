@@ -217,15 +217,6 @@ message GetInternalConfigReply {
   string config = 2;
 }
 
-message GetResourcesRequest {
-  bytes node_id = 1;
-}
-
-message GetResourcesReply {
-  GcsStatus status = 1;
-  map<string, ResourceTableData> resources = 2;
-}
-
 message DeleteResourcesReply {
   GcsStatus status = 1;
 }
@@ -620,8 +611,6 @@ message GetDrainingNodesReply {
 
 // Service for node resource info access.
 service NodeResourceInfoGcsService {
-  // Get node's resources from GCS Service.
-  rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
   // Get available resources of all nodes.
   rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
       returns (GetAllAvailableResourcesReply);
