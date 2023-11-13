@@ -207,6 +207,31 @@ steps:
     depends_on: mllightning2gpubuild
     job_env: forge
 
+  - label: ":train: ml: tune multinode tests"
+    instance_type: medium
+    commands:
+      - export TRAVIS_COMMIT=${BUILDKITE_COMMIT}
+      - LINUX_WHEELS=1 ./ci/ci.sh build
+      - mkdir -p ~/.docker/cli-plugins/ && curl -SL https://github.com/docker/compose/releases/download/v2.0.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && chmod +x ~/.docker/cli-plugins/docker-compose
+      - pip install -U docker aws_requests_auth boto3
+      - ./ci/env/env_info.sh
+      - docker pull rayproject/ray:nightly-py38-cpu
+      - python ./ci/build/build-multinode-image.py rayproject/ray:nightly-py38-cpu rayproject/ray:multinode-py38
+      - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+        --test_tag_filters=multinode,-example,-flaky,-soft_imports,-gpu_only,-rllib
+        python/ray/tune/...
+        --test_env=RAY_HAS_SSH="1"
+        --test_env=RAY_DOCKER_IMAGE="rayproject/ray:multinode-py38"
+        --test_env=RAY_TEMPDIR="/ray"
+        --test_env=RAY_HOSTDIR="/ray"
+        --test_env=RAY_TESTHOST="dind-daemon"
+        --test_env=DOCKER_HOST=tcp://docker:2376
+        --test_env=DOCKER_TLS_VERIFY=1
+        --test_env=DOCKER_CERT_PATH=/certs/client
+        --test_env=DOCKER_TLS_CERTDIR=/certs
+    depends_on: oss-ci-base_build
+    job_env: oss-ci-base_build
+
   - label: ":train: ml: flaky tests"
     tags: 
       - train
