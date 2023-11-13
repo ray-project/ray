@@ -161,7 +161,6 @@ const DataRow = ({
 }: {
   datasetMetrics?: DatasetMetrics;
   operatorMetrics?: OperatorMetrics;
-  isDatasetRow: boolean;
   isExpanded?: boolean;
   setIsExpanded?: CallableFunction;
 }) => {
