@@ -36,6 +36,7 @@ class ContainerManager:
             "--pid=host",
         ]
         if container_driver == "podman":
+            container_command[0] = "sudo podman"
             container_command.append("--ipc=host")
             container_command.append("--user=root")
             container_command.append("--cgroup-manager=cgroupfs")
