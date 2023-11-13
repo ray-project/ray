@@ -60,7 +60,7 @@ Use Serve's [FastAPI](https://fastapi.tiangolo.com/) integration to elegantly ha
 
 :::{tab-item} Hugging Face Transformers model
 
-To run this example, install the following: ``pip install transformers``
+To run this example, install the following: ``pip install transformers tensorflow torch`` 
 
 Serve a pre-trained [Hugging Face Transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
 The model we'll use is a sentiment analysis model: it will take a text string as input and return if the text was "POSITIVE" or "NEGATIVE."
