@@ -18,7 +18,6 @@ import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.ppo_learner import (
     PPOLearnerHyperparameters,
@@ -37,10 +36,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -49,7 +45,8 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     ALL_MODULES,
 )
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -61,7 +58,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class PPOConfig(PGConfig):
+class PPOConfig(AlgorithmConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
     .. testcode::
@@ -112,6 +109,11 @@ class PPOConfig(PGConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
+        self.lr_schedule = None
+        self.lr = 5e-5
+        self.rollout_fragment_length = "auto"
+        self.train_batch_size = 4000
+
         # PPO specific settings:
         self.use_critic = True
         self.use_gae = True
@@ -129,12 +131,9 @@ class PPOConfig(PGConfig):
         self.vf_clip_param = 10.0
         self.grad_clip = None
 
-        # Override some of PG/AlgorithmConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_rollout_workers = 2
-        self.train_batch_size = 4000
-        self.lr = 5e-5
         self.model["vf_share_layers"] = False
-        self._disable_preprocessor_api = False
         # __sphinx_doc_end__
         # fmt: on
 
@@ -265,13 +264,6 @@ class PPOConfig(PGConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if vf_share_layers != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="PPOConfig().vf_share_layers",
-                new="PPOConfig().training(model={'vf_share_layers': ...})",
-                error=True,
-            )
-
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
@@ -317,6 +309,13 @@ class PPOConfig(PGConfig):
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
+
+        # Synchronous sampling, on-policy/PPO algos -> Check mismatches between
+        # `rollout_fragment_length` and `train_batch_size` to avoid user confusion.
+        # TODO (sven): Make rollout_fragment_length a property and create a private
+        #  attribute to store (possibly) user provided value (or "auto") in. Deprecate
+        #  `self.get_rollout_fragment_length()`.
+        self.validate_train_batch_size_vs_rollout_fragment_length()
 
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
@@ -443,17 +442,19 @@ class PPO(Algorithm):
             # New Episode-returning EnvRunner API.
             else:
                 if self.workers.num_remote_workers() <= 0:
-                    episodes = [self.workers.local_worker().sample()]
+                    episodes: List[SingleAgentEpisode] = [
+                        self.workers.local_worker().sample()
+                    ]
                 else:
-                    episodes = self.workers.foreach_worker(
+                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
                         lambda w: w.sample(), local_worker=False
                     )
                 # Perform PPO postprocessing on a (flattened) list of Episodes.
-                postprocessed_episodes = self.postprocess_episodes(
-                    tree.flatten(episodes)
-                )
+                postprocessed_episodes: List[
+                    SingleAgentEpisode
+                ] = self.postprocess_episodes(tree.flatten(episodes))
                 # Convert list of postprocessed Episodes into a single sample batch.
-                train_batch = postprocess_episodes_to_sample_batch(
+                train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
                     postprocessed_episodes
                 )
 
@@ -610,7 +611,9 @@ class PPO(Algorithm):
 
         return train_results
 
-    def postprocess_episodes(self, episodes: List[Episode]) -> List[Episode]:
+    def postprocess_episodes(
+        self, episodes: List[SingleAgentEpisode]
+    ) -> List[SingleAgentEpisode]:
         """Calculate advantages and value targets."""
         from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
 

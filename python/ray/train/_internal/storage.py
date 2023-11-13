@@ -240,7 +240,6 @@ def _list_at_fs_path(
 
     If the path doesn't exist, returns an empty list.
     """
-
     selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
     return [
         os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))
@@ -424,7 +423,7 @@ class StorageContext:
         ...     storage_path=None,
         ...     experiment_dir_name="exp_name",
         ... )
-        >>> storage.storage_path  # Auto-resolved
+        >>> storage.storage_fs_path  # Auto-resolved
         '/tmp/ray_results'
         >>> storage.storage_local_path
         '/tmp/ray_results'
@@ -471,7 +470,7 @@ class StorageContext:
         # If `storage_path=None`, then set it to the local path.
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
-        self.storage_path = storage_path or ray_storage_uri or self.storage_local_path
+        storage_path = storage_path or ray_storage_uri or self.storage_local_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
@@ -480,7 +479,7 @@ class StorageContext:
         )
 
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
-            self.storage_path, storage_filesystem
+            storage_path, storage_filesystem
         )
         self.storage_fs_path = Path(self.storage_fs_path).as_posix()
 
@@ -504,17 +503,16 @@ class StorageContext:
         self._check_validation_file()
 
     def __str__(self):
-        attrs = [
-            "storage_path",
-            "storage_local_path",
-            "storage_filesystem",
-            "storage_fs_path",
-            "experiment_dir_name",
-            "trial_dir_name",
-            "current_checkpoint_index",
-        ]
-        attr_str = "\n".join([f"  {attr}={getattr(self, attr)}" for attr in attrs])
-        return f"StorageContext<\n{attr_str}\n>"
+        return (
+            "StorageContext<\n"
+            f"  storage_filesystem='{self.storage_filesystem.type_name}',\n"
+            f"  storage_fs_path='{self.storage_fs_path}',\n"
+            f"  storage_local_path='{self.storage_local_path}',\n"
+            f"  experiment_dir_name='{self.experiment_dir_name}',\n"
+            f"  trial_dir_name='{self.trial_dir_name}',\n"
+            f"  current_checkpoint_index={self.current_checkpoint_index},\n"
+            ">"
+        )
 
     def _create_validation_file(self):
         """On the creation of a storage context, create a validation file at the
@@ -535,7 +533,7 @@ class StorageContext:
         )
         if not _exists_at_fs_path(fs=self.storage_filesystem, fs_path=valid_file):
             raise RuntimeError(
-                f"Unable to set up cluster storage at storage_path={self.storage_path}"
+                f"Unable to set up cluster storage with the following settings:\n{self}"
                 "\nCheck that all nodes in the cluster have read/write access "
                 "to the configured storage path."
             )

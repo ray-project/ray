@@ -20,6 +20,7 @@ export const TaskProgressBar = ({
   numPendingNodeAssignment = 0,
   numSubmittedToWorker = 0,
   numFailed = 0,
+  numCancelled = 0,
   numUnknown = 0,
   showAsComplete = false,
   showTooltip = true,
@@ -54,6 +55,11 @@ export const TaskProgressBar = ({
       label: "Waiting for dependencies",
       value: numPendingArgsAvail,
       color: "#f79e02",
+    },
+    {
+      label: "Cancelled",
+      value: numCancelled,
+      color: theme.palette.grey.A100,
     },
     {
       label: "Unknown",

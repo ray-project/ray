@@ -1,18 +1,11 @@
-import json
 import logging
 import sys
-import time
-from typing import Dict, List
+from typing import Dict, List, Optional, Union
 
 import pytest
 
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
-from ray.serve._private.common import (
-    ApplicationStatusInfo,
-    DeploymentStatusInfo,
-    StatusOverview,
-)
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
@@ -21,8 +14,10 @@ from ray.serve.schema import (
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
-    ServeStatusSchema,
-    _serve_status_to_schema,
+)
+from ray.serve.tests.common.remote_uris import (
+    TEST_DEPLOY_GROUP_PINNED_URI,
+    TEST_MODULE_PINNED_URI,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_P4, NVIDIA_TESLA_V100
 
@@ -35,27 +30,13 @@ def get_valid_runtime_envs() -> List[Dict]:
         {},
         # Runtime_env with remote_URIs
         {
-            "working_dir": (
-                "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
-            ),
-            "py_modules": [
-                (
-                    "https://github.com/shrekris-anyscale/"
-                    "test_deploy_group/archive/HEAD.zip"
-                ),
-            ],
+            "working_dir": TEST_MODULE_PINNED_URI,
+            "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
         },
         # Runtime_env with extra options
         {
-            "working_dir": (
-                "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
-            ),
-            "py_modules": [
-                (
-                    "https://github.com/shrekris-anyscale/"
-                    "test_deploy_group/archive/HEAD.zip"
-                ),
-            ],
+            "working_dir": TEST_MODULE_PINNED_URI,
+            "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
             "pip": ["pandas", "numpy"],
             "env_vars": {"OMP_NUM_THREADS": "32", "EXAMPLE_VAR": "hello"},
             "excludes": "imaginary_file.txt",
@@ -72,10 +53,7 @@ def get_invalid_runtime_envs() -> List[Dict]:
             "working_dir": ".",
             "py_modules": [
                 "/Desktop/my_project",
-                (
-                    "https://github.com/shrekris-anyscale/"
-                    "test_deploy_group/archive/HEAD.zip"
-                ),
+                TEST_DEPLOY_GROUP_PINNED_URI,
             ],
         }
     ]
@@ -124,10 +102,7 @@ class TestRayActorOptionsSchema:
     def get_valid_ray_actor_options_schema(self):
         return {
             "runtime_env": {
-                "working_dir": (
-                    "https://github.com/shrekris-anyscale/"
-                    "test_module/archive/HEAD.zip"
-                )
+                "working_dir": TEST_MODULE_PINNED_URI,
             },
             "num_cpus": 0.2,
             "num_gpus": 50,
@@ -221,16 +196,8 @@ class TestDeploymentSchema:
             "health_check_timeout_s": 11,
             "ray_actor_options": {
                 "runtime_env": {
-                    "working_dir": (
-                        "https://github.com/shrekris-anyscale/"
-                        "test_module/archive/HEAD.zip"
-                    ),
-                    "py_modules": [
-                        (
-                            "https://github.com/shrekris-anyscale/"
-                            "test_deploy_group/archive/HEAD.zip"
-                        ),
-                    ],
+                    "working_dir": TEST_MODULE_PINNED_URI,
+                    "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
                 },
                 "num_cpus": 3,
                 "num_gpus": 4.2,
@@ -387,16 +354,8 @@ class TestServeApplicationSchema:
                     "health_check_timeout_s": 11,
                     "ray_actor_options": {
                         "runtime_env": {
-                            "working_dir": (
-                                "https://github.com/shrekris-anyscale/"
-                                "test_module/archive/HEAD.zip"
-                            ),
-                            "py_modules": [
-                                (
-                                    "https://github.com/shrekris-anyscale/"
-                                    "test_deploy_group/archive/HEAD.zip"
-                                ),
-                            ],
+                            "working_dir": TEST_MODULE_PINNED_URI,
+                            "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
                         },
                         "num_cpus": 3,
                         "num_gpus": 4.2,
@@ -463,71 +422,6 @@ class TestServeApplicationSchema:
         serve_application_schema["import_path"] = path
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
-
-    def test_serve_application_kubernetes_config(self):
-        # Test kubernetes_dict() behavior
-
-        config = {
-            "import_path": "module.graph",
-            "runtime_env": {"working_dir": "s3://path/file.zip"},
-            "host": "1.1.1.1",
-            "port": 7470,
-            "deployments": [
-                {
-                    "name": "shallow",
-                    "num_replicas": 2,
-                    "route_prefix": "/shallow",
-                    "user_config": {"a": 1, "b": "c", 2: 3},
-                    "ray_actor_options": {
-                        "runtime_env": {
-                            "py_modules": ["gs://fake2/file2.zip"],
-                        },
-                        "num_cpus": 3,
-                        "memory": 5,
-                        "object_store_memory": 3,
-                        "resources": {"custom_asic": 8},
-                        "accelerator_type": NVIDIA_TESLA_P4,
-                    },
-                },
-                {
-                    "name": "deep",
-                },
-            ],
-        }
-
-        kubernetes_config = ServeApplicationSchema.parse_obj(config).kubernetes_dict(
-            exclude_unset=True
-        )
-
-        assert kubernetes_config == {
-            "importPath": "module.graph",
-            "runtimeEnv": json.dumps({"working_dir": "s3://path/file.zip"}),
-            "host": "1.1.1.1",
-            "port": 7470,
-            "deployments": [
-                {
-                    "name": "shallow",
-                    "numReplicas": 2,
-                    "routePrefix": "/shallow",
-                    "userConfig": json.dumps({"a": 1, "b": "c", 2: 3}),
-                    "rayActorOptions": {
-                        "runtimeEnv": json.dumps(
-                            {
-                                "py_modules": ["gs://fake2/file2.zip"],
-                            }
-                        ),
-                        "numCpus": 3.0,
-                        "memory": 5.0,
-                        "objectStoreMemory": 3.0,
-                        "resources": json.dumps({"custom_asic": 8}),
-                        "acceleratorType": NVIDIA_TESLA_P4,
-                    },
-                },
-                {
-                    "name": "deep",
-                },
-            ],
-        }
 
     def test_serve_application_import_path_required(self):
         # If no import path is specified, this should not parse successfully
@@ -678,50 +572,46 @@ class TestServeDeploySchema:
         }
         ServeDeploySchema.parse_obj(deploy_config_dict)
 
+    @pytest.mark.parametrize(
+        "input_val,error,output_val",
+        [
+            # Can be omitted and defaults to `None`.
+            (None, False, None),
+            # Can be an int or a float.
+            (50, False, 50),
+            (33.33, False, 33.33),  # "... repeating, of course."
+            # Can be 0 or 100, inclusive.
+            (0, False, 0.0),
+            (0.0, False, 0.0),
+            (100, False, 100.0),
+            (100.0, False, 100.0),
+            # Cannot be < 0 or > 100.
+            (-0.1, True, None),
+            (-1, True, None),
+            (100.1, True, None),
+            (101, True, None),
+        ],
+    )
+    def test_target_capacity(
+        self,
+        input_val: Union[None, int, float],
+        error: bool,
+        output_val: Optional[float],
+    ):
+        """Test validation of `target_capacity` field."""
 
-class TestServeStatusSchema:
-    def get_valid_serve_status_schema(self):
-        return StatusOverview(
-            app_status=ApplicationStatusInfo(
-                status="DEPLOYING",
-                message="",
-                deployment_timestamp=time.time(),
-            ),
-            deployment_statuses=[
-                DeploymentStatusInfo(
-                    name="deployment_1",
-                    status="HEALTHY",
-                    message="",
-                ),
-                DeploymentStatusInfo(
-                    name="deployment_2",
-                    status="UNHEALTHY",
-                    message="this deployment is deeply unhealthy",
-                ),
-            ],
-        )
+        deploy_config_dict = {
+            "applications": [],
+        }
+        if input_val is not None:
+            deploy_config_dict["target_capacity"] = input_val
 
-    def test_valid_serve_status_schema(self):
-        # Ensure a valid ServeStatusSchema can be generated
-
-        serve_status_schema = self.get_valid_serve_status_schema()
-        _serve_status_to_schema(serve_status_schema)
-
-    def test_extra_fields_invalid_serve_status_schema(self):
-        # Undefined fields should be forbidden in the schema
-
-        serve_status_schema = self.get_valid_serve_status_schema()
-
-        # Schema should be createable with valid fields
-        _serve_status_to_schema(serve_status_schema)
-
-        # Schema should raise error when a nonspecified field is included
-        with pytest.raises(ValidationError):
-            ServeStatusSchema(
-                app_status=serve_status_schema.app_status,
-                deployment_statuses=[],
-                fake_field=None,
-            )
+        if error:
+            with pytest.raises(ValidationError):
+                ServeDeploySchema.parse_obj(deploy_config_dict)
+        else:
+            s = ServeDeploySchema.parse_obj(deploy_config_dict)
+            assert s.target_capacity == output_val
 
 
 class TestLoggingConfig:
@@ -734,10 +624,10 @@ class TestLoggingConfig:
                 "enable_access_log": True,
             }
         )
-        assert schema.log_level == logging.DEBUG
+        assert schema.log_level == "DEBUG"
         assert schema.encoding == "JSON"
         assert schema.logs_dir == "/my_dir"
-        assert schema.enable_access_log is True
+        assert schema.enable_access_log
 
         # Test string values for log_level.
         schema = LoggingConfig.parse_obj(
@@ -745,7 +635,7 @@ class TestLoggingConfig:
                 "log_level": "DEBUG",
             }
         )
-        assert schema.log_level == logging.DEBUG
+        assert schema.log_level == "DEBUG"
 
     def test_wrong_encoding_type(self):
         with pytest.raises(ValidationError):
@@ -760,7 +650,7 @@ class TestLoggingConfig:
 
     def test_default_values(self):
         schema = LoggingConfig.parse_obj({})
-        assert schema.log_level == logging.INFO
+        assert schema.log_level == "INFO"
         assert schema.encoding == "TEXT"
         assert schema.logs_dir is None
         assert schema.enable_access_log
@@ -777,16 +667,8 @@ def test_deployment_to_schema_to_deployment():
         route_prefix="/hello",
         ray_actor_options={
             "runtime_env": {
-                "working_dir": (
-                    "https://github.com/shrekris-anyscale/"
-                    "test_module/archive/HEAD.zip"
-                ),
-                "py_modules": [
-                    (
-                        "https://github.com/shrekris-anyscale/"
-                        "test_deploy_group/archive/HEAD.zip"
-                    ),
-                ],
+                "working_dir": TEST_MODULE_PINNED_URI,
+                "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
             }
         },
     )
@@ -802,12 +684,13 @@ def test_deployment_to_schema_to_deployment():
 
     assert deployment.num_replicas == 3
     assert deployment.route_prefix == "/hello"
-    assert deployment.ray_actor_options["runtime_env"]["working_dir"] == (
-        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+    assert (
+        deployment.ray_actor_options["runtime_env"]["working_dir"]
+        == TEST_MODULE_PINNED_URI
     )
     assert deployment.ray_actor_options["runtime_env"]["py_modules"] == [
-        "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip",
-        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+        TEST_DEPLOY_GROUP_PINNED_URI,
+        TEST_MODULE_PINNED_URI,
     ]
 
 
@@ -828,38 +711,6 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     # Serve will set num_cpus to 1 if it's not set.
     assert len(deployment.ray_actor_options) == 1
     assert deployment.ray_actor_options["num_cpus"] == 1
-
-
-def test_status_schema_helpers():
-
-    status_overview = StatusOverview(
-        app_status=ApplicationStatusInfo(
-            status="DEPLOYING",
-            message="",
-            deployment_timestamp=time.time(),
-        ),
-        deployment_statuses=[
-            DeploymentStatusInfo(
-                name="deployment_1",
-                status="HEALTHY",
-                message="",
-            ),
-            DeploymentStatusInfo(
-                name="deployment_2",
-                status="UNHEALTHY",
-                message="this deployment is deeply unhealthy",
-            ),
-        ],
-    )
-
-    # Check statuses
-    deployment_statuses = _serve_status_to_schema(status_overview).deployment_statuses
-
-    assert len(deployment_statuses) == 2
-    assert deployment_statuses[0].status in {"HEALTHY"}
-    assert deployment_statuses[0].name == "deployment_1"
-    assert deployment_statuses[1].status in {"UNHEALTHY"}
-    assert deployment_statuses[1].name == "deployment_2"
 
 
 if __name__ == "__main__":

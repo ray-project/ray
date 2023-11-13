@@ -24,7 +24,6 @@ py_test_module_list(
     "test_http_util.py",
     "test_proxy_router.py",
     "test_deployment_scheduler.py",
-    "test_deployment_state.py",
     "test_deployment_version.py",
     "test_kv_store.py",
     "test_persistence.py",
@@ -40,7 +39,7 @@ py_test_module_list(
     "test_deployment_graph_handle_serde.py",
     "test_websockets.py",
     "test_deployment_node.py",
-    "test_expected_python_version.py"
+    "test_expected_versions.py"
   ],
   size = "small",
   tags = ["exclusive", "team:serve"],
@@ -79,6 +78,7 @@ py_test_module_list(
     "test_callback.py",
     "test_http_headers.py",
     "test_proxy_response_generator.py",
+    "test_target_capacity.py",
   ],
   size = "medium",
   tags = ["exclusive", "team:serve"],

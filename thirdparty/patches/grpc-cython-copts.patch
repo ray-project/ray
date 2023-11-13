@@ -30,6 +30,8 @@ diff --git bazel/cython_library.bzl bazel/cython_library.bzl
 +            srcs = [stem + ".cpp"] + cc_kwargs.pop("srcs", []),
 -            deps = deps + ["@local_config_python//:python_headers"],
 +            deps = deps + ["@local_config_python//:python_headers"] + cc_kwargs.pop("deps", []),
+-            defines = defines,
++            defines = defines,
 -            linkshared = 1,
 +            linkshared = cc_kwargs.pop("linkshared", 1),
 +            **cc_kwargs

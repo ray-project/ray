@@ -24,7 +24,7 @@ from ray.includes.optional cimport (
     make_optional
 )
 
-
+from libc.stdint cimport uint32_t as c_uint32_t
 from libcpp.string cimport string as c_string
 from libcpp.memory cimport make_unique as c_make_unique
 
@@ -173,6 +173,16 @@ cdef class GlobalStateAccessor:
         cdef c_string cserialized_string = serialized_string
         with nogil:
             result = self.inner.get().AddWorkerInfo(cserialized_string)
+        return result
+
+    def update_worker_debugger_port(self, worker_id, debugger_port):
+        cdef c_bool result
+        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef c_uint32_t cdebugger_port = debugger_port
+        with nogil:
+            result = self.inner.get().UpdateWorkerDebuggerPort(
+                cworker_id,
+                cdebugger_port)
         return result
 
     def get_placement_group_table(self):

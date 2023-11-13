@@ -56,10 +56,13 @@ class DeploymentMethodExecutorNode(DAGNode):
         receive whatever this method returns. We return a handle here so method
         node can directly call upon.
         """
-        method_body = getattr(
-            self._deployment_node_replaced_by_handle, self._deployment_method_name
+        method_body = self._deployment_node_replaced_by_handle.options(
+            use_new_handle_api=True,
+            method_name=self._deployment_method_name,
         )
-        return method_body.remote(*self._bound_args, **self._bound_kwargs)
+        return method_body.remote(
+            *self._bound_args, **self._bound_kwargs
+        )._to_object_ref_sync(_allow_running_in_asyncio_loop=True)
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment_method_name))
