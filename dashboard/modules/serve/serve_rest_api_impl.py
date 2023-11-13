@@ -177,6 +177,7 @@ def create_serve_rest_api(
                 client = await serve_start_async(
                     http_options=full_http_options,
                     grpc_options=grpc_options,
+                    logging_config=config.logging_config,
                 )
 
             # Serve ignores HTTP options if it was already running when
@@ -185,6 +186,8 @@ def create_serve_rest_api(
             self.validate_http_options(client, full_http_options)
 
             try:
+                if config.logging_config:
+                    client.update_system_logging_config(config.logging_config)
                 client.deploy_apps(config)
                 record_extra_usage_tag(TagKey.SERVE_REST_API_VERSION, "v2")
             except RayTaskError as e:
