@@ -278,7 +278,9 @@ def create_or_update_cluster(
                 "Both `min_workers` and `min_worker_nodes` are provided. "
                 "Using `min_worker_nodes`."
             )
-        config["min_worker_nodes"] = config["min_workers"]
+        else:
+            config["min_worker_nodes"] = config["min_workers"]
+        del config["min_workers"]
 
     # Rewrite max_workers (deprecated) to max_worker_nodes.
     if "max_workers" in config:
@@ -290,7 +292,9 @@ def create_or_update_cluster(
                 "Both `max_workers` and `max_worker_nodes` are provided. "
                 "Using `max_worker_nodes`."
             )
-        config["max_worker_nodes"] = config["max_workers"]
+        else:
+            config["max_worker_nodes"] = config["max_workers"]
+        del config["max_workers"]
 
     # todo: validate file_mounts, ssh keys, etc.
 
