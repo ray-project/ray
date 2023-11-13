@@ -409,7 +409,7 @@ class ApplicationState:
 
         Returns:
             Status (ApplicationStatus):
-                RUNNING: all deployments are healthy.
+                RUNNING: all deployments are healthy or autoscaling.
                 DEPLOYING: there is one or more updating deployments,
                     and there are no unhealthy deployments.
                 DEPLOY_FAILED: one or more deployments became unhealthy
