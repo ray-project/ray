@@ -33,9 +33,7 @@ def main():
 
     dataset = (
         ray.data.read_datasource(
-            VideoDatasource(),
-            paths=paths,
-            include_paths=True,
+            VideoDatasource(paths=paths, include_paths=True),
             ray_remote_args={"num_cpus": 5},
         )
         # Thr videos are long, so we're filtering out frames like SewerAI.

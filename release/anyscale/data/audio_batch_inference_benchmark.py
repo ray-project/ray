@@ -41,10 +41,11 @@ def run_benchmark(args):
 
     ds = (
         ray.data.read_datasource(
-            AudioDatasource(),
-            paths=DATA_URI,
-            include_paths=True,
-            partition_filter=FileExtensionFilter("flac"),
+            AudioDatasource(
+                paths=DATA_URI,
+                include_paths=True,
+                partition_filter=FileExtensionFilter("flac"),
+            )
         )
         .map(preprocess)
         .map_batches(

@@ -1,7 +1,7 @@
 # Copyright (2023 and onwards) Anyscale, Inc.
 
 import io
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Iterator, List, Union
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block
@@ -16,12 +16,17 @@ if TYPE_CHECKING:
 class AudioDatasource(FileBasedDatasource):
     DEFAULT_SAMPLE_RATE = 44100
 
-    def _read_stream(
+    def __init__(
         self,
-        f: "pyarrow.NativeFile",
-        path: str,
-        **reader_args,
-    ) -> Iterator[Block]:
+        paths: Union[str, List[str]],
+        include_paths: bool = False,
+        **file_based_datasource_kwargs
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        self.include_paths = include_paths
+
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import soundfile
 
         # `soundfile` doesn't support reading from a `pyarrow.NativeFile` directly, so
@@ -33,7 +38,7 @@ class AudioDatasource(FileBasedDatasource):
         amplitude = amplitude.transpose((1, 0))
 
         item = {"amplitude": amplitude}
-        if reader_args.get("include_paths", False):
+        if self.include_paths:
             item["path"] = path
 
         builder = DelegatingBlockBuilder()

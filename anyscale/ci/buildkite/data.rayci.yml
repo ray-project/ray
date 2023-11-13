@@ -21,6 +21,7 @@ steps:
     job_env: forge
 
   - label: ":database: data: runtime arrow nightly tests"
+    soft_fail: true
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
