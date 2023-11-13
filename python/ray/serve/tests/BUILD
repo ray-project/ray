@@ -78,6 +78,7 @@ py_test_module_list(
     "test_callback.py",
     "test_http_headers.py",
     "test_proxy_response_generator.py",
+    "test_target_capacity.py",
   ],
   size = "medium",
   tags = ["exclusive", "team:serve"],

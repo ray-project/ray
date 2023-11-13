@@ -159,7 +159,9 @@ if __name__ == "__main__":
                 or changed_file == ".buildkite/pipeline.ml.yml"
                 or changed_file == ".buildkite/data.rayci.yml"
                 or changed_file == "ci/docker/data.build.Dockerfile"
-                or changed_file == "ci/docker/data.build.wanda.yaml"
+                or changed_file == "ci/docker/datan.build.wanda.yaml"
+                or changed_file == "ci/docker/data6.build.wanda.yaml"
+                or changed_file == "ci/docker/data12.build.wanda.yaml"
             ):
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_ML_AFFECTED = 1
@@ -256,11 +258,13 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/min.build.Dockerfile"
                 or changed_file == "ci/docker/min.build.wanda.yaml"
                 or changed_file == ".buildkite/serverless.rayci.yml"
-                or changed_file == ".buildkite/pipeline.build.yml"
                 or changed_file == ".buildkite/pipeline.ml.yml"
             ):
                 RAY_CI_PYTHON_AFFECTED = 1
-            elif changed_file.startswith("java/"):
+            elif (
+                changed_file.startswith("java/")
+                or changed_file == ".buildkite/others.rayci.yml"
+            ):
                 RAY_CI_JAVA_AFFECTED = 1
             elif (
                 changed_file.startswith("cpp/")
@@ -301,8 +305,10 @@ if __name__ == "__main__":
             elif changed_file.startswith("ci/lint"):
                 # Linter will always be run
                 RAY_CI_TOOLS_AFFECTED = 1
-            elif changed_file.startswith("ci/pipeline") or changed_file.startswith(
-                "ci/ray_ci"
+            elif (
+                changed_file.startswith("ci/pipeline")
+                or changed_file.startswith("ci/ray_ci")
+                or changed_file == ".buildkite/pipeline.build.yml"
             ):
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
