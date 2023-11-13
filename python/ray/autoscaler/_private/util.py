@@ -36,7 +36,7 @@ HEAD_TYPE_MAX_WORKER_NODES_WARN_TEMPLATE = (
     " Your current version is Ray {version}.\n"
     "See the docs for more information:\n"
     "https://docs.ray.io/en/master/cluster/config.html"
-    "#cluster-configuration-node-max-workers\n"
+    "#cluster-configuration-node-max-worker-nodes\n"
     "https://docs.ray.io/en/master/cluster/config.html#full-configuration"
 )
 
