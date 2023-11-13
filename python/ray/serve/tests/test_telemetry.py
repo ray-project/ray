@@ -13,10 +13,7 @@ from ray._private.test_utils import wait_for_condition
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.dag.input_node import InputNode
 from ray.serve._private.common import ApplicationStatus
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    SERVE_MULTIPLEXED_MODEL_ID,
-)
+from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client
 from ray.serve.drivers import DAGDriver
@@ -173,8 +170,7 @@ stub_app = Stub.bind()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize("version", ["v1", "v2"])
-def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
+def test_rest_api(manage_ray_with_telemetry, tmp_dir):
     """
     Check that telemetry works with REST API.
     """
@@ -201,23 +197,20 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
 
     serve.delete(name="telemetry", _blocking=True)
 
-    if version == "v1":
-        config = {"import_path": "ray.serve.tests.common.utils.receiver_app"}
-    elif version == "v2":
-        config = {
-            "applications": [
-                {
-                    "name": "receiver_app",
-                    "import_path": "ray.serve.tests.common.utils.receiver_app",
-                    "route_prefix": TELEMETRY_ROUTE_PREFIX,
-                },
-                {
-                    "name": "stub_app",
-                    "import_path": "ray.serve.tests.test_telemetry.stub_app",
-                    "route_prefix": "/stub",
-                },
-            ]
-        }
+    config = {
+        "applications": [
+            {
+                "name": "receiver_app",
+                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "route_prefix": TELEMETRY_ROUTE_PREFIX,
+            },
+            {
+                "name": "stub_app",
+                "import_path": "ray.serve.tests.test_telemetry.stub_app",
+                "route_prefix": "/stub",
+            },
+        ]
+    }
     config_file_path = f"{tmp_dir}/config.yaml"
     with open(config_file_path, "w+") as f:
         yaml.safe_dump(config, f)
@@ -225,24 +218,17 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
     subprocess.check_output(["serve", "deploy", config_file_path])
 
     client = _get_global_client()
-    if version == "v2":
-        # Make sure the applications are RUNNING.
-        wait_for_condition(
-            lambda: serve.status().applications["receiver_app"].status
-            == ApplicationStatus.RUNNING,
-            timeout=15,
-        )
-        wait_for_condition(
-            lambda: serve.status().applications["stub_app"].status
-            == ApplicationStatus.RUNNING,
-            timeout=15,
-        )
-    else:
-        wait_for_condition(
-            lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status
-            == ApplicationStatus.RUNNING,
-            timeout=15,
-        )
+    # Make sure the applications are RUNNING.
+    wait_for_condition(
+        lambda: serve.status().applications["receiver_app"].status
+        == ApplicationStatus.RUNNING,
+        timeout=15,
+    )
+    wait_for_condition(
+        lambda: serve.status().applications["stub_app"].status
+        == ApplicationStatus.RUNNING,
+        timeout=15,
+    )
 
     current_num_reports = ray.get(storage.get_reports_received.remote())
 
@@ -253,17 +239,14 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
     report = ray.get(storage.get_report.remote())
 
     # Check all telemetry relevant to the Serve apps on this cluster
-    assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) == version
+    assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) == "v2"
     assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
     assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
-    if version == "v1":
-        assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 1
-        assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 1
-    elif version == "v2":
-        # Assert num of deployments from controller.
-        assert len(client.get_all_deployment_statuses()) == 2
-        assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 2
-        assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 2
+
+    # Assert num of deployments from controller.
+    assert len(client.get_all_deployment_statuses()) == 2
+    assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 2
+    assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 2
 
     # Check that Serve telemetry not relevant to the running apps is omitted
     assert ServeUsageTag.FASTAPI_USED.get_value_from_report(report) is None
@@ -271,35 +254,34 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
     assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
     assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) is None
 
-    # Check that app deletions are tracked in v2
-    if version == "v2":
-        new_config = {
-            "applications": [
-                {
-                    "name": "receiver_app",
-                    "import_path": "ray.serve.tests.common.utils.receiver_app",
-                    "route_prefix": TELEMETRY_ROUTE_PREFIX,
-                },
-            ]
-        }
+    # Check that app deletions are tracked.
+    new_config = {
+        "applications": [
+            {
+                "name": "receiver_app",
+                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "route_prefix": TELEMETRY_ROUTE_PREFIX,
+            },
+        ]
+    }
 
-        with open(config_file_path, "w+") as f:
-            yaml.safe_dump(new_config, f)
+    with open(config_file_path, "w+") as f:
+        yaml.safe_dump(new_config, f)
 
-        subprocess.check_output(["serve", "deploy", config_file_path])
+    subprocess.check_output(["serve", "deploy", config_file_path])
 
-        wait_for_condition(
-            lambda: int(
-                ServeUsageTag.NUM_APPS.get_value_from_report(
-                    ray.get(storage.get_report.remote())
-                )
+    wait_for_condition(
+        lambda: int(
+            ServeUsageTag.NUM_APPS.get_value_from_report(
+                ray.get(storage.get_report.remote())
             )
-            == 1,
-            timeout=15,
         )
-        report = ray.get(storage.get_report.remote())
-        assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 1
-        assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 1
+        == 1,
+        timeout=15,
+    )
+    report = ray.get(storage.get_report.remote())
+    assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 1
+    assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 1
 
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
@@ -476,13 +458,11 @@ def test_handle_apis_detected(
     if call_in_deployment:
         result = requests.get("http://localhost:8000").text
     elif use_new_handle_api:
-        result = (
-            handle.options(use_new_handle_api=True)
-            .remote(call_downstream=False)
-            .result()
-        )
+        result = handle.remote(call_downstream=False).result()
     else:
-        result = ray.get(handle.remote(call_downstream=False))
+        result = ray.get(
+            handle.options(use_new_handle_api=False).remote(call_downstream=False)
+        )
 
     assert result == "ok"
 
