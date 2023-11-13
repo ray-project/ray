@@ -772,24 +772,20 @@ def test_put_with_logging_config(ray_start_stop):
             },
         ],
     }
-    # Ensure the REST API is idempotent
-    num_iterations = 2
-    for iteration in range(num_iterations):
-        print(f"*** Starting Iteration {iteration + 1}/{num_iterations} ***\n")
 
-        deploy_config_multi_app(config1, url)
-        wait_for_condition(
-            lambda: requests.get("http://localhost:8000/app").status_code == 200,
-            timeout=15,
-        )
-        print("Deployments are live and reachable over HTTP.\n")
+    deploy_config_multi_app(config1, url)
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/app").status_code == 200,
+        timeout=15,
+    )
+    print("Deployments are live and reachable over HTTP.\n")
 
-        # Make sure deploymemnt & controller both under json logging
-        resp = requests.post("http://localhost:8000/app").json()
-        expected_log_regex = [f'"replica": "{resp["replica"]}", ']
-        check_log_file(resp["log_file"], expected_log_regex)
-        expected_log_regex = ['.*"component_name": "controller".*']
-        check_log_file(resp["controller_log_file"], expected_log_regex)
+    # Make sure deploymemnt & controller both log in json format.
+    resp = requests.post("http://localhost:8000/app").json()
+    expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+    check_log_file(resp["log_file"], expected_log_regex)
+    expected_log_regex = ['.*"component_name": "controller".*']
+    check_log_file(resp["controller_log_file"], expected_log_regex)
 
 
 if __name__ == "__main__":

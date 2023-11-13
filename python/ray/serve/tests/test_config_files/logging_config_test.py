@@ -2,6 +2,7 @@ import logging
 
 import ray
 from ray import serve
+from ray.exceptions import RayActorError
 from ray.serve.context import _get_global_client
 
 logger = logging.getLogger("ray.serve")
@@ -41,7 +42,7 @@ class Router:
             # Add controller log file path
             client = _get_global_client()
             _, log_file_path = ray.get(client._controller._get_logging_config.remote())
-        except Exception:
+        except RayActorError:
             log_file_path = None
         log_info["controller_log_file"] = log_file_path
         return log_info
