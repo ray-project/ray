@@ -4,7 +4,7 @@ from typing import Any, Callable, Iterable, Iterator, List, Optional
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
+from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import PublicAPI
 
 Connection = Any  # A Python DB API2-compliant `Connection` object.
@@ -20,41 +20,6 @@ def _cursor_to_block(cursor) -> Block:
     columns = [column_description[0] for column_description in cursor.description]
     pydict = {column: [row[i] for row in rows] for i, column in enumerate(columns)}
     return pa.Table.from_pydict(pydict)
-
-
-@PublicAPI(stability="alpha")
-class SQLDatasource(Datasource):
-
-    _MAX_ROWS_PER_WRITE = 128
-
-    def __init__(self, connection_factory: Callable[[], Connection]):
-        self.connection_factory = connection_factory
-
-    def create_reader(self, sql: str) -> "Reader":
-        return _SQLReader(sql, self.connection_factory)
-
-    def write(
-        self,
-        blocks: Iterable[Block],
-        ctx: TaskContext,
-        sql: str,
-    ) -> WriteResult:
-        with _connect(self.connection_factory) as cursor:
-            for block in blocks:
-                block_accessor = BlockAccessor.for_block(block)
-
-                values = []
-                for row in block_accessor.iter_rows(public_row_format=False):
-                    values.append(tuple(row.values()))
-                    assert len(values) <= self._MAX_ROWS_PER_WRITE, len(values)
-                    if len(values) == self._MAX_ROWS_PER_WRITE:
-                        cursor.executemany(sql, values)
-                        values = []
-
-                if values:
-                    cursor.executemany(sql, values)
-
-        return "ok"
 
 
 def _check_connection_is_dbapi2_compliant(connection) -> None:
@@ -108,13 +73,39 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
         connection.close()
 
 
-class _SQLReader(Reader):
+@PublicAPI(stability="alpha")
+class SQLDatasource(Datasource):
+
+    _MAX_ROWS_PER_WRITE = 128
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
 
     def __init__(self, sql: str, connection_factory: Callable[[], Connection]):
         self.sql = sql
         self.connection_factory = connection_factory
+
+    def write(
+        self,
+        blocks: Iterable[Block],
+        ctx: TaskContext,
+        sql: str,
+    ) -> WriteResult:
+        with _connect(self.connection_factory) as cursor:
+            for block in blocks:
+                block_accessor = BlockAccessor.for_block(block)
+
+                values = []
+                for row in block_accessor.iter_rows(public_row_format=False):
+                    values.append(tuple(row.values()))
+                    assert len(values) <= self._MAX_ROWS_PER_WRITE, len(values)
+                    if len(values) == self._MAX_ROWS_PER_WRITE:
+                        cursor.executemany(sql, values)
+                        values = []
+
+                if values:
+                    cursor.executemany(sql, values)
+
+        return "ok"
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         None

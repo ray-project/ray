@@ -11,7 +11,6 @@ import click
 
 from typing import Optional
 
-import ray
 from ray import serve
 from ray.dag import InputNode
 from ray.serve.drivers import DAGDriver
@@ -108,7 +107,7 @@ def main(
         compute_delay_secs=compute_delay_secs,
     )
     dag_handle = serve.run(serve_dag)
-    assert ray.get(dag_handle.predict.remote(0)) == chain_length
+    assert dag_handle.predict.remote(0).result() == chain_length
 
     throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(

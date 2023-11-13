@@ -3,7 +3,7 @@
 This demonstrates running the following policies in competition:
     (1) heuristic policy of repeating the same move
     (2) heuristic policy of beating the last opponent move
-    (3) LSTM/feedforward PG policies
+    (3) LSTM/feedforward PPO policies
     (4) LSTM policy with custom entropy loss
 """
 
@@ -15,12 +15,12 @@ import random
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.pg import (
-    PG,
-    PGConfig,
-    PGTF2Policy,
-    PGTF1Policy,
-    PGTorchPolicy,
+from ray.rllib.algorithms.ppo import (
+    PPO,
+    PPOConfig,
+    PPOTF1Policy,
+    PPOTF2Policy,
+    PPOTorchPolicy,
 )
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import (
@@ -72,10 +72,10 @@ register_env("RockPaperScissors", lambda config: PettingZooEnv(env_creator(confi
 
 def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
-    config = PGConfig().environment("RockPaperScissors").framework(args.framework)
+    config = PPOConfig().environment("RockPaperScissors").framework(args.framework)
 
     results = tune.Tuner(
-        "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        "PPO", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
     ).fit()
 
     if args.as_test:
@@ -83,7 +83,7 @@ def run_same_policy(args, stop):
         check_learning_achieved(results, 0.0)
 
 
-def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
+def run_heuristic_vs_learned(args, use_lstm=False, algorithm_config=None):
     """Run heuristic policies vs a learned agent.
 
     The learned agent should eventually reach a reward of ~5 with
@@ -99,17 +99,12 @@ def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
             return random.choice(["always_same", "beat_last"])
 
     config = (
-        PGConfig()
+        (algorithm_config or PPOConfig())
         .environment("RockPaperScissors")
         .framework(args.framework)
         .rollouts(
             num_rollout_workers=0,
             num_envs_per_worker=4,
-            rollout_fragment_length=10,
-        )
-        .training(
-            train_batch_size=200,
-            gamma=0.9,
         )
         .multi_agent(
             policies={
@@ -132,6 +127,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
 
     algo = config.build()
 
+    reward_diff = 0
     for _ in range(args.stop_iters):
         results = algo.train()
         # Timesteps reached.
@@ -139,6 +135,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
             reward_diff = 0
             continue
         reward_diff = sum(results["hist_stats"]["policy_learned_reward"])
+        print(f"delta_r={reward_diff}")
         if results["timesteps_total"] > args.stop_timesteps:
             break
         # Reward (difference) reached -> all good, return.
@@ -160,9 +157,9 @@ def run_with_custom_entropy_loss(args, stop):
     This performs about the same as the default loss does."""
 
     policy_cls = {
-        "torch": PGTorchPolicy,
-        "tf": PGTF1Policy,
-        "tf2": PGTF2Policy,
+        "torch": PPOTorchPolicy,
+        "tf": PPOTF1Policy,
+        "tf2": PPOTF2Policy,
     }[args.framework]
 
     class EntropyPolicy(policy_cls):
@@ -170,7 +167,7 @@ def run_with_custom_entropy_loss(args, stop):
             logits, _ = model(train_batch)
             action_dist = dist_class(logits, model)
             if args.framework == "torch":
-                # Required by PGTorchPolicy's stats fn.
+                # Required by PPOTorchPolicy's stats fn.
                 model.tower_stats["policy_loss"] = torch.tensor([0.0])
                 policy.policy_loss = torch.mean(
                     -0.1 * action_dist.entropy()
@@ -185,12 +182,16 @@ def run_with_custom_entropy_loss(args, stop):
                 )
             return policy.policy_loss
 
-    class EntropyLossPG(PG):
+    class EntropyLossPPO(PPO):
         @classmethod
         def get_default_policy_class(cls, config):
             return EntropyPolicy
 
-    run_heuristic_vs_learned(args, use_lstm=True, algorithm=EntropyLossPG)
+    run_heuristic_vs_learned(
+        args,
+        use_lstm=True,
+        algorithm_config=PPOConfig(algo_class=EntropyLossPPO),
+    )
 
 
 if __name__ == "__main__":

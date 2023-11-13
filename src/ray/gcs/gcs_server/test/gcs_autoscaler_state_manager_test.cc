@@ -72,7 +72,6 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
     gcs_node_manager_->alive_nodes_[NodeID::FromBinary(node->node_id())] = node;
-    gcs_resource_manager_->OnNodeAdd(*node);
     gcs_autoscaler_state_manager_->OnNodeAdd(*node);
   }
 
@@ -81,7 +80,6 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     gcs_node_manager_->alive_nodes_.erase(node_id);
     gcs_node_manager_->dead_nodes_[node_id] = node;
-    gcs_resource_manager_->OnNodeDead(node_id);
     gcs_autoscaler_state_manager_->OnNodeDead(node_id);
   }
 
@@ -159,7 +157,6 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                               total_resources,
                               idle_ms,
                               is_draining);
-    gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resources_data);
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
   }
 
@@ -175,10 +172,9 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   }
 
   void UpdateResourceLoads(const std::string &node_id,
-                           std::vector<rpc::ResourceDemand> demands,
-                           bool resource_load_changed = true) {
+                           std::vector<rpc::ResourceDemand> demands) {
     rpc::ResourcesData data;
-    Mocker::FillResourcesData(data, node_id, demands, resource_load_changed);
+    Mocker::FillResourcesData(data, node_id, demands);
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(data);
   }
 
@@ -237,16 +233,6 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       ASSERT_EQ(actual_requests_by_count[req.first], req.second)
           << "Request: " << req.first;
     }
-  }
-
-  void UpdatePlacementGroupLoad(const std::vector<rpc::PlacementGroupTableData> &data) {
-    std::shared_ptr<rpc::PlacementGroupLoad> load =
-        std::make_shared<rpc::PlacementGroupLoad>();
-    for (auto &d : data) {
-      load->add_placement_group_data()->CopyFrom(d);
-    }
-
-    gcs_resource_manager_->UpdatePlacementGroupLoad(load);
   }
 
   void GroupResourceRequestsByConstraintForPG(
