@@ -13,21 +13,16 @@ import ray.cluster_utils
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_actor_in_container():
-    runtime_env = {
-        "container": {
-            # "image": "rayproject/ray-worker-container:nightly-py36-cpu",
-            "image": "rayproject/ray:nightly-py39-cpu",
-            "worker_path": "/home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/workers/default_worker.py",  # noqa
-            "run_options": [
-                "--privileged",
-            ],
+    job_config = ray.job_config.JobConfig(
+        runtime_env={
+            "container": {
+                "image": "rayproject/ray-worker-container:nightly-py36-cpu",
+            }
         }
-    }
-    # job_config = ray.job_config.JobConfig(
-    # )
-    # ray.init(job_config=job_config)
+    )
+    ray.init(job_config=job_config)
 
-    @ray.remote(runtime_env=runtime_env)
+    @ray.remote
     class Counter(object):
         def __init__(self):
             self.value = 0
@@ -46,32 +41,32 @@ def test_actor_in_container():
     ray.shutdown()
 
 
-# @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-# def test_actor_in_heterogeneous_image():
-#     job_config = ray.job_config.JobConfig(
-#         runtime_env={
-#             "container": {
-#                 "image": "rayproject/ray-worker-container:nightly-py36-cpu-pandas",
-#             }
-#         }
-#     )
-#     ray.init(job_config=job_config)
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_actor_in_heterogeneous_image():
+    job_config = ray.job_config.JobConfig(
+        runtime_env={
+            "container": {
+                "image": "rayproject/ray-worker-container:nightly-py36-cpu-pandas",
+            }
+        }
+    )
+    ray.init(job_config=job_config)
 
-#     @ray.remote
-#     class HeterogeneousActor(object):
-#         def __init__(self):
-#             pass
+    @ray.remote
+    class HeterogeneousActor(object):
+        def __init__(self):
+            pass
 
-#         def run_pandas(self):
-#             import numpy as np
-#             import pandas as pd
+        def run_pandas(self):
+            import numpy as np
+            import pandas as pd
 
-#             return len(pd.Series([1, 3, 5, np.nan, 6]))
+            return len(pd.Series([1, 3, 5, np.nan, 6]))
 
-#     h1 = HeterogeneousActor.options().remote()
-#     pandas_result = ray.get(h1.run_pandas.remote())
-#     assert pandas_result == 5
-#     ray.shutdown()
+    h1 = HeterogeneousActor.options().remote()
+    pandas_result = ray.get(h1.run_pandas.remote())
+    assert pandas_result == 5
+    ray.shutdown()
 
 
 if __name__ == "__main__":
