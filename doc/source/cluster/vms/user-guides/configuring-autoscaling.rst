@@ -32,7 +32,7 @@ It is recommended that you set these before launching your cluster, but you can 
   If `max_worker_nodes` is modified at runtime, the autoscaler will immediately remove nodes until this constraint
   is satisfied. This may disrupt running workloads.
 
-If you are using more than one node type, you can also set min and max workers for each individual type:
+If you are using more than one node type, you can also set min and max worker nodes for each individual type:
 
 `available_node_types.<node_type_name>.max_worker_nodes[default_value=cluster max_worker_nodes, min_value=0]`: The maximum number of worker nodes of a given type to launch. This number must be less than or equal to the `max_worker_nodes` for the cluster.
 
