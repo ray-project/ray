@@ -1429,7 +1429,9 @@ class DeploymentState:
                 self._curr_status_info.update(
                     status=scaling_decision,
                     status_trigger=status_trigger,
-                    message=f"{scaling_decision.capitalize()} from {old} to {new} replicas.",  # noqa
+                    message=(
+                        f"{scaling_decision.capitalize()} from {old} to {new} replicas."
+                    ),
                 )
         # Otherwise, the deployment configuration has actually been updated.
         else:
