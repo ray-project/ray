@@ -246,17 +246,12 @@ const DatasetTable = ({
   const operatorRows =
     isExpanded &&
     datasetMetrics.operators.map((operator) => (
-      <DataRow
-        operatorMetrics={operator}
-        isDatasetRow={false}
-        key={operator.operator}
-      />
+      <DataRow operatorMetrics={operator} key={operator.operator} />
     ));
   return (
     <React.Fragment>
       <DataRow
         datasetMetrics={datasetMetrics}
-        isDatasetRow={true}
         isExpanded={isExpanded}
         setIsExpanded={setIsExpanded}
       />
