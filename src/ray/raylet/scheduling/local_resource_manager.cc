@@ -441,8 +441,9 @@ void LocalResourceManager::RecordMetrics() const {
   }
 }
 
-void LocalResourceManager::SetLocalNodeDraining() {
+void LocalResourceManager::SetLocalNodeDraining(DrainNodeReason drain_reason) {
   is_local_node_draining_ = true;
+  drain_reason_ = drain_reason;
   OnResourceOrStateChanged();
 }
 

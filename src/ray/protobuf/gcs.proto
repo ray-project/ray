@@ -18,6 +18,7 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/autoscaler.proto";
 
 option java_package = "io.ray.runtime.generated";
 
@@ -319,6 +320,20 @@ message NodeSnapshot {
   repeated string node_activity = 3;
 }
 
+message NodeDeathInfo {
+enum Reason {
+  UNSPECIFIED = 0;
+  UNEXPECTED_TERMINATION = 1;
+  AUTOSCALER_DRAIN = 2;
+}
+  Reason reason = 1;
+
+// Detailed reason
+oneof Detail {
+  autoscaler.DrainNodeReason drain_reason = 2;
+}
+}
+
 message GcsNodeInfo {
   // State of a node.
   enum GcsNodeState {
@@ -384,6 +399,9 @@ message GcsNodeInfo {
 
   // A snapshot of node state.
   NodeSnapshot state_snapshot = 28;
+
+  // The death info of this node.
+  NodeDeathInfo death_info = 29;
 }
 
 // Please keep this in sync with the definition of JobInfo in

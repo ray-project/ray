@@ -289,6 +289,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher,
+      GcsNodeManager &gcs_node_manager,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
@@ -456,6 +457,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   }
 
  private:
+  const ray::rpc::ActorDeathCause GenNodeDiedCause(const ray::gcs::GcsActor *actor,
+                                                   const std::string ip_address,
+                                                   const NodeID &node_id);
   /// A data structure representing an actor's owner.
   struct Owner {
     Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
@@ -642,6 +646,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<GcsPublisher> gcs_publisher_;
+  /// The NodeManager which contains node death information.
+  GcsNodeManager &gcs_node_manager_;
   /// Factory to produce clients to workers. This is used to communicate with
   /// actors and their owners.
   rpc::ClientFactoryFn worker_client_factory_;

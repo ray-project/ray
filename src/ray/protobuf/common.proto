@@ -289,7 +289,7 @@ message NodeDiedErrorContext {
 }
 
 /// The task exception encapsulates the information about task
-/// execution execeptions. This should be used by the frontend
+/// execution exceptions. This should be used by the frontend
 /// to represent a user application error. Errors originating from the
 /// backend such as from the raylet should be propagated as RayErrorInfo.
 message RayException {
@@ -343,6 +343,8 @@ message ActorDiedErrorContext {
   // Whether the actor had never started running before it died, i.e. it was cancelled
   // before scheduling had completed.
   bool never_started = 10;
+  // Whether the actor was on a preempted node.
+  bool preempted = 11;
 }
 
 // Context for task OOM.

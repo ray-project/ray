@@ -21,6 +21,7 @@
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
+#include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -111,6 +112,9 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   node_info_delta->set_node_id(node->node_id());
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
+
+  RAY_CHECK_EQ(node->death_info().reason(), rpc::NodeDeathInfo::AUTOSCALER_DRAIN);
+
   // Set the address.
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
@@ -255,6 +259,7 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
   if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
+    node->mutable_death_info()->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
     AddDeadNodeToCache(node);
     auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
     node_info_delta->set_node_id(node->node_id());
@@ -294,6 +299,29 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   sorted_dead_node_list_.sort(
       [](const std::pair<NodeID, int64_t> &left,
          const std::pair<NodeID, int64_t> &right) { return left.second < right.second; });
+}
+
+std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetDeadNode(
+    const ray::NodeID &node_id) const {
+  auto iter = dead_nodes_.find(node_id);
+  if (iter != alive_nodes_.end()) {
+    return iter->second;
+  }
+
+  std::promise<std::optional<std::shared_ptr<rpc::GcsNodeInfo>>> node_info;
+  auto f = node_info.get_future();
+  gcs_table_storage_->NodeTable().Get(
+      node_id,
+      [&node_info](Status status, const boost::optional<GcsNodeInfo> &maybe_info) {
+        if (maybe_info.has_value()) {
+          node_info.set_value(std::make_shared<GcsNodeInfo>(maybe_info.value()));
+        } else {
+          node_info.set_value(std::nullopt);
+        }
+      });
+
+  f.wait();
+  return f.get();
 }
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {

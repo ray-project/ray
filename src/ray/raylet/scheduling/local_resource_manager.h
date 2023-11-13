@@ -44,6 +44,8 @@ enum WorkFootprint {
 // WorkFootprints are not, such as leased workers on a node.
 using WorkArtifact = std::variant<WorkFootprint, scheduling::ResourceID>;
 
+using rpc::autoscaler::DrainNodeReason;
+
 /// Class manages the resources of the local node.
 /// It is responsible for allocating/deallocating resources for (task) resource request;
 /// it also supports creating a new resource or delete an existing resource.
@@ -151,7 +153,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Change the local node to the draining state.
   /// After that, no new tasks can be scheduled onto the local node.
-  void SetLocalNodeDraining();
+  void SetLocalNodeDraining(DrainNodeReason drain_reason);
 
   bool IsLocalNodeDraining() const { return is_local_node_draining_; }
 
@@ -221,6 +223,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   // Whether the local node is being drained or not.
   bool is_local_node_draining_ = false;
+  // Reason for drain, if draining.
+  DrainNodeReason drain_reason_ =
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_UNSPECIFIED;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

@@ -354,8 +354,8 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
                 << ", reason: " << request.reason_message();
 
-  auto node = gcs_node_manager_.GetAliveNode(node_id);
-  if (!node.has_value()) {
+  auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);
+  if (!maybe_node.has_value()) {
     if (gcs_node_manager_.GetAllDeadNodes().contains(node_id)) {
       // The node is dead so treat it as drained.
       reply->set_is_accepted(true);
@@ -370,18 +370,35 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     return;
   }
 
+  auto node = std::move(maybe_node.value());
+
+  // Set the death reason of the node.
+  auto death_info = node->mutable_death_info();
+  death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN);
+  death_info->set_drain_reason(request.reason());
+
   rpc::Address raylet_address;
-  raylet_address.set_raylet_id(node.value()->node_id());
-  raylet_address.set_ip_address(node.value()->node_manager_address());
-  raylet_address.set_port(node.value()->node_manager_port());
+  raylet_address.set_raylet_id(node->node_id());
+  raylet_address.set_ip_address(node->node_manager_address());
+  raylet_address.set_port(node->node_manager_port());
 
   const auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
-      [reply, send_reply_callback](const Status &status,
-                                   const rpc::DrainRayletReply &raylet_reply) {
+      [this, reply, send_reply_callback, node_id](
+          const Status &status, const rpc::DrainRayletReply &raylet_reply) {
         reply->set_is_accepted(raylet_reply.is_accepted());
+
+        // Unset the death reason of the node if the drain was rejected.
+        if (!raylet_reply.is_accepted()) {
+          auto node = gcs_node_manager_.GetAliveNode(node_id);
+          if (node.has_value()) {
+            auto death_info = node.value()->mutable_death_info();
+            death_info->set_reason(rpc::NodeDeathInfo::UNSPECIFIED);
+            death_info->clear_drain_reason();
+          }
+        }
         send_reply_callback(status, nullptr, nullptr);
       });
 }

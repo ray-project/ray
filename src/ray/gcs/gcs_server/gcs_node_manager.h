@@ -104,6 +104,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
 
+  std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetDeadNode(
+      const NodeID &node_id) const;
+
+  /// Get mutable node from both alive and dead list
+  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetMutableNode(const NodeID &node_id);
+
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.

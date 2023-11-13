@@ -45,17 +45,6 @@ void AddActorInfo(const ray::gcs::GcsActor *actor,
       actor_state == ray::rpc::ActorTableData::PENDING_CREATION);
 }
 
-const ray::rpc::ActorDeathCause GenNodeDiedCause(const ray::gcs::GcsActor *actor,
-                                                 const std::string ip_address,
-                                                 const NodeID &node_id) {
-  ray::rpc::ActorDeathCause death_cause;
-  auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
-  AddActorInfo(actor, actor_died_error_ctx);
-  actor_died_error_ctx->set_error_message(absl::StrCat(
-      "The actor is dead because its node has died. Node Id: ", node_id.Hex()));
-  return death_cause;
-}
-
 const ray::rpc::ActorDeathCause GenWorkerDiedCause(
     const ray::gcs::GcsActor *actor,
     const std::string &ip_address,
@@ -79,6 +68,7 @@ const ray::rpc::ActorDeathCause GenWorkerDiedCause(
   }
   return death_cause;
 }
+
 const ray::rpc::ActorDeathCause GenOwnerDiedCause(
     const ray::gcs::GcsActor *actor,
     const WorkerID &owner_id,
@@ -210,11 +200,32 @@ void GcsActor::SetGrantOrReject(bool grant_or_reject) {
   grant_or_reject_ = grant_or_reject;
 }
 
+const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
+    const ray::gcs::GcsActor *actor,
+    const std::string ip_address,
+    const NodeID &node_id) {
+  ray::rpc::ActorDeathCause death_cause;
+  auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
+  AddActorInfo(actor, actor_died_error_ctx);
+  actor_died_error_ctx->set_error_message(absl::StrCat(
+      "The actor is dead because its node has died. Node Id: ", node_id.Hex()));
+  auto maybe_node = gcs_node_manager_.GetDeadNode(node_id);
+  RAY_CHECK(maybe_node.has_value()) << "Dead node " << node_id << " was not found.";
+
+  if (auto death_info = maybe_node.value()->death_info();
+      death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN &&
+      death_info.drain_reason() == DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
+    actor_died_error_ctx->set_preempted(true);
+  }
+  return death_cause;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<GcsTableStorage> gcs_table_storage,
     std::shared_ptr<GcsPublisher> gcs_publisher,
+    GcsNodeManager &gcs_node_manager,
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
@@ -222,6 +233,7 @@ GcsActorManager::GcsActorManager(
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_publisher_(std::move(gcs_publisher)),
+      gcs_node_manager_(gcs_node_manager),
       worker_client_factory_(worker_client_factory),
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
       runtime_env_manager_(runtime_env_manager),
