@@ -3,7 +3,11 @@ import sys
 import pytest
 
 from ray._private.accelerators import NvidiaGPUAcceleratorManager
-from mock_pynvml import DeviceHandleMock, PyNVMLMock, patch_mock_pynvml
+from ray.tests.accelerators.mock_pynvml import (
+    DeviceHandleMock,
+    PyNVMLMock,
+    patch_mock_pynvml,
+)
 
 GPU_MOCK_DATA = [
     DeviceHandleMock(
