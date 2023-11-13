@@ -218,9 +218,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
           kTaskTypeToCounterType.at(events_by_task.task_info().type()));
     }
 
-    stats_counter_.Decrement(kNumTaskEventsBytesStored, existing_events.ByteSizeLong());
     existing_events.MergeFrom(events_by_task);
-    stats_counter_.Increment(kNumTaskEventsBytesStored, existing_events.ByteSizeLong());
 
     return absl::nullopt;
   }
@@ -242,10 +240,6 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
         << ") allowed is reached. Old task events will be overwritten. Set "
            "`RAY_task_events_max_num_task_in_gcs` to a higher value to "
            "store more.";
-
-    stats_counter_.Decrement(kNumTaskEventsBytesStored,
-                             task_events_[next_idx_to_overwrite_].ByteSizeLong());
-    stats_counter_.Increment(kNumTaskEventsBytesStored, events_by_task.ByteSizeLong());
 
     // Change the underlying storage.
     auto &to_replaced = task_events_.at(next_idx_to_overwrite_);
@@ -300,7 +294,6 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   job_to_task_attempt_index_[job_id].insert(task_attempt);
   task_to_task_attempt_index_[task_id].insert(task_attempt);
   // Add a new task events.
-  stats_counter_.Increment(kNumTaskEventsBytesStored, events_by_task.ByteSizeLong());
   stats_counter_.Increment(kNumTaskEventsStored);
 
   task_events_.push_back(std::move(events_by_task));
@@ -442,8 +435,6 @@ std::string GcsTaskManager::DebugString() {
      << counters[kTotalNumStatusTaskEventsDropped]
      << "\n-Total num profile events dropped: "
      << counters[kTotalNumProfileTaskEventsDropped]
-     << "\n-Total num bytes of task event stored: "
-     << 1.0 * counters[kNumTaskEventsBytesStored] / 1024 / 1024 << "MiB"
      << "\n-Current num of task events stored: " << counters[kNumTaskEventsStored]
      << "\n-Total num of actor creation tasks: " << counters[kTotalNumActorCreationTask]
      << "\n-Total num of actor tasks: " << counters[kTotalNumActorTask]
@@ -465,8 +456,6 @@ void GcsTaskManager::RecordMetrics() {
 
   ray::stats::STATS_gcs_task_manager_task_events_stored.Record(
       counters[kNumTaskEventsStored]);
-  ray::stats::STATS_gcs_task_manager_task_events_stored_bytes.Record(
-      counters[kNumTaskEventsBytesStored]);
 
   {
     absl::MutexLock lock(&mutex_);
