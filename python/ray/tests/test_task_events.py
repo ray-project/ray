@@ -510,9 +510,6 @@ def test_is_debugger_paused(shutdown_only):
         with ray._private.worker.global_worker.task_paused_by_debugger():
             time.sleep(5)
 
-    for _ in range(10):
-        ray.get(f.remote())
-
     def verify(num_paused):
         tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
         return len(tasks) == num_paused
