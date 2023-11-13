@@ -337,7 +337,7 @@ The name of the cluster. This is the namespace of the cluster.
 .. _cluster-configuration-max-workers:
 
 ``max_worker_nodes``
-~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
 
 The maximum number of workers the cluster will have at any given time.
 
@@ -1363,7 +1363,7 @@ In some cases, adding special nodes without any resources may be desirable. Such
 .. _cluster-configuration-node-min-workers:
 
 ``available_node_types.<node_type_name>.node_type.min_worker_nodes``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The minimum number of workers to maintain for this node type regardless of utilization.
 
@@ -1377,7 +1377,7 @@ The minimum number of workers to maintain for this node type regardless of utili
 .. _cluster-configuration-node-max-workers:
 
 ``available_node_types.<node_type_name>.node_type.max_worker_nodes``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-workers>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
 
