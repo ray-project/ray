@@ -231,7 +231,11 @@ def _upload_to_uri_with_exclude_fsspec(
     )
 
 
-def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
+def _list_at_fs_path(
+    fs: pyarrow.fs.FileSystem,
+    fs_path: str,
+    file_filter: Callable[[pyarrow.fs.FileInfo], bool] = lambda x: True,
+) -> List[str]:
     """Returns the list of filenames at (fs, fs_path), similar to os.listdir.
 
     If the path doesn't exist, returns an empty list.
@@ -241,6 +245,7 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
     return [
         os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))
         for file_info in fs.get_file_info(selector)
+        if file_filter(file_info)
     ]
 
 
@@ -301,6 +306,34 @@ def get_fs_and_path(
         return storage_filesystem, storage_path
 
     return pyarrow.fs.FileSystem.from_uri(storage_path)
+
+
+def _read_file_as_str(
+    storage_filesystem: pyarrow.fs.FileSystem,
+    storage_path: str,
+    compression: Optional[str] = "detect",
+    buffer_size: Optional[int] = None,
+    encoding: Optional[str] = "utf-8",
+) -> str:
+    """Opens a file as an input stream reading all byte content sequentially and
+     decoding read bytes as string.
+
+    Args:
+        storage_filesystem: The filesystem to use.
+        storage_path: The source to open for reading.
+        compression: The compression algorithm to use for on-the-fly decompression.
+            If “detect” and source is a file path, then compression will be chosen
+            based on the file extension. If None, no compression will be applied.
+            Otherwise, a well-known algorithm name must be supplied (e.g. “gzip”).
+        buffer_size: If None or 0, no buffering will happen. Otherwise, the size
+         of the temporary read buffer.
+     encoding: Encoding of the source bytes.
+    """
+
+    with storage_filesystem.open_input_stream(
+        storage_path, compression=compression, buffer_size=buffer_size
+    ) as f:
+        return f.readall().decode(encoding)
 
 
 class _FilesystemSyncer(_BackgroundSyncer):

@@ -4,6 +4,7 @@ import json
 import pandas as pd
 import pyarrow
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import ray
@@ -126,17 +127,6 @@ class Result:
     def __repr__(self) -> str:
         return self._repr(indent=0)
 
-    @staticmethod
-    def _validate_trial_dir(
-        trial_dir: Union[str, os.PathLike], storage_filesystem: pyarrow.fs.FileSystem
-    ):
-        """Check the validity of the local or remote trial folder."""
-        # TODO(ahmed-mahran): Fix circular dependency.
-        from ray.train._internal.storage import _exists_at_fs_path
-
-        if not _exists_at_fs_path(storage_filesystem, trial_dir):
-            raise RuntimeError(f"Trial folder {trial_dir} doesn't exist!")
-
     @classmethod
     def from_path(
         cls,
@@ -159,27 +149,33 @@ class Result:
         # TODO(justinvyu): Fix circular dependency.
         from ray.train import Checkpoint
         from ray.train.constants import CHECKPOINT_DIR_NAME
-        from ray.train._internal.storage import get_fs_and_path, _exists_at_fs_path
+        from ray.train._internal.storage import (
+            get_fs_and_path,
+            _exists_at_fs_path,
+            _read_file_as_str,
+            _list_at_fs_path,
+        )
 
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
-        cls._validate_trial_dir(fs_path, fs)
+        if not _exists_at_fs_path(fs, fs_path):
+            raise RuntimeError(f"Trial folder {fs_path} doesn't exist!")
 
         # Restore metrics from result.json
         result_json_file = os.path.join(fs_path, EXPR_RESULT_FILE)
         progress_csv_file = os.path.join(fs_path, EXPR_PROGRESS_FILE)
         if _exists_at_fs_path(fs, result_json_file):
-            with fs.open_input_stream(result_json_file) as f:
-                lines = f.readall().decode("utf-8").split("\n")
-                json_list = [json.loads(line) for line in lines if line]
-                metrics_df = pd.json_normalize(json_list, sep="/")
+            lines = _read_file_as_str(fs, result_json_file).split("\n")
+            json_list = [json.loads(line) for line in lines if line]
+            metrics_df = pd.json_normalize(json_list, sep="/")
             latest_metrics = json_list[-1] if json_list else {}
         # Fallback to restore from progress.csv
         elif _exists_at_fs_path(fs, progress_csv_file):
-            with fs.open_input_stream(progress_csv_file) as f:
-                metrics_df = pd.read_csv(io.StringIO(f.readall().decode("utf-8")))
-                latest_metrics = (
-                    metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
-                )
+            metrics_df = pd.read_csv(
+                io.StringIO(_read_file_as_str(fs, progress_csv_file))
+            )
+            latest_metrics = (
+                metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
+            )
         else:
             raise RuntimeError(
                 f"Failed to restore the Result object: Neither {EXPR_RESULT_FILE}"
@@ -187,30 +183,30 @@ class Result:
             )
 
         # Restore all checkpoints from the checkpoint folders
-        checkpoint_dirs = sorted(
-            [
-                item.base_name
-                for item in fs.get_file_info(pyarrow.fs.FileSelector(fs_path))
-                if item.type == pyarrow.fs.FileType.Directory
-                and item.base_name.startswith("checkpoint_")
-            ]
+        checkpoint_dir_names = sorted(
+            _list_at_fs_path(
+                fs,
+                fs_path,
+                lambda file_info: file_info.type == pyarrow.fs.FileType.Directory
+                and file_info.base_name.startswith("checkpoint_"),
+            )
         )
 
-        if checkpoint_dirs:
+        if checkpoint_dir_names:
             checkpoints = [
-                Checkpoint(os.path.join(fs_path, checkpoint_dir), fs)
-                for checkpoint_dir in checkpoint_dirs
+                Checkpoint(path=Path(fs_path, checkpoint_dir_name).as_posix(), filesystem=fs)
+                for checkpoint_dir_name in checkpoint_dir_names
             ]
 
             metrics = []
-            for checkpoint_dir in checkpoint_dirs:
+            for checkpoint_dir_name in checkpoint_dir_names:
                 metrics_corresponding_to_checkpoint = metrics_df[
-                    metrics_df[CHECKPOINT_DIR_NAME] == checkpoint_dir
+                    metrics_df[CHECKPOINT_DIR_NAME] == checkpoint_dir_name
                 ]
                 if metrics_corresponding_to_checkpoint.empty:
                     logger.warning(
                         "Could not find metrics corresponding to "
-                        f"{checkpoint_dir}. These will default to an empty dict."
+                        f"{checkpoint_dir_name}. These will default to an empty dict."
                     )
                 metrics.append(
                     {}
@@ -232,7 +228,7 @@ class Result:
             with fs.open_input_stream(error_file_path) as f:
                 error = ray.cloudpickle.load(f)
 
-        return ray.air.result.Result(
+        return Result(
             metrics=latest_metrics,
             checkpoint=latest_checkpoint,
             _local_path=path if isinstance(fs, pyarrow.fs.LocalFileSystem) else None,
