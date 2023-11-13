@@ -174,7 +174,6 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/tune"):
                 RAY_CI_ML_AFFECTED = 1
-                RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -213,7 +212,6 @@ if __name__ == "__main__":
                 or changed_file == ".buildkite/serve.rayci.yml"
                 or changed_file == "ci/docker/serve.build.Dockerfile"
             ):
-                RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -240,7 +238,6 @@ if __name__ == "__main__":
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-                RAY_CI_DOC_AFFECTED = 1
                 # Python changes might impact cross language stack in Java.
                 # Java also depends on Python CLI to manage processes.
                 RAY_CI_JAVA_AFFECTED = 1
@@ -334,7 +331,6 @@ if __name__ == "__main__":
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
-                RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_RELEASE_TESTS_AFFECTED = 1
             else:
                 print(
