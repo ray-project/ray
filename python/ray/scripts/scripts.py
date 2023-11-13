@@ -543,6 +543,12 @@ def debug(address):
     type=str,
     help="a JSON serialized dictionary mapping label name to label value.",
 )
+@click.option(
+    "--enable-mig-detection",
+    is_flag=True,
+    default=False,
+    help="Enable MIG instance detection on ray auto init.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -589,6 +595,7 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
+    enable_mig_detection,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -632,6 +639,9 @@ def start(
         temp_dir = None
 
     redirect_output = None if not no_redirect_output else True
+
+    if enable_mig_detection:
+        os.environ[ray_constants.RAY_ENABLE_MIG_DETECTION_ENV_VAR] = "True"
 
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001
