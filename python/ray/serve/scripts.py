@@ -764,7 +764,7 @@ def build(
             "port": DEFAULT_GRPC_PORT,
             "grpc_servicer_functions": grpc_servicer_functions,
         },
-        "logging_config": {**LoggingConfig().dict()},
+        "logging_config": LoggingConfig().dict(),
         "applications": app_configs,
     }
 
