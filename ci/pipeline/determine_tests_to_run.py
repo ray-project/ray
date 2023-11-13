@@ -156,10 +156,11 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif (
                 changed_file.startswith("python/ray/data")
-                or changed_file == ".buildkite/pipeline.ml.yml"
                 or changed_file == ".buildkite/data.rayci.yml"
                 or changed_file == "ci/docker/data.build.Dockerfile"
-                or changed_file == "ci/docker/data.build.wanda.yaml"
+                or changed_file == "ci/docker/datan.build.wanda.yaml"
+                or changed_file == "ci/docker/data6.build.wanda.yaml"
+                or changed_file == "ci/docker/data12.build.wanda.yaml"
             ):
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_ML_AFFECTED = 1
@@ -286,6 +287,12 @@ if __name__ == "__main__":
                 # we pass, as the flag RAY_CI_DOC_AFFECTED is only
                 # used to indicate that tests/examples should be run
                 # (documentation will be built always)
+            elif (
+                changed_file == "ci/docker/doctest.build.Dockerfile"
+                or changed_file == "ci/docker/doctest.build.wanda.yaml"
+            ):
+                # common doctest always run without coverage
+                pass
             elif changed_file.startswith("release/") or changed_file.startswith(
                 ".buildkite/release"
             ):
@@ -307,6 +314,7 @@ if __name__ == "__main__":
                 changed_file.startswith("ci/pipeline")
                 or changed_file.startswith("ci/ray_ci")
                 or changed_file == ".buildkite/pipeline.build.yml"
+                or changed_file == ".buildkite/pipeline.ml.yml"
             ):
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
