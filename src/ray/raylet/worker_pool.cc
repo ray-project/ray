@@ -153,6 +153,7 @@ WorkerPool::~WorkerPool() {
       procs_to_kill.insert(worker_process.second.proc);
     }
   }
+  // TODO: do something for this copy
   for (Process proc : procs_to_kill) {
     proc.Kill();
     // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
