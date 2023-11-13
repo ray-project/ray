@@ -1,7 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-max_worker_nodes: 4
+max_workers: 4
 
 head_node_type:
     name: head_node
@@ -12,8 +12,8 @@ worker_node_types:
     - name: worker_node
       # 4 cpus, x86, 32G mem, 10Gb NIC
       instance_type: m5.xlarge
-      min_worker_nodes: 4
-      max_worker_nodes: 4
+      min_workers: 4
+      max_workers: 4
       use_spot: false
 
 aws:

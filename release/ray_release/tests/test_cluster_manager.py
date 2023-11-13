@@ -33,14 +33,14 @@ from ray_release.test import Test
 TEST_CLUSTER_COMPUTE = {
     "cloud_id": UNIT_TEST_CLOUD_ID,
     "region": "us-west-2",
-    "max_worker_nodes": 0,
+    "max_workers": 0,
     "head_node_type": {"name": "head_node", "instance_type": "m5.4xlarge"},
     "worker_node_types": [
         {
             "name": "worker_node",
             "instance_type": "m5.xlarge",
-            "min_worker_nodes": 0,
-            "max_worker_nodes": 0,
+            "min_workers": 0,
+            "max_workers": 0,
             "use_spot": False,
         }
     ],

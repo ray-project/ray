@@ -4,4 +4,4 @@ head_node_type:
 
 worker_node_types: []
 
-max_worker_nodes: 0
+max_workers: 0

@@ -142,7 +142,7 @@ def get_test_resources_from_cluster_compute(cluster_compute: Dict) -> Tuple[int,
 
     # Add worker node instances
     instances.extend(
-        (w["instance_type"], w.get("max_worker_nodes", w.get("min_worker_nodes", 1)))
+        (w["instance_type"], w.get("max_workers", w.get("min_workers", 1)))
         for w in cluster_compute["worker_node_types"]
     )
 

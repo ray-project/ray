@@ -3,7 +3,7 @@ region: us-west1
 allowed_azs:
     - us-west1-b
 
-max_worker_nodes: 0
+max_workers: 0
 
 # This head node was intentionally chosen to be larger than 2GPUs (has 4GPUs).
 # This makes sure we can safely migrate the 2GPU testcases to GCE without having

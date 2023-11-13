@@ -590,11 +590,11 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "worker_node_types": [
                     {
                         "instance_type": "m5.8xlarge",  # 32 CPUS, 0 GPUs
-                        "max_worker_nodes": 4,
+                        "max_workers": 4,
                     },
                     {
                         "instance_type": "g3.8xlarge",  # 32 CPUs, 2 GPUs
-                        "min_worker_nodes": 8,
+                        "min_workers": 8,
                     },
                 ],
             }
@@ -610,11 +610,11 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "worker_node_types": [
                     {
                         "instance_type": "random-str-xxx-32",  # 32 CPUS, 0 GPUs
-                        "max_worker_nodes": 4,
+                        "max_workers": 4,
                     },
                     {
                         "instance_type": "a2-highgpu-2g",  # 24 CPUs, 2 GPUs
-                        "min_worker_nodes": 8,
+                        "min_workers": 8,
                     },
                 ],
             }
@@ -668,7 +668,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "worker_node_types": [
                     {
                         "instance_type": "random-str-xxx-32",  # 32 CPUS, 0 GPUs
-                        "max_worker_nodes": 10,
+                        "max_workers": 10,
                     },
                 ],
             }
@@ -680,7 +680,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "worker_node_types": [
                     {
                         "instance_type": "random-str-xxx-32",  # 32 CPUS, 0 GPUs
-                        "max_worker_nodes": 1,
+                        "max_workers": 1,
                     },
                 ],
             }

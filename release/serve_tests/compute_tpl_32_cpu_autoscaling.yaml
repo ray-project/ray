@@ -2,7 +2,7 @@ cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
 # 1k max replicas (1000 / 32 = 31.25 containers needed)
-max_worker_nodes: 35
+max_workers: 35
 
 head_node_type:
     name: head_node
@@ -15,9 +15,9 @@ worker_node_types:
       instance_type: m5.8xlarge
       # smaller min workers will make the head node cpu usage very high, and crash the head node.
       # issue: https://github.com/ray-project/ray/issues/18908
-      min_worker_nodes: 5
+      min_workers: 5
       # 1k max replicas
-      max_worker_nodes: 35
+      max_workers: 35
       use_spot: false
 
 aws:

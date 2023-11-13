@@ -6,6 +6,6 @@ head_node_type:
 worker_node_types:
 - name: cpu_worker
   instance_type: m5.2xlarge
-  min_worker_nodes: 7
-  max_worker_nodes: 7
+  min_workers: 7
+  max_workers: 7
   use_spot: false

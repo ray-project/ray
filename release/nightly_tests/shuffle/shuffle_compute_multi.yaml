@@ -1,7 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-max_worker_nodes: 3
+max_workers: 3
 
 aws:
     BlockDeviceMappings:
@@ -18,7 +18,7 @@ head_node_type:
 worker_node_types:
     - name: worker_node2
       instance_type: m6i.4xlarge
-      min_worker_nodes: 3
-      max_worker_nodes: 3
+      min_workers: 3
+      max_workers: 3
       use_spot: false
       resources: {"object_store_memory": 21474836480}

@@ -3,7 +3,7 @@ region: us-west1
 allowed_azs:
     - us-west1-c
 
-max_worker_nodes: 4
+max_workers: 4
 
 gcp_advanced_configurations_json:
   instance_properties:
@@ -20,8 +20,8 @@ head_node_type:
 worker_node_types:
    - name: worker_node
      instance_type: n2-standard-2
-     min_worker_nodes: 4
-     max_worker_nodes: 4
+     min_workers: 4
+     max_workers: 4
      use_spot: false
      resources:
       cpu: 2

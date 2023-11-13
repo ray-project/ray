@@ -3,7 +3,7 @@ region: us-west1
 allowed_azs: 
     - us-west1-c
 
-max_worker_nodes: 19
+max_workers: 19
 
 head_node_type:
     name: head_node
@@ -12,6 +12,6 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: n2d-standard-2
-      min_worker_nodes: 19
-      max_worker_nodes: 19
+      min_workers: 19
+      max_workers: 19
       use_spot: true

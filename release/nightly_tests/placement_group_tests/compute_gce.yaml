@@ -18,13 +18,13 @@ head_node_type:
 worker_node_types:
     - name: cpu_node
       instance_type: n2-standard-16
-      min_worker_nodes: 0
-      max_worker_nodes: 2
+      min_workers: 0
+      max_workers: 2
       use_spot: false
     - name: fake_gpu_node
       instance_type: n2-standard-16
-      min_worker_nodes: 0
-      max_worker_nodes: 2
+      min_workers: 0
+      max_workers: 2
       use_spot: false
       resources:
         cpu: 16
