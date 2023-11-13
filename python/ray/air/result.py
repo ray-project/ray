@@ -44,6 +44,11 @@ class Result:
         metrics: The latest set of reported metrics.
         checkpoint: The latest checkpoint.
         error: The execution error of the Trainable run, if the trial finishes in error.
+        path: Path pointing to the result directory on persistent storage. This can
+            point to a remote storage location (e.g. S3) or to a local location (path
+            on the head node). The path is accessible via the result's associated
+            `filesystem`. For instance, for a result stored in S3 at
+            ``s3://bucket/location``, ``path`` will have the value ``bucket/location``.
         metrics_dataframe: The full result dataframe of the Trainable.
             The dataframe is indexed by iterations and contains reported
             metrics. Note that the dataframe columns are indexed with the
@@ -59,10 +64,9 @@ class Result:
     metrics: Optional[Dict[str, Any]]
     checkpoint: Optional["Checkpoint"]
     error: Optional[Exception]
+    path: str
     metrics_dataframe: Optional["pd.DataFrame"] = None
     best_checkpoints: Optional[List[Tuple["Checkpoint", Dict[str, Any]]]] = None
-    _local_path: Optional[str] = None
-    _remote_path: Optional[str] = None
     _storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     _items_to_repr = ["error", "metrics", "path", "filesystem", "checkpoint"]
 
@@ -72,19 +76,6 @@ class Result:
         if not self.metrics:
             return None
         return self.metrics.get("config", None)
-
-    @property
-    def path(self) -> str:
-        """Path pointing to the result directory on persistent storage.
-
-        This can point to a remote storage location (e.g. S3) or to a local
-        location (path on the head node). The path is accessible via the result's
-        associated `filesystem`.
-
-        For instance, for a result stored in S3 at ``s3://bucket/location``,
-        ``path`` will have the value ``bucket/location``.
-        """
-        return self._remote_path or self._local_path
 
     @property
     def filesystem(self) -> pyarrow.fs.FileSystem:
@@ -231,8 +222,7 @@ class Result:
         return Result(
             metrics=latest_metrics,
             checkpoint=latest_checkpoint,
-            _local_path=path if isinstance(fs, pyarrow.fs.LocalFileSystem) else None,
-            _remote_path=fs_path,
+            path=fs_path,
             _storage_filesystem=fs,
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
