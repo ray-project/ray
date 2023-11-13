@@ -32,7 +32,7 @@ from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
 from ray.autoscaler._private.resource_demand_scheduler import (
     ResourceDemandScheduler,
-    _add_min_worker_nodes_nodes,
+    _add_min_worker_nodes,
     _resource_based_utilization_scorer,
     _default_utilization_scorer,
     get_bin_pack_residual,
@@ -410,7 +410,7 @@ def test_get_nodes_respects_max_limit():
     ) == {"m4.large": 2}
 
 
-def test_add_min_worker_nodes_nodes():
+def test_add_min_worker_nodes():
     types = {
         "m2.large": {
             "resources": {"CPU": 2},
@@ -437,7 +437,7 @@ def test_add_min_worker_nodes_nodes():
     # this file. See https://github.com/ray-project/ray/issues/21313 for more
     # information.
     # fmt: off
-    assert _add_min_worker_nodes_nodes(
+    assert _add_min_worker_nodes(
         [],
         {},
         types,
@@ -451,7 +451,7 @@ def test_add_min_worker_nodes_nodes():
             {"m2.large": 50, "gpu": 99999}
          )
 
-    assert _add_min_worker_nodes_nodes(
+    assert _add_min_worker_nodes(
         [{"CPU": 2}]*5,
         {"m2.large": 5},
         types,
@@ -465,7 +465,7 @@ def test_add_min_worker_nodes_nodes():
         {"m2.large": 45, "gpu": 99999}
     )
 
-    assert _add_min_worker_nodes_nodes(
+    assert _add_min_worker_nodes(
         [{"CPU": 2}]*60,
         {"m2.large": 60},
         types,
@@ -479,7 +479,7 @@ def test_add_min_worker_nodes_nodes():
         {"gpu": 99999}
     )
 
-    assert _add_min_worker_nodes_nodes(
+    assert _add_min_worker_nodes(
         [{"CPU": 2}] * 50 + [{"GPU": 1}] * 99999,
         {"m2.large": 50, "gpu": 99999},
         types,
@@ -492,7 +492,7 @@ def test_add_min_worker_nodes_nodes():
         {"m2.large": 50, "gpu": 99999}, {}
     )
 
-    assert _add_min_worker_nodes_nodes(
+    assert _add_min_worker_nodes(
         [],
         {},
         {"gpubla": types["gpubla"]},
@@ -503,7 +503,7 @@ def test_add_min_worker_nodes_nodes():
     ) == ([], {}, {})
 
     types["gpubla"]["max_worker_nodes"] = 10
-    assert _add_min_worker_nodes_nodes(
+    assert _add_min_worker_nodes(
         [],
         {},
         {"gpubla": types["gpubla"]},

@@ -226,7 +226,7 @@ class ResourceDemandScheduler:
             node_resources,
             node_type_counts,
             adjusted_min_worker_nodes,
-        ) = _add_min_worker_nodes_nodes(
+        ) = _add_min_worker_nodes(
             node_resources,
             node_type_counts,
             self.node_types,
@@ -627,7 +627,7 @@ def _node_type_counts_to_node_resources(
     return resources
 
 
-def _add_min_worker_nodes_nodes(
+def _add_min_worker_nodes(
     node_resources: List[ResourceDict],
     node_type_counts: Dict[NodeType, int],
     node_types: Dict[NodeType, NodeTypeConfigDict],
