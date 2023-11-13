@@ -79,8 +79,8 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
                         else:
                             mig_uuid = (
                                 f"MIG-{pynvml.nvmlDeviceGetUUID(handle)}"
-                                f"/{pynvml.nvmlDeviceGetComputeInstanceId(mig_handle)}"
                                 f"/{pynvml.nvmlDeviceGetGpuInstanceId(mig_handle)}"
+                                f"/{pynvml.nvmlDeviceGetComputeInstanceId(mig_handle)}"
                             )
                         cuda_devices.append(mig_uuid)
                     except pynvml.NVMLError:
