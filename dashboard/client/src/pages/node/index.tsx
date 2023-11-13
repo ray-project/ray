@@ -86,12 +86,13 @@ const columns = [
       <Typography>
         Usage of each GPU device. If no GPU usage is detected, here are the
         potential root causes: <br />
-        1. library gpustsat is not installed. Install gpustat and try again.
+        1. library pynvml is not installed. Install pynvml and try again.
         <br /> 2. non-GPU Ray image is used on this node. Switch to a GPU Ray
         image and try again. <br />
-        3. AMD GPUs are being used. AMD GPUs are not currently supported by
-        gpustat module. <br />
-        4. gpustat module raises an exception.
+        3. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are not
+        currently supported.
+        <br />
+        4. pynvml module raises an exception.
       </Typography>
     ),
   },

@@ -6,11 +6,10 @@ import os
 import socket
 import sys
 import traceback
-import warnings
 
 import psutil
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TypedDict
 from collections import defaultdict
 
 import ray
@@ -28,8 +27,8 @@ import ray._private.prometheus_exporter as prometheus_exporter
 from prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
+import ray._private.thirdparty.pynvml as pynvml
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.util.debug import log_once
 from ray.dashboard import k8s_utils
 from ray._raylet import WorkerID
 
@@ -47,25 +46,6 @@ ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") ==
 IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
 # Using existence of /sys/fs/cgroup as the criterion is consistent with
 # Ray's existing resource logic, see e.g. ray._private.utils.get_num_cpus().
-
-try:
-    import gpustat.core as gpustat
-except ModuleNotFoundError:
-    gpustat = None
-    if log_once("gpustat_import_warning"):
-        warnings.warn(
-            "`gpustat` package is not installed. GPU monitoring is "
-            "not available. To have full functionality of the "
-            "dashboard please install `pip install ray["
-            "default]`.)"
-        )
-except ImportError as e:
-    gpustat = None
-    if log_once("gpustat_import_warning"):
-        warnings.warn(
-            "Importing gpustat failed, fix this to have full "
-            "functionality of the dashboard. The original error was:\n\n" + e.msg
-        )
 
 
 def recursive_asdict(o):
@@ -268,6 +248,29 @@ METRICS_GAUGES = {
     ),
 }
 
+MiB = 1024 * 1024
+
+# Types
+Percentage = int
+Megabytes = int
+
+
+# gpu utilization for nvidia gpu from a single process
+class ProcessGPUInfo(TypedDict):
+    pid: int
+    gpu_memory_usage: int
+
+
+# gpu utilization for nvidia gpu
+class GpuUtilizationInfo(TypedDict):
+    index: int
+    name: str
+    uuid: str
+    utilization_gpu: Optional[Percentage]
+    memory_used: Megabytes
+    memory_total: Megabytes
+    processes_pids: Optional[List[str]]
+
 
 class ReporterAgent(
     dashboard_utils.DashboardAgentModule, reporter_pb2_grpc.ReporterServiceServicer
@@ -394,30 +397,64 @@ class ReporterAgent(
     @staticmethod
     def _get_gpu_usage():
         global enable_gpu_usage_check
-        if gpustat is None or not enable_gpu_usage_check:
+        if pynvml is None or not enable_gpu_usage_check:
             return []
         gpu_utilizations = []
-        gpus = []
         try:
-            gpus = gpustat.new_query().gpus
-        except Exception as e:
-            logger.debug(f"gpustat failed to retrieve GPU information: {e}")
+            pynvml.nvmlInit()
+            num_gpus = pynvml.nvmlDeviceGetCount()
+            for i in range(num_gpus):
+                gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                utilization = None
+                try:
+                    utilization_info = pynvml.nvmlDeviceGetUtilizationRates(gpu_handle)
+                    utilization = int(utilization_info.gpu)
+                except pynvml.NVMLError as e:
+                    logger.debug(f"pynvml failed to retrieve GPU utilization: {e}")
 
-            # gpustat calls pynvml.nvmlInit()
-            # On machines without GPUs, this can run subprocesses that spew to
-            # stderr. Then with log_to_driver=True, we get log spew from every
+                # processes pids
+                processes_pids = None
+                try:
+                    nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
+                        gpu_handle
+                    )
+                    nv_graphics_processes = (
+                        pynvml.nvmlDeviceGetGraphicsRunningProcesses(gpu_handle)
+                    )
+                    processes_pids = [
+                        ProcessGPUInfo(
+                            pid=nv_process.pid,
+                            gpu_memory_usage=nv_process.usedGpuMemory // MiB
+                            if nv_process.usedGpuMemory
+                            else 0,
+                        )
+                        for nv_process in (nv_comp_processes + nv_graphics_processes)
+                    ]
+                except pynvml.NVMLError as e:
+                    logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
+
+                info = GpuUtilizationInfo(
+                    index=i,
+                    name=pynvml.nvmlDeviceGetName(gpu_handle),
+                    uuid=pynvml.nvmlDeviceGetUUID(gpu_handle),
+                    utilization_gpu=utilization,
+                    memory_used=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).used),
+                    memory_total=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).total),
+                    processes_pids=processes_pids,
+                )
+                gpu_utilizations.append(info)
+            pynvml.nvmlShutdown()
+        except Exception as e:
+            logger.debug(f"pynvml failed to retrieve GPU information: {e}")
+
+            # On machines without GPUs, pynvml.nvmlInit() can run subprocesses that
+            # spew to stderr. Then with log_to_driver=True, we get log spew from every
             # single raylet. To avoid this, disable the GPU usage check on
             # certain errors.
             # https://github.com/ray-project/ray/issues/14305
             # https://github.com/ray-project/ray/pull/21686
             if type(e).__name__ == "NVMLError_DriverNotLoaded":
                 enable_gpu_usage_check = False
-
-        for gpu in gpus:
-            # Note the keys in this dict have periods which throws
-            # off javascript so we change .s to _s
-            gpu_data = {"_".join(key.split(".")): val for key, val in gpu.entry.items()}
-            gpu_utilizations.append(gpu_data)
         return gpu_utilizations
 
     @staticmethod
@@ -911,21 +948,14 @@ class ReporterAgent(
             )
             records_reported.append(node_mem_shared)
 
-        # The output example of gpustats.
+        # The output example of GpuUtilizationInfo.
         """
         {'index': 0,
         'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
         'name': 'NVIDIA A10G',
-        'temperature_gpu': 20,
-        'fan_speed': 0,
         'utilization_gpu': 1,
-        'utilization_enc': 0,
-        'utilization_dec': 0,
-        'power_draw': 51,
-        'enforced_power_limit': 300,
         'memory_used': 0,
-        'memory_total': 22731,
-        'processes': []}
+        'memory_total': 22731}
         """
         # -- GPU per node --
         gpus = stats["gpus"]
