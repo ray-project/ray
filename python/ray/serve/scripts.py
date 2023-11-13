@@ -359,6 +359,17 @@ def deploy(config_file_name: str, address: str):
         "app."
     ),
 )
+@click.option(
+    "--route-prefix",
+    required=False,
+    default="/",
+    type=str,
+    help=(
+        "Route prefix for the application. This should only be used "
+        "when running an application specified by import path and "
+        "will be ignored if running a config file."
+    ),
+)
 def run(
     config_or_import_path: str,
     arguments: Tuple[str],
@@ -371,6 +382,7 @@ def run(
     port: int,
     blocking: bool,
     reload: bool,
+    route_prefix: str,
 ):
     if host is not None or port is not None:
         cli_logger.warning(
@@ -466,7 +478,7 @@ def run(
             client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
         else:
-            serve.run(app, host=host, port=port)
+            serve.run(app, route_prefix=route_prefix, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")
 
         if reload:
@@ -493,7 +505,7 @@ def run(
                     app = _private_api.call_app_builder_with_args_if_necessary(
                         import_attr(import_path, reload_module=True), args_dict
                     )
-                    serve.run(app, host=host, port=port)
+                    serve.run(app, route_prefix=route_prefix, host=host, port=port)
 
         if blocking:
             while True:

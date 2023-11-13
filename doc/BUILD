@@ -312,8 +312,8 @@ doctest(
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            "source/train/faq.rst",
-	    "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/**/*.rst",
+            "source/train/**/*.md",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/rllib/**/*.rst",
@@ -323,6 +323,33 @@ doctest(
     ),
     size = "large",
     tags = ["team:none"]
+)
+
+
+doctest(
+    name="doctest[train]",
+    files = glob(
+        include=[
+            "source/train/**/*.rst",
+            "source/train/**/*.md"
+        ],
+        exclude=[
+            # GPU
+            "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/user-guides/using-gpus.rst"
+        ]
+    ),
+    tags = ["team:ml"]
+)
+
+doctest(
+    name="doctest[train]",
+    files = [
+        "source/train/user-guides/data-loading-preprocessing.rst",
+        "source/train/user-guides/using-gpus.rst"
+    ],
+    tags = ["team:ml"],
+    gpu = True,
 )
 
 
@@ -362,10 +389,3 @@ doctest(
     gpu = True
 )
 
-doctest(
-    name="quarantine",
-    files = [
-	"source/train/user-guides/data-loading-preprocessing.rst",
-    ],
-    tags = ["team:data"],
-)

@@ -1,9 +1,3 @@
-- label: ":java: Java"
-  conditions: ["RAY_CI_JAVA_AFFECTED"]
-  instance_size: medium
-  commands:
-    - ./java/test.sh
-
 # the bulk of serve tests are now run on civ2 infra, and defined in
 # serve.rayci.yaml
 - label: "serve civ1 tests"
