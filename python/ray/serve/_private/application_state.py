@@ -262,10 +262,11 @@ class ApplicationState:
 
     def delete(self):
         """Delete the application"""
-        logger.info(
-            f"Deleting application '{self._name}'",
-            extra={"log_to_stderr": False},
-        )
+        if self._status != ApplicationStatus.DELETING:
+            logger.info(
+                f"Deleting application '{self._name}'",
+                extra={"log_to_stderr": False},
+            )
         self._set_target_state_deleting()
 
     def is_deleted(self) -> bool:
