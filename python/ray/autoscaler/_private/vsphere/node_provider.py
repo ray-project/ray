@@ -880,3 +880,28 @@ class VsphereNodeProvider(NodeProvider):
         """
         vm_id = pyvmomi_vm_obj._moId
         return self.get_vsphere_sdk_vm_obj(vm_id)
+
+    def dra_enabled(self) -> bool:
+        if self.provider_config["vsphere_config"].get("dynamic_resource_adjustment"):
+            return True
+        return False
+
+    def dynamic_resource_adjust(self, unfulfilled, original_cpu, original_mem):
+        def _find_max_request(resource_type, requirements):
+            if not requirements:
+                return 0
+            max_resource = 0
+            for requirement in requirements:
+                if resource_type not in requirement:
+                    continue
+                max_resource = max(requirement[resource_type], max_resource)
+            return max_resource
+
+        max_required_cpu = _find_max_request("CPU", unfulfilled)
+        max_required_memory = _find_max_request("Memory", unfulfilled)
+        new_cpu, new_mem = original_cpu, original_mem
+        while new_cpu < max_required_cpu:
+            new_cpu = 2 * new_cpu
+        while new_mem < max_required_memory:
+            new_mem = 2 * new_mem
+        return new_cpu, new_mem

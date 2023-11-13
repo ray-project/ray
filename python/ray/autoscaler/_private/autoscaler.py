@@ -25,6 +25,8 @@ from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
+    MIN_CPU_NUM,
+    MIN_MEM_SIZE,
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
@@ -247,6 +249,13 @@ class StandardAutoscaler:
             session_name=session_name
         )  # noqa
         self.resource_demand_scheduler = None
+
+        # Below 2 variable will not be used if dynamic resource adjustment is not
+        # supported by the provider.
+        self.dynamic_cpu = MIN_CPU_NUM
+        self.dynamic_mem = MIN_MEM_SIZE
+        self.last_resource_adjust_time = 0.0
+
         self.reset(errors_fatal=True)
         self.load_metrics = load_metrics
 
@@ -453,8 +462,14 @@ class StandardAutoscaler:
             self.load_metrics.get_static_node_resources_by_ip(),
             ensure_min_cluster_size=self.load_metrics.get_resource_requests(),
             node_availability_summary=self.node_provider_availability_tracker.summary(),
+            dra_enabled=self.provider.dra_enabled(),
         )
         self._report_pending_infeasible(unfulfilled)
+        if self.provider.dra_enabled() and unfulfilled:
+            self.dynamic_cpu, self.dynamic_mem = self.provider.dynamic_resource_adjust(
+                unfulfilled, self.dynamic_cpu, self.dynamic_mem
+            )
+            self.last_resource_adjust_time = time.time()
 
         if not self.provider.is_readonly():
             self.launch_required_nodes(to_launch)
@@ -1068,6 +1083,25 @@ class StandardAutoscaler:
                 record_local_head_state_if_needed(self.provider)
 
             self.available_node_types = self.config["available_node_types"]
+            if self.provider.dra_enabled():
+                if not self.dra_triggered_recently():
+                    self.dynamic_cpu = MIN_CPU_NUM
+                    self.dynamic_mem = MIN_MEM_SIZE
+                # Increase CPU and memory in the config object's worker node part in the
+                # memory, so that the resource demand schedular can take this into
+                # consideration, and will report that there are nodes to be created.
+                worker_conf_ref = self.get_one_worker_node_config_obj_ref()
+                resources = worker_conf_ref["resources"]
+                resources["CPU"] = self.dynamic_cpu
+                resources["Memory"] = self.dynamic_mem
+                node_config_res = worker_conf_ref["node_config"]["resources"]
+                node_config_res["CPU"] = self.dynamic_cpu
+                node_config_res["Memory"] = self.dynamic_mem
+                logger.info(
+                    f"After dynamic resource adjust, the available node types:"
+                    f" {self.available_node_types}"
+                )
+
             upscaling_speed = self.config.get("upscaling_speed")
             aggressive = self.config.get("autoscaling_mode") == "aggressive"
             target_utilization_fraction = self.config.get("target_utilization_fraction")
@@ -1129,6 +1163,15 @@ class StandardAutoscaler:
             # Don't keep the node.
             return False
 
+        if self.provider.dra_enabled():
+            # If DRA is enabled and DRA was triggered recently. Then we will not compare
+            # the config hash between the node tag and the self.config.
+            # It is a common case for the config hash in memory to change if DRA is
+            # enabled. But if DRA was not triggered in a past period of time, then we
+            # want the diff of the config hash to trigger the worker node update, to
+            # reset the resource of the idle worker node to minimum resources.
+            if self.dra_triggered_recently():
+                return True
         # The `worker_nodes` field is deprecated in favor of per-node-type
         # node_configs. We allow it for backwards-compatibility.
         launch_config = copy.deepcopy(self.config.get("worker_nodes", {}))
@@ -1508,3 +1551,28 @@ class StandardAutoscaler:
         autoscaler_summary = self.summary()
         assert autoscaler_summary
         return "\n" + format_info_string(lm_summary, autoscaler_summary)
+
+    def get_one_worker_node_config_obj_ref(self):
+        """
+        When DRA is enabled, only one worker node type is enough, so in this function
+        we just pick the first worker node showed up in the dict.
+        """
+        head_node_type = self.config.get("head_node_type")
+        whatever_worker_node_config = None
+        for node_type in self.all_node_types:
+            if node_type == head_node_type:
+                continue
+            whatever_worker_node_config = self.available_node_types[node_type]
+            break
+        return whatever_worker_node_config
+
+    def dra_triggered_recently(self):
+        now = time.time()
+        if not self.last_resource_adjust_time:
+            self.last_resource_adjust_time = now
+            return True
+        # the unit of time.time() is second
+        delta = now - self.last_resource_adjust_time
+        if delta > (60 * self.config["idle_timeout_minutes"]):
+            return False
+        return True

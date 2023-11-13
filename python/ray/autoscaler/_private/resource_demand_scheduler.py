@@ -177,6 +177,7 @@ class ResourceDemandScheduler:
         max_resources_by_ip: Dict[NodeIP, ResourceDict],
         ensure_min_cluster_size: List[ResourceDict],
         node_availability_summary: NodeAvailabilitySummary,
+        dra_enabled: bool = False,
     ) -> (Dict[NodeType, int], List[ResourceDict]):
         """Given resource demands, return node types to add to the cluster.
 
@@ -203,6 +204,8 @@ class ResourceDemandScheduler:
 
             node_availability_summary: A snapshot of the current
                 NodeAvailabilitySummary.
+            dra_enabled: a switch telling if the node provider has enabled Dynamic
+                Resource Adjustment.
 
         Returns:
             Dict of count to add for each node type, and residual of resources
@@ -211,8 +214,9 @@ class ResourceDemandScheduler:
         utilization_scorer = partial(
             self.utilization_scorer, node_availability_summary=node_availability_summary
         )
-        self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
-
+        self._update_node_resources_from_runtime(
+            nodes, max_resources_by_ip, dra_enabled
+        )
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
         node_resources, node_type_counts = self.calculate_node_resources(
@@ -338,7 +342,10 @@ class ResourceDemandScheduler:
         return total_nodes_to_add, final_unfulfilled
 
     def _update_node_resources_from_runtime(
-        self, nodes: List[NodeID], max_resources_by_ip: Dict[NodeIP, ResourceDict]
+        self,
+        nodes: List[NodeID],
+        max_resources_by_ip: Dict[NodeIP, ResourceDict],
+        dra_enabled: bool,
     ):
         """Update static node type resources with runtime resources
 
@@ -369,7 +376,13 @@ class ResourceDemandScheduler:
             if runtime_resources:
                 runtime_resources = copy.deepcopy(runtime_resources)
                 resources = self.node_types[node_type].get("resources", {})
-                for key in ["CPU", "GPU", "memory", "object_store_memory"]:
+                resource_type_list = ["GPU", "object_store_memory"]
+                if not dra_enabled:
+                    # When dra is enabled, we should not update the cached config
+                    # based on the actually runtime. Because the different between them
+                    # is a common case, and we need the config to decide the runtime.
+                    resource_type_list.extend(["CPU", "Memory"])
+                for key in resource_type_list:
                     if key in runtime_resources:
                         resources[key] = runtime_resources[key]
                 self.node_types[node_type]["resources"] = resources

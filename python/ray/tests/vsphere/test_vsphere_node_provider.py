@@ -541,6 +541,26 @@ def test_singleton():
         singleton3.ensure_connect.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    "unfulfilled_tasks, expected_output",
+    [
+        ([{"CPU": 4}], (4, 4096)),
+        ([{"CPU": 8, "Memory": 16384}], (8, 16384)),
+        ([{"CPU": 16, "Memory": 32768}], (8, 16384)),
+        ([{"CPU": 16, "Memory": 49152}], (16, 65536)),
+        ([{"CPU": 32, "Memory": 98304}], (32, 65535)),
+        ([{"CPU": -1, "Memory": -1}], (1, 4)),
+    ],
+)
+def test_dynamic_resource_adjust(unfulfilled_tasks, expected_output):
+    vnp = mock_vsphere_node_provider()
+
+    dynamic_cpu_num, dynamic_memory_size = vnp.dynamic_resource_adjust(
+        unfulfilled_tasks, 1, 4
+    )
+    assert dynamic_cpu_num, dynamic_memory_size == expected_output
+
+
 if __name__ == "__main__":
     import sys
 

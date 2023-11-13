@@ -1,6 +1,6 @@
 import logging
 from types import ModuleType
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
@@ -259,5 +259,25 @@ class NodeProvider:
     def post_process(self) -> None:
         """This optional method is executed at the end of
         StandardAutoscaler._update().
+        """
+        pass
+
+    def dra_enabled(self) -> bool:
+        """The optional method tells if dynamic resource adjust is enabled.
+        Dynamic resource adjust means that the provider doesn't need to prepare T-shirt
+        sized VMs. The user doesn't need to define the resource for each worker node
+        type. There is only one work node type and the provider can detect the resource
+        demand from the Ray application layer then increase/decrease the resource for
+        the new created VMs.
+        """
+        return False
+
+    def dynamic_resource_adjust(
+        self, unfulfilled: List[Dict[str, int]], original_cpu: int, original_mem: int
+    ) -> Tuple[int, int]:
+        """This optional method returns the CPU cores and memory size which should be
+        applied on the new added nodes during autoscaling, based on the unfulfilled
+        demands. The "unfulfilled" is a list of dict such as:
+        [{CPU:8}, {CPU:4, Memory: 8192}]
         """
         pass
