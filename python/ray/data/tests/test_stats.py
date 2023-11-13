@@ -11,7 +11,11 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.stats import DatasetStats, _StatsActor
+from ray.data._internal.stats import (
+    DatasetStats,
+    _get_or_create_stats_actor,
+    _StatsActor,
+)
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
@@ -1312,6 +1316,23 @@ def test_op_state_logging():
                 assert "Input" in logs[i + 1]
                 assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
         assert times_asserted > 0
+
+
+def test_stats_actor_datasets(ray_start_cluster):
+    ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
+    ds._set_name("test_stats_actor_datasets")
+    ds.materialize()
+    stats_actor = _get_or_create_stats_actor()
+
+    datasets = ray.get(stats_actor.get_datasets.remote())
+    dataset_name = list(filter(lambda x: x.startswith(ds._name), datasets))
+    assert len(dataset_name) == 1
+    dataset_name = dataset_name[0]
+
+    assert datasets[dataset_name]["state"] == "FINISHED"
+    assert datasets[dataset_name]["progress"] == 20
+    assert datasets[dataset_name]["total"] == 20
+    assert datasets[dataset_name]["end_time"] is not None
 
 
 if __name__ == "__main__":

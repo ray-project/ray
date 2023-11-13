@@ -337,8 +337,7 @@ struct Mocker {
 
   static void FillResourcesData(rpc::ResourcesData &data,
                                 const std::string &node_id,
-                                std::vector<rpc::ResourceDemand> demands,
-                                bool resource_load_changed = true) {
+                                std::vector<rpc::ResourceDemand> demands) {
     auto load_by_shape = data.mutable_resource_load_by_shape();
     auto agg_load = data.mutable_resource_load();
     for (const auto &demand : demands) {
@@ -349,7 +348,6 @@ struct Mocker {
                                 demand.num_infeasible_requests_queued()));
       }
     }
-    data.set_resource_load_changed(resource_load_changed);
     data.set_node_id(node_id);
   }
 

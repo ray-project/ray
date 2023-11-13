@@ -97,6 +97,7 @@ class _DeploymentHandleBase:
         deployment_name: str,
         app_name: str,
         *,
+        sync: bool,
         handle_options: Optional[_HandleOptions] = None,
         _router: Optional[Router] = None,
         _request_counter: Optional[metrics.Counter] = None,
@@ -105,6 +106,7 @@ class _DeploymentHandleBase:
         self.deployment_id = DeploymentID(deployment_name, app_name)
         self.handle_options = handle_options or _HandleOptions()
         self._recorded_telemetry = _recorded_telemetry
+        self._sync = sync
 
         self.request_counter = _request_counter or metrics.Counter(
             "serve_handle_request_counter",
@@ -211,6 +213,11 @@ class _DeploymentHandleBase:
 
         if use_new_handle_api is True:
             cls = DeploymentHandle
+        elif use_new_handle_api is False:
+            if self._sync:
+                cls = RayServeSyncHandle
+            else:
+                cls = RayServeHandle
         else:
             cls = self.__class__
 
@@ -218,6 +225,7 @@ class _DeploymentHandleBase:
             self.deployment_name,
             self.app_name,
             handle_options=new_handle_options,
+            sync=self._sync,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _request_counter=self.request_counter,
             _recorded_telemetry=self._recorded_telemetry,
@@ -228,12 +236,11 @@ class _DeploymentHandleBase:
     ) -> concurrent.futures.Future:
         if not self.__class__ == DeploymentHandle:
             warnings.warn(
-                "Ray 2.7 introduces a new `DeploymentHandle` API that will "
-                "replace the existing `RayServeHandle` and `RayServeSyncHandle` "
-                "APIs in a future release. You are encouraged to migrate to the "
-                "new API to avoid breakages in the future. To opt in, either use "
-                "`handle.options(use_new_handle_api=True)` or set the global "
-                "environment variable `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`. "
+                "`DeploymentHandle` is now the default handle API. You can continue "
+                "using the existing `RayServeHandle` and `RayServeSyncHandle` APIs "
+                "by calling `handle.options(use_new_handle_api=False)` or setting the "
+                "global environment variable `RAY_SERVE_ENABLE_NEW_HANDLE_API=0`, "
+                "but support for these will be removed in a future release. "
                 "See https://docs.ray.io/en/latest/serve/model_composition.html "
                 "for more details."
             )
@@ -286,16 +293,13 @@ class _DeploymentHandleBase:
             "deployment_name": self.deployment_name,
             "app_name": self.app_name,
             "handle_options": self.handle_options,
+            "sync": self._sync,
         }
         return self.__class__._deserialize, (serialized_constructor_args,)
 
 
 @Deprecated(
-    message=(
-        "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
-        "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
-        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
-    )
+    message="This API has been replaced by `ray.serve.handle.DeploymentHandle`."
 )
 class RayServeHandle(_DeploymentHandleBase):
     """A handle used to make requests from one deployment to another.
@@ -401,11 +405,7 @@ class RayServeHandle(_DeploymentHandleBase):
 
 
 @Deprecated(
-    message=(
-        "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
-        "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
-        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
-    )
+    message="This API has been replaced by `ray.serve.handle.DeploymentHandle`."
 )
 class RayServeSyncHandle(_DeploymentHandleBase):
     """A handle used to make requests to the ingress deployment of an application.
@@ -513,8 +513,9 @@ class _DeploymentResponseBase:
     def _to_object_ref_or_gen_sync(
         self,
         _record_telemetry: bool = True,
+        _allow_running_in_asyncio_loop: bool = False,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
-        if is_running_in_asyncio_loop():
+        if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
                 "loop. Use `await response` or `await response._to_object_ref()` "
@@ -668,7 +669,11 @@ class DeploymentResponse(_DeploymentResponseBase):
         return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
 
     @DeveloperAPI
-    def _to_object_ref_sync(self, _record_telemetry: bool = True) -> ray.ObjectRef:
+    def _to_object_ref_sync(
+        self,
+        _record_telemetry: bool = True,
+        _allow_running_in_asyncio_loop: bool = False,
+    ) -> ray.ObjectRef:
         """Advanced API to convert the response to a Ray `ObjectRef`.
 
         This is used to pass the output of a `DeploymentHandle` call to a Ray task or
@@ -681,7 +686,10 @@ class DeploymentResponse(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
+        return self._to_object_ref_or_gen_sync(
+            _record_telemetry=_record_telemetry,
+            _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
+        )
 
 
 @PublicAPI(stability="beta")
@@ -786,7 +794,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
     @DeveloperAPI
     def _to_object_ref_gen_sync(
-        self, _record_telemetry: bool = True
+        self,
+        _record_telemetry: bool = True,
+        _allow_running_in_asyncio_loop: bool = False,
     ) -> StreamingObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
 
@@ -797,7 +807,10 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref_gen` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
+        return self._to_object_ref_or_gen_sync(
+            _record_telemetry=_record_telemetry,
+            _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
+        )
 
 
 @PublicAPI(stability="beta")

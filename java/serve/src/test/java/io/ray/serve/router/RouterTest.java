@@ -9,6 +9,7 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorNameList;
@@ -72,7 +73,7 @@ public class RouterTest {
       Serve.setInternalReplicaContext(null, null, controllerName, null, config, null);
 
       // Router
-      Router router = new Router(controllerHandle, deploymentName);
+      Router router = new Router(controllerHandle, new DeploymentId(deploymentName, appName));
       ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
       router.getReplicaSet().updateWorkerReplicas(builder.build());

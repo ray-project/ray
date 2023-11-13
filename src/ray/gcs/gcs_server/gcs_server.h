@@ -26,7 +26,6 @@
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
-#include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -110,9 +109,11 @@ class GcsServer {
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
 
-  void UpdateGcsResourceManagerInTest(const rpc::ResourcesData &resources) {
+  void UpdateGcsResourceManagerInTest(
+      const NodeID &node_id,
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
     RAY_CHECK(gcs_resource_manager_ != nullptr);
-    gcs_resource_manager_->UpdateFromResourceView(resources);
+    gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
   }
 
  protected:

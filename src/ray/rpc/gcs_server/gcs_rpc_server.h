@@ -473,6 +473,10 @@ class WorkerInfoGcsServiceHandler {
   virtual void HandleAddWorkerInfo(AddWorkerInfoRequest request,
                                    AddWorkerInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateWorkerDebuggerPort(UpdateWorkerDebuggerPortRequest request,
+                                              UpdateWorkerDebuggerPortReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `WorkerInfoGcsService`.
@@ -496,6 +500,7 @@ class WorkerInfoGrpcService : public GrpcService {
     WORKER_INFO_SERVICE_RPC_HANDLER(GetWorkerInfo);
     WORKER_INFO_SERVICE_RPC_HANDLER(GetAllWorkerInfo);
     WORKER_INFO_SERVICE_RPC_HANDLER(AddWorkerInfo);
+    WORKER_INFO_SERVICE_RPC_HANDLER(UpdateWorkerDebuggerPort);
   }
 
  private:
