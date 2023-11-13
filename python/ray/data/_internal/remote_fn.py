@@ -24,6 +24,7 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
             # The caller of this function may override the scheduling strategy
             # as needed.
             "scheduling_strategy": "DEFAULT",
+            "max_retries": -1,
         }
         CACHED_FUNCTIONS[fn] = ray.remote(
             **{**default_ray_remote_args, **ray_remote_args}
