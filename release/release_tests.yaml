@@ -211,7 +211,7 @@
 
   run:
     timeout: 1000
-    prepare: python setup_chaos.py --max-nodes-to-kill 2 --node-kill-delay 30
+    prepare: python ../setup_chaos.py --max-nodes-to-kill 2 --node-kill-delay 30
     script: python gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
 
     wait_for_nodes:
