@@ -22,6 +22,12 @@ class Write(AbstractMap):
             input_op,
             ray_remote_args,
         )
+
+        # Retry exceptions by default to handle transient errors like S3 connection
+        # failures.
+        if "retry_exceptions" not in ray_remote_args:
+            ray_remote_args["retry_exceptions"] = True
+
         self._datasink_or_legacy_datasource = datasink_or_legacy_datasource
         self._write_args = write_args
         # Always use task to write.

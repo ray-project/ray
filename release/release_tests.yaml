@@ -199,7 +199,7 @@
 
 - name: chaos_torch_batch_inference_16_gpu_300gb_raw
   group: AIR tests
-  working_dir: nightly_tests/dataset
+  working_dir: nightly_tests
 
   frequency: nightly
   team: data
@@ -207,12 +207,12 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: compute_gpu_4x4_aws.yaml
+    cluster_compute: dataset/compute_gpu_4x4_aws.yaml
 
   run:
     timeout: 1000
-    prepare: python ../setup_chaos.py --max-nodes-to-kill 2 --node-kill-delay 30
-    script: python gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
+    prepare: python setup_chaos.py --max-nodes-to-kill 2 --node-kill-delay 30
+    script: python dataset/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
 
     wait_for_nodes:
         num_nodes: 4
@@ -225,7 +225,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: compute_gpu_4x4_gce.yaml
+        cluster_compute: dataset/compute_gpu_4x4_gce.yaml
 
 
 # 300 GB image classification parquet data with 16 GPUs

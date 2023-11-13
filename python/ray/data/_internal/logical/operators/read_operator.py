@@ -16,6 +16,12 @@ class Read(AbstractMap):
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(f"Read{datasource.get_name()}", None, ray_remote_args)
+
+        # Retry exceptions by default to handle transient errors like S3 connection
+        # failures.
+        if "retry_exceptions" not in ray_remote_args:
+            ray_remote_args["retry_exceptions"] = True
+
         self._datasource = datasource
         self._datasource_or_legacy_reader = datasource_or_legacy_reader
         self._parallelism = parallelism
