@@ -33,7 +33,7 @@ The corresponding cluster configuration file is as follows:
 ```{admonition} Optional: Set up an autoscaling cluster
 **If you would like to try running the workload with autoscaling enabled**,
 change ``min_worker_nodes`` of worker nodes to 0.
-After the workload is submitted, 9 workers nodes will
+After the workload is submitted, 9 worker nodes will
 scale up to accommodate the workload. These nodes will scale back down after the workload is complete.
 ```
 
