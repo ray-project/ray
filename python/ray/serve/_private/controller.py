@@ -549,8 +549,8 @@ class ServeController:
 
         if self._shutdown_start_time is None:
             self._shutdown_start_time = time.time()
+            logger.info("Controller shutdown started.", extra={"log_to_stderr": False})
 
-        logger.info("Controller shutdown started!", extra={"log_to_stderr": False})
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
