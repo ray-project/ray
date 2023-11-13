@@ -117,7 +117,8 @@ class GcsTaskManagerTest : public ::testing::Test {
                                             int64_t limit = -1,
                                             bool exclude_driver = true,
                                             const std::string &name = "",
-                                            const ActorID &actor_id = ActorID::Nil()) {
+                                            const ActorID &actor_id = ActorID::Nil(),
+                                            bool is_debugger_paused = false) {
     rpc::GetTaskEventsRequest request;
     rpc::GetTaskEventsReply reply;
     std::promise<bool> promise;
@@ -145,6 +146,8 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
 
     request.mutable_filters()->set_exclude_driver(exclude_driver);
+    request.mutable_filters()->set_is_debugger_paused(is_debugger_paused);
+
     task_manager->GetIoContext().dispatch(
         [this, &promise, &request, &reply]() {
           task_manager->HandleGetTaskEvents(
@@ -540,6 +543,22 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
     SyncAddTaskEventData(data);
   }
 
+  // A task with is_debugger_paused_flag
+  {
+    auto task_ids = GenTaskIDs(1);
+    auto status_update = GenStateUpdate();
+    status_update.set_is_debugger_paused(true);
+    auto events = GenTaskEvents(task_ids,
+                                /* attempt_number */
+                                0,
+                                /* job_id */ 1,
+                                absl::nullopt,
+                                status_update,
+                                absl::nullopt);
+    auto data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(data);
+  }
+
   auto reply_name = SyncGetTaskEvents({},
                                       /* job_id */ absl::nullopt,
                                       /* limit */ -1,
@@ -562,6 +581,15 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                                           "task_name",
                                           actor_id);
   EXPECT_EQ(reply_both_and.events_by_task_size(), 0);
+
+  auto reply_is_debugger_paused = SyncGetTaskEvents({},
+                                                    /* job_id */ absl::nullopt,
+                                                    /* limit */ -1,
+                                                    /* exclude_driver */ false,
+                                                    /* name */ "",
+                                                    /* actor_id */ ActorID::Nil(),
+                                                    /* is_debugger_paused */ true);
+  EXPECT_EQ(reply_is_debugger_paused.events_by_task_size(), 1);
 }
 
 TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
