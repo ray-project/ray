@@ -200,6 +200,51 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
   }
 }
 
+void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
+    rpc::UpdateWorkerDebuggerPortRequest request,
+    rpc::UpdateWorkerDebuggerPortReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto worker_id = WorkerID::FromBinary(request.worker_id());
+  auto debugger_port = request.debugger_port();
+  RAY_LOG(DEBUG) << "updating worker " << worker_id << "with debugger port "
+                 << debugger_port;
+
+  auto on_worker_update_done =
+      [worker_id, debugger_port, reply, send_reply_callback](const Status &status) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to update debugger port on worker id " << worker_id
+                         << "with value" << debugger_port;
+        }
+        RAY_LOG(DEBUG) << "Finished updating debugger port on worker " << worker_id;
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      };
+
+  auto on_worker_get_done =
+      [&, worker_id, reply, debugger_port, on_worker_update_done, send_reply_callback](
+          const Status &status, const boost::optional<WorkerTableData> &result) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING) << "Failed to get worker info, worker id = " << worker_id
+                           << ", status = " << status;
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        } else {
+          // Update the debugger port
+          auto worker_data = std::make_shared<WorkerTableData>();
+          worker_data->CopyFrom(*result);
+          worker_data->set_debugger_port(debugger_port);
+          Status status = gcs_table_storage_->WorkerTable().Put(
+              worker_id, *worker_data, on_worker_update_done);
+          if (!status.ok()) {
+            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+          }
+        }
+      };
+
+  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_worker_get_done);
+  if (!status.ok()) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  }
+}
+
 void GcsWorkerManager::AddWorkerDeadListener(
     std::function<void(std::shared_ptr<WorkerTableData>)> listener) {
   RAY_CHECK(listener != nullptr);

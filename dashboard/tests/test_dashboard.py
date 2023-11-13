@@ -925,7 +925,7 @@ def test_dashboard_does_not_depend_on_serve():
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+        response = requests.get(f"http://{agent_url}/api/serve/applications/")
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -963,7 +963,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+        response = requests.get(f"http://{agent_url}/api/serve/applications/")
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -989,7 +989,7 @@ def test_agent_port_conflict(shutdown_only):
     node = ray._private.worker._global_node
     agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
     wait_for_condition(
-        lambda: requests.get(f"http://{agent_url}/api/serve/deployments/").status_code
+        lambda: requests.get(f"http://{agent_url}/api/serve/applications/").status_code
         == 200
     )
     ray.shutdown()
@@ -1027,7 +1027,7 @@ def test_agent_port_conflict(shutdown_only):
     try:
         wait_for_condition(
             lambda: requests.get(
-                f"http://{agent_url}/api/serve/deployments/"
+                f"http://{agent_url}/api/serve/applications/"
             ).status_code
             == 200
         )

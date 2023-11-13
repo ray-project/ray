@@ -113,11 +113,20 @@ py_test(
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 
+py_test(
+    name = "doc_code_ray_oom_prevention",
+    size = "medium",
+    main = "source/ray-core/doc_code/ray_oom_prevention.py",
+    srcs = ["source/ray-core/doc_code/ray_oom_prevention.py"],
+    tags = ["exclusive", "xcommit", "team:core"]
+)
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
     exclude = ["source/ray-core/doc_code/runtime_env_example.py",
-               "source/ray-core/doc_code/cross_language.py"],
+               "source/ray-core/doc_code/cross_language.py",
+               "source/ray-core/doc_code/ray_oom_prevention.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:core"],
 )
@@ -137,9 +146,22 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/http_guide/streaming_example.py",
         "source/serve/doc_code/http_guide/websockets_example.py",
         "source/serve/doc_code/vllm_example.py",
+        "source/serve/doc_code/production_guide/text_ml.py",
+        "source/serve/doc_code/fake_email_creator.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
+)
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = [
+        "source/serve/doc_code/production_guide/text_ml.py",
+        "source/serve/doc_code/fake_email_creator.py",
+    ],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve", "xcommit"],
 )
 
 py_test_run_all_subdirectory(
@@ -290,8 +312,8 @@ doctest(
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            "source/train/faq.rst",
-	    "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/**/*.rst",
+            "source/train/**/*.md",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/rllib/**/*.rst",
@@ -301,6 +323,33 @@ doctest(
     ),
     size = "large",
     tags = ["team:none"]
+)
+
+
+doctest(
+    name="doctest[train]",
+    files = glob(
+        include=[
+            "source/train/**/*.rst",
+            "source/train/**/*.md"
+        ],
+        exclude=[
+            # GPU
+            "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/user-guides/using-gpus.rst"
+        ]
+    ),
+    tags = ["team:ml"]
+)
+
+doctest(
+    name="doctest[train]",
+    files = [
+        "source/train/user-guides/data-loading-preprocessing.rst",
+        "source/train/user-guides/using-gpus.rst"
+    ],
+    tags = ["team:ml"],
+    gpu = True,
 )
 
 
@@ -340,10 +389,3 @@ doctest(
     gpu = True
 )
 
-doctest(
-    name="quarantine",
-    files = [
-	"source/train/user-guides/data-loading-preprocessing.rst",
-    ],
-    tags = ["team:data"],
-)

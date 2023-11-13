@@ -6,6 +6,11 @@ import yaml
 import click
 
 from ci.ray_ci.container import _DOCKER_ECR_REPO
+from ci.ray_ci.builder_container import (
+    BuilderContainer,
+    DEFAULT_BUILD_TYPE,
+    DEFAULT_PYTHON_VERSION,
+)
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 
@@ -24,6 +29,8 @@ https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
 
 A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
 """  # noqa: E501
+
+DEFAULT_EXCEPT_TAGS = {"manual"}
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -77,6 +84,13 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Skip ray installation."),
 )
 @click.option(
+    "--build-only",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Build ray only, skip running tests."),
+)
+@click.option(
     "--gpus",
     default=0,
     type=int,
@@ -100,7 +114,22 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 )
 @click.option(
     "--build-type",
-    type=click.Choice(["optimized", "debug", "asan", "java"]),
+    type=click.Choice(
+        [
+            # python build types
+            "optimized",
+            "debug",
+            "asan",
+            "wheel",
+            # cpp build types
+            "clang",
+            "asan-clang",
+            "ubsan",
+            "tsan-clang",
+            # java build types
+            "java",
+        ]
+    ),
     default="optimized",
 )
 def main(
@@ -113,6 +142,7 @@ def main(
     only_tags: str,
     run_flaky_tests: bool,
     skip_ray_installation: bool,
+    build_only: bool,
     gpus: int,
     test_env: Tuple[str],
     test_arg: Optional[str],
@@ -124,6 +154,9 @@ def main(
     os.chdir(bazel_workspace_dir)
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
+    if build_type == "wheel":
+        # for wheel testing, we first build the wheel and then use it for running tests
+        BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE).run()
     container = _get_container(
         team,
         workers,
@@ -135,16 +168,25 @@ def main(
         build_type=build_type,
         skip_ray_installation=skip_ray_installation,
     )
+    if build_only:
+        sys.exit(0)
     test_targets = _get_test_targets(
         container,
         targets,
         team,
-        except_tags=except_tags,
+        except_tags=_add_default_except_tags(except_tags),
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
     success = container.run_tests(test_targets, test_arg)
     sys.exit(0 if success else 1)
+
+
+def _add_default_except_tags(except_tags: str) -> str:
+    final_except_tags = set(DEFAULT_EXCEPT_TAGS)
+    if except_tags:
+        final_except_tags.update(except_tags.split(","))
+    return ",".join(final_except_tags)
 
 
 def _get_container(
@@ -164,7 +206,7 @@ def _get_container(
 
     return TesterContainer(
         build_name or f"{team}build",
-        envs=test_env,
+        test_envs=test_env,
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
         gpus=gpus,

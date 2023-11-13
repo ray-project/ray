@@ -287,6 +287,7 @@ class ApplicationState:
             )
 
         deployment_id = DeploymentID(deployment_name, self._name)
+
         self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
         if deployment_info.route_prefix is not None:
@@ -572,7 +573,18 @@ class ApplicationState:
 
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
-            self.apply_deployment_info(deployment_name, info)
+            deploy_info = deepcopy(info)
+            # Apply the application logging config to the deployment logging config
+            # if it is not set.
+            if (
+                self._target_state.config
+                and self._target_state.config.logging_config
+                and deploy_info.deployment_config.logging_config is None
+            ):
+                deploy_info.deployment_config.logging_config = (
+                    self._target_state.config.logging_config
+                )
+            self.apply_deployment_info(deployment_name, deploy_info)
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
@@ -888,6 +900,9 @@ def build_serve_application(
         name: application name. If specified, application will be deployed
             without removing existing applications.
         args: Arguments to be passed to the application builder.
+        logging_config: The application logging config, if deployment logging
+            config is not set, application logging config will be applied to the
+            deployment logging config.
     Returns:
         Deploy arguments: a list of deployment arguments if application
             was built successfully, otherwise None.
@@ -905,10 +920,6 @@ def build_serve_application(
         deployments = pipeline_build(app._get_internal_dag_node(), name)
         ingress = get_and_validate_ingress_deployment(deployments)
 
-        # Set code version and runtime env for each deployment
-        for deployment in deployments:
-            deployment.set_options(version=code_version, _internal=True)
-
         deploy_args_list = []
         for deployment in deployments:
             is_ingress = deployment.name == ingress.name
@@ -918,7 +929,7 @@ def build_serve_application(
                     replica_config=deployment._replica_config,
                     ingress=is_ingress,
                     deployment_config=deployment._deployment_config,
-                    version=deployment.version,
+                    version=code_version,
                     route_prefix=deployment.route_prefix,
                     docs_path=deployment._docs_path,
                 )
@@ -1022,7 +1033,6 @@ def override_deployment_info(
         options.pop("name", None)
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
-
         deployment_infos[deployment_name] = info.update(**override_options)
 
     # Overwrite ingress route prefix

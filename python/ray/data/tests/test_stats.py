@@ -11,7 +11,11 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.stats import DatasetStats, _StatsActor
+from ray.data._internal.stats import (
+    DatasetStats,
+    _get_or_create_stats_actor,
+    _StatsActor,
+)
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
@@ -44,6 +48,7 @@ def gen_expected_metrics(
             "'obj_store_mem_cur': Z",
             "'obj_store_mem_peak': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
+            "'block_generation_time': N",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -73,7 +78,7 @@ LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
     is_map=True,
     spilled=False,
     extra_metrics=[
-        "'ray_remote_args': {'num_cpus': Z.N, 'scheduling_strategy': 'DEFAULT'}"
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'DEFAULT'}"
     ],
 )
 
@@ -106,17 +111,19 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     s1 = re.sub("[0-9\.]+(ms|us|s)", "T", s0)
     # Memory expressions.
     s2 = re.sub("[0-9\.]+(B|MB|GB)", "M", s1)
+    # Handle floats in (0, 1)
+    s3 = re.sub(" (0\.0*[1-9][0-9]*)", " N", s2)
     # Handle zero values specially so we can check for missing values.
-    s3 = re.sub(" [0]+(\.[0]+)?", " Z", s2)
+    s4 = re.sub(" [0]+(\.[0])?", " Z", s3)
     # Other numerics.
-    s4 = re.sub("[0-9]+(\.[0-9]+)?", "N", s3)
+    s5 = re.sub("[0-9]+(\.[0-9]+)?", "N", s4)
     # Replace tabs with spaces.
-    s5 = re.sub("\t", "    ", s4)
+    s6 = re.sub("\t", "    ", s5)
     if filter_global_stats:
-        s6 = s5.replace(CLUSTER_MEMORY_STATS, "")
-        s7 = s6.replace(DATASET_MEMORY_STATS, "")
-        return s7
-    return s5
+        s7 = s6.replace(CLUSTER_MEMORY_STATS, "")
+        s8 = s7.replace(DATASET_MEMORY_STATS, "")
+        return s8
+    return s6
 
 
 def dummy_map_batches(x):
@@ -491,7 +498,7 @@ def test_dataset__repr__(ray_start_regular_shared):
 
     expected_stats = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=None,\n"
         "   number=N,\n"
         "   extra_metrics={},\n"
@@ -547,7 +554,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     assert len(ds2.take_all()) == n
     expected_stats2 = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
         "   extra_metrics={\n"
@@ -570,6 +577,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      obj_store_mem_cur: Z,\n"
         "      obj_store_mem_peak: N,\n"
         "      obj_store_mem_spilled: Z,\n"
+        "      block_generation_time: N,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
@@ -604,7 +612,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   dataset_bytes_spilled=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
-        "         dataset_uuid=U,\n"
+        "         dataset_uuid=N,\n"
         "         base_name=None,\n"
         "         number=N,\n"
         "         extra_metrics={},\n"
@@ -1188,7 +1196,22 @@ def test_stats_actor_metrics():
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
 
-    assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+    tags = update_fn.call_args_list[-1].args[1]
+    assert all([tag["dataset"] == "dataset" + ds._uuid for tag in tags])
+    assert tags[0]["operator"] == "Input0"
+    assert tags[1]["operator"] == "ReadRange->MapBatches(<lambda>)1"
+
+    def sleep_three(x):
+        import time
+
+        time.sleep(3)
+        return x
+
+    with patch_update_stats_actor() as update_fn:
+        ds = ray.data.range(3).map_batches(sleep_three, batch_size=1).materialize()
+
+    final_metric = update_fn.call_args_list[-1].args[0][-1]
+    assert final_metric.block_generation_time >= 9
 
 
 def test_stats_actor_iter_metrics():
@@ -1215,7 +1238,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
+    assert update_fn.call_args_list[-1].args[1][0]["dataset"] == "test_ds" + mds._uuid
 
     # Names persist after an execution
     ds = ds.random_shuffle()
@@ -1223,7 +1246,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
+    assert update_fn.call_args_list[-1].args[1][0]["dataset"] == "test_ds" + mds._uuid
 
     ds._set_name("test_ds_two")
     ds = ds.map_batches(lambda x: x)
@@ -1231,7 +1254,9 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds_two" + mds._uuid
+    assert (
+        update_fn.call_args_list[-1].args[1][0]["dataset"] == "test_ds_two" + mds._uuid
+    )
 
     ds._set_name(None)
     ds = ds.map_batches(lambda x: x)
@@ -1239,7 +1264,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == mds._uuid
+    assert update_fn.call_args_list[-1].args[1][0]["dataset"] == "dataset" + mds._uuid
 
     ds = ray.data.range(100, parallelism=20)
     ds._set_name("very_loooooooong_name")
@@ -1274,6 +1299,40 @@ def test_op_metrics_logging():
         # Check that these strings are logged exactly once.
         assert sum([log == input_str for log in logs]) == 1
         assert sum([log == map_str for log in logs]) == 1
+
+
+def test_op_state_logging():
+    logger = DatasetLogger(
+        "ray.data._internal.execution.streaming_executor"
+    ).get_logger()
+    with patch.object(logger, "info") as mock_logger:
+        ray.data.range(100).map_batches(lambda x: x).materialize()
+        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
+
+        times_asserted = 0
+        for i, log in enumerate(logs):
+            if log == "Execution Progress:":
+                times_asserted += 1
+                assert "Input" in logs[i + 1]
+                assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
+        assert times_asserted > 0
+
+
+def test_stats_actor_datasets(ray_start_cluster):
+    ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
+    ds._set_name("test_stats_actor_datasets")
+    ds.materialize()
+    stats_actor = _get_or_create_stats_actor()
+
+    datasets = ray.get(stats_actor.get_datasets.remote())
+    dataset_name = list(filter(lambda x: x.startswith(ds._name), datasets))
+    assert len(dataset_name) == 1
+    dataset_name = dataset_name[0]
+
+    assert datasets[dataset_name]["state"] == "FINISHED"
+    assert datasets[dataset_name]["progress"] == 20
+    assert datasets[dataset_name]["total"] == 20
+    assert datasets[dataset_name]["end_time"] is not None
 
 
 if __name__ == "__main__":
