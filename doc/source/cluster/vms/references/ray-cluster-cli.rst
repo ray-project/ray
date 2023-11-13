@@ -77,7 +77,7 @@ See :ref:`the documentation <ray-up-doc>` for ``ray up``.
 
     # Reconfigure autoscaling behavior without interrupting running jobs.
     $ ray up ray/python/ray/autoscaler/$BACKEND/example-full.yaml \
-        --max-workers=N --no-restart
+        --max-worker-nodes=N --no-restart
 
 Running shell commands on the cluster (``ray exec``)
 ----------------------------------------------------

@@ -11,7 +11,7 @@ Syntax
 .. parsed-literal::
 
     :ref:`cluster_name <cluster-configuration-cluster-name>`: str
-    :ref:`max_worker_nodes <cluster-configuration-max-workers>`: int
+    :ref:`max_worker_nodes <cluster-configuration-max-worker-nodes>`: int
     :ref:`upscaling_speed <cluster-configuration-upscaling-speed>`: float
     :ref:`idle_timeout_minutes <cluster-configuration-idle-timeout-minutes>`: int
     :ref:`docker <cluster-configuration-docker>`:
@@ -334,7 +334,7 @@ The name of the cluster. This is the namespace of the cluster.
 * **Default:** "default"
 * **Pattern:** ``[a-zA-Z0-9_]+``
 
-.. _cluster-configuration-max-workers:
+.. _cluster-configuration-max-worker-nodes:
 
 ``max_worker_nodes``
 ~~~~~~~~~~~~~~~~~~~~
@@ -1384,16 +1384,16 @@ Deprecated since Ray 2.9 in favor of :ref:`min_worker_nodes <cluster-configurati
 ``available_node_types.<node_type_name>.node_type.max_worker_nodes``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-worker-nodes>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-workers>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
+The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-worker-nodes>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-worker-nodes>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
 
 Note, for the nodes of type ``head_node_type`` the default number of max workers is 0.
 
 * **Required:** No
 * **Importance:** High
 * **Type:** Integer
-* **Default:** cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-workers>`
+* **Default:** cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-worker-nodes>`
 * **Minimum:** ``0``
-* **Maximum:** cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-workers>`
+* **Maximum:** cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-worker-nodes>`
 
 ``available_node_types.<node_type_name>.node_type.max_workers``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
