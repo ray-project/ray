@@ -5,8 +5,8 @@ import sys
 import pytest
 from ray.util.concurrent.futures.ray_executor import (
     RayExecutor,
-    _ActorPool,
-    _ActorPoolBoilerPlate,
+    _ActorPoolBase,
+    _AbstractActorPool,
     _RoundRobinActorPool,
     _BalancedActorPool,
     ActorPoolType,
@@ -14,6 +14,7 @@ from ray.util.concurrent.futures.ray_executor import (
 import time
 import typing as T
 from functools import partial
+from multiprocessing import Process
 
 import ray
 from ray.util.state import list_actors
@@ -48,7 +49,7 @@ class Helpers:
         pass
 
     @staticmethod
-    def get_actor_states(actor_pool: _ActorPool):
+    def get_actor_states(actor_pool: _ActorPoolBase):
 
         return [
             actor_state["state"]
@@ -142,11 +143,11 @@ class TestShared:
 
 class ActorPoolTests(ABC):
     """
-    This set of tests should be executed for all implementations of `_ActorPool`.
+    This set of tests should be executed for all implementations of `_ActorPoolBase`.
     """
 
     @property
-    def apc(self) -> type[_ActorPoolBoilerPlate]:
+    def apc(self) -> type[_AbstractActorPool]:
         ...
 
     @property
@@ -271,7 +272,7 @@ class ActorPoolTests(ABC):
 
 class TestBalancedActorPool(ActorPoolTests, TestShared):
     @property
-    def apc(self) -> type[_ActorPoolBoilerPlate]:
+    def apc(self) -> type[_AbstractActorPool]:
         return _BalancedActorPool
 
     @property
@@ -312,7 +313,7 @@ class TestBalancedActorPool(ActorPoolTests, TestShared):
 
 class TestRoundRobinActorPool(ActorPoolTests, TestShared):
     @property
-    def apc(self) -> type[_ActorPoolBoilerPlate]:
+    def apc(self) -> type[_AbstractActorPool]:
         return _RoundRobinActorPool
 
     @property
@@ -422,8 +423,19 @@ class TestSetupShutdown(TestIsolated):
         with RayExecutor() as ex:
             r1 = ex.map(f, [100, 100, 100], [1, 2, 3])
         assert ex._shutdown_lock
-        with pytest.raises(ConTimeoutError):
-            _ = list(r1)
+
+        # we run a custom timeout function otherwise ray take 180s to timeout
+        timeout_runner = Process(target=partial(list, r1))
+        timeout = 5
+        timeout_runner.start()
+        while timeout_runner.is_alive() and timeout > 0:
+            time.sleep(1)
+            timeout -= 1
+        if timeout_runner.is_alive() and timeout == 0:
+            timeout_runner.kill()
+            assert True
+        else:
+            pytest.fail("Fetching results did not timeout")
 
     def test_cannot_submit_after_shutdown(self):
         ex = RayExecutor()

@@ -12,13 +12,14 @@ from typing import (
     TYPE_CHECKING,
     TypeVar,
     TypedDict,
+    Union
 )
 from enum import Enum
 
 import ray
 from ray.util.annotations import PublicAPI
 import ray.exceptions
-import ray.util.state as rus
+import ray.util.state as ray_state
 
 # Typing -----------------------------------------------
 
@@ -43,13 +44,13 @@ class ActorPoolType(Enum):
     ROUND_ROBIN = 1
 
 
-class _ActorPool(ABC):
+class _ActorPoolBase(ABC):
 
     """This interface defines the actor pool class of Ray actors used by
     RayExecutor."""
 
     @property
-    def max_tasks_per_actor(self) -> Optional[int]:
+    def max_tasks_per_actor(self) -> Union[None, int]:
         ...
 
     @max_tasks_per_actor.setter
@@ -67,7 +68,7 @@ class _ActorPool(ABC):
         ...
 
     @property
-    def initializer(self) -> Optional[Callable[..., Any]]:
+    def initializer(self) -> Union[None, Callable[..., Any]]:
         ...
 
     @initializer.setter
@@ -97,10 +98,10 @@ class _ActorPool(ABC):
         ...
 
 
-class _ActorPoolBoilerPlate(_ActorPool):
+class _AbstractActorPool(_ActorPoolBase, ABC):
 
     """
-    Boilerplate class for actor pools.
+    Common actor pool methods and attributes
     """
 
     def __init__(
@@ -119,11 +120,15 @@ class _ActorPoolBoilerPlate(_ActorPool):
         ]
         return
 
+    @abstractmethod
+    def next(self) -> _PoolActor:
+        ...
+
     def get_actor_ids(self) -> list[str]:
         return [i["actor"]._ray_actor_id.hex() for i in self.pool]
 
     @property
-    def max_tasks_per_actor(self) -> Optional[int]:
+    def max_tasks_per_actor(self) -> Union[None, int]:
         return self._max_tasks_per_actor
 
     @max_tasks_per_actor.setter
@@ -149,7 +154,7 @@ class _ActorPoolBoilerPlate(_ActorPool):
         return
 
     @property
-    def initializer(self) -> Optional[Callable[..., Any]]:
+    def initializer(self) -> Union[None, Callable[..., Any]]:
         return self._initializer
 
     @initializer.setter
@@ -249,7 +254,7 @@ class _ActorPoolBoilerPlate(_ActorPool):
         return pool_actor["actor"]
 
 
-class _BalancedActorPool(_ActorPoolBoilerPlate):
+class _BalancedActorPool(_AbstractActorPool):
 
     """This class manages a pool of Ray actors by distributing tasks amongst
     them in a simple balanced fashion - actors with the fewest scheduled tasks
@@ -277,7 +282,7 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
 
     def get_actor_task_counts(self) -> dict[str, int]:
         actor_tasks = {actor_id: 0 for actor_id in self.get_actor_ids()}
-        for task_state in rus.list_tasks():
+        for task_state in ray_state.list_tasks():
             t_actor_id = task_state.actor_id
             assert t_actor_id is not None
             if all(
@@ -312,7 +317,7 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
         return pool_actor
 
 
-class _RoundRobinActorPool(_ActorPoolBoilerPlate):
+class _RoundRobinActorPool(_AbstractActorPool):
 
     """This class manages a pool of Ray actors by distributing tasks amongst
     them in a simple round-robin fashion. Functions are executed remotely in
@@ -358,7 +363,7 @@ class _RoundRobinActorPool(_ActorPoolBoilerPlate):
         return obj
 
 
-@PublicAPI(stability="alpha")  # type: ignore
+@PublicAPI(stability="alpha")
 class RayExecutor(Executor):
 
     """RayExecutor is a drop-in replacement for ProcessPoolExecutor and
@@ -393,7 +398,7 @@ class RayExecutor(Executor):
         concurrent.futures.ProcessPoolExecutor but is unused.
     futures : list[Future[Any]]
         Aggregated Futures from initiated tasks
-    actor_pool : _ActorPool
+    actor_pool : _AbstractActorPool
         A container of Actor objects over which the tasks will be distributed.
 
     All additional keyword arguments are passed to ray.init()
@@ -408,7 +413,7 @@ class RayExecutor(Executor):
     """
 
     futures: list[Future[Any]]
-    actor_pool: _ActorPool
+    actor_pool: _AbstractActorPool
 
     def __init__(
         self,
@@ -645,11 +650,8 @@ class RayExecutor(Executor):
             are completed or running will not be cancelled.
         """
 
-        print(0)
         if self.shutdown_ray is None:
-            print(1)
             if self._initialised_ray:
-                print(2)
                 self._shutdown_ray(wait, cancel_futures)
         else:
             if self.shutdown_ray:
