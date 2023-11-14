@@ -4,7 +4,6 @@ from collections import namedtuple
 from typing import Optional
 
 import ray
-from ray._private.accelerators.tpu import TPUAcceleratorManager
 import ray._private.ray_constants as ray_constants
 
 

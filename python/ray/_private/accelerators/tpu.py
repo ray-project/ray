@@ -3,7 +3,7 @@ import re
 import glob
 import requests
 import logging
-from typing import Optional, List, Mapping, Tuple
+from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 

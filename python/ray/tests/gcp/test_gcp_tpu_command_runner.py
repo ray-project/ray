@@ -221,11 +221,6 @@ def test_tpu_pod_resources():
     instance = MockTpuInstance(num_workers=num_workers)
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
-    ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
-        ssh_user_hash[:10], ssh_control_hash[:10]
-    )
     args = {
         "instance": instance,
         "log_prefix": "prefix",
