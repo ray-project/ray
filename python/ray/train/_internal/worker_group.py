@@ -385,13 +385,14 @@ class WorkerGroup:
         for worker in self.workers:
             ip_to_workers[worker.metadata.node_ip].append(worker)
 
-        # Sort workers on the same node by GPU id
+        # Sort workers on the same node by the lowest GPU id
+        # More details: https://github.com/ray-project/ray/issues/40803
+        def get_lowest_gpu_id(worker) -> int:
+            gpu_ids = worker.metadata.resource_ids.get("GPU", [])
+            return min(map(int, gpu_ids), default=0)
+
         for node_ip in ip_to_workers:
-            ip_to_workers[node_ip].sort(
-                key=lambda worker: min(
-                    map(int, worker.metadata.resource_ids.get("GPU", ["0"]))
-                )
-            )
+            ip_to_workers[node_ip].sort(key=get_lowest_gpu_id)
 
         sorted_workers = []
         for workers in ip_to_workers.values():
