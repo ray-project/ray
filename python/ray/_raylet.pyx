@@ -3191,8 +3191,18 @@ cdef class CoreWorker:
             ).ShouldCaptureChildTasksInPlacementGroup()
 
     def update_task_is_debugger_paused(self, is_debugger_paused):
+        cdef:
+            TaskID task_id_in_async_context = async_task_id.get()
+            TaskID current_task = self.get_current_task_id()
+
+        # Get the correct task Id based on the context
+        if task_id_in_async_context is not None:
+            current_c_task_id = task_id_in_async_context.native()
+        else:
+            current_c_task_id = current_task.native()
+
         return CCoreWorkerProcess.GetCoreWorker(
-            ).UpdateTaskIsDebuggerPaused(is_debugger_paused)
+            ).UpdateTaskIsDebuggerPaused(current_c_task_id, is_debugger_paused)
 
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)

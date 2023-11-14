@@ -4327,8 +4327,9 @@ void CoreWorker::RecordTaskLogEnd(int64_t stdout_end_offset,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
 }
 
-void CoreWorker::UpdateTaskIsDebuggerPaused(const bool is_debugger_paused) {
-  auto current_task = worker_context_.GetCurrentTask();
+void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
+                                            const bool is_debugger_paused) {
+  auto current_task = task_manager_->GetTaskSpec(task_id);
   RAY_CHECK(current_task)
       << "We should have set the current task spec before executing the task.";
   RAY_LOG(DEBUG) << "Task " << current_task->TaskId() << " is paused by debugger set to"
