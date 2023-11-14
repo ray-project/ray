@@ -386,8 +386,8 @@ class WorkerGroup:
             ip_to_workers[worker.metadata.node_ip].append(worker)
 
         # Sort workers on the same node by GPU id
-        for node_ip in self.workers:
-            self.workers[node_ip].sort(
+        for node_ip in ip_to_workers:
+            ip_to_workers[node_ip].sort(
                 key=lambda worker: min(
                     map(int, worker.metadata.resource_ids.get("GPU", ["0"]))
                 )
