@@ -1,12 +1,34 @@
 import pathlib
 import sys
 import urllib
-from typing import TYPE_CHECKING, List, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from ray.data._internal.util import _resolve_custom_scheme
 
 if TYPE_CHECKING:
     import pyarrow
+
+
+def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
+    """Check if a path has a file extension in the provided list.
+
+    Examples:
+        >>> _has_file_extension("foo.csv", ["csv"])
+        True
+        >>> _has_file_extension("foo.csv", ["json", "jsonl"])
+        False
+        >>> _has_file_extension("foo.csv", None)
+        True
+
+    Args:
+        path: The path to check.
+        extensions: A list of extensions to check against. If `None`, any extension is
+            considered valid.
+    """
+    if extensions is None:
+        return True
+    # `Path.suffix` includes a leading ".", so we strip it.
+    return pathlib.Path(path).suffix[1:] in extensions
 
 
 def _resolve_paths_and_filesystem(

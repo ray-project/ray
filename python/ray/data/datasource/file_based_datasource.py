@@ -43,8 +43,11 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.data.datasource.path_util import (
+    _has_file_extension,
+    _resolve_paths_and_filesystem,
+)
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -70,6 +73,7 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 OPEN_FILE_MAX_ATTEMPTS = 10
 
 
+@Deprecated
 @PublicAPI(stability="beta")
 class FileExtensionFilter(PathPartitionFilter):
     """A file-extension-based path filter that filters files that don't end
@@ -87,6 +91,12 @@ class FileExtensionFilter(PathPartitionFilter):
         file_extensions: Union[str, List[str]],
         allow_if_no_extension: bool = False,
     ):
+        warnings.warn(
+            "`FileExtensionFilter` is deprecated. Instead, set the `file_extensions` "
+            "parameter of `read_xxx()` APIs.",
+            DeprecationWarning,
+        )
+
         if isinstance(file_extensions, str):
             file_extensions = [file_extensions]
 
@@ -144,6 +154,7 @@ class FileBasedDatasource(Datasource):
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
         shuffle: Union[Literal["files"], None] = None,
+        file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
         self._schema = schema
@@ -188,6 +199,16 @@ class FileBasedDatasource(Datasource):
                 raise ValueError(
                     "No input files found to read. Please double check that "
                     "'partition_filter' field is set properly."
+                )
+
+        if file_extensions is not None:
+            path_to_size = dict(zip(paths, file_sizes))
+            paths = [p for p in paths if _has_file_extension(p, file_extensions)]
+            file_sizes = [path_to_size[p] for p in paths]
+            if len(paths) == 0:
+                raise ValueError(
+                    "No input files found to read. Please double check that "
+                    "'file_extensions' field is set properly."
                 )
 
         self._file_metadata_shuffler = None
@@ -588,12 +609,6 @@ class FileBasedDatasource(Datasource):
         of `_write_block()`.
         """
         raise NotImplementedError
-
-    @classmethod
-    def file_extension_filter(cls) -> Optional[PathPartitionFilter]:
-        if cls._FILE_EXTENSION is None:
-            return None
-        return FileExtensionFilter(cls._FILE_EXTENSION)
 
     @property
     def supports_distributed_reads(self) -> bool:

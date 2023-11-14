@@ -557,6 +557,7 @@ def read_parquet(
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -695,6 +696,7 @@ def read_parquet(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
     return read_datasource(
         datasource,
@@ -712,15 +714,14 @@ def read_images(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = ImageDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     size: Optional[Tuple[int, int]] = None,
     mode: Optional[str] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSION,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -840,6 +841,7 @@ def read_images(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
     return read_datasource(
         datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
@@ -857,10 +859,9 @@ def read_parquet_bulk(
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
-    partition_filter: Optional[PathPartitionFilter] = (
-        ParquetBaseDatasource.file_extension_filter()
-    ),
+    partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = ParquetBaseDatasource._FILE_EXTENSION,
     **arrow_parquet_args,
 ) -> Dataset:
     """Create :class:`~ray.data.Dataset` from parquet files without reading metadata.
@@ -954,6 +955,7 @@ def read_parquet_bulk(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        file_extensions=file_extensions,
         **arrow_parquet_args,
     )
     return read_datasource(
@@ -972,12 +974,11 @@ def read_json(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = JSONDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSION,
     **arrow_json_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from JSON and JSONL files.
@@ -1085,6 +1086,7 @@ def read_json(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
     return read_datasource(
         datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
@@ -1104,6 +1106,7 @@ def read_csv(
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
     **arrow_csv_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from CSV files.
@@ -1172,9 +1175,8 @@ def read_csv(
 
         Read only ``*.csv`` files from a directory.
 
-        >>> from ray.data.datasource import FileExtensionFilter
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
-        ...     partition_filter=FileExtensionFilter("csv"))
+        ...     file_extensions=["csv"])
         Dataset(num_blocks=..., num_rows=1, schema={a: int64, b: int64})
 
     Args:
@@ -1208,9 +1210,6 @@ def read_csv(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
-            To filter out all file paths except those whose file extension
-            matches e.g., "*.csv*", you can provide a
-            :class:`~ray.data.datasource.FileExtensionFilter`.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
@@ -1241,6 +1240,7 @@ def read_csv(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
     return read_datasource(
         datasource,
@@ -1264,6 +1264,7 @@ def read_text(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
@@ -1315,9 +1316,6 @@ def read_text(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
-            To filter out all file paths except those whose file extension
-            matches e.g., "*.txt*", you can provide a
-            :class:`~ray.data.datasource.FileExtensionFilter`.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
@@ -1343,6 +1341,7 @@ def read_text(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
     return read_datasource(
         datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
@@ -1357,12 +1356,11 @@ def read_numpy(
     parallelism: int = -1,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = NumpyDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSION,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
@@ -1421,6 +1419,7 @@ def read_numpy(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
     return read_datasource(
         datasource,
@@ -1440,6 +1439,7 @@ def read_tfrecords(
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1534,6 +1534,7 @@ def read_tfrecords(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
     return read_datasource(datasource, parallelism=parallelism)
 
@@ -1553,6 +1554,7 @@ def read_webdataset(
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
@@ -1606,6 +1608,7 @@ def read_webdataset(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
     return read_datasource(datasource, parallelism=parallelism)
 
@@ -1624,6 +1627,7 @@ def read_binary_files(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from binary files of arbitrary contents.
 
@@ -1707,6 +1711,7 @@ def read_binary_files(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
     return read_datasource(
         datasource, parallelism=parallelism, ray_remote_args=ray_remote_args

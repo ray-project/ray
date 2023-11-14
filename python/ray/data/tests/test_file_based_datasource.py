@@ -32,12 +32,12 @@ def test_file_extensions(ray_start_regular_shared, tmp_path):
         file.write("ham")
 
     datasource = MockFileBasedDatasource([csv_path, txt_path], file_extensions=None)
-    assert datasource.input_files() == [csv_path, txt_path]
+    ds = ray.data.read_datasource(datasource)
+    assert ds.input_files() == [csv_path, txt_path]
 
-    datasource = MockFileBasedDatasource(
-        ["file.csv", "file.txt"], file_extensions=["csv"]
-    )
-    assert datasource.input_files() == [csv_path]
+    datasource = MockFileBasedDatasource([csv_path, txt_path], file_extensions=["csv"])
+    ds = ray.data.read_datasource(datasource)
+    assert ds.input_files() == [csv_path]
 
 
 def test_open_file_with_retry(ray_start_regular_shared):
