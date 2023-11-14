@@ -285,7 +285,7 @@ class GCPNodeProvider(NodeProvider):
         To enable TPU pod autoscaling, we provide the TPU accelerator
         type as a resource that only exists on worker 0 of the pod slice.
         For instance, a v4-16 should have the resource labels:
-            worker 0: resources = {"TPU": 4, "TPU-v4-16": 1}
+            worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
             worker 1: resources = {"TPU": 4}
 
         For the autoscaler to correctly process the demands of
@@ -294,10 +294,6 @@ class GCPNodeProvider(NodeProvider):
 
         Therefore we fill out TPU pods appropriately by providing the
         expected resource which we can deduce from the cluster config.
-
-        Note that during the TPU resource detection phase (in
-        accelerators/tpu.py), we remove the TPU accelerator resource
-        for all workers that are not worker 0.
 
         """
         if "available_node_types" not in cluster_config:
@@ -317,7 +313,7 @@ class GCPNodeProvider(NodeProvider):
                     )
                 if not accelerator_type:
                     continue
-                autodetected_resources[f"TPU-{accelerator_type}"] = 1
+                autodetected_resources[f"TPU-{accelerator_type}-head"] = 1
                 available_node_types[node_type]["resources"].update(
                     autodetected_resources
                 )

@@ -53,6 +53,17 @@ class AcceleratorManager(ABC):
 
     @staticmethod
     @abstractmethod
+    def get_current_node_additional_resources() -> Optional[dict]:
+        """Get any additional resources required for the current node.
+
+        Returns:
+            The detected accelerator type of this family: e.g., H100 for Nvidia GPU.
+            Return None if it's unknown or the node doesn't have
+            accelerators of this family.
+        """
+
+    @staticmethod
+    @abstractmethod
     def validate_resource_request_quantity(
         quantity: float,
     ) -> Tuple[bool, Optional[str]]:

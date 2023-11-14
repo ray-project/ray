@@ -228,11 +228,11 @@ def test_tpu_resource_returns_tpu_command_runner(test_case):
 @pytest.mark.parametrize(
     "test_case",
     [
-        ({"acceleratorType": "v4-16"}, "TPU-v4-16"),
-        ({"acceleratorType": "v4-32"}, "TPU-v4-32"),
-        ({"acceleratorType": "v3-8"}, "TPU-v3-8"),
-        ({"acceleratorConfig": {"type": "V4", "topology": "2x2x2"}}, "TPU-v4-16"),
-        ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, "TPU-v4-128"),
+        ({"acceleratorType": "v4-16"}, "TPU-v4-16-head"),
+        ({"acceleratorType": "v4-32"}, "TPU-v4-32-head"),
+        ({"acceleratorType": "v3-8"}, "TPU-v3-8-head"),
+        ({"acceleratorConfig": {"type": "V4", "topology": "2x2x2"}}, "TPU-v4-16-head"),
+        ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, "TPU-v4-128-head"),
     ],
 )
 def test_tpu_node_fillout(test_case):

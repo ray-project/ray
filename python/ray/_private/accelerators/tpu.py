@@ -329,11 +329,11 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         return ray_accelerator_type
 
-    def postprocess_resources(resources: Mapping[str, float]):
-        """Apply TPU pod-specific postprocessing to input resources.
+    def get_current_node_additional_resources() -> Optional[dict]:
+        """Get additional resources required for TPU nodes.
 
-        This will populate the TPU version and additional resources
-        used for TPU pod execution.
+        This will populate the TPU pod type and the TPU name which
+        is used for TPU pod execution.
 
         When running workloads on a TPU pod, we need a way to run
         the same binary on every worker in the TPU pod.
@@ -365,29 +365,23 @@ class TPUAcceleratorManager(AcceleratorManager):
             tpu_executable = executable.options(resources={"TPU": 4, tpu_name: 1})
             return [tpu_executable.remote() for _ in range(num_workers)]
 
-        This means that we will have to make sure that the resource label
-        (in this case, TPU-v4-16) persists on only worker 0 of the pod slice.
-        Therefore we remove this on all non worker 0 nodes.
+        Returns:
+            A dictionary representing additional resources that may be
+            necessary for a particular accelerator type.
 
         """
+        resources = {}
         tpu_id = TPUAcceleratorManager.get_current_node_tpu_id()
         worker_id = TPUAcceleratorManager._get_current_node_tpu_worker_id()
         tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
 
         if tpu_id and worker_id is not None and tpu_pod_type:
-            pod_resource_name = f"TPU-{tpu_pod_type}"
+            pod_resource_name = f"TPU-{tpu_pod_type}-head"
             # Add the name of the TPU ID to the resource.
             resources[tpu_id] = 1
             # Only add in the TPU pod type resource to worker 0.
             if worker_id == 0:
                 resources[pod_resource_name] = 1
-            else:
-                if pod_resource_name in resources:
-                    # We need to remove the TPU pod type resource from
-                    # non worker 0 worker nodes. This will ensure that TPU pod
-                    # workloads schedule on worker 0 in the cluster.
-                    # See the function description for more details.
-                    resources.pop(pod_resource_name)
         else:
             logging.info(
                 "Failed to configure TPU pod. Got: "
@@ -396,3 +390,6 @@ class TPUAcceleratorManager(AcceleratorManager):
                 worker_id,
                 tpu_pod_type,
             )
+        if resources:
+            return resources
+        return None

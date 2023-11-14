@@ -215,13 +215,13 @@ def test_set_tpu_visible_ids_and_bounds(tpu_chips):
 @pytest.mark.parametrize(
     "test_config",
     [
-        (0, {"TPU-v4-16": 1, "my-tpu": 1, "TPU": 4}),
-        (1, {"my-tpu": 1, "TPU": 4}),
+        (0, {"TPU-v4-16-head": 1, "my-tpu": 1}),
+        (1, {"my-tpu": 1}),
     ],
 )
 def test_tpu_pod_detect_and_configure_worker(test_config):
     worker_id, expected_value = test_config
-    resources = {"TPU": 4}
+    final_resources = {}
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_id",
         return_value="my-tpu",
@@ -236,9 +236,11 @@ def test_tpu_pod_detect_and_configure_worker(test_config):
                 "._get_current_node_tpu_worker_id",
                 return_value=worker_id,
             ):
-                TPUAcceleratorManager.postprocess_resources(resources=resources)
+                final_resources = (
+                    TPUAcceleratorManager.get_current_node_additional_resources()
+                )
 
-    assert resources == expected_value
+    assert final_resources == expected_value
 
 
 def test_get_current_pod_name_smoke():
