@@ -101,7 +101,7 @@ available_node_types:
                   sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu113
             # Make sure to set scheduling->onHostMaintenance to TERMINATE when GPUs are present
             guestAccelerators:
-              - acceleratorType: nvidia-tesla-t4  # Updated GPU type
+              - acceleratorType: nvidia-tesla-t4
                 acceleratorCount: 1
             metadata:
               items:
