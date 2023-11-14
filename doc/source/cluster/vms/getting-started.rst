@@ -29,43 +29,50 @@ Setup
 
 Before we start, you will need to install some Python dependencies as follows:
 
-.. tabs::
+.. tab-set::
 
-   .. tab:: Ray Team Supported
+   .. tab-item:: Ray Team Supported
+        :sync: Ray Team Supported
 
-      .. tabs::
+      .. tab-set::
 
-         .. tab:: AWS
+         .. tab-item:: AWS
+            :sync: AWS
 
             .. code-block:: shell
 
                 $ pip install -U "ray[default]" boto3
 
-         .. tab:: GCP
+         .. tab-item:: GCP
+            :sync: GCP
 
             .. code-block:: shell
 
                 $ pip install -U "ray[default]" google-api-python-client
 
-   .. tab:: Community Supported
+   .. tab-item:: Community Supported
+        :sync: Community Supported
 
-      .. tabs::
+      .. tab-set::
 
-         .. tab:: Azure
+         .. tab-item:: Azure
+            :sync: Azure
 
             .. code-block:: shell
 
                 $ pip install -U "ray[default]" azure-cli azure-core
 
-         .. tab:: Aliyun
+         .. tab-item:: Aliyun
+            :sync: Aliyun
 
             .. code-block:: shell
 
                 $ pip install -U "ray[default]" aliyun-python-sdk-core aliyun-python-sdk-ecs
-            
+
             Aliyun Cluster Launcher Maintainers (GitHub handles): @zhuangzhuang131419, @chenk008
 
-         .. tab:: vSphere
+         .. tab-item:: vSphere
+            :sync: vSphere
 
             .. code-block:: shell
 
@@ -76,36 +83,43 @@ Before we start, you will need to install some Python dependencies as follows:
 
 Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
 
-.. tabs::
+.. tab-set::
 
-   .. tab:: Ray Team Supported
+   .. tab-item:: Ray Team Supported
+        :sync: Ray Team Supported
 
-      .. tabs::
+      .. tab-set::
 
-         .. tab:: AWS
+         .. tab-item:: AWS
+            :sync: AWS
 
             Configure your credentials in ``~/.aws/credentials`` as described in `the AWS docs <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html>`_.
 
-         .. tab:: GCP
+         .. tab-item:: GCP
+            :sync: GCP
 
             Set the ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable as described in `the GCP docs <https://cloud.google.com/docs/authentication/getting-started>`_.
 
-   .. tab:: Community Supported
+   .. tab-item:: Community Supported
+        :sync: Community Supported
 
-      .. tabs::
+      .. tab-set::
 
-         .. tab:: Azure
+         .. tab-item:: Azure
+            :sync: Azure
 
             Log in using ``az login``, then configure your credentials with ``az account set -s <subscription_id>``.
 
-         .. tab:: Aliyun
+         .. tab-item:: Aliyun
+            :sync: Aliyun
 
             Obtain and set the AccessKey pair of the Aliyun account as described in `the docs <https://www.alibabacloud.com/help/en/doc-detail/175967.htm>`__.
 
             Make sure to grant the necessary permissions to the RAM user and set the AccessKey pair in your cluster config file.
             Refer to the provided `aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ for a sample cluster config.
 
-         .. tab:: vSphere
+         .. tab-item:: vSphere
+            :sync: vSphere
 
             .. code-block:: shell
 
@@ -205,18 +219,21 @@ To start a Ray Cluster, first we need to define the cluster configuration. The c
 
 A minimal sample cluster configuration file looks as follows:
 
-.. tabs::
+.. tab-set::
 
-   .. tab:: Ray Team Supported
+   .. tab-item:: Ray Team Supported
+        :sync: Ray Team Supported
 
-      .. tabs::
+      .. tab-set::
 
-         .. tab:: AWS
+         .. tab-item:: AWS
+            :sync: AWS
 
             .. literalinclude:: ../../../../python/ray/autoscaler/aws/example-minimal.yaml
                :language: yaml
 
-         .. tab:: GCP
+         .. tab-item:: GCP
+            :sync: GCP
 
             .. code-block:: yaml
 
@@ -228,11 +245,13 @@ A minimal sample cluster configuration file looks as follows:
                     type: gcp
                     region: us-west1
 
-   .. tab:: Community Supported
+   .. tab-item:: Community Supported
+        :sync: Community Supported
 
-      .. tabs::
+      .. tab-set::
 
-         .. tab:: Azure
+         .. tab-item:: Azure
+            :sync: Azure
 
             .. code-block:: yaml
 
@@ -254,13 +273,15 @@ A minimal sample cluster configuration file looks as follows:
                     # changes to this should match what is specified in file_mounts
                     ssh_public_key: ~/.ssh/id_rsa.pub
 
-         .. tab:: Aliyun
+         .. tab-item:: Aliyun
+            :sync: Aliyun
 
-            Please refer to `example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__. 
+            Please refer to `example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__.
 
             Make sure your account balance is not less than 100 RMB, otherwise you will receive the error `InvalidAccountStatus.NotEnoughBalance`.
 
-         .. tab:: vSphere
+         .. tab-item:: vSphere
+            :sync: vSphere
 
             .. literalinclude:: ../../../../python/ray/autoscaler/vsphere/example-minimal.yaml
                :language: yaml
