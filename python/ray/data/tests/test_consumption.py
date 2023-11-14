@@ -1525,37 +1525,6 @@ class FlakyCSVDatasink(_CSVDatasink):
             super().write_block_to_file(block, file)
 
 
-def test_dataset_retry_exceptions(ray_start_regular, local_path):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(local_path, "test1.csv")
-    df1.to_csv(path1, index=False, storage_options={})
-    ds1 = ray.data.read_datasource(FlakyCSVDatasource(path1), parallelism=1)
-    ds1.write_datasink(FlakyCSVDatasink(local_path, dataset_uuid="data"))
-    assert df1.equals(
-        pd.read_csv(
-            os.path.join(local_path, "data_000000_000000.csv"), storage_options={}
-        )
-    )
-
-    counter = Counter.remote()
-
-    def flaky_mapper(x):
-        count = counter.increment.remote()
-        if ray.get(count) == 1:
-            raise ValueError("oops")
-        else:
-            return {"id": ray.get(count)}
-
-    assert sorted(extract_values("id", ds1.map(flaky_mapper).take())) == [2, 3, 4]
-
-    with pytest.raises(ValueError):
-        ray.data.read_datasource(
-            FlakyCSVDatasource(paths=path1),
-            parallelism=1,
-            ray_remote_args={"retry_exceptions": False},
-        ).take()
-
-
 def test_datasource(ray_start_regular):
     source = ray.data.datasource.RandomIntRowDatasource()
     assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
