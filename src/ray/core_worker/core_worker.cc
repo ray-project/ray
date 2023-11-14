@@ -4338,7 +4338,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
   task_manager_->RecordTaskStatusEvent(
       current_task_it->second.AttemptNumber(),
       current_task_it->second,
-      rpc::TaskStatus::RUNNING,
+      rpc::TaskStatus::NIL,
       /* include_task_info */ false,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused));
 }

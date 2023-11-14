@@ -531,7 +531,7 @@ def test_is_debugger_paused(shutdown_only):
     )
 
 
-@pytest.mark.parametrize("actor_concurrency", [3])
+@pytest.mark.parametrize("actor_concurrency", [1, 3])
 def test_is_debugger_paused_actor(shutdown_only, actor_concurrency):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
@@ -558,7 +558,7 @@ def test_is_debugger_paused_actor(shutdown_only, actor_concurrency):
     wait_for_condition(verify, expected_task_name="TestActor.main_task")
 
 
-@pytest.mark.parametrize("actor_concurrency", [3])
+@pytest.mark.parametrize("actor_concurrency", [1, 3])
 def test_is_debugger_paused_threaded_actor(shutdown_only, actor_concurrency):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
@@ -594,7 +594,7 @@ def test_is_debugger_paused_threaded_actor(shutdown_only, actor_concurrency):
     wait_for_condition(verify, expected_task_name="ThreadedActor.main_task")
 
 
-@pytest.mark.parametrize("actor_concurrency", [3])
+@pytest.mark.parametrize("actor_concurrency", [1, 3])
 def test_is_debugger_paused_async_actor(shutdown_only, actor_concurrency):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
