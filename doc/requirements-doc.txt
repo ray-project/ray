@@ -1,35 +1,32 @@
 # Production requirements. This is what readthedocs.com picks up
 
-ray
-watchfiles # Required because sphinx-click doesn't support mocking
+git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
+watchfiles==0.20.0 # Required because sphinx-click doesn't support mocking
 
 # Syntax highlighting
-Pygments==2.13.0
+Pygments==2.16.1
 
 # Sphinx
-sphinx==4.3.2
-sphinx-click==3.0.2
-sphinx-copybutton==0.4.0
+sphinx==7.2.6
+sphinx-click==5.0.1
+sphinx-copybutton==0.5.2
 sphinxemoji==0.2.0
-sphinx-jsonschema==1.17.2
-sphinx-version-warning==1.1.2
-sphinx-book-theme==0.3.3
-sphinx-external-toc==0.2.4
-sphinx-sitemap==2.2.0
+sphinx-jsonschema==1.19.1
+sphinx-sitemap==2.5.1
 sphinxcontrib-redoc==1.6.0
-sphinx-tabs==3.4.0
 sphinx-remove-toctrees==0.0.3
+sphinx_design==0.5.0
+pydata-sphinx-theme==0.14.1
 autodoc_pydantic==2.0.1
-sphinx_design==0.4.1
 
 pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
 
 # MyST
-myst-parser==0.15.2
-myst-nb==0.13.1
+myst-parser==2.0.0 # Needed to parse markdown
+myst-nb==1.0.0rc0 # Most recent version of myst-nb; pin when new release is made
 
 # Jupyter conversion
-jupytext==1.13.6
+jupytext==1.15.2
 
 # Pin urllib to avoid downstream ssl incompatibility issues
 urllib3 < 1.27
