@@ -40,14 +40,16 @@ namespace ray {
 namespace {
 
 #if defined(_WIN32)
-void setFdCloseOnFork(const HANDLE &handle) {
-  // Windows
-  HANDLE handle = (HANDLE)socket.native_handle();
-  SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0);
-  RAY_LOG(INFO) << "set HANDLE_FLAG_INHERIT to handle " << handle;
+
+// Don't care what exact type is in windows... Looks like to be an asio specific type.
+template <typename NativeHandleType>
+void setFdCloseOnFork(const NativeHandleType &handle) {
+  // In Windows we don't need to do anything, beacuse in CreateProcess we pass
+  // bInheritHandles = false which means we don't inherit handles or sockets.
+  return;
 }
 #else
-void setFdCloseOnFork(const int &fd) {
+void setFdCloseOnFork(int fd) {
   int flags = fcntl(fd, F_GETFD, 0);
   if (flags != -1) {
     fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
