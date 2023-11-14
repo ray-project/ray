@@ -406,10 +406,6 @@ class NodeResourceInfoGcsServiceHandler {
  public:
   virtual ~NodeResourceInfoGcsServiceHandler() = default;
 
-  virtual void HandleGetResources(GetResourcesRequest request,
-                                  GetResourcesReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleGetAllAvailableResources(
       rpc::GetAllAvailableResourcesRequest request,
       rpc::GetAllAvailableResourcesReply *reply,
@@ -441,7 +437,6 @@ class NodeResourceInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetDrainingNodes);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
