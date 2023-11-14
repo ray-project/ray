@@ -3,7 +3,7 @@ import re
 import glob
 import requests
 import logging
-from typing import Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 TPU_VALID_CHIP_OPTIONS = (1, 2, 4)
 GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
 GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
-GKE_TPU_ID_ENV_VAR = "TPU_ID"
+GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
 
 # Constants for accessing the `accelerator-type` from TPU VM
 # instance metadata.
@@ -229,8 +229,8 @@ class TPUAcceleratorManager(AcceleratorManager):
         return None
 
     @staticmethod
-    def get_current_node_tpu_id() -> Optional[str]:
-        """Return the id of the TPU pod that this worker node is a part of.
+    def get_current_node_tpu_name() -> Optional[str]:
+        """Return the name of the TPU pod that this worker node is a part of.
 
         For instance, if the TPU was created with name "my-tpu", this function
         will return "my-tpu".
@@ -239,19 +239,19 @@ class TPUAcceleratorManager(AcceleratorManager):
         name will typically be something like "ray-my-tpu-cluster-worker-aa946781-tpu".
 
         In case the TPU was created through KubeRay, we currently expect that the
-        environment variable TPU_ID is set per TPU pod slice, in which case
+        environment variable TPU_NAME is set per TPU pod slice, in which case
         this function will return the value of that environment variable.
 
         """
         try:
             # Start with GKE-based check
-            tpu_id = os.getenv(GKE_TPU_ID_ENV_VAR, None)
-            if not tpu_id:
+            tpu_name = os.getenv(GKE_TPU_NAME_ENV_VAR, None)
+            if not tpu_name:
                 # GCE-based VM check
-                tpu_id = _get_tpu_metadata(key=GCE_TPU_INSTANCE_ID_KEY)
-            return tpu_id
+                tpu_name = _get_tpu_metadata(key=GCE_TPU_INSTANCE_ID_KEY)
+            return tpu_name
         except ValueError as e:
-            logging.debug("Could not get TPU worker id: %s", e)
+            logging.debug("Could not get TPU name: %s", e)
             return None
 
     @staticmethod
@@ -332,7 +332,7 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         return ray_accelerator_type
 
-    def get_current_node_additional_resources() -> Optional[dict]:
+    def get_current_node_additional_resources() -> Optional[Dict[str, float]]:
         """Get additional resources required for TPU nodes.
 
         This will populate the TPU pod type and the TPU name which
@@ -360,7 +360,7 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         We could broadcast this on a TPU pod (e.g. a v4-16) as follows:
 
-        @ray.remote(resources={"TPU-v4-16"})
+        @ray.remote(resources={"TPU-v4-16-head"})
         def run_jax_fn(executable):
             # Note this will execute on worker 0
             tpu_name = ray.util.accelerators.tpu.get_tpu_pod_name()
@@ -374,22 +374,22 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         """
         resources = {}
-        tpu_id = TPUAcceleratorManager.get_current_node_tpu_id()
+        tpu_name = TPUAcceleratorManager.get_current_node_tpu_name()
         worker_id = TPUAcceleratorManager._get_current_node_tpu_worker_id()
         tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
 
-        if tpu_id and worker_id is not None and tpu_pod_type:
-            pod_resource_name = f"TPU-{tpu_pod_type}-head"
-            # Add the name of the TPU ID to the resource.
-            resources[tpu_id] = 1
+        if tpu_name and worker_id is not None and tpu_pod_type:
+            pod_head_resource_name = f"TPU-{tpu_pod_type}-head"
+            # Add the name of the TPU to the resource.
+            resources[tpu_name] = 1
             # Only add in the TPU pod type resource to worker 0.
             if worker_id == 0:
-                resources[pod_resource_name] = 1
+                resources[pod_head_resource_name] = 1
         else:
             logging.info(
                 "Failed to configure TPU pod. Got: "
-                "tpu_id: %s, worker_id: %s, accelerator_type: %s",
-                tpu_id,
+                "tpu_name: %s, worker_id: %s, accelerator_type: %s",
+                tpu_name,
                 worker_id,
                 tpu_pod_type,
             )

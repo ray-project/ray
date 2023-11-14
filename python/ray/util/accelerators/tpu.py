@@ -9,7 +9,7 @@ def get_current_pod_name() -> Optional[str]:
     Returns:
       str: the name of the TPU pod. Returns None if not part of a TPU pod.
     """
-    tpu_id = TPUAcceleratorManager.get_current_node_tpu_id()
+    tpu_id = TPUAcceleratorManager.get_current_node_tpu_name()
     if tpu_id == "":
         tpu_id = None
     return tpu_id

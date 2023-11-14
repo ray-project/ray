@@ -112,7 +112,7 @@ def test_get_tpu_unique_id(mock_os, mock_request, test_case):
         mock_os.return_value = None
     else:
         mock_os.return_value = worker_id
-    assert TPUAcceleratorManager.get_current_node_tpu_id() == worker_id
+    assert TPUAcceleratorManager.get_current_node_tpu_name() == worker_id
 
 
 @pytest.mark.parametrize(
@@ -223,7 +223,7 @@ def test_tpu_pod_detect_and_configure_worker(test_config):
     worker_id, expected_value = test_config
     final_resources = {}
     with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_id",
+        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
         return_value="my-tpu",
     ):
         with patch(
@@ -245,7 +245,7 @@ def test_tpu_pod_detect_and_configure_worker(test_config):
 
 def test_get_current_pod_name_smoke():
     with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_id",
+        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
         return_value="my-tpu",
     ):
         name = ray.util.accelerators.tpu.get_current_pod_name()
@@ -254,7 +254,7 @@ def test_get_current_pod_name_smoke():
 
 def test_empty_get_current_pod_name_returns_none():
     with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_id",
+        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
         return_value="",
     ):
         name = ray.util.accelerators.tpu.get_current_pod_name()
