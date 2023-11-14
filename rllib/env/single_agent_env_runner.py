@@ -275,6 +275,7 @@ class SingleAgentEnvRunner(EnvRunner):
             for eps in self._episodes
         ]
         for eps in ongoing_episodes_to_return:
+            eps.validate()
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
         # Record last metrics collection.

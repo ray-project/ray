@@ -183,7 +183,7 @@ class SingleAgentEpisode:
             initial_render_image: Optional. An RGB uint8 image from rendering
                 the environment.
         """
-        assert not self.is_done
+        assert not self.is_done and not self.is_numpy
         assert len(self.observations) == 0
         # Assume that this episode is completely empty and has not stepped yet.
         # Leave self.t (and self.t_started) at 0.
@@ -237,7 +237,7 @@ class SingleAgentEpisode:
                 (e.g. `vf_preds`  for PPO).
         """
         # Cannot add data to an already done episode.
-        assert not self.is_done
+        assert not self.is_done and not self.is_numpy
 
         self.observations.append(observation)
         self.actions.append(action)
@@ -270,8 +270,10 @@ class SingleAgentEpisode:
             == len(self.rewards) + 1
             == len(self.actions) + 1
         )
-        for k, v in self.extra_model_outputs.items():
-            assert len(v) == len(self.observations) - 1
+        if len(self.extra_model_outputs) > 0:
+            for k, v in self.extra_model_outputs.items():
+                assert len(v) == len(self.observations) - 1
+
         # Make sure, length of pre-buffer and len(self) make sense.
         assert self._len_pre_buffer + len(self) == len(self.rewards)
 
