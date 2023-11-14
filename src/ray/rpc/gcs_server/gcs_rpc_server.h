@@ -78,6 +78,7 @@ class AutoscalerStateGrpcService : public GrpcService {
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(RequestClusterResourceConstraint);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(GetClusterStatus);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(DrainNode);
+    
   }
 
  private:
@@ -362,6 +363,9 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleGetInternalConfig(GetInternalConfigRequest request,
                                        GetInternalConfigReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleUpdateNodeLabels(UpdateNodeLabelsRequest request, 
+                                      UpdateNodeLabelsReply *reply,
+                                      SendReplyCallback send_reply_callback)=0;
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.
@@ -393,6 +397,7 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(CheckAlive);
+    NODE_INFO_SERVICE_RPC_HANDLER(UpdateNodeLabels);
   }
 
  private:

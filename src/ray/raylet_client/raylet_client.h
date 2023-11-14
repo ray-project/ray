@@ -200,7 +200,7 @@ class RayletClientInterface : public PinObjectsInterface,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
   virtual void UpdateLabel(
-      std::unordered_map<std::string, std::string> &new_labels,
+      const std::unordered_map<std::string, std::string> &new_labels,
       const NodeID &node_id,
       const rpc::ClientCallback<rpc::UpdateLabelReply> &callback)=0;
 
@@ -492,7 +492,7 @@ class RayletClient : public RayletClientInterface {
       
   void UpdateLabel(
       
-      std::unordered_map<std::string, std::string>  &new_labels,
+      const std::unordered_map<std::string, std::string>  &new_labels,
       const NodeID &node_id,
       const rpc::ClientCallback<rpc::UpdateLabelReply> &callback) override;
 

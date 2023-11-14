@@ -538,7 +538,7 @@ void raylet::RayletClient::UpdateResourceUsage(
 
 
 void raylet::RayletClient::UpdateLabel(
-    std::unordered_map<std::string, std::string>  &new_labels,
+    const std::unordered_map<std::string, std::string>  &new_labels,
     const NodeID &node_id,
     const rpc::ClientCallback<rpc::UpdateLabelReply> &callback) {
 

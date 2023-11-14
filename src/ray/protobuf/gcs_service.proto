@@ -436,6 +436,29 @@ message DrainNodeReply {
   repeated DrainNodeStatus drain_node_status = 2;
 }
 
+
+
+
+
+message UpdateNodeLabelsRequest {
+  // Batched information of nodes to update labels.
+  bytes node_id = 1;
+  map<string,string> labels=2;
+}
+
+
+message UpdateNodeLabelsReply {
+  // Whether or not the RPC succeeds.
+  GcsStatus status = 1;
+ 
+}
+
+
+
+
+
+
+
 message InternalKVGetRequest {
   bytes key = 1;
   bytes namespace = 2;
@@ -650,6 +673,10 @@ service NodeInfoGcsService {
   rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
+
+  //update label
+  rpc UpdateNodeLabels(UpdateNodeLabelsRequest) returns (UpdateNodeLabelsReply);
+
 }
 
 message AddTaskEventDataRequest {

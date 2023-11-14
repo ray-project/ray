@@ -79,6 +79,65 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
+
+void GcsNodeManager::HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request, 
+                                            rpc::UpdateNodeLabelsReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback){
+    const auto node_id = NodeID::FromBinary(request.node_id());
+    std::unordered_map<std::string, std::string> new_labels(request.labels().begin(),
+                                                       request.labels().end());
+    UpdateNodeLabels(node_id,new_labels);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    
+}
+
+void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered_map<std::string, std::string> &labels) {
+  std::shared_ptr<rpc::GcsNodeInfo> node;
+  auto iter = alive_nodes_.find(node_id);
+  if (iter != alive_nodes_.end()) {
+    node = std::move(iter->second);
+  }else{
+    return;
+  }
+  rpc::Address remote_address;
+  remote_address.set_raylet_id(node->node_id());
+  remote_address.set_ip_address(node->node_manager_address());
+  remote_address.set_port(node->node_manager_port());
+  node->mutable_labels()->insert(labels.begin(), labels.end());
+  auto on_put_done = [this,
+                      remote_address = remote_address,
+                      labels,
+                      node_id,
+                      node = node](const Status &status) {
+    auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+    RAY_CHECK(raylet_client);
+    // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
+    // this until the proper "drain" behavior is implemented. Currently, before
+    // raylet is killed, it sends a drain request to GCS. That said, this can
+    // happen;
+    // - GCS updates the drain state and kills a raylet gracefully.
+    // - Raylet kills itself and send a drain request of itself to GCS.
+    // - Drain request will become a no-op in GCS.
+    // This behavior is redundant, but harmless. We'll keep this behavior until we
+    // implement the right drain behavior for the simplicity. Check
+    // https://github.com/ray-project/ray/pull/19350 for more details.
+    raylet_client->UpdateLabel(
+        labels,
+        node_id,
+        [this, node_id, node = node](
+            const Status &status, const rpc::UpdateLabelReply &reply) {
+          RAY_LOG(INFO) << "Raylet " << node_id << " label is updated. Status " << status
+                        << ". The information will be published to the cluster.";
+          /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
+          RAY_CHECK_OK(
+              gcs_publisher_->PublishNodeInfo(node_id, *node, nullptr));
+        });
+
+
+    };
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
+}
+
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
                                      rpc::DrainNodeReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {

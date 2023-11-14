@@ -82,6 +82,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                         rpc::CheckAliveReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 
+
+  void HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request, 
+                              rpc::UpdateNodeLabelsReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   void OnNodeFailure(const NodeID &node_id);
 
   /// Add an alive node.
@@ -147,6 +152,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Drain the given node.
   /// Idempotent.
   virtual void DrainNode(const NodeID &node_id);
+
+  virtual void UpdateNodeLabels(const NodeID &node_id,const std::unordered_map<std::string, std::string> &labels);
 
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is

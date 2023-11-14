@@ -349,6 +349,12 @@ class GcsRpcClient {
                              GetInternalConfig,
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
+  
+   /// Unregister a node from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             UpdateNodeLabels,
+                             node_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Get node's resources from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
