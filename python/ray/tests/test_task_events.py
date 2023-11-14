@@ -502,7 +502,7 @@ tune_function()
 def test_is_debugger_paused(shutdown_only):
     ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
 
-    @ray.remote
+    @ray.remote(max_retries=0)
     def f():
         import time
 
@@ -514,14 +514,7 @@ def test_is_debugger_paused(shutdown_only):
         tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
         return len(tasks) == num_paused
 
-    def get_f():
-        f_task = f.remote()
-        return ray.get(f_task)
-
-    import threading
-
-    thd = threading.Thread(target=get_f)
-    thd.start()
+    f_task = f.remote()  # noqa
 
     wait_for_condition(
         verify,
@@ -556,19 +549,11 @@ def test_is_debugger_paused_actor(shutdown_only, actor_concurrency):
         tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
         return len(tasks) == 1 and f"{expected_task_name}_0" in tasks[0]["name"]
 
-    def get_actors():
-        test_actor = TestActor.options(max_concurrency=actor_concurrency).remote()
-        return ray.get(
-            [
-                test_actor.main_task.options(name=f"TestActor.main_task_{i}").remote(i)
-                for i in range(20)
-            ]
-        )
-
-    import threading
-
-    thd = threading.Thread(target=get_actors)
-    thd.start()
+    test_actor = TestActor.options(max_concurrency=actor_concurrency).remote()
+    refs = [  # noqa
+        test_actor.main_task.options(name=f"TestActor.main_task_{i}").remote(i)
+        for i in range(20)
+    ]
 
     wait_for_condition(verify, expected_task_name="TestActor.main_task")
 
@@ -600,23 +585,11 @@ def test_is_debugger_paused_threaded_actor(shutdown_only, actor_concurrency):
         tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
         return len(tasks) == 1 and f"{expected_task_name}_0" in tasks[0]["name"]
 
-    def get_threaded_actors():
-        threaded_actor = ThreadedActor.options(
-            max_concurrency=actor_concurrency
-        ).remote()
-        return ray.get(
-            [
-                threaded_actor.main_task.options(
-                    name=f"ThreadedActor.main_task_{i}"
-                ).remote(i)
-                for i in range(20)
-            ]
-        )
-
-    import threading
-
-    thd = threading.Thread(target=get_threaded_actors)
-    thd.start()
+    threaded_actor = ThreadedActor.options(max_concurrency=actor_concurrency).remote()
+    refs = [  # noqa
+        threaded_actor.main_task.options(name=f"ThreadedActor.main_task_{i}").remote(i)
+        for i in range(20)
+    ]
 
     wait_for_condition(verify, expected_task_name="ThreadedActor.main_task")
 
@@ -632,6 +605,7 @@ def test_is_debugger_paused_async_actor(shutdown_only, actor_concurrency):
                 import time
 
                 # Pause 5 seconds inside debugger
+                print()
                 with ray._private.worker.global_worker.task_paused_by_debugger():
                     time.sleep(5)
 
@@ -640,21 +614,11 @@ def test_is_debugger_paused_async_actor(shutdown_only, actor_concurrency):
         print(tasks)
         return len(tasks) == 1 and f"{expected_task_name}_0" in tasks[0]["name"]
 
-    def get_async_actors():
-        async_actor = AsyncActor.options(max_concurrency=actor_concurrency).remote()
-        return ray.get(
-            [
-                async_actor.main_task.options(name=f"AsyncActor.main_task_{i}").remote(
-                    i
-                )
-                for i in range(20)
-            ]
-        )
-
-    import threading
-
-    thd = threading.Thread(target=get_async_actors)
-    thd.start()
+    async_actor = AsyncActor.options(max_concurrency=actor_concurrency).remote()
+    refs = [  # noqa
+        async_actor.main_task.options(name=f"AsyncActor.main_task_{i}").remote(i)
+        for i in range(20)
+    ]
 
     wait_for_condition(verify, expected_task_name="AsyncActor.main_task")
 

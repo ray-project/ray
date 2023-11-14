@@ -4329,14 +4329,15 @@ void CoreWorker::RecordTaskLogEnd(int64_t stdout_end_offset,
 
 void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
                                             const bool is_debugger_paused) {
-  auto current_task = task_manager_->GetTaskSpec(task_id);
-  RAY_CHECK(current_task)
+  absl::MutexLock lock(&mutex_);
+  auto current_task_it = current_tasks_.find(task_id);
+  RAY_CHECK(current_task_it != current_tasks_.end())
       << "We should have set the current task spec before executing the task.";
-  RAY_LOG(DEBUG) << "Task " << current_task->TaskId() << " is paused by debugger set to"
-                 << is_debugger_paused;
+  RAY_LOG(DEBUG) << "Task " << current_task_it->second.TaskId()
+                 << " is paused by debugger set to" << is_debugger_paused;
   task_manager_->RecordTaskStatusEvent(
-      current_task->AttemptNumber(),
-      *current_task,
+      current_task_it->second.AttemptNumber(),
+      current_task_it->second,
       rpc::TaskStatus::RUNNING,
       /* include_task_info */ false,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused));
