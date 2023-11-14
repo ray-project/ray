@@ -698,7 +698,7 @@ def read_parquet(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
-        include_paths=include_paths
+        include_paths=include_paths,
     )
     return read_datasource(
         datasource,
