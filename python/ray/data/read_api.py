@@ -671,6 +671,7 @@ def read_parquet(
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
         file_extensions: A list of file extensions to filter files by.
+
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
