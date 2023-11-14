@@ -5,7 +5,6 @@ from scipy.stats import beta, norm
 import tree  # pip install dm_tree
 import unittest
 
-from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.tf.tf_action_dist import (
     Beta,
     Categorical,
@@ -82,9 +81,7 @@ class TestActionDistributions(unittest.TestCase):
         dist = distribution_cls(inputs, {}, **(extra_kwargs or {}))
         for _ in range(100):
             sample = dist.sample()
-            if fw == "jax":
-                sample_check = sample
-            elif fw != "tf":
+            if fw != "tf":
                 sample_check = sample.numpy()
             else:
                 sample_check = sess.run(sample)
@@ -100,9 +97,7 @@ class TestActionDistributions(unittest.TestCase):
                     assert bounds[0] in sample_check
                     assert bounds[1] in sample_check
             logp = dist.logp(sample)
-            if fw == "jax":
-                logp_check = logp
-            elif fw != "tf":
+            if fw != "tf":
                 logp_check = logp.numpy()
             else:
                 logp_check = sess.run(logp)
@@ -125,9 +120,7 @@ class TestActionDistributions(unittest.TestCase):
         for fw, sess in framework_iterator(session=True):
             # Create the correct distribution object.
             cls = (
-                JAXCategorical
-                if fw == "jax"
-                else Categorical
+                Categorical
                 if fw != "torch"
                 else TorchCategorical
             )
@@ -153,9 +146,7 @@ class TestActionDistributions(unittest.TestCase):
             # Batch of size=3 and non-deterministic -> expect roughly the mean.
             out = categorical.sample()
             check(
-                np.mean(out)
-                if fw == "jax"
-                else tf.reduce_mean(out)
+                tf.reduce_mean(out)
                 if fw != "torch"
                 else torch.mean(out.float()),
                 1.0,
