@@ -69,7 +69,7 @@ def _get_tpu_metadata(key: str) -> Optional[str]:
             )
     except requests.RequestException as e:
         logging.debug("Unable to poll the TPU GCE Metadata: %s", e)
-    return ""
+    return None
 
 
 class TPUAcceleratorManager(AcceleratorManager):
@@ -221,7 +221,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         if not accelerator_type:
             # GCE-based VM check
             accelerator_type = _get_tpu_metadata(key=GCE_TPU_ACCELERATOR_KEY)
-        if TPUAcceleratorManager.is_valid_tpu_accelerator_type(
+        if accelerator_type and TPUAcceleratorManager.is_valid_tpu_accelerator_type(
             tpu_accelerator_type=accelerator_type
         ):
             return accelerator_type
@@ -263,13 +263,16 @@ class TPUAcceleratorManager(AcceleratorManager):
             if not worker_id:
                 # GCE-based VM check
                 worker_id = _get_tpu_metadata(key=GCE_TPU_WORKER_ID_KEY)
-            return int(worker_id)
+            if worker_id:
+                return int(worker_id)
+            else:
+                return None
         except ValueError as e:
             logging.debug("Could not get TPU worker id: %s", e)
             return None
 
     @staticmethod
-    def num_workers_in_tpu_pod() -> Optional[int]:
+    def get_num_workers_in_current_tpu_pod() -> Optional[int]:
         """Return the total number of workers in a TPU pod."""
         tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
         if tpu_pod_type:

@@ -263,7 +263,8 @@ def test_empty_get_current_pod_name_returns_none():
 
 def test_worker_count():
     with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager.num_workers_in_tpu_pod",
+        "ray._private.accelerators.tpu.TPUAcceleratorManager."
+        "get_num_workers_in_current_tpu_pod",
         return_value=4,
     ):
         worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()

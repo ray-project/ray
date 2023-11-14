@@ -22,4 +22,4 @@ def get_current_pod_worker_count() -> Optional[int]:
       int: the total number of workers in the TPU pod. Returns None if the worker is not
         part of a TPU pod.
     """
-    return TPUAcceleratorManager.num_workers_in_tpu_pod()
+    return TPUAcceleratorManager.get_num_workers_in_current_tpu_pod()
