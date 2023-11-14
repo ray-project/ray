@@ -28,7 +28,43 @@
 #include "ray/common/ray_config.h"
 #include "ray/util/util.h"
 
+#if defined(_WIN32)
+#include <Windows.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 namespace ray {
+
+namespace {
+
+#if defined(_WIN32)
+void setFdCloseOnFork(const HANDLE &handle) {
+  // Windows
+  HANDLE handle = (HANDLE)socket.native_handle();
+  SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0);
+  RAY_LOG(INFO) << "set HANDLE_FLAG_INHERIT to handle " << handle;
+}
+#else
+void setFdCloseOnFork(const int &fd) {
+  int flags = fcntl(fd, F_GETFD, 0);
+  if (flags != -1) {
+    fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+    RAY_LOG(INFO) << "set FD_CLOEXEC to fd " << fd;
+  }
+}
+#endif
+
+}  // namespace
+
+void SetCloseOnFork(local_stream_socket &socket) {
+  setFdCloseOnFork(socket.native_handle());
+}
+
+void SetCloseOnFork(boost::asio::basic_socket_acceptor<local_stream_protocol> &acceptor) {
+  setFdCloseOnFork(acceptor.native_handle());
+}
 
 Status ConnectSocketRetry(local_stream_socket &socket,
                           const std::string &endpoint,
@@ -73,7 +109,9 @@ ServerConnection::ServerConnection(local_stream_socket &&socket)
       async_write_max_messages_(1),
       async_write_queue_(),
       async_write_in_flight_(false),
-      async_write_broken_pipe_(false) {}
+      async_write_broken_pipe_(false) {
+  SetCloseOnFork(socket_);
+}
 
 ServerConnection::~ServerConnection() {
   // If there are any pending messages, invoke their callbacks with an IOError status.
