@@ -269,7 +269,7 @@ class GpuUtilizationInfo(TypedDict):
     utilization_gpu: Optional[Percentage]
     memory_used: Megabytes
     memory_total: Megabytes
-    processes_pids: Optional[List[str]]
+    processes_pids: Optional[List[ProcessGPUInfo]]
 
 
 class ReporterAgent(
