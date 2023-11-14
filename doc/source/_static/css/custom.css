@@ -1,103 +1,159 @@
-/* override default colors used in the Sphinx theme */
-:root {
-    --tabs-color-label-active: #0475DE;
-    --tabs-color-label-hover: #0475DE;
-    --buttons-color-blue: #0475DE;
-    --tabs-color-label-inactive: #9E9E9E;
-    --tabs-color-overline: #e0e0e0;
-    --tabs-color-underline: #e0e0e0;
-    --border-color-gray: #e0e0e0;
-    --background-color-light-gray:#fafafa;
-    --background-color-disabled: #9E9E9E;
-    --pst-color-link: 4, 117, 222;
-    --pst-color-primary: 4, 117, 222;
-    --pst-color-text-secondary: #616161;
-    --blue: #0475DE;
-    --sidebar-top: 5em;
+/* Override default colors used in the Sphinx theme. See
+* https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/styling.html#css-theme-variables
+* for more information. `important!` is needed below to override
+* dark/light theme specific values, which normally take precedence over the PST defaults.
+* */
+html {
+  --anyscale-blue: #0641AC;
+  --ray-blue: #3C8AE9; /* Ray blue color - use this for all ray branding */
+  --pst-color-primary: var(--ray-blue) !important;
+  --pst-color-link-hover: var(--ray-blue) !important;
+  --pst-color-inline-code-links: var(--ray-blue) !important;
+
+  /* Transparent highlight color; default yellow is hard on the eyes */
+  --pst-color-target: #FFFFFF00 !important;
 }
 
-/* Remove flicker for announcement top bar replacement */
-.header-item.announcement {
-    background-color: white;
-    color: white;
-    padding: 0;
+/* Hide the "Hide Search Matches" button (we aren't highlighting search terms anyway) */
+#searchbox {
+  display: none;
 }
 
-/* Make the book theme secondary nav stick below the new main top nav */
-.header-article {
-    top: 58px;
-    z-index: 900 !important;
+/* Top navbar styling */
+.navbar-toplevel p {
+  margin: 0;
+  padding-inline-start: 0;
+}
+.ref-container > p {
+  height: 100%;
+}
+div.navbar-dropdown {
+  display: none;
+  position: relative;
+  left: -50%;
+  color: var(--pst-color-text-muted);
+}
+span.navbar-link-title {
+  color: var(--pst-color-text-base);
+}
+.navbar-sublevel p a.reference {
+  text-decoration: none;
+  color: var(--pst-color-text-muted);
+}
+.navbar-sublevel p a.reference:hover > span.navbar-link-title {
+  text-decoration: underline;
+  color: var(--pst-color-link-hover);
+}
+.navbar-toplevel li {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  padding: 0em 1em;
+}
+ul.navbar-toplevel li:hover > div.navbar-dropdown {
+  display: block;
+}
+ul.navbar-toplevel > li:hover {
+  border-bottom:
+}
+ul.navbar-toplevel {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  margin: 0;
+  height: 100%;
+}
+.navbar-content ul.navbar-sublevel {
+  position: absolute;
+  background: var(--pst-color-on-background);
+  white-space: pre;
+  padding: 0em 1em;
+  display: flex;
+  flex-direction: column;
+  align-items: baseline;
+  box-shadow: 0 5px 15px 0 rgb(0 0 0 / 10%);
+}
+div.navbar-content a {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  white-space: pre;
+  justify-content: center;
+}
+div.navbar-content {
+  height: 100%;
+}
+nav.navbar-nav {
+  height: 100%;
+}
+.ref-container {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5em;
+  height: 100%;
+}
+.navbar-header-items__end {
+  /* Prevent the anyscale button from wrapping */
+  flex-flow: nowrap !important;
 }
 
-.toctree-l1.has-children {
-    font-weight: bold;
+/* Highlight active nav bar link; offset content to compensate for border size */
+li.active-link {
+  border-bottom: 4px solid var(--ray-blue);
+}
+li.active-link > .ref-container {
+  transform: translateY(2px);
 }
 
-.toctree-l2 {
-    font-weight: normal;
+/* Ray logo */
+.navbar-brand.logo > svg {
+  width: 120px;
+}
+.navbar-brand.logo > svg path#ray-text {
+  fill: var(--pst-color-text-base);
+}
+.navbar-brand.logo > svg path#ray-logo {
+  fill: var(--ray-blue);
 }
 
-div.navbar-brand-box {
-    padding-top: 4em;
+/* Anyscale branding */
+#anyscale-logo > path {
+  fill: var(--anyscale-blue);
+}
+#try-anyscale {
+  color: var(--pst-color-text-base);
+  background-color: var(--pst-color-surface);
+  border-radius: 6px;
+  white-space: nowrap;
+  padding: 0px 12px;
+  height: 40px;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 1em;
+  border: 1px solid var(--pst-color-border);
 }
 
-td p {
-    margin-left: 0.75rem;
+/* Center the search button in the sidebar */
+div.sidebar-primary-item:nth-child(1) {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
 }
 
-table.longtable.table.autosummary {
-    table-layout: fixed;
+/* Disable the "Back to top" button that appears if you scroll down */
+button#pst-back-to-top {
+  display: none !important;
 }
 
-.table.autosummary td {
-    width: 100%;
-}
-
-tr.row-odd {
-    background-color: #f9fafb;
-}
-
-/* For Algolia search box
-    * height: to prevent topbar overlap
-*/
-#site-navigation {
-  height: calc(100vh - var(--sidebar-top));
-  position: sticky;
-  top: var(--sidebar-top) !important;
-}
-
-/* Center the algolia search bar*/
-#search-input {
-    text-align: center;
-}
-.algolia-autocomplete {
-    width: 100%;
-    margin: auto;
-}
-
-/* Hide confusing "<-" back arrow in navigation for larger displays */
-@media (min-width: 768px) {
-    #navbar-toggler {
-        display: none;
-    }
-}
-
-/* Make navigation scrollable on mobile, by making algolia not overflow */
-@media (max-width: 768px) {
-    #site-navigation {
-        overflow-y: scroll;
-    }
-
-    .algolia-autocomplete .ds-dropdown-menu{
-        min-width: 250px;
-    }
-}
-
-/* sphinx-panels overrides the content width to 1140 for large displays.*/
-@media (min-width: 1200px) {
-    .container, .container-lg, .container-md, .container-sm, .container-xl {
-        max-width: 1400px !important;
-    }
+/* Hide the rtd-footer-container; we aren't using it */
+#rtd-footer-container {
+  display: none;
 }
 
 .bottom-right-promo-banner {
@@ -113,795 +169,28 @@ tr.row-odd {
     }
 }
 
-@media screen and (max-width: 767px) {
-    .remove-mobile {
-      display: none;
-    }
-  }
-
-  @media screen and (max-width: 767px) {
-    .row-2-column {
-      flex-direction: column;
-      margin-top: 20px;
-    }
-  }
-
-.bd-sidebar__content {
-  overflow-y: unset !important;
-}
-
-.bd-sidebar__top {
-    display: flex;
-    flex-direction: column;
-}
-
-.bd-sidebar li {
-    position: relative;
-    word-wrap: break-word;
-}
-
-nav.bd-links {
-    flex: 1;
-}
-
-nav.bd-links::-webkit-scrollbar-thumb {
-    background-color: #ccc;
-}
-
-nav.bd-links::-webkit-scrollbar {
-    width: 5px;
-}
-
-dt:target, span.highlighted {
-    background-color: white;
-}
-
-div.sphx-glr-bigcontainer {
-    display: inline-block;
-    width: 100%;
-}
-
-td.tune-colab,
-th.tune-colab {
-    border: 1px solid #dddddd;
-    text-align: left;
-    padding: 8px;
-}
-
-/* Adjustment to Sphinx Book Theme */
-.table td {
-    /* Remove row spacing on the left */
-    padding-left: 0;
-}
-
-.table thead th {
-    /* Remove row spacing on the left */
-    padding-left: 0;
-}
-
-img.inline-figure {
-    /* Override the display: block for img */
-    display: inherit !important;
-}
-
-#version-warning-banner {
-    /* Make version warning clickable */
-    z-index: 1;
-    margin-left: 0;
-    /* 20% is for ToC rightbar */
-    /* 2 * 1.5625em is for horizontal margins */
-    width: calc(100% - 20% - 2 * 1.5625em);
-}
-
-/* allow scrollable images */
-.figure {
-    max-width: 100%;
-    overflow-x: auto;
-}
-img.horizontal-scroll {
-    max-width: none;
-}
-
-.clear-both {
-    clear: both;
-    min-height: 100px;
-    margin-top: 15px;
-}
-
-.buttons-float-left {
-    width: 150px;
-    float: left;
-}
-
-.buttons-float-right {
-    width: 150px;
-    float: right;
-}
-
-.card-body {
-    padding: 0.5rem !important;
-}
-
-/* custom css for pre elements */
-pre {
-    /* Wrap code blocks instead of horizontal scrolling. */
-    white-space: pre-wrap;
-    box-shadow: none;
-    border-color: var(--border-color-gray);
-    background-color: var(--background-color-light-gray);
-    border-radius:0.25em;
-}
-
-/* notebook formatting */
-.cell .cell_output {
-    max-height: 250px;
-    overflow-y: auto;
-    font-weight: bold;
-}
-
-/* Yellow doesn't render well on light background */
-.cell .cell_output pre .-Color-Yellow {
-    color: #785840;
-}
-
-/* Newlines (\a) and spaces (\20) before each parameter */
-.sig-param::before {
-    content: "\a\20\20\20\20";
-    white-space: pre;
-}
-
-/* custom css for outlined buttons */
-.btn-outline-info:hover span, .btn-outline-primary:hover span {
-    color: #fff;
-}
-
-.btn-outline-info, .btn-outline-primary{
-    border-color: var(--buttons-color-blue);
-}
-
-.btn-outline-info:hover, .btn-outline-primary:hover{
-    border-color: var(--buttons-color-blue);
-    background-color: var(--buttons-color-blue);
-}
-
-.btn-outline-info.active:not(:disabled):not(.disabled), .btn-outline-info:not(:disabled):not(.disabled):active, .show>.btn-outline-info.dropdown-toggle {
-    border-color: var(--buttons-color-blue);
-    background-color: var(--buttons-color-blue);
-    color: #fff;
-}
-
-.btn-info, .btn-info:hover, .btn-info:focus {
-    border-color: var(--buttons-color-blue);
-    background-color: var(--buttons-color-blue);
-}
-
-.btn-info:hover{
-    opacity: 90%;
-}
-
-.btn-info:disabled{
-    border-color: var(--background-color-disabled);
-    background-color: var(--background-color-disabled);
-    opacity: 100%;
-}
-
-.btn-info.active:not(:disabled):not(.disabled), .btn-info:not(:disabled):not(.disabled):active, .show>.btn-info.dropdown-toggle {
-    border-color: var(--buttons-color-blue);
-    background-color: var(--buttons-color-blue);
-}
-
-
-.topnav {
-    background-color: white;
-    border-bottom: 1px solid rgba(0, 0, 0, .1);
-    display: flex;
-    align-items: center;
-}
-
-/* Content wrapper for the unified nav link / menus */
-.top-nav-content {
-    max-width: 1400px;
-    width: 100%;
-    margin-left: auto;
-    margin-right: auto;
-    padding: 0 1.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-@media (max-width: 900px) {
-  /* If the window is too small, hide the custom sticky navigation bar at the top of the page.
-  Also make the pydata-sphinx-theme nav bar, which usually sits below the top nav bar, stick
-  to the top of the page.
-  */
-    .top-nav-content {
-        display: none;
-    }
-    div.header-article.row.sticky-top.noprint {
-      position: sticky;
-      top: 0;
-    }
-}
-
-/* Styling the links and menus in the top nav */
-.top-nav-content a {
-    text-decoration: none;
-    color: black;
-    font-size: 17px;
-}
-
-.top-nav-content a:hover {
-    color: #007bff;
-}
-
-/* The left part are the links and menus */
-.top-nav-content > .left {
-    display: flex;
-    white-space: nowrap;
-}
-
-.top-nav-content .left > * {
-    margin-right: 8px;
-}
-
-.top-nav-content .left > a,
-.top-nav-content .left > .menu > a {
-    text-align: center;
-    padding: 14px 16px;
-    border-bottom: 2px solid white;
-}
-
-.top-nav-content .menu:hover > a,
-.top-nav-content .left > a:hover {
-    border-bottom: 2px solid #007bff;
-}
-
-/* Special styling for the Ray logo */
-.top-nav-content .left > a.ray-logo {
-    width: 90px;
-    padding: 10px 0;
-}
-.top-nav-content .left > a.ray-logo:hover {
-    border-bottom: 2px solid white;
-}
-
-/* Styling the dropdown menus */
-.top-nav-content .menu {
-    display: flex;
-}
-.top-nav-content .menu > a > .down-caret {
-    margin-left: 8px;
-}
-.top-nav-content .menu > ul {
-    display: none;
-}
-
-.top-nav-content > button.try-anyscale > span {
-    margin: 0 12px;
-}
-
-.top-nav-content .menu:hover > ul {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    box-shadow: 0 5px 15px 0 rgb(0 0 0 / 10%);
-    padding: 15px;
-    width: 330px;
-    position: absolute;
-    z-index: 2000;
-    background-color: white;
-    top: 58px;
-}
-
-.top-nav-content .menu:hover > ul > li {
-    list-style: none;
-    padding: 5px 0;
-}
-
-.top-nav-content .menu:hover > ul > li span {
-    display: block;
-}
-
-.top-nav-content .menu:hover > ul > li span.secondary {
-    color: #787878;
-}
-
-/* Styling the "Try Anyscale" button */
-.top-nav-content > button.try-anyscale {
-    float: right;
-    border-radius: 6px;
-    background-color: #e7f2fa;
-    padding-left: 12px;
-    padding-right: 12px;
-    margin-left: 12px;
-    height: 40px;
-    border: none;
-    white-space: nowrap;
-}
-
-@media (max-width: 1000px) {
-  .top-nav-content > button.try-anyscale {
-    display: none;
-  }
-}
-
-/* custom css for tabs*/
-.tabbed-set>label,.tabbed-set>label:hover {
-    border-bottom: 1px solid var(--border-color-gray);
-    color:var(--tabs-color-label-inactive);
-    font-weight: 500;
-}
-
-.tabbed-set>input:checked+label{
-    border-bottom: 0.125em solid;
-    color:var(--tabs-color-label-active);
-}
-
-
-.tabbed-label{
-    margin-bottom:0;
-}
-
-/* custom css for jupyter cells */
-div.cell div.cell_input{
-    border: 1px var(--border-color-gray) solid;
-    background-color: var(--background-color-light-gray);
-    border-radius:0.25em;
-    border-left-color: var(--green);
-    border-left-width: medium;
-}
-
-/* custom css for table */
-table {
-    border-color: var(--border-color-gray);
-}
-
-/* custom css for topic component */
-div.topic{
-    border: 1px solid var(--border-color-gray);
-    border-radius:0.25em;
-}
-
-.topic {
-    background-color: var(--background-color-light-gray);
-}
-
-/* custom css for card component */
-.card{
-    border-color: var(--border-color-gray);
-}
-
-.card-footer{
-    background-color: var(--background-color-light-gray);
-    border-top-color: var(--border-color-gray);
-}
-
-/* custom css for section navigation component */
-.bd-toc nav>.nav {
-    border-left-color: var(--border-color-gray);
-}
-
-/* custom css for up and down arrows in collapsible cards */
-details.dropdown .summary-up, details.dropdown .summary-down {
-    top: 1em;
-}
-
-/* remove focus border in collapsible admonition buttons */
-.toggle.admonition button.toggle-button:focus {
-    outline: none;
-}
-
-/* custom css for shadow class */
-.shadow {
-    box-shadow: 0 0.2rem 0.5rem rgb(0 0 0 / 5%), 0 0 0.0625rem rgb(0 0 0 / 10%) !important;
-}
-
-/* custom css for text area */
-textarea {
-    border-color: var(--border-color-gray);
-}
-
-/* custom css for footer */
-footer {
-    margin-top: 1rem;
-    padding:1em 0;
-    border-top-color: var(--border-color-gray);
-}
-
-.footer p{
-    color: var(--pst-color-text-secondary);
-}
-
-/* Make the hover color of tag/gallery buttons differ from "active" */
-.tag.btn-outline-primary:hover {
-    background-color: rgba(20, 99, 208, 0.62) !important;
-}
-
-span.rst-current-version > span.fa.fa-book {
-    /* Move the book icon away from the top right
-    * corner of the version flyout menu */
-    margin: 10px 0px 0px 5px;
-}
-
-
-/*Extends the docstring signature box.*/
-.rst-content dl:not(.docutils) dt {
-    display: block;
-    padding: 10px;
-    word-wrap: break-word;
-    padding-right: 100px;
-}
-
-/*Lists in an admonition note do not have awkward whitespace below.*/
-.rst-content .admonition-note .section ul {
-    margin-bottom: 0;
-}
-
-/*Properties become blue (classmethod, staticmethod, property)*/
-.rst-content dl dt em.property {
-    color: #2980b9;
-    text-transform: uppercase;
-}
-
-.rst-content .section ol p,
-.rst-content .section ul p {
-    margin-bottom: 0;
-}
-
-
-/* Adjustment to Version block */
-.rst-versions {
-    z-index: 1200 !important;
-}
-
-.image-header {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    padding-left: 16px;
-    padding-right:16px;
-    gap: 16px;
-}
-
-.info-box {
-    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
-    border-radius: 8px;
-    padding: 20px;
-}
-
-.info-box:hover{
-    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.1);
-}
-
-.no-underline{
-    text-decoration: none;
-}
-.no-underline:hover{
-    text-decoration: none;
-}
-
-.icon-hover:hover{
-    height: 30px ;
-    width: 30px;
-}
-
-.info-box-2 {
-    background-color: #F9FAFB;
-    border-radius: 8px;
-    padding-right: 16px;
-    padding-left: 16px;
-    padding-bottom: 24px;
-    padding-top: 4px;
-}
-
-
-.bold-link {
-    color: #000000 !important;
-    font-weight: 600;
-}
-
-.community-box {
-    border: 1px solid #D2DCE6;
-    border-radius: 8px;
-    display: flex;
-    margin-bottom: 16px;
-}
-
-.community-box:hover {
-    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
-    text-decoration: none;
-}
-
-.community-box p {
-    margin-top: 1rem !important;
-}
-
-.tab-pane pre {
-    margin: 0;
-    padding: 0;
-    max-height: 252px;
-    overflow-y: auto;
-}
-
-.grid-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px,1fr));
-    grid-gap: 16px;
-}
-
-.grid-item {
-padding: 20px;
-}
-
-
-.nav-pills {
-    background-color: #F9FAFB;
-    color: #000000;
-    padding: 8px;
-    border-bottom:none;
-    border-radius: 8px;
-}
-
-.nav-pills .nav-link.active {
-    background-color: #FFFFFF !important;
-    box-shadow: 0px 3px 14px 2px rgba(3,28,74,0.12);
-    border-radius: 8px;
-    padding: 20px;
-    color: #000000;
-    font-weight: 500;
-}
-
-.searchDiv {
-    width: 100%;
-    position: relative;
-    display: block;
-}
-
-.searchTerm {
-    width: 80%;
-    border: 2px solid var(--blue);
-    padding: 5px;
-    height: 45px;
-    border-radius: 5px;
-    outline: none;
+/* Nav sidebar styles */
+/* Sidebar checkboxes are toggled by clicking on the label; hide actual checkboxes */
+.sidebar-checkbox {
+  display: none;
 }
-
-.searchButton {
-    width: 40px;
-    height: 45px;
-    border: 1px solid var(--blue);
-    background: var(--blue);
-    color: #fff;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 20px;
-}
-
-/*Resize the wrap to see the search bar change!*/
-.searchWrap {
-    width: 100%;
-    position: relative;
-    margin: 15px;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -10%);
-    text-align: center;
-}
-
-.sd-card {
-    border: none !important;
-}
-
-.tag {
-    margin-bottom: 5px;
-    font-size: small;
-}
-
-/* Override float positioning of next-prev buttons so that
- they take up space normally, and we can put other stuff at
- the bottom of the page. */
-.prev-next-area {
-  display: flex;
-  flex-direction: row;
-}
-.prev-next-area a.left-prev {
-  margin-right: auto;
-  width: fit-content;
-  float: none;
-}
-.prev-next-area a.right-next {
-  margin-left: auto;
-  width: fit-content;
-  float: none;
-}
-
-/* CSAT widgets */
-#csat-inputs {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-}
-
-.csat-hidden {
-  display: none !important;
-}
-
-#csat-feedback-label {
-  color: #000;
-  font-weight: 500;
-}
-
-.csat-button {
-  margin-left: 16px;
-  padding: 8px 16px 8px 16px;
-  border-radius: 4px;
-  border: 1px solid #D2DCE6;
-  background: #FFF;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  width: 85px;
-}
-
-#csat-textarea-group {
-  display: flex;
-  flex-direction: column;
-}
-
-#csat-submit {
-  margin-left: auto;
-  font-weight: 700;
-  border: none;
-  margin-top: 12px;
-  cursor: pointer;
-}
-
-#csat-feedback-received {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-}
-
-.csat-button-active {
-  border: 1px solid #000;
-}
-
-.csat-icon {
-  margin-right: 4px;
-}
-
-footer.col.footer {
-  display: flex;
-  flex-direction: row;
+.sidebar-checkbox[type="checkbox"]:checked ~ dd {
+  display: none;
 }
 
-footer.col.footer > p {
-  margin-left: auto;
+/* Fix some spacing issues associated with competition with PST styles */
+.sidebar-content dl {
+  margin-bottom: 0;
 }
-
-#csat {
-  min-width: 60%;
-}
-
-#csat-textarea {
-  resize: none;
-}
-
-
-/* Ray Assistant */
-
-.container-xl.blurred {
-    filter: blur(5px);
-}
-
-.chat-widget {
-    position: fixed;
-    bottom: 10px;
-    right: 10px;
-    z-index: 1000;
-}
-
-.chat-popup {
-    display: none;
-    position: fixed;
-    top: 20%;
-    left: 50%;
-    transform: translate(-50%, -20%);
-    width: 50%;
-    height: 70%;
-    background-color: white;
-    border: 1px solid #ccc;
-    border-radius: 10px;
-    box-shadow: 0 5px 10px rgba(0,0,0,0.1);
-    z-index: 1001;
-    max-height: 1000px;
-    overflow: hidden;
-    padding-bottom: 40px;
-}
-
-.chatFooter {
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 100%;
-    background-color: #f8f9fa;
-}
-
-#openChatBtn {
-    background-color: #000;
-    color: #fff;
-    width: 70px;
-    height: 70px;
-    border-radius: 10px;
-    border: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-#closeChatBtn {
-    border: none;
-    background-color: transparent;
-    color: #000;
-    font-size: 1.2em;
-}
-
-#closeChatBtn:hover {
-    color: #888;
-}
-
-.chatHeader {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.chatContentContainer {
-    padding: 15px;
-    max-height: calc(100% - 80px);
-    overflow-y: auto;
-}
-
-.chatContentContainer input {
-    margin-top: 10px;
-    margin-bottom: 10px;
-}
-
-#result{
-    padding: 15px;
-    border-radius: 10px;
-    margin-top: 10px;
-    margin-bottom: 10px;
-    background-color: #f8f9fa;
-    max-height: calc(100% - 20px);
-    overflow-y: auto;
-}
-
-.chatContentContainer textarea {
-    flex-grow: 1;
-    min-width: 50px;
-    max-height: 40px;
-    resize: none;
+.sidebar-content ol li > p:first-child, ul li > p:first-child {
+  margin-top: 0 !important;
 }
 
-.searchBtn {
-    white-space: nowrap;
+/* Set autosummary API docs to have fixed two-col format, with alternating different background
+* on rows */
+table.autosummary {
+  table-layout: fixed;
 }
-
-.input-group {
-    display: flex;
-    align-items: stretch;
+table.autosummary .row-odd {
+  background-color: var(--pst-color-surface);
 }
-
-/* Kapa Ask AI button */
-#kapa-widget-container figure {
-    padding: 0 !important;
-  }
-
-  .mantine-Modal-root figure {
-    padding: 0 !important;
-  }
