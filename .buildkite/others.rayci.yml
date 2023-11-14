@@ -1,5 +1,10 @@
 group: others
 steps:
+  #build
+  - name: doctestbuild
+    wanda: ci/docker/doctest.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
   # test
   - label: ":java: java tests"
     tags: java
@@ -10,4 +15,22 @@ steps:
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail 
         "./java/test.sh"
     depends_on: corebuild
+    job_env: forge
+
+  - label: doc tests
+    instance_type: large
+    commands:
+      # doc tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... none
+        --build-name doctestbuild
+        --only-tags doctest
+        --except-tags gpu
+        --parallelism-per-worker 3
+      # doc examples
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
+        --build-name doctestbuild
+        --only-tags xcommit
+        --except-tags gpu
+        --skip-ray-installation
+    depends_on: doctestbuild
     job_env: forge
