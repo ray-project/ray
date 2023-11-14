@@ -4,6 +4,26 @@
 User Guides
 ===========
 
+.. toctree::
+    :hidden:
+
+    Running Basic Experiments <tune-run>
+    tune-output
+    Setting Trial Resources <tune-resources>
+    Using Search Spaces <tune-search-spaces>
+    tune-stopping
+    tune-trial-checkpoints
+    tune-storage
+    tune-fault-tolerance
+    Using Callbacks and Metrics <tune-metrics>
+    tune_get_data_in_and_out
+    ../examples/tune_analyze_results
+    ../examples/pbt_guide
+    Deploying Tune in the Cloud <tune-distributed>
+    Tune Architecture <tune-lifecycle>
+    Scalability Benchmarks <tune-scalability>
+
+
 .. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 
 In this section, you can find material on how to use Tune and its various features.
