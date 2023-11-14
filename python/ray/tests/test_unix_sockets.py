@@ -34,8 +34,8 @@ def assert_2_ray_sockets(sockets):
         if socket.raddr.endswith("/sockets/plasma_store"):
             plasma_store_sockets.append(socket)
     print(f"totally {len(sockets)} sockets.")
-    assert len(raylet_sockets) == 1, raylet_sockets
-    assert len(plasma_store_sockets) == 1, plasma_store_sockets
+    assert len(raylet_sockets) == 1, sockets
+    assert len(plasma_store_sockets) == 1, sockets
 
 
 # Spawns a lot of workers, each making 1 call to A.
