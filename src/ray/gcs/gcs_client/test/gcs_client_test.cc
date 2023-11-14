@@ -350,7 +350,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool DrainNode(const NodeID &node_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().Async(
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncDrainNode(
         node_id, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -435,7 +435,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       auto node_info = Mocker::GenNodeInfo();
       auto node_id = NodeID::FromBinary(node_info->node_id());
       EXPECT_TRUE(RegisterNode(*node_info));
-      EXPECT_TRUE((node_id));
+      EXPECT_TRUE(DrainNode(node_id));
       node_ids.insert(node_id);
     }
     return node_ids;
@@ -582,7 +582,7 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(DrainSelf());
 
   // Cancel registration of a node to GCS.
-  ASSERT_TRUE((node2_id));
+  ASSERT_TRUE(DrainNode(node2_id));
   WaitForExpectedCount(unregister_count, 2);
 
   // Get information of all nodes from GCS.
