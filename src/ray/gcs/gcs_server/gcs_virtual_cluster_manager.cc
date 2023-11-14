@@ -43,6 +43,22 @@ void GcsVirtualClusterManager::HandleRemoveVirtualCluster(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
+std::vector<rpc::PlacementGroupTableData>
+GcsVirtualClusterManager::GetVirtualClusterLoad() const {
+  std::vector<rpc::PlacementGroupTableData> load;
+  for (const auto &request : pending_virtual_clusters_) {
+    rpc::PlacementGroupTableData data;
+    for (const auto &vc_bundle : request.virtual_cluster_spec().bundles()) {
+      auto *pg_bundle = data.add_bundles();
+      pg_bundle->mutable_unit_resources()->insert(vc_bundle.resources().begin(),
+                                                  vc_bundle.resources().end());
+    }
+    data.set_strategy(rpc::PlacementStrategy::STRICT_SPREAD);
+    load.emplace_back(data);
+  }
+  return load;
+}
+
 void GcsVirtualClusterManager::Tick() {
   CreateVirtualClusters();
   execute_after(
@@ -127,6 +143,7 @@ GcsVirtualClusterManager::Schedule(const rpc::CreateVirtualClusterRequest &reque
       VirtualClusterID::FromBinary(request.virtual_cluster_spec().virtual_cluster_id());
   std::vector<VirtualClusterBundleSpec> bundles;
   std::vector<const ResourceRequest *> resource_request_list;
+  bundles.reserve(request.virtual_cluster_spec().bundles_size());
   for (size_t i = 0; i < request.virtual_cluster_spec().bundles_size(); i++) {
     bundles.emplace_back(request.virtual_cluster_spec().bundles(i), vc_id);
     resource_request_list.emplace_back(&bundles[i].GetRequiredResources());

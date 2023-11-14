@@ -38,6 +38,7 @@ using raylet::ClusterTaskManager;
 
 namespace gcs {
 class GcsNodeManager;
+class GcsVirtualClusterManager;
 class GcsServer;
 
 /// Ideally, the logic related to resource calculation should be moved from
@@ -66,6 +67,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       instrumented_io_context &io_context,
       ClusterResourceManager &cluster_resource_manager,
       GcsNodeManager &gcs_node_manager,
+      const GcsVirtualClusterManager &gcs_virtual_cluster_manager,
       NodeID local_node_id,
       std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
@@ -198,6 +200,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
 
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
+  const GcsVirtualClusterManager &gcs_virtual_cluster_manager_;
   NodeID local_node_id_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// Num of alive nodes in the cluster.

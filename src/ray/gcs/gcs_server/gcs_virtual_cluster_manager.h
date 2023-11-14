@@ -23,7 +23,7 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
  public:
   GcsVirtualClusterManager(
       instrumented_io_context &io_context,
-      const gcs::GcsNodeManager &gcs_node_manager,
+      const GcsNodeManager &gcs_node_manager,
       ClusterResourceScheduler &cluster_resource_scheduler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
@@ -36,6 +36,8 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   void HandleRemoveVirtualCluster(rpc::RemoveVirtualClusterRequest request,
                                   rpc::RemoveVirtualClusterReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  std::vector<rpc::PlacementGroupTableData> GetVirtualClusterLoad() const;
 
  private:
   std::optional<std::unordered_map<NodeID, VirtualClusterBundleSpec>> Schedule(

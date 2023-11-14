@@ -192,6 +192,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init cluster task manager.
   InitClusterTaskManager();
 
+  InitGcsVirtualClusterManager(gcs_init_data);
+
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
@@ -218,8 +220,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs placement group manager.
   InitGcsPlacementGroupManager(gcs_init_data);
-
-  InitGcsVirtualClusterManager(gcs_init_data);
 
   // Init gcs actor manager.
   InitGcsActorManager(gcs_init_data);
@@ -343,6 +343,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       main_service_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
+      *gcs_virtual_cluster_manager_,
       kGCSNodeID,
       cluster_task_manager_);
 

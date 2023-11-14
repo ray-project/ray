@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
 #include "ray/common/ray_config.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
@@ -24,11 +25,13 @@ GcsResourceManager::GcsResourceManager(
     instrumented_io_context &io_context,
     ClusterResourceManager &cluster_resource_manager,
     GcsNodeManager &gcs_node_manager,
+    const GcsVirtualClusterManager &gcs_virtual_cluster_manager,
     NodeID local_node_id,
     std::shared_ptr<ClusterTaskManager> cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
+      gcs_virtual_cluster_manager_(gcs_virtual_cluster_manager),
       local_node_id_(std::move(local_node_id)),
       cluster_task_manager_(std::move(cluster_task_manager)) {}
 
@@ -213,6 +216,9 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       auto placement_group_load = placement_group_load_.value();
       auto placement_group_load_proto = batch.mutable_placement_group_load();
       placement_group_load_proto->CopyFrom(*placement_group_load.get());
+      auto vc_load = gcs_virtual_cluster_manager_.GetVirtualClusterLoad();
+      placement_group_load_proto->mutable_placement_group_data()->Add(vc_load.begin(),
+                                                                      vc_load.end());
     }
 
     reply->mutable_resource_usage_data()->CopyFrom(batch);
