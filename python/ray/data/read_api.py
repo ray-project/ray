@@ -670,7 +670,7 @@ def read_parquet(
             set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
-        file_extensions: A list of file extensions to filter files by. 
+        file_extensions: A list of file extensions to filter files by.
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
@@ -816,7 +816,7 @@ def read_images(
             that are not found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
-        file_extensions: A list of file extensions to filter files by. 
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
@@ -937,7 +937,7 @@ def read_parquet_bulk(
             set of arguments, see
             the `PyArrow API <https://arrow.apache.org/docs/python/generated/\
                 pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_
-        file_extensions: A list of file extensions to filter files by. 
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
        :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1071,7 +1071,7 @@ def read_json(
         arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
             arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
             json.read_json>`_.
-        file_extensions: A list of file extensions to filter files by. 
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1225,7 +1225,7 @@ def read_csv(
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
             pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
             when opening CSV files.
-        file_extensions: A list of file extensions to filter files by. 
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1325,7 +1325,7 @@ def read_text(
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
-        file_extensions: A list of file extensions to filter files by. 
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
@@ -1518,7 +1518,7 @@ def read_tfrecords(
             of the underlying Dataset.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
-        file_extensions: A list of file extensions to filter files by. 
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1701,7 +1701,7 @@ def read_binary_files(
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
-        file_extensions: A list of file extensions to filter files by. 
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
