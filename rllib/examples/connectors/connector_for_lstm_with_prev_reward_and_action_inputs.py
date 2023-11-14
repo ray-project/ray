@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init()#local_mode=True)#TODO
+    ray.init(local_mode=True)#TODO
 
     # Define our custom connector pipelines.
     def make_sampling_connectors(env, rl_module):
@@ -160,12 +160,8 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         config.algo_class,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
-            stop=stop,
-        ),
-        tune_config=tune.TuneConfig(
-            num_samples=10,
-        ),
+        run_config=air.RunConfig(stop=stop),
+        #tune_config=tune.TuneConfig(num_samples=10),
     )
     results = tuner.fit()
 

@@ -83,12 +83,57 @@ class PPOLearner(Learner):
         batch,
         episodes,
     ):
+        #TEST
+        """import pickle
+        import os
+        import torch
+        old_path = "/Users/sven/ray_results/PPO_2023-11-14_14-55-07/PPO_CartPole-v1_6b976_00000_0_2023-11-14_14-55-07/"
+        with open(os.path.join(old_path, "batch_data.pkl"), "rb") as file:
+            old_batch = pickle.load(file)
+        old_advantages, old_value_targets = compute_advantages(
+            values=old_batch["vf_preds"],
+            rewards=old_batch[SampleBatch.REWARDS],
+            terminateds=old_batch[SampleBatch.TERMINATEDS],
+            truncateds=old_batch[SampleBatch.TRUNCATEDS],
+            gamma=self.hps.gamma,
+            lambda_=self.hps.lambda_,
+        )
+        old_state_dict = torch.load(os.path.join(old_path, "model_weights.pth"))
+        old_to_new_mapping = {
+            '_hidden_layers.0._model.0.weight': "encoder.actor_encoder.net.mlp.0.weight",
+            '_hidden_layers.0._model.0.bias': "encoder.actor_encoder.net.mlp.0.bias",
+            '_hidden_layers.1._model.0.weight': "encoder.actor_encoder.net.mlp.2.weight",
+            '_hidden_layers.1._model.0.bias': "encoder.actor_encoder.net.mlp.2.bias",
+            '_logits._model.0.weight': "pi.net.mlp.0.weight",
+            '_logits._model.0.bias': "pi.net.mlp.0.bias",
+
+            '_value_branch_separate.0._model.0.weight': "encoder.critic_encoder.net.mlp.0.weight",
+            '_value_branch_separate.0._model.0.bias': "encoder.critic_encoder.net.mlp.0.bias",
+            '_value_branch_separate.1._model.0.weight': "encoder.critic_encoder.net.mlp.2.weight",
+            '_value_branch_separate.1._model.0.bias': "encoder.critic_encoder.net.mlp.2.bias",
+            '_value_branch._model.0.weight': "vf.net.mlp.0.weight",
+            '_value_branch._model.0.bias': "vf.net.mlp.0.bias",
+        }
+        sd = self.module["default_policy"].state_dict()
+        for k, v in old_state_dict.items():
+            nk = old_to_new_mapping[k]
+            assert nk in sd and sd[nk].shape == v.shape
+            sd[nk] = v
+        self.module["default_policy"].load_state_dict(sd)
+        old_batch.set_get_interceptor(None)
+        old_batch.pop("infos")
+        vf_preds_from_old_batch = convert_to_numpy(self._compute_values(old_batch))
+        """
+        #END TEST
+
         batch = batch or {}
+        if not episodes:
+            return batch, episodes
 
         # Make all episodes one ts longer in order to just have a single batch
-        # for both vf predictions AND the bootstrap vf computations.
-        orig_truncateds = [episode.is_truncated for episode in episodes]
-        self._add_ts_to_episodes(episodes)
+        # (and distributed forward pass) for both vf predictions AND the bootstrap
+        # vf computations.
+        orig_truncateds = self._add_ts_to_episodes_and_truncate(episodes)
 
         # Call the learner connector (on the artificially elongated episodes)
         # in order to get the batch to pass through the module for vf (and
@@ -137,7 +182,7 @@ class PPOLearner(Learner):
         )
 
         # Remove the extra (artificial) timesteps again at the end of the episodes.
-        self._remove_ts_episodes(episodes, orig_truncateds)
+        self._remove_ts_from_episodes_and_restore_truncateds(episodes, orig_truncateds)
 
         return batch, episodes
 
@@ -186,7 +231,7 @@ class PPOLearner(Learner):
         """
 
     @staticmethod
-    def _add_ts_to_episodes(episodes):
+    def _add_ts_to_episodes_and_truncate(episodes):
         """Adds an additional (artificial) timestep to an episode.
 
         Useful for value function bootstrapping, where it is required to compute
@@ -198,9 +243,11 @@ class PPOLearner(Learner):
           etc..
         }
         """
+        orig_truncateds = []
         for episode in episodes:
             # Make sure the episode is already in numpy format.
             assert episode.is_numpy
+            orig_truncateds.append(episode.is_truncated)
             # Add timestep.
             episode.t += 1
             episode.observations = tree.map_structure(
@@ -223,13 +270,15 @@ class PPOLearner(Learner):
             if not episode.is_done:
                 episode.is_truncated = True
 
+        return orig_truncateds
+
     @staticmethod
-    def _remove_ts_episodes(episodes, truncateds):
+    def _remove_ts_from_episodes_and_restore_truncateds(episodes, orig_truncateds):
         # Fix episodes (remove the extra timestep).
-        for episode, truncated in zip(episodes, truncateds):
+        for episode, orig_truncated in zip(episodes, orig_truncateds):
             episode.t -= 1
             # Fix the truncateds flag again.
-            episode.is_truncated = truncated
+            episode.is_truncated = orig_truncated
             episode.observations = tree.map_structure(
                 lambda s: s[:-1],
                 episode.observations,

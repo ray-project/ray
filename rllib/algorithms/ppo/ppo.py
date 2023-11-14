@@ -470,12 +470,9 @@ class PPO(Algorithm):
             # TODO (Kourosh) Do this inside the Learner so that we don't have to do
             #  this back and forth communication between driver and the remote
             #  learner actors.
-            # TODO (sven): What's the plan for multi-agent setups when the
-            #  policy is gone?
             # TODO (simon): The default method has already this functionality,
             #  but this serves simply as a placeholder until it is decided on
             #  how to replace the functionalities of the policy.
-
             if (
                 self.config.env_runner_cls is None
                 or self.config.env_runner_cls.__name__ == "RolloutWorker"
