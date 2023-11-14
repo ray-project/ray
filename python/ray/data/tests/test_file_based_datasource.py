@@ -1,3 +1,5 @@
+from unittest import mock
+
 import pytest
 
 import ray
@@ -8,6 +10,7 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _open_file_with_retry,
 )
+from ray.data.datasource.path_util import _is_local_windows_path
 
 
 class MockFileBasedDatasource(FileBasedDatasource):
@@ -65,6 +68,13 @@ def test_open_file_with_retry(ray_start_regular_shared):
         ray.data.datasource.file_based_datasource.OPEN_FILE_MAX_ATTEMPTS = (
             original_max_attempts
         )
+
+
+def test_windows_path():
+    with mock.patch("sys.platform", "win32"):
+        assert _is_local_windows_path("c:/some/where")
+        assert _is_local_windows_path("c:\\some\\where")
+        assert _is_local_windows_path("c:\\some\\where/mixed")
 
 
 if __name__ == "__main__":

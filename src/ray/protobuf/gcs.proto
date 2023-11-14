@@ -284,11 +284,6 @@ message TaskEventData {
   bytes job_id = 4;
 }
 
-message ResourceTableData {
-  // The total capacity of this resource type.
-  double resource_capacity = 1;
-}
-
 message AvailableResources {
   // Node id.
   bytes node_id = 1;
@@ -466,16 +461,14 @@ message WorkerTableData {
   // by a raylet. (I.e., driver worker won't have this value).
   // If the value doesn't present, it is -1.
   uint64 worker_launched_time_ms = 26;
+  // The debugger port on the worker process.
+  optional uint32 debugger_port = 27;
 }
 
 // Fields to publish when worker fails.
 message WorkerDeltaData {
   bytes raylet_id = 1;
   bytes worker_id = 2;
-}
-
-message ResourceMap {
-  map<string, ResourceTableData> items = 1;
 }
 
 message StoredConfig {
@@ -546,7 +539,7 @@ message ResourceLoad {
 }
 
 message ResourcesData {
-  reserved 3, 8;
+  reserved 3, 8, 17;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
@@ -577,8 +570,6 @@ message ResourcesData {
   int64 idle_duration_ms = 15;
   // Whether the node is being drained.
   bool is_draining = 16;
-  // Why the node is not idle.
-  repeated string node_activity = 17;
 }
 
 message ResourceUsageBatchData {

@@ -18,7 +18,8 @@ Quickstart
 
 For reference, the final code is as follows:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
@@ -40,7 +41,10 @@ Compare a PyTorch training script with and without Ray Train.
 
     .. group-tab:: PyTorch
 
-        .. code-block:: python
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
+        .. testcode::
+            :skipif: True
 
             import tempfile
             import torch
@@ -138,7 +142,8 @@ Set up a training function
 First, update your training code to support distributed training. 
 Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     def train_func(config):
         # Your PyTorch training code here.
@@ -212,8 +217,9 @@ See :ref:`data-ingest-torch`.
     Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
     The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
 
-    .. code-block:: python
-
+    .. testcode::
+        :skipif: True
+        
         global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 
 
@@ -248,7 +254,7 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 1. :class:`num_workers <ray.train.ScalingConfig>` - The number of distributed training worker processes.
 2. :class:`use_gpu <ray.train.ScalingConfig>` - Whether each worker should use a GPU (or CPU).
 
-.. code-block:: python
+.. testcode::
 
     from ray.train import ScalingConfig
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
@@ -262,7 +268,15 @@ Launch a training job
 Tying this all together, you can now launch a distributed training job 
 with a :class:`~ray.train.torch.TorchTrainer`.
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    from ray.train import ScalingConfig
+
+    train_func = lambda: None
+    scaling_config = ScalingConfig(num_workers=1)
+
+.. testcode::
 
     from ray.train.torch import TorchTrainer
 
@@ -275,7 +289,7 @@ Access training results
 After training completes, a :class:`~ray.train.Result` object is returned which contains
 information about the training run, including the metrics and checkpoints reported during training.
 
-.. code-block:: python
+.. testcode::
 
     result.metrics     # The metrics reported during training.
     result.checkpoint  # The latest checkpoint reported during training.

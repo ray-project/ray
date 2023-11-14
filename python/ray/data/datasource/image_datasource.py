@@ -1,7 +1,7 @@
 import io
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -104,27 +104,9 @@ class ImageDatasource(FileBasedDatasource):
     def _rows_per_file(self):
         return 1
 
-    def _write_row(
-        self,
-        f: "pyarrow.NativeFile",
-        row,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        column: str = None,
-        file_format: str = None,
-        **writer_args,
-    ):
-        import io
-
-        from PIL import Image
-
-        image = Image.fromarray(row[column])
-        buffer = io.BytesIO()
-        image.save(buffer, format=file_format)
-        f.write(buffer.getvalue())
-
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
-        for file_size in self._file_sizes:
+        for file_size in self._file_sizes():
             # NOTE: check if file size is not None, because some metadata provider
             # such as FastFileMetadataProvider does not provide file size information.
             if file_size is not None:
@@ -136,7 +118,7 @@ class ImageDatasource(FileBasedDatasource):
         start_time = time.perf_counter()
         # Filter out empty file to avoid noise.
         non_empty_path_and_size = list(
-            filter(lambda p: p[1] > 0, zip(self._paths, self._file_sizes))
+            filter(lambda p: p[1] > 0, zip(self._paths(), self._file_sizes()))
         )
         num_files = len(non_empty_path_and_size)
         if num_files == 0:

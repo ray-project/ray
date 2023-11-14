@@ -21,6 +21,13 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 
 
+@pytest.fixture
+def serve_and_ray_shutdown():
+    yield
+    serve.shutdown()
+    ray.shutdown()
+
+
 @serve.deployment()
 def sync_d():
     return "sync!"

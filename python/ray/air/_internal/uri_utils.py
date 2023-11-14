@@ -99,23 +99,3 @@ class URI:
 
 def is_uri(path: str) -> bool:
     return bool(urllib.parse.urlparse(path).scheme)
-
-
-def _join_path_or_uri(base_path: str, path_to_join: str) -> str:
-    """Joins paths to form either a URI (w/ possible URL params) or a local path.
-
-    Example:
-
-        >>> local_path = "/a/b"
-        >>> uri = "s3://bucket/a?scheme=http"
-        >>> path_to_join = "c/d"
-        >>> _join_path_or_uri(local_path, path_to_join)
-        '/a/b/c/d'
-        >>> _join_path_or_uri(uri, path_to_join)
-        's3://bucket/a/c/d?scheme=http'
-
-    """
-    from ray.air._internal.remote_storage import is_local_path
-
-    base_path_or_uri = Path(base_path) if is_local_path(base_path) else URI(base_path)
-    return str(base_path_or_uri / path_to_join)
