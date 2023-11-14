@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, List, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, List, TypeVar
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -171,9 +171,7 @@ class ActorPool:
 
         return get_generator()
 
-    def submit(
-        self, fn: Callable[["ray.actor.ActorHandle", Any], "ray.ObjectRef"], value: Any
-    ) -> None:
+    def submit(self, fn, value):
         """Schedule a single task to run in the pool.
 
         This has the same argument semantics as map(), but takes on a single
@@ -217,7 +215,7 @@ class ActorPool:
         else:
             self._pending_submits.append((fn, value))
 
-    def has_next(self) -> bool:
+    def has_next(self):
         """Returns whether there are any pending results to return.
 
         Returns:
@@ -249,9 +247,7 @@ class ActorPool:
         """
         return bool(self._future_to_actor)
 
-    def get_next(
-        self, timeout: Union[None, int, float] = None, ignore_if_timedout: bool = False
-    ) -> Any:
+    def get_next(self, timeout=None, ignore_if_timedout=False):
         """Returns the next pending result in order.
 
         This returns the next result produced by submit(), blocking for up to
