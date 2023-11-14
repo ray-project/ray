@@ -35,39 +35,6 @@ message Status {
   string message = 2;
 }
 
-// A node type that's available for the cluster.
-message NodeTypeConfig {
-  // The name of the node type. e.g. "ray-head.default"
-  string type_name = 1;
-  // available resources on the node. such as {"CPU": 4, "GPU": 1}
-  map<string, double> resources = 2;
-  // Min worker count for this node type.
-  int32 min_workers = 3;
-  // Max worker count for this node type.
-  int32 max_workers = 4;
-  // Labels.
-  map<string, string> labels = 5;
-}
-
-// This should map to a subset of fields in ray-schema.json
-// that InstanceManager and Autoscaler needs.
-message InstancesConfig {
-  // The configs for each node type.
-  map<string, NodeTypeConfig> available_node_type_configs = 1;
-  // The max number of worker nodes that can be added to the cluster.
-  optional int32 max_worker_nodes = 2;
-  // The idle termination timeout for a worker nodes.
-  double idle_timeout_minutes = 3;
-}
-
-message GetInstancesConfigRequest {}
-
-message GetInstancesConfigReply {
-  Status status = 1;
-  // Optional instances config if status OK.
-  optional InstancesConfig instances_config = 2;
-}
-
 // Represents the state of a launched instance.
 // An instance is considered launched as long as
 // it has a unique instance_id associated with it.
@@ -223,6 +190,4 @@ service InstanceManagerService {
       returns (GetInstanceManagerStateReply);
   rpc UpdateInstanceManagerState(UpdateInstanceManagerStateRequest)
       returns (UpdateInstanceManagerStateReply);
-  /// Get the cluster config.
-  rpc GetInstancesConfig(GetInstancesConfigRequest) returns (GetInstancesConfigReply);
 }

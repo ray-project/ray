@@ -6,8 +6,6 @@ from typing import Dict, Optional
 from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateReply,
     GetInstanceManagerStateRequest,
-    GetInstancesConfigReply,
-    GetInstancesConfigRequest,
     Instance,
     UpdateInstanceManagerStateReply,
     UpdateInstanceManagerStateRequest,
@@ -49,12 +47,6 @@ class InstanceManager(ABC):
     def get_instance_manager_state(
         self, request: GetInstanceManagerStateRequest
     ) -> GetInstanceManagerStateReply:
-        pass
-
-    @abstractmethod
-    def get_instances_config(
-        self, request: GetInstancesConfigRequest
-    ) -> GetInstancesConfigReply:
         pass
 
 

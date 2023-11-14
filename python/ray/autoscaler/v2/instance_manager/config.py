@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Dict, List
 
 from ray.autoscaler._private.util import hash_runtime_conf, prepare_config
-from ray.core.generated.instance_manager_pb2 import InstancesConfig
+from ray.autoscaler.v2.scheduler import ClusterConfig
 
 
 class Provider(Enum):
@@ -17,11 +17,11 @@ class Provider(Enum):
     LOCAL = 6
 
 
-class InstancesConfigReader(ABC):
+class ConfigReader(ABC):
     """An interface for reading instance configs."""
 
     @abstractmethod
-    def get_instances_config(self) -> InstancesConfig:
+    def get_cluster_config(self) -> ClusterConfig:
         """Returns the instance configs."""
         pass
 
