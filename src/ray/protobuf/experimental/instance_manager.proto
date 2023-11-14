@@ -36,12 +36,10 @@ message Status {
 }
 
 // A node type that's available for the cluster.
-// This is a subset of fields from `available_node_types` in ray-schema.json
-// that InstanceManager needs.
 message NodeTypeConfig {
   // The name of the node type. e.g. "ray-head.default"
   string type_name = 1;
-  // avaialble resources on the node. such as {"CPU": 4, "GPU": 1}
+  // available resources on the node. such as {"CPU": 4, "GPU": 1}
   map<string, double> resources = 2;
   // Min worker count for this node type.
   int32 min_workers = 3;
@@ -51,11 +49,13 @@ message NodeTypeConfig {
   map<string, string> labels = 5;
 }
 
+// This should map to a subset of fields in ray-schema.json
+// that InstanceManager and Autoscaler needs.
 message InstancesConfig {
   // The configs for each node type.
   map<string, NodeTypeConfig> available_node_type_configs = 1;
   // The max number of worker nodes that can be added to the cluster.
-  optional int32 max_num_worker_nodes = 2;
+  optional int32 max_worker_nodes = 2;
   // The idle termination timeout for a worker nodes.
   double idle_timeout_minutes = 3;
 }
