@@ -556,13 +556,10 @@ class Worker:
     @contextmanager
     def task_paused_by_debugger(self):
         """Use while the task is paused by debugger"""
-        print(ray.get_runtime_context()._get_current_task_id())
         try:
-            print("SANG-TODO 123")
             self.core_worker.update_task_is_debugger_paused(
                 ray.get_runtime_context()._get_current_task_id(), True
             )
-            print("SANG-TODO abc")
             yield
         finally:
             self.core_worker.update_task_is_debugger_paused(
