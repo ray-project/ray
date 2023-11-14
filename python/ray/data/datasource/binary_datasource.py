@@ -18,7 +18,7 @@ class BinaryDatasource(FileBasedDatasource):
         data = f.readall()
 
         builder = ArrowBlockBuilder()
-        item = {self._COLUMN_NAME: data, "path": path}
+        item = {self._COLUMN_NAME: data}
         builder.add(item)
         return builder.build()
 
