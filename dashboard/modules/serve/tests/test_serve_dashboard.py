@@ -780,7 +780,7 @@ def test_put_with_logging_config(ray_start_stop):
     )
     print("Deployments are live and reachable over HTTP.\n")
 
-    # Make sure deploymemnt & controller both log in json format.
+    # Make sure deployment & controller both log in json format.
     resp = requests.post("http://localhost:8000/app").json()
     expected_log_regex = [f'"replica": "{resp["replica"]}", ']
     check_log_file(resp["log_file"], expected_log_regex)
