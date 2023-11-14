@@ -921,7 +921,14 @@ def test_map_estimated_output_blocks():
     # 100 inputs -> 100 / 10 = 10 tasks -> 10 * 5 = 50 output blocks
     assert op._estimated_output_blocks == 50
 
+
+def test_map_estimated_blocks_split():
     # Test read output splitting
+    def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        for i in range(5):
+            yield pd.DataFrame({"id": [i]})
+
+    min_rows_per_bundle = 10
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = MapOperator.create(
         create_map_transformer_from_block_fn(yield_five),

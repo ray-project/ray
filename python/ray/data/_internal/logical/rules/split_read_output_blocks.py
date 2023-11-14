@@ -19,6 +19,7 @@ def compute_additional_split_factor(
     parallelism: int,
     mem_size: int,
     target_max_block_size: int,
+    cur_additional_split_factor: Optional[int] = None,
 ) -> Tuple[int, str, int, Optional[int]]:
     ctx = DataContext.get_current()
     parallelism, reason, _, _ = _autodetect_parallelism(
@@ -34,6 +35,8 @@ def compute_additional_split_factor(
         size_based_splits = round(max(1, expected_block_size / target_max_block_size))
     else:
         size_based_splits = 1
+    if cur_additional_split_factor:
+        size_based_splits *= cur_additional_split_factor
     logger.get_logger().debug(f"Size based split factor {size_based_splits}")
     estimated_num_blocks = num_read_tasks * size_based_splits
     logger.get_logger().debug(f"Blocks after size splits {estimated_num_blocks}")
@@ -91,6 +94,7 @@ class SplitReadOutputBlocksRule(Rule):
             logical_op._parallelism,
             logical_op._mem_size,
             op.actual_target_max_block_size,
+            op._additional_split_factor,
         )
         if logical_op._parallelism == -1:
             assert reason != ""
