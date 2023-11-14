@@ -1,13 +1,37 @@
+import os
 from unittest import mock
 
+import pyarrow
 import pytest
 
 import ray
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import (
     OPEN_FILE_MAX_ATTEMPTS,
+    FileBasedDatasource,
     _open_file_with_retry,
 )
 from ray.data.datasource.path_util import _is_local_windows_path
+
+
+class MockFileBasedDatasource(FileBasedDatasource):
+    def _read_file(self, f: "pyarrow.NativeFile", path: str) -> Block:
+        builder = DelegatingBlockBuilder()
+        builder.add({"data": f.readall()})
+        return builder.build()
+
+
+def test_include_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test.txt")
+    with open(path, "w"):
+        pass
+
+    datasource = MockFileBasedDatasource(path, include_paths=True)
+    ds = ray.data.read_datasource(datasource)
+
+    paths = [row["path"] for row in ds.take_all()]
+    assert paths == [path]
 
 
 def test_open_file_with_retry(ray_start_regular_shared):
