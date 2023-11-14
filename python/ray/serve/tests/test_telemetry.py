@@ -43,12 +43,16 @@ def test_fastapi_detected(manage_ray_with_telemetry):
     )
 
     # Check that telemetry related to FastAPI app is not set
-    report = ray.get(storage_handle.get_report.remote())
-    assert ServeUsageTag.FASTAPI_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
-    assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 1
-    assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 1
-    assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
+    def check_report_before_fastapi():
+        report = ray.get(storage_handle.get_report.remote())
+        assert ServeUsageTag.FASTAPI_USED.get_value_from_report(report) is None
+        assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
+        assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 1
+        assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 1
+        assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
+        return True
+
+    wait_for_condition(check_report_before_fastapi)
 
     app = FastAPI()
 
