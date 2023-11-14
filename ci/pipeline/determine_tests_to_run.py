@@ -158,7 +158,6 @@ if __name__ == "__main__":
                 changed_file.startswith("python/ray/data")
                 or changed_file == ".buildkite/data.rayci.yml"
                 or changed_file == "ci/docker/data.build.Dockerfile"
-                or changed_file == "ci/docker/datan.build.wanda.yaml"
                 or changed_file == "ci/docker/data6.build.wanda.yaml"
                 or changed_file == "ci/docker/data12.build.wanda.yaml"
             ):
