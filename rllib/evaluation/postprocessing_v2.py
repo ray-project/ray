@@ -19,69 +19,52 @@ from ray.rllib.utils.typing import TensorType
 _, tf, _ = try_import_tf()
 
 
-def compute_advantages_old(
-    values,
-    rewards,
-    terminateds,
-    gamma: float = 0.9,
-    lambda_: float = 1.0,
-    standardize_advantages: bool = True,
-):
+def compute_advantages(values, rewards, terminateds, truncateds, gamma, lambda_):
+
     orig_shape = values.shape
+    # Force-set all values at terminals (not at truncations!) to 0.0.
+    orig_values = flat_values = values * (1.0 - terminateds)
 
     # Data has an extra time rank -> reshape everything into single sequence.
     time_rank = False
     if len(orig_shape) == 2:
         time_rank = True
-        values = values.reshape((-1,))
+        flat_values = flat_values.reshape((-1,))
         rewards = rewards.reshape((-1,))
-        terminateds = terminateds.reshape((-1,))
 
-    # Fix terminateds, which are shifted by one to the right (all episodes)
-    # have been made one ts longer artificially.
-    #terminateds = np.append(terminateds[1:], False)
+    flat_values = np.append(flat_values, 0.0)
+    intermediates = (rewards + gamma * (1 - lambda_) * flat_values[1:])
+    continues = 1.0 - terminateds
 
-    print("vpred_t=", values)  # TODO
-    deltas = rewards + (1.0 - terminateds) * gamma * np.append(values[1:], 0.0) - values
-    print("deltas=", deltas)
-    advantages = np.zeros_like(rewards)
-
-    #last_gae = 0.0
-    #for t in reversed(range(len(rewards))):
-    #    last_gae = deltas[t] + gamma * lambda_ * (1.0 - terminateds[t]) * last_gae
-    #    advantages[t] = last_gae
-    advantages = discount_cumsum(deltas, gamma * lambda_)
-
-    # Reshape `advantages` back to shape=(B, T) if necessary.
     if time_rank:
-        advantages = advantages.reshape(orig_shape)
+        Rs = []
+        intermediates = intermediates.reshape(orig_shape)
+        for row in reversed(range(orig_shape[0])):        
+            last = orig_values[row + 1][0] if row != orig_shape[0] - 1 else 0.0
+            for t in reversed(range(intermediates.shape[1])):
+                last = intermediates[row][t] + continues[row][t] * gamma * lambda_ * last
+                Rs.append(last)
+                if truncateds[row][t]:
+                    last = orig_values[row][t]
+    else:
+        Rs = []
+        #intermediates = intermediates.reshape(orig_shape)
+        #for row in reversed(range(orig_shape[0])):        
+        last = flat_values[-1]
+        for t in reversed(range(intermediates.shape[0])):
+            last = intermediates[t] + continues[t] * gamma * lambda_ * last
+            Rs.append(last)
+            if truncateds[t]:
+                last = orig_values[t]
 
-    return advantages
-
-
-def compute_advantages(values, rewards, terminateds, truncateds, gamma, lambda_):
-    # The first reward is irrelevant (not used for any VF target).
-    #rewards_t1_to_H_BxT = rewards_t0_to_H_BxT[1:]
-    values *= (1.0 - terminateds)
-
-    # In all the following, when building value targets for t=1 to T=H,
-    # exclude rewards & continues for t=1 b/c we don't need r1 or c1.
-    # The target (R1) for V1 is built from r2, c2, and V2/R2.
-    continues = (1.0 - terminateds[1:])
-    discount = continues * gamma  # shape=[2-16, BxT]
-    #truncateds = c
-    intermediates = (rewards[:-1] + discount * (1 - lambda_) * values[1:])
-    # intermediates.shape=[2-16, BxT]
-
-    # Loop through reversed timesteps (axis=1) from T+1 to t=2.
-    Rs = [values[-1]]  # Rs indices=[16]
-    for t in reversed(range(discount.shape[0])):
-        Rs.append(intermediates[t] + (1.0 - truncateds[1:][t]) * discount[t] * lambda_ * Rs[-1])
-
-    # Reverse along time axis and cut the last entry (value estimate at very end
-    # cannot be learnt from as it's the same as the ... well ... value estimate).
+    # Reverse back to correct (time) direction.
     targets = np.stack(list(reversed(Rs)), axis=0)
-    # targets.shape=[t0 to H-1,BxT]
-    advantages = targets - values
+
+    # Reshape `targets` back to shape=(B, T) if necessary.
+    if time_rank:
+        targets = targets.reshape(orig_shape)
+
+    # Targets = Advantages + Value predictions 
+    advantages = targets - orig_values
 
     return advantages, targets

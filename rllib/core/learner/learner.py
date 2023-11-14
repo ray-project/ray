@@ -1277,6 +1277,7 @@ class Learner:
                 example for metrics) or be more selective about you want to report back
                 to the algorithm's training_step. If None is passed, the results will
                 not get reduced.
+
         Returns:
             A dictionary of results, in numpy format or a list of such dictionaries in
             case `reduce_fn` is None and we have more than one minibatch pass.
@@ -1314,6 +1315,18 @@ class Learner:
                 policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
                 env_steps=sum(len(e) for e in episodes),
             )
+
+        # TEST CODE to compare against old stack's batch building behavior
+        #from ray.rllib.policy.sample_batch import concat_samples
+        #from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
+        #old_stack_batch = concat_samples([e.get_sample_batch() for e in episodes])
+        #old_stack_batch["seq_lens"] = batch["default_policy"]["seq_lens"]
+        #old_stack_batch["state_in_0"] = batch["default_policy"]["state_in"]["c"]
+        #old_stack_batch["state_in_1"] = batch["default_policy"]["state_in"]["h"]
+        #old_stack_batch.pop("state_out")
+        #old_stack_batch.pop("infos", None)
+        #pad_batch_to_sequences_of_same_size(old_stack_batch, 20)
+        #print(old_stack_batch)
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator
@@ -1358,7 +1371,7 @@ class Learner:
             #  step here.
             results.append(convert_to_numpy(result))
 
-        batch = self._set_slicing_by_batch_id(batch, value=False)
+        self._set_slicing_by_batch_id(batch, value=False)
 
         # Reduce results across all minibatches, if necessary.
 

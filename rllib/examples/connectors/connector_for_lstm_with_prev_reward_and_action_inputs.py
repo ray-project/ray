@@ -124,12 +124,13 @@ if __name__ == "__main__":
         return learner_connector, ctx
 
 
+    from ray.rllib.algorithms.dreamerv3.utils.debugging import CartPoleDebug
     config = (
         PPOConfig()
         # Use new API stack.
         .experimental(_enable_new_api_stack=True)
         .framework(args.framework)
-        .environment(StatelessCartPole)
+        .environment("CartPole-v1")#CartPoleDebug)#StatelessCartPole) # CartPoleDebug
         # And new EnvRunner.
         .rollouts(
             env_runner_cls=SingleAgentEnvRunner,
@@ -140,13 +141,13 @@ if __name__ == "__main__":
         .training(
             learner_connector=make_learner_connector,
             num_sgd_iter=5,
-            vf_loss_coeff=0.0001,
+            #vf_loss_coeff=0.0001,
             train_batch_size=512,
-            model={
-                "use_lstm": True,
-                "lstm_cell_size": 32,
-                "vf_share_layers": True,
-            },
+            #model={
+            #    "use_lstm": True,
+            #    "lstm_cell_size": 32,
+            #    "vf_share_layers": True,
+            #},
         )
     )
 
@@ -161,6 +162,9 @@ if __name__ == "__main__":
         param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop=stop,
+        ),
+        tune_config=tune.TuneConfig(
+            num_samples=10,
         ),
     )
     results = tuner.fit()

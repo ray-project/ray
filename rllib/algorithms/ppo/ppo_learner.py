@@ -213,7 +213,7 @@ class PPOLearner(Learner):
                 lambda s: np.concatenate([s, [s[-1]]]),
                 episode.actions,
             )
-            episode.rewards = np.concatenate([episode.rewards, [episode.rewards[-1]]])
+            episode.rewards = np.append(episode.rewards, 0.0)
             episode.extra_model_outputs = tree.map_structure(
                 lambda s: np.concatenate([s, [s[-1]]], axis=0),
                 episode.extra_model_outputs,

@@ -51,8 +51,15 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # for which we add an additional (artificial) timestep to each episode to
         # simplify the actual computation.
 
-        def possibly_masked_mean(data_):
-            return torch.sum(data_[batch["loss_mask"]]) / torch.sum(batch["loss_mask"])
+        if "loss_mask" in batch:
+            num_valid = torch.sum(batch["loss_mask"])
+
+            def possibly_masked_mean(data_):
+                return torch.sum(data_[batch["loss_mask"]]) / num_valid
+
+        else:
+
+            possibly_masked_mean = torch.mean
 
         ## RNN case: Mask away 0-padded chunks at end of time axis.
         #if self.module[module_id].is_stateful():
