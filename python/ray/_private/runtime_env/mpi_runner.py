@@ -24,6 +24,6 @@ if __name__ == "__main__":
         spec.loader.exec_module(mod)
     else:
         module, func = args.worker_entry.rsplit(".", 1)
-        m = __import__(module)
+        m = importlib.import_module(module)
         f = getattr(m, func)
         f()

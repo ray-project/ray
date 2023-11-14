@@ -286,11 +286,6 @@ message TaskEventData {
   bytes job_id = 4;
 }
 
-message ResourceTableData {
-  // The total capacity of this resource type.
-  double resource_capacity = 1;
-}
-
 message AvailableResources {
   // Node id.
   bytes node_id = 1;
@@ -476,10 +471,6 @@ message WorkerTableData {
 message WorkerDeltaData {
   bytes raylet_id = 1;
   bytes worker_id = 2;
-}
-
-message ResourceMap {
-  map<string, ResourceTableData> items = 1;
 }
 
 message StoredConfig {
