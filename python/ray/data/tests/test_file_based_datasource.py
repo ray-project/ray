@@ -1,5 +1,7 @@
+import os
 from unittest import mock
 
+import pyarrow
 import pytest
 
 import ray
