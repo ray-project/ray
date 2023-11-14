@@ -136,6 +136,7 @@ class FileBasedDatasource(Datasource):
     def __init__(
         self,
         paths: Union[str, List[str]],
+        *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,

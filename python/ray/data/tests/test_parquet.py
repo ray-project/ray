@@ -40,6 +40,17 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
         assert ds._plan.execute()._num_computed() == streaming_expected
 
 
+def test_include_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test.txt")
+    table = pa.Table.from_pydict({"animals": ["cat", "dog"]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_paths=True)
+
+    paths = [row["path"] for row in ds.take_all()]
+    assert paths == [path, path]
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [
