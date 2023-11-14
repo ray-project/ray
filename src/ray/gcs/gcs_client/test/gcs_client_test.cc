@@ -355,23 +355,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  gcs::NodeResourceInfoAccessor::ResourceMap GetResources(const NodeID &node_id) {
-    gcs::NodeResourceInfoAccessor::ResourceMap resource_map;
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
-        node_id,
-        [&resource_map, &promise](
-            Status status,
-            const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &result) {
-          if (result) {
-            resource_map.insert(result->begin(), result->end());
-          }
-          promise.set_value(true);
-        }));
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return resource_map;
-  }
-
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
     std::promise<bool> promise;
     std::vector<rpc::AvailableResources> resources;
