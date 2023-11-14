@@ -260,15 +260,12 @@ def test_proxy_from_streaming_handle(
 
             @app.get("/")
             def stream_hi(self, request: Request) -> StreamingResponse:
-                async def consume_obj_ref_gen():
-                    if use_async:
-                        obj_ref_gen = await self._h.hi_gen_async.remote()
-                    else:
-                        obj_ref_gen = await self._h.hi_gen_sync.remote()
-                    async for obj_ref in obj_ref_gen:
-                        yield await obj_ref
+                if use_async:
+                    gen = self._h.hi_gen_async.remote()
+                else:
+                    gen = self._h.hi_gen_sync.remote()
 
-                return StreamingResponse(consume_obj_ref_gen(), media_type="text/plain")
+                return StreamingResponse(gen, media_type="text/plain")
 
     else:
 
@@ -278,15 +275,12 @@ def test_proxy_from_streaming_handle(
                 self._h = handle.options(stream=True)
 
             def __call__(self, request: Request) -> StreamingResponse:
-                async def consume_obj_ref_gen():
-                    if use_async:
-                        obj_ref_gen = await self._h.hi_gen_async.remote()
-                    else:
-                        obj_ref_gen = await self._h.hi_gen_sync.remote()
-                    async for obj_ref in obj_ref_gen:
-                        yield await obj_ref
+                if use_async:
+                    gen = self._h.hi_gen_async.remote()
+                else:
+                    gen = self._h.hi_gen_sync.remote()
 
-                return StreamingResponse(consume_obj_ref_gen(), media_type="text/plain")
+                return StreamingResponse(gen, media_type="text/plain")
 
     serve.run(SimpleGenerator.bind(Streamer.bind()))
 

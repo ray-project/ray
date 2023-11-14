@@ -4,9 +4,10 @@ import ssl
 from pyVim.connect import Disconnect, SmartStubAdapter, VimSessionOrientedStub
 from pyVmomi import vim
 
-from ray.autoscaler._private.vsphere.utils import Constants
+from ray.autoscaler._private.vsphere.utils import Constants, singleton_client
 
 
+@singleton_client
 class PyvmomiSdkProvider:
     def __init__(
         self,
@@ -24,28 +25,32 @@ class PyvmomiSdkProvider:
         self.port = port
 
         # Instance parameters
-        if self.session_type == Constants.SessionType.UNVERIFIED:
-            context_obj = ssl._create_unverified_context()
         self.timeout = 0
 
         # Connect using a session oriented connection
         # Ref. https://github.com/vmware/pyvmomi/issues/347
-        self.pyvmomi_sdk_client = None
-        credentials = VimSessionOrientedStub.makeUserLoginMethod(user, password)
-        smart_stub = SmartStubAdapter(
-            host=server,
-            port=port,
-            sslContext=context_obj,
-            connectionPoolTimeout=self.timeout,
-        )
-        self.session_stub = VimSessionOrientedStub(smart_stub, credentials)
-        self.pyvmomi_sdk_client = vim.ServiceInstance(
-            "ServiceInstance", self.session_stub
-        )
-
+        self.pyvmomi_sdk_client = self.get_client()
         if not self.pyvmomi_sdk_client:
             raise ValueError("Could not connect to the specified host")
         atexit.register(Disconnect, self.pyvmomi_sdk_client)
+
+    def get_client(self):
+        if self.session_type == Constants.SessionType.UNVERIFIED:
+            context_obj = ssl._create_unverified_context()
+        else:
+            # TODO: support verified context
+            pass
+        credentials = VimSessionOrientedStub.makeUserLoginMethod(
+            self.user, self.password
+        )
+        smart_stub = SmartStubAdapter(
+            host=self.server,
+            port=self.port,
+            sslContext=context_obj,
+            connectionPoolTimeout=self.timeout,
+        )
+        session_stub = VimSessionOrientedStub(smart_stub, credentials)
+        return vim.ServiceInstance("ServiceInstance", session_stub)
 
     def get_pyvmomi_obj(self, vimtype, name=None, obj_id=None):
         """
@@ -77,3 +82,11 @@ class PyvmomiSdkProvider:
             f"Cannot find the object with type {vimtype} on vSphere with"
             f"name={name} and obj_id={obj_id}"
         )
+
+    def ensure_connect(self):
+        try:
+            _ = self.pyvmomi_sdk_client.RetrieveContent()
+        except vim.fault.NotAuthenticated:
+            self.pyvmomi_sdk_client = self.get_client()
+        except Exception as e:
+            raise RuntimeError(f"failed to ensure the connect, exception: {e}")

@@ -35,7 +35,7 @@ from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -264,7 +264,7 @@ def test_connect(ray_shutdown):
         )
 
     handle = serve.run(connect_in_deployment.bind())
-    ray.get(handle.remote())
+    handle.remote().result()
     assert "deployment-ception" in serve.status().applications["app2"].deployments
 
 
@@ -516,7 +516,7 @@ def test_no_http(ray_shutdown):
 
         handle = serve.run(hello.bind())
 
-        assert ray.get(handle.remote()) == "hello"
+        assert handle.remote().result() == "hello"
         serve.shutdown()
 
 
@@ -725,7 +725,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         )
 
 
-@serve.deployment(ray_actor_options={"num_cpus": 0.1})
+@serve.deployment(ray_actor_options={"num_cpus": 0})
 class Waiter:
     def __init__(self):
         time.sleep(5)
@@ -737,23 +737,26 @@ class Waiter:
 WaiterNode = Waiter.bind()
 
 
-def test_run_graph_task_uses_zero_cpus():
-    """Check that the run_graph() task uses zero CPUs."""
-
-    ray.init(num_cpus=2)
+def test_build_app_task_uses_zero_cpus(ray_shutdown):
+    """Check that the task to build an app uses zero CPUs."""
+    ray.init(num_cpus=0)
     serve.start()
-    client = _get_global_client()
 
-    config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
-    config = ServeApplicationSchema.parse_obj(config)
-    client.deploy_apps(config)
+    _get_global_client().deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="default",
+                    route_prefix="/",
+                    import_path="ray.serve.tests.test_standalone.WaiterNode",
+                )
+            ],
+        )
+    )
 
-    with pytest.raises(RuntimeError):
-        wait_for_condition(lambda: ray.available_resources()["CPU"] < 1.9, timeout=5)
-
+    # If the task required any resources, this would fail.
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/Waiter").text
-        == "May I take your order?"
+        lambda: requests.get("http://localhost:8000/").text == "May I take your order?"
     )
 
     serve.shutdown()
