@@ -5,4 +5,5 @@ srcs:
   - ci/build/build-manylinux-forge.sh
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
+  - HOSTTYPE=x86_64
 dockerfile: ci/docker/manylinux.Dockerfile

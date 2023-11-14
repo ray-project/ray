@@ -93,11 +93,6 @@ class Experiment:
             checkpoint_freq=10,
             max_failures=2)
 
-    Args:
-        TODO(xwjiang): Add the whole list.
-        _experiment_checkpoint_dir: Internal use only. If present, use this
-            as the root directory for experiment checkpoint. If not present,
-            the directory path will be deduced from trainable name instead.
     """
 
     # Keys that will be present in `public_spec` dict.
@@ -118,7 +113,6 @@ class Experiment:
         num_samples: int = 1,
         storage_path: Optional[str] = None,
         storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        _experiment_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[Union[SyncConfig, dict]] = None,
         checkpoint_config: Optional[Union[CheckpointConfig, dict]] = None,
         trial_name_creator: Optional[Callable[["Trial"], str]] = None,

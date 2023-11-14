@@ -46,11 +46,11 @@ class LocalResourceManagerTest : public ::testing::Test {
     }
   }
 
-  rpc::ResourcesData GetSyncMessageForResourceReport() {
+  syncer::ResourceViewSyncMessage GetSyncMessageForResourceReport() {
     auto msg = manager->CreateSyncMessage(0, syncer::MessageType::RESOURCE_VIEW);
-    rpc::ResourcesData resources_data;
-    resources_data.ParseFromString(msg->sync_message());
-    return resources_data;
+    syncer::ResourceViewSyncMessage resource_view_sync_messge;
+    resource_view_sync_messge.ParseFromString(msg->sync_message());
+    return resource_view_sync_messge;
   }
 
   scheduling::NodeID local_node_id = scheduling::NodeID(0);
@@ -282,8 +282,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       auto idle_time = manager->GetResourceIdleTime();
       ASSERT_EQ(idle_time, absl::nullopt);
 
-      const auto &resources_data = GetSyncMessageForResourceReport();
-      ASSERT_EQ(resources_data.idle_duration_ms(), 0);
+      const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+      ASSERT_EQ(resource_view_sync_messge.idle_duration_ms(), 0);
     }
 
     // Deallocate the resource
@@ -303,9 +303,9 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       ASSERT_GE(dur, absl::ZeroDuration());
       ASSERT_LE(dur, absl::Seconds(1));
 
-      const auto &resources_data = GetSyncMessageForResourceReport();
-      ASSERT_GE(resources_data.idle_duration_ms(), 0);
-      ASSERT_LE(resources_data.idle_duration_ms(), 1 * 1000);
+      const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+      ASSERT_GE(resource_view_sync_messge.idle_duration_ms(), 0);
+      ASSERT_LE(resource_view_sync_messge.idle_duration_ms(), 1 * 1000);
     }
   }
 
@@ -316,8 +316,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     auto idle_time = manager->GetResourceIdleTime();
     ASSERT_EQ(idle_time, absl::nullopt);
 
-    const auto &resources_data = GetSyncMessageForResourceReport();
-    ASSERT_EQ(resources_data.idle_duration_ms(), 0);
+    const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+    ASSERT_EQ(resource_view_sync_messge.idle_duration_ms(), 0);
   }
 
   // Free object store memory usage should make node resource idle.
@@ -330,8 +330,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     ASSERT_GE(dur, absl::ZeroDuration());
 
     // And syncer messages should be created correctly for resource reporting.
-    const auto &resources_data = GetSyncMessageForResourceReport();
-    ASSERT_GE(resources_data.idle_duration_ms(), 0);
+    const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+    ASSERT_GE(resource_view_sync_messge.idle_duration_ms(), 0);
   }
 }
 
@@ -351,8 +351,8 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
   manager->SubtractResourceInstances(
       ResourceID::CPU(), {2.0}, /*allow_going_negative=*/true);
 
-  const auto &resources_data = GetSyncMessageForResourceReport();
-  ASSERT_EQ(resources_data.resources_available().at("CPU"), 0);
+  const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+  ASSERT_EQ(resource_view_sync_messge.resources_available().at("CPU"), 0);
 }
 
 }  // namespace ray

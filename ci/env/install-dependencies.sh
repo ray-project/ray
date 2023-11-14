@@ -160,6 +160,9 @@ install_miniconda() {
     )
   fi
 
+  # Install mpi4py
+  "${WORKSPACE_DIR}"/ci/suppress_output conda install -c anaconda mpi4py -y
+
   command -V python
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
