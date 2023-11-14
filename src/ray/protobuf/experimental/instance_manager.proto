@@ -56,6 +56,8 @@ message InstancesConfig {
   map<string, NodeTypeConfig> available_node_type_configs = 1;
   // The max number of worker nodes that can be added to the cluster.
   optional int32 max_num_worker_nodes = 2;
+  // The idle termination timeout for a worker nodes.
+  double idle_timeout_minutes = 3;
 }
 
 message GetInstancesConfigRequest {}
