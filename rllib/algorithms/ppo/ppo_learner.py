@@ -255,7 +255,7 @@ class PPOLearner(Learner):
                 episode.observations,
             )
             # Infos are always lists.
-            episode.infos.append(episode.infos[-1])
+            #UNDO THIS : episode.infos.append(episode.infos[-1])
             episode.actions = tree.map_structure(
                 lambda s: np.concatenate([s, [s[-1]]]),
                 episode.actions,

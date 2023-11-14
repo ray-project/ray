@@ -122,11 +122,11 @@ class DefaultLearnerConnector(ConnectorV2):
                 )
 
         # Infos (always as lists).
-        if SampleBatch.INFOS not in input_:
-            input_[SampleBatch.INFOS] = sum(
-                [d[SampleBatch.INFOS] for d in data_dicts],
-                [],
-            )
+        #TODO:uncomment if SampleBatch.INFOS not in input_:
+        #    input_[SampleBatch.INFOS] = sum(
+        #        [d[SampleBatch.INFOS] for d in data_dicts],
+        #        [],
+        #    )
 
         if ctx.rl_module.is_stateful():
             # Now that all "normal" fields are time-dim'd and zero-padded, add

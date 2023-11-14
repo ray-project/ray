@@ -280,8 +280,6 @@ class SingleAgentEpisode:
     @property
     def is_numpy(self) -> bool:
         """True, if the data in this episode is already stored as numpy arrays."""
-        if len(self) == 0:
-            return False
         # If rewards are still a list, return False.
         # Otherwise, rewards should already be a (1D) numpy array.
         return not isinstance(self.rewards, list)
@@ -445,7 +443,9 @@ class SingleAgentEpisode:
 
     def get_observations(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
         if indices is None:
-            slice_ = slice(self._len_pre_buffer, -1)
+            # HACK: UNDO
+            slice_ = slice(0, -1)
+            #slice_ = slice(self._len_pre_buffer, -1)
         elif isinstance(indices, list) and not self.is_numpy:
             return [self.observations[i] for i in indices]
         else:
@@ -458,7 +458,9 @@ class SingleAgentEpisode:
 
     def get_infos(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
         if indices is None:
-            slice_ = slice(self._len_pre_buffer, -1)
+            # HACK: UNDO
+            slice_ = slice(0, -1)
+            #slice_ = slice(self._len_pre_buffer, -1)
         elif isinstance(indices, int):
             slice_ = slice(indices, indices + 1)
         elif isinstance(indices, list):
@@ -469,7 +471,9 @@ class SingleAgentEpisode:
 
     def get_actions(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
         if indices is None:
-            slice_ = slice(self._len_pre_buffer, None)
+            # HACK: UNDO
+            slice_ = slice(0, None)
+            #slice_ = slice(self._len_pre_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
             return [self.actions[i] for i in indices]
         else:
@@ -478,7 +482,9 @@ class SingleAgentEpisode:
 
     def get_rewards(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
         if indices is None:
-            slice_ = slice(self._len_pre_buffer, None)
+            # HACK: UNDO
+            slice_ = slice(0, None)
+            #slice_ = slice(self._len_pre_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
             return [self.rewards[i] for i in indices]
         else:
@@ -489,7 +495,9 @@ class SingleAgentEpisode:
         assert key in self.extra_model_outputs
         data = self.extra_model_outputs[key]
         if indices is None:
-            slice_ = slice(self._len_pre_buffer, None)
+            # HACK: UNDO
+            slice_ = slice(0, None)
+            #slice_ = slice(self._len_pre_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
             return [data[i] for i in indices]
         else:
