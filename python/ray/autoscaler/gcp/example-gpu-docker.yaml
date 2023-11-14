@@ -33,7 +33,7 @@ provider:
     type: gcp
     region: us-west1
     availability_zone: us-west1-b
-    project_id: null # Globally unique project id
+    project_id: null # Replace this with your globally unique project id
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -56,7 +56,7 @@ available_node_types:
         # For more documentation on available fields, see:
         # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
         node_config:
-            machineType: custom-6-16384
+            machineType: n1-standard-2
             disks:
               - boot: true
                 autoDelete: true
@@ -64,10 +64,10 @@ available_node_types:
                 initializeParams:
                   diskSizeGb: 50
                   # See https://cloud.google.com/compute/docs/images for more images
-                  sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu110
+                  sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu113
             # Make sure to set scheduling->onHostMaintenance to TERMINATE when GPUs are present
             guestAccelerators:
-              - acceleratorType: nvidia-tesla-k80
+              - acceleratorType: nvidia-tesla-t4
                 acceleratorCount: 1
             metadata:
               items:
@@ -98,10 +98,10 @@ available_node_types:
                 initializeParams:
                   diskSizeGb: 50
                   # See https://cloud.google.com/compute/docs/images for more images
-                  sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu110
+                  sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu113
             # Make sure to set scheduling->onHostMaintenance to TERMINATE when GPUs are present
             guestAccelerators:
-              - acceleratorType: nvidia-tesla-k80
+              - acceleratorType: nvidia-tesla-t4  # Updated GPU type
                 acceleratorCount: 1
             metadata:
               items:
