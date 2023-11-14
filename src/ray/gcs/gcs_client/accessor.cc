@@ -683,26 +683,6 @@ Status NodeInfoAccessor::AsyncGetInternalConfig(
 NodeResourceInfoAccessor::NodeResourceInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status NodeResourceInfoAccessor::AsyncGetResources(
-    const NodeID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
-  RAY_LOG(DEBUG) << "Getting node resources, node id = " << node_id;
-  rpc::GetResourcesRequest request;
-  request.set_node_id(node_id.Binary());
-  client_impl_->GetGcsRpcClient().GetResources(
-      request,
-      [node_id, callback](const Status &status, const rpc::GetResourcesReply &reply) {
-        ResourceMap resource_map;
-        for (const auto &resource : reply.resources()) {
-          resource_map[resource.first] =
-              std::make_shared<rpc::ResourceTableData>(resource.second);
-        }
-        callback(status, resource_map);
-        RAY_LOG(DEBUG) << "Finished getting node resources, status = " << status
-                       << ", node id = " << node_id;
-      });
-  return Status::OK();
-}
-
 Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
     const MultiItemCallback<rpc::AvailableResources> &callback) {
   rpc::GetAllAvailableResourcesRequest request;

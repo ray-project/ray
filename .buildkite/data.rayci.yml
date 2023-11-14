@@ -23,7 +23,6 @@ steps:
       - python
       - data
     instance_type: medium
-    soft_fail: true
     parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 

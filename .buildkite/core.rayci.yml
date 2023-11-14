@@ -196,7 +196,7 @@ steps:
 
   - label: ":ray: core: cpp tests"
     tags: core_cpp
-    instance_type: small
+    instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang
         --parallelism-per-worker 2
@@ -205,7 +205,7 @@ steps:
 
   - label: ":ray: core: cpp asan tests"
     tags: core_cpp
-    instance_type: small
+    instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type asan-clang
         --parallelism-per-worker 2

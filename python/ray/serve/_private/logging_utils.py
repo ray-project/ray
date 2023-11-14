@@ -14,6 +14,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
     SERVE_LOG_DEPLOYMENT,
+    SERVE_LOG_EXTRA_FIELDS,
     SERVE_LOG_LEVEL_NAME,
     SERVE_LOG_MESSAGE,
     SERVE_LOG_RECORD_FORMAT,
@@ -74,12 +75,27 @@ class ServeJSONFormatter(logging.Formatter):
             ]
         if SERVE_LOG_ROUTE in record.__dict__:
             record_format[SERVE_LOG_ROUTE] = SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE]
+
         if SERVE_LOG_APPLICATION in record.__dict__:
             record_format[SERVE_LOG_APPLICATION] = SERVE_LOG_RECORD_FORMAT[
                 SERVE_LOG_APPLICATION
             ]
 
-        record_format[SERVE_LOG_MESSAGE] = SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
+        if SERVE_LOG_MESSAGE in record.__dict__:
+            record_format[SERVE_LOG_MESSAGE] = (
+                SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE] % record.__dict__
+            )
+
+        if SERVE_LOG_EXTRA_FIELDS in record.__dict__:
+            if not isinstance(record.__dict__[SERVE_LOG_EXTRA_FIELDS], dict):
+                raise ValueError(
+                    f"Expected a dictionary passing into {SERVE_LOG_EXTRA_FIELDS}, "
+                    f"but got {type(record.__dict__[SERVE_LOG_EXTRA_FIELDS])}"
+                )
+            for k, v in record.__dict__[SERVE_LOG_EXTRA_FIELDS].items():
+                if k in record_format:
+                    raise KeyError(f"Found duplicated key in the log record: {k}")
+                record_format[k] = v
 
         # create a formatter using the format string
         formatter = logging.Formatter(json.dumps(record_format))
