@@ -44,6 +44,12 @@ Batch inference
 
             Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
 
+    .. grid-item-card::
+
+        .. button-ref:: xgboost-example-ref
+
+            Tabular Data Training and Batch Inference with XGBoost
+
 Many model training
 -------------------
 

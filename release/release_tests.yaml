@@ -197,6 +197,37 @@
         cluster_compute: compute_gpu_4x4_gce.yaml
 
 
+- name: chaos_torch_batch_inference_16_gpu_300gb_raw
+  group: AIR tests
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: dataset/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1000
+    prepare: python setup_chaos.py --max-nodes-to-kill 2 --node-kill-delay 30
+    script: python dataset/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
+
+    wait_for_nodes:
+        num_nodes: 4
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: dataset/compute_gpu_4x4_gce.yaml
+
+
 # 300 GB image classification parquet data with 16 GPUs
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_parquet
@@ -321,35 +352,6 @@
 
   alert: default
 
-
-- name: air_benchmark_data_bulk_ingest
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_data_20_nodes_aws.yaml
-
-  run:
-    timeout: 3600
-    script: python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
-
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_data_20_nodes_gce.yaml
-
-  alert: default
 
 # AIR benchmarks for XGBoost CUJ
 - name: air_benchmark_xgboost_cpu_10
@@ -896,15 +898,6 @@
   run:
     timeout: 4500
     script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: gptj_deepspeed_compute_gce.yaml
-
 
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
   group: AIR examples
@@ -4993,10 +4986,6 @@
   frequency: nightly
   team: core
 
-  # Marking unstable because it's not working right now beyond ~3000 runtime envs.
-  # Tracking issue: https://github.com/ray-project/ray/issues/38662
-  stable: false
-
   cluster:
     byod: {}
     cluster_compute: stress_tests/smoke_test_compute.yaml
@@ -5005,7 +4994,7 @@
     timeout: 14400
     wait_for_nodes:
       num_nodes: 5
-    script: python stress_tests/test_many_runtime_envs_runner.py --num_runtime_envs=10000
+    script: python stress_tests/test_many_runtime_envs.py --num_runtime_envs=100 --num_tasks=10000
 
   variations:
     - __suffix__: aws
@@ -5707,7 +5696,7 @@
 
   run:
     timeout: 1800
-    script: python read_images_benchmark.py
+    script: python read_images_benchmark.py --single-node
 
   variations:
     - __suffix__: aws
@@ -5716,6 +5705,31 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+
+# TODO: Re-enable this test once we fix https://github.com/ray-project/ray/issues/40686.
+# - name: read_images_benchmark_multi_node
+#   group: data-tests
+#   working_dir: nightly_tests/dataset
+
+#   frequency: nightly-3x
+#   team: data
+
+#   cluster:
+#     byod:
+#       type: gpu
+#     cluster_compute: multi_node_read_images_benchmark_compute.yaml
+
+#   run:
+#     timeout: 28800
+#     script: python read_images_benchmark.py --multi-node
+
+#   variations:
+#     - __suffix__: aws
+#     - __suffix__: gce
+#       env: gce
+#       frequency: manual
+#       cluster:
+#         cluster_compute: multi_node_read_images_benchmark_compute_gce.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
   group: data-tests

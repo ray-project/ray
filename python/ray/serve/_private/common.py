@@ -431,8 +431,6 @@ class RunningReplicaInfo:
 
 
 class ServeDeployMode(str, Enum):
-    UNSET = "UNSET"
-    SINGLE_APP = "SINGLE_APP"
     MULTI_APP = "MULTI_APP"
 
 

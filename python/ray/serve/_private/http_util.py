@@ -64,7 +64,13 @@ def convert_object_to_asgi_messages(
         body = obj.encode("utf-8")
         content_type = b"text/plain; charset=utf-8"
     else:
-        body = json.dumps(jsonable_encoder(obj, custom_encoder=serve_encoders)).encode()
+        # `separators=(",", ":")` will remove all whitespaces between separators in the
+        # json string and return a minimized json string. This helps to reduce the size
+        # of the response similar to Starlette's JSONResponse.
+        body = json.dumps(
+            jsonable_encoder(obj, custom_encoder=serve_encoders),
+            separators=(",", ":"),
+        ).encode()
         content_type = b"application/json"
 
     return [

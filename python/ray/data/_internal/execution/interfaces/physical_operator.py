@@ -28,15 +28,6 @@ class OpTask(ABC):
         """Return the ObjectRef or StreamingObjectRefGenerator to wait on."""
         pass
 
-    @abstractmethod
-    def on_waitable_ready(self):
-        """Called when the waitable is ready.
-
-        This method may get called multiple times if the waitable is a
-        streaming generator.
-        """
-        pass
-
 
 class DataOpTask(OpTask):
     """Represents an OpTask that handles Block data."""
@@ -65,18 +56,25 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> StreamingObjectRefGenerator:
         return self._streaming_gen
 
-    def on_waitable_ready(self):
-        # Handle all the available outputs of the streaming generator.
-        while True:
+    def on_data_ready(self, max_blocks_to_read: Optional[int]) -> int:
+        """Callback when data is ready to be read from the streaming generator.
+
+        Args:
+            max_blocks_to_read: Max number of blocks to read. If None, all available
+                will be read.
+        Returns: The number of blocks read.
+        """
+        num_blocks_read = 0
+        while max_blocks_to_read is None or num_blocks_read < max_blocks_to_read:
             try:
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
-                    return
+                    break
             except StopIteration:
                 self._task_done_callback()
-                return
+                break
 
             try:
                 meta = ray.get(next(self._streaming_gen))
@@ -93,6 +91,8 @@ class DataOpTask(OpTask):
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
+            num_blocks_read += 1
+        return num_blocks_read
 
 
 class MetadataOpTask(OpTask):
@@ -112,7 +112,8 @@ class MetadataOpTask(OpTask):
     def get_waitable(self) -> ray.ObjectRef:
         return self._object_ref
 
-    def on_waitable_ready(self):
+    def on_task_finished(self):
+        """Callback when the task is finished."""
         self._task_done_callback()
 
 

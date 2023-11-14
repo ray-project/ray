@@ -2,13 +2,11 @@
 
 set -xe
 
-# Python version can be specified as 3.7, 3.8, 3.9, etc..
+# Python version can be specified as 3.8, 3.9, etc..
 if [ -z "$1" ]; then
-    PYTHON_VERSION=${PYTHON-3.7}
+    PYTHON_VERSION=${PYTHON-3.8}
 else
-    if [ "$1" = "3.7" ]; then
-        PYTHON_VERSION="3.7"
-    elif [ "$1" = "3.8" ]; then
+    if [ "$1" = "3.8" ]; then
         PYTHON_VERSION="3.8"
     elif [ "$1" = "3.9" ]; then
         PYTHON_VERSION="3.9"
@@ -36,8 +34,7 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \
-  pytest==7.0.1 \
-  numpy
+  pytest==7.0.1
 
 # Train requirements.
 # TODO: make this dynamic
