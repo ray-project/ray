@@ -187,7 +187,6 @@ class FileBasedDatasource(Datasource):
                 "files in cloud storage or a distributed filesystem like NFS."
             )
 
-        print("Before partition filter", paths)
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
             path_to_size = dict(zip(paths, file_sizes))
@@ -199,7 +198,6 @@ class FileBasedDatasource(Datasource):
                     "'partition_filter' field is set properly."
                 )
 
-        print("After partition filter", paths, file_extensions)
         if file_extensions is not None:
             path_to_size = dict(zip(paths, file_sizes))
             paths = [p for p in paths if _has_file_extension(p, file_extensions)]

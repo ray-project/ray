@@ -320,16 +320,16 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
 
-    # # Expect directory path expansion to fail due to default format-based path
-    # # filtering: The filter will not match any of the files.
-    # with pytest.raises(ValueError):
-    #     ray.data.read_parquet_bulk(data_path, filesystem=fs)
+    # Expect directory path expansion to fail due to default format-based path
+    # filtering: The filter will not match any of the files.
+    with pytest.raises(ValueError):
+        ray.data.read_parquet_bulk(data_path, filesystem=fs)
 
-    # # Expect directory path expansion to fail with OS error if default format-based path
-    # # filtering is turned off.
-    # with pytest.raises(OSError):
-    #     ds = ray.data.read_parquet_bulk(data_path, filesystem=fs, file_extensions=None)
-    #     ds.schema()
+    # Expect directory path expansion to fail with OS error if default format-based path
+    # filtering is turned off.
+    with pytest.raises(OSError):
+        ds = ray.data.read_parquet_bulk(data_path, filesystem=fs, file_extensions=None)
+        ds.schema()
 
     # Expect individual file paths to be processed successfully.
     paths = [path1, path2]
