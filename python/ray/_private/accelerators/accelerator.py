@@ -58,7 +58,7 @@ class AcceleratorManager(ABC):
 
         In case a particular accelerator type requires considerations for
         additional resources (e.g. for TPUs, providing the TPU pod type and
-        TPU name), this functino can be used to provide the
+        TPU name), this function can be used to provide the
         additional logical resources.
 
         Returns:
