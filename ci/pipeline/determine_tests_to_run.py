@@ -250,7 +250,6 @@ if __name__ == "__main__":
                         break
             elif (
                 changed_file == ".buildkite/core.rayci.yml"
-                or changed_file == ".buildkite/_forge.rayci.yml"
                 or changed_file == "ci/docker/min.build.Dockerfile"
                 or changed_file == "ci/docker/min.build.wanda.yaml"
                 or changed_file == ".buildkite/serverless.rayci.yml"
@@ -310,6 +309,9 @@ if __name__ == "__main__":
             elif (
                 changed_file.startswith("ci/pipeline")
                 or changed_file.startswith("ci/ray_ci")
+                or changed_file == ".buildkite/_forge.rayci.yml"
+                or changed_file == "ci/docker/forge.wanda.yaml"
+                or changed_file == "ci/docker/forge.aarch64.wanda.yaml"
                 or changed_file == ".buildkite/pipeline.build.yml"
                 or changed_file == ".buildkite/pipeline.ml.yml"
             ):
@@ -318,6 +320,10 @@ if __name__ == "__main__":
             elif (
                 changed_file.endswith("build-docker-images.py")
                 or changed_file == ".buildkite/build.rayci.yml"
+                or changed_file == ".buildkite/pipeline.arm64.yml"
+                or changed_file == "ci/docker/manylinux.Dockerfile"
+                or changed_file == "ci/docker/manylinux.wanda.yaml"
+                or changed_file == "ci/docker/manylinux.aarch64.wanda.yaml"
             ):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
