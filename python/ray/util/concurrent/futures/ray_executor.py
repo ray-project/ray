@@ -615,6 +615,7 @@ class RayExecutor(Executor):
             end_time = timeout + time.monotonic()
         fs = [self.submit(fn, *args) for args in zip(*iterables)]
 
+        # from concurrent.futures.Executor.map()
         def result_iterator() -> Iterator[T]:
             try:
                 # reverse to keep finishing order
