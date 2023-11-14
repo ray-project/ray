@@ -60,26 +60,6 @@ void GcsResourceManager::ConsumeSyncMessage(
       "GcsResourceManager::Update");
 }
 
-void GcsResourceManager::HandleGetResources(rpc::GetResourcesRequest request,
-                                            rpc::GetResourcesReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
-  scheduling::NodeID node_id(request.node_id());
-  const auto &resource_view = cluster_resource_manager_.GetResourceView();
-  auto iter = resource_view.find(node_id);
-  if (iter != resource_view.end()) {
-    rpc::ResourceTableData resource_table_data;
-    const auto &node_resources = iter->second.GetLocalView();
-
-    for (const auto &[resource_name, resource_value] :
-         node_resources.total.GetResourceMap()) {
-      resource_table_data.set_resource_capacity(resource_value);
-      (*reply->mutable_resources()).insert({resource_name, resource_table_data});
-    }
-  }
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::GET_RESOURCES_REQUEST];
-}
-
 void GcsResourceManager::HandleGetDrainingNodes(
     rpc::GetDrainingNodesRequest request,
     rpc::GetDrainingNodesReply *reply,
@@ -328,8 +308,6 @@ void GcsResourceManager::UpdatePlacementGroupLoad(
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsResourceManager: "
-         << "\n- GetResources request count: "
-         << counts_[CountType::GET_RESOURCES_REQUEST]
          << "\n- GetAllAvailableResources request count"
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
          << "\n- GetAllResourceUsage request count: "
