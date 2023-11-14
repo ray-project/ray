@@ -1,0 +1,136 @@
+/* Kapa Ask AI button */
+#kapa-widget-container figure {
+    padding: 0 !important;
+  }
+
+  .mantine-Modal-root figure {
+    padding: 0 !important;
+  }
+
+.container-xl.blurred {
+    filter: blur(5px);
+}
+
+.chat-widget {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    z-index: 1000;
+}
+
+.chat-popup {
+  display: none;
+  position: fixed;
+  top: 20%;
+  left: 50%;
+  transform: translate(-50%, -20%);
+  width: 50%;
+  height: 70%;
+  background-color: var(--pst-color-surface);
+  border: 1px solid var(--pst-color-border);
+  border-radius: 10px;
+  box-shadow: 0 5px 10px var(--pst-color-shadow);
+  z-index: 1032;
+  max-height: 1000px;
+  overflow: hidden;
+  padding-bottom: 40px;
+}
+
+.chatFooter {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 100%;
+    background-color: var(--pst-color-surface);
+}
+
+#openChatBtn {
+    background-color: var(--pst-color-on-background);
+    color: var(--pst-color-text-base);
+    width: 70px;
+    height: 70px;
+    border-radius: 10px;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#closeChatBtn {
+    border: none;
+    background-color: transparent;
+    color: var(--pst-color-text-base);
+    font-size: 1.2em;
+}
+
+#closeChatBtn:hover {
+    color: var(--pst-color-link-hover);
+}
+
+#searchBar {
+  border: 1px solid var(--pst-color-border);
+  background-color: var(--pst-color-on-surface);
+}
+
+.chatHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .5rem;
+}
+
+.chatHeader > .header-wrapper {
+  text-align: center;
+  width: 100%;
+}
+
+.chatContentContainer {
+    padding: 15px;
+    max-height: calc(100% - 80px);
+    overflow-y: auto;
+}
+
+.chatContentContainer input {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+#result{
+  padding: 15px;
+  border-radius: 10px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  background-color: var(--pst-color-on-surface);
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
+}
+
+.chatContentContainer textarea {
+  flex-grow: 1;
+  min-width: 50px;
+  max-height: 40px;
+  resize: none;
+}
+
+.searchBtn {
+    white-space: nowrap;
+}
+
+.input-group {
+    display: flex;
+    align-items: stretch;
+}
+
+#blurDiv {
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  backdrop-filter: blur(5px);
+  z-index: 1031;
+}
+
+#blurDiv.blurDiv-hidden {
+  display: none !important;
+}
