@@ -205,16 +205,20 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=7",
       },
       {
-        title: "Block Generation Time",
+        title: "Rows Outputted",
         pathParams: "orgId=1&theme=light&panelId=8",
       },
       {
-        title: "Iteration Blocked Time",
+        title: "Block Generation Time",
         pathParams: "orgId=1&theme=light&panelId=9",
       },
       {
-        title: "Iteration User Time",
+        title: "Iteration Blocked Time",
         pathParams: "orgId=1&theme=light&panelId=10",
+      },
+      {
+        title: "Iteration User Time",
+        pathParams: "orgId=1&theme=light&panelId=11",
       },
     ],
   },

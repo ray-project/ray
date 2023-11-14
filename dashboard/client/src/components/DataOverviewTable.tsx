@@ -33,7 +33,7 @@ const columns = [
     helpInfo: <Typography>Blocks outputted by output operator.</Typography>,
   },
   { label: "State", align: "center" },
-  { label: "Bytes Outputted" },
+  { label: "Rows Outputted" },
   {
     label: "Memory Usage (Current / Max)",
     helpInfo: (
@@ -52,6 +52,12 @@ const columns = [
         = True" to collect spill stats.
       </Typography>
     ),
+  },
+  {
+    label: "CPU Usage (Current / Max)",
+  },
+  {
+    label: "GPU Usage (Current / Max)",
   },
   { label: "Start Time", align: "center" },
   { label: "End Time", align: "center" },
@@ -123,7 +129,7 @@ const DataOverviewTable = ({
             </TableRow>
           </TableHead>
           <TableBody>
-            {list.map((dataset, index) => (
+            {list.map((dataset) => (
               <DatasetTable
                 datasetMetrics={dataset}
                 isExpanded={expandedDatasets[dataset.dataset]}
@@ -212,15 +218,21 @@ const DataRow = ({
       <TableCell align="center">
         <StatusChip type="task" status={data.state} />
       </TableCell>
-      <TableCell align="right">
-        {memoryConverter(Number(data.ray_data_output_bytes.max))}
-      </TableCell>
+      <TableCell align="right">{data.ray_data_output_rows.max}</TableCell>
       <TableCell align="right">
         {memoryConverter(Number(data.ray_data_current_bytes.value))}/
         {memoryConverter(Number(data.ray_data_current_bytes.max))}
       </TableCell>
       <TableCell align="right">
         {memoryConverter(Number(data.ray_data_spilled_bytes.max))}
+      </TableCell>
+      <TableCell align="right">
+        {data.ray_data_cpu_usage_cores.value}/
+        {data.ray_data_cpu_usage_cores.max}
+      </TableCell>
+      <TableCell align="right">
+        {data.ray_data_gpu_usage_cores.value}/
+        {data.ray_data_gpu_usage_cores.max}
       </TableCell>
       <TableCell align="center">
         {isDatasetRow && formatDateFromTimeMs(datasetMetrics.start_time * 1000)}
