@@ -954,6 +954,7 @@ class JobManager:
             )
 
         vc = virtual_cluster(virtual_cluster_config)
+        await vc.ready()
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
         # up.

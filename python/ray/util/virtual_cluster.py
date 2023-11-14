@@ -20,6 +20,14 @@ class VirtualCluster:
             self._previous_virtual_cluster_id
         )
 
+    def ready(self):
+        @ray.remote(num_cpus=0, resources={"vcbundle": 0.001})
+        def _ready():
+            return True
+
+        with self:
+            return _ready.remote()
+
 
 def virtual_cluster(bundles: List[Dict[str, float]]) -> VirtualCluster:
     worker = ray._private.worker.global_worker

@@ -9,6 +9,16 @@
 
 namespace ray {
 namespace gcs {
+struct VirtualClusterCreationTracker {
+  rpc::CreateVirtualClusterRequest request;
+  std::unordered_set<NodeID> nodes;
+  size_t num_replied_prepares = 0;
+  bool has_failed_prepares = false;
+
+  VirtualClusterCreationTracker(rpc::CreateVirtualClusterRequest request)
+      : request(request) {}
+};
+
 class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
  public:
   GcsVirtualClusterManager(
@@ -28,16 +38,22 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
                                   rpc::SendReplyCallback send_reply_callback) override;
 
  private:
-  std::unordered_map<NodeID, VirtualClusterBundleSpec> Schedule(
+  std::optional<std::unordered_map<NodeID, VirtualClusterBundleSpec>> Schedule(
       const rpc::CreateVirtualClusterRequest &request);
 
   std::shared_ptr<ResourceReserveInterface> GetLeaseClientFromNode(
       const std::shared_ptr<rpc::GcsNodeInfo> &node);
 
+  void Tick();
+  void CreateVirtualClusters();
+
   instrumented_io_context &io_context_;
   const GcsNodeManager &gcs_node_manager_;
   ClusterResourceScheduler &cluster_resource_scheduler_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  std::deque<rpc::CreateVirtualClusterRequest> pending_virtual_clusters_;
+  std::unordered_map<VirtualClusterID, VirtualClusterCreationTracker>
+      ongoing_virtual_clusters_;
 };
 }  // namespace gcs
 }  // namespace ray
