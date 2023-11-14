@@ -247,8 +247,8 @@ chmod +x "${CONTEXT_TMP}/download_anyscale_data"
     echo "export ANYSCALE_PY_VERSION_CODE ANYSCALE_RAY_VERSION ANYSCALE_RAY_COMMIT"
 } > "${CONTEXT_TMP}/version-envs.sh"
 
-# In release build, we place in the oss site package.
-cp "${BUILD_TMP}/ray-oss.tgz" "${CONTEXT_TMP}/ray.tgz"
+# We place in the oss site package.
+cp "${BUILD_TMP}/ray-oss.tgz" "${CONTEXT_TMP}/ray-oss.tgz"
 
 if [[ "${RAY_RELEASE_BUILD}" != "true" ]]; then
     # In dev builds, we copy in the runtime site package, so that we do not
@@ -263,7 +263,6 @@ fi
             --build-arg FULL_BASE_IMAGE="${BASE_IMG}" \
             --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
             --build-arg RAY_VERSION="${RAY_VERSION}" \
-            --build-arg RAY_SITE_PKG_TGZ=ray.tgz \
             -t "${RAY_IMG}" -f Dockerfile -
 )
 

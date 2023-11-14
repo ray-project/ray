@@ -37,17 +37,14 @@ if [[ ! -S "${SERVICE_SOCK}" ]]; then
 fi
 
 
-mv "${ANYSCALE_RAY_SITE_PKG_DIR}/ray" "${ANYSCALE_RAY_SITE_PKG_DIR}/ray.bak"
-mv "${ANYSCALE_RAY_SITE_PKG_DIR}/ray-${ANYSCALE_RAY_VERSION}.dist-info" \
-    "${ANYSCALE_RAY_SITE_PKG_DIR}/ray-${ANYSCALE_RAY_VERSION}.dist-info.bak"
+rm -rf \
+    "${ANYSCALE_RAY_SITE_PKG_DIR}/ray" \
+    "${ANYSCALE_RAY_SITE_PKG_DIR}/ray-${ANYSCALE_RAY_VERSION}.dist-info"
 
 if [[ -f /opt/anyscale/ray-opt.tgz ]]; then
     # This is for non-release builds only.
-    tar -xvf /opt/anyscale/ray-opt.tgz -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
+    tar -xzf /opt/anyscale/ray-opt.tgz -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
 else
     SITE_PKG_PATH="common/ray-opt/${ANYSCALE_RAY_VERSION}/${ANYSCALE_RAY_COMMIT}/ray-opt-${ANYSCALE_PY_VERSION_CODE}.tar.gz"
     /opt/anyscale/download_anyscale_data "${SITE_PKG_PATH}" | tar -xzf - -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
 fi
-
-rm -rf "${ANYSCALE_RAY_SITE_PKG_DIR}/ray.bak"
-rm -rf "${ANYSCALE_RAY_SITE_PKG_DIR}/ray-${ANYSCALE_RAY_VERSION}.dist-info.bak"

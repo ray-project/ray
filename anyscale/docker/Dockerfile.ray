@@ -13,7 +13,6 @@ ARG FULL_BASE_IMAGE
 FROM $FULL_BASE_IMAGE
 
 ARG WHEEL_PATH
-ARG RAY_SITE_PKG_TGZ
 ARG RAY_VERSION="3.0.0.dev0"
 
 COPY requirements_compiled.txt ./
@@ -22,13 +21,13 @@ COPY \
     download_anyscale_data \
     ray-prestart \
     runtime-requirements.txt \
+    ray-oss.tgz \
     ray-opt*.tgz \
     /opt/anyscale/
 
 RUN \
     --mount=type=bind,source=$WHEEL_PATH,target=$WHEEL_PATH \
     --mount=type=bind,source=runtime-requirements.txt,target=runtime-requirements.txt \
-    --mount=type=bind,source=$RAY_SITE_PKG_TGZ,target=$RAY_SITE_PKG_TGZ \
 <<EOF
 #!/bin/bash
 
@@ -48,7 +47,7 @@ $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 SITE_PKG_DIR="$(python -c "import site; print(site.getsitepackages()[0])")"
 rm -r "${SITE_PKG_DIR}"/ray "${SITE_PKG_DIR}/ray-${RAY_VERSION}.dist-info"
-tar -xzf "$RAY_SITE_PKG_TGZ" -C "${SITE_PKG_DIR}"
+tar -xzf /opt/anyscale/ray-oss.tgz -C "${SITE_PKG_DIR}"
 
 # Makes sure the ray still works, and also will generate the pyc files.
 python -c "import ray; print(ray.__version__)"
