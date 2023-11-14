@@ -40,7 +40,7 @@ ACCELERATE_TRAINER_DEPRECATION_MESSAGE = (
 )
 
 
-@Deprecated(message=ACCELERATE_TRAINER_DEPRECATION_MESSAGE, warning=True)
+@Deprecated
 class AccelerateTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Accelerate training with PyTorch.
 
@@ -115,132 +115,6 @@ class AccelerateTrainer(TorchTrainer):
 
     This Trainer requires ``accelerate>=0.17.0`` package.
 
-    Example:
-        .. testcode::
-
-            import os
-            import tempfile
-            import torch
-            import torch.nn as nn
-
-            from accelerate import Accelerator
-
-            import ray
-            from ray import train
-            from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
-            from ray.train.huggingface import AccelerateTrainer
-
-            # If using GPUs, set this to True.
-            use_gpu = False
-
-            # Define NN layers archicture, epochs, and number of workers
-            input_size = 1
-            layer_size = 32
-            output_size = 1
-            num_epochs = 30
-            num_workers = 3
-
-            # Define your network structure
-            class NeuralNetwork(nn.Module):
-                def __init__(self):
-                    super(NeuralNetwork, self).__init__()
-                    self.layer1 = nn.Linear(input_size, layer_size)
-                    self.relu = nn.ReLU()
-                    self.layer2 = nn.Linear(layer_size, output_size)
-
-                def forward(self, input):
-                    return self.layer2(self.relu(self.layer1(input)))
-
-            # Define your train worker loop
-            def train_loop_per_worker():
-                torch.manual_seed(42)
-
-                # Initialize the Accelerator
-                accelerator = Accelerator()
-
-                # Fetch training set
-                dataset_shard = train.get_dataset_shard("train")
-                model = NeuralNetwork()
-
-                # Loss function, optimizer, prepare model for training.
-                # This moves the data and prepares model for distributed
-                # execution
-                loss_fn = nn.MSELoss()
-                optimizer = torch.optim.Adam(
-                    model.parameters(), lr=0.01, weight_decay=0.01
-                )
-                model, optimizer = accelerator.prepare(model, optimizer)
-
-                # Iterate over epochs and batches
-                for epoch in range(num_epochs):
-                    for batches in dataset_shard.iter_torch_batches(
-                        batch_size=32, dtypes=torch.float
-                    ):
-
-                        # Add batch or unsqueeze as an additional dimension [32, x]
-                        inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
-                        output = model(inputs)
-
-                        # Make output shape same as the as labels
-                        loss = loss_fn(output.squeeze(), labels)
-
-                        # Zero out grads, do backward, and update optimizer
-                        optimizer.zero_grad()
-                        accelerator.backward(loss)
-                        optimizer.step()
-
-                        # Print what's happening with loss per 30 epochs
-                        if epoch % 20 == 0:
-                            print(f"epoch: {epoch}/{num_epochs}, loss: {loss:.3f}")
-
-                    # Create checkpoint.
-                    base_model=accelerator.unwrap_model(model)
-                    checkpoint_dir = tempfile.mkdtemp()
-                    torch.save(
-                        {"model_state_dict": base_model.state_dict()},
-                        os.path.join(checkpoint_dir, "model.pt"),
-                    )
-                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
-
-                    # Report and record metrics, checkpoint model at end of each
-                    # epoch
-                    train.report(
-                        {"loss": loss.item(), "epoch": epoch},
-                        checkpoint=checkpoint
-                    )
-
-
-            train_dataset = ray.data.from_items(
-                [{"x": x, "y": 2 * x + 1} for x in range(2000)]
-            )
-
-            # Define scaling and run configs
-            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
-            run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
-
-            trainer = AccelerateTrainer(
-                train_loop_per_worker=train_loop_per_worker,
-                # Instead of using a dict, you can run ``accelerate config``.
-                # The default value of None will then load that configuration
-                # file.
-                accelerate_config={},
-                scaling_config=scaling_config,
-                run_config=run_config,
-                datasets={"train": train_dataset},
-            )
-
-            result = trainer.fit()
-
-            best_checkpoint_loss = result.metrics["loss"]
-
-            # Assert loss is less 0.09
-            assert best_checkpoint_loss <= 0.09
-
-        .. testoutput::
-            :hide:
-
-            ...
-
     Args:
         train_loop_per_worker: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
@@ -281,6 +155,7 @@ class AccelerateTrainer(TorchTrainer):
         # Deprecated.
         preprocessor: Optional["Preprocessor"] = None,
     ):
+        raise DeprecationWarning(ACCELERATE_TRAINER_DEPRECATION_MESSAGE)
 
         if ACCELERATE_IMPORT_ERROR is not None:
             raise ACCELERATE_IMPORT_ERROR

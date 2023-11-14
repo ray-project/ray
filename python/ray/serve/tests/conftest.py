@@ -11,6 +11,7 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
+from ray.serve._private import api as _private_api
 from ray.serve.context import _get_global_client
 from ray.serve.tests.common.utils import TELEMETRY_ROUTE_PREFIX, check_ray_stopped
 from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
@@ -104,7 +105,7 @@ def serve_instance(_shared_serve_instance):
     # Clear all state for 2.x applications and deployments.
     _shared_serve_instance.delete_all_apps()
     # Clear all state for 1.x deployments.
-    _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
+    _shared_serve_instance.delete_deployments(_private_api.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.shutdown_cached_handles()
 

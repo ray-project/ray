@@ -20,6 +20,7 @@ class TaskPoolMapOperator(MapOperator):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int],
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -30,6 +31,8 @@ class TaskPoolMapOperator(MapOperator):
             transform_fn: The function to apply to each ref bundle input.
             input_op: Operator generating input data for this op.
             name: The name of this operator.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -37,19 +40,30 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            map_transformer, input_op, name, min_rows_per_bundle, ray_remote_args
+            map_transformer,
+            input_op,
+            name,
+            target_max_block_size,
+            min_rows_per_bundle,
+            ray_remote_args,
         )
 
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
         map_task = cached_remote_fn(_map_task, num_returns="streaming")
         input_blocks = [block for block, _ in bundle.blocks]
-        ctx = TaskContext(task_idx=self._next_data_task_idx)
-        gen = map_task.options(
-            **self._get_runtime_ray_remote_args(input_bundle=bundle), name=self.name
-        ).remote(
+        ctx = TaskContext(
+            task_idx=self._next_data_task_idx,
+            target_max_block_size=self.actual_target_max_block_size,
+        )
+        data_context = DataContext.get_current()
+        ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
+        ray_remote_args["name"] = self.name
+        ray_remote_args.update(data_context._task_pool_data_task_remote_args)
+
+        gen = map_task.options(**ray_remote_args).remote(
             self._map_transformer_ref,
-            DataContext.get_current(),
+            data_context,
             ctx,
             *input_blocks,
         )

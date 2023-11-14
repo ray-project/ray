@@ -38,6 +38,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import Block
+from ray.data.context import DataContext
 from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
 from ray.tests.conftest import *  # noqa
 
@@ -85,6 +86,7 @@ def test_all_to_all_operator():
     op = AllToAllOperator(
         dummy_all_transform,
         input_op=input_op,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         num_outputs=2,
         sub_progress_bar_names=["Test1", "Test2"],
         name="TestAll",
@@ -121,7 +123,12 @@ def test_num_outputs_total():
     def dummy_all_transform(bundles: List[RefBundle]):
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
-    op2 = AllToAllOperator(dummy_all_transform, input_op=op1, name="TestAll")
+    op2 = AllToAllOperator(
+        dummy_all_transform,
+        input_op=op1,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
+        name="TestAll",
+    )
     assert op2.num_outputs_total() == 100
 
 
@@ -953,8 +960,15 @@ def test_all_to_all_estimated_output_blocks():
         return bundles, {}
 
     estimated_output_blocks = 500
-    op1 = AllToAllOperator(all_transform, input_op, estimated_output_blocks)
-    op2 = AllToAllOperator(all_transform, op1)
+    op1 = AllToAllOperator(
+        all_transform,
+        input_op,
+        DataContext.get_current().target_max_block_size,
+        estimated_output_blocks,
+    )
+    op2 = AllToAllOperator(
+        all_transform, op1, DataContext.get_current().target_max_block_size
+    )
 
     while input_op.has_next():
         op1.add_input(input_op.get_next(), 0)

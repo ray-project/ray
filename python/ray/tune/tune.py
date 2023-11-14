@@ -1,5 +1,4 @@
 import abc
-import contextlib
 import copy
 import datetime
 import logging
@@ -274,7 +273,6 @@ def run(
     chdir_to_trial_dir: bool = _DEPRECATED_VALUE,  # Deprecated (2.8)
     local_dir: Optional[str] = None,
     # == internal only ==
-    _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
@@ -783,7 +781,6 @@ def run(
                 num_samples=num_samples,
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
-                _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,
                 trial_name_creator=trial_name_creator,
@@ -985,60 +982,48 @@ def run(
                 )
                 break
 
-    # rich live context manager has to be called encapsulating
-    # the while loop. For other kind of reporters, no op.
-    # `ExitStack` allows us to *conditionally* apply context manager.
-    with contextlib.ExitStack() as stack:
-        from ray.tune.experimental.output import TuneRichReporter
+    experiment_local_path = runner._storage.experiment_local_path
+    experiment_dir_name = runner._storage.experiment_dir_name
 
-        experiment_local_path = runner._storage.experiment_local_path
-        experiment_dir_name = runner._storage.experiment_dir_name
+    if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
+        tensorboard_path = experiment_local_path
+    else:
+        tensorboard_path = None
 
-        if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
-            tensorboard_path = experiment_local_path
-        else:
-            tensorboard_path = None
+    if air_progress_reporter:
+        air_progress_reporter.experiment_started(
+            experiment_name=experiment_dir_name,
+            experiment_path=runner.experiment_path,
+            searcher_str=search_alg.__class__.__name__,
+            scheduler_str=scheduler.__class__.__name__,
+            total_num_samples=search_alg.total_samples,
+            tensorboard_path=tensorboard_path,
+        )
 
-        if air_progress_reporter and isinstance(
-            air_progress_reporter, TuneRichReporter
-        ):
-            stack.enter_context(air_progress_reporter.with_live())
-        elif air_progress_reporter:
-            air_progress_reporter.experiment_started(
-                experiment_name=experiment_dir_name,
-                experiment_path=runner.experiment_path,
-                searcher_str=search_alg.__class__.__name__,
-                scheduler_str=scheduler.__class__.__name__,
-                total_num_samples=search_alg.total_samples,
-                tensorboard_path=tensorboard_path,
-            )
+    try:
+        while not runner.is_finished() and not experiment_interrupted_event.is_set():
+            runner.step()
+            if has_verbosity(Verbosity.V1_EXPERIMENT):
+                _report_progress(runner, progress_reporter)
 
-        try:
-            while (
-                not runner.is_finished() and not experiment_interrupted_event.is_set()
-            ):
-                runner.step()
-                if has_verbosity(Verbosity.V1_EXPERIMENT):
-                    _report_progress(runner, progress_reporter)
+            if air_verbosity is not None:
+                _report_air_progress(runner, air_progress_reporter)
+    except Exception:
+        runner.cleanup()
+        raise
 
-                if air_verbosity is not None:
-                    _report_air_progress(runner, air_progress_reporter)
-        except Exception:
-            runner.cleanup()
-            raise
+    tune_taken = time.time() - tune_start
 
-        tune_taken = time.time() - tune_start
+    try:
+        runner.checkpoint(force=True, wait=True)
+    except Exception as e:
+        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
-        try:
-            runner.checkpoint(force=True, wait=True)
-        except Exception as e:
-            logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+    if has_verbosity(Verbosity.V1_EXPERIMENT):
+        _report_progress(runner, progress_reporter, done=True)
 
-        if has_verbosity(Verbosity.V1_EXPERIMENT):
-            _report_progress(runner, progress_reporter, done=True)
-
-        if air_verbosity is not None:
-            _report_air_progress(runner, air_progress_reporter, force=True)
+    if air_verbosity is not None:
+        _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
 

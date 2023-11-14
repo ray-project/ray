@@ -68,37 +68,45 @@ logger = logging.getLogger(__name__)
 class ImpalaConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.impala import ImpalaConfig
-        >>> config = ImpalaConfig()
-        >>> config = config.training(lr=0.0003, train_batch_size=512)  # doctest: +SKIP
-        >>> config = config.resources(num_gpus=4)  # doctest: +SKIP
-        >>> config = config.rollouts(num_rollout_workers=64)  # doctest: +SKIP
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.impala import ImpalaConfig
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = ImpalaConfig()
-        >>> # Print out some default values.
-        >>> print(config.vtrace)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config = config.training(   # doctest: +SKIP
-        ...     lr=tune.grid_search([0.0001, 0.0003]), grad_clip=20.0
-        ... )
-        >>> # Set the config object's env.
-        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "IMPALA",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.impala import ImpalaConfig
+        config = ImpalaConfig()
+        config = config.training(lr=0.0003, train_batch_size=512)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build(env="CartPole-v1")
+        algo.train()
+        del algo
+
+    .. testcode::
+
+        from ray.rllib.algorithms.impala import ImpalaConfig
+        from ray import air
+        from ray import tune
+        config = ImpalaConfig()
+
+        # Update the config object.
+        config = config.training(
+            lr=tune.grid_search([0.0001, ]), grad_clip=20.0
+        )
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+        # Set the config object's env.
+        config = config.environment(env="CartPole-v1")
+        # Use to_dict() to get the old-style python config dict
+        # when running with tune.
+        tune.Tuner(
+            "IMPALA",
+            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            param_space=config.to_dict(),
+        ).fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
@@ -126,7 +134,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.num_aggregation_workers = 0
 
         self.grad_clip = 40.0
-        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
         # configured by the user. On the old API stack, RLlib will always clip by
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
@@ -229,9 +237,10 @@ class ImpalaConfig(AlgorithmConfig):
             minibatch_size: The size of minibatches that are trained over during
                 each SGD iteration. If "auto", will use the same value as
                 `train_batch_size`.
-                Note that this setting only has an effect if `_enable_learner_api=True`
-                and it must be a multiple of `rollout_fragment_length` or
-                `sequence_length` and smaller than or equal to `train_batch_size`.
+                Note that this setting only has an effect if
+                `_enable_new_api_stack=True` and it must be a multiple of
+                `rollout_fragment_length` or `sequence_length` and smaller than or equal
+                to `train_batch_size`.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
                 be replayed with a p:1 proportion to new data samples.
@@ -274,7 +283,8 @@ class ImpalaConfig(AlgorithmConfig):
                 function.
             entropy_coeff_schedule: Decay schedule for the entropy regularizer.
             _separate_vf_optimizer: Set this to true to have two separate optimizers
-                optimize the policy-and value networks.
+                optimize the policy-and value networks. Only supported for some
+                algorithms (APPO, IMPALA) on the old API stack.
             _lr_vf: If _separate_vf_optimizer is True, define separate learning rate
                 for the value network.
             after_train_step: Callback for APPO to use to update KL, target network
@@ -370,7 +380,7 @@ class ImpalaConfig(AlgorithmConfig):
             )
 
         # Entropy coeff schedule checking.
-        if self._enable_learner_api:
+        if self._enable_new_api_stack:
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -399,21 +409,18 @@ class ImpalaConfig(AlgorithmConfig):
 
         # If two separate optimizers/loss terms used for tf, must also set
         # `_tf_policy_handles_more_than_one_loss` to True.
-        if self._separate_vf_optimizer is True:
-            # Only supported in tf on the old API stack.
-            if self.framework_str not in ["tf", "tf2"]:
-                raise ValueError(
-                    "`_separate_vf_optimizer` only supported to tf so far!"
-                )
-            if self._tf_policy_handles_more_than_one_loss is False:
-                raise ValueError(
-                    "`_tf_policy_handles_more_than_one_loss` must be set to "
-                    "True, for TFPolicy to support more than one loss "
-                    "term/optimizer! Try setting config.training("
-                    "_tf_policy_handles_more_than_one_loss=True)."
-                )
+        if (
+            self.framework_str in ["tf", "tf2"]
+            and self._separate_vf_optimizer is True
+            and self._tf_policy_handles_more_than_one_loss is False
+        ):
+            raise ValueError(
+                "`_tf_policy_handles_more_than_one_loss` must be set to True, for "
+                "TFPolicy to support more than one loss term/optimizer! Try setting "
+                "config.training(_tf_policy_handles_more_than_one_loss=True)."
+            )
         # Learner API specific checks.
-        if self._enable_learner_api:
+        if self._enable_new_api_stack:
             if not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
                 and self.minibatch_size <= self.train_batch_size
@@ -674,7 +681,7 @@ class Impala(Algorithm):
         self._results = {}
         self._timeout_s_sampler_manager = self.config.timeout_s_sampler_manager
 
-        if not self.config._enable_learner_api:
+        if not self.config._enable_new_api_stack:
             # Create and start the learner thread.
             self._learner_thread = make_learner_thread(
                 self.workers.local_worker(), self.config
@@ -684,7 +691,10 @@ class Impala(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # First, check, whether our learner thread is still healthy.
-        if not self.config._enable_learner_api and not self._learner_thread.is_alive():
+        if (
+            not self.config._enable_new_api_stack
+            and not self._learner_thread.is_alive()
+        ):
             raise RuntimeError("The learner thread died while training!")
 
         use_tree_aggregation = (
@@ -721,7 +731,7 @@ class Impala(Algorithm):
         self.concatenate_batches_and_pre_queue(batches)
         # Using the Learner API. Call `update()` on our LearnerGroup object with
         # all collected batches.
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             train_results = self.learn_on_processed_samples()
             additional_results = self.learner_group.additional_update(
                 module_ids_to_update=set(train_results.keys()) - {ALL_MODULES},
@@ -748,7 +758,7 @@ class Impala(Algorithm):
 
         # Sync worker weights (only those policies that were actually updated).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.config._enable_learner_api:
+            if self.config._enable_new_api_stack:
                 if train_results:
                     pids = list(set(train_results.keys()) - {ALL_MODULES})
                     self.update_workers_from_learner_group(
@@ -772,7 +782,7 @@ class Impala(Algorithm):
                 mark_healthy=True,
             )
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             if train_results:
                 # Store the most recent result and return it if no new result is
                 # available. This keeps backwards compatibility with the old
@@ -837,7 +847,7 @@ class Impala(Algorithm):
         )
         # TODO(avnishn): Remove this once we have a way to extend placement group
         # factories.
-        if cf._enable_learner_api:
+        if cf._enable_new_api_stack:
             # Resources for the Algorithm.
             learner_bundles = cls._get_learner_bundles(cf)
 
@@ -976,7 +986,7 @@ class Impala(Algorithm):
     def place_processed_samples_on_learner_thread_queue(self) -> None:
         """Place processed samples on the learner queue for training.
 
-        NOTE: This method is called if self.config._enable_learner_api is False.
+        NOTE: This method is called if self.config._enable_new_api_stack is False.
 
         """
         while self.batches_to_place_on_learner:
@@ -1000,7 +1010,7 @@ class Impala(Algorithm):
     def process_trained_results(self) -> ResultDict:
         """Process training results that are outputed by the learner thread.
 
-        NOTE: This method is called if self.config._enable_learner_api is False.
+        NOTE: This method is called if self.config._enable_new_api_stack is False.
 
         Returns:
             Aggregated results from the learner thread after an update is completed.
@@ -1226,7 +1236,7 @@ class Impala(Algorithm):
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
         result = super()._compile_iteration_results(*args, **kwargs)
-        if not self.config._enable_learner_api:
+        if not self.config._enable_new_api_stack:
             result = self._learner_thread.add_learner_metrics(
                 result, overwrite_learner_info=False
             )

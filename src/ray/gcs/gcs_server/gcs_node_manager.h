@@ -82,7 +82,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                         rpc::CheckAliveReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 
-  void OnNodeFailure(const NodeID &node_id);
+  /// Handle a node failure. This will mark the failed node as dead in gcs
+  /// node table.
+  ///
+  /// \param node_id The ID of the failed node.
+  /// \param node_table_updated_callback The status callback function after
+  /// faled node info is updated to gcs node table.
+  void OnNodeFailure(const NodeID &node_id,
+                     const StatusCallback &node_table_updated_callback);
 
   /// Add an alive node.
   ///
