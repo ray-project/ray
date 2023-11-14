@@ -1327,12 +1327,21 @@ def test_stats_actor_datasets(ray_start_cluster):
     datasets = ray.get(stats_actor.get_datasets.remote())
     dataset_name = list(filter(lambda x: x.startswith(ds._name), datasets))
     assert len(dataset_name) == 1
-    dataset_name = dataset_name[0]
+    dataset = datasets[dataset_name[0]]
 
-    assert datasets[dataset_name]["state"] == "FINISHED"
-    assert datasets[dataset_name]["progress"] == 20
-    assert datasets[dataset_name]["total"] == 20
-    assert datasets[dataset_name]["end_time"] is not None
+    assert dataset["state"] == "FINISHED"
+    assert dataset["progress"] == 20
+    assert dataset["total"] == 20
+    assert dataset["end_time"] is not None
+
+    operators = dataset["operators"]
+    assert len(operators) == 2
+    assert "Input0" in operators
+    assert "ReadRange->MapBatches(<lambda>)1" in operators
+    for value in operators.values():
+        assert value["progress"] == 20
+        assert value["total"] == 20
+        assert value["state"] == "FINISHED"
 
 
 if __name__ == "__main__":
