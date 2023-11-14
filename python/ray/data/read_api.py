@@ -721,7 +721,7 @@ def read_images(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
-    file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSION,
+    file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -862,7 +862,7 @@ def read_parquet_bulk(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
-    file_extensions: Optional[List[str]] = ParquetBaseDatasource._FILE_EXTENSION,
+    file_extensions: Optional[List[str]] = ParquetBaseDatasource._FILE_EXTENSIONS,
     **arrow_parquet_args,
 ) -> Dataset:
     """Create :class:`~ray.data.Dataset` from parquet files without reading metadata.
@@ -980,7 +980,7 @@ def read_json(
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
-    file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSION,
+    file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
     **arrow_json_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from JSON and JSONL files.
@@ -1077,7 +1077,7 @@ def read_json(
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(JSONDatasource._FILE_EXTENSION)
+        meta_provider = get_generic_metadata_provider(JSONDatasource._FILE_EXTENSIONS)
 
     datasource = JSONDatasource(
         paths,
@@ -1231,7 +1231,7 @@ def read_csv(
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(CSVDatasource._FILE_EXTENSION)
+        meta_provider = get_generic_metadata_provider(CSVDatasource._FILE_EXTENSIONS)
 
     datasource = CSVDatasource(
         paths,
@@ -1332,7 +1332,7 @@ def read_text(
         paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(TextDatasource._FILE_EXTENSION)
+        meta_provider = get_generic_metadata_provider(TextDatasource._FILE_EXTENSIONS)
 
     datasource = TextDatasource(
         paths,
@@ -1364,7 +1364,7 @@ def read_numpy(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
-    file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSION,
+    file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
@@ -1412,7 +1412,7 @@ def read_numpy(
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(NumpyDatasource._FILE_EXTENSION)
+        meta_provider = get_generic_metadata_provider(NumpyDatasource._FILE_EXTENSIONS)
 
     datasource = NumpyDatasource(
         paths,
@@ -1528,7 +1528,7 @@ def read_tfrecords(
     """
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(
-            TFRecordDatasource._FILE_EXTENSION
+            TFRecordDatasource._FILE_EXTENSIONS
         )
 
     datasource = TFRecordDatasource(
@@ -1600,7 +1600,7 @@ def read_webdataset(
     """  # noqa: E501
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(
-            WebDatasetDatasource._FILE_EXTENSION
+            WebDatasetDatasource._FILE_EXTENSIONS
         )
 
     datasource = WebDatasetDatasource(
@@ -1707,7 +1707,7 @@ def read_binary_files(
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(BinaryDatasource._FILE_EXTENSION)
+        meta_provider = get_generic_metadata_provider(BinaryDatasource._FILE_EXTENSIONS)
 
     datasource = BinaryDatasource(
         paths,

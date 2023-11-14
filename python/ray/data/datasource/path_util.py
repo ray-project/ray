@@ -25,10 +25,16 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
         extensions: A list of extensions to check against. If `None`, any extension is
             considered valid.
     """
+    assert extensions is None or isinstance(extensions, list), type(extensions)
+
     if extensions is None:
         return True
-    # `Path.suffix` includes a leading ".", so we strip it.
-    return pathlib.Path(path).suffix[1:] in extensions
+
+    # `Path.suffixes` contain leading dots. The user-specified extensions don't.
+    extensions = [f".{ext.lower()}" for ext in extensions]
+    suffixes = [suffix.lower() for suffix in pathlib.Path(path).suffixes]
+    print(extensions, suffixes)
+    return any(ext in suffixes for ext in extensions)
 
 
 def _resolve_paths_and_filesystem(

@@ -129,16 +129,13 @@ class FileBasedDatasource(Datasource):
     This class should not be used directly, and should instead be subclassed
     and tailored to particular file formats. Classes deriving from this class
     must implement _read_file().
-
-    If the _FILE_EXTENSION is defined, per default only files with this extension
-    will be read. If None, no default filter is used.
     """
 
     # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
     # each row to a file. Otherwise, this datasource calls `_write_block` and writes
     # each block to a file.
     _WRITE_FILE_PER_ROW = False
-    _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
+    _FILE_EXTENSIONS: Optional[Union[str, List[str]]] = None
     # Number of threads for concurrent reading within each read task.
     # If zero or negative, reading will be performed in the main thread.
     _NUM_THREADS_PER_TASK = 0
@@ -190,6 +187,7 @@ class FileBasedDatasource(Datasource):
                 "files in cloud storage or a distributed filesystem like NFS."
             )
 
+        print("Before partition filter", paths)
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
             path_to_size = dict(zip(paths, file_sizes))
@@ -201,6 +199,7 @@ class FileBasedDatasource(Datasource):
                     "'partition_filter' field is set properly."
                 )
 
+        print("After partition filter", paths, file_extensions)
         if file_extensions is not None:
             path_to_size = dict(zip(paths, file_sizes))
             paths = [p for p in paths if _has_file_extension(p, file_extensions)]
@@ -457,11 +456,11 @@ class FileBasedDatasource(Datasource):
         **write_args,
     ) -> WriteResult:
         """Write blocks for a file-based datasource."""
-        # `FileBasedDatasource` subclasses expose a `_FILE_EXTENSION` attribute. It
+        # `FileBasedDatasource` subclasses expose a `_FILE_EXTENSIONS` attribute. It
         # represents a list of supported file extensions. If the user doesn't specify
         # a file format, we default to the first extension in the list.
         if file_format is None:
-            file_format = self._FILE_EXTENSION
+            file_format = self._FILE_EXTENSIONS
             if isinstance(file_format, list):
                 file_format = file_format[0]
 
