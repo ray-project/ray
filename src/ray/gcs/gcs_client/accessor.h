@@ -428,17 +428,6 @@ class NodeResourceInfoAccessor {
   NodeResourceInfoAccessor() = default;
   explicit NodeResourceInfoAccessor(GcsClient *client_impl);
   virtual ~NodeResourceInfoAccessor() = default;
-  // TODO(micafan) Define ResourceMap in GCS proto.
-  typedef absl::flat_hash_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
-      ResourceMap;
-
-  /// Get node's resources from GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to lookup dynamic resources.
-  /// \param callback Callback that will be called after lookup finishes.
-  /// \return Status
-  virtual Status AsyncGetResources(const NodeID &node_id,
-                                   const OptionalItemCallback<ResourceMap> &callback);
 
   /// Get available resources of all nodes from GCS asynchronously.
   ///
