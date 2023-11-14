@@ -58,7 +58,10 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         device_count = pynvml.nvmlDeviceGetCount()
         cuda_devices = []
         for index in range(device_count):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+            try:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+            except pynvml.NVMLError_GpuIsLost:
+                continue
             mig_enabled = os.environ.get(
                 ray_constants.RAY_ENABLE_MIG_DETECTION_ENV_VAR, False
             )
