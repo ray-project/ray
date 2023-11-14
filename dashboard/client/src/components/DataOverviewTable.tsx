@@ -55,9 +55,11 @@ const columns = [
   },
   {
     label: "CPU Usage (Current / Max)",
+    helpInfo: <Typography>Logical CPU usage in cores.</Typography>,
   },
   {
     label: "GPU Usage (Current / Max)",
+    helpInfo: <Typography>Logical GPU usage in cores.</Typography>,
   },
   { label: "Start Time", align: "center" },
   { label: "End Time", align: "center" },
