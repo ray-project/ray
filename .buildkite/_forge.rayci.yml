@@ -19,7 +19,6 @@ steps:
     tags:
       - python_dependencies
       - docker
-      - core_cpp
     wanda: ci/docker/ray.cuda.base.wanda.yaml
     matrix:
       setup:
@@ -43,7 +42,6 @@ steps:
     tags:
       - python_dependencies
       - docker
-      - core_cpp
     wanda: ci/docker/ray.cpu.base.wanda.yaml
     matrix:
       - "3.8"
@@ -58,7 +56,6 @@ steps:
     tags:
       - python_dependencies
       - docker
-      - core_cpp
     wanda: ci/docker/ray-ml.cuda.base.wanda.yaml
     depends_on: raycudabase
     matrix:
@@ -78,7 +75,6 @@ steps:
     tags:
       - python_dependencies
       - docker
-      - core_cpp
     wanda: ci/docker/ray-ml.cpu.base.wanda.yaml
     depends_on: raycpubase
     matrix:
