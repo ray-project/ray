@@ -10,6 +10,7 @@ from ci.ray_ci.builder_container import (
     BuilderContainer,
     DEFAULT_BUILD_TYPE,
     DEFAULT_PYTHON_VERSION,
+    DEFAULT_ARCHITECTURE,
 )
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
@@ -156,7 +157,9 @@ def main(
 
     if build_type == "wheel":
         # for wheel testing, we first build the wheel and then use it for running tests
-        BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE).run()
+        BuilderContainer(
+            DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, DEFAULT_ARCHITECTURE
+        ).run()
     container = _get_container(
         team,
         workers,
