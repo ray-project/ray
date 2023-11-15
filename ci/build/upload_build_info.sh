@@ -3,6 +3,8 @@
 # Cause the script to exit if a single command fails.
 set -ex
 
+python -m pip freeze > /artifact-mount/pip_freeze.txt
+
 readonly PIPELINE_POSTMERGE="0189e759-8c96-4302-b6b5-b4274406bf89"
 readonly PIPELINE_CIV1_BRANCH="0183465b-c6fb-479b-8577-4cfd743b545d"
 if [[
