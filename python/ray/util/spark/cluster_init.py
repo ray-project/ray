@@ -1460,14 +1460,12 @@ def serve_global_ray_cluster(
     cluster is shut down.
     """
     with modified_environ(RAY_ON_SPARK_GLOBAL_MODE="1"):
-        try:
-            setup_ray_cluster(
-                num_worker_nodes=num_worker_nodes,
-                **kwargs,
-            )
-            Event().wait()
-        finally:
-            shutdown_ray_cluster()
+        setup_ray_cluster(
+            num_worker_nodes=num_worker_nodes,
+            **kwargs,
+        )
+        Event().wait()  # serve forever until user cancel the command.
+        shutdown_ray_cluster()
 
 
 @DeveloperAPI
