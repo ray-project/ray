@@ -641,6 +641,10 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
 
 void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
                                                std::vector<ObjectID> *deleted) {
+  // TODO(swang): disable ref counting properly, for shared
+  // objects only.
+  return;
+
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.on_ref_removed) {

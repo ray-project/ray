@@ -163,6 +163,14 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status Evict(int64_t num_bytes, int64_t &num_bytes_evicted);
 
+  //Status GetSharedObjectAcquire(const ObjectID &object_id);
+
+  //Status GetSharedObjectRelease(const ObjectID &object_id);
+
+  //Status CreateSharedObject(const ObjectID &object_id,
+  //                          const uint8_t *metadata,
+  //                          std::shared_ptr<Buffer> *data);
+
   Status Disconnect();
 
   std::string DebugString();
@@ -384,6 +392,36 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                                   fb::ObjectSource source,
                                                   int device_num) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  auto object_entry = objects_in_use_.find(object_id);
+  if (object_entry != objects_in_use_.end()) {
+    auto &entry = object_entry->second;
+    if (entry->is_sealed && entry->is_shared) {
+      RAY_LOG(DEBUG) << "Create shared object " << object_id << " exists";
+      // Wait for no readers.
+      entry->last_version++;
+      auto plasma_header = GetPlasmaObjectHeader(entry->object);
+      plasma_header->WriteAcquire(entry->last_version);
+
+      // Prepare the data buffer and return to the client instead of sending
+      // the IPC to object store.
+      *data = std::make_shared<PlasmaMutableBuffer>(
+          shared_from_this(),
+          GetStoreFdAndMmap(entry->object.store_fd, entry->object.mmap_size) + entry->object.data_offset,
+          entry->object.data_size);
+      // If plasma_create is being called from a transfer, then we will not copy the
+      // metadata here. The metadata will be written along with the data streamed
+      // from the transfer.
+      if (metadata != NULL) {
+        // Copy the metadata to the buffer.
+        memcpy((*data)->Data() + entry->object.data_size, metadata, entry->object.metadata_size);
+      }
+
+      entry->is_sealed = false;
+      IncrementObjectCount(object_id, &entry->object, false);
+    }
+    return Status::OK();
+  }
+
   uint64_t retry_with_request_id = 0;
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
@@ -596,6 +634,17 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
   return GetBuffers(
       &object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0], is_from_worker);
 }
+
+//Status PlasmaClient::GetSharedObjectAcquire(const ObjectID &object_id) {
+//  auto object_entry = objects_in_use_.find(object_id);
+//  RAY_CHECK(object_entry != objects_in_use_.end());
+//
+//  return Status::OK();
+//}
+//
+//Status PlasmaClient::GetSharedObjectRelease(const ObjectID &object_id) {
+//  return Status::OK();
+//}
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
