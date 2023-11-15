@@ -22,7 +22,8 @@
 namespace ray {
 
 NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
-  for (auto &resource_id : total.ExplicitResourceIds()) {
+  auto resource_ids = total.ExplicitResourceIds();
+  for (auto &resource_id : resource_ids) {
     std::vector<FixedPoint> instances;
     auto value = total.Get(resource_id);
     if (resource_id.IsUnitInstanceResource()) {
@@ -30,6 +31,13 @@ NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
       for (size_t i = 0; i < num_instances; i++) {
         instances.push_back(1.0);
       };
+    } else if(resource_id == ResourceID::GPU_Memory() &&
+      resource_ids.find(ResourceID::GPU()) != resource_ids.end()){
+      double num_gpus = total.Get(ResourceID::GPU()).Double();
+      for (size_t i = 0; i < static_cast<size_t>(num_gpus); i++) {
+        instances.push_back(value.Double() / num_gpus);
+      };
+
     } else {
       instances.push_back(value);
     }

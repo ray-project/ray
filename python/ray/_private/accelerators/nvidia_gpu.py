@@ -122,3 +122,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             assert len(gpus) == 1
             return gpus[0]["Name"]
         return None
+    
+    @staticmethod
+    def get_current_node_gpu_memory() -> int:
+        return 1000

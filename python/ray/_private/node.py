@@ -507,6 +507,7 @@ class Node:
             num_cpus = env_dict.pop("CPU", None)
             num_gpus = env_dict.pop("GPU", None)
             memory = env_dict.pop("memory", None)
+            gpu_memory = env_dict.pop("gpu_memory", None)
             object_store_memory = env_dict.pop("object_store_memory", None)
 
             result = params_dict.copy()
@@ -518,7 +519,7 @@ class Node:
                         "Autoscaler is overriding your resource:"
                         f"{key}: {params_dict[key]} with {env_dict[key]}."
                     )
-            return num_cpus, num_gpus, memory, object_store_memory, result
+            return num_cpus, num_gpus, memory, gpu_memory, object_store_memory, result
 
         if not self._resource_spec:
             env_resources = {}
@@ -534,13 +535,17 @@ class Node:
                 num_cpus,
                 num_gpus,
                 memory,
+                gpu_memory,
                 object_store_memory,
                 resources,
             ) = merge_resources(env_resources, self._ray_params.resources)
+            if num_gpus and gpu_memory and num_gpus != len(gpu_memory):
+                raise ValueError(f"Number of gpus specified: {gpu_memory} does not match specified num_gpus: {num_gpus}")
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
                 self._ray_params.num_gpus if num_gpus is None else num_gpus,
                 self._ray_params.memory if memory is None else memory,
+                self._ray_params.gpu_memory if gpu_memory is None else gpu_memory,
                 self._ray_params.object_store_memory
                 if object_store_memory is None
                 else object_store_memory,

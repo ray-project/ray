@@ -23,6 +23,7 @@ class ResourceSpec(
             "num_cpus",
             "num_gpus",
             "memory",
+            "gpu_memory",
             "object_store_memory",
             "resources",
             "redis_max_memory",
@@ -39,6 +40,7 @@ class ResourceSpec(
         num_cpus: The CPUs allocated for this raylet.
         num_gpus: The GPUs allocated for this raylet.
         memory: The memory allocated for this raylet.
+        gpu_memory: The GPUs' memory allocated for this raylet.
         object_store_memory: The object store memory allocated for this raylet.
             Note that when calling to_resource_dict(), this will be scaled down
             by 30% to account for the global plasma LRU reserve.
@@ -55,6 +57,7 @@ class ResourceSpec(
         num_cpus=None,
         num_gpus=None,
         memory=None,
+        gpu_memory=None,
         object_store_memory=None,
         resources=None,
         redis_max_memory=None,
@@ -64,6 +67,7 @@ class ResourceSpec(
             num_cpus,
             num_gpus,
             memory,
+            gpu_memory,
             object_store_memory,
             resources,
             redis_max_memory,
@@ -89,6 +93,7 @@ class ResourceSpec(
             CPU=self.num_cpus,
             GPU=self.num_gpus,
             memory=int(self.memory),
+            gpu_memory=int(self.gpu_memory),
             object_store_memory=int(self.object_store_memory),
         )
 
@@ -141,6 +146,7 @@ class ResourceSpec(
         assert "CPU" not in resources, resources
         assert "GPU" not in resources, resources
         assert "memory" not in resources, resources
+        assert "gpu_memory" not in resources, resources
         assert "object_store_memory" not in resources, resources
 
         if node_ip_address is None:
@@ -165,6 +171,7 @@ class ResourceSpec(
             num_cpus = ray._private.utils.get_num_cpus()
 
         num_gpus = 0
+        gpu_memory = 0
         for (
             accelerator_resource_name
         ) in ray._private.accelerators.get_all_accelerator_resource_names():
@@ -208,6 +215,8 @@ class ResourceSpec(
             if num_accelerators:
                 if accelerator_resource_name == "GPU":
                     num_gpus = num_accelerators
+                    gpu_memory = num_accelerators * (self.gpu_memory if self.gpu_memory else accelerator_manager.get_current_node_gpu_memory())
+                    resources["gpu_memory"] = gpu_memory
                 else:
                     resources[accelerator_resource_name] = num_accelerators
 
@@ -298,6 +307,7 @@ class ResourceSpec(
             num_cpus,
             num_gpus,
             memory,
+            gpu_memory,
             object_store_memory,
             resources,
             redis_max_memory,

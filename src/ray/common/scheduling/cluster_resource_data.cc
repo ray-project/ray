@@ -92,17 +92,18 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     RAY_LOG(DEBUG) << "At pull manager capacity";
     return false;
   }
-
+  const ResourceSet resource_request_adjusted = this->ProcessRelativeResource(resource_request.GetResourceSet());
   if (!this->normal_task_resources.IsEmpty()) {
     auto available_resources = this->available;
     available_resources -= this->normal_task_resources;
-    return available_resources >= resource_request.GetResourceSet();
+    return available_resources >= resource_request_adjusted;
   }
-  return this->available >= resource_request.GetResourceSet();
+  return this->available >= resource_request_adjusted;
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
-  return this->total >= resource_request.GetResourceSet();
+  const ResourceSet resource_request_adjusted = this->ProcessRelativeResource(resource_request.GetResourceSet());
+  return this->total >= resource_request_adjusted;
 }
 
 bool NodeResources::operator==(const NodeResources &other) const {
@@ -124,6 +125,25 @@ std::string NodeResources::DebugString() const {
   }
   buffer << "}, \"is_draining\": " << is_draining << "}";
   return buffer.str();
+}
+
+const ResourceSet NodeResources::ProcessRelativeResource(const ResourceSet &resource) const {
+  ResourceSet adjusted_resource = resource; 
+  // adjust num_gpus <=> gpu_memory conversion
+  if(resource.Has(ResourceID::GPU())){
+    double gpu_mem_request = resource.Get(ResourceID::GPU()).Double() * 
+    (this->total.Get(ResourceID::GPU_Memory()).Double() / this->total.Get(ResourceID::GPU()).Double());
+    adjusted_resource.Set(ResourceID::GPU_Memory(), gpu_mem_request);
+  } else if (resource.Has(ResourceID::GPU_Memory())){
+    double total_gpu_mem = this->total.Get(ResourceID::GPU_Memory()).Double();
+    double num_gpus_request = 0;
+    if(total_gpu_mem > 0){
+      num_gpus_request = resource.Get(ResourceID::GPU_Memory()).Double() * 
+      (this->total.Get(ResourceID::GPU()).Double() / total_gpu_mem);
+    }
+    adjusted_resource.Set(ResourceID::GPU(), num_gpus_request);
+  }
+  return adjusted_resource;
 }
 
 std::string NodeResources::DictString() const { return DebugString(); }
@@ -151,6 +171,25 @@ const NodeResourceInstanceSet &NodeResourceInstances::GetAvailableResourceInstan
 
 const NodeResourceInstanceSet &NodeResourceInstances::GetTotalResourceInstances() const {
   return this->total;
+};
+
+const ResourceSet NodeResourceInstances::ProcessRelativeResource(const ResourceSet &resource) const {
+  ResourceSet adjusted_resource = resource; 
+  // adjust num_gpus <=> gpu_memory conversion
+  if(resource.Has(ResourceID::GPU())){
+    double gpu_mem_request = resource.Get(ResourceID::GPU()).Double() * 
+    (this->total.Get(ResourceID::GPU_Memory())[0].Double() / this->total.Get(ResourceID::GPU())[0].Double());
+    adjusted_resource.Set(ResourceID::GPU_Memory(), gpu_mem_request);
+  } else if (resource.Has(ResourceID::GPU_Memory())){
+    double total_gpu_mem = this->total.Get(ResourceID::GPU_Memory())[0].Double();
+    double num_gpus_request = 0;
+    if(total_gpu_mem > 0){
+      num_gpus_request = resource.Get(ResourceID::GPU_Memory()).Double() * 
+      (this->total.Get(ResourceID::GPU())[0].Double() / total_gpu_mem);
+    }
+    adjusted_resource.Set(ResourceID::GPU(), num_gpus_request);
+  }
+  return adjusted_resource;
 };
 
 }  // namespace ray

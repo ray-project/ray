@@ -80,11 +80,13 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
     const ResourceRequest &resource_request,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
+  const ResourceSet adjusted_resource_request = local_resources_.ProcessRelativeResource(resource_request.GetResourceSet());
+  // add adjust_gpu_memory here, added to NodeInstanceResourceSet
   auto allocation =
-      local_resources_.available.TryAllocate(resource_request.GetResourceSet());
+      local_resources_.available.TryAllocate(adjusted_resource_request);
   if (allocation) {
     *task_allocation = TaskResourceInstances(*allocation);
-    for (const auto &resource_id : resource_request.ResourceIds()) {
+    for (const auto &resource_id : adjusted_resource_request.ResourceIds()) {
       SetResourceNonIdle(resource_id);
     }
     return true;
