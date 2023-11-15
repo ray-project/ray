@@ -215,7 +215,6 @@ test_serve() {
       -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
       -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
       -python/ray/serve/tests:test_gradio
-      -python/ray/serve/tests:test_gradio_visualization
       -python/ray/serve/tests:test_fastapi
     )
   fi
