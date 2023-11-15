@@ -122,7 +122,21 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             assert len(gpus) == 1
             return gpus[0]["Name"]
         return None
-    
+
     @staticmethod
     def get_current_node_gpu_memory() -> int:
-        return 1000
+        try:
+            pynvml.nvmlInit()
+        except pynvml.NVMLError:
+            return None  # pynvml init failed
+        device_count = pynvml.nvmlDeviceGetCount()
+        cuda_device_type = None
+        if device_count > 0:
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            cuda_device_type = (
+                NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
+                    pynvml.nvmlDeviceGetName(handle)
+                )
+            )
+        pynvml.nvmlShutdown()
+        return cuda_device_type

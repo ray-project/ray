@@ -31,8 +31,8 @@ NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
       for (size_t i = 0; i < num_instances; i++) {
         instances.push_back(1.0);
       };
-    } else if(resource_id == ResourceID::GPU_Memory() &&
-      resource_ids.find(ResourceID::GPU()) != resource_ids.end()){
+    } else if (resource_id == ResourceID::GPU_Memory() &&
+               resource_ids.find(ResourceID::GPU()) != resource_ids.end()) {
       double num_gpus = total.Get(ResourceID::GPU()).Double();
       for (size_t i = 0; i < static_cast<size_t>(num_gpus); i++) {
         instances.push_back(value.Double() / num_gpus);

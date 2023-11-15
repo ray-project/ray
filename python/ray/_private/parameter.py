@@ -33,7 +33,7 @@ class RayParams:
             of that resource available.
         labels: The key-value labels of the node.
         memory: Total available memory for workers requesting memory.
-        gpu_memory: Total available memory for each gpu from num_gpus.
+        _gpu_memory: Total available memory from all GPUs in MB.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         redis_max_memory: The max amount of memory (in bytes) to allow redis
@@ -142,7 +142,7 @@ class RayParams:
         resources: Optional[Dict[str, float]] = None,
         labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
-        gpu_memory: Optional[List[float]] = None,
+        _gpu_memory: Optional[float] = None,
         object_store_memory: Optional[float] = None,
         redis_max_memory: Optional[float] = None,
         redis_port: Optional[int] = None,
@@ -200,7 +200,7 @@ class RayParams:
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
-        self.gpu_memory = gpu_memory
+        self._gpu_memory = _gpu_memory
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.redis_max_memory = redis_max_memory
@@ -443,7 +443,7 @@ class RayParams:
             assert "GPU" not in self.resources, build_error("GPU", "num_gpus")
             assert "memory" not in self.resources, build_error("memory", "memory")
             assert "gpu_memory" not in self.resources, build_error(
-                "gpu_memory", "gpu_memory"
+                "gpu_memory", "_gpu_memory"
             )
             assert "object_store_memory" not in self.resources, build_error(
                 "object_store_memory", "object_store_memory"

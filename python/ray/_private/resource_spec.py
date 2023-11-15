@@ -40,7 +40,7 @@ class ResourceSpec(
         num_cpus: The CPUs allocated for this raylet.
         num_gpus: The GPUs allocated for this raylet.
         memory: The memory allocated for this raylet.
-        gpu_memory: The GPUs' memory allocated for this raylet.
+        gpu_memory: The total GPUs' memory allocated for this raylet.
         object_store_memory: The object store memory allocated for this raylet.
             Note that when calling to_resource_dict(), this will be scaled down
             by 30% to account for the global plasma LRU reserve.
@@ -215,7 +215,14 @@ class ResourceSpec(
             if num_accelerators:
                 if accelerator_resource_name == "GPU":
                     num_gpus = num_accelerators
-                    gpu_memory = num_accelerators * (self.gpu_memory if self.gpu_memory else accelerator_manager.get_current_node_gpu_memory())
+                    gpu_memory = (
+                        self.gpu_memory
+                        if self.gpu_memory
+                        else (
+                            num_accelerators
+                            * accelerator_manager.get_current_node_gpu_memory()
+                        )
+                    )
                     resources["gpu_memory"] = gpu_memory
                 else:
                     resources[accelerator_resource_name] = num_accelerators

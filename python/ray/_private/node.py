@@ -539,8 +539,6 @@ class Node:
                 object_store_memory,
                 resources,
             ) = merge_resources(env_resources, self._ray_params.resources)
-            if num_gpus and gpu_memory and num_gpus != len(gpu_memory):
-                raise ValueError(f"Number of gpus specified: {gpu_memory} does not match specified num_gpus: {num_gpus}")
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
                 self._ray_params.num_gpus if num_gpus is None else num_gpus,

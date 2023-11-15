@@ -101,7 +101,7 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
         os.environ[
             IntelGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = prefix + ",".join([str(i) for i in visible_xpu_devices])
-    
+
     @staticmethod
     def get_current_node_gpu_memory() -> int:
         return 0

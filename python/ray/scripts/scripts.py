@@ -382,6 +382,14 @@ def debug(address):
     "--num-gpus", required=False, type=int, help="the number of GPUs on this node"
 )
 @click.option(
+    "--gpu-memory",
+    required=False,
+    type=int,
+    help="The total amount of memory (in megabytes) to make available to workers. "
+    "By default, this is set to the sum of available memory "
+    "from the gpus detected gpus in the node.",
+)
+@click.option(
     "--resources",
     required=False,
     default="{}",
@@ -564,6 +572,7 @@ def start(
     redis_max_memory,
     num_cpus,
     num_gpus,
+    gpu_memory,
     resources,
     head,
     include_dashboard,
@@ -656,6 +665,7 @@ def start(
         redirect_output=redirect_output,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
+        _gpu_memory=gpu_memory,
         resources=resources,
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
