@@ -575,6 +575,7 @@ def _setup_ray_cluster(
         object_spilling_dir = os.path.join(root_tmp_dir, "ray", "ray_spill")
         os.makedirs(object_spilling_dir, exist_ok=True)
     else:
+        global_cluster_lock_fd = None
         if ray_temp_root_dir is None:
             ray_temp_root_dir = start_hook.get_default_temp_root_dir()
         ray_temp_dir = os.path.join(
@@ -701,6 +702,8 @@ def _setup_ray_cluster(
         start_hook=start_hook,
         ray_dashboard_port=ray_dashboard_port,
         spark_job_server=spark_job_server,
+        global_cluster_lock_fd=global_cluster_lock_fd,
+
     )
 
     if not autoscale:
