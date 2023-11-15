@@ -33,7 +33,6 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
     # `Path.suffixes` contain leading dots. The user-specified extensions don't.
     extensions = [f".{ext.lower()}" for ext in extensions]
     suffixes = [suffix.lower() for suffix in pathlib.Path(path).suffixes]
-    print(extensions, suffixes)
     return any(ext in suffixes for ext in extensions)
 
 
