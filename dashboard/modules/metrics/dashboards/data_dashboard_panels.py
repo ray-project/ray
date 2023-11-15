@@ -92,7 +92,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=8,
+        id=11,
         title="Rows Outputted",
         description="Total rows outputted by dataset operators.",
         unit="rows",
@@ -104,7 +104,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=9,
+        id=8,
         title="Block Generation Time",
         description="Time spent generating blocks.",
         unit="seconds",
@@ -116,7 +116,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=10,
+        id=9,
         title="Iteration Blocked Time",
         description="Seconds user thread is blocked by iter_batches()",
         unit="seconds",
@@ -128,7 +128,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=11,
+        id=10,
         title="Iteration User Time",
         description="Seconds spent in user code",
         unit="seconds",
