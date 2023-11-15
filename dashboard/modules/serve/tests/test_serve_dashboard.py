@@ -258,12 +258,12 @@ def test_delete_multi_app(ray_start_stop, url):
         deploy_config_multi_app(config, url)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 1]).text
-            == 2,
+            == "2",
             timeout=15,
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["SUB", 1]).text
-            == -1,
+            == "-1",
             timeout=15,
         )
         wait_for_condition(
