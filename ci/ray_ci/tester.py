@@ -182,7 +182,7 @@ def main(
         get_flaky_tests=run_flaky_tests,
     )
     success = container.run_tests(test_targets, test_arg)
-    sys.exit(0 if success else 1)
+    sys.exit(0 if success else 42)
 
 
 def _add_default_except_tags(except_tags: str) -> str:
