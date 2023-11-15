@@ -23,10 +23,10 @@ class ContainerManager:
         if not runtime_env.has_py_container() or not runtime_env.py_container_image():
             return
 
+        container_driver = "podman"
         context.container = runtime_env["container"]
-
         container_command = [
-            "podman",
+            container_driver,
             "run",
             "-v",
             self._ray_tmp_dir + ":" + self._ray_tmp_dir,
