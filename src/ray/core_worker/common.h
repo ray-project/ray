@@ -65,12 +65,14 @@ struct TaskOptions {
               int num_returns,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
+              int64_t generator_backpressure_num_objects = -1,
               const std::string &serialized_runtime_env_info = "{}")
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
-        serialized_runtime_env_info(serialized_runtime_env_info) {}
+        serialized_runtime_env_info(serialized_runtime_env_info),
+        generator_backpressure_num_objects(generator_backpressure_num_objects) {}
 
   /// The name of this task.
   std::string name;
@@ -84,6 +86,10 @@ struct TaskOptions {
   /// fields which not contained in Runtime Env, such as eager_install.
   /// Propagated to child actors and tasks.
   std::string serialized_runtime_env_info;
+  /// Only applicable when streaming generator is used.
+  /// -1 means either streaming generator is not used or
+  /// it is used but the feature is disabled.
+  int64_t generator_backpressure_num_objects;
 };
 
 /// Options for actor creation tasks.
@@ -108,7 +114,8 @@ struct ActorCreationOptions {
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
         resources(resources),
-        placement_resources(placement_resources),
+        placement_resources(placement_resources.empty() ? resources
+                                                        : placement_resources),
         dynamic_worker_options(dynamic_worker_options),
         is_detached(std::move(is_detached)),
         name(name),
@@ -118,7 +125,14 @@ struct ActorCreationOptions {
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
-        scheduling_strategy(scheduling_strategy){};
+        scheduling_strategy(scheduling_strategy) {
+    // Check that resources is a subset of placement resources.
+    for (auto &resource : resources) {
+      auto it = this->placement_resources.find(resource.first);
+      RAY_CHECK(it != this->placement_resources.end());
+      RAY_CHECK_GE(it->second, resource.second);
+    }
+  };
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the

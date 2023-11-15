@@ -15,7 +15,6 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import numpy as np
 import requests
 
 import ray
@@ -34,6 +33,11 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 MESSAGE_PACK_OFFSET = 9
 
@@ -92,11 +96,11 @@ class _ServeCustomEncoders:
         return obj.to_dict(orient="records")
 
 
-serve_encoders = {
-    np.ndarray: _ServeCustomEncoders.encode_np_array,
-    np.generic: _ServeCustomEncoders.encode_np_scaler,
-    Exception: _ServeCustomEncoders.encode_exception,
-}
+serve_encoders = {Exception: _ServeCustomEncoders.encode_exception}
+
+if np is not None:
+    serve_encoders[np.ndarray] = _ServeCustomEncoders.encode_np_array
+    serve_encoders[np.generic] = _ServeCustomEncoders.encode_np_scaler
 
 if pd is not None:
     serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
@@ -358,23 +362,6 @@ def snake_to_camel_case(snake_str: str) -> str:
 
     words = snake_str.strip("_").split("_")
     return words[0] + "".join(word[:1].upper() + word[1:] for word in words[1:])
-
-
-def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
-    """Converts dictionary's keys from snake case to camel case.
-
-    Does not modify original dictionary.
-    """
-
-    camel_dict = dict()
-
-    for key, val in snake_dict.items():
-        if isinstance(key, str):
-            camel_dict[snake_to_camel_case(key)] = val
-        else:
-            camel_dict[key] = val
-
-    return camel_dict
 
 
 def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:

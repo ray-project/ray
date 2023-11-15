@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockMetadata
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -19,14 +19,6 @@ class TorchDatasource(Datasource):
     This datasource implements a streaming read using a single read task.
     """
 
-    def create_reader(
-        self,
-        dataset: "torch.utils.data.Dataset",
-    ):
-        return _TorchDatasourceReader(dataset)
-
-
-class _TorchDatasourceReader(Reader):
     def __init__(
         self,
         dataset: "torch.utils.data.Dataset",

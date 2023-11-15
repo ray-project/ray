@@ -7,10 +7,9 @@ import time
 import unittest
 
 import ray
-import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BCConfig
-import ray.rllib.algorithms.pg as pg
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -27,35 +26,38 @@ class TestAlgorithm(unittest.TestCase):
         ray.shutdown()
 
     def test_add_delete_policy(self):
-        config = pg.PGConfig()
-        config.environment(
-            env=MultiAgentCartPole,
-            env_config={
-                "config": {
-                    "num_agents": 4,
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                env=MultiAgentCartPole,
+                env_config={
+                    "config": {
+                        "num_agents": 4,
+                    },
                 },
-            },
-        ).rollouts(num_rollout_workers=2, rollout_fragment_length=50).resources(
-            num_cpus_per_worker=0.1
-        ).training(
-            train_batch_size=100,
-        ).multi_agent(
-            # Start with a single policy.
-            policies={"p0"},
-            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
-            # And only two policies that can be stored in memory at a
-            # time.
-            policy_map_capacity=2,
-        ).evaluation(
-            evaluation_num_workers=1,
-            evaluation_config=pg.PGConfig.overrides(num_cpus_per_worker=0.1),
-        )
-        # Don't override existing model settings.
-        config.model.update(
-            {
-                "fcnet_hiddens": [5],
-                "fcnet_activation": "linear",
-            }
+            )
+            .resources(num_cpus_per_worker=0.1)
+            .training(
+                train_batch_size=100,
+                sgd_minibatch_size=50,
+                num_sgd_iter=1,
+                model={
+                    "fcnet_hiddens": [5],
+                    "fcnet_activation": "linear",
+                },
+            )
+            .multi_agent(
+                # Start with a single policy.
+                policies={"p0"},
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
+                # And only two policies that can be stored in memory at a
+                # time.
+                policy_map_capacity=2,
+            )
+            .evaluation(
+                evaluation_num_workers=1,
+                evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_worker=0.1),
+            )
         )
 
         obs_space = gym.spaces.Box(-2.0, 2.0, (4,))
@@ -65,11 +67,11 @@ class TestAlgorithm(unittest.TestCase):
             # Pre-generate a policy instance to test adding these directly to an
             # existing algorithm.
             if fw == "tf":
-                policy_obj = pg.PGTF1Policy(obs_space, act_space, config.to_dict())
+                policy_obj = ppo.PPOTF1Policy(obs_space, act_space, config.to_dict())
             elif fw == "tf2":
-                policy_obj = pg.PGTF2Policy(obs_space, act_space, config.to_dict())
+                policy_obj = ppo.PPOTF2Policy(obs_space, act_space, config.to_dict())
             else:
-                policy_obj = pg.PGTorchPolicy(obs_space, act_space, config.to_dict())
+                policy_obj = ppo.PPOTorchPolicy(obs_space, act_space, config.to_dict())
 
             # Construct the Algorithm with a single policy in it.
             algo = config.build()
@@ -131,7 +133,7 @@ class TestAlgorithm(unittest.TestCase):
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
-                test = pg.PG.from_checkpoint(checkpoint)
+                test = ppo.PPO.from_checkpoint(checkpoint)
 
                 # Make sure evaluation worker also got the restored, added policy.
                 def _has_policies(w):
@@ -161,7 +163,7 @@ class TestAlgorithm(unittest.TestCase):
                     def new_mapping_fn(agent_id, episode, worker, **kwargs):
                         return f"p{choice([0, 2])}"
 
-                    test2 = pg.PG.from_checkpoint(
+                    test2 = ppo.PPO.from_checkpoint(
                         checkpoint=checkpoint,
                         policy_ids=["p0", "p2"],
                         policy_mapping_fn=new_mapping_fn,
@@ -297,7 +299,7 @@ class TestAlgorithm(unittest.TestCase):
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation.
         config = (
-            a3c.A3CConfig()
+            ppo.PPOConfig()
             .environment(env="CartPole-v1")
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -331,7 +333,7 @@ class TestAlgorithm(unittest.TestCase):
         env = gym.make("CartPole-v1")
 
         config = (
-            pg.PGConfig()
+            ppo.PPOConfig()
             .rollouts(num_rollout_workers=1, validate_workers_after_construction=False)
             .environment(env="CartPole-v1")
         )
@@ -370,7 +372,7 @@ class TestAlgorithm(unittest.TestCase):
 
     def test_worker_validation_time(self):
         """Tests the time taken by `validate_workers_after_construction=True`."""
-        config = pg.PGConfig().environment(env="CartPole-v1")
+        config = ppo.PPOConfig().environment(env="CartPole-v1")
         config.validate_workers_after_construction = True
 
         # Test, whether validating one worker takes just as long as validating
@@ -425,7 +427,7 @@ class TestAlgorithm(unittest.TestCase):
     def test_counters_after_checkpoint(self):
         # We expect algorithm to no start counters from zero after loading a
         # checkpoint on a fresh Algorithm instance
-        config = pg.PGConfig().environment(env="CartPole-v1")
+        config = ppo.PPOConfig().environment(env="CartPole-v1")
         algo = config.build()
 
         self.assertTrue(all(c == 0 for c in algo._counters.values()))

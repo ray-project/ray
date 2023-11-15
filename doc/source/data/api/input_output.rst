@@ -157,6 +157,7 @@ SQL Databases
    :toctree: doc/
 
    read_sql
+   Dataset.write_sql
 
 Databricks
 ----------
@@ -253,10 +254,22 @@ Datasource API
    :toctree: doc/
 
    read_datasource
-   Dataset.write_datasource
    Datasource
    ReadTask
    datasource.Reader
+   datasource.FilenameProvider
+
+Datasink API
+------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_datasink
+   Datasink
+   RowBasedFileDatasink
+   BlockBasedFileDatasink
 
 Partitioning API
 ----------------
@@ -269,7 +282,6 @@ Partitioning API
    datasource.PartitionStyle
    datasource.PathPartitionParser
    datasource.PathPartitionFilter
-   datasource.FileExtensionFilter
 
 .. _metadata_provider:
 

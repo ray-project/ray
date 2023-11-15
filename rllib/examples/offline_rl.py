@@ -77,7 +77,7 @@ if __name__ == "__main__":
         )
         .reporting(min_train_timesteps_per_iteration=1000)
         .debugging(log_level="INFO")
-        .environment(normalize_actions=True, env="Pendulum-v1")
+        .environment("Pendulum-v1", normalize_actions=True)
         .offline_data(
             input_config={
                 "paths": ["tests/data/pendulum/enormous.zip"],

@@ -1,6 +1,6 @@
 # Production requirements. This is what readthedocs.com picks up
 
-git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
+ray
 watchfiles # Required because sphinx-click doesn't support mocking
 
 # Syntax highlighting

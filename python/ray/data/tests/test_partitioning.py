@@ -14,7 +14,10 @@ import ray
 from ray.data.block import Block
 from ray.data.dataset import Dataset
 from ray.data.datasource import FileBasedDatasource, PathPartitionParser
-from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
+from ray.data.datasource.file_based_datasource import (
+    FileExtensionFilter,
+    _resolve_paths_and_filesystem,
+)
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -25,10 +28,17 @@ from ray.tests.conftest import *  # noqa
 
 
 class CSVDatasource(FileBasedDatasource):
-    def __init__(self, block_type: Union[pd.DataFrame, pa.Table]):
+    def __init__(
+        self,
+        paths,
+        block_type: Union[pd.DataFrame, pa.Table],
+        **file_based_datasource_kwargs,
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
         self._block_type = block_type
 
-    def _read_file(self, f: pa.NativeFile, path: str, **kwargs) -> Block:
+    def _read_file(self, f: pa.NativeFile, path: str) -> Block:
         assert self._block_type in {pd.DataFrame, pa.Table}
 
         if self._block_type is pa.Table:
@@ -52,8 +62,13 @@ def read_csv(
     partitioning: Partitioning,
     block_type: Union[pd.DataFrame, pa.Table],
 ) -> Dataset:
-    datasource = CSVDatasource(block_type=block_type)
-    return ray.data.read_datasource(datasource, paths=paths, partitioning=partitioning)
+    datasource = CSVDatasource(paths, block_type=block_type, partitioning=partitioning)
+    return ray.data.read_datasource(datasource)
+
+
+def test_file_extension_filter_is_deprecated():
+    with pytest.warns(DeprecationWarning):
+        FileExtensionFilter("csv")
 
 
 class PathPartitionEncoder:

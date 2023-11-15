@@ -1262,7 +1262,7 @@ class Node:
             curr_val = self.get_gcs_client().internal_kv_get(
                 b"session_name", ray_constants.KV_NAMESPACE_SESSION
             )
-            assert curr_val != self._session_name, (
+            assert curr_val == self._session_name.encode("utf-8"), (
                 f"Session name {self._session_name} does not match "
                 f"persisted value {curr_val}. Perhaps there was an "
                 f"error connecting to Redis."

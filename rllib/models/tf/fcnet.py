@@ -8,13 +8,11 @@ from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType, List, ModelConfigDict
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
 
-# TODO: (sven) obsolete this class once we only support native keras models.
+# TODO: (sven) obsolete this class.
 @DeveloperAPI
 class FullyConnectedNetwork(TFModelV2):
     """Generic fully connected network implemented in ModelV2 API."""
@@ -27,8 +25,6 @@ class FullyConnectedNetwork(TFModelV2):
         model_config: ModelConfigDict,
         name: str,
     ):
-        if log_once("rllib_models_fcnet_deprecation"):
-            deprecation_warning(old="ray.rllib.models.tf.fcnet.FullyConnectedNetwork")
         super(FullyConnectedNetwork, self).__init__(
             obs_space, action_space, num_outputs, model_config, name
         )

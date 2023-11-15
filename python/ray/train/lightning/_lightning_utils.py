@@ -69,6 +69,9 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
     For a full list of initialization arguments, please refer to:
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
+
+    Note that `process_group_backend`, `timeout`, and `start_method` are disabled here,
+    please specify these arguments in :class:`~ray.train.torch.TorchConfig` instead.
     """
 
     def __init__(self, *args, **kwargs):
@@ -266,6 +269,9 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         # Report to train session
         checkpoint = Checkpoint.from_directory(tmpdir)
         train.report(metrics=metrics, checkpoint=checkpoint)
+
+        # Add a barrier to ensure all workers finished reporting here
+        torch.distributed.barrier()
 
         if self.local_rank == 0:
             shutil.rmtree(tmpdir)

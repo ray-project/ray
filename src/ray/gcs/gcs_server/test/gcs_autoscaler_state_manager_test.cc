@@ -65,19 +65,14 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
     gcs_placement_group_manager_ =
         std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
-    gcs_autoscaler_state_manager_.reset(
-        new GcsAutoscalerStateManager("fake_cluster",
-                                      *cluster_resource_manager_,
-                                      *gcs_resource_manager_,
-                                      *gcs_node_manager_,
-                                      *gcs_placement_group_manager_,
-                                      client_pool_));
+    gcs_autoscaler_state_manager_.reset(new GcsAutoscalerStateManager(
+        "fake_cluster", *gcs_node_manager_, *gcs_placement_group_manager_, client_pool_));
   }
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
     gcs_node_manager_->alive_nodes_[NodeID::FromBinary(node->node_id())] = node;
-    gcs_resource_manager_->OnNodeAdd(*node);
+    gcs_autoscaler_state_manager_->OnNodeAdd(*node);
   }
 
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
@@ -85,7 +80,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     gcs_node_manager_->alive_nodes_.erase(node_id);
     gcs_node_manager_->dead_nodes_[node_id] = node;
-    gcs_resource_manager_->OnNodeDead(node_id);
+    gcs_autoscaler_state_manager_->OnNodeDead(node_id);
   }
 
   void CheckNodeResources(
@@ -162,7 +157,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                               total_resources,
                               idle_ms,
                               is_draining);
-    gcs_resource_manager_->UpdateFromResourceView(resources_data);
+    gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
   }
 
   rpc::autoscaler::GetClusterStatusReply GetClusterStatusSync() {
@@ -177,11 +172,10 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   }
 
   void UpdateResourceLoads(const std::string &node_id,
-                           std::vector<rpc::ResourceDemand> demands,
-                           bool resource_load_changed = true) {
+                           std::vector<rpc::ResourceDemand> demands) {
     rpc::ResourcesData data;
-    Mocker::FillResourcesData(data, node_id, demands, resource_load_changed);
-    gcs_resource_manager_->UpdateResourceLoads(data);
+    Mocker::FillResourcesData(data, node_id, demands);
+    gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(data);
   }
 
   void ReportAutoscalingState(const rpc::autoscaler::AutoscalingState &state) {
@@ -239,16 +233,6 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       ASSERT_EQ(actual_requests_by_count[req.first], req.second)
           << "Request: " << req.first;
     }
-  }
-
-  void UpdatePlacementGroupLoad(const std::vector<rpc::PlacementGroupTableData> &data) {
-    std::shared_ptr<rpc::PlacementGroupLoad> load =
-        std::make_shared<rpc::PlacementGroupLoad>();
-    for (auto &d : data) {
-      load->add_placement_group_data()->CopyFrom(d);
-    }
-
-    gcs_resource_manager_->UpdatePlacementGroupLoad(load);
   }
 
   void GroupResourceRequestsByConstraintForPG(

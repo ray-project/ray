@@ -166,6 +166,7 @@ RayTask CreateTask(
                                  0,
                                  /*returns_dynamic=*/false,
                                  /*is_streaming_generator*/ false,
+                                 /*generator_backpressure_num_objects*/ -1,
                                  required_resources,
                                  {},
                                  "",
@@ -2035,25 +2036,6 @@ TEST_F(ClusterTaskManagerTest, LargeArgsNoStarvationTest) {
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
   AssertNoLeaks();
-}
-
-TEST_F(ClusterTaskManagerTest, TestResourceDiff) {
-  // When node_resources is null, resource is always marked as changed
-  rpc::ResourcesData resource_data;
-  task_manager_.FillResourceUsage(resource_data, nullptr);
-  ASSERT_TRUE(resource_data.resource_load_changed());
-  auto node_resources = std::make_shared<NodeResources>();
-  // Same resources(empty), not changed.
-  resource_data.set_resource_load_changed(false);
-  task_manager_.FillResourceUsage(resource_data, node_resources);
-  ASSERT_FALSE(resource_data.resource_load_changed());
-  // Resource changed.
-  resource_data.set_resource_load_changed(false);
-  ResourceSet res;
-  res.Set(ResourceID::CPU(), 100);
-  node_resources->load = std::move(res);
-  task_manager_.FillResourceUsage(resource_data, node_resources);
-  ASSERT_TRUE(resource_data.resource_load_changed());
 }
 
 TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {

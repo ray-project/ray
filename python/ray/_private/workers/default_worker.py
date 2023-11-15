@@ -276,7 +276,7 @@ if __name__ == "__main__":
     if worker_process_setup_hook_key:
         error = load_and_execute_setup_hook(worker_process_setup_hook_key)
         if error is not None:
-            worker.core_worker.exit_worker("system", error)
+            worker.core_worker.drain_and_exit_worker("system", error)
 
     if mode == ray.WORKER_MODE:
         worker.main_loop()
