@@ -24,7 +24,7 @@ class BinaryDatasource(FileBasedDatasource):
 
         self.include_paths = include_paths
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str):
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         data = f.readall()
 
         builder = ArrowBlockBuilder()
@@ -33,7 +33,7 @@ class BinaryDatasource(FileBasedDatasource):
         else:
             item = {self._COLUMN_NAME: data}
         builder.add(item)
-        return builder.build()
+        yield builder.build()
 
     def _rows_per_file(self):
         return 1
