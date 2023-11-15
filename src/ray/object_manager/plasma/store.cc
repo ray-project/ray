@@ -544,8 +544,11 @@ void PlasmaStore::WaitForSeal(const ObjectID &object_id,
     plasma_header->ReadAcquire(/*read_version=*/1);
 
     uint64_t data = 1;
+    auto num_bytes_written = write(event_fd, &data, sizeof(data));
     // TODO(swang): Need proper error checking here.
-    RAY_CHECK(write(event_fd, &data, sizeof(data)) == sizeof(data));
+    if (num_bytes_written != sizeof(data)) {
+      RAY_LOG(WARNING) << num_bytes_written << " bytes written on fd " << event_fd << "  err: "  << strerror(errno);
+    }
   };
 
   auto wait_thread = std::make_shared<std::thread>(wait_fn);
@@ -554,18 +557,23 @@ void PlasmaStore::WaitForSeal(const ObjectID &object_id,
       io_context_,
       [this, event_fd, object_id, plasma_header, wait_thread, client](
           boost::asio::yield_context yield) {
-        boost::asio::posix::stream_descriptor event_stream(io_context_, event_fd);
-        event_stream.async_wait(boost::asio::posix::stream_descriptor::wait_read, yield);
-        close(event_fd);
-        //RAY_CHECK(plasma_header->max_readers == -1) << plasma_header->max_readers;
+        auto event_stream = std::make_shared<boost::asio::posix::stream_descriptor>(io_context_, event_fd);
+        auto data = std::make_shared<uint64_t>(0);
+        auto buf = boost::asio::buffer(data.get(), sizeof(*data));
+        boost::asio::async_read(*event_stream, buf, [this, event_stream, data, object_id, event_fd, wait_thread](const boost::system::error_code &ec, size_t bytes_transferred) {
+            RAY_CHECK(bytes_transferred == sizeof(*data)) << ec.message();
 
-        {
-          absl::MutexLock lock(&mutex_);
-          SealObjects({object_id});
-        }
+            //RAY_CHECK(plasma_header->max_readers == -1) << plasma_header->max_readers;
 
-        wait_thread->join();
+            {
+              absl::MutexLock lock(&mutex_);
+              SealObjects({object_id});
+            }
+
+            wait_thread->join();
+            close(event_fd);
       });
+    });
 }
 
 int64_t PlasmaStore::GetConsumedBytes() { return total_consumed_bytes_; }

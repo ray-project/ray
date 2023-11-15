@@ -20,10 +20,19 @@ class Reader:
             #ray.release(self.ref)
 
 
-def run(num_trials=3, reuse_object_ref=False, read_local=False, read_remote=False):
-    arr = np.random.rand(1)
+@ray.remote
+def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, read_remote=False):
+    if use_bytes:
+        arr = b"binary"
+    else:
+        arr = np.random.rand(1)
+
     ref = ray.put(arr)
-    assert np.array_equal(ray.get(ref), arr)
+
+    if use_bytes:
+        assert ray.get(ref) == arr
+    else:
+        assert np.array_equal(ray.get(ref), arr)
     print("starting...")
 
     if reuse_object_ref:
@@ -41,6 +50,11 @@ def run(num_trials=3, reuse_object_ref=False, read_local=False, read_remote=Fals
     for _ in range(num_trials):
         start = time.time()
         for i in range(10_000):
+            if use_bytes:
+                arr = i.to_bytes(8, "little")
+            else:
+                arr[0] = i
+
             if reuse_object_ref:
                 ray.worker.global_worker.put_object(arr, object_ref=ref)
             else:
@@ -53,7 +67,7 @@ def run(num_trials=3, reuse_object_ref=False, read_local=False, read_remote=Fals
 
 if __name__ == "__main__":
     print("Dynamic ray.put")
-    run()
+    ray.get(run.remote())
 
     print("Reuse ray.put buffer")
-    run(reuse_object_ref=True)
+    ray.get(run.remote(reuse_object_ref=True))
