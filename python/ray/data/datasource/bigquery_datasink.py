@@ -8,6 +8,7 @@ from typing import Any, Iterable
 import pyarrow.parquet as pq
 
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
@@ -27,15 +28,37 @@ class _BigQueryDatasink(Datasink):
         self.project_id = project_id
         self.dataset = dataset
 
+    def on_write_start(self) -> None:
+        from google.api_core import exceptions
+        from google.cloud import bigquery
+
+        if self.project_id is None or self.dataset is None:
+            raise ValueError("project_id and dataset are required args")
+
+        # Set up datasets to write
+        client = bigquery.Client(project=self.project_id)
+        dataset_id = self.dataset.split(".", 1)[0]
+        try:
+            client.create_dataset(f"{self.project_id}.{dataset_id}", timeout=30)
+            logger.info("Created dataset " + dataset_id)
+        except exceptions.Conflict:
+            logger.info(
+                f"Dataset {dataset_id} already exists. "
+                "The table will be overwritten if it already exists."
+            )
+
+        # Delete table if it already exists
+        client.delete_table(f"{self.project_id}.{self.dataset}", not_found_ok=True)
+
     def write(
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> Any:
-        from google.api_core import exceptions
-        from google.cloud import bigquery
+        def _write_single_block(block: Block, project_id: str, dataset: str) -> None:
+            from google.api_core import exceptions
+            from google.cloud import bigquery
 
-        def _write_single_block(block: Block, project_id: str, dataset: str):
             block = BlockAccessor.for_block(block).to_arrow()
 
             client = bigquery.Client(project=project_id)
@@ -62,21 +85,16 @@ class _BigQueryDatasink(Datasink):
                         logger.debug(e)
                         time.sleep(RATE_LIMIT_EXCEEDED_SLEEP_TIME)
 
-        # Set up datasets to write
-        client = bigquery.Client(project=self.project_id)
-        dataset_id = self.dataset.split(".", 1)[0]
-        try:
-            client.create_dataset(f"{self.project_id}.{dataset_id}", timeout=30)
-            logger.info("Created dataset " + dataset_id)
-        except exceptions.Conflict:
-            logger.info(
-                f"Dataset {dataset_id} already exists. "
-                "The table will be overwritten if it already exists."
-            )
+                # Raise exception if retry_cnt hits MAX_RETRY_CNT
+                if retry_cnt >= MAX_RETRY_CNT:
+                    raise RuntimeError(
+                        f"Write failed due to {MAX_RETRY_CNT} repeated"
+                        + " API rate limit exceeded responses"
+                    )
 
-        # Delete table if it already exists
-        client.delete_table(f"{self.project_id}.{self.dataset}", not_found_ok=True)
+        _write_single_block = cached_remote_fn(_write_single_block)
 
+        # Launch a remote task for each block within this write task
         for block in blocks:
-            _write_single_block(block, self.project_id, self.dataset)
+            _write_single_block.remote(block, self.project_id, self.dataset)
         return "ok"

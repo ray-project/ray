@@ -1394,6 +1394,7 @@ def get_and_run_node_killer(
     lifetime=None,
     no_start=False,
     max_nodes_to_kill=2,
+    node_kill_delay_s=0,
 ):
     assert ray.is_initialized(), "The API is only available when Ray is initialized."
 
@@ -1514,6 +1515,7 @@ def get_and_run_node_killer(
     ray.get(node_killer.ready.remote())
     print("Node killer actor is ready now.")
     if not no_start:
+        time.sleep(node_kill_delay_s)
         node_killer.run.remote()
     return node_killer
 
