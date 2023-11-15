@@ -1462,6 +1462,9 @@ def serve_global_ray_cluster(
      - On databricks notebook, you can connect to the global cluster by calling
        ``ray.init()`` without specifying its address, it will discover the global
        cluster automatically if it is up.
+
+    Note: this is a blocking API, once it is interrupted, the global Ray on spark
+    cluster is shut down.
     """
     with modified_environ(RAY_ON_SPARK_GLOBAL_MODE="1"):
         try:
