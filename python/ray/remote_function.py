@@ -56,6 +56,8 @@ class RemoteFunction:
             remote function.
         _memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
+        _gpu_memory: The gpu memory request in megabytes for this task/actor
+            from a single gpu, rounded down to the nearest integer.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
@@ -109,6 +111,13 @@ class RemoteFunction:
             num_gpus > 0 and self._default_options.get("max_calls", None) is None
         ) or "nsight" in (self._default_options.get("runtime_env") or {}):
             self._default_options["max_calls"] = 1
+
+        # Either num_gpus or gpu_memory can be specified, not both.
+        if num_gpus != 0 and self._default_options.get("_gpu_memory"):
+            raise ValueError(
+                "Specifying both `num_gpus` and `_gpu_memory` is not allowed. "
+                "See more at: (link TBD)"
+            )
 
         # TODO(suquark): This is a workaround for class attributes of options.
         # They are being used in some other places, mostly tests. Need cleanup later.
@@ -177,6 +186,8 @@ class RemoteFunction:
                 See :ref:`accelerator types <accelerator_types>`.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
+            _gpu_memory: The gpu memory request in megabytes for this task/actor
+            from a single gpu, rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
             max_calls: This specifies the
                 maximum number of times that a given worker can execute

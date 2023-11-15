@@ -543,7 +543,7 @@ class Node:
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
                 self._ray_params.num_gpus if num_gpus is None else num_gpus,
                 self._ray_params.memory if memory is None else memory,
-                self._ray_params.gpu_memory if gpu_memory is None else gpu_memory,
+                self._ray_params._gpu_memory if gpu_memory is None else gpu_memory,
                 self._ray_params.object_store_memory
                 if object_store_memory is None
                 else object_store_memory,

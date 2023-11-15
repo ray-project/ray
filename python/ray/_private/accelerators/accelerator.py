@@ -136,3 +136,13 @@ class AcceleratorManager(ABC):
             Return None if it's unknown.
         """
         return None
+
+    @staticmethod
+    def get_current_node_accelerator_memory() -> int:
+        """Get the total number of accelerators of this family on the current node.
+
+        Returns:
+            The detected total number of accelerators of this family.
+            Return 0 if the current node doesn't contain accelerators of this family.
+        """
+        return 0

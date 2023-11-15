@@ -103,5 +103,5 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
         ] = prefix + ",".join([str(i) for i in visible_xpu_devices])
 
     @staticmethod
-    def get_current_node_gpu_memory() -> int:
+    def get_current_node_accelerator_memory() -> int:
         return 0

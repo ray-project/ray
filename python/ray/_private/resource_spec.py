@@ -220,7 +220,7 @@ class ResourceSpec(
                         if self.gpu_memory
                         else (
                             num_accelerators
-                            * accelerator_manager.get_current_node_gpu_memory()
+                            * accelerator_manager.get_current_node_accelerator_memory()
                         )
                     )
                     resources["gpu_memory"] = gpu_memory
