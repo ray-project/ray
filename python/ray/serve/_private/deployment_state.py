@@ -1433,8 +1433,8 @@ class DeploymentState:
                         f"{scaling_decision.capitalize()} from {old} to {new} replicas."
                     ),
                 )
-        # Otherwise, the deployment configuration has actually been updated.
         else:
+                # Otherwise, the deployment configuration has actually been updated.
             self._curr_status_info.update(
                 status=DeploymentStatus.UPDATING, status_trigger=status_trigger
             )
