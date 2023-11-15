@@ -3399,6 +3399,19 @@ class Dataset:
                 overwritten if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        # Each write task will launch individual remote tasks to write each block
+        # To avoid duplicate block writes, the write task should not be retried
+        if ray_remote_args.get("max_retries", 0) != 0:
+            warnings.warn(
+                "The max_retries of a BigQuery Write Task should be set to 0"
+                " to avoid duplicate writes."
+            )
+        else:
+            ray_remote_args["max_retries"] = 0
+
         datasink = _BigQueryDatasink(project_id, dataset)
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
