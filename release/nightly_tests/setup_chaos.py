@@ -21,6 +21,15 @@ def parse_script_args():
             "--node-kill-interval seconds."
         ),
     )
+    parser.add_argument(
+        "--node-kill-delay",
+        type=int,
+        default=0,
+        help=(
+            "Seconds to wait before node killer starts killing nodes. No-op if "
+            "'no-start' is set.",
+        ),
+    )
     return parser.parse_known_args()
 
 
@@ -37,6 +46,7 @@ def main():
         lifetime="detached",
         no_start=args.no_start,
         max_nodes_to_kill=args.max_nodes_to_kill,
+        node_kill_delay_s=args.node_kill_delay,
     )
     print("Successfully deployed a node killer.")
 
