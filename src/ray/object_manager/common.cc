@@ -30,6 +30,7 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version) {
     RAY_CHECK(pthread_cond_wait(&cond, &mut) == 0);
   }
 
+  RAY_LOG(DEBUG) << "WriteAcquire " << write_version;
   RAY_CHECK(version + 1 == write_version);
   RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
 }
@@ -38,6 +39,7 @@ void PlasmaObjectHeader::WriteRelease(int64_t write_version, int64_t write_max_r
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
 
   RAY_CHECK(++version == write_version);
+  RAY_LOG(DEBUG) << "WriteRelease " << write_version;
   max_readers = write_max_readers;
   num_reads_remaining = max_readers;
 
@@ -49,13 +51,19 @@ void PlasmaObjectHeader::WriteRelease(int64_t write_version, int64_t write_max_r
 void PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
 
-  while (version != read_version) {
-    RAY_CHECK(version < read_version) << "Version " << version << " already exceeds version to read " << read_version;
+  while (version < read_version) {
+    RAY_LOG(DEBUG) << "ReadAcquire " << read_version << " version is currently " << version;
     RAY_CHECK(pthread_cond_wait(&cond, &mut) == 0);
   }
 
+  if (version > read_version) {
+    RAY_LOG(WARNING) << "Version " << version << " already exceeds version to read " << read_version;
+  }
+
   num_readers_acquired++;
-  RAY_CHECK(max_readers == -1 || num_readers_acquired <= max_readers) << num_readers_acquired << " already read-acquired.";
+  if (max_readers != -1 && num_readers_acquired > max_readers) {
+    RAY_LOG(WARNING) << num_readers_acquired << " readers acquired exceeds max readers " << max_readers;
+  }
 
   RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
 }
@@ -64,6 +72,7 @@ void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
   bool all_readers_done = false;
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
 
+  RAY_LOG(DEBUG) << "ReadRelease " << read_version << " version is currently " << version;
   RAY_CHECK(version == read_version) << "Version " << version << " modified from version " << read_version << " at read start";
 
   if (num_reads_remaining != -1) {
