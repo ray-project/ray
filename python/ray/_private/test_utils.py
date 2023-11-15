@@ -1581,7 +1581,7 @@ def get_and_run_resource_killer(
     task_filter=None,
 ):
     assert ray.is_initialized(), "The API is only available when Ray is initialized."
-    name = resource_killer_cls.__ray_actor_class__().__class__.__name__
+    name = resource_killer_cls.__ray_actor_class__.__name__
 
     head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.

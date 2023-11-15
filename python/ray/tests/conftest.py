@@ -916,7 +916,7 @@ def _ray_start_chaos_cluster(request):
 
     if kill_interval is not None:
         ray.get(node_killer.stop_run.remote())
-        killed = ray.get(node_killer.get_total_killed_nodes.remote())
+        killed = ray.get(node_killer.get_total_killed.remote())
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
         assert died.issubset(
