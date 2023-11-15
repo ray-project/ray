@@ -57,9 +57,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         driver_version = pynvml.nvmlSystemGetDriverVersion()
         device_count = pynvml.nvmlDeviceGetCount()
         cuda_devices = []
-        mig_enabled = os.environ.get(
-            ray_constants.RAY_ENABLE_MIG_DETECTION_ENV_VAR, False
-        )
+        mig_enabled = ray_constants.RAY_ENABLE_MIG_DETECTION
         mig_uuid = None
         for index in range(device_count):
             try:
