@@ -26,6 +26,8 @@ class Reader:
 
 print("OBJECT REF IS", ref)
 
+# Keep the plasma object pinned.
+# TODO(swang): Pin the object properly in plasma store.
 pinned = ray.get(ref)
 
 #reader = Reader.remote([ref])
