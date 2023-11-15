@@ -34,7 +34,7 @@ steps:
     depends_on: data6build
     job_env: forge
 
-  - label: ":database: data: arrow 12 tests"
+  - label: ":database: data: arrow 14 tests"
     tags: 
       - python
       - data
