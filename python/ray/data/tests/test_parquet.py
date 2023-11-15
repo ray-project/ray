@@ -14,7 +14,6 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
-    FileExtensionFilter,
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
@@ -329,7 +328,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     # Expect directory path expansion to fail with OS error if default format-based path
     # filtering is turned off.
     with pytest.raises(OSError):
-        ds = ray.data.read_parquet_bulk(data_path, filesystem=fs, partition_filter=None)
+        ds = ray.data.read_parquet_bulk(data_path, filesystem=fs, file_extensions=None)
         ds.schema()
 
     # Expect individual file paths to be processed successfully.
@@ -806,16 +805,14 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(path))
 
 
-def test_parquet_partition_filter(ray_start_regular_shared, tmp_path):
+def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
     table = pa.table({"food": ["spam", "ham", "eggs"]})
     pq.write_table(table, tmp_path / "table.parquet")
     # `spam` should be filtered out.
     with open(tmp_path / "spam", "w"):
         pass
 
-    ds = ray.data.read_parquet(
-        tmp_path, partition_filter=FileExtensionFilter("parquet")
-    )
+    ds = ray.data.read_parquet(tmp_path, file_extensions=["parquet"])
 
     assert ds.count() == 3
 

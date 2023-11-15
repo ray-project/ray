@@ -1,5 +1,6 @@
 import copy
 import grpc
+import re
 import os
 import sys
 from typing import Dict
@@ -742,6 +743,51 @@ def test_target_capacity_field(ray_start_stop, url: str):
     # Try to set an invalid `target_capacity`, ensure a `400` status is returned.
     config["target_capacity"] = 101
     assert requests.put(url, json=config, timeout=30).status_code == 400
+
+
+def check_log_file(log_file: str, expected_regex: list):
+    with open(log_file, "r") as f:
+        s = f.read()
+        for regex in expected_regex:
+            assert re.findall(regex, s) != []
+    return True
+
+
+def test_put_with_logging_config(ray_start_stop):
+    """Test serve component logging config can be updated via REST API."""
+
+    url = "http://localhost:8265/api/serve/applications/"
+    import_path = "ray.serve.tests.test_config_files.logging_config_test.model"
+    config1 = {
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8000,
+        },
+        "logging_config": {
+            "encoding": "JSON",
+        },
+        "applications": [
+            {
+                "name": "app",
+                "route_prefix": "/app",
+                "import_path": import_path,
+            },
+        ],
+    }
+
+    deploy_config_multi_app(config1, url)
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/app").status_code == 200,
+        timeout=15,
+    )
+    print("Deployments are live and reachable over HTTP.\n")
+
+    # Make sure deployment & controller both log in json format.
+    resp = requests.post("http://localhost:8000/app").json()
+    expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+    check_log_file(resp["log_file"], expected_log_regex)
+    expected_log_regex = ['.*"component_name": "controller".*']
+    check_log_file(resp["controller_log_file"], expected_log_regex)
 
 
 if __name__ == "__main__":
