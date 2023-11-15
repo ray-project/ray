@@ -58,18 +58,7 @@ DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES = (
 )
 
 
-<<<<<<< HEAD
-def _get_db_api_entry():
-    """
-    Get databricks API entry point.
-    """
-    return get_dbutils().entry_point
-
-
 _DATABRICKS_DEFAULT_TMP_ROOT_DIR = "/local_disk0/tmp"
-=======
-_DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
->>>>>>> master
 
 
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
