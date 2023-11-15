@@ -17,7 +17,7 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -166,7 +166,6 @@ class DataIterator(abc.ABC):
             iterator = iter(
                 iter_batches(
                     block_iterator,
-                    dataset_tag=self._get_dataset_tag(),
                     stats=stats,
                     clear_block_after_read=blocks_owned_by_consumer,
                     batch_size=batch_size,
@@ -180,8 +179,11 @@ class DataIterator(abc.ABC):
                 )
             )
 
+            metrics_tag = {"dataset": self._get_dataset_tag()}
             for batch in iterator:
                 yield batch
+                StatsManager.update_stats_actor_iter_metrics(stats, metrics_tag)
+            StatsManager.clear_stats_actor_iter_metrics(metrics_tag)
 
             if stats:
                 stats.iter_total_s.add(time.perf_counter() - time_start)
@@ -845,6 +847,11 @@ class DataIterator(abc.ABC):
             "DatasetPipeline as of Ray 2.3. "
             "To iterate over one epoch of data, use iter_batches(), "
             "iter_torch_batches(), or to_tf()."
+        )
+
+    def __del__(self):
+        StatsManager.clear_stats_actor_iter_metrics(
+            {"dataset": self._get_dataset_tag()}
         )
 
 

@@ -34,13 +34,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import (
-    DatasetStats,
-    clear_stats_actor_metrics,
-    register_dataset_to_stats_actor,
-    update_stats_actor_dataset,
-    update_stats_actor_metrics,
-)
+from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
@@ -127,9 +121,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._global_info = ProgressBar("Running", dag.num_outputs_total())
 
         self._output_node: OpState = self._topology[dag]
-        register_dataset_to_stats_actor(
-            self._dataset_tag, [tag["operator"] for tag in self._get_metrics_tags()]
-        )
+        StatsManager.register_dataset_to_stats_actor(self._dataset_tag, [tag["operator"] for tag in self._get_metrics_tags()])
         self.start()
 
         class StreamIterator(OutputIterator):
@@ -183,12 +175,13 @@ class StreamingExecutor(Executor, threading.Thread):
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
-            update_stats_actor_dataset(
-                self._dataset_tag,
-                self._get_state_dict(
-                    state="FINISHED" if execution_completed else "FAILED"
-                ),
+            self._update_stats_metrics(
+                state="FINISHED" if execution_completed else "FAILED",
+                force_update=True,
             )
+            # Clears metrics for this dataset so that they do
+            # not persist in the grafana dashboard after execution
+            StatsManager.clear_stats_actor_metrics(self._get_metrics_tags())
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
@@ -223,9 +216,6 @@ class StreamingExecutor(Executor, threading.Thread):
         finally:
             # Signal end of results.
             self._output_node.outqueue.append(None)
-            # Clears metrics for this dataset so that they do
-            # not persist in the grafana dashboard after execution
-            clear_stats_actor_metrics(self._get_metrics_tags())
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -306,14 +296,10 @@ class StreamingExecutor(Executor, threading.Thread):
         for op_state in topology.values():
             op_state.refresh_progress_bar()
 
+        self._update_stats_metrics(state="RUNNING")
+        _log_op_metrics(topology)
         if not DEBUG_TRACE_SCHEDULING:
             _debug_dump_topology(topology, log_to_stdout=False)
-
-        update_stats_actor_metrics(
-            [op.metrics for op in self._topology],
-            self._get_metrics_tags(),
-            self._get_state_dict(state="RUNNING"),
-        )
 
         # Log metrics of newly completed operators.
         for op in topology:
@@ -388,6 +374,14 @@ class StreamingExecutor(Executor, threading.Thread):
                 for i, (op, op_state) in enumerate(self._topology.items())
             },
         }
+
+    def _update_stats_metrics(self, state: str, force_update: bool = False):
+        StatsManager.update_stats_actor_metrics(
+            [op.metrics for op in self._topology],
+            self._get_metrics_tags(),
+            self._get_state_dict(state=state),
+            force_update=force_update,
+        )
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
@@ -465,3 +459,15 @@ def _debug_dump_topology(topology: Topology, log_to_stdout: bool = True) -> None
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
     logger.get_logger(log_to_stdout).info("")
+
+
+def _log_op_metrics(topology: Topology) -> None:
+    """Logs the metrics of each operator.
+
+    Args:
+        topology: The topology to debug.
+    """
+    log_str = "Operator Metrics:\n"
+    for op in topology:
+        log_str += f"{op.name}: {op.metrics.as_dict()}\n"
+    logger.get_logger(log_to_stdout=False).info(log_str)

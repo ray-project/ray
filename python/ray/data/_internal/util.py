@@ -864,3 +864,10 @@ def make_async_gen(
         num_threads_alive = num_workers - num_threads_finished
         if num_threads_alive > 0:
             output_queue.release(num_threads_alive)
+
+
+def create_dataset_tag(dataset_name: Optional[str], *args):
+    tag = dataset_name or "dataset"
+    for arg in args:
+        tag += f"_{arg}"
+    return tag

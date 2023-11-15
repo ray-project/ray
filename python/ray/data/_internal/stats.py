@@ -1,8 +1,9 @@
 import collections
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from uuid import uuid4
 
 import numpy as np
@@ -19,6 +20,9 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+
+# Interval for making remote calls to the _StatsActor.
+STATS_ACTOR_UPDATE_INTERVAL_SECONDS = 5
 
 StatsDict = Dict[str, List[BlockMetadata]]
 
@@ -248,7 +252,13 @@ class _StatsActor:
         self.next_dataset_id += 1
         return dataset_id
 
-    def update_metrics(
+    def update_metrics(self, execution_metrics, iteration_metrics):
+        for metrics in execution_metrics:
+            self.update_execution_metrics(*metrics)
+        for metrics in iteration_metrics:
+            self.update_iter_metrics(*metrics)
+
+    def update_execution_metrics(
         self,
         op_metrics: List[Dict[str, Union[int, float]]],
         tags_list: List[Dict[str, str]],
@@ -268,7 +278,11 @@ class _StatsActor:
         # so all tags should contain the same dataset
         self.update_dataset(tags_list[0]["dataset"], state)
 
-    def update_iter_metrics(self, stats: "DatasetStats", tags):
+    def update_iter_metrics(
+        self,
+        stats: "DatasetStats",
+        tags: Dict[str, str],
+    ):
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
 
@@ -330,80 +344,163 @@ def _get_or_create_stats_actor():
     ).remote()
 
 
-_stats_actor: Optional[_StatsActor] = None
-_stats_actor_cluster_id: Optional[str] = None
-"""This global _stats_actor may be from a previous cluster that was shutdown.
-We store _cluster_id to check that the stored actor exists in the current cluster.
-"""
+class _StatsManager:
+    """A Class containing util functions that manage remote calls to _StatsActor.
+
+    This class collects stats from execution and iteration codepaths and keeps
+    track of the latest snapshot.
+
+    An instance of this class runs a single background thread that periodically
+    forwards the latest execution/iteration stats to the _StatsActor.
+
+    This thread will terminate itself after being inactive (meaning that there are
+    no active executors or iterators) for STATS_ACTOR_UPDATE_THREAD_INACTIVITY_LIMIT
+    iterations. After terminating, a new thread will start if more calls are made
+    to this class.
+    """
+
+    def __init__(self):
+        # Lazily get stats actor handle to avoid circular import.
+        self._stats_actor_handle = None
+        self._stats_actor_cluster_id = None
+
+        # Last execution stats snapshots
+        self._last_execution_stats = {}
+        # Last iteration stats snapshots
+        self._last_iter_stats: Dict[str, Tuple[Dict[str, str], "DatasetStats"]] = {}
+        # Lock for updating stats snapshots
+        self._stats_lock: threading.Lock = threading.Lock()
+
+        # Background thread to make remote calls to _StatsActor
+        self._iter_update_thread: Optional[threading.Thread] = None
+        self._iter_update_thread_lock: threading.Lock = threading.Lock()
+
+    def _stats_actor(self, create_if_not_exists=True) -> _StatsActor:
+        if ray._private.worker._global_node is None:
+            raise RuntimeError("Global node is not initialized.")
+        current_cluster_id = ray._private.worker._global_node.cluster_id
+        if (
+            self._stats_actor_handle is None
+            or self._stats_actor_cluster_id != current_cluster_id
+        ):
+            self._stats_actor_cluster_id = current_cluster_id
+            if create_if_not_exists:
+                self._stats_actor_handle = _get_or_create_stats_actor()
+            else:
+                self._stat_actor_handle = ray.get_actor(
+                    name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
+                )
+        return self._stats_actor_handle
+
+    # After this many iterations of inactivity,
+    # _StatsManager._iter_update_thread will close itself.
+    UPDATE_THREAD_INACTIVITY_LIMIT = 5
+
+    def _start_thread_if_not_running(self):
+        # Start background update thread if not running.
+        with self._iter_update_thread_lock:
+            if (
+                self._iter_update_thread is None
+                or not self._iter_update_thread.is_alive()
+            ):
+
+                def _run_update_loop():
+                    iter_stats_inactivity = 0
+                    while True:
+                        if self._last_iter_stats or self._last_execution_stats:
+                            try:
+                                # Do not create _StatsActor if it doesn't exist because
+                                # this thread can be running even after the cluster is
+                                # shutdown. Creating an actor will automatically start
+                                # a new cluster.
+                                self._stats_actor(
+                                    create_if_not_exists=False
+                                ).update_metrics.remote(
+                                    execution_metrics=list(
+                                        self._last_execution_stats.values()
+                                    ),
+                                    iteration_metrics=list(
+                                        self._last_iter_stats.values()
+                                    ),
+                                )
+                                iter_stats_inactivity = 0
+                            except Exception:
+                                return
+                        else:
+                            iter_stats_inactivity += 1
+                            if (
+                                iter_stats_inactivity
+                                >= _StatsManager.UPDATE_THREAD_INACTIVITY_LIMIT
+                            ):
+                                return
+                        time.sleep(STATS_ACTOR_UPDATE_INTERVAL_SECONDS)
+
+                self._iter_update_thread = threading.Thread(
+                    target=_run_update_loop, daemon=True
+                )
+                self._iter_update_thread.start()
+
+    # Execution methods
+
+    def update_stats_actor_metrics(
+        self,
+        op_metrics: List[OpRuntimeMetrics],
+        tags_list: List[Dict[str, str]],
+        state: Dict[str, Any],
+        force_update: bool = False,
+    ):
+        op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
+        if force_update:
+            self._stats_actor().update_execution_metrics.remote(
+                op_metrics_dicts, tags_list, state
+            )
+        else:
+            with self._stats_lock:
+                self._last_execution_stats[tags_list[0]["dataset"]] = (
+                    op_metrics_dicts,
+                    tags_list,
+                    state,
+                )
+            self._start_thread_if_not_running()
+
+    def clear_stats_actor_metrics(self, tags_list: List[Dict[str, str]]):
+        with self._stats_lock:
+            if tags_list[0]["dataset"] in self._last_execution_stats:
+                del self._last_execution_stats[tags_list[0]["dataset"]]
+
+        self._stats_actor().clear_metrics.remote(tags_list)
+
+    # Iteration methods
+
+    def update_stats_actor_iter_metrics(
+        self, stats: "DatasetStats", tags: Dict[str, str]
+    ):
+        with self._stats_lock:
+            self._last_iter_stats[tags["dataset"]] = (stats, tags)
+        self._start_thread_if_not_running()
+
+    def clear_stats_actor_iter_metrics(self, tags: Dict[str, str]):
+        with self._stats_lock:
+            if tags["dataset"] in self._last_iter_stats:
+                del self._last_iter_stats[tags["dataset"]]
+
+        self._stats_actor().clear_iter_metrics.remote(tags)
+
+    # Other methods
+
+    def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
+        self._stats_actor().register_dataset.remote(dataset_tag, operator_tags)
+
+    def get_dataset_id_from_stats_actor(self) -> str:
+        try:
+            return ray.get(self._stats_actor().get_dataset_id.remote())
+        except Exception:
+            # Getting dataset id from _StatsActor may fail, in this case
+            # fall back to uuid4
+            return uuid4().hex
 
 
-def _check_cluster_stats_actor():
-    # Checks if global _stats_actor belongs to current cluster,
-    # if not, creates a new one on the current cluster.
-    global _stats_actor, _stats_actor_cluster_id
-    if ray._private.worker._global_node is None:
-        raise RuntimeError("Global node is not initialized.")
-    current_cluster_id = ray._private.worker._global_node.cluster_id
-    if _stats_actor is None or _stats_actor_cluster_id != current_cluster_id:
-        _stats_actor = _get_or_create_stats_actor()
-        _stats_actor_cluster_id = current_cluster_id
-
-
-def update_stats_actor_metrics(
-    op_metrics: List[OpRuntimeMetrics],
-    tags_list: List[Dict[str, str]],
-    state: Dict[str, Any],
-):
-    global _stats_actor
-    _check_cluster_stats_actor()
-
-    _stats_actor.update_metrics.remote(
-        [metric.as_dict() for metric in op_metrics], tags_list, state
-    )
-
-
-def update_stats_actor_iter_metrics(stats: "DatasetStats", tags_list: Dict[str, str]):
-    global _stats_actor
-    _check_cluster_stats_actor()
-
-    _stats_actor.update_iter_metrics.remote(stats, tags_list)
-
-
-def clear_stats_actor_metrics(tags_list: List[Dict[str, str]]):
-    global _stats_actor
-    _check_cluster_stats_actor()
-
-    _stats_actor.clear_metrics.remote(tags_list)
-
-
-def clear_stats_actor_iter_metrics(tags: Dict[str, str]):
-    global _stats_actor
-    _check_cluster_stats_actor()
-
-    _stats_actor.clear_iter_metrics.remote(tags)
-
-
-def get_dataset_id_from_stats_actor() -> str:
-    global _stats_actor
-    try:
-        _check_cluster_stats_actor()
-        return ray.get(_stats_actor.get_dataset_id.remote())
-    except Exception:
-        # Getting dataset id from _StatsActor may fail, in this case
-        # fall back to uuid4
-        return uuid4().hex
-
-
-def register_dataset_to_stats_actor(dataset_tag: str, operator_tags: List[str]):
-    global _stats_actor
-    _check_cluster_stats_actor()
-    _stats_actor.register_dataset.remote(dataset_tag, operator_tags)
-
-
-def update_stats_actor_dataset(dataset_tag: str, state: Dict[str, Any]):
-    global _stats_actor
-    _check_cluster_stats_actor()
-    _stats_actor.update_dataset.remote(dataset_tag, state)
+StatsManager = _StatsManager()
 
 
 class DatasetStats:
