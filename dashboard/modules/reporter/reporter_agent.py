@@ -258,7 +258,7 @@ Megabytes = int
 # gpu utilization for nvidia gpu from a single process
 class ProcessGPUInfo(TypedDict):
     pid: int
-    gpu_memory_usage: int
+    gpu_memory_usage: Megabytes
 
 
 # gpu utilization for nvidia gpu

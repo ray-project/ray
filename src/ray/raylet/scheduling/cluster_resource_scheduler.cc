@@ -45,8 +45,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
-    const absl::flat_hash_map<std::string, std::string>
-        &local_node_labels)  // pass this to local resource manager
+    const absl::flat_hash_map<std::string, std::string> &local_node_labels)
     : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
   NodeResources node_resources = ResourceMapToNodeResources(
       local_node_resources, local_node_resources, local_node_labels);

@@ -85,9 +85,10 @@ const columns = [
     helpInfo: (
       <Typography>
         Usage of each GPU device. If no GPU usage is detected, here are the
-        potential root causes:<br /> 
-        1. non-GPU Ray image is used on this node. Switch to a GPU Ray
-        image and try again. <br />
+        potential root causes:
+        <br />
+        1. non-GPU Ray image is used on this node. Switch to a GPU Ray image and
+        try again. <br />
         2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are not
         currently supported.
         <br />
