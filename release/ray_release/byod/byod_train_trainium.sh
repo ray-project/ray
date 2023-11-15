@@ -1,4 +1,7 @@
-# Configure EFA installer
+#!/bin/bash
+# This script is used to build an extra layer on top of the base anyscale/ray image
+# to run the train_torch_trainium_integration test.
+
 sudo apt-get install curl
 curl -O https://efa-installer.amazonaws.com/aws-efa-installer-latest.tar.gz
 wget https://efa-installer.amazonaws.com/aws-efa-installer.key && gpg --import aws-efa-installer.key
