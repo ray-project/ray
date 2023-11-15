@@ -2,6 +2,7 @@ import os
 from typing import List
 
 from ci.ray_ci.container import Container
+from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE
 
 
 PLATFORM = [
@@ -21,15 +22,22 @@ class DockerContainer(Container):
     Container for building and publishing ray docker images
     """
 
-    def __init__(self, python_version: str, platform: str, image_type: str) -> None:
+    def __init__(
+        self,
+        python_version: str,
+        platform: str,
+        image_type: str,
+        architecture: str = DEFAULT_ARCHITECTURE,
+    ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
         self.python_version = python_version
         self.platform = platform
         self.image_type = image_type
+        self.architecture = architecture
 
         super().__init__(
-            "forge",
+            "forge" if architecture == "x86_64" else "forge-aarch64",
             volumes=[
                 f"{rayci_checkout_dir}:/rayci",
                 "/var/run/docker.sock:/var/run/docker.sock",
@@ -94,6 +102,9 @@ class DockerContainer(Container):
         for version in versions:
             for platform in platforms:
                 for py_version in py_versions:
-                    tag = f"{version}{py_version}{platform}"
+                    if self.architecture == DEFAULT_ARCHITECTURE:
+                        tag = f"{version}{py_version}{platform}"
+                    else:
+                        tag = f"{version}{py_version}{platform}-{self.architecture}"
                     tags.append(tag)
         return tags
