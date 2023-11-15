@@ -121,7 +121,9 @@ class StreamingExecutor(Executor, threading.Thread):
             self._global_info = ProgressBar("Running", dag.num_outputs_total())
 
         self._output_node: OpState = self._topology[dag]
-        StatsManager.register_dataset_to_stats_actor(self._dataset_tag, [tag["operator"] for tag in self._get_metrics_tags()])
+        StatsManager.register_dataset_to_stats_actor(
+            self._dataset_tag, [tag["operator"] for tag in self._get_metrics_tags()]
+        )
         self.start()
 
         class StreamIterator(OutputIterator):

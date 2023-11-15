@@ -1353,6 +1353,7 @@ def test_stats_actor_datasets(ray_start_cluster):
 @patch.object(StatsManager, "_stats_actor_handle")
 @patch.object(StatsManager, "UPDATE_THREAD_INACTIVITY_LIMIT", new=1)
 def test_stats_manager(shutdown_only):
+    ray.init()
     num_threads = 10
 
     datasets = [None] * num_threads
