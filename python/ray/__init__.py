@@ -76,9 +76,10 @@ _configure_system()
 # Delete configuration function.
 del _configure_system
 
-# Replaced with the current commit when building the wheels.
-__commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "3.0.0.dev0"
+from ray import _version  # noqa: E402
+
+__commit__ = _version.commit
+__version__ = _version.version
 
 import ray._raylet  # noqa: E402
 

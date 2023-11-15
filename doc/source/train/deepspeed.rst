@@ -10,7 +10,8 @@ Code example
 
 You only need to run your existing training code with a TorchTrainer. You can expect the final code to look like this:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import deepspeed
     from deepspeed.accelerator import get_accelerator
@@ -89,7 +90,7 @@ Check the below examples for more details:
 
    * - Framework
      - Example
-   * - Accelelate (:ref:`User Guide <train-hf-accelerate>`)
+   * - Accelerate (:ref:`User Guide <train-hf-accelerate>`)
      - `Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train. <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
    * - Transformers (:ref:`User Guide <train-pytorch-transformers>`)
      - :ref:`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <gptj_deepspeed_finetune>`

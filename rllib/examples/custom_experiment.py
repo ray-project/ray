@@ -11,7 +11,8 @@ parser.add_argument("--train-iterations", type=int, default=10)
 
 def experiment(config):
     iterations = config.pop("train-iterations")
-    algo = ppo.PPO(config=config, env="CartPole-v1")
+
+    algo = ppo.PPO(config=config)
     checkpoint = None
     train_results = {}
 
@@ -25,7 +26,7 @@ def experiment(config):
 
     # Manual Eval
     config["num_workers"] = 0
-    eval_algo = ppo.PPO(config=config, env="CartPole-v1")
+    eval_algo = ppo.PPO(config=config)
     eval_algo.restore(checkpoint)
     env = eval_algo.workers.local_worker().env
 
