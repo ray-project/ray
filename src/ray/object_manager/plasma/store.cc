@@ -544,6 +544,7 @@ void PlasmaStore::WaitForSeal(const ObjectID &object_id,
     plasma_header->ReadAcquire(/*read_version=*/1);
 
     uint64_t data = 1;
+    // TODO(swang): Need proper error checking here.
     RAY_CHECK(write(event_fd, &data, sizeof(data)) == sizeof(data));
   };
 
@@ -556,7 +557,7 @@ void PlasmaStore::WaitForSeal(const ObjectID &object_id,
         boost::asio::posix::stream_descriptor event_stream(io_context_, event_fd);
         event_stream.async_wait(boost::asio::posix::stream_descriptor::wait_read, yield);
         close(event_fd);
-        RAY_CHECK(plasma_header->max_readers == -1) << plasma_header->max_readers;
+        //RAY_CHECK(plasma_header->max_readers == -1) << plasma_header->max_readers;
 
         {
           absl::MutexLock lock(&mutex_);

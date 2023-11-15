@@ -95,6 +95,11 @@ struct ObjectInUseEntry {
   PlasmaObject object;
   /// A flag representing whether the object has been sealed.
   bool is_sealed;
+  bool is_shared = false;
+  /// For shared objects only.
+  /// The last version that we read or wrote. To read or write again, we must
+  /// read a newer version than this.
+  int64_t last_version = 0;
 };
 
 class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Impl> {
@@ -152,7 +157,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status Abort(const ObjectID &object_id);
 
-  Status Seal(const ObjectID &object_id);
+  Status Seal(const ObjectID &object_id, int64_t max_readers = 0);
 
   Status Delete(const std::vector<ObjectID> &object_ids);
 
@@ -201,7 +206,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   ray::PlasmaObjectHeader *GetPlasmaObjectHeader(const PlasmaObject &object) const;
 
   void IncrementObjectCount(const ObjectID &object_id,
-                            PlasmaObject *object,
+                            const PlasmaObject *object,
                             bool is_sealed);
 
   /// The boost::asio IO context for the client.
@@ -281,13 +286,14 @@ bool PlasmaClient::Impl::IsInUse(const ObjectID &object_id) {
 }
 
 void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id,
-                                              PlasmaObject *object,
+                                              const PlasmaObject *object,
                                               bool is_sealed) {
   // Increment the count of the object to track the fact that it is being used.
   // The corresponding decrement should happen in PlasmaClient::Release.
   auto elem = objects_in_use_.find(object_id);
   ObjectInUseEntry *object_entry;
   if (elem == objects_in_use_.end()) {
+    RAY_CHECK(object != nullptr);
     // Add this object ID to the hash table of object IDs in use. The
     // corresponding call to free happens in PlasmaClient::Release.
     objects_in_use_[object_id] = std::make_unique<ObjectInUseEntry>();
@@ -402,6 +408,18 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                    << retry_with_request_id;
     status = RetryCreate(
         object_id, retry_with_request_id, metadata, &retry_with_request_id, data);
+  }
+
+  if (status.ok()) {
+    // Create IPC was successful.
+    object_entry = objects_in_use_.find(object_id);
+    RAY_CHECK(object_entry != objects_in_use_.end());
+    auto &entry = object_entry->second;
+    RAY_CHECK(!entry->is_sealed);
+    auto plasma_header = GetPlasmaObjectHeader(entry->object);
+    entry->last_version++;
+    // The corresponding WriteRelease takes place in Seal.
+    plasma_header->WriteAcquire(entry->last_version);
   }
 
   return status;
@@ -658,7 +676,7 @@ Status PlasmaClient::Impl::Contains(const ObjectID &object_id, bool *has_object)
   return Status::OK();
 }
 
-Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
+Status PlasmaClient::Impl::Seal(const ObjectID &object_id, int64_t max_readers) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   // Make sure this client has a reference to the object before sending the
@@ -673,12 +691,13 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   }
 
   auto plasma_header = GetPlasmaObjectHeader(object_entry->second->object);
-  plasma_header->WriteAcquire(/*write_version=*/1);
   plasma_header->WriteRelease(
-      /*write_version=*/1,
-      /*max_readers=*/-1);
+      /*write_version=*/object_entry->second->last_version, max_readers);
 
-  //object_entry->second->is_sealed = true;
+  if (max_readers != -1) {
+    object_entry->second->is_shared = true;
+  }
+  object_entry->second->is_sealed = true;
   //// Send the seal request to Plasma.
   //RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
   //std::vector<uint8_t> buffer;
