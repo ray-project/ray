@@ -2,7 +2,6 @@ import pytest
 import ray
 import sys
 import os
-from mpi4py import MPI
 import numpy
 
 
@@ -22,6 +21,8 @@ def compute_pi(samples):
 
 
 def run():
+    from mpi4py import MPI
+
     comm = MPI.COMM_WORLD
     nprocs = comm.Get_size()
     myrank = comm.Get_rank()
