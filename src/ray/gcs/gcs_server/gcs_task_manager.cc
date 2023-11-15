@@ -347,11 +347,6 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       return false;
     }
 
-    if (filters.is_debugger_paused() &&
-        !task_event.state_updates().is_debugger_paused()) {
-      return false;
-    }
-
     if (filters.has_actor_id() && task_event.task_info().has_actor_id() &&
         ActorID::FromBinary(task_event.task_info().actor_id()) !=
             ActorID::FromBinary(filters.actor_id())) {
