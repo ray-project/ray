@@ -13,7 +13,8 @@ from ray.autoscaler._private.vsphere.config import (
     validate_frozen_vm_configs,
 )
 from ray.autoscaler._private.vsphere.gpu_utils import (
-    split_vm_2_gpu_ids_map,
+    split_vm_2_gpu_cards_map,
+    GPUCard,
     set_gpu_placeholder,
 )
 from ray.autoscaler._private.vsphere.utils import singleton_client
@@ -189,7 +190,11 @@ def test_create_instant_clone_node(mock_wait_task, mock_ic_spec, mock_relo_spec)
     mock_ic_spec.return_value = MagicMock()
     mock_relo_spec.return_value = MagicMock()
     vm = vnp.create_instant_clone_node(
-        vm_clone_from, "target-vm", node_config, tags, gpu_ids_map
+        vm_clone_from,
+        "target-vm",
+        node_config,
+        tags,
+        gpu_ids_map,
     )
     # assert
     assert vm == "test VM"
@@ -354,8 +359,9 @@ def test_update_vsphere_configs():
                     "library_item": "frozen",
                     "cluster": "cluster",
                     "datastore": "vsanDatastore",
-                }
-            }
+                },
+                "gpu_config": {"dynamic_pci_passthrough": True},
+            },
         },
         "available_node_types": {
             "ray.head.default": {
@@ -381,6 +387,23 @@ def test_update_vsphere_configs():
         ]
         == "frozen"
     )
+    assert (
+        "dynamic_pci_passthrough"
+        in input_config["available_node_types"]["ray.head.default"]["node_config"][
+            "gpu_config"
+        ]
+    )
+    assert (
+        "dynamic_pci_passthrough"
+        in input_config["available_node_types"]["worker"]["node_config"]["gpu_config"]
+    )
+    assert (
+        "dynamic_pci_passthrough"
+        in input_config["available_node_types"]["worker1"]["node_config"]["gpu_config"]
+    )
+    assert input_config["available_node_types"]["worker"]["node_config"]["gpu_config"][
+        "dynamic_pci_passthrough"
+    ]
 
 
 def test_validate_frozen_vm_configs():
@@ -476,33 +499,50 @@ def test_validate_frozen_vm_configs():
     assert validate_frozen_vm_configs(config) is None
 
 
-def test_split_vm_2_gpu_ids_map():
+def test_split_vm_2_gpu_cards_map():
     # Test a valid case 1
-    vm_2_gpu_ids_map = {
-        "frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1", "0000:3b:00.2"],
-        "frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"],
-        "frozen-vm-3": ["0000:3b:00.5"],
+    vm_2_gpu_cards_map = {
+        "frozen-vm-1": [
+            GPUCard("0000:3b:00.0", "training-0"),
+            GPUCard("0000:3b:00.1", "training-1"),
+            GPUCard("0000:3b:00.2", "training-2"),
+        ],
+        "frozen-vm-2": [
+            GPUCard("0000:3b:00.3", "training-3"),
+            GPUCard("0000:3b:00.4", "training-4"),
+        ],
+        "frozen-vm-3": [GPUCard("0000:3b:00.5", "training-5")],
     }
     requested_gpu_num = 1
     expected_result = [
-        {"frozen-vm-1": ["0000:3b:00.0"]},
-        {"frozen-vm-1": ["0000:3b:00.1"]},
-        {"frozen-vm-1": ["0000:3b:00.2"]},
-        {"frozen-vm-2": ["0000:3b:00.3"]},
-        {"frozen-vm-2": ["0000:3b:00.4"]},
-        {"frozen-vm-3": ["0000:3b:00.5"]},
+        {"frozen-vm-1": [GPUCard("0000:3b:00.0", "training-0")]},
+        {"frozen-vm-1": [GPUCard("0000:3b:00.1", "training-1")]},
+        {"frozen-vm-1": [GPUCard("0000:3b:00.2", "training-2")]},
+        {"frozen-vm-2": [GPUCard("0000:3b:00.3", "training-3")]},
+        {"frozen-vm-2": [GPUCard("0000:3b:00.4", "training-4")]},
+        {"frozen-vm-3": [GPUCard("0000:3b:00.5", "training-5")]},
     ]
 
-    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num)
+    result = split_vm_2_gpu_cards_map(vm_2_gpu_cards_map, requested_gpu_num)
     assert result == expected_result
 
     # Test a valid case 2
     requested_gpu_num = 2
     expected_result = [
-        {"frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1"]},
-        {"frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"]},
+        {
+            "frozen-vm-1": [
+                GPUCard("0000:3b:00.0", "training-0"),
+                GPUCard("0000:3b:00.1", "training-1"),
+            ]
+        },
+        {
+            "frozen-vm-2": [
+                GPUCard("0000:3b:00.3", "training-3"),
+                GPUCard("0000:3b:00.4", "training-4"),
+            ]
+        },
     ]
-    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num)
+    result = split_vm_2_gpu_cards_map(vm_2_gpu_cards_map, requested_gpu_num)
     assert result == expected_result
 
 

@@ -32,6 +32,7 @@ from ray.serve._private.deployment_graph_build import (
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
+    LoggingConfig,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
@@ -763,6 +764,7 @@ def build(
             "port": DEFAULT_GRPC_PORT,
             "grpc_servicer_functions": grpc_servicer_functions,
         },
+        "logging_config": LoggingConfig().dict(),
         "applications": app_configs,
     }
 
