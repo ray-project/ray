@@ -573,7 +573,6 @@ def _setup_ray_cluster(
         ray_temp_dir = None
         root_tmp_dir = os.environ.get("RAY_TMPDIR", "/tmp")
         object_spilling_dir = os.path.join(root_tmp_dir, "ray", "ray_spill")
-        os.makedirs(object_spilling_dir, exist_ok=True)
     else:
         global_cluster_lock_fd = None
         if ray_temp_root_dir is None:
@@ -581,9 +580,7 @@ def _setup_ray_cluster(
         ray_temp_dir = os.path.join(
             ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
         )
-        os.makedirs(ray_temp_dir, exist_ok=True)
         object_spilling_dir = os.path.join(ray_temp_dir, "spill")
-        os.makedirs(object_spilling_dir, exist_ok=True)
 
     head_node_options = _append_default_spilling_dir_config(
         head_node_options, object_spilling_dir
@@ -1299,10 +1296,6 @@ def _start_ray_worker_nodes(
             worker_port_range_begin,
             worker_port_range_end,
         ) = _prepare_for_ray_worker_node_startup()
-
-        # Ray worker might run on a machine different with the head node, so create the
-        # local log dir and temp dir again.
-        os.makedirs(ray_temp_dir, exist_ok=True)
 
         ray_worker_node_dashboard_agent_port = get_random_unused_port(
             ray_head_ip, min_port=10000, max_port=20000
