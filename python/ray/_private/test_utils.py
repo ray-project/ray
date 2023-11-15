@@ -24,8 +24,6 @@ import uuid
 from dataclasses import dataclass
 
 import requests
-from ray.util.state.common import ListApiOptions, StateResource
-from ray.util.state.api import StateApiClient
 from ray._raylet import Config
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
@@ -1423,6 +1421,8 @@ class ResourceKillerActor:
             time.sleep(sleep_interval)
 
             self._kill_resource(*to_kill)
+            if len(self.killed) >= self.max_to_kill:
+                break
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
@@ -1507,27 +1507,44 @@ class NodeKillerActor(ResourceKillerActor):
 
 @ray.remote(num_cpus=0)
 class WorkerKillerActor(ResourceKillerActor):
+    def __init__(
+        self,
+        head_node_id,
+        kill_interval_s: float = 60,
+        max_to_kill: int = 2,
+        task_filter: Optional[Callable] = None,
+    ):
+        super().__init__(head_node_id, kill_interval_s, max_to_kill, task_filter)
+
+        from ray.util.state.common import ListApiOptions
+        from ray.util.state.api import StateApiClient
+
+        self.client = StateApiClient()
+        self.task_options = ListApiOptions(
+            filters=[
+                ("state", "=", "RUNNING"),
+                ("name", "!=", "WorkerKillActor.run"),
+            ]
+        )
+        self.worker_options = ListApiOptions(filters=[("is_alive", "=", "True")])
+
     async def _find_resource_to_kill(self):
+        from ray.util.state.common import StateResource
+
         process_to_kill_task_id = None
         process_to_kill_pid = None
         process_to_kill_node_id = None
         while process_to_kill_pid is None and self.is_running:
-            client = StateApiClient()
-            tasks = client.list(
+            tasks = self.client.list(
                 StateResource.TASKS,
-                options=ListApiOptions(
-                    filters=[
-                        ("state", "=", "RUNNING"),
-                        ("name", "!=", "WorkerKillActor.run"),
-                    ]
-                ),
+                options=self.task_options,
                 raise_on_missing_output=False,
             )
             workers = {
                 worker.worker_id: worker
-                for worker in client.list(
+                for worker in self.client.list(
                     StateResource.WORKERS,
-                    options=ListApiOptions(filters=[("is_alive", "=", "True")]),
+                    options=self.worker_options,
                     raise_on_missing_output=False,
                 )
             }
@@ -1567,7 +1584,8 @@ class WorkerKillerActor(ResourceKillerActor):
             logging.info(
                 f"Killing pid {process_to_kill_pid} on node {process_to_kill_node_id}"
             )
-            self.killed.add(process_to_kill_task_id)
+            # Store both task_id and pid because retried tasks have same task_id.
+            self.killed.add((process_to_kill_task_id, process_to_kill_pid))
 
 
 def get_and_run_resource_killer(
