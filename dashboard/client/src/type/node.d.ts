@@ -6,6 +6,7 @@ export type NodeDetail = {
   now: number;
   hostname: string;
   ip: string;
+  nodeId: string;
   cpu: number; // cpu usage
   cpus?: number[]; // Logic CPU Count, Physical CPU Count
   mem?: number[]; // total memory, free memory, memory used ratio

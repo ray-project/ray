@@ -275,6 +275,12 @@ const Nodes = () => {
             />
           </Grid>
           <Grid item>
+            <SearchInput
+              label="NodeId"
+              onChange={(value) => changeFilter("nodeId", value.trim())}
+            />
+          </Grid>
+          <Grid item>
             <SearchSelect
               label="State"
               onChange={(value) => changeFilter("state", value.trim())}

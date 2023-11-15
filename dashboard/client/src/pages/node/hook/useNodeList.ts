@@ -10,11 +10,11 @@ export const useNodeList = () => {
   const [isRefreshing, setRefresh] = useState(true);
   const [mode, setMode] = useState("table");
   const [filter, setFilter] = useState<
-    { key: "hostname" | "ip" | "state"; val: string }[]
+    { key: "hostname" | "ip" | "state" | "nodeId"; val: string }[]
   >([]);
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
   const { sorterFunc, setOrderDesc, setSortKey, sorterKey } = useSorter("");
-  const changeFilter = (key: "hostname" | "ip" | "state", val: string) => {
+  const changeFilter = (key: "hostname" | "ip" | "state" | "nodeId", val: string) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
