@@ -32,7 +32,7 @@ class ImageDatasource(FileBasedDatasource):
     """A datasource that lets you read images."""
 
     _WRITE_FILE_PER_ROW = True
-    _FILE_EXTENSION = ["png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"]
+    _FILE_EXTENSIONS = ["png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"]
     # Use 8 threads per task to read image files.
     _NUM_THREADS_PER_TASK = 8
 
