@@ -411,11 +411,11 @@ class WorkerGroup:
             if not gpu_ids:
                 return 0
 
-            # Attempt to convert GPU IDs to integers and find the minimum
+            # Attempt to convert GPU IDs to integers and find the minimum ID.
+            # Fallback to return the minimum string-based ID
             try:
                 return min(int(gpu_id) for gpu_id in gpu_ids)
             except ValueError:
-                # Fallback to return the minimum string-based ID
                 return min(gpu_ids)
 
         for node_ip in ip_to_workers:
