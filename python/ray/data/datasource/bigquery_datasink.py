@@ -21,10 +21,10 @@ RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
 
 class _BigQueryDatasink(Datasink):
     def __init__(
-        self, 
-        project_id: str, 
-        dataset: str, 
-        max_retry_cnt: Optional[int] = DEFAULT_MAX_RETRY_CNT
+        self,
+        project_id: str,
+        dataset: str,
+        max_retry_cnt: Optional[int] = DEFAULT_MAX_RETRY_CNT,
     ) -> None:
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")
@@ -99,8 +99,8 @@ class _BigQueryDatasink(Datasink):
                 # Raise exception if retry_cnt exceeds max_retry_cnt
                 if retry_cnt > self.max_retry_cnt:
                     logger.info(
-                        f"Maximum ({self.max_retry_cnt}) retry count exceeded."
-                        + " Ray will attempt to retry the block write via fault tolerance."
+                        f"Maximum ({self.max_retry_cnt}) retry count exceeded. Ray"
+                        + " will attempt to retry the block write via fault tolerance."
                     )
                     raise RuntimeError(
                         f"Write failed due to {retry_cnt}"
