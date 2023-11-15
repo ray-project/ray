@@ -119,7 +119,7 @@ class DeploymentTargetState:
 
         return cls(info, num_replicas, version, deleting)
 
-    def compare_state_excluding_num_replicas(self, other_target_state) -> bool:
+    def equal_to_state_excluding_num_replicas(self, other_target_state) -> bool:
         """Compare with another target state.
 
         Returns: Whether all configurable info is identical other than num_replicas.
@@ -1409,7 +1409,9 @@ class DeploymentState:
                 ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
         # Determine whether the updated target state is simply scaling
-        is_scale = target_state.compare_state_excluding_num_replicas(self._target_state)
+        is_scale = target_state.equal_to_state_excluding_num_replicas(
+            self._target_state
+        )
         # If deployment is not in the middle of updating, and this new
         # target state only changes the number of replicas, then set
         # status to be UPSCALING/DOWNSCALING
@@ -1434,7 +1436,7 @@ class DeploymentState:
                     ),
                 )
         else:
-                # Otherwise, the deployment configuration has actually been updated.
+            # Otherwise, the deployment configuration has actually been updated.
             self._curr_status_info.update(
                 status=DeploymentStatus.UPDATING, status_trigger=status_trigger
             )
