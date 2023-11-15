@@ -90,7 +90,7 @@ class PlasmaClientInterface {
   ///
   /// \param object_id The ID of the object to seal.
   /// \return The return status.
-  virtual Status Seal(const ObjectID &object_id) = 0;
+  virtual Status Seal(const ObjectID &object_id, int64_t max_readers = -1) = 0;
 
   /// Abort an unsealed object in the object store. If the abort succeeds, then
   /// it will be as if the object was never created at all. The unsealed object
@@ -294,7 +294,7 @@ class PlasmaClient : public PlasmaClientInterface {
   ///
   /// \param object_id The ID of the object to seal.
   /// \return The return status.
-  Status Seal(const ObjectID &object_id);
+  Status Seal(const ObjectID &object_id, int64_t max_readers = -1);
 
   /// Delete an object from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,

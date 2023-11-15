@@ -3349,13 +3349,15 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().SealExisting(
                             c_object_id, pin_object=False,
                             generator_id=CObjectID.Nil(),
-                            owner_address=c_owner_address))
+                            owner_address=c_owner_address,
+                            max_readers=-1))
 
     def put_serialized_object_and_increment_local_ref(self, serialized_object,
                                                       ObjectRef object_ref=None,
                                                       c_bool pin_object=True,
                                                       owner_address=None,
-                                                      c_bool inline_small_object=True):
+                                                      c_bool inline_small_object=True,
+                                                      max_readers=-1):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -3363,6 +3365,7 @@ cdef class CoreWorker:
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
+            int64_t c_max_readers = max_readers
 
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
@@ -3400,7 +3403,8 @@ cdef class CoreWorker:
                             CCoreWorkerProcess.GetCoreWorker().SealOwned(
                                         c_object_id,
                                         pin_object,
-                                        move(c_owner_address)))
+                                        move(c_owner_address),
+                                        c_max_readers))
                     else:
                         # Using custom object refs is not supported because we
                         # can't track their lifecycle, so we don't pin the
@@ -3409,7 +3413,8 @@ cdef class CoreWorker:
                             CCoreWorkerProcess.GetCoreWorker().SealExisting(
                                         c_object_id, pin_object=False,
                                         generator_id=CObjectID.Nil(),
-                                        owner_address=move(c_owner_address)))
+                                        owner_address=move(c_owner_address),
+                                        max_readers=c_max_readers))
 
         return c_object_id.Binary()
 

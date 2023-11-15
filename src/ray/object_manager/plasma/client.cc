@@ -160,7 +160,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status Abort(const ObjectID &object_id);
 
-  Status Seal(const ObjectID &object_id, int64_t max_readers = 1);
+  Status Seal(const ObjectID &object_id, int64_t max_readers);
 
   Status Delete(const std::vector<ObjectID> &object_ids);
 
@@ -648,7 +648,9 @@ Status PlasmaClient::Impl::GetRelease(const ObjectID &object_id) {
   }
 
   auto &entry = object_entry->second;
-  RAY_CHECK(entry->is_sealed && entry->is_shared) << "sealed? " << entry->is_sealed << " shared " << entry->is_shared;
+  RAY_CHECK(entry->is_sealed && entry->is_shared) << "ray.release must be called on "
+    "objects that are sealed and shared. sealed? " << entry->is_sealed
+    << " shared " << entry->is_shared;
 
   RAY_LOG(DEBUG) << "Release shared object " << object_id;
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
@@ -962,7 +964,7 @@ Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
 
 Status PlasmaClient::Abort(const ObjectID &object_id) { return impl_->Abort(object_id); }
 
-Status PlasmaClient::Seal(const ObjectID &object_id) { return impl_->Seal(object_id); }
+Status PlasmaClient::Seal(const ObjectID &object_id, int64_t max_readers) { return impl_->Seal(object_id, max_readers); }
 
 Status PlasmaClient::Delete(const ObjectID &object_id) {
   return impl_->Delete(std::vector<ObjectID>{object_id});

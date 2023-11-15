@@ -153,8 +153,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   return status;
 }
 
-Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
-  return store_client_.Seal(object_id);
+Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id, int64_t max_readers) {
+  return store_client_.Seal(object_id, max_readers);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {

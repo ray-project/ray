@@ -19,18 +19,5 @@
         - Implement a DependencyWaiter that uses the alternative plasma client to get objects
 
 
-
-writer gets buffer with 0
-writer writes
-writer sets to max readers=2
-reader 1 reads, decrement to max readers=1
-reader 2 reads, decrement to max readers=0
-writer can write again
-
-
-ray.put flow
-------------
-client -> Create IPC -> store
-store allocates object -> IPC reply -> client
-client copies data into buffer
-client uses shared-memory to Seal -> store gets signal
+Issues:
+- ray.get on reused plasma buffer works with numpy but not with bytes (and probably other objects)

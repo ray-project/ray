@@ -25,12 +25,19 @@ class Reader:
 
 
 def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, read_remote=False):
+    max_readers = -1
+    if reuse_object_ref:
+        if read_local or read_remote:
+            max_readers = 1
+        else:
+            max_readers = 0
+
     if use_bytes:
         arr = b"binary"
     else:
         arr = np.random.rand(1)
 
-    ref = ray.put(arr)
+    ref = ray.put(arr, max_readers=max_readers)
 
     if use_bytes:
         assert ray.get(ref) == arr
@@ -50,7 +57,8 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
     else:
         assert not read_remote
 
-    ray.release(ref)
+    if read_remote or read_local:
+        ray.release(ref)
     print("starting...")
 
     for _ in range(num_trials):
@@ -62,9 +70,10 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
                 arr[0] = i
 
             if reuse_object_ref:
-                ray.worker.global_worker.put_object(arr, object_ref=ref)
+                ray.worker.global_worker.put_object(arr,
+                        object_ref=ref, max_readers=max_readers)
             else:
-                ref = ray.put(arr)
+                ref = ray.put(arr, max_readers=max_readers)
             if read_local:
                 if use_bytes:
                     assert int.from_bytes(ray.get(ref), "little") == i
@@ -79,7 +88,7 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
 
 
 if __name__ == "__main__":
-    run_local = False
+    run_local = True
 
     if not run_local:
         remote_run = ray.remote(run)
@@ -87,10 +96,13 @@ if __name__ == "__main__":
             return ray.get(remote_run.remote(*args, **kwargs))
         run = run_fn
 
-    #print("Dynamic ray.put")
-    #ray.get(run.remote())
+    print("Dynamic ray.put")
+    run()
 
-    #print("Reuse ray.put buffer")
-    #ray.get(run.remote(reuse_object_ref=True))
+    print("Reuse ray.put buffer")
+    run(reuse_object_ref=True)
 
-    run(use_bytes=False, reuse_object_ref=True, read_remote=False, read_local=True)
+    print("Reuse ray.put buffer + read + release (numpy)")
+    # TODO(swang): ray.get doesn't work on bytes? Getting deserialization
+    # error.
+    run(use_bytes=False, reuse_object_ref=True, read_local=True)

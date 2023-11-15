@@ -135,7 +135,7 @@ class CoreWorkerPlasmaStoreProvider {
   ///
   /// \param[in] object_id The ID of the object. This can be used as an
   /// argument to Get to retrieve the object data.
-  Status Seal(const ObjectID &object_id);
+  Status Seal(const ObjectID &object_id, int64_t max_readers = -1);
 
   /// Release the first reference to the object created by Put() or Create(). This should
   /// be called exactly once per object and until it is called, the object is pinned and
