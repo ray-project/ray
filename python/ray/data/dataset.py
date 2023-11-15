@@ -3399,7 +3399,7 @@ class Dataset:
                 The dataset is created if it doesn't already exist. The table_id is
                 overwritten if it exists.
             max_retry_cnt: The maximum number of retries that an individual block write
-                will be retried due to BigQuery rate limiting errors. This is not
+                is retried due to BigQuery rate limiting errors. This isn't
                 related to Ray fault tolerance retries.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """  # noqa: E501
