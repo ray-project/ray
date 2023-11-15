@@ -3,7 +3,6 @@ import os
 
 import ray
 import logging
-from typing import Dict
 import psutil
 
 import pytest
@@ -24,8 +23,10 @@ workers, making each core worker end up with O(N^2) open sockets. This test ensu
 
 However it's not that easy:
 
-- We can't determine Ray sockets by name: in Linux, it does not show the address as in pconn.raddr, so we don't have a way to make sure it's the socket we are asserting.
-- We can't assert that len(all_sockets) == 2, because in MacOS, there are some system-created sockets like '/var/run/mDNSResponder'.
+- We can't determine Ray sockets by name: in Linux, it does not show the address as in
+    pconn.raddr, so we don't have a way to make sure it's the socket we are asserting.
+- We can't assert that len(all_sockets) == 2, because in MacOS, there are some
+    system-created sockets like '/var/run/mDNSResponder'.
 
 So we do it good old way (see python/ray/tests/test_actor_bounded_threads.py), test that
 number of sockets do not grow as time goes, across workers.
