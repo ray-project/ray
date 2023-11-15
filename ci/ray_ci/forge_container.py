@@ -4,9 +4,9 @@ from ci.ray_ci.container import Container
 
 
 class ForgeContainer(Container):
-    def __init__(self) -> None:
+    def __init__(self, architecture: str) -> None:
         super().__init__(
-            "forge",
+            "forge" if architecture == "x86_64" else "forge-aarch64",
             volumes=[f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/rayci"],
         )
 

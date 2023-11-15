@@ -6,6 +6,13 @@ from typing import List
 from ci.ray_ci.builder_container import BuilderContainer
 
 
+def test_init() -> None:
+    builder = BuilderContainer("3.10", "optimized", "aarch64")
+    assert builder.docker_tag == "manylinux-aarch64"
+    builder = BuilderContainer("3.10", "optimized", "x86_64")
+    assert builder.docker_tag == "manylinux"
+
+
 def test_run() -> None:
     cmds = []
 
@@ -17,7 +24,7 @@ def test_run() -> None:
         side_effect=_mock_run_script,
     ):
         # test optimized build
-        BuilderContainer("3.10", "optimized").run()
+        BuilderContainer("3.10", "optimized", "x86_64").run()
         assert cmds[-1] == [
             "./ci/build/build-manylinux-ray.sh",
             "./ci/build/build-manylinux-wheel.sh cp310-cp310 1.22.0",
@@ -25,7 +32,7 @@ def test_run() -> None:
         ]
 
         # test debug build
-        BuilderContainer("3.9", "debug").run()
+        BuilderContainer("3.9", "debug", "x86_64").run()
         assert cmds[-1] == [
             "export RAY_DEBUG_BUILD=debug",
             "./ci/build/build-manylinux-ray.sh",

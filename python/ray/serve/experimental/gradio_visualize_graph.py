@@ -306,7 +306,11 @@ class GraphVisualizer:
         self.handle = driver_handle
 
         # Load the root DAG node from handle.
-        pickled_dag_node = ray.get(self.handle.get_pickled_dag_node.remote())
+        pickled_dag_node = ray.get(
+            self.handle.get_pickled_dag_node.remote()._to_object_ref_sync(
+                _allow_running_in_asyncio_loop=True
+            )
+        )
         self.dag = cloudpickle.loads(pickled_dag_node)
 
         # Get level for each node in dag

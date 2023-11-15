@@ -1,7 +1,6 @@
 import os
 import tempfile
 from typing import Dict
-from unittest.mock import ANY, patch
 
 import numpy as np
 import pyarrow as pa
@@ -10,11 +9,10 @@ from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 
 import ray
-from ray.data.datasource import Partitioning, PathPartitionFilter
+from ray.data.datasource import Partitioning
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 from ray.data.datasource.image_datasource import (
     ImageDatasource,
-    _ImageDatasourceReader,
     _ImageFileMetadataProvider,
 )
 from ray.data.extensions import ArrowTensorType
@@ -254,21 +252,20 @@ class TestReadImages:
         data_size = ds.materialize().size_bytes()
         assert data_size >= 0, "actual data size is out of expected bound"
 
-        reader = _ImageDatasourceReader(
-            delegate=ImageDatasource(),
+        datasource = ImageDatasource(
             paths=[root],
+            size=(image_size, image_size),
+            mode=image_mode,
             filesystem=LocalFileSystem(),
             partition_filter=ImageDatasource.file_extension_filter(),
             partitioning=None,
             meta_provider=_ImageFileMetadataProvider(),
-            size=(image_size, image_size),
-            mode=image_mode,
         )
         assert (
-            reader._encoding_ratio >= expected_ratio
-            and reader._encoding_ratio <= expected_ratio * 1.5
+            datasource._encoding_ratio >= expected_ratio
+            and datasource._encoding_ratio <= expected_ratio * 1.5
         ), "encoding ratio is out of expected bound"
-        data_size = reader.estimate_inmemory_data_size()
+        data_size = datasource.estimate_inmemory_data_size()
         assert data_size >= 0, "estimated data size is out of expected bound"
 
     def test_dynamic_block_split(ray_start_regular_shared):
@@ -290,28 +287,6 @@ class TestReadImages:
             assert union_ds.num_blocks() == 12
         finally:
             ctx.target_max_block_size = target_max_block_size
-
-    def test_args_passthrough(ray_start_regular_shared):
-        kwargs = {
-            "paths": "foo",
-            "filesystem": pa.fs.LocalFileSystem(),
-            "parallelism": 20,
-            "meta_provider": FastFileMetadataProvider(),
-            "ray_remote_args": {"resources": {"bar": 1}},
-            "arrow_open_file_args": {"foo": "bar"},
-            "partition_filter": PathPartitionFilter.of(lambda x: True),
-            "partitioning": Partitioning("hive"),
-            "size": (2, 2),
-            "mode": "foo",
-            "include_paths": True,
-            "ignore_missing_paths": True,
-            "shuffle": None,
-        }
-        with patch("ray.data.read_api.read_datasource") as mock:
-            ray.data.read_images(**kwargs)
-        kwargs["open_stream_args"] = kwargs.pop("arrow_open_file_args")
-        mock.assert_called_once_with(ANY, **kwargs)
-        assert isinstance(mock.call_args[0][0], ImageDatasource)
 
     def test_unidentified_image_error(ray_start_regular_shared):
         with tempfile.NamedTemporaryFile(suffix=".png") as file:

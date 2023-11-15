@@ -318,7 +318,7 @@ def test_multiplexed_replica_info(serve_instance):
             return _get_internal_replica_context().replica_tag
 
     handle = serve.run(MyModel.bind())
-    replica_tag = ray.get(handle.remote("model1"))
+    replica_tag = handle.remote("model1").result()
 
     def check_replica_information(
         model_ids: List[str],
@@ -340,7 +340,7 @@ def test_multiplexed_replica_info(serve_instance):
         },
     )
 
-    ray.get(handle.remote("model2"))
+    handle.remote("model2").result()
     wait_for_condition(
         check_replica_information,
         model_ids={
@@ -350,7 +350,7 @@ def test_multiplexed_replica_info(serve_instance):
     )
 
     # LRU remove the model1
-    ray.get(handle.remote("model3"))
+    handle.remote("model3").result()
     wait_for_condition(
         check_replica_information,
         model_ids={
@@ -404,7 +404,7 @@ def test_multiplexed_e2e(serve_instance):
 
     for _ in range(10):
         assert (
-            ray.get(handle.options(multiplexed_model_id="1").remote("blabla"))
+            handle.options(multiplexed_model_id="1").remote("blabla").result()
             == initial_pid
         )
 
@@ -460,10 +460,10 @@ def test_multiplexed_multiple_replicas(serve_instance):
             # return pid to check if the same model is used
             return os.getpid()
 
-    handle = serve.run(Model.bind())
-    pid1_ref = handle.options(multiplexed_model_id="1").remote()
+    handle = serve.run(Model.bind()).options(multiplexed_model_id="1")
+    pid1_ref = handle.remote()._to_object_ref_sync()
     # Second request should be sent to the second replica
-    pid2_ref = handle.options(multiplexed_model_id="1").remote()
+    pid2_ref = handle.remote()._to_object_ref_sync()
     signal.send.remote()
     assert ray.get(pid1_ref) != ray.get(pid2_ref)
 
@@ -490,8 +490,8 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
             model_id_before = serve.get_multiplexed_model_id()
 
             # Make a call with another model ID, verify it's set properly.
-            ref = await self._h.options(multiplexed_model_id="bar").remote()
-            assert await ref == "bar"
+            other_model_id = await self._h.options(multiplexed_model_id="bar").remote()
+            assert other_model_id == "bar"
 
             # Model ID shouldn't change after the handle call.
             model_id_after = serve.get_multiplexed_model_id()
@@ -500,7 +500,7 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
             return model_id_before
 
     handle = serve.run(Upstream.bind(Downstream.bind()))
-    assert ray.get(handle.options(multiplexed_model_id="foo").remote()) == "foo"
+    assert handle.options(multiplexed_model_id="foo").remote().result() == "foo"
 
 
 def test_replica_upgrade_to_cleanup_resource(serve_instance):
@@ -552,9 +552,9 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
     model_id = "1"
     headers = {"serve_multiplexed_model_id": model_id}
     requests.get("http://localhost:8000", headers=headers)
-    assert ray.get(record_handle.get_call_record.remote()) == set()
+    assert record_handle.get_call_record.remote().result() == set()
     serve.run(Model.bind(record_handle))
-    assert ray.get(record_handle.get_call_record.remote()) == {"1"}
+    assert record_handle.get_call_record.remote().result() == {"1"}
 
 
 if __name__ == "__main__":

@@ -1068,12 +1068,18 @@ class Dataset:
         Args:
             seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
-            num_blocks: The number of output blocks after the shuffle, or ``None``
-                to retain the number of blocks.
 
         Returns:
             The shuffled :class:`Dataset`.
         """  # noqa: E501
+
+        if num_blocks is not None:
+            warnings.warn(
+                "`num_blocks` parameter is deprecated in Ray 2.9. random_shuffle() "
+                "does not support to change the number of output blocks. Use "
+                "repartition() instead.",  # noqa: E501
+                DeprecationWarning,
+            )
 
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
@@ -1084,7 +1090,6 @@ class Dataset:
             op = RandomShuffle(
                 logical_plan.dag,
                 seed=seed,
-                num_outputs=num_blocks,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
@@ -1116,7 +1121,7 @@ class Dataset:
 
         Returns:
             The block-shuffled :class:`Dataset`.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
 
@@ -2743,7 +2748,7 @@ class Dataset:
                     /generated/pyarrow.parquet.write_table.html\
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
-        """
+        """  # noqa: E501
         datasink = _ParquetDatasink(
             path,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
@@ -4721,7 +4726,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4804,7 +4809,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
