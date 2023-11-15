@@ -11,7 +11,6 @@ from ray.train.torch import TorchTrainer
 from ray.train.base_trainer import TrainingFailedError
 from ray.tune import TuneConfig, Tuner
 
-from ray.train.tests.conftest import mock_s3_bucket_uri
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 

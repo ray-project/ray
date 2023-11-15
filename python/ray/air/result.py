@@ -118,6 +118,22 @@ class Result:
     def __repr__(self) -> str:
         return self._repr(indent=0)
 
+    @staticmethod
+    def _read_file_as_str(
+        storage_filesystem: pyarrow.fs.FileSystem,
+        storage_path: str,
+    ) -> str:
+        """Opens a file as an input stream reading all byte content sequentially and
+         decoding read bytes as utf-8 string.
+
+        Args:
+            storage_filesystem: The filesystem to use.
+            storage_path: The source to open for reading.
+        """
+
+        with storage_filesystem.open_input_stream(storage_path) as f:
+            return f.readall().decode()
+
     @classmethod
     def from_path(
         cls,
@@ -127,8 +143,8 @@ class Result:
         """Restore a Result object from local or remote trial directory.
 
         Args:
-            path: A storage path or URI of the trial directory. (ex: s3://bucket/path
-                or /tmp/ray_results)
+            path: A path of a trial directory on local or remote storage
+                (ex: s3://bucket/path or /tmp/ray_results).
             storage_filesystem: A custom filesystem to use. If not provided,
                 this will be auto-resolved by pyarrow. If provided, the path
                 is assumed to be prefix-stripped already, and must be a valid path
@@ -143,7 +159,6 @@ class Result:
         from ray.train._internal.storage import (
             get_fs_and_path,
             _exists_at_fs_path,
-            _read_file_as_str,
             _list_at_fs_path,
         )
 
@@ -155,14 +170,14 @@ class Result:
         result_json_file = os.path.join(fs_path, EXPR_RESULT_FILE)
         progress_csv_file = os.path.join(fs_path, EXPR_PROGRESS_FILE)
         if _exists_at_fs_path(fs, result_json_file):
-            lines = _read_file_as_str(fs, result_json_file).split("\n")
+            lines = cls._read_file_as_str(fs, result_json_file).split("\n")
             json_list = [json.loads(line) for line in lines if line]
             metrics_df = pd.json_normalize(json_list, sep="/")
             latest_metrics = json_list[-1] if json_list else {}
         # Fallback to restore from progress.csv
         elif _exists_at_fs_path(fs, progress_csv_file):
             metrics_df = pd.read_csv(
-                io.StringIO(_read_file_as_str(fs, progress_csv_file))
+                io.StringIO(cls._read_file_as_str(fs, progress_csv_file))
             )
             latest_metrics = (
                 metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
@@ -178,14 +193,17 @@ class Result:
             _list_at_fs_path(
                 fs,
                 fs_path,
-                lambda file_info: file_info.type == pyarrow.fs.FileType.Directory
+                file_filter=lambda file_info: file_info.type
+                == pyarrow.fs.FileType.Directory
                 and file_info.base_name.startswith("checkpoint_"),
             )
         )
 
         if checkpoint_dir_names:
             checkpoints = [
-                Checkpoint(path=Path(fs_path, checkpoint_dir_name).as_posix(), filesystem=fs)
+                Checkpoint(
+                    path=Path(fs_path, checkpoint_dir_name).as_posix(), filesystem=fs
+                )
                 for checkpoint_dir_name in checkpoint_dir_names
             ]
 
