@@ -17,7 +17,9 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 # the form "Tesla V100-SXM2-16GB" or "Tesla K80").
 NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
 
-# version with mig uuid
+# only newer version support mig uuid
+# for version < 470.42.01, mig uuid has format
+# MIG-{gpu-uuid}/{gpu instance id}/{compute instance id}
 MIG_UUID_DRIVER_VERSION = "470.42.01"
 
 
