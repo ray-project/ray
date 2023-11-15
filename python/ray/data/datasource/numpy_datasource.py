@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 
@@ -16,7 +16,7 @@ class NumpyDatasource(FileBasedDatasource):
     """Numpy datasource, for reading and writing Numpy files."""
 
     _COLUMN_NAME = "data"
-    _FILE_EXTENSION = "npy"
+    _FILE_EXTENSIONS = ["npy"]
 
     def __init__(
         self,
@@ -41,14 +41,3 @@ class NumpyDatasource(FileBasedDatasource):
         return BlockAccessor.batch_to_block(
             {"data": np.load(buf, allow_pickle=True, **self.numpy_load_args)}
         )
-
-    def _write_block(
-        self,
-        f: "pyarrow.NativeFile",
-        block: BlockAccessor,
-        column: str,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args,
-    ):
-        value = block.to_numpy(column)
-        np.save(f, value)
