@@ -3,10 +3,12 @@ from typing import Any, Dict, List, Union, Optional
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.experimental.gradio_utils import type_to_string
+from ray.util.annotations import DeveloperAPI
 
 IN_CONTEXT_MANAGER = "__in_context_manager__"
 
 
+@DeveloperAPI
 class InputNode(DAGNode):
     r"""Ray dag node used in DAG building API to mark entrypoints of a DAG.
 
@@ -179,6 +181,7 @@ class InputNode(DAGNode):
             return self._bound_other_args_to_resolve["result_type_string"]
 
 
+@DeveloperAPI
 class InputAttributeNode(DAGNode):
     """Represents partial access of user input based on an index (int),
      object attribute or dict key (str).
@@ -289,6 +292,7 @@ class InputAttributeNode(DAGNode):
             return self._bound_other_args_to_resolve["result_type_string"]
 
 
+@DeveloperAPI
 class DAGInputData:
     """If user passed multiple args and kwargs directly to dag.execute(), we
     generate this wrapper for all user inputs as one object, accessible via
