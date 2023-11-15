@@ -3,40 +3,23 @@ import numpy as np
 import time
 
 ray.init()
-arr = np.random.rand(1)
-ref = ray.put(arr)
-#assert np.array_equal(ray.get(ref), arr)
-print("starting...")
-
 
 @ray.remote
-class Reader:
-    def __init__(self, refs):
-        self.ref = refs[0]
+def f():
+    arr = b"binary"
+    ref = ray.put(arr)
+    print("starting...")
 
-    def read(self):
-        while True:
-            arr = ray.get(self.ref)
-            # do something.
-            print(arr[0])
+    # Keep the plasma object pinned.
+    # TODO(swang): Pin the object properly in plasma store.
+    pinned = ray.get(ref)
 
-            # Signal to writer that they can write again.
-            ray.release(self.ref)
+    while True:
+        start = time.time()
+        for i in range(100_000):
+            ray.worker.global_worker.put_object(arr, object_ref=ref)
+            #assert ray.get(ref)[0] == i
+        end = time.time()
+        print(f"done, tput: {100_000 / (end - start)} puts/s")
 
-
-print("OBJECT REF IS", ref)
-
-# Keep the plasma object pinned.
-# TODO(swang): Pin the object properly in plasma store.
-pinned = ray.get(ref)
-
-#reader = Reader.remote([ref])
-
-for _ in range(10):
-    start = time.time()
-    for i in range(10_000):
-        arr[0] = i
-        ray.worker.global_worker.put_object(arr, object_ref=ref)
-        #assert ray.get(ref)[0] == i
-    end = time.time()
-    print(f"done, tput: {10_000 / (end - start)} puts/s")
+ray.get(f.remote())
