@@ -8,7 +8,6 @@ from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve._private import api as _private_api
 from ray.serve._private.deployment_graph_build import (
     extract_deployments_from_serve_dag,
-    get_pipeline_input_node,
     transform_ray_dag_to_serve_dag,
     transform_serve_dag_to_serve_executor_dag,
 )
@@ -21,7 +20,7 @@ from ray.serve.tests.common.test_dags import (
     get_simple_class_with_class_method_dag,
     get_simple_func_dag,
 )
-from ray.serve.tests.common.test_modules import NESTED_HANDLE_KEY, Model, combine
+from ray.serve.tests.common.test_modules import NESTED_HANDLE_KEY, Model
 
 pytestmark = pytest.mark.asyncio
 
@@ -179,36 +178,6 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     _validate_consistent_python_output(
         deployments[2], ray_dag, "Combine", input=1, output=5
     )
-
-
-def test_get_pipeline_input_node():
-    # 1) No InputNode found
-    ray_dag = combine.bind(1, 2)
-    with _DAGNodeNameGenerator() as node_name_generator:
-        serve_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator, "")
-        )
-    with pytest.raises(
-        AssertionError, match="There should be one and only one InputNode"
-    ):
-        get_pipeline_input_node(serve_dag)
-
-    # 2) More than one InputNode found
-    with InputNode() as dag_input:
-        a = combine.bind(dag_input[0], dag_input[1])
-    with InputNode() as dag_input_2:
-        b = combine.bind(dag_input_2[0], dag_input_2[1])
-        ray_dag = combine.bind(a, b)
-    with pytest.raises(
-        AssertionError, match="Each DAG should only have one unique InputNode"
-    ):
-        with _DAGNodeNameGenerator() as node_name_generator:
-            serve_dag = ray_dag.apply_recursive(
-                lambda node: transform_ray_dag_to_serve_dag(
-                    node, node_name_generator, ""
-                )
-            )
-        get_pipeline_input_node(serve_dag)
 
 
 def test_unique_name_reset_upon_build(serve_instance):
