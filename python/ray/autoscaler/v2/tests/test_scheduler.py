@@ -1,29 +1,24 @@
-import json
 import os
 import sys
 
 # coding: utf-8
-from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import pytest
-from google.protobuf.json_format import ParseDict
 
 from ray.autoscaler.v2.scheduler import (
-    ResourceDemandScheduler,
-    SchedulingRequest,
-    SchedulingReply,
     ClusterConfig,
     NodeTypeConfig,
+    ResourceDemandScheduler,
+    SchedulingRequest,
+)
+from ray.core.generated.autoscaler_pb2 import (
+    ClusterResourceConstraint,
+    GangResourceRequest,
+    NodeState,
+    ResourceRequestByCount,
 )
 from ray.core.generated.instance_manager_pb2 import Instance
-from ray.core.generated.autoscaler_pb2 import (
-    ResourceRequestByCount,
-    GangResourceRequest,
-    ClusterResourceConstraint,
-    NodeState,
-)
-from ray.autoscaler.v2.utils import resource_requests_by_count
 
 ResourceMap = Dict[str, float]
 
