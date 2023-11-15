@@ -1,5 +1,6 @@
-from abc import ABC, abstractmethod
 import copy
+import logging
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
@@ -9,7 +10,7 @@ from google.protobuf.json_format import MessageToDict
 
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
 from ray.autoscaler.v2.schema import NodeType
-from ray.autoscaler.v2.utils import resource_requests_by_count
+from ray.autoscaler.v2.utils import is_pending, resource_requests_by_count
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
@@ -26,6 +27,7 @@ from ray.core.generated.instance_manager_pb2 import Instance
 #  to determine the desired cluster size to satisfy the current resource
 #  demands.
 #
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,11 +49,13 @@ class ClusterConfig:
     # The node type configs.
     node_type_configs: Dict[NodeType, NodeTypeConfig] = field(default_factory=dict)
     # The max number of worker nodes to be launched for the entire cluster.
-    max_num_worker_nodes: Optional[int]
+    max_num_worker_nodes: Optional[int] = None
 
 
 @dataclass
 class SchedulingRequest:
+    # The config for the cluster.
+    cluster_config: ClusterConfig
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
     resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
@@ -65,12 +69,18 @@ class SchedulingRequest:
     current_nodes: List[NodeState] = field(default_factory=list)
     # The current list of instances.
     current_instances: List[Instance] = field(default_factory=list)
-    # The config for the cluster.
-    cluster_config: ClusterConfig
 
 
 @dataclass
 class SchedulingReply:
+    # The target cluster shape, given the current resource demands and instances.
+    # Key is the node type name, value is the number of nodes.
+    # This is needed to prevent autoscaler terminating nodes needed for cluster
+    # constraints.
+    # Note this might be "smaller" than the current cluster shape, since there
+    # could be cluster constraints enforced, e.g. a newly updated max_workers value
+    # would result in a target count smaller than the current count of the node type.
+    target_cluster_shape: Dict[NodeType, int]
     # The infeasible resource bundles.
     infeasible_resource_requests: List[ResourceRequestByCount] = field(
         default_factory=list
@@ -83,14 +93,6 @@ class SchedulingReply:
     infeasible_cluster_resource_constraints: List[ClusterResourceConstraint] = field(
         default_factory=list
     )
-    # The target cluster shape, given the current resource demands and instances.
-    # Key is the node type name, value is the number of nodes.
-    # This is needed to prevent autoscaler terminating nodes needed for cluster
-    # constraints.
-    # Note this might be "smaller" than the current cluster shape, since there
-    # could be cluster constraints enforced, e.g. a newly updated max_workers value
-    # would result in a target count smaller than the current count of the node type.
-    target_cluster_shape: Dict[NodeType, int]
 
 
 class IResourceScheduler(ABC):
@@ -266,14 +268,14 @@ class ResourceDemandScheduler(IResourceScheduler):
         accidental modification of the internal state.
         """
 
+        # The cluster config for this scheduling request.
+        _cluster_config: ClusterConfig
         # The current schedulable nodes (including pending nodes and pending requests).
         _nodes: List[SchedulingNode] = field(default_factory=list)
         # The number of nodes by node types available for launching based on the max
         # number of workers in the config. This takes into account any pending/running
         # nodes.
         _node_type_available: Dict[NodeType, int] = field(default_factory=dict)
-        # The cluster config for this scheduling request.
-        _cluster_config: ClusterConfig
 
         def __init__(
             self,
@@ -286,7 +288,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             self._cluster_config = cluster_config
 
         @classmethod
-        def from_schedule_request(cls, req: SchedulingRequest) -> "ScheduleContext":
+        def from_schedule_request(
+            cls, req: SchedulingRequest
+        ) -> "ResourceDemandScheduler.ScheduleContext":
             """
             Create a schedule context from a schedule request.
             It will populate the context with the existing nodes and the available node
@@ -299,7 +303,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             nodes = []
             # Populate already running nodes.
-            for node in req.node_states:
+            for node in req.current_nodes:
                 nodes.append(
                     SchedulingNode(
                         node_type=node.ray_node_type_name,
@@ -312,8 +316,12 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             # Populate pending nodes.
             cluster_config = req.cluster_config
-            for node in req.pending_instances:
-                node_config = cluster_config.node_type_configs[node.ray_node_type_name]
+            for instance in req.current_instances:
+                if not is_pending(instance):
+                    continue
+                node_config = cluster_config.node_type_configs[
+                    instance.ray_node_type_name
+                ]
                 nodes.append(
                     SchedulingNode.from_node_config(
                         node_config,
@@ -383,7 +391,12 @@ class ResourceDemandScheduler(IResourceScheduler):
         def get_cluster_config(self) -> ClusterConfig:
             return self._cluster_config
 
-    def schedule_resource_bundles(self, request: SchedulingRequest) -> SchedulingReply:
+        def __str__(self) -> str:
+            return "ScheduleContext({} nodes, node_type_available={}): {}".format(
+                len(self._nodes), self._node_type_available, self._nodes
+            )
+
+    def schedule(self, request: SchedulingRequest) -> SchedulingReply:
         self._init_context(request)
 
         # 1. Enforce the minimal count of nodes for each worker node type.
@@ -430,6 +443,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Count the existing nodes by type
         count_by_node_type = self._ctx.get_cluster_shape()
+        logger.debug("Enforcing min workers: {}".format(self._ctx))
 
         new_nodes = []
         # Launch new nodes to satisfy min count for each node type.
@@ -454,6 +468,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Add the new nodes to the existing nodes and update the context.
         self._ctx.update(new_nodes + self._ctx.get_nodes())
+        logger.debug("After enforced min workers: {}".format(self._ctx))
 
     def _enforce_resource_constraints(
         self,
