@@ -7,7 +7,7 @@ ci_work_repo: 830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ci-t
 forge_prefix: cr.ray.io/rayproject/
 builder_queues:
   builder: large
-  builder-arm64: mediumg
+  builder-arm64: "~"
 runner_queues:
   default: small
   small: small
@@ -16,7 +16,7 @@ runner_queues:
   gpu: "~"
   gpu-large: "~"
   trainium: "~"
-  medium-arm64: mediumg
+  medium-arm64: "~"
   windows: "~"
   macos: "~"
   macos-arm64: "~"
