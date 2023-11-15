@@ -95,8 +95,7 @@ def get_parquet_read_logical_op(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     **read_kwargs,
 ) -> Read:
-    datasource = ParquetDatasource()
-    reader = datasource.create_reader(paths="example://iris.parquet")
+    datasource = ParquetDatasource(paths="example://iris.parquet")
     if "parallelism" not in read_kwargs:
         read_kwargs["parallelism"] = 10
     mem_size = None
@@ -104,7 +103,7 @@ def get_parquet_read_logical_op(
         mem_size = read_kwargs.pop("mem_size")
     read_op = Read(
         datasource=datasource,
-        datasource_or_legacy_reader=reader,
+        datasource_or_legacy_reader=datasource,
         mem_size=mem_size,
         ray_remote_args=ray_remote_args,
         **read_kwargs,

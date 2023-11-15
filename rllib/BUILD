@@ -174,13 +174,13 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_separate_losses_appo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "tf_only", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/appo/cartpole-appo-vtrace-separate-losses.yaml"
+        "tuned_examples/appo/cartpole-appo-vtrace-separate-losses.py"
     ],
-    args = ["--dir=tuned_examples/appo", "--framework=tf"]
+    args = ["--dir=tuned_examples/appo"]
 )
 
 py_test(
@@ -279,6 +279,18 @@ py_test(
 #    data = ["tuned_examples/impala/cartpole-impala.yaml"],
 #    args = ["--dir=tuned_examples/impala"]
 # )
+
+py_test(
+    name = "learning_tests_cartpole_separate_losses_impala",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "medium",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/impala/cartpole-impala-separate-losses.py"
+    ],
+    args = ["--dir=tuned_examples/impala"]
+)
 
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala",

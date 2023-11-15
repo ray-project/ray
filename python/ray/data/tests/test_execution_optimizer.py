@@ -55,7 +55,7 @@ from ray.data._internal.sort import SortKey
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.context import DataContext
-from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
@@ -971,13 +971,13 @@ def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
     _check_usage_record(["ReadRange", "WriteCSV"])
 
 
-def test_write_operator(ray_start_regular_shared, enable_optimizer):
+def test_write_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
     planner = Planner()
-    datasource = ParquetDatasource()
+    datasink = _ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
         read_op,
-        datasource,
+        datasink,
     )
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag

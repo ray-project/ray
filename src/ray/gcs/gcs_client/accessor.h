@@ -428,17 +428,6 @@ class NodeResourceInfoAccessor {
   NodeResourceInfoAccessor() = default;
   explicit NodeResourceInfoAccessor(GcsClient *client_impl);
   virtual ~NodeResourceInfoAccessor() = default;
-  // TODO(micafan) Define ResourceMap in GCS proto.
-  typedef absl::flat_hash_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
-      ResourceMap;
-
-  /// Get node's resources from GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to lookup dynamic resources.
-  /// \param callback Callback that will be called after lookup finishes.
-  /// \return Status
-  virtual Status AsyncGetResources(const NodeID &node_id,
-                                   const OptionalItemCallback<ResourceMap> &callback);
 
   /// Get available resources of all nodes from GCS asynchronously.
   ///
@@ -587,6 +576,16 @@ class WorkerInfoAccessor {
   /// \return Status
   virtual Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
                           const StatusCallback &callback);
+
+  /// Update the worker debugger port in GCS asynchronously.
+  ///
+  /// \param worker_id The ID of worker to update in the GCS.
+  /// \param debugger_port The debugger port of worker to update in the GCS.
+  /// \param callback Callback that will be called after update finishes.
+  /// \return Status
+  virtual Status AsyncUpdateDebuggerPort(const WorkerID &worker_id,
+                                         uint32_t debugger_port,
+                                         const StatusCallback &callback);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.

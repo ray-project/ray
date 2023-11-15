@@ -69,6 +69,37 @@ steps:
     depends_on: servebuild
     job_env: forge
 
+  - label: ":ray-serve: serve: wheel tests"
+    tags: linux_wheels
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //doc/... serve 
+        --build-type wheel
+        --parallelism-per-worker 3
+        --only-tags post_wheel_build
+        --test-env=RAY_CI_POST_WHEEL_TESTS=True
+    depends_on: 
+      - manylinux
+      - servebuild
+
+  - label: ":ray-serve: serve: doc tests"
+    tags: 
+      - serve
+      - doc
+    instance_type: large
+    commands:
+      # doc tests
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... serve 
+        --only-tags doctest
+        --parallelism-per-worker 3
+      # doc examples
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... serve 
+        --except-tags gpu,post_wheel_build,timeseries_libs,doctest,xcommit
+        --parallelism-per-worker 3
+        --skip-ray-installation
+    depends_on: servebuild
+    job_env: forge
+
   - label: ":ray-serve: serve: default minimal"
     tags: python
     instance_type: small
@@ -82,7 +113,9 @@ steps:
     job_env: forge
 
   - label: ":ray-serve: serve: serve minimal"
-    tags: python
+    tags:
+      - serve
+      - python
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve 
@@ -95,6 +128,7 @@ steps:
 
   - label: ":ray-serve: serve: dashboard tests"
     tags: 
+      - serve
       - python
       - dashboard
     instance_type: medium
