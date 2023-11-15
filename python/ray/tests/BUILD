@@ -15,7 +15,6 @@ py_library(
 py_test_module_list(
   files = [
     "test_dashboard.py",
-    "test_ray_cluster_with_external_redis.py",
   ],
   size = "large",
   tags = ["exclusive", "manual", "team:serverless"],
@@ -80,7 +79,7 @@ py_test_module_list(
     "test_client_reconnect.py",
   ],
   size = "large",
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -96,7 +95,7 @@ py_test_module_list(
     "test_client_library_integration.py",
   ],
   size = "medium",
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -114,7 +113,7 @@ py_test_module_list(
   tags = ["exclusive", "no_main", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
-
+    
 py_test_module_list(
   files = [
     "test_actor_bounded_threads.py",
@@ -139,6 +138,7 @@ py_test_module_list(
     "test_multi_node_2.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
+    "test_mpi.py",
     "test_node_manager.py",
     "test_object_assign_owner.py",
     "test_placement_group_2.py",
@@ -264,6 +264,7 @@ py_test_module_list(
     "test_top_level_api.py",
     "test_unhandled_error.py",
     "test_widgets.py",
+    "accelerators/test_accelerators.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -349,7 +350,7 @@ py_test_module_list(
     "test_dataclient_disconnect.py",
   ],
   size = "medium",
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:serverless"],
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -585,7 +586,7 @@ py_test_module_list(
   size = "large",
   name_suffix = "_client_mode",
   env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

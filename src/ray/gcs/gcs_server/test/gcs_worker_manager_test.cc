@@ -126,6 +126,54 @@ TEST_F(GcsWorkerManagerTest, TestGetAllWorkersLimit) {
   }
 }
 
+TEST_F(GcsWorkerManagerTest, TestUpdateWorkerDebuggerPort) {
+  auto worker_manager = GetWorkerManager();
+  auto worker = GenWorkerTableData(0);
+  auto debugger_port = 1000;
+  {
+    // add worker
+    rpc::AddWorkerInfoRequest request;
+    request.mutable_worker_data()->CopyFrom(worker);
+    rpc::AddWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleAddWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+  }
+
+  {
+    // update the worker debugger port
+    rpc::UpdateWorkerDebuggerPortRequest request;
+    request.set_worker_id(worker.worker_address().worker_id());
+    request.set_debugger_port(debugger_port);
+    rpc::UpdateWorkerDebuggerPortReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleUpdateWorkerDebuggerPort(request, &reply, callback);
+    promise.get_future().get();
+  }
+
+  {
+    // Get the worker and verify the debugger port
+    rpc::GetAllWorkerInfoRequest request;
+    rpc::GetAllWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+
+    ASSERT_EQ(reply.worker_table_data().size(), 1);
+    ASSERT_EQ(reply.total(), 1);
+    ASSERT_EQ(reply.worker_table_data(0).debugger_port(), debugger_port);
+  }
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

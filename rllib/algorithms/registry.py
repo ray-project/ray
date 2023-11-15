@@ -2,14 +2,8 @@
 
 import importlib
 import re
-import traceback
-from typing import Tuple, Type, TYPE_CHECKING, Union
 
 from ray.rllib.utils.deprecation import Deprecated
-
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 def _import_a2c():
@@ -108,12 +102,6 @@ def _import_dqn():
     return dqn.DQN, dqn.DQN.get_default_config()
 
 
-def _import_dreamer():
-    import ray.rllib.algorithms.dreamer as dreamer
-
-    return dreamer.Dreamer, dreamer.Dreamer.get_default_config()
-
-
 def _import_dreamerv3():
     import ray.rllib.algorithms.dreamerv3 as dreamerv3
 
@@ -186,12 +174,6 @@ def _import_r2d2():
     return r2d2.R2D2, r2d2.R2D2.get_default_config()
 
 
-def _import_random_agent():
-    import ray.rllib.algorithms.random_agent as random_agent
-
-    return random_agent.RandomAgent, random_agent.RandomAgent.get_default_config()
-
-
 def _import_rnnsac():
     from ray.rllib.algorithms import sac
 
@@ -244,7 +226,6 @@ ALGORITHMS = {
     "DDPG": _import_ddpg,
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
-    "Dreamer": _import_dreamer,
     "DreamerV3": _import_dreamerv3,
     "DT": _import_dt,
     "IMPALA": _import_impala,
@@ -258,7 +239,6 @@ ALGORITHMS = {
     "PPO": _import_ppo,
     "QMIX": _import_qmix,
     "R2D2": _import_r2d2,
-    "Random": _import_random_agent,
     "RNNSAC": _import_rnnsac,
     "SAC": _import_sac,
     "SimpleQ": _import_simple_q,
@@ -284,7 +264,6 @@ ALGORITHMS_CLASS_TO_NAME = {
     "DDPG": "DDPG",
     "DDPPO": "DDPPO",
     "DQN": "DQN",
-    "Dreamer": "Dreamer",
     "DreamerV3": "DreamerV3",
     "DT": "DT",
     "Impala": "IMPALA",
@@ -298,7 +277,6 @@ ALGORITHMS_CLASS_TO_NAME = {
     "PPO": "PPO",
     "QMix": "QMIX",
     "R2D2": "R2D2",
-    "RandomAgent": "Random",
     "RNNSAC": "RNNSAC",
     "SAC": "SAC",
     "SimpleQ": "SimpleQ",
@@ -311,24 +289,10 @@ ALGORITHMS_CLASS_TO_NAME = {
 @Deprecated(
     new="ray.tune.registry.get_trainable_cls([algo name], return_config=False) and cls="
     "ray.tune.registry.get_trainable_cls([algo name]); cls.get_default_config();",
-    error=False,
+    error=True,
 )
-def get_algorithm_class(
-    alg: str,
-    return_config=False,
-) -> Union[Type["Algorithm"], Tuple[Type["Algorithm"], "AlgorithmConfig"]]:
-    """Returns the class of a known Algorithm given its name."""
-
-    try:
-        return _get_algorithm_class(alg, return_config=return_config)
-    except ImportError:
-        from ray.rllib.algorithms.mock import _algorithm_import_failed
-
-        class_ = _algorithm_import_failed(traceback.format_exc())
-        config = class_.get_default_config()
-        if return_config:
-            return class_, config
-        return class_
+def get_algorithm_class(*args, **kwargs):
+    pass
 
 
 def _get_algorithm_class(alg: str) -> type:
@@ -360,54 +324,25 @@ def _get_algorithm_class(alg: str) -> type:
 # TODO(jungong) : Finish migrating all the policies to PolicyV2, so we can list
 # all the TF eager policies here.
 POLICIES = {
-    "A3CTF1Policy": "a3c.a3c_tf_policy",
-    "A3CTF2Policy": "a3c.a3c_tf_policy",
-    "A3CTorchPolicy": "a3c.a3c_torch_policy",
-    "AlphaZeroPolicy": "alpha_zero.alpha_zero_policy",
     "APPOTF1Policy": "appo.appo_tf_policy",
     "APPOTF2Policy": "appo.appo_tf_policy",
     "APPOTorchPolicy": "appo.appo_torch_policy",
-    "ARSTFPolicy": "ars.ars_tf_policy",
-    "ARSTorchPolicy": "ars.ars_torch_policy",
-    "BanditTFPolicy": "bandit.bandit_tf_policy",
-    "BanditTorchPolicy": "bandit.bandit_torch_policy",
     "CQLTFPolicy": "cql.cql_tf_policy",
     "CQLTorchPolicy": "cql.cql_torch_policy",
-    "CRRTorchPolicy": "crr.torch.crr_torch_policy",
-    "DDPGTF1Policy": "ddpg.ddpg_tf_policy",
-    "DDPGTF2Policy": "ddpg.ddpg_tf_policy",
-    "DDPGTorchPolicy": "ddpg.ddpg_torch_policy",
     "DQNTFPolicy": "dqn.dqn_tf_policy",
     "DQNTorchPolicy": "dqn.dqn_torch_policy",
-    "DreamerTorchPolicy": "dreamer.dreamer_torch_policy",
-    "DTTorchPolicy": "dt.dt_torch_policy",
-    "ESTFPolicy": "es.es_tf_policy",
-    "ESTorchPolicy": "es.es_torch_policy",
     "ImpalaTF1Policy": "impala.impala_tf_policy",
     "ImpalaTF2Policy": "impala.impala_tf_policy",
     "ImpalaTorchPolicy": "impala.impala_torch_policy",
-    "MADDPGTFPolicy": "maddpg.maddpg_tf_policy",
-    "MAMLTF1Policy": "maml.maml_tf_policy",
-    "MAMLTF2Policy": "maml.maml_tf_policy",
-    "MAMLTorchPolicy": "maml.maml_torch_policy",
     "MARWILTF1Policy": "marwil.marwil_tf_policy",
     "MARWILTF2Policy": "marwil.marwil_tf_policy",
     "MARWILTorchPolicy": "marwil.marwil_torch_policy",
-    "MBMPOTorchPolicy": "mbmpo.mbmpo_torch_policy",
-    "PGTF1Policy": "pg.pg_tf_policy",
-    "PGTF2Policy": "pg.pg_tf_policy",
-    "PGTorchPolicy": "pg.pg_torch_policy",
-    "QMixTorchPolicy": "qmix.qmix_policy",
-    "R2D2TFPolicy": "r2d2.r2d2_tf_policy",
-    "R2D2TorchPolicy": "r2d2.r2d2_torch_policy",
     "SACTFPolicy": "sac.sac_tf_policy",
     "SACTorchPolicy": "sac.sac_torch_policy",
     "RNNSACTorchPolicy": "sac.rnnsac_torch_policy",
     "SimpleQTF1Policy": "simple_q.simple_q_tf_policy",
     "SimpleQTF2Policy": "simple_q.simple_q_tf_policy",
     "SimpleQTorchPolicy": "simple_q.simple_q_torch_policy",
-    "SlateQTFPolicy": "slateq.slateq_tf_policy",
-    "SlateQTorchPolicy": "slateq.slateq_torch_policy",
     "PPOTF1Policy": "ppo.ppo_tf_policy",
     "PPOTF2Policy": "ppo.ppo_tf_policy",
     "PPOTorchPolicy": "ppo.ppo_torch_policy",

@@ -33,13 +33,15 @@ class Counter:
 
 
 class MySource(CSVDatasource):
-    def __init__(self, counter):
+    def __init__(self, paths, counter):
+        super().__init__(paths)
+
         self.counter = counter
 
-    def _read_stream(self, f, path: str, **reader_args):
+    def _read_stream(self, f, path: str):
         count = self.counter.increment.remote()
         ray.get(count)
-        for block in super()._read_stream(f, path, **reader_args):
+        for block in super()._read_stream(f, path):
             yield block
 
 
@@ -147,11 +149,11 @@ def test_lazy_fanout(shutdown_only, local_path):
     path = os.path.join(local_path, "test.csv")
     df.to_csv(path, index=False, storage_options={})
     read_counter = Counter.remote()
-    source = MySource(read_counter)
+    source = MySource(path, read_counter)
 
     # Test that fan-out of a lazy dataset results in re-execution up to the datasource,
     # due to block move semantics.
-    ds = ray.data.read_datasource(source, parallelism=1, paths=path)
+    ds = ray.data.read_datasource(source, parallelism=1)
     ds1 = ds.map(inc)
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
@@ -322,8 +324,8 @@ def test_optimize_lazy_reuse_base_data(
     for df, path in zip(dfs, paths):
         df.to_csv(path, index=False)
     counter = Counter.remote()
-    source = MySource(counter)
-    ds = ray.data.read_datasource(source, parallelism=4, paths=paths)
+    source = MySource(paths, counter)
+    ds = ray.data.read_datasource(source, parallelism=4)
     num_reads = ray.get(counter.get.remote())
     assert num_reads == 1, num_reads
     ds = ds.map(column_udf("id", lambda x: x))
