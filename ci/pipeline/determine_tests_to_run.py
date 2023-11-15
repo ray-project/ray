@@ -190,6 +190,7 @@ if __name__ == "__main__":
                 or changed_file == ".buildkite/pipeline.gpu.yml"
                 or changed_file == ".buildkite/pipeline.gpu_large.yml"
                 or changed_file == "ci/docker/ml.build.wanda.yaml"
+                or changed_file == "ci/ray_ci/ml.tests.yml"
             ):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
