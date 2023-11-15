@@ -122,6 +122,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             "debug",
             "asan",
             "wheel",
+            "wheel-aarch64",
             # cpp build types
             "clang",
             "asan-clang",
@@ -155,11 +156,10 @@ def main(
     os.chdir(bazel_workspace_dir)
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
-    if build_type == "wheel":
+    if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
-        BuilderContainer(
-            DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, DEFAULT_ARCHITECTURE
-        ).run()
+        architecture = DEFAULT_ARCHITECTURE if build_type == "wheel" else "aarch64"
+        BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, architecture).run()
     container = _get_container(
         team,
         workers,
