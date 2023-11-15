@@ -251,7 +251,7 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
-            "pydantic",
+            "pydantic > 2.5.0",
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
