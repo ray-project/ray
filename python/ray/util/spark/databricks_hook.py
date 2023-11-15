@@ -2,7 +2,7 @@ import os
 
 from .start_hook_base import RayOnSparkStartHook
 from .utils import get_spark_session
-from .cluster_init import RAY_ON_SPARK_GLOBAL_MODE
+from . import cluster_init
 import logging
 import threading
 import time
@@ -74,7 +74,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         db_api_entry = get_db_entry_point()
         if (
             ray_cluster_handler.autoscale
-            or os.environ.get(RAY_ON_SPARK_GLOBAL_MODE, "0") == "1"
+            or os.environ.get(cluster_init.RAY_ON_SPARK_GLOBAL_MODE, "0") == "1"
         ):
             # Disable auto shutdown if
             # 1) autoscaling enabled
