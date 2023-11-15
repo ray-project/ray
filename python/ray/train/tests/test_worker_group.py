@@ -145,7 +145,7 @@ def test_group_workers_by_ip(ray_start_2_cpus):
                     node_id="dummy",
                     node_ip=ip,
                     hostname="dummy",
-                    resource_ids=None,
+                    resource_ids={},
                     pid=0,
                 ),
             )
@@ -154,7 +154,7 @@ def test_group_workers_by_ip(ray_start_2_cpus):
         return wg
 
     wg = create_worker_group(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    wg.group_workers_by_ip()
+    wg.sort_workers_by_ip_and_gpu_id()
     expected = ["2", "2", "2", "3", "3", "3", "1", "1", "4", "4"]
     ips = [w.metadata.node_ip for w in wg.workers]
     assert ips == expected, (
@@ -163,7 +163,7 @@ def test_group_workers_by_ip(ray_start_2_cpus):
     )
 
     wg = create_worker_group(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    wg.group_workers_by_ip(_first_ip="1")
+    wg.sort_workers_by_ip_and_gpu_id(_first_ip="1")
     expected = ["1", "1", "2", "2", "2", "3", "3", "3", "4", "4"]
     ips = [w.metadata.node_ip for w in wg.workers]
     assert (
@@ -201,7 +201,7 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
                 expected local rank.
         """
         wg = create_worker_group(pids=pids, ips=ips, gpu_ids=gpu_ids)
-        wg.group_workers_by_ip()
+        wg.sort_workers_by_ip_and_gpu_id()
 
         # CPU workers do not need rank checking
         if not expected_local_ranks:
