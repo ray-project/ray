@@ -2463,6 +2463,12 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
 blocking_get_inside_async_warned = False
 
 
+def release(object_ref):
+    worker = global_worker
+    worker.check_connected()
+    worker.core_worker.get_release([object_ref])
+
+
 @overload
 def get(
     object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None

@@ -98,8 +98,9 @@ struct ObjectInUseEntry {
   bool is_shared = false;
   /// For shared objects only.
   /// The last version that we read or wrote. To read or write again, we must
-  /// read a newer version than this.
-  int64_t last_version = 0;
+  /// pass a newer version than this.
+  int64_t next_version_to_read = 1;
+  int64_t next_version_to_write = 1;
 };
 
 class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Impl> {
@@ -151,13 +152,15 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
              ObjectBuffer *object_buffers,
              bool is_from_worker);
 
+  Status GetRelease(const ObjectID &object_id);
+
   Status Release(const ObjectID &object_id);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
   Status Abort(const ObjectID &object_id);
 
-  Status Seal(const ObjectID &object_id, int64_t max_readers = 0);
+  Status Seal(const ObjectID &object_id, int64_t max_readers = 1);
 
   Status Delete(const std::vector<ObjectID> &object_ids);
 
@@ -398,9 +401,8 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
     if (entry->is_sealed && entry->is_shared) {
       RAY_LOG(DEBUG) << "Create shared object " << object_id << " exists";
       // Wait for no readers.
-      entry->last_version++;
       auto plasma_header = GetPlasmaObjectHeader(entry->object);
-      plasma_header->WriteAcquire(entry->last_version);
+      plasma_header->WriteAcquire(entry->next_version_to_write);
 
       // Prepare the data buffer and return to the client instead of sending
       // the IPC to object store.
@@ -455,9 +457,8 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
     auto &entry = object_entry->second;
     RAY_CHECK(!entry->is_sealed);
     auto plasma_header = GetPlasmaObjectHeader(entry->object);
-    entry->last_version++;
     // The corresponding WriteRelease takes place in Seal.
-    plasma_header->WriteAcquire(entry->last_version);
+    plasma_header->WriteAcquire(entry->next_version_to_write);
   }
 
   return status;
@@ -523,8 +524,12 @@ Status PlasmaClient::Impl::GetBuffers(
       all_present = false;
     } else {
       PlasmaObject *object = &object_entry->second->object;
-      std::shared_ptr<Buffer> physical_buf;
 
+      // Wait for the object to become ready to read.
+      auto plasma_header = GetPlasmaObjectHeader(*object);
+      object_entry->second->next_version_to_read = plasma_header->ReadAcquire(object_entry->second->next_version_to_read);
+
+      std::shared_ptr<Buffer> physical_buf;
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
         physical_buf = std::make_shared<SharedMemoryBuffer>(
@@ -635,16 +640,24 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
       &object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0], is_from_worker);
 }
 
-//Status PlasmaClient::GetSharedObjectAcquire(const ObjectID &object_id) {
-//  auto object_entry = objects_in_use_.find(object_id);
-//  RAY_CHECK(object_entry != objects_in_use_.end());
-//
-//  return Status::OK();
-//}
-//
-//Status PlasmaClient::GetSharedObjectRelease(const ObjectID &object_id) {
-//  return Status::OK();
-//}
+Status PlasmaClient::Impl::GetRelease(const ObjectID &object_id) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  auto object_entry = objects_in_use_.find(object_id);
+  if (object_entry == objects_in_use_.end()) {
+    return Status::ObjectNotFound("ray.release() called on an object that is not in scope");
+  }
+
+  auto &entry = object_entry->second;
+  RAY_CHECK(entry->is_sealed && entry->is_shared) << "sealed? " << entry->is_sealed << " shared " << entry->is_shared;
+
+  RAY_LOG(DEBUG) << "Release shared object " << object_id;
+  auto plasma_header = GetPlasmaObjectHeader(entry->object);
+  plasma_header->ReadRelease(entry->next_version_to_read);
+  // The next read needs to read at least this version.
+  entry->next_version_to_read++;
+
+  return Status::OK();
+}
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
@@ -741,7 +754,8 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id, int64_t max_readers) 
 
   auto plasma_header = GetPlasmaObjectHeader(object_entry->second->object);
   plasma_header->WriteRelease(
-      /*write_version=*/object_entry->second->last_version, max_readers);
+      /*write_version=*/object_entry->second->next_version_to_write, max_readers);
+  object_entry->second->next_version_to_write++;
 
   if (max_readers != -1) {
     object_entry->second->is_shared = true;
@@ -932,6 +946,10 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                          std::vector<ObjectBuffer> *object_buffers,
                          bool is_from_worker) {
   return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
+}
+
+Status PlasmaClient::GetRelease(const ObjectID &object_id) {
+  return impl_->GetRelease(object_id);
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) {

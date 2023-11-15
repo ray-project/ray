@@ -151,6 +151,8 @@ class CoreWorkerPlasmaStoreProvider {
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
+  Status GetRelease(const ObjectID &object_id);
+
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
   /// internally, never by user code.

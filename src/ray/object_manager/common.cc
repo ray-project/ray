@@ -30,15 +30,22 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version) {
     RAY_CHECK(pthread_cond_wait(&cond, &mut) == 0);
   }
 
+  num_readers_acquired = 0;
   RAY_LOG(DEBUG) << "WriteAcquire " << write_version;
-  RAY_CHECK(version + 1 == write_version);
+  RAY_CHECK(write_version > version) << version;
+  if (write_version != version + 1) {
+    RAY_LOG(WARNING) << "Write version " << write_version
+      << " is more than 1 greater than current version " << version
+      << ". Are you sure this is the only writer?";
+  }
+  version = write_version;
   RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
 }
 
 void PlasmaObjectHeader::WriteRelease(int64_t write_version, int64_t write_max_readers) {
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
 
-  RAY_CHECK(++version == write_version);
+  RAY_CHECK(version == write_version);
   RAY_LOG(DEBUG) << "WriteRelease " << write_version;
   max_readers = write_max_readers;
   num_reads_remaining = max_readers;
@@ -48,11 +55,12 @@ void PlasmaObjectHeader::WriteRelease(int64_t write_version, int64_t write_max_r
   RAY_CHECK(pthread_cond_broadcast(&cond) == 0);
 }
 
-void PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
+int64_t PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
+  RAY_LOG(DEBUG) << "ReadAcquire " << read_version;
 
   while (version < read_version) {
-    RAY_LOG(DEBUG) << "ReadAcquire " << read_version << " version is currently " << version;
+    RAY_LOG(DEBUG) << "ReadAcquire " << read_version << ", version is currently " << version;
     RAY_CHECK(pthread_cond_wait(&cond, &mut) == 0);
   }
 
@@ -60,12 +68,19 @@ void PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
     RAY_LOG(WARNING) << "Version " << version << " already exceeds version to read " << read_version;
   }
 
+  // TODO(swang): Plasma store currently uses ReadAcquire to
+  // wait for the object to become sealed.
+  // num_reads_remaining can be 0 because the plasma stores
+  // reads concurrently with other readers.
+  //RAY_CHECK(num_reads_remaining >= 0);
   num_readers_acquired++;
   if (max_readers != -1 && num_readers_acquired > max_readers) {
     RAY_LOG(WARNING) << num_readers_acquired << " readers acquired exceeds max readers " << max_readers;
   }
 
+  read_version = version;
   RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
+  return read_version;
 }
 
 void PlasmaObjectHeader::ReadRelease(int64_t read_version) {

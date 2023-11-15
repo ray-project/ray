@@ -10,17 +10,20 @@ class Reader:
     def __init__(self, refs):
         self.ref = refs[0]
 
-    def read(self):
-        while True:
+    def read(self, use_bytes):
+        for i in range(10_000):
             arr = ray.get(self.ref)
-            # do something.
-            print(arr[0])
+            #arr = worker.core_worker.get_if_local(object_refs)
+            if use_bytes:
+                assert int.from_bytes(arr, "little") == i
+            else:
+                print("remote", arr[0])
+                assert arr[0] == i
 
             # Signal to writer that they can write again.
-            #ray.release(self.ref)
+            ray.release(self.ref)
 
 
-@ray.remote
 def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, read_remote=False):
     if use_bytes:
         arr = b"binary"
@@ -33,8 +36,8 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
         assert ray.get(ref) == arr
     else:
         assert np.array_equal(ray.get(ref), arr)
-    print("starting...")
 
+    remote_read_done = None
     if reuse_object_ref:
         # Keep the plasma object pinned.
         # TODO(swang): Pin the object properly in plasma store.
@@ -43,9 +46,12 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
 
         if read_remote:
             reader = Reader.remote([ref])
-            reader.read.remote()
+            remote_read_done = reader.read.remote(use_bytes)
     else:
         assert not read_remote
+
+    ray.release(ref)
+    print("starting...")
 
     for _ in range(num_trials):
         start = time.time()
@@ -60,14 +66,31 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
             else:
                 ref = ray.put(arr)
             if read_local:
-                assert ray.get(ref)[0] == i
+                if use_bytes:
+                    assert int.from_bytes(ray.get(ref), "little") == i
+                else:
+                    assert ray.get(ref)[0] == i
+                ray.release(ref)
         end = time.time()
         print(f"done, tput: {10_000 / (end - start)} puts/s")
 
+    if remote_read_done is not None:
+        ray.get(remote_read_done)
+
 
 if __name__ == "__main__":
-    print("Dynamic ray.put")
-    ray.get(run.remote())
+    run_local = False
 
-    print("Reuse ray.put buffer")
-    ray.get(run.remote(reuse_object_ref=True))
+    if not run_local:
+        remote_run = ray.remote(run)
+        def run_fn(*args, **kwargs):
+            return ray.get(remote_run.remote(*args, **kwargs))
+        run = run_fn
+
+    #print("Dynamic ray.put")
+    #ray.get(run.remote())
+
+    #print("Reuse ray.put buffer")
+    #ray.get(run.remote(reuse_object_ref=True))
+
+    run(use_bytes=False, reuse_object_ref=True, read_remote=False, read_local=True)

@@ -215,6 +215,11 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   return Status::OK();
 }
 
+
+Status CoreWorkerPlasmaStoreProvider::GetRelease(const ObjectID &object_id) {
+  return store_client_.GetRelease(object_id);
+}
+
 Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
     const std::vector<ObjectID> &object_ids,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {

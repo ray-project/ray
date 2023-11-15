@@ -68,7 +68,7 @@ struct PlasmaObjectHeader {
   // Call after completing a write to signal to max_readers many readers.
   void WriteRelease(int64_t write_version, int64_t max_readers);
   // Blocks until the given version is ready to read.
-  void ReadAcquire(int64_t read_version);
+  int64_t ReadAcquire(int64_t read_version);
   // Finishes the read. If all reads are done, signals to the
   // writer. This is not necessary to call for objects that have
   // max_readers=-1.

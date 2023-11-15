@@ -82,6 +82,8 @@ class PlasmaClientInterface {
                      std::vector<ObjectBuffer> *object_buffers,
                      bool is_from_worker) = 0;
 
+  virtual Status GetRelease(const ObjectID &object_id) = 0;
+
   /// Seal an object in the object store. The object will be immutable after
   /// this
   /// call.
@@ -254,6 +256,8 @@ class PlasmaClient : public PlasmaClientInterface {
              int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers,
              bool is_from_worker);
+
+  Status GetRelease(const ObjectID &object_id);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.

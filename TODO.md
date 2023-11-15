@@ -9,6 +9,7 @@
 [ ] Harden shared-memory based Seal
     - [ ] edge case: object aborted/client dies while waiting for seal
     - [ ] fix plasma client ref counting
+    - [ ] disable ref counting for real
 [ ] Implement max readers=N semaphore pattern and test with ray.put/ray.get
     - Sender CoreWorker actor is the "writer"
     - Receiver CoreWorker actor(s) is the "reader"
