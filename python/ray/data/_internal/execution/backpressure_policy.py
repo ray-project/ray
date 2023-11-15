@@ -193,7 +193,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
     ) -> Dict["OpState", int]:
         max_blocks_to_read_per_op: Dict["OpState", int] = {}
         downstream_num_active_tasks = 0
-        for op, state in list(topology.items())[::-1]:
+        for op, state in reversed(topology.items()):
             max_blocks_to_read_per_op[state] = (
                 self._max_num_blocks_in_op_output_queue - state.outqueue_num_blocks()
             )

@@ -69,7 +69,6 @@ steps:
     tags:
       - python_dependencies
       - docker
-      - core_cpp
       - oss
     instance_type: medium
     commands:
@@ -118,7 +117,6 @@ steps:
     tags:
       - python_dependencies
       - docker
-      - core_cpp
       - oss
     instance_type: medium
     commands:

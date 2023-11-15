@@ -1505,8 +1505,6 @@ def read_tfrecords(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset.
-            By default, this filters out any file paths whose file extension does not
-            match ``"*.tfrecords*"``.
         ignore_missing_paths:  If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
