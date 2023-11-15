@@ -17,3 +17,4 @@ flaky_tests:
   - //python/ray/tests:test_client_library_integration
   - //python/ray/tests:test_object_assign_owner_client_mode
   - //python/ray/workflow:tests/test_http_events_2
+  - //src/ray/common/test:ray_syncer_test
