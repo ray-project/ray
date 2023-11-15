@@ -53,7 +53,7 @@ void setFdCloseOnFork(int fd) {
   int flags = fcntl(fd, F_GETFD, 0);
   if (flags != -1) {
     fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
-    RAY_LOG(INFO) << "set FD_CLOEXEC to fd " << fd;
+    RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
   }
 }
 #endif
