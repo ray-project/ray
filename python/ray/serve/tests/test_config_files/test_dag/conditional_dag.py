@@ -92,14 +92,6 @@ class Adder:
 ORIGINAL_INCREMENT = 1
 ORIGINAL_FACTOR = 1
 
-# operation, amount_input = inp[0], inp[1]
-
-# multiplier = Multiplier.bind(ORIGINAL_FACTOR)
-# adder = Adder.bind(ORIGINAL_INCREMENT)
-# router = Router.bind(multiplier, adder)
-# amount = router.route.bind(operation, amount_input)
-# order = create_order.bind(amount)
-
 multiplier = Multiplier.bind(ORIGINAL_FACTOR)
 adder = Adder.bind(ORIGINAL_INCREMENT)
 serve_dag = Router.bind(multiplier, adder)
