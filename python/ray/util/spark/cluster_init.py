@@ -1456,7 +1456,7 @@ def serve_global_ray_cluster(
        as contrast, non-global Ray cluster can only be used by current notebook
        user.
      - It is up persistently without automatic shutdown.
-       On databricks notebook, can connect to the global cluster by calling
+     - On databricks notebook, you can connect to the global cluster by calling
        ``ray.init()`` without specifying its address, it will discover the global
        cluster automatically if it is up.
     """
