@@ -74,7 +74,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         db_api_entry = get_db_entry_point()
         if (
             ray_cluster_handler.autoscale
-            or os.environ.get(RAY_ON_SPARK_GLOBAL_MODE, 0) == "1"
+            or os.environ.get(RAY_ON_SPARK_GLOBAL_MODE, "0") == "1"
         ):
             # Disable auto shutdown if
             # 1) autoscaling enabled

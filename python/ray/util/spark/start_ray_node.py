@@ -45,9 +45,10 @@ if __name__ == "__main__":
         temp_dir = os.path.normpath(temp_dir)
     else:
         # This case is for global mode Ray on spark cluster
-        lock_file = "/tmp/ray_on_spark_tmp.lock"
+        temp_dir = os.path.join(os.environ.get("RAY_TMPDIR", "/tmp"), "ray")
 
     ray_cli_cmd = "ray"
+    lock_file = temp_dir + ".lock"
 
     lock_fd = os.open(lock_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
 
@@ -86,8 +87,13 @@ if __name__ == "__main__":
                 # start copy logs (including all local ray nodes logs) to destination.
                 if collect_log_to_path:
                     try:
+                        log_dir_prefix = os.path.basename(temp_dir)
+                        if log_dir_prefix == "ray":
+                            # global mode cluster case, append a timestamp to it to avoid
+                            # name conflict with last Ray global cluster log dir.
+                            log_dir_prefix = log_dir_prefix + f"-global-{int(time.time())}"
                         base_dir = os.path.join(
-                            collect_log_to_path, os.path.basename(temp_dir) + "-logs"
+                            collect_log_to_path, log_dir_prefix + "-logs"
                         )
                         # Note: multiple Ray node launcher process might
                         # execute this line code, so we set exist_ok=True here.
