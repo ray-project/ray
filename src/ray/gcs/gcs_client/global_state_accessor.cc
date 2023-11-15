@@ -105,31 +105,6 @@ std::vector<std::string> GlobalStateAccessor::GetAllTaskEvents() {
   return task_events;
 }
 
-std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
-  rpc::ResourceMap node_resource_map;
-  std::promise<void> promise;
-  auto on_done =
-      [&node_resource_map, &promise](
-          const Status &status,
-          const boost::optional<ray::gcs::NodeResourceInfoAccessor::ResourceMap>
-              &result) {
-        RAY_CHECK_OK(status);
-        if (result) {
-          auto result_value = result.get();
-          for (auto &data : result_value) {
-            (*node_resource_map.mutable_items())[data.first] = *data.second;
-          }
-        }
-        promise.set_value();
-      };
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(node_id, on_done));
-  }
-  promise.get_future().get();
-  return node_resource_map.SerializeAsString();
-}
-
 std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
   std::vector<std::string> available_resources;
   std::promise<bool> promise;

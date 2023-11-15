@@ -5,8 +5,6 @@ import fnmatch
 import io
 import re
 import tarfile
-import time
-import uuid
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
@@ -306,7 +304,7 @@ def _make_iterable(block: BlockAccessor):
 class WebDatasetDatasource(FileBasedDatasource):
     """A Datasource for WebDataset datasets (tar format with naming conventions)."""
 
-    _FILE_EXTENSION = "tar"
+    _FILE_EXTENSIONS = ["tar"]
 
     def __init__(
         self,
@@ -357,43 +355,3 @@ class WebDatasetDatasource(FileBasedDatasource):
             if self.decoder is not None:
                 sample = _apply_list(self.decoder, sample, default=_default_decoder)
             yield pd.DataFrame({k: [v] for k, v in sample.items()})
-
-    def _write_block(
-        self,
-        f: "pyarrow.NativeFile",
-        block: BlockAccessor,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        encoder: Optional[Union[bool, str, callable, list]] = True,
-        **kw,
-    ):
-        """Encode and write samples to a stream.
-
-        Args:
-            f: File descriptor to write to.
-            block: Data to be written.
-            writer_args_fn: Ignored. Defaults to lambda:{}.
-            encoder: (List of) encoder(s) to be applied to samples. Defaults to True.
-        """
-
-        stream = tarfile.open(fileobj=f, mode="w|")
-        samples = _make_iterable(block)
-        for sample in samples:
-            if not isinstance(sample, dict):
-                sample = sample.as_pydict()
-            if encoder is not None:
-                sample = _apply_list(encoder, sample, default=_default_encoder)
-            if "__key__" not in sample:
-                sample["__key__"] = uuid.uuid4().hex
-            key = sample["__key__"]
-            for k, v in sample.items():
-                if v is None or k.startswith("__"):
-                    continue
-                assert isinstance(v, bytes) or isinstance(v, str)
-                if not isinstance(v, bytes):
-                    v = v.encode("utf-8")
-                ti = tarfile.TarInfo(f"{key}.{k}")
-                ti.size = len(v)
-                ti.mtime = time.time()
-                ti.mode, ti.uname, ti.gname = 0o644, "data", "data"
-                stream.addfile(ti, io.BytesIO(v))
-        stream.close()
