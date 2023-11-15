@@ -439,8 +439,28 @@ class PPO(Algorithm):
                         worker_set=self.workers,
                         max_env_steps=self.config.train_batch_size,
                     )
+                # TEST
+                #import pickle
+                #import torch
+                #import os
+                #with open("train_batch.pkl", "wb") as file:
+                #    pickle.dump(train_batch, file)
+                #torch.save(self.workers.local_worker().policy_map["default_policy"].model.state_dict(), "model_weights.pth")
+                # END TEST
+
             # New Episode-returning EnvRunner API.
             else:
+                # TEST
+                #import pickle
+                #import torch
+                #import os
+                #from ray.rllib.utils.test_utils import check
+                #rw_path = "/Users/sven/ray_results/PPO_2023-11-15_13-28-16/PPO_CartPoleDebug_74001_00000_0_2023-11-15_13-28-16"
+                #with open(os.path.join(rw_path, "train_batch.pkl"), "rb") as file:
+                #    rw_train_batch = pickle.load(file)
+                #rw_state_dict = torch.load(os.path.join(rw_path, "model_weights.pth"))
+                #self.workers.local_worker().module.load_state_dict(rw_state_dict)
+                # END TEST
                 if self.workers.num_remote_workers() <= 0:
                     episodes: List[SingleAgentEpisode] = [
                         self.workers.local_worker().sample()
@@ -457,6 +477,9 @@ class PPO(Algorithm):
                 train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
                     postprocessed_episodes
                 )
+                #check(train_batch["advantages"], rw_train_batch["default_policy"]["advantages"], rtol=0.000001)
+                #check(train_batch["vf_preds"], rw_train_batch["default_policy"]["vf_preds"])
+                #check(train_batch["value_targets"], rw_train_batch["default_policy"]["value_targets"])
 
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
