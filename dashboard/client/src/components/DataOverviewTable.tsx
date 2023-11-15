@@ -5,6 +5,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -35,7 +36,7 @@ const columns = [
   { label: "State", align: "center" },
   { label: "Rows Outputted" },
   {
-    label: "Memory Usage (Current / Max)",
+    label: "Memory Usage (current / max)",
     helpInfo: (
       <Typography>
         Amount of object store memory used by a dataset. Includes spilled
@@ -54,12 +55,12 @@ const columns = [
     ),
   },
   {
-    label: "CPU Usage (Current / Max)",
-    helpInfo: <Typography>Logical CPU usage in cores.</Typography>,
+    label: "Logical CPU Cores (current / max)",
+    align: "center",
   },
   {
-    label: "GPU Usage (Current / Max)",
-    helpInfo: <Typography>Logical GPU usage in cores.</Typography>,
+    label: "Logical GPU Cores (current / max)",
+    align: "center",
   },
   { label: "Start Time", align: "center" },
   { label: "End Time", align: "center" },
@@ -108,7 +109,7 @@ const DataOverviewTable = ({
           <StateCounter type="task" list={datasetList} />
         </div>
       </div>
-      <div className={classes.tableContainer}>
+      <TableContainer>
         <Table>
           <TableHead>
             <TableRow>
@@ -147,7 +148,7 @@ const DataOverviewTable = ({
             ))}
           </TableBody>
         </Table>
-      </div>
+      </TableContainer>
     </div>
   );
 };
@@ -204,7 +205,7 @@ const DataRow = ({
         {isDatasetRow && datasetMetrics.dataset}
         {isOperatorRow && operatorMetrics.operator}
       </TableCell>
-      <TableCell align="right" size={"small"}>
+      <TableCell align="right" style={{ width: 200 }}>
         <TaskProgressBar
           showLegend={false}
           numFinished={data.progress}
@@ -228,11 +229,11 @@ const DataRow = ({
       <TableCell align="right">
         {memoryConverter(Number(data.ray_data_spilled_bytes.max))}
       </TableCell>
-      <TableCell align="right">
+      <TableCell align="center" style={{ width: 200 }}>
         {data.ray_data_cpu_usage_cores.value}/
         {data.ray_data_cpu_usage_cores.max}
       </TableCell>
-      <TableCell align="right">
+      <TableCell align="center" style={{ width: 200 }}>
         {data.ray_data_gpu_usage_cores.value}/
         {data.ray_data_gpu_usage_cores.max}
       </TableCell>
