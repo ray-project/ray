@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 class CSVDatasource(FileBasedDatasource):
     """CSV datasource, for reading and writing CSV files."""
 
-    _FILE_EXTENSION = "csv"
+    _FILE_EXTENSIONS = ["csv"]
 
     def __init__(
         self,
