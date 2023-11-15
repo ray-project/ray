@@ -438,8 +438,10 @@ class ReporterAgent(
                     name=pynvml.nvmlDeviceGetName(gpu_handle),
                     uuid=pynvml.nvmlDeviceGetUUID(gpu_handle),
                     utilization_gpu=utilization,
-                    memory_used=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).used) // MB,
-                    memory_total=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).total) // MB,
+                    memory_used=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).used)
+                    // MB,
+                    memory_total=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).total)
+                    // MB,
                     processes_pids=processes_pids,
                 )
                 gpu_utilizations.append(info)
