@@ -248,7 +248,7 @@ METRICS_GAUGES = {
     ),
 }
 
-MiB = 1024 * 1024
+MB = 1024 * 1024
 
 # Types
 Percentage = int
@@ -397,7 +397,7 @@ class ReporterAgent(
     @staticmethod
     def _get_gpu_usage():
         global enable_gpu_usage_check
-        if pynvml is None or not enable_gpu_usage_check:
+        if not enable_gpu_usage_check:
             return []
         gpu_utilizations = []
         try:
@@ -424,7 +424,7 @@ class ReporterAgent(
                     processes_pids = [
                         ProcessGPUInfo(
                             pid=nv_process.pid,
-                            gpu_memory_usage=nv_process.usedGpuMemory // MiB
+                            gpu_memory_usage=nv_process.usedGpuMemory // MB
                             if nv_process.usedGpuMemory
                             else 0,
                         )
@@ -438,8 +438,8 @@ class ReporterAgent(
                     name=pynvml.nvmlDeviceGetName(gpu_handle),
                     uuid=pynvml.nvmlDeviceGetUUID(gpu_handle),
                     utilization_gpu=utilization,
-                    memory_used=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).used),
-                    memory_total=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).total),
+                    memory_used=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).used) // MB,
+                    memory_total=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).total) // MB,
                     processes_pids=processes_pids,
                 )
                 gpu_utilizations.append(info)
