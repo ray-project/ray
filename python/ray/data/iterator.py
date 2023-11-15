@@ -850,6 +850,7 @@ class DataIterator(abc.ABC):
         )
 
     def __del__(self):
+        # Clear metrics on deletion in case the iterator was not fully consumed.
         StatsManager.clear_stats_actor_iter_metrics(
             {"dataset": self._get_dataset_tag()}
         )
