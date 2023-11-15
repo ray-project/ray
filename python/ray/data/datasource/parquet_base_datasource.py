@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class ParquetBaseDatasource(FileBasedDatasource):
     """Minimal Parquet datasource, for reading and writing Parquet files."""
 
-    _FILE_EXTENSION = "parquet"
+    _FILE_EXTENSIONS = ["parquet"]
 
     def __init__(
         self,

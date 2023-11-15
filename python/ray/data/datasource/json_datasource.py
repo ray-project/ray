@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 class JSONDatasource(FileBasedDatasource):
     """JSON datasource, for reading and writing JSON and JSONL files."""
 
-    _FILE_EXTENSION = ["json", "jsonl"]
+    _FILE_EXTENSIONS = ["json", "jsonl"]
 
     def __init__(
         self,
