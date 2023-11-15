@@ -1,4 +1,4 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+cloud_id: cld_ywvPyX4hezrjv8RtrU28wTbr
 region: us-west-2
 
 max_workers: 1
@@ -20,3 +20,52 @@ aws:
       Tags:
         - Key: ttl-hours
           Value: '24'
+  NetworkInterfaces:
+    - Groups:
+      - sg-02dbb4c6957712ab8
+      SubnetId: subnet-06425628175889cdb
+      DeviceIndex: 0
+      InterfaceType: efa
+      NetworkCardIndex: 0
+    - Groups:
+      - sg-02dbb4c6957712ab8
+      SubnetId: subnet-06425628175889cdb
+      DeviceIndex: 1
+      InterfaceType: efa
+      NetworkCardIndex: 1
+    - Groups:
+      - sg-02dbb4c6957712ab8
+      SubnetId: subnet-06425628175889cdb
+      DeviceIndex: 1
+      InterfaceType: efa
+      NetworkCardIndex: 2
+    - Groups:
+      - sg-02dbb4c6957712ab8
+      SubnetId: subnet-06425628175889cdb
+      DeviceIndex: 1
+      InterfaceType: efa
+      NetworkCardIndex: 3
+    - Groups:
+      - sg-02dbb4c6957712ab8
+      SubnetId: subnet-06425628175889cdb
+      DeviceIndex: 1
+      InterfaceType: efa
+      NetworkCardIndex: 4
+    - Groups:
+      - sg-02dbb4c6957712ab8
+      SubnetId: subnet-06425628175889cdb
+      DeviceIndex: 1
+      InterfaceType: efa
+      NetworkCardIndex: 5
+    - Groups:
+      - sg-02dbb4c6957712ab8
+      SubnetId: subnet-06425628175889cdb
+      DeviceIndex: 1
+      InterfaceType: efa
+      NetworkCardIndex: 6
+    - Groups:
+      - sg-02dbb4c6957712ab8
+      SubnetId: subnet-06425628175889cdb
+      DeviceIndex: 1
+      InterfaceType: efa
+      NetworkCardIndex: 7
