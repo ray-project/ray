@@ -539,7 +539,7 @@ def read_bigquery(
     Returns:
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
         on the specified BigQuery dataset.
-    """
+    """  # noqa: E501
     datasource = BigQueryDatasource(project_id=project_id, dataset=dataset, query=query)
     return read_datasource(
         datasource,

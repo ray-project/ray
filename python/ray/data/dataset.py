@@ -3393,7 +3393,7 @@ class Dataset:
                 The dataset is created if it doesn't already exist. The table_id is
                 overwritten if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-        """
+        """  # noqa: E501
         datasink = _BigQueryDatasink(project_id, dataset)
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
