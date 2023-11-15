@@ -69,7 +69,7 @@ class RuntimeEnvContext:
 
         default_worker_path = self.container.get("worker_path")
         if self.container and default_worker_path:
-            logger.info(
+            logger.debug(
                 f"Changing the default worker path from {passthrough_args[0]} to "
                 f"{default_worker_path}."
             )
@@ -90,7 +90,7 @@ class RuntimeEnvContext:
                 + " "
                 + command_str
             )
-        logger.info(f"Exec'ing worker with command: {command_str}")
+        logger.debug(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
             cmd = [*self.command_prefix, executable, *passthrough_args]
             subprocess.Popen(cmd, shell=True).wait()

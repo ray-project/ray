@@ -25,27 +25,17 @@ class ContainerManager:
 
         context.container = runtime_env["container"]
 
-        container_driver = runtime_env["container"].get("driver", "nerdctl")
-
         container_command = [
-            container_driver,
+            "podman",
             "run",
             "-v",
             self._ray_tmp_dir + ":" + self._ray_tmp_dir,
+            "--cgroup-manager=cgroupfs",
             "--network=host",
             "--pid=host",
+            "--ipc=host",
+            "--user=root",
         ]
-        if container_driver == "podman":
-            container_command[0] = "sudo podman"
-            container_command.append("--ipc=host")
-            container_command.append("--user=root")
-            container_command.append("--cgroup-manager=cgroupfs")
-        elif container_driver == "docker":
-            container_command.append("--ipc=host")
-        elif container_driver == "nerdctl":
-            container_command[0] = "sudo nerdctl"
-            # container_command.append("--uts=host")
-            # container_command.append("--cgroupns=host")
 
         container_command.append("--env")
         container_command.append("RAY_RAYLET_PID=" + os.getenv("RAY_RAYLET_PID"))
