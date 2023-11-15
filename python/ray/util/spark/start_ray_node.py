@@ -41,14 +41,14 @@ if __name__ == "__main__":
         if arg.startswith(temp_dir_arg_prefix):
             temp_dir = arg[len(temp_dir_arg_prefix) :]
 
-    if temp_dir is None:
-        raise ValueError("Please explicitly set --temp-dir option.")
-
-    temp_dir = os.path.normpath(temp_dir)
+    if temp_dir is not None:
+        temp_dir = os.path.normpath(temp_dir)
+    else:
+        # This case is for global mode Ray on spark cluster
+        lock_file = "/tmp/ray_on_spark_tmp.lock"
 
     ray_cli_cmd = "ray"
 
-    lock_file = temp_dir + ".lock"
     lock_fd = os.open(lock_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
 
     # Mutilple ray nodes might start on the same machine, and they are using the

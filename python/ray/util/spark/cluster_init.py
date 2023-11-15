@@ -10,6 +10,7 @@ import logging
 import uuid
 import warnings
 import requests
+import fcntl
 from packaging.version import Version
 from typing import Optional, Dict, Type
 
@@ -32,9 +33,11 @@ from .utils import (
     gen_cmd_exec_failure_msg,
     calc_mem_ray_head_node,
     _wait_service_up,
+    modified_environ,
 )
 from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
+from threading import Event
 
 
 _logger = logging.getLogger("ray.util.spark")
@@ -47,6 +50,7 @@ MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
 RAY_ON_SPARK_START_RAY_PARENT_PID = "RAY_ON_SPARK_START_RAY_PARENT_PID"
+RAY_ON_SPARK_GLOBAL_MODE = "RAY_ON_SPARK_GLOBAL_MODE"
 
 
 def _check_system_environment():
@@ -90,6 +94,7 @@ class RayClusterOnSpark:
         start_hook,
         ray_dashboard_port,
         spark_job_server,
+        global_cluster_lock_fd,
     ):
         self.autoscale = autoscale
         self.address = address
@@ -101,6 +106,7 @@ class RayClusterOnSpark:
         self.start_hook = start_hook
         self.ray_dashboard_port = ray_dashboard_port
         self.spark_job_server = spark_job_server
+        self.global_cluster_lock_fd = global_cluster_lock_fd
 
         self.is_shutdown = False
         self.spark_job_is_canceled = False
@@ -211,6 +217,11 @@ class RayClusterOnSpark:
         if not self.is_shutdown:
             self.disconnect()
             os.environ.pop("RAY_ADDRESS", None)
+
+            if self.global_cluster_lock_fd is not None:
+                # release global mode cluster lock.
+                fcntl.flock(self.global_cluster_lock_fd, fcntl.LOCK_UN)
+
             if self.autoscale:
                 self.spark_job_server.shutdown()
             if cancel_background_job:
@@ -529,14 +540,49 @@ def _setup_ray_cluster(
 
     cluster_unique_id = uuid.uuid4().hex[:8]
 
-    if ray_temp_root_dir is None:
-        ray_temp_root_dir = start_hook.get_default_temp_dir()
-    ray_temp_dir = os.path.join(
-        ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
-    )
-    os.makedirs(ray_temp_dir, exist_ok=True)
-    object_spilling_dir = os.path.join(ray_temp_dir, "spill")
-    os.makedirs(object_spilling_dir, exist_ok=True)
+    if os.environ.get("RAY_ON_SPARK_GLOBAL_MODE", "0") == "1":
+        # global mode enabled
+        # for global mode, Ray always uses default temp dir
+        # so that local Ray client can discover it without specifying
+        # head node address.
+        if ray_temp_root_dir is not None:
+            raise ValueError(
+                "Ray on spark global mode cluster does not allow you to set "
+                "'ray_temp_root_dir' argument."
+            )
+
+        # We only allow user to launch one active Ray on spark global cluster
+        # at a time. So acquiring a global file lock before setting up a new
+        # Ray on spark global cluster.
+        global_cluster_lock_fd = os.open(
+            "/tmp/ray_on_spark_global_cluster.lock",
+            os.O_RDWR | os.O_CREAT | os.O_TRUNC
+        )
+
+        try:
+            # acquiring exclusive lock to ensure copy logs and removing dir safely.
+            fcntl.flock(global_cluster_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            # acquiring global lock failed.
+            raise ValueError(
+                "Acquiring global lock failed for setting up new global mode Ray on "
+                "spark cluster. If there is an active global mode Ray on spark "
+                "cluster, please shut down it before you create a new one."
+            )
+
+        ray_temp_dir = None
+        root_tmp_dir = os.environ.get("RAY_TMPDIR", "/tmp")
+        object_spilling_dir = os.path.join(root_tmp_dir, "ray", "ray_spill")
+        os.makedirs(object_spilling_dir, exist_ok=True)
+    else:
+        if ray_temp_root_dir is None:
+            ray_temp_root_dir = start_hook.get_default_temp_root_dir()
+        ray_temp_dir = os.path.join(
+            ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
+        )
+        os.makedirs(ray_temp_dir, exist_ok=True)
+        object_spilling_dir = os.path.join(ray_temp_dir, "spill")
+        os.makedirs(object_spilling_dir, exist_ok=True)
 
     head_node_options = _append_default_spilling_dir_config(
         head_node_options, object_spilling_dir
@@ -597,7 +643,6 @@ def _setup_ray_cluster(
             sys.executable,
             "-m",
             "ray.util.spark.start_ray_node",
-            f"--temp-dir={ray_temp_dir}",
             "--block",
             "--head",
             f"--node-ip-address={ray_head_ip}",
@@ -609,6 +654,8 @@ def _setup_ray_cluster(
             *dashboard_options,
             *_convert_ray_node_options(head_node_options),
         ]
+        if ray_temp_dir is not None:
+            ray_head_node_cmd.append(f"--temp-dir={ray_temp_dir}")
 
         _logger.info(f"Starting Ray head, command: {' '.join(ray_head_node_cmd)}")
 
@@ -1259,7 +1306,6 @@ def _start_ray_worker_nodes(
             sys.executable,
             "-m",
             "ray.util.spark.start_ray_node",
-            f"--temp-dir={ray_temp_dir}",
             f"--num-cpus={num_cpus_per_node}",
             "--block",
             f"--address={ray_head_ip}:{ray_head_port}",
@@ -1270,6 +1316,8 @@ def _start_ray_worker_nodes(
             f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
             *_convert_ray_node_options(worker_node_options),
         ]
+        if ray_temp_dir is not None:
+            ray_worker_node_cmd.append(f"--temp-dir={ray_temp_dir}")
 
         ray_worker_node_extra_envs = {
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
@@ -1391,6 +1439,34 @@ def shutdown_ray_cluster() -> None:
 
         _active_ray_cluster.shutdown()
         _active_ray_cluster = None
+
+
+@PublicAPI(stability="alpha")
+def serve_global_ray_cluster(
+    num_worker_nodes: int,
+    **kwargs,
+):
+    """
+    Set up and serve a global mode Ray on spark cluster.
+    The global Ray on spark cluster means:
+     - You can only create one active global Ray on spark cluster at a time.
+     - On databricks cluster, the global Ray cluster can be used by all users,
+       as contrast, non-global Ray cluster can only be used by current notebook
+       user.
+     - It is up persistently without automatic shutdown.
+       On databricks notebook, can connect to the global cluster by calling
+       ``ray.init()`` without specifying its address, it will discover the global
+       cluster automatically if it is up.
+    """
+    with modified_environ(RAY_ON_SPARK_GLOBAL_MODE="1"):
+        try:
+            setup_ray_cluster(
+                num_worker_nodes=num_worker_nodes,
+                **kwargs,
+            )
+            Event().wait()
+        finally:
+            shutdown_ray_cluster()
 
 
 @DeveloperAPI
