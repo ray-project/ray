@@ -304,7 +304,7 @@ def _make_iterable(block: BlockAccessor):
 class WebDatasetDatasource(FileBasedDatasource):
     """A Datasource for WebDataset datasets (tar format with naming conventions)."""
 
-    _FILE_EXTENSION = "tar"
+    _FILE_EXTENSIONS = ["tar"]
 
     def __init__(
         self,
