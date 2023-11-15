@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class TFRecordDatasource(FileBasedDatasource):
     """TFRecord datasource, for reading and writing TFRecord files."""
 
-    _FILE_EXTENSION = "tfrecords"
+    _FILE_EXTENSIONS = ["tfrecords"]
 
     def __init__(
         self,
