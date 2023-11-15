@@ -251,11 +251,11 @@ If your log processing tool is capable of capturing log records written to stder
 ```{admonition} Alert: this practice isn't recommended.
 :class: caution
 
-If `RAY_LOG_TO_STDERR=1` is set, Ray will not write logs to files.
-Consequently, this can cause some Ray features that rely on log files to malfunction.
-For instance, {ref}`worker log redirection to driver <log-redirection-to-driver>` will not work.
-If these features are required, consider using the {ref}`Fluent Bit solution <kuberay-fluentbit>` mentioned above.
-For clusters on VMs, do not redirect logs to stderr. Instead, follow {ref}`this guide <vm-logging>` to persist logs.
+If `RAY_LOG_TO_STDERR=1` is set, Ray doesn't write logs to files.
+Consequently, this behavior can cause some Ray features that rely on log files to malfunction.
+For instance, {ref}`worker log redirection to driver <log-redirection-to-driver>` doesn't work if you redirect Ray logs to stderr.
+If you need these features, consider using the {ref}`Fluent Bit solution <kuberay-fluentbit>` mentioned above.
+For clusters on VMs, don't redirect logs to stderr. Instead, follow {ref}`this guide <vm-logging>` to persist logs.
 ```
 
 Redirecting logging to stderr also prepends a `({component})` prefix, for example, `(raylet)`, to each log record message.
@@ -287,8 +287,8 @@ Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` o
   :::
 
   :::{tab-item} KubeRay
-  Set environment variable `RAY_LOG_TO_STDERR` to `1` in the Ray container of each Ray Pod.
-  See this [example YAML file](https://gist.github.com/kevin85421/3d676abae29ebd5677428ddbbd4c8d74) as a reference.
+  Set the `RAY_LOG_TO_STDERR` environment variable to `1` in the Ray container of each Ray Pod.
+  Use this [example YAML file](https://gist.github.com/kevin85421/3d676abae29ebd5677428ddbbd4c8d74) as a reference.
   :::
 
 
