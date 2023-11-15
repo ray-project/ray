@@ -469,6 +469,88 @@ class MultiAgentEpisode:
             else:
                 if not isinstance(indices, list):
                     indices = [indices]
+
+            # Check now, if one of these indices is after the last recorded reward,
+            # i.e. the last timestep in the global timestep mapping.
+            # Buffered rewards are always partial (i.e. orphane, without an
+            # observation, sometimes with an action).
+            # A couple of points have to be met for a full reward buffer:
+            #   1. Either there was no initial observation, yet.
+            #       - Then `global_t_to_local_t` is empty, `global_action_t`
+            #         is empty, but `partial_rewards_t` is filled and the buffer.
+            #   2. There was an action with a reward at a timestep, but the next
+            #      observation is missing.
+            #       - Then there must be timesteps in `partial_rewards_t` that are
+            #         larger than `global_t_to_local_t[agent_id][-1]`.
+            #   3. There was neither an observation nor an action.
+            #       - Then there must be timesteps in `partial_rewards_t` that are
+            #         larger than `global_t_to_local_t[agent_id][-1]`.
+            for agent_id, agent_global_t_to_local_t in self.global_t_to_local_t.items():
+                # If the global timestep mapping exists at least the initial
+                # observation for the agent is in it.
+                if agent_global_t_to_local_t:
+                    # Accumulate the partial rewards between the last timestep smaller
+                    # than an index and the index.
+                    if len(agent_global_t_to_local_t[-1]) == len(
+                        self.global_actions_t[agent_id]
+                    ):
+                        # TODO (simon): If truely `partial` use only the rewards at
+                        # index in indices.
+                        # We request only the indices at or after the last observation.
+                        indices_at_or_after_last_obs = [
+                            idx
+                            for idx in indices
+                            if idx >= agent_global_t_to_local_t[-1]
+                        ]
+                        # TODO (simon): Create find_indices_between_equal().
+                        # Also, we add up only the rewards received after or at the last
+                        # observation.
+                        reward_after_last_obs_index = min(
+                            self.partial_rewards_t[agent_id].find_indices_right_equal(
+                                agent_global_t_to_local_t[-1]
+                            )
+                        )
+                        buffered_rewards = [
+                            sum(
+                                self.partial_rewards[agent_id][
+                                    self.partial_rewards_t[
+                                        reward_after_last_obs_index:
+                                    ].find_indices_left_equal(idx)
+                                ]
+                            )
+                            for idx in indices_at_or_after_last_obs
+                        ]
+                # There has been no initial observation for the agent, yet.
+                else:
+                    # If the agent got partial rewards before its initial observation
+                    # sum them up towards each requested index, e.g. `indices=[1, 3, 4]`
+                    # and `partial_rewards_t[agent_id]=[0, 1, 4, 5, 6]`, and rewards of
+                    # `1.0` at each index, `buffered_rewards[agent_id]=[2, 2, 3]`
+                    # TODO (sven): We could also consider summing partial rewards up to
+                    # the last one before the smallest greater index in `indices` (the
+                    # requested ones). I decided otherwise as assignment plays a role
+                    # in RL and somehow the chosen form here appears more correct and
+                    # natural.
+                    if self.partial_rewards_t[agent_id] and self.partial_rewards_t[
+                        agent_id
+                    ].find_indices_left_equal(max(indices)):
+                        # TODO (simon): If we use this more often, refactor.
+                        buffered_rewards[agent_id] = [
+                            sum(
+                                self.partial_rewards[agent_id][
+                                    min(
+                                        self.partial_rewards_t[
+                                            agent_id
+                                        ].find_indices_left_equal(idx)
+                                    ) :
+                                ]
+                            )
+                            for idx in indices
+                        ]
+                    # This agent has not yet any recorded rewards.
+                    else:
+                        buffered_rewards[agent_id] = []
+
             # Check now, if one of these indices is the last in the global
             # action timestep mapping.
             for agent_id, agent_global_action_t in self.global_actions_t.items():
@@ -1060,9 +1142,7 @@ class MultiAgentEpisode:
             if self.global_t_to_local_t[agent_id]:
                 # The successor episode only need the partial rewards that
                 # have not yet recorded in the `SingleAgentEpisode`.
-                indices_to_keep = self.partial_rewards_t[
-                    agent_id
-                ].find_indices_with_greater_values(
+                indices_to_keep = self.partial_rewards_t[agent_id].find_indices_right(
                     self.global_t_to_local_t[agent_id][-1],
                 )
             # Otherwise, use the partial rewards timestep mapping.
@@ -1650,6 +1730,19 @@ class _IndexMapping(list):
     See for example `MultiAgentEpisode.get_observations()`.
     """
 
+    def __init__(self, *args, **kwargs):
+        """Initializes and `_IndexMapping` instance."""
+
+        super(_IndexMapping, self).__init__(*args, **kwargs)
+
+    def __getitem__(self, key):
+        """Gets the value at an index.
+
+        This ensures that slicing results again in an `_IndexMapping`.
+        """
+
+        return _IndexMapping(list.__getitem__(self, key))
+
     def find_indices(self, indices_to_find: List[int], shift: int = 0):
         """Returns global timesteps at which an agent stepped.
 
@@ -1673,13 +1766,47 @@ class _IndexMapping(list):
                 indices.append(self.index(num) + shift)
         return indices
 
-    def find_indices_with_greater_values(self, threshold, shift: bool = 0):
+    def find_indices_right(self, threshold: int, shift: bool = 0):
         indices = []
         for num in reversed(self):
             # To avoid duplicate indices in rare cases we have to test
             # for positive values. Note, `shift` could be negative.
-            if num <= threshold or self.index(num) + shift < 0:
+            if num <= threshold:
+                # `_IndexMapping` is always ordered. Avoid to run through
+                # all timesteps (could be thousands).
                 break
+            # Avoid negative indices, but as list is reversed: continue.
+            elif self.index(num) + shift < 0:
+                continue
             else:
                 indices.append(max(self.index(num) + shift, 0))
         return list(reversed(indices))
+
+    def find_indices_right_equal(self, threshold: int, shift: bool = 0):
+        indices = []
+        for num in reversed(self):
+            # To avoid duplicate indices in rare cases we have to test
+            # for positive values. Note, `shift` could be negative.
+            if num < threshold:
+                # `_IndexMapping` is always ordered. Avoid to run through
+                # all timesteps (could be thousands).
+                break
+            # Avoid negative indices, but as list is reversed: continue.
+            elif self.index(num) + shift < 0:
+                continue
+            else:
+                indices.append(max(self.index(num) + shift, 0))
+        return list(reversed(indices))
+
+    def find_indices_left_equal(
+        self, threshold: Union[int, List[int]], shift: bool = 0
+    ):
+        indices = []
+        for num in self:
+            if num > threshold or (self.index(num) + shift) < 0:
+                # `_IndexMapping` is always ordered. Avoid to run through
+                # all timesteps (could be thousands).
+                break
+            else:
+                indices.append(self.index(num))
+        return indices
