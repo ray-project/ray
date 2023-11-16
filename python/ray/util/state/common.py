@@ -743,6 +743,8 @@ class TaskState(StateSchema):
     task_log_info: Optional[dict] = state_column(detail=True, filterable=False)
     #: Task error detail info.
     error_message: Optional[str] = state_column(detail=True, filterable=False)
+    # Is task paused by the debugger
+    is_debugger_paused: Optional[bool] = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1557,7 +1559,14 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
         (
             state_updates,
-            ["node_id", "worker_id", "task_log_info", "actor_repr_name", "worker_pid"],
+            [
+                "node_id",
+                "worker_id",
+                "task_log_info",
+                "actor_repr_name",
+                "worker_pid",
+                "is_debugger_paused",
+            ],
         ),
     ]
     for src, keys in mappings:
