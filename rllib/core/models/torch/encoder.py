@@ -285,7 +285,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             bias=config.use_bias,
         )
 
-        self.state_in_out_spec = {
+        self._state_in_out_spec = {
             "h": TensorSpec(
                 "b, l, d",
                 d=self.config.hidden_dim,
@@ -300,16 +300,17 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             ),
         }
 
-
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict({
-            # b, t for batch major; t, b for time major.
-            SampleBatch.OBS: TensorSpec(
-                "b, t, d", d=self.config.input_dims[0], framework="torch"
-            ),
-            STATE_IN: self.state_in_out_spec,
-        })
+        return SpecDict(
+            {
+                # b, t for batch major; t, b for time major.
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d", d=self.config.input_dims[0], framework="torch"
+                ),
+                STATE_IN: self._state_in_out_spec,
+            }
+        )
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
@@ -318,7 +319,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, t, d", d=self.config.output_dims[0], framework="torch"
                 ),
-                STATE_OUT: self.state_in_out_spec,
+                STATE_OUT: self._state_in_out_spec,
             }
         )
 

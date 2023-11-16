@@ -206,15 +206,17 @@ def flatten_to_single_ndarray(input_):
 
 
 @DeveloperAPI
-def batch(list_of_structs, individual_items_already_have_batch_1: bool = False):
-    """Converts input from a list of (nested) structs to (nested) struct of batches.
+def batch(
+    list_of_structs: List[Any],
+    individual_items_already_have_batch_1: bool = False,
+):
+    """Converts input from a list of (nested) structs to a (nested) struct of batches.
 
-    Input: Batch (list) of structs (each of these structs representing a
-        single item).
+    Input: List of structs (each of these structs representing a single batch item).
         [
-            {"a": 1, "b": (4, 7.0)},  <- item 1
-            {"a": 2, "b": (5, 8.0)},  <- item 2
-            {"a": 3, "b": (6, 9.0)},  <- item 3
+            {"a": 1, "b": (4, 7.0)},  <- batch item 1
+            {"a": 2, "b": (5, 8.0)},  <- batch item 2
+            {"a": 3, "b": (6, 9.0)},  <- batch item 3
         ]
 
     Output: Struct of different batches (each batch has size=3 b/c there were 3 items
@@ -225,19 +227,24 @@ def batch(list_of_structs, individual_items_already_have_batch_1: bool = False):
         }
 
     Args:
-        list_of_structs: The list of rows. Each item
-            in this list represents a single (maybe complex) struct.
+        list_of_structs: The list of (possibly nested) structs. Each item
+            in this list represents a single batch item.
         individual_items_already_have_batch_1: True, if the individual items in
             `list_of_structs` already have a batch dim (of 1). In this case, we will
-            concatenate (instead of stack) at the end.
+            concatenate (instead of stack) at the end. In the example above, this would
+            look like this: Input: [{"a": [1], "b": ([4], [7.0])}, ...] -> Output: same
+            as in above example.
 
     Returns:
-        The struct of component batches. Each leaf item
-        in this struct represents the batch for a single component
-        (in case struct is tuple/dict). Alternatively, a simple batch of
-        primitives (non tuple/dict) might be returned.
+        The struct of component batches. Each leaf item in this struct represents the
+        batch for a single component (in case struct is tuple/dict). If the input is a
+        simple list of primitive items, e.g. a list of floats, a np.array of floats
+        will be returned.
     """
     flat = item = None
+
+    if not list_of_structs:
+        raise ValueError("Input `list_of_structs` does not contain any items.")
 
     for item in list_of_structs:
         flattened_item = tree.flatten(item)
@@ -280,8 +287,8 @@ def unbatch(batches_struct):
             primitives (non tuple/dict).
 
     Returns:
-        List[struct[components]]: The list of rows. Each item
-            in the returned list represents a single (maybe complex) struct.
+        The list of individual structs. Each item in the returned list represents a
+        single (maybe complex) batch item.
     """
     flat_batches = tree.flatten(batches_struct)
 
