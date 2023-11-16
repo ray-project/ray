@@ -430,9 +430,11 @@ bool LocalTaskManager::PoppedWorkerHandler(
 
   const auto &required_resource =
       task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
-  for (auto &entry : required_resource) { // it fails here
+  for (auto &entry : required_resource) {
+    scheduling::ResourceID resource_id(entry.first);
     if (!cluster_resource_scheduler_->GetLocalResourceManager().ResourcesExist(
-            scheduling::ResourceID(entry.first)) && entry.first != "gpu_memory") {
+            resource_id) &&
+        !resource_id.IsRequestOnlyResource()) {
       RAY_CHECK(task.GetTaskSpecification().PlacementGroupBundleId().first !=
                 PlacementGroupID::Nil());
       RAY_LOG(DEBUG) << "The placement group: "
