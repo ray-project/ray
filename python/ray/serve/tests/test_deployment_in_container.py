@@ -14,7 +14,7 @@ def check_application(app_handle: DeploymentHandle, expected: str):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def basic(ray_start_stop):
+def test_basic(ray_start_stop):
     @serve.deployment(
         runtime_env={
             "container": {

@@ -34,11 +34,13 @@ class Container:
         docker_tag: str,
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
+        privileged: bool = False,
     ) -> None:
         self.docker_tag = docker_tag
         self.volumes = volumes or []
         self.envs = envs or []
         self.envs += _DOCKER_ENV
+        self.privileged = privileged
 
     def run_script_with_output(self, script: List[str]) -> bytes:
         """
@@ -93,7 +95,6 @@ class Container:
             "NVIDIA_DISABLE_REQUIRE=1",
             "--volume",
             "/tmp/artifacts:/artifact-mount",
-            "--privileged",
         ]
         for volume in self.volumes:
             command += ["--volume", volume]
@@ -103,6 +104,8 @@ class Container:
             command += ["--cap-add", cap]
         if gpu_ids:
             command += ["--gpus", f'"device={",".join(map(str, gpu_ids))}"']
+        if self.privileged:
+            command += ["--privileged"]
         command += [
             "--workdir",
             "/rayci",

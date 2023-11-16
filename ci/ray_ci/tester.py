@@ -133,6 +133,13 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     ),
     default="optimized",
 )
+@click.option(
+    "--privileged",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Start container with privileged capabilities.",
+)
 def main(
     targets: List[str],
     team: str,
@@ -149,6 +156,7 @@ def main(
     test_arg: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    privileged: bool,
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -170,6 +178,7 @@ def main(
         build_name=build_name,
         build_type=build_type,
         skip_ray_installation=skip_ray_installation,
+        privileged=privileged,
     )
     if build_only:
         sys.exit(0)
@@ -202,6 +211,7 @@ def _get_container(
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
     skip_ray_installation: bool = False,
+    privileged: bool = False,
 ) -> TesterContainer:
     shard_count = workers * parallelism_per_worker
     shard_start = worker_id * parallelism_per_worker
@@ -215,6 +225,7 @@ def _get_container(
         gpus=gpus,
         skip_ray_installation=skip_ray_installation,
         build_type=build_type,
+        privileged=privileged,
     )
 
 

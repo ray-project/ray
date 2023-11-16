@@ -21,6 +21,7 @@ class TesterContainer(Container):
         shard_ids: Optional[List[int]] = None,
         skip_ray_installation: bool = False,
         build_type: Optional[str] = None,
+        privileged: bool = False,
     ) -> None:
         """
         :param docker_tag: Name of the wanda build to be used as test container.
@@ -29,7 +30,7 @@ class TesterContainer(Container):
         used to run tests in a distributed fashion.
         :param shard_ids: The list of shard ids to run. If none, run no shards.
         """
-        super().__init__(docker_tag, envs=test_envs)
+        super().__init__(docker_tag, envs=test_envs, privileged=privileged)
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
         self.test_envs = test_envs or []
