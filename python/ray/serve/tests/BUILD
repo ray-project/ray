@@ -177,7 +177,7 @@ py_test(
 )
 
 py_test(
-    name = "test_deployment_in_container.py",
+    name = "test_deployment_in_container",
     srcs = ["test_deployment_in_container.py"],
     size = "small",
     tags = ["exclusive", "team:serve"],
