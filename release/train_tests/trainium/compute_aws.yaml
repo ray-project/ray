@@ -21,51 +21,51 @@ aws:
         - Key: ttl-hours
           Value: '24'
   NetworkInterfaces:
-    - Groups:
-      - sg-02dbb4c6957712ab8
-      SubnetId: subnet-06425628175889cdb
-      DeviceIndex: 0
-      InterfaceType: efa
+    - DeviceIndex: 0
       NetworkCardIndex: 0
-    - Groups:
-      - sg-02dbb4c6957712ab8
       SubnetId: subnet-06425628175889cdb
-      DeviceIndex: 1
+      Groups:
+        - sg-02dbb4c6957712ab8
       InterfaceType: efa
+    - DeviceIndex: 1
       NetworkCardIndex: 1
-    - Groups:
-      - sg-02dbb4c6957712ab8
       SubnetId: subnet-06425628175889cdb
-      DeviceIndex: 1
+      Groups:
+        - sg-02dbb4c6957712ab8
       InterfaceType: efa
+    - DeviceIndex: 1
       NetworkCardIndex: 2
-    - Groups:
-      - sg-02dbb4c6957712ab8
       SubnetId: subnet-06425628175889cdb
-      DeviceIndex: 1
+      Groups:
+        - sg-02dbb4c6957712ab8
       InterfaceType: efa
+    - DeviceIndex: 1
       NetworkCardIndex: 3
-    - Groups:
-      - sg-02dbb4c6957712ab8
       SubnetId: subnet-06425628175889cdb
-      DeviceIndex: 1
+      Groups:
+        - sg-02dbb4c6957712ab8
       InterfaceType: efa
+    - DeviceIndex: 1
       NetworkCardIndex: 4
-    - Groups:
-      - sg-02dbb4c6957712ab8
       SubnetId: subnet-06425628175889cdb
-      DeviceIndex: 1
+      Groups:
+        - sg-02dbb4c6957712ab8
       InterfaceType: efa
+    - DeviceIndex: 1
       NetworkCardIndex: 5
-    - Groups:
-      - sg-02dbb4c6957712ab8
       SubnetId: subnet-06425628175889cdb
-      DeviceIndex: 1
+      Groups:
+        - sg-02dbb4c6957712ab8
       InterfaceType: efa
+    - DeviceIndex: 1
       NetworkCardIndex: 6
-    - Groups:
-      - sg-02dbb4c6957712ab8
       SubnetId: subnet-06425628175889cdb
-      DeviceIndex: 1
+      Groups:
+        - sg-02dbb4c6957712ab8
       InterfaceType: efa
+    - DeviceIndex: 1
       NetworkCardIndex: 7
+      SubnetId: subnet-06425628175889cdb
+      Groups:
+        - sg-02dbb4c6957712ab8
+      InterfaceType: efa
