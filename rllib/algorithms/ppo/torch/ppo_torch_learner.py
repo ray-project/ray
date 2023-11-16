@@ -50,7 +50,6 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # and for PPO's batched value function (and bootstrap value) computations,
         # for which we add an additional (artificial) timestep to each episode to
         # simplify the actual computation.
-
         if "loss_mask" in batch:
             num_valid = torch.sum(batch["loss_mask"])
 

@@ -1540,11 +1540,11 @@ class AlgorithmConfig(_Config):
                 and an initial ConnectorContextV2 object.
             episode_lookback_horizon: The amount of data (in timesteps) to keep from the
                 preceeding episode chunk when a new chunk (for the same episode) is
-                generated to continue sampling. The larger this value, the more a
-                env-to-module connector will be able to look back in time and compile
-                module input data from this information. For example, if your custom
-                env-to-module connector (and your custom RLModule) requires the previous
-                10 rewards as inputs, you must set this to at least 10.
+                generated to continue sampling at a later time. The larger this value,
+                the more an env-to-module connector will be able to look back in time
+                and compile RLModule input data from this information. For example, if
+                your custom env-to-module connector (and your custom RLModule) requires
+                the previous 10 rewards as inputs, you must set this to at least 10.
             use_worker_filter_stats: Whether to use the workers in the WorkerSet to
                 update the central filters (held by the local worker). If False, stats
                 from the workers will not be used and discarded.

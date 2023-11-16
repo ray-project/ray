@@ -202,19 +202,16 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions = to_env.pop(SampleBatch.ACTIONS)
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+
             ts += self.num_envs
 
             for i in range(self.num_envs):
-                # Extract state for vector sub_env.
-                #s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
                 # TODO (simon): This might be unfortunate if a user needs to set a
                 # certain env parameter during different episodes (for example for
                 # benchmarking).
                 extra_model_output = tree.map_structure(lambda s: s[i], to_env)
-                #for k, v in to_env.items():
-                #    extra_model_output[k] = v[i]
                 #convert_to_numpy(extra_model_output)
 
                 # In inference we have only the action logits.
@@ -227,16 +224,10 @@ class SingleAgentEnvRunner(EnvRunner):
                         actions[i],
                         rewards[i],
                         info=infos[i]["final_info"],
-                        #state=s,
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
                     )
-
-                    # Reset h-states to nthe model's intiial ones b/c we are starting a
-                    # new episode.
-                    #for k, v in self.module.get_initial_state().items():
-                    #    states[k][i] = convert_to_numpy(v)
 
                     done_episodes_to_return.append(
                         self._episodes[i].convert_lists_to_numpy(
@@ -253,7 +244,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         actions[i],
                         rewards[i],
                         info=infos[i],
-                        #state=s,
                         extra_model_output=extra_model_output,
                     )
 

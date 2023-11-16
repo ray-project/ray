@@ -20,7 +20,6 @@ class SingleAgentEpisode:
         actions: List[ActType] = None,
         rewards: List[SupportsFloat] = None,
         infos: List[Dict] = None,
-        #states=None,
         t_started: Optional[int] = None,
         is_terminated: bool = False,
         is_truncated: bool = False,
@@ -91,9 +90,6 @@ class SingleAgentEpisode:
             self.infos = [{} for _ in range(len(self.observations))]
         else:
             self.infos = infos
-        # h-states: t0 (in case this episode is a continuation chunk, we need to know
-        # about the initial h) to T.
-        self.states = None  #states
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
         # TODO (simon): Check again what are the consequences of this decision for
@@ -149,7 +145,6 @@ class SingleAgentEpisode:
         self.rewards.extend(episode_chunk.rewards)
         self.infos.extend(episode_chunk.infos)
         self.t = episode_chunk.t
-        #self.states = episode_chunk.states
 
         if episode_chunk.is_terminated:
             self.is_terminated = True
@@ -167,7 +162,6 @@ class SingleAgentEpisode:
         *,
         observation: ObsType,
         info: Optional[Dict] = None,
-        #initial_state=None,
         render_image: Optional[np.ndarray] = None,
     ) -> None:
         """Adds the initial data (after an `env.reset()`) to the episode.
@@ -176,11 +170,9 @@ class SingleAgentEpisode:
         a render image.
 
         Args:
-            initial_observation: Obligatory. The initial observation.
-            initial_info: Optional. The initial info.
-            #initial_state: Optional. The initial hidden state of a
-            #    model (`RLModule`) if the latter is stateful.
-            initial_render_image: Optional. An RGB uint8 image from rendering
+            observation: Obligatory. The initial observation.
+            info: Optional. The initial info.
+            render_image: Optional. An RGB uint8 image from rendering
                 the environment.
         """
         assert not self.is_done and not self.is_numpy
@@ -192,7 +184,6 @@ class SingleAgentEpisode:
         info = info or {}
 
         self.observations.append(observation)
-        #self.states = initial_state
         self.infos.append(info)
         if render_image is not None:
             self.render_images.append(render_image)
@@ -207,7 +198,6 @@ class SingleAgentEpisode:
         reward: SupportsFloat,
         *,
         info: Optional[Dict[str, Any]] = None,
-        #state=None,
         is_terminated: bool = False,
         is_truncated: bool = False,
         render_image: Optional[np.ndarray] = None,
@@ -225,8 +215,6 @@ class SingleAgentEpisode:
             action: The last action used by the agent.
             reward: The last reward received by the agent.
             info: The last info recevied from the environment.
-            #state: Optional. The last hidden state of the model (`RLModule` ).
-            #    This is only available, if the model is stateful.
             is_terminated: A boolean indicating, if the environment has been
                 terminated.
             is_truncated: A boolean indicating, if the environment has been
@@ -244,7 +232,6 @@ class SingleAgentEpisode:
         self.rewards.append(reward)
         info = info or {}
         self.infos.append(info)
-        #self.states = state
         self.t += 1
         if render_image is not None:
             self.render_images.append(render_image)
@@ -379,8 +366,6 @@ class SingleAgentEpisode:
                 k: self.get_extra_model_outputs(k, indices_rest)
                 for k in self.extra_model_outputs.keys()
             },
-            # Same state.
-            #states=self.states,
             # Continue with self's current timestep.
             t_started=self.t,
         )
@@ -443,9 +428,7 @@ class SingleAgentEpisode:
 
     def get_observations(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
         if indices is None:
-            # HACK: UNDO
-            slice_ = slice(0, -1)
-            #slice_ = slice(self._len_pre_buffer, -1)
+            slice_ = slice(self._len_pre_buffer, -1)
         elif isinstance(indices, list) and not self.is_numpy:
             return [self.observations[i] for i in indices]
         else:
@@ -458,9 +441,7 @@ class SingleAgentEpisode:
 
     def get_infos(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
         if indices is None:
-            # HACK: UNDO
-            slice_ = slice(0, -1)
-            #slice_ = slice(self._len_pre_buffer, -1)
+            slice_ = slice(self._len_pre_buffer, -1)
         elif isinstance(indices, int):
             slice_ = slice(indices, indices + 1)
         elif isinstance(indices, list):
@@ -471,9 +452,7 @@ class SingleAgentEpisode:
 
     def get_actions(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
         if indices is None:
-            # HACK: UNDO
-            slice_ = slice(0, None)
-            #slice_ = slice(self._len_pre_buffer, None)
+            slice_ = slice(self._len_pre_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
             return [self.actions[i] for i in indices]
         else:
@@ -482,9 +461,7 @@ class SingleAgentEpisode:
 
     def get_rewards(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
         if indices is None:
-            # HACK: UNDO
-            slice_ = slice(0, None)
-            #slice_ = slice(self._len_pre_buffer, None)
+            slice_ = slice(self._len_pre_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
             return [self.rewards[i] for i in indices]
         else:
@@ -495,9 +472,7 @@ class SingleAgentEpisode:
         assert key in self.extra_model_outputs
         data = self.extra_model_outputs[key]
         if indices is None:
-            # HACK: UNDO
-            slice_ = slice(0, None)
-            #slice_ = slice(self._len_pre_buffer, None)
+            slice_ = slice(self._len_pre_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
             return [data[i] for i in indices]
         else:
@@ -604,7 +579,6 @@ class SingleAgentEpisode:
                 "actions": self.actions,
                 "rewards": self.rewards,
                 "infos": self.infos,
-                "states": self.states,
                 "t_started": self.t_started,
                 "t": self.t,
                 "is_terminated": self.is_terminated,
@@ -631,12 +605,11 @@ class SingleAgentEpisode:
         eps.actions = state[2][1]
         eps.rewards = state[3][1]
         eps.infos = state[4][1]
-        eps.states = state[5][1]
-        eps.t_started = state[6][1]
-        eps.t = state[7][1]
-        eps.is_terminated = state[8][1]
-        eps.is_truncated = state[9][1]
-        eps.extra_model_outputs = {k: v for k, v in state[10:]}
+        eps.t_started = state[5][1]
+        eps.t = state[6][1]
+        eps.is_terminated = state[7][1]
+        eps.is_truncated = state[8][1]
+        eps.extra_model_outputs = {k: v for k, v in state[9:]}
         # Validate the episode to ensure complete data.
         eps.validate()
         return eps
