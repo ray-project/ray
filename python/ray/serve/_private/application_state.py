@@ -278,7 +278,10 @@ class ApplicationState:
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
     def apply_deployment_info(
-        self, deployment_name: str, deployment_info: DeploymentInfo
+        self,
+        deployment_name: str,
+        deployment_info: DeploymentInfo,
+        target_capacity: Optional[float] = None,
     ) -> None:
         """Deploys a deployment in the application."""
         route_prefix = deployment_info.route_prefix
@@ -289,7 +292,9 @@ class ApplicationState:
 
         deployment_id = DeploymentID(deployment_name, self._name)
 
-        self._deployment_state_manager.deploy(deployment_id, deployment_info)
+        self._deployment_state_manager.deploy(
+            deployment_id, deployment_info, target_capacity=target_capacity
+        )
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
@@ -565,7 +570,9 @@ class ApplicationState:
 
         return route_prefix, docs_path
 
-    def _reconcile_target_deployments(self) -> None:
+    def _reconcile_target_deployments(
+        self, target_capacity: Optional[float] = None
+    ) -> None:
         """Reconcile target deployments in application target state.
 
         Ensure each deployment is running on up-to-date info, and
@@ -585,14 +592,16 @@ class ApplicationState:
                 deploy_info.deployment_config.logging_config = (
                     self._target_state.config.logging_config
                 )
-            self.apply_deployment_info(deployment_name, deploy_info)
+            self.apply_deployment_info(
+                deployment_name, deploy_info, target_capacity=target_capacity
+            )
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
             if deployment_name not in self.target_deployments:
                 self._delete_deployment(deployment_name)
 
-    def update(self) -> bool:
+    def update(self, target_capacity: Optional[float] = None) -> bool:
         """Attempts to reconcile this application to match its target state.
 
         Updates the application status and status message based on the
@@ -617,7 +626,7 @@ class ApplicationState:
         # have info on what the target list of deployments is, so don't
         # perform reconciliation or check on deployment statuses
         if self._target_state.deployment_infos is not None:
-            self._reconcile_target_deployments()
+            self._reconcile_target_deployments(target_capacity=target_capacity)
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
 
@@ -832,11 +841,11 @@ class ApplicationStateManager:
             return {}
         return self._application_states[name].list_deployment_details()
 
-    def update(self):
+    def update(self, target_capacity: Optional[float] = None):
         """Update each application state"""
         apps_to_be_deleted = []
         for name, app in self._application_states.items():
-            ready_to_be_deleted = app.update()
+            ready_to_be_deleted = app.update(target_capacity=target_capacity)
             if ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
                 logger.debug(f"Application '{name}' deleted successfully.")

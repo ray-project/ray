@@ -1424,7 +1424,9 @@ class DeploymentState:
         )
         return max(1, int(rounded_adjusted_num_replicas))
 
-    def deploy(self, deployment_info: DeploymentInfo) -> bool:
+    def deploy(
+        self, deployment_info: DeploymentInfo, target_capacity: Optional[float] = None
+    ) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version and config,
@@ -1454,12 +1456,16 @@ class DeploymentState:
         autoscaling_config = deployment_info.deployment_config.autoscaling_config
         if autoscaling_config is not None:
             if autoscaling_config.initial_replicas is not None:
-                autoscaled_num_replicas = autoscaling_config.initial_replicas
+                self.get_capacity_adjusted_num_replicas(
+                    autoscaling_config.initial_replicas, target_capacity
+                )
             else:
                 if existing_info is not None:
                     autoscaled_num_replicas = self._target_state.num_replicas
                 else:
-                    autoscaled_num_replicas = autoscaling_config.min_replicas
+                    autoscaled_num_replicas = self.get_capacity_adjusted_num_replicas(
+                        autoscaling_config.min_replicas, target_capacity
+                    )
             deployment_info.set_autoscaled_num_replicas(autoscaled_num_replicas)
 
         self._set_target_state(deployment_info)
@@ -2443,7 +2449,10 @@ class DeploymentStateManager:
         return statuses
 
     def deploy(
-        self, deployment_id: DeploymentID, deployment_info: DeploymentInfo
+        self,
+        deployment_id: DeploymentID,
+        deployment_info: DeploymentInfo,
+        target_capacity: Optional[float] = None,
     ) -> bool:
         """Deploy the deployment.
 
@@ -2459,7 +2468,9 @@ class DeploymentStateManager:
             )
             self._record_deployment_usage()
 
-        return self._deployment_states[deployment_id].deploy(deployment_info)
+        return self._deployment_states[deployment_id].deploy(
+            deployment_info, target_capacity=target_capacity
+        )
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
         """Return list of deployment names in application."""
