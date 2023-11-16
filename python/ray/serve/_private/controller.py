@@ -13,6 +13,7 @@ from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
+    ApplicationStatus,
     DeploymentID,
     DeploymentInfo,
     EndpointInfo,
@@ -1032,6 +1033,19 @@ class ServeController:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
         return self.system_logging_config, log_file_path
+
+    def _running_apps_match_config(self, config: ServeDeploySchema):
+        config_apps = {app.name for app in config.applications}
+
+        running_apps = set()
+        for (
+            app_name,
+            status_info,
+        ) in self.application_state_manager.list_app_statuses().items():
+            if status_info.status != ApplicationStatus.DELETING:
+                running_apps.add(app_name)
+
+        return config_apps == running_apps
 
 
 @ray.remote(num_cpus=0)

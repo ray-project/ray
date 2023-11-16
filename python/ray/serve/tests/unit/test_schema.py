@@ -1,6 +1,5 @@
 import logging
 import sys
-from copy import deepcopy
 from typing import Dict, List, Optional, Union
 
 import pytest
@@ -11,12 +10,10 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
-    HTTPOptionsSchema,
     LoggingConfig,
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
-    applications_match,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
