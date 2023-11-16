@@ -5,7 +5,7 @@ import time
 ray.init()
 
 
-def read_and_release(ref, use_bytes, val=None):
+def read(ref, use_bytes, val=None):
     arr = ray.get(ref)
     #arr = worker.core_worker.get_if_local(object_refs)
     if val is not None:
@@ -13,9 +13,6 @@ def read_and_release(ref, use_bytes, val=None):
             assert int.from_bytes(arr, "little") == val
         else:
             assert arr[0] == val, (arr, val)
-
-    # Signal to writer that they can write again.
-    ray.release(ref)
 
 
 @ray.remote
@@ -28,22 +25,21 @@ class Reader:
         print("Object ref:", self.ref)
         self.use_bytes = use_bytes
 
-        read_and_release(self.ref, self.use_bytes)
+        read(self.ref, self.use_bytes)
+        ray.release(self.ref)
 
 
     def read(self, num_trials):
         for _ in range(num_trials):
             for i in range(10_000):
-                read_and_release(self.ref, self.use_bytes, val=i)
+                read(self.ref, self.use_bytes, val=i)
+                ray.release(self.ref)
 
 
 def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, read_remote=False):
     max_readers = -1
     if reuse_object_ref:
-        if read_local or read_remote:
-            max_readers = 1
-        else:
-            max_readers = 0
+        max_readers = 1
 
     if use_bytes:
         arr = b"binary"
@@ -66,11 +62,12 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
         assert not read_remote
 
     remote_read_done = None
-    if read_local:
-        ray.release(ref)
-    elif read_remote:
-        reader = Reader.remote([ref], use_bytes)
-        remote_read_done = reader.read.remote(num_trials)
+    if reuse_object_ref:
+        if read_remote:
+            reader = Reader.remote([ref], use_bytes)
+            remote_read_done = reader.read.remote(num_trials)
+        else:
+            ray.release(ref)
 
     print("starting...")
 
@@ -89,7 +86,9 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
                 ref = ray.put(arr, max_readers=max_readers)
 
             if read_local:
-                read_and_release(self.ref, use_bytes, val=i)
+                read(ref, use_bytes, val=i)
+            if reuse_object_ref and not read_remote:
+                ray.release(ref)
 
         end = time.time()
         print(f"done, tput: {10_000 / (end - start)} puts/s")
@@ -113,10 +112,10 @@ if __name__ == "__main__":
     print("Reuse ray.put buffer")
     run(reuse_object_ref=True)
 
-    print("Reuse ray.put buffer + local read+release (numpy)")
+    print("Reuse ray.put buffer + local read (numpy)")
     # TODO(swang): ray.get doesn't work on bytes? Getting deserialization
     # error.
     run(use_bytes=False, reuse_object_ref=True, read_local=True)
 
-    print("Reuse ray.put buffer + remote read+release (numpy)")
+    print("Reuse ray.put buffer + remote read (numpy)")
     run(use_bytes=False, reuse_object_ref=True, read_remote=True)
