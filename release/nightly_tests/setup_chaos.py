@@ -72,7 +72,7 @@ def main():
         lifetime="detached",
         no_start=args.no_start,
         max_to_kill=args.max_to_kill,
-        kill_delay=args.kill_delay,
+        kill_delay_s=args.kill_delay,
         task_filter=task_filter(args.task_names),
     )
     print(

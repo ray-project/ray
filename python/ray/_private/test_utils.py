@@ -1619,7 +1619,7 @@ def get_and_run_resource_killer(
     ray.get(resource_killer.ready.remote())
     print(f"{name} is ready now.")
     if not no_start:
-        time.sleep(kill_delay_s)
+        time.sleep(kill_delay)
         resource_killer.run.remote()
     return resource_killer
 
