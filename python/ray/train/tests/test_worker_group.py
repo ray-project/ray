@@ -173,7 +173,7 @@ def test_group_workers_by_ip(ray_start_2_cpus):
 
 def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
     def create_worker_group(pids, ips, gpu_ids):
-        wg = WorkerGroup(num_workers=len(ips))
+        wg = WorkerGroup(num_workers=2)
         wg.workers = [
             Worker(
                 actor=None,
@@ -203,10 +203,6 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
         wg = create_worker_group(pids=pids, ips=ips, gpu_ids=gpu_ids)
         wg.sort_workers_by_ip_and_gpu_id()
 
-        # CPU workers do not need rank checking
-        if not expected_local_ranks:
-            return
-
         # Build local ranks according to the logics in
         # `BackendExecutor._create_rank_world_size_mappings()`
         ip_dict = defaultdict(int)
@@ -223,11 +219,12 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
         f"Expect: {expected_local_ranks}\nGot: {local_ranks}"
 
     # Define the worker configurations for different scenarios
+    # For workers without GPU resources, their original order will be preserved
     cpu_workers_config = {
         "pids": [0, 1, 2, 3, 4, 5, 6, 7],
         "ips": ["2", "2", "1", "1", "2", "1", "1", "2"],
         "gpu_ids": [None] * 8,
-        "expected_local_ranks": None,  # No expected ranks for CPU workers
+        "expected_local_ranks": [0, 1, 0, 1, 2, 2, 3, 3],
     }
 
     gpu_workers_single_gpu_config = {
@@ -237,6 +234,7 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
         "expected_local_ranks": [1, 0, 3, 2, 2, 0, 1, 3],
     }
 
+    # For workers with multiple gpus, sort by their lowest gpu id
     gpu_workers_multiple_gpus_config = {
         "pids": [0, 1, 2, 3],
         "ips": ["2", "1", "1", "2"],
