@@ -1157,6 +1157,7 @@ def init(
     resources: Optional[Dict[str, float]] = None,
     labels: Optional[Dict[str, str]] = None,
     object_store_memory: Optional[int] = None,
+    _gpu_memory: Optional[int] = None,
     local_mode: bool = False,
     ignore_reinit_error: bool = False,
     include_dashboard: Optional[bool] = None,
@@ -1287,6 +1288,8 @@ def init(
         _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource in bytes rounded
             down to the nearest integer.
+        _gpu_memory: The gpu memory request in megabytes for this task/actor
+            from a single gpu, rounded down to the nearest integer.
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
@@ -1562,6 +1565,7 @@ def init(
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
             memory=_memory,
+            _gpu_memory=_gpu_memory,
             object_store_memory=object_store_memory,
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
@@ -1589,6 +1593,11 @@ def init(
             raise ValueError(
                 "When connecting to an existing cluster, num_cpus "
                 "and num_gpus must not be provided."
+            )
+        if _gpu_memory is not None:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "_gpu_memory must not be provided."
             )
         if resources is not None:
             raise ValueError(
@@ -3127,6 +3136,7 @@ def remote(
     resources: Dict[str, float] = Undefined,
     accelerator_type: str = Undefined,
     memory: Union[int, float] = Undefined,
+    _gpu_memory: Union[int, float] = Undefined,
     max_calls: int = Undefined,
     max_restarts: int = Undefined,
     max_task_retries: int = Undefined,
@@ -3296,6 +3306,8 @@ def remote(
             See :ref:`accelerator types <accelerator_types>`.
         memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
+        _gpu_memory: The gpu memory request in megabytes for this task/actor
+            from a single gpu, rounded down to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit

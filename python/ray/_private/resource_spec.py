@@ -223,7 +223,6 @@ class ResourceSpec(
                             * accelerator_manager.get_current_node_accelerator_memory()
                         )
                     )
-                    resources["gpu_memory"] = gpu_memory
                 else:
                     resources[accelerator_resource_name] = num_accelerators
 

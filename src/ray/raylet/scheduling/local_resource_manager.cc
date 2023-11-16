@@ -82,6 +82,9 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
   RAY_CHECK(task_allocation != nullptr);
   const ResourceSet adjusted_resource_request =
       local_resources_.ConvertRelativeResource(resource_request.GetResourceSet());
+  if (resource_request.GetResourceSet().Has(ResourceID::GPU_Memory()) && adjusted_resource_request.Get(ResourceID::GPU()) > 1) {
+    return false;
+  }
   // add adjust_gpu_memory here, added to NodeInstanceResourceSet
   auto allocation = local_resources_.available.TryAllocate(adjusted_resource_request);
   if (allocation) {
