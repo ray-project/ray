@@ -1,3 +1,4 @@
+import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import List
@@ -87,6 +88,55 @@ async def test_batch_generator_streaming_response_integration_test(serve_instanc
     for idx, response in enumerate(responses):
         assert response.status_code == 200
         assert response.text == "".join([prompt_prefix + str(idx)] * NUM_YIELDS)
+
+
+def test_batching_client_dropped_unary(serve_instance):
+    """TODO (genesu):
+
+    """
+    @serve.deployment
+    class ModelUnary:
+        @serve.batch(max_batch_size=5)
+        async def handle_batch(self, requests):
+            await asyncio.sleep(0.05)
+            return ["fake-response" for _ in range(len(requests))]
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+    serve.run(ModelUnary.bind())
+
+    url_unary = "http://0.0.0.0:8000/"
+    with pytest.raises(requests.exceptions.ReadTimeout):
+        requests.get(url_unary, timeout=0.01)
+
+    resp = requests.get(url_unary, timeout=None)
+    assert resp.text == "fake-response"
+
+
+def test_batching_client_dropped_streaming(serve_instance):
+    """TODO (genesu):
+
+    """
+    @serve.deployment
+    class ModelStreaming:
+        @serve.batch(max_batch_size=5)
+        async def handle_batch(self, requests):
+            await asyncio.sleep(0.05)
+            for i in range(10):
+                yield [str(i) for _ in range(len(requests))]
+
+        async def __call__(self, request):
+            return StreamingResponse(self.handle_batch(request))
+
+    serve.run(ModelStreaming.bind())
+
+    url_streaming = "http://0.0.0.0:8000/streaming"
+    with pytest.raises(requests.exceptions.ReadTimeout):
+        requests.get(url_streaming, timeout=0.001)
+
+    resp = requests.get(url_streaming, timeout=None)
+    assert resp.text == "0123456789"
 
 
 if __name__ == "__main__":
