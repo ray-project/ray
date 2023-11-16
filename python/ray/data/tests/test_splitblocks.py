@@ -7,7 +7,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_core_execution_metrics_equals,
-    get_initial_core_execution_metrics_cursor,
+    get_initial_core_execution_metrics_last_snapshot,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -29,30 +29,30 @@ def test_splitrange():
 
 
 def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
-    cursor = get_initial_core_execution_metrics_cursor()
+    last_snapshot = get_initial_core_execution_metrics_last_snapshot()
 
     ds = ray.data.read_csv("example://iris.csv", parallelism=1)
     materialized_ds = ds.materialize()
     assert materialized_ds.num_blocks() == 1
-    cursor = assert_core_execution_metrics_equals(
+    last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
                 "_execute_read_task_split": 1,
                 "_get_datasource_or_legacy_reader": 1,
             },
         ),
-        cursor,
+        last_snapshot,
     )
 
     materialized_ds = ds.map_batches(lambda x: x).materialize()
     assert materialized_ds.num_blocks() == 1
-    cursor = assert_core_execution_metrics_equals(
+    last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
                 "ReadCSV->MapBatches(<lambda>)": 1,
             },
         ),
-        cursor,
+        last_snapshot,
     )
 
     stats = materialized_ds.stats()
@@ -61,7 +61,7 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     ds = ray.data.read_csv("example://iris.csv", parallelism=10)
     assert ds.num_blocks() == 1
     assert ds.map_batches(lambda x: x).materialize().num_blocks() == 10
-    cursor = assert_core_execution_metrics_equals(
+    last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
                 "_get_datasource_or_legacy_reader": 1,
@@ -69,17 +69,17 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
                 "ReadCSV->SplitBlocks(10)": 1,
             },
         ),
-        cursor,
+        last_snapshot,
     )
 
     assert ds.materialize().num_blocks() == 10
-    cursor = assert_core_execution_metrics_equals(
+    last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
                 "_execute_read_task_split": 1,
             },
         ),
-        cursor,
+        last_snapshot,
     )
 
     ds = ray.data.read_csv("example://iris.csv", parallelism=100)

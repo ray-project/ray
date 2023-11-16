@@ -51,7 +51,7 @@ def test_shuffling_batcher():
         assert batcher._materialized_buffer_size() == materialized_buffer_size
 
     def next_and_check(
-        current_cursor,
+        current_last_snapshot,
         materialized_buffer_size,
         pending_buffer_size,
         should_batch_be_full=True,
