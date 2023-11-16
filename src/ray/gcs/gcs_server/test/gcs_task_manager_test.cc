@@ -155,6 +155,7 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
 
     request.mutable_filters()->set_exclude_driver(exclude_driver);
+
     task_manager->GetIoContext().dispatch(
         [this, &promise, &request, &reply]() {
           task_manager->HandleGetTaskEvents(

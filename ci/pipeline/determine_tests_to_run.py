@@ -316,6 +316,7 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/forge.aarch64.wanda.yaml"
                 or changed_file == ".buildkite/pipeline.build.yml"
                 or changed_file == ".buildkite/pipeline.ml.yml"
+                or changed_file == ".buildkite/hooks/post-command"
             ):
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
