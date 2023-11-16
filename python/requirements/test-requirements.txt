@@ -32,7 +32,7 @@ kubernetes==24.2.0
 llvmlite==0.41.1
 lxml==4.9.1
 moto[s3,server]==4.0.7
-mypy==0.982
+mypy==1.7.0
 numba==0.58.1
 openpyxl==3.0.10
 opentelemetry-api==1.1.0
