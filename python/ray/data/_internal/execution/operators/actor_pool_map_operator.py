@@ -81,6 +81,7 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args,
         )
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
+        logger.get_logger().info(f'ActorPoolMapOperator _ray_remote_args: {self._ray_remote_args}')
         self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
@@ -204,6 +205,9 @@ class ActorPoolMapOperator(MapOperator):
                 # Dipsatch more tasks.
                 self._dispatch_tasks()
 
+            def _task_failed_callback(actor):
+                logger.get_logger().warning(f'_task_failed_callback called actor {actor}.')
+
             # For some reason, if we don't define a new variable `actor_to_return`,
             # the following lambda won't capture the correct `actor` variable.
             actor_to_return = actor
@@ -211,6 +215,7 @@ class ActorPoolMapOperator(MapOperator):
                 gen,
                 bundle,
                 lambda: _task_done_callback(actor_to_return),
+                lambda: _task_failed_callback(actor_to_return),
             )
 
         # Needed in the bulk execution path for triggering autoscaling. This is a

@@ -362,11 +362,14 @@ def process_completed_tasks(
         for ref in ready:
             state, task = active_tasks.pop(ref)
             if isinstance(task, DataOpTask):
-                num_blocks_read = task.on_data_ready(
-                    max_blocks_to_read_per_op.get(state, None)
-                )
-                if state in max_blocks_to_read_per_op:
-                    max_blocks_to_read_per_op[state] -= num_blocks_read
+                try:
+                    num_blocks_read = task.on_data_ready(
+                        max_blocks_to_read_per_op.get(state, None)
+                    )
+                    if state in max_blocks_to_read_per_op:
+                        max_blocks_to_read_per_op[state] -= num_blocks_read
+                except ray.exceptions.RayActorError as e:
+                    print(f'process_completed_tasks RayActorError {e}')
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()

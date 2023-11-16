@@ -277,6 +277,7 @@ class MapOperator(OneToOneOperator, ABC):
         gen: StreamingObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
+        task_failed_callback: Optional[Callable[[], None]] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -318,10 +319,15 @@ class MapOperator(OneToOneOperator, ABC):
             if task_done_callback:
                 task_done_callback()
 
+        def _task_failed_callback():
+            if task_failed_callback:
+                task_failed_callback()
+
         self._data_tasks[task_index] = DataOpTask(
             gen,
             lambda output: _output_ready_callback(task_index, output),
             lambda: _task_done_callback(task_index),
+            lambda: _task_failed_callback(),
         )
 
     def _submit_metadata_task(
