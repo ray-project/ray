@@ -654,9 +654,9 @@ gpytorch==1.10
     # via
     #   botorch
     #   hebo
-gradio==4.3.0 ; platform_system != "Windows"
+gradio==3.50.2 ; platform_system != "Windows"
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-gradio-client==0.7.0
+gradio-client==0.6.1
     # via gradio
 grapheme==0.6.0
     # via alive-progress
