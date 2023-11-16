@@ -130,13 +130,11 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         except pynvml.NVMLError:
             return 0  # pynvml init failed
         device_count = pynvml.nvmlDeviceGetCount()
-        cuda_device_type = None
+        cuda_device_memory = 0
         if device_count > 0:
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            cuda_device_type = (
-                NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                    pynvml.nvmlDeviceGetName(handle)
-                )
-            )
+            cuda_device_memory = int(pynvml.nvmlDeviceGetMemoryInfo(handle).total) // (
+                1024 * 1024
+            )  # in MB
         pynvml.nvmlShutdown()
-        return cuda_device_type
+        return cuda_device_memory

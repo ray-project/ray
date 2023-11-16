@@ -1431,7 +1431,7 @@ def _make_actor(cls, actor_options):
     Class = _modify_class(cls)
     _inject_tracing_into_class(Class)
 
-    if "_gpu_memory" in actor_options and "num_gpus" in actor_options:
+    if actor_options.get("_gpu_memory", None) and actor_options.get("num_gpus", None):
         raise ValueError(
             "Specifying both `num_gpus` and `_gpu_memory` is not allowed. "
             "See more at: (link TBD)"
