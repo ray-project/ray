@@ -187,7 +187,7 @@ class _BatchQueue:
                         next_futures.append(FINISHED_TOKEN)
                     else:
                         next_future = get_or_create_event_loop().create_future()
-                        # The client can be dropped and the request is canceled.
+                        # If the client has disconnected, the future is canceled.
                         # We should only set result when the connection is still live.
                         if not future.cancelled():
                             future.set_result(_GeneratorResult(result, next_future))
