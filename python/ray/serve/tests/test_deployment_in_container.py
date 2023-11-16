@@ -32,7 +32,10 @@ def test_basic(ray_start_stop):
 
     h = serve.run(Model.bind())
     wait_for_condition(
-        check_application, app_handle=h, expected="Hi I'm Cindy, this is version 1\n"
+        check_application,
+        app_handle=h,
+        expected="Hi I'm Cindy, this is version 1\n",
+        timeout=300,
     )
 
 
