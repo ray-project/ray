@@ -43,9 +43,8 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        if (
-            isinstance(self.config.env, str)
-            and _global_registry.contains(ENV_CREATOR, self.config.env)
+        if isinstance(self.config.env, str) and _global_registry.contains(
+            ENV_CREATOR, self.config.env
         ):
             entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
@@ -177,7 +176,7 @@ class SingleAgentEnvRunner(EnvRunner):
         if force_reset or self._needs_initial_reset:
             obs, infos = self.env.reset()
 
-            # We just reset'd the env. Don't have to force this again in the next
+            # We just reset the env. Don't have to force this again in the next
             # call to `self._sample_timesteps()`.
             self._needs_initial_reset = False
 
