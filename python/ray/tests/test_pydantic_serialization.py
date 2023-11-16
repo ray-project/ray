@@ -15,6 +15,7 @@ except ImportError:
     # Testing with Pydantic 1
     from pydantic import BaseModel as BaseModelV1
     BaseModelV2 = None
+    BASE_MODELS = [BaseModelV1]
 
 import ray
 
