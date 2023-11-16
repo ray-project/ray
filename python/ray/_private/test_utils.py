@@ -1575,10 +1575,10 @@ class WorkerKillerActor(ResourceKillerActor):
         if process_to_kill_pid is not None:
 
             @ray.remote
-            def kill_process():
+            def kill_process(pid):
                 import psutil
 
-                proc = psutil.Process(process_to_kill_pid)
+                proc = psutil.Process(pid)
                 proc.kill()
 
             scheduling_strategy = (
@@ -1587,7 +1587,9 @@ class WorkerKillerActor(ResourceKillerActor):
                     soft=False,
                 )
             )
-            kill_process.options(scheduling_strategy=scheduling_strategy).remote()
+            kill_process.options(scheduling_strategy=scheduling_strategy).remote(
+                process_to_kill_pid
+            )
             logging.info(
                 f"Killing pid {process_to_kill_pid} on node {process_to_kill_node_id}"
             )
