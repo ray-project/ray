@@ -24,9 +24,44 @@ function loadVisibleTermynals() {
     });
 }
 
-window.addEventListener("scroll", loadVisibleTermynals);
-createTermynals();
-loadVisibleTermynals();
+// Store the state of the page in the browser's local storage.
+// This includes the sidebar dropdown menus which have been opened, and the
+// sidebar scroll position.
+function handleState() {
+  const sidebar = document.getElementById("main-sidebar")
+
+  window.addEventListener("beforeunload", () => {
+    if (sidebar) {
+      // Save opened checkboxes
+      localStorage.setItem("checkboxes",
+        JSON.stringify(
+          Array.from(
+            sidebar.querySelectorAll("input[type=checkbox]")
+          ).filter(input => input.checked).map(input => input.id)
+        )
+      )
+
+      // Save scroll postion
+      localStorage.setItem("scroll", sidebar.scrollTop)
+    }
+  })
+
+  const storedCheckboxes = localStorage.getItem("checkboxes")
+  if (storedCheckboxes) {
+    JSON.parse(storedCheckboxes).forEach(id => {
+      document.getElementById(id).checked = true
+    })
+  }
+
+  const storedScrollPosition = localStorage.getItem("scroll")
+  if (storedScrollPosition) {
+    if (sidebar) {
+      sidebar.scrollTop = storedScrollPosition;
+    }
+    localStorage.removeItem("scroll");
+  }
+
+}
 
 // Send GA events any time a code block is copied
 document.addEventListener("DOMContentLoaded", function() {
@@ -57,3 +92,8 @@ document.addEventListener("DOMContentLoaded", function() {
     window.open('https://www.anyscale.com', '_blank');
   }
 });
+
+window.addEventListener("scroll", loadVisibleTermynals);
+createTermynals();
+loadVisibleTermynals();
+handleState()

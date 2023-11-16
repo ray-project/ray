@@ -11,7 +11,6 @@ dyn-req-batch
 inplace-updates
 dev-workflow
 grpc-guide
-deployment-graphs
 managing-java-deployments
 deploy-vm
 ```

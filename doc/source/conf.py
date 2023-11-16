@@ -1,18 +1,13 @@
-from typing import List, Dict, Union, Any
-import copy
-import yaml
+from typing import Dict, Any
 from datetime import datetime
-from pathlib import Path
 from importlib import import_module
 import os
 import sys
 from jinja2.filters import FILTERS
 import sphinx
 from sphinx.ext import autodoc
-from sphinx.util.nodes import make_refnode
 from docutils import nodes
 import pathlib
-import bs4
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,6 +18,8 @@ from custom_directives import (  # noqa
     DownloadAndPreprocessEcosystemDocs,
     update_context,
     LinkcheckSummarizer,
+    parse_navbar_config,
+    setup_context,
 )
 
 
@@ -212,7 +209,6 @@ if build_one_lib and build_one_lib in all_toc_libs:
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "lovelace"
 
-
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
 
@@ -253,8 +249,6 @@ linkcheck_ignore = [
 ]
 
 # -- Options for HTML output ----------------------------------------------
-
-
 def render_svg_logo(path):
     with open(pathlib.Path(__file__).parent / path, "r") as f:
         content = f.read()
@@ -292,7 +286,7 @@ html_theme_options = {
     "content_footer_items": [
         "csat",
     ],
-    "navigation_depth": 8,
+    "navigation_depth": 4,
     "analytics": {"google_analytics_id": "UA-110413294-1"},
 }
 
@@ -384,151 +378,6 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
 
 
-def parse_navbar_config(app: sphinx.application.Sphinx, config: sphinx.config.Config):
-    """Parse the navbar config file into a set of links to show in the navbar.
-
-    Parameters
-    ----------
-    app : sphinx.application.Sphinx
-        Application instance passed when the `config-inited` event is emitted
-    config : sphinx.config.Config
-        Initialized configuration to be modified
-    """
-    if "navbar_content_path" in config:
-        filename = app.config["navbar_content_path"]
-    else:
-        filename = ""
-
-    if filename:
-        with open(pathlib.Path(__file__).parent / filename, "r") as f:
-            config.navbar_content = yaml.safe_load(f)
-    else:
-        config.navbar_content = None
-
-
-NavEntry = Dict[str, Union[str, List["NavEntry"]]]
-
-
-def setup_context(app, pagename, templatename, context, doctree):
-    def render_header_nav_links() -> bs4.BeautifulSoup:
-        """Render external header links into the top nav bar.
-        The structure rendered here is defined in an external yaml file.
-
-        Returns
-        -------
-        str
-            Raw HTML to be rendered in the top nav bar
-        """
-        if not hasattr(app.config, "navbar_content"):
-            raise ValueError(
-                "A template is attempting to call render_header_nav_links(); a "
-                "navbar configuration must be specified."
-            )
-
-        node = nodes.container(classes=["navbar-content"])
-        node.append(render_header_nodes(app.config.navbar_content))
-        header_soup = bs4.BeautifulSoup(
-            app.builder.render_partial(node)["fragment"], "html.parser"
-        )
-        return add_nav_chevrons(header_soup)
-
-    def render_header_nodes(
-        obj: List[NavEntry], is_top_level: bool = True
-    ) -> nodes.Node:
-        """Generate a set of header nav links with docutils nodes.
-
-        Parameters
-        ----------
-        is_top_level : bool
-            True if the call to this function is rendering the top level nodes,
-            False otherwise (non-top level nodes are displayed as submenus of the top
-            level nodes)
-        obj : List[NavEntry]
-            List of yaml config entries to render as docutils nodes
-
-        Returns
-        -------
-        nodes.Node
-            Bullet list which will be turned into header nav HTML by the sphinx builder
-        """
-        bullet_list = nodes.bullet_list(
-            bullet="-",
-            classes=["navbar-toplevel" if is_top_level else "navbar-sublevel"],
-        )
-
-        for item in obj:
-
-            if "file" in item:
-                ref_node = make_refnode(
-                    app.builder,
-                    context["current_page_name"],
-                    item["file"],
-                    None,
-                    nodes.inline(classes=["navbar-link-title"], text=item.get("title")),
-                    item.get("title"),
-                )
-            elif "link" in item:
-                ref_node = nodes.reference("", "", internal=False)
-                ref_node["refuri"] = item.get("link")
-                ref_node["reftitle"] = item.get("title")
-                ref_node.append(
-                    nodes.inline(classes=["navbar-link-title"], text=item.get("title"))
-                )
-
-            if "caption" in item:
-                caption = nodes.Text(item.get("caption"))
-                ref_node.append(caption)
-
-            paragraph = nodes.paragraph()
-            paragraph.append(ref_node)
-
-            container = nodes.container(classes=["ref-container"])
-            container.append(paragraph)
-
-            list_item = nodes.list_item(
-                classes=["active-link"] if item.get("file") == pagename else []
-            )
-            list_item.append(container)
-
-            if "sections" in item:
-                wrapper = nodes.container(classes=["navbar-dropdown"])
-                wrapper.append(
-                    render_header_nodes(item["sections"], is_top_level=False)
-                )
-                list_item.append(wrapper)
-
-            bullet_list.append(list_item)
-
-        return bullet_list
-
-    context["render_header_nav_links"] = render_header_nav_links
-
-
-def add_nav_chevrons(input_soup: bs4.BeautifulSoup) -> bs4.BeautifulSoup:
-    """Add dropdown chevron icons to the header nav bar.
-
-    Parameters
-    ----------
-    input_soup : bs4.BeautifulSoup
-        Soup containing rendered HTML which will be inserted into the header nav bar
-
-    Returns
-    -------
-    bs4.BeautifulSoup
-        A new BeautifulSoup instance containing chevrons on the list items that
-        are meant to be dropdowns.
-    """
-    soup = copy.copy(input_soup)
-
-    for li in soup.find_all("li", recursive=True):
-        divs = li.find_all("div", {"class": "navbar-dropdown"}, recursive=False)
-        if divs:
-            ref = li.find("div", {"class": "ref-container"})
-            ref.append(soup.new_tag("i", attrs={"class": "fa-solid fa-chevron-down"}))
-
-    return soup
-
-
 def add_custom_assets(
     app: sphinx.application.Sphinx,
     pagename: str,
@@ -582,7 +431,7 @@ def setup(app):
     app.add_js_file("js/assistant.js", defer="defer")
     app.add_css_file("css/assistant.css")
 
-    base_path = Path(__file__).parent
+    base_path = pathlib.Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
     # Download docs from ecosystem library repos
     app.connect("builder-inited", github_docs.write_new_docs)
@@ -675,7 +524,6 @@ class MockedClassDocumenter(autodoc.ClassDocumenter):
 
 
 autodoc.ClassDocumenter = MockedClassDocumenter
-
 
 # Other sphinx docs can be linked to if the appropriate URL to the docs
 # is specified in the `intersphinx_mapping` - for example, types annotations

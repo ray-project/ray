@@ -1,11 +1,3 @@
-{%- set sidebar_nav_html = generate_toctree_html("sidebar",
-startdepth=0,
-show_nav_level=0,
-maxdepth=theme_navigation_depth|int,
-collapse=theme_collapse_navigation|tobool,
-includehidden=True,
-titles_only=True)
--%}
-<nav class="bd-docs-nav bd-links" aria-label="{{ _('Section Navigation') }}">
-  <div class="bd-toc-item navbar-nav">{{ sidebar_nav_html }}</div>
+<nav id="main-sidebar" class="bd-docs-nav bd-links" aria-label="{{ _('Section Navigation') }}">
+  <div class="bd-toc-item navbar-nav">{{ cached_toctree }}</div>
 </nav>
