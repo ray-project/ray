@@ -582,6 +582,8 @@ def _setup_ray_cluster(
         )
         object_spilling_dir = os.path.join(ray_temp_dir, "spill")
 
+    os.makedirs(object_spilling_dir, exist_ok=True)
+
     head_node_options = _append_default_spilling_dir_config(
         head_node_options, object_spilling_dir
     )
@@ -1439,6 +1441,9 @@ def shutdown_ray_cluster() -> None:
         _active_ray_cluster = None
 
 
+_global_ray_cluster_cancel_event = None
+
+
 @PublicAPI(stability="alpha")
 def serve_global_ray_cluster(
     num_worker_nodes: int,
@@ -1458,15 +1463,23 @@ def serve_global_ray_cluster(
 
     Note: this is a blocking API, once it is interrupted, the global Ray on spark
     cluster is shut down.
+
+    Args:
+        All arguments have the same definition with ``setup_ray_cluster`` API,
+        one exception is ``ray_temp_root_dir`` argument is not supported.
     """
     with modified_environ(RAY_ON_SPARK_GLOBAL_MODE="1"):
+        global _global_ray_cluster_cancel_event
         setup_ray_cluster(
             num_worker_nodes=num_worker_nodes,
             **kwargs,
         )
         try:
-            Event().wait()  # serve forever until user cancel the command.
+            _global_ray_cluster_cancel_event = Event()
+            # serve forever until user cancel the command.
+            _global_ray_cluster_cancel_event.wait()
         finally:
+            _global_ray_cluster_cancel_event = None
             # once the program is interrupted,
             # or the corresponding databricks notebook command is interrupted
             # shut down the Ray cluster.

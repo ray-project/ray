@@ -2,6 +2,8 @@ import os
 import shutil
 import tempfile
 import socket
+import threading
+import re
 import pytest
 import sys
 
@@ -10,7 +12,10 @@ from abc import ABC
 import ray
 
 import ray.util.spark.cluster_init
-from ray.util.spark import setup_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
+from ray.util.spark import (
+    setup_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES,
+    serve_global_ray_cluster,
+)
 from ray.util.spark.utils import (
     is_port_in_use,
     _calc_mem_per_ray_worker_node,
@@ -343,6 +348,45 @@ class TestSparkLocalCluster:
         assert head_resources.get("GPU", 0) == 2
 
         shutdown_ray_cluster()
+
+    @pytest.mark.parametrize("autoscale", [False, True])
+    def test_serve_global_ray_cluster(self, autoscale):
+        shutil.rmtree("/tmp/ray")
+
+        assert ray.util.spark.cluster_init._global_ray_cluster_cancel_event is None
+
+        def start_serve_thread():
+            def serve():
+                serve_global_ray_cluster(num_worker_nodes=1, autoscale=autoscale)
+
+            threading.Thread(target=serve, daemon=True).start()
+
+        def wait_cluster_ready():
+            while True:
+                time.sleep(1)
+                if ray.util.spark.cluster_init._global_ray_cluster_cancel_event is not None:
+                    return
+
+        start_serve_thread()
+        wait_cluster_ready()
+        # assert it uses default temp directory
+        assert os.path.exists("/tmp/ray")
+
+        # assert we cannot create another global mode cluster at a time
+        with pytest.raises(
+            ValueError,
+            match=re.compile(
+                "Acquiring global lock failed for setting up new global mode Ray on "
+                "spark cluster"
+            ),
+        ):
+            serve_global_ray_cluster(num_worker_nodes=1, autoscale=autoscale)
+
+        # shut down the cluster
+        ray.util.spark.cluster_init._global_ray_cluster_cancel_event.set()
+        time.sleep(5)
+        # assert temp directory is deleted
+        assert not os.path.exists("/tmp/ray")
 
 
 if __name__ == "__main__":
