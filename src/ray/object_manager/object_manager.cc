@@ -24,13 +24,15 @@ namespace asio = boost::asio;
 
 namespace ray {
 
-ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
+ObjectStoreRunner::ObjectStoreRunner(const NodeID &self_node_id,
+                                     const ObjectManagerConfig &config,
                                      SpillObjectsCallback spill_objects_callback,
                                      std::function<void()> object_store_full_callback,
                                      AddObjectCallback add_object_callback,
                                      DeleteObjectCallback delete_object_callback) {
   plasma::plasma_store_runner.reset(
-      new plasma::PlasmaStoreRunner(config.store_socket_name,
+      new plasma::PlasmaStoreRunner(self_node_id,
+                                    config.store_socket_name,
                                     config.object_store_memory,
                                     config.huge_pages,
                                     config.plasma_directory,
@@ -71,6 +73,7 @@ ObjectManager::ObjectManager(
       config_(config),
       object_directory_(object_directory),
       object_store_internal_(std::make_unique<ObjectStoreRunner>(
+          self_node_id,
           config,
           spill_objects_callback,
           object_store_full_callback,

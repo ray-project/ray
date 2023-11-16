@@ -100,7 +100,8 @@ class IObjectLifecycleManager {
 // (created/sealed). It lazily garbage collects objects when running out of space.
 class ObjectLifecycleManager : public IObjectLifecycleManager {
  public:
-  ObjectLifecycleManager(IAllocator &allocator,
+  ObjectLifecycleManager(const NodeID &self_node_id,
+                         IAllocator &allocator,
                          ray::DeleteObjectCallback delete_object_callback);
 
   std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(

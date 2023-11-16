@@ -54,7 +54,8 @@ using flatbuf::PlasmaError;
 
 class PlasmaStore {
  public:
-  PlasmaStore(instrumented_io_context &main_service,
+  PlasmaStore(const NodeID &self_node_id,
+              instrumented_io_context &main_service,
               IAllocator &allocator,
               ray::FileSystemMonitor &fs_monitor,
               const std::string &socket_name,

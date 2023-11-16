@@ -21,6 +21,9 @@
 
 namespace plasma {
 
+ObjectStatsCollector::ObjectStatsCollector(const NodeID &self_node_id)
+    : self_node_id_(self_node_id) {}
+
 void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
@@ -201,25 +204,29 @@ void ObjectStatsCollector::RecordMetrics() const {
   ray::stats::STATS_object_store_memory.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ false, /* sealed */ true}),
       {{ray::stats::LocationKey, ray::stats::kObjectLocMmapShm},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectSealed}});
+       {ray::stats::ObjectStateKey, ray::stats::kObjectSealed},
+       {ray::stats::NodeIDKey, self_node_id_.Hex()}});
 
   // Shared memory unsealed
   ray::stats::STATS_object_store_memory.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ false, /* sealed */ false}),
       {{ray::stats::LocationKey, ray::stats::kObjectLocMmapShm},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectUnsealed}});
+       {ray::stats::ObjectStateKey, ray::stats::kObjectUnsealed},
+       {ray::stats::NodeIDKey, self_node_id_.Hex()}});
 
   // Fallback memory sealed
   ray::stats::STATS_object_store_memory.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ true, /* sealed */ true}),
       {{ray::stats::LocationKey, ray::stats::kObjectLocMmapDisk},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectSealed}});
+       {ray::stats::ObjectStateKey, ray::stats::kObjectSealed},
+       {ray::stats::NodeIDKey, self_node_id_.Hex()}});
 
   // Fallback memory unsealed
   ray::stats::STATS_object_store_memory.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ true, /* sealed */ false}),
       {{ray::stats::LocationKey, ray::stats::kObjectLocMmapDisk},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectUnsealed}});
+       {ray::stats::ObjectStateKey, ray::stats::kObjectUnsealed},
+       {ray::stats::NodeIDKey, self_node_id_.Hex()}});
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {

@@ -24,12 +24,14 @@ namespace plasma {
 using namespace flatbuf;
 
 ObjectLifecycleManager::ObjectLifecycleManager(
-    IAllocator &allocator, ray::DeleteObjectCallback delete_object_callback)
+    const NodeID &self_node_id,
+    IAllocator &allocator,
+    ray::DeleteObjectCallback delete_object_callback)
     : object_store_(std::make_unique<ObjectStore>(allocator)),
       eviction_policy_(std::make_unique<EvictionPolicy>(*object_store_, allocator)),
       delete_object_callback_(delete_object_callback),
       earger_deletion_objects_(),
-      stats_collector_(std::make_unique<ObjectStatsCollector>()) {}
+      stats_collector_(std::make_unique<ObjectStatsCollector>(self_node_id)) {}
 
 std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::CreateObject(
     const ray::ObjectInfo &object_info,

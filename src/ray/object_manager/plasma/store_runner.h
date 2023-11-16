@@ -13,7 +13,8 @@ namespace plasma {
 
 class PlasmaStoreRunner {
  public:
-  PlasmaStoreRunner(std::string socket_name,
+  PlasmaStoreRunner(const NodeID &self_node_id,
+                    std::string socket_name,
                     int64_t system_memory,
                     bool hugepages_enabled,
                     std::string plasma_directory,
@@ -55,6 +56,7 @@ class PlasmaStoreRunner {
   std::unique_ptr<PlasmaAllocator> allocator_;
   std::unique_ptr<ray::FileSystemMonitor> fs_monitor_;
   std::unique_ptr<PlasmaStore> store_;
+  NodeID self_node_id_;
 };
 
 // We use a global variable for Plasma Store instance here because:

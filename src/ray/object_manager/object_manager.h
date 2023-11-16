@@ -90,7 +90,8 @@ struct LocalObjectInfo {
 };
 class ObjectStoreRunner {
  public:
-  ObjectStoreRunner(const ObjectManagerConfig &config,
+  ObjectStoreRunner(const NodeID &self_node_id,
+                    const ObjectManagerConfig &config,
                     SpillObjectsCallback spill_objects_callback,
                     std::function<void()> object_store_full_callback,
                     AddObjectCallback add_object_callback,

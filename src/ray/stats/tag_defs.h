@@ -63,6 +63,8 @@ extern const TagKeyType ObjectStateKey;
 constexpr char kObjectSealed[] = "SEALED";
 constexpr char kObjectUnsealed[] = "UNSEALED";
 
+extern const TagKeyType NodeIDKey;
+
 // GCS task manager tags
 constexpr char kGcsTaskStatusEventDropped[] = "STATUS_EVENT";
 constexpr char kGcsProfileEventDropped[] = "PROFILE_EVENT";

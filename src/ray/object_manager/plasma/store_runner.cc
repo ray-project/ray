@@ -15,12 +15,13 @@ namespace internal {
 void SetMallocGranularity(int value);
 }
 
-PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name,
+PlasmaStoreRunner::PlasmaStoreRunner(const NodeID &self_node_id,
+                                     std::string socket_name,
                                      int64_t system_memory,
                                      bool hugepages_enabled,
                                      std::string plasma_directory,
                                      std::string fallback_directory)
-    : hugepages_enabled_(hugepages_enabled) {
+    : hugepages_enabled_(hugepages_enabled), self_node_id_(self_node_id) {
   // Sanity check.
   if (socket_name.empty()) {
     RAY_LOG(FATAL) << "please specify socket for incoming connections with -s switch";
@@ -105,7 +106,8 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     // Create noop monitor for Windows.
     fs_monitor_ = std::make_unique<ray::FileSystemMonitor>();
 #endif
-    store_.reset(new PlasmaStore(main_service_,
+    store_.reset(new PlasmaStore(self_node_id_,
+                                 main_service_,
                                  *allocator_,
                                  *fs_monitor_,
                                  socket_name_,

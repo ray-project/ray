@@ -70,7 +70,8 @@ ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
 }
 }  // namespace
 
-PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
+PlasmaStore::PlasmaStore(const NodeID &self_node_id,
+                         instrumented_io_context &main_service,
                          IAllocator &allocator,
                          ray::FileSystemMonitor &fs_monitor,
                          const std::string &socket_name,
@@ -87,7 +88,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
       fs_monitor_(fs_monitor),
       add_object_callback_(add_object_callback),
       delete_object_callback_(delete_object_callback),
-      object_lifecycle_mgr_(allocator_, delete_object_callback_),
+      object_lifecycle_mgr_(self_node_id, allocator_, delete_object_callback_),
       delay_on_oom_ms_(delay_on_oom_ms),
       create_request_queue_(
           fs_monitor_,

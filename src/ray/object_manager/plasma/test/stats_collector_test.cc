@@ -64,8 +64,8 @@ struct ObjectStatsCollectorTest : public Test {
 
   void Reset() {
     allocator_ = std::make_unique<DummyAllocator>();
-    manager_ =
-        std::make_unique<ObjectLifecycleManager>(*allocator_, [](auto /* unused */) {});
+    manager_ = std::make_unique<ObjectLifecycleManager>(
+        NodeID::Nil(), *allocator_, [](auto /* unused */) {});
     collector_ = manager_->stats_collector_.get();
     object_store_ = dynamic_cast<ObjectStore *>(manager_->object_store_.get());
     used_ids_.clear();

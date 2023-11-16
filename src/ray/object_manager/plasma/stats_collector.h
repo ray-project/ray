@@ -31,6 +31,8 @@ namespace plasma {
 // ObjectLifeCycleManager into this class.
 class ObjectStatsCollector {
  public:
+  ObjectStatsCollector(const NodeID &self_node_id);
+  ObjectStatsCollector() = default;
   virtual ~ObjectStatsCollector() = default;
 
   // Called after a new object is created.
@@ -92,6 +94,8 @@ class ObjectStatsCollector {
   int64_t num_bytes_errored_ = 0;
   int64_t num_objects_created_total_ = 0;
   int64_t num_bytes_created_total_ = 0;
+
+  NodeID self_node_id_;
 };
 
 }  // namespace plasma
