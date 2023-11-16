@@ -31,6 +31,7 @@ from ray.serve._private.common import (
     ReplicaState,
     ReplicaTag,
     RunningReplicaInfo,
+    TargetCapacityScaleDirection,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -1425,7 +1426,10 @@ class DeploymentState:
         return max(1, int(rounded_adjusted_num_replicas))
 
     def deploy(
-        self, deployment_info: DeploymentInfo, target_capacity: Optional[float] = None
+        self,
+        deployment_info: DeploymentInfo,
+        target_capacity: Optional[float] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> bool:
         """Deploy the deployment.
 
@@ -1455,7 +1459,10 @@ class DeploymentState:
         # If autoscaling config is not none, decide initial num replicas
         autoscaling_config = deployment_info.deployment_config.autoscaling_config
         if autoscaling_config is not None:
-            if autoscaling_config.initial_replicas is not None:
+            if (
+                autoscaling_config.initial_replicas is not None
+                and target_capacity_scale_direction != TargetCapacityScaleDirection.DOWN
+            ):
                 self.get_capacity_adjusted_num_replicas(
                     autoscaling_config.initial_replicas, target_capacity
                 )
@@ -2453,6 +2460,7 @@ class DeploymentStateManager:
         deployment_id: DeploymentID,
         deployment_info: DeploymentInfo,
         target_capacity: Optional[float] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> bool:
         """Deploy the deployment.
 
@@ -2469,7 +2477,9 @@ class DeploymentStateManager:
             self._record_deployment_usage()
 
         return self._deployment_states[deployment_id].deploy(
-            deployment_info, target_capacity=target_capacity
+            deployment_info,
+            target_capacity=target_capacity,
+            target_capacity_scale_direction=target_capacity_scale_direction,
         )
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
