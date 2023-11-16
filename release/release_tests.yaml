@@ -5793,7 +5793,7 @@
 
   run:
     timeout: 3600
-    prepare: python setup_chaos.py --kill-workers --kill-interval 10 --max-to-kill 10 --task-names "ReadImage->Map(crop_and_flip_image)"
+    prepare: python setup_chaos.py --kill-workers --kill-interval 50 --max-to-kill 20 --task-names "ReadImage->Map(crop_and_flip_image)"
     script: python dataset/multi_node_train_benchmark.py --num-workers 4 --file-type image
 
   variations:
