@@ -21,6 +21,7 @@ from ray.serve._private.common import (
     NodeId,
     RunningReplicaInfo,
     StatusOverview,
+    TargetCapacityScaleDirection,
 )
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
@@ -209,6 +210,7 @@ class ServeController:
 
         # The target capacity percentage for all deployments across the cluster.
         self._target_capacity: Optional[float] = None
+        self._scale_direction: Optional[TargetCapacityScaleDirection] = None
         self._recover_config_from_checkpoint()
 
         # Nodes where proxy actors should run.
