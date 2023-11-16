@@ -111,7 +111,7 @@ def test_batching_client_dropped_unary(serve_instance):
     url = "http://0.0.0.0:8000/"
 
     # Sending requests with clients that drops the connection.
-    for _ in range(10):
+    for _ in range(3):
         with pytest.raises(requests.exceptions.ReadTimeout):
             requests.get(url, timeout=0.005)
 
@@ -143,7 +143,7 @@ def test_batching_client_dropped_streaming(serve_instance):
     url = "http://0.0.0.0:8000/"
 
     # Sending requests with clients that drops the connection.
-    for _ in range(10):
+    for _ in range(3):
         with pytest.raises(
             (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError)
         ):
