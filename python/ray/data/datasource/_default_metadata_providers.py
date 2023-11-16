@@ -39,6 +39,6 @@ def get_image_metadata_provider():
     from ray.anyscale.data import AnyscaleFileMetadataProvider
 
     if ANYSCALE_METADATA_PROVIDER_ENABLED:
-        return AnyscaleFileMetadataProvider(ImageDatasource._FILE_EXTENSION)
+        return AnyscaleFileMetadataProvider(ImageDatasource._FILE_EXTENSIONS)
     else:
         return _ImageFileMetadataProvider()
