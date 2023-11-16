@@ -40,21 +40,30 @@ namespace ray {
 namespace {
 
 #if defined(_WIN32)
-
 // Don't care what exact type is in windows... Looks like to be an asio specific type.
 template <typename NativeHandleType>
 void setFdCloseOnFork(const NativeHandleType &handle) {
   // In Windows we don't need to do anything, beacuse in CreateProcess we pass
   // bInheritHandles = false which means we don't inherit handles or sockets.
+  // https://github.com/ray-project/ray/blob/928183b3acab3c4ad73ef3001203a7aaf009bc87/src/ray/util/process.cc#L148
+  // https://learn.microsoft.com/en-us/windows/win32/sysinfo/handle-inheritance
   return;
 }
 #else
+
+// Sets the flag FD_CLOEXEC to a file descriptor.
+// This means when the process is forked, this fd would be closed in the child process
+// side. Raylet forks to create core workers and we don't want the Unix Socket FDs to be
+// inherited by the core workers. Leaking these FDs would have performance implications.
+//
+// Idempotent. Calling twice == calling once.
+// Not thread safe.
+// See https://github.com/ray-project/ray/issues/40813
 void setFdCloseOnFork(int fd) {
   int flags = fcntl(fd, F_GETFD, 0);
-  if (flags != -1) {
-    fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
-    RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
-  }
+  RAY_CHECK(flags != -1) << "fcntl error: errno = " << errno;
+  fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+  RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
 }
 #endif
 

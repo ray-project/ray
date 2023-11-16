@@ -28,7 +28,7 @@ However it's not that easy:
 - We can't assert that len(all_sockets) == 2, because in MacOS, there are some
     system-created sockets like '/var/run/mDNSResponder'.
 
-So we do it good old way (see python/ray/tests/test_actor_bounded_threads.py), test that
+So we do it good old way (see python/ray/tests/test_actor_bounded_sockets.py), test that
 number of sockets do not grow as time goes, across workers.
 """
 
@@ -61,7 +61,7 @@ def fibonacci_and_assert_sockets(i):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="unix sockets are not on windows")
-def test_tasks_have_bounded_num_of_threads(shutdown_only):
+def test_tasks_have_bounded_num_of_sockets(shutdown_only):
     ray.init()
     prev_sockets = my_sockets()
     f1, s1 = ray.get(fibonacci_and_assert_sockets.remote(1))
@@ -70,6 +70,32 @@ def test_tasks_have_bounded_num_of_threads(shutdown_only):
     assert f10 == 89
     assert_bounded_sockets(prev_sockets, s1)
     assert_bounded_sockets(prev_sockets, s10)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="unix sockets are not on windows")
+def test_actors_have_bounded_num_of_sockets(shutdown_only):
+    """
+    As number of actor grows, each new actor still gets same number of sockets as the
+    driver.
+    """
+
+    @ray.remote
+    class A:
+        def sum(self, a, b) -> int:
+            return a + b
+
+        def sockets(self):
+            return my_sockets()
+
+    ray.init()
+    driver_sockets = my_sockets()
+    actors = []
+    for i in range(10):
+        a = A.remote()
+        actors.append(a)
+        assert_bounded_sockets(driver_sockets, ray.get(a.sockets.remote()))
+        assert a.sum.remote(2, 3) == 5
+        assert_bounded_sockets(driver_sockets, ray.get(a.sockets.remote()))
 
 
 if __name__ == "__main__":
