@@ -171,6 +171,7 @@ def get_transform(to_torch_tensor):
                 ratio=(0.75, 1.33),
             ),
             torchvision.transforms.RandomHorizontalFlip(),
+            torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
         + ([torchvision.transforms.ToTensor()] if to_torch_tensor else [])
     )
@@ -183,9 +184,22 @@ transform = get_transform(False)
 
 def crop_and_flip_image(row):
     # Make sure to use torch.tensor here to avoid a copy from numpy.
-    row["image"] = transform(torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))))
+    row["image"] = transform(torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))) / 255.)
     return row
 
+def center_crop_image(row):
+    val_transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(256),
+            torchvision.transforms.CenterCrop(224),
+            torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+    # Make sure to use torch.tensor here to avoid a copy from numpy.
+    row["image"] = val_transform(
+        torch.tensor(
+            np.transpose(row["image"], axes=(2, 0, 1)),
+        ) / 255.
+    )
+    return row
 
 def crop_and_flip_image_batch(image_batch):
     image_batch["image"] = transform(

@@ -1,9 +1,10 @@
 import ray
 from ray import train
-from ray.train import DataConfig, ScalingConfig
+from ray.train import DataConfig, ScalingConfig, RunConfig, Checkpoint
 from ray.train.torch import TorchTrainer
 from ray.data.datasource.partitioning import Partitioning
 import tempfile
+import itertools
 import os
 import time
 
@@ -12,19 +13,20 @@ from image_loader_microbenchmark import (
     get_transform,
     crop_and_flip_image,
     decode_image_crop_and_flip,
+    center_crop_image,
 )
 
 from image_loader_microbenchmark import get_mosaic_dataloader
 
 import torch
 import torch.distributed as dist
-from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models import resnet50
 import torch.nn as nn
 import torch.optim as optim
 
 from dataset_benchmark_util import (
-    get_prop_parquet_paths,
-    get_prop_raw_image_paths,
+    PARQUET_S3_ROOT,
+    IMG_S3_ROOT,
     get_mosaic_epoch_size,
     IMAGENET_WNID_TO_ID,
 )
@@ -118,6 +120,15 @@ def parse_args():
         help="",
     )
     parser.add_argument(
+        "--synthetic-data",
+        action="store_true",
+        default=False,
+        help=(
+            "Whether to use synthetic Torch data (repeat a "
+            "randomly generated batch 1000 times)"
+        ),
+    )
+    parser.add_argument(
         "--torch-num-workers",
         default=None,
         type=int,
@@ -151,13 +162,9 @@ def parse_args():
     if args.data_root is None and not args.use_mosaic:
         # use default datasets if data root is not provided
         if args.file_type == "image":
-            args.data_root = get_prop_raw_image_paths(
-                num_workers=args.num_workers, target_worker_gb=args.target_worker_gb
-            )
+            args.data_root = IMG_S3_ROOT
         elif args.file_type == "parquet":
-            args.data_root = get_prop_parquet_paths(
-                num_workers=args.num_workers, target_worker_gb=args.target_worker_gb
-            )
+            args.data_root = PARQUET_S3_ROOT
         else:
             raise Exception(
                 f"Unknown file type {args.file_type}; "
@@ -178,19 +185,22 @@ DEFAULT_IMAGE_SIZE = 224
 
 def train_loop_per_worker():
     worker_rank = train.get_context().get_world_rank()
-    if args.split_input:
-        it = train.get_dataset_shard(f"train_{worker_rank}")
-    else:
-        it = train.get_dataset_shard("train")
     device = train.torch.get_device()
 
     # Setup the model
-    raw_model = resnet50(weights=ResNet50_Weights.DEFAULT)
+    raw_model = resnet50(weights=None)
     model = train.torch.prepare_model(raw_model)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
 
+    # Get the appropriate data loading solution.
     batch_iter = None
+    if not args.synthetic_data:
+        if args.split_input:
+            it = train.get_dataset_shard(f"train_{worker_rank}")
+        else:
+            it = train.get_dataset_shard("train")
+
     if args.use_torch or args.use_mosaic:
         torch_num_workers = args.torch_num_workers or os.cpu_count()
         # Divide by the number of Train workers because each has its own dataloader.
@@ -226,18 +236,34 @@ def train_loop_per_worker():
 
     world_size = ray.train.get_context().get_world_size()
     all_workers_time_list_across_epochs = []
+    validation_accuracy_per_epoch = []
+    # Validation loop with non-random cropped dataset is only supported for image dataset. 
+    run_validation_set = not args.synthetic_data and args.file_type == "image"
     for epoch in range(args.num_epochs):
+        if args.synthetic_data:
+            # Generate a random batch, and continuously yield the same batch 1000 times.
+            sample_batch = {
+                "image": torch.rand((args.batch_size, 3, DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE), device=device),
+                "label": torch.randint(0, 1000, (args.batch_size,), device=device)
+            }
+            it = itertools.repeat(sample_batch, 1000)
+            batch_iter = it
         # Ray Data needs to call iter_torch_batches on each epoch.
-        if isinstance(it, ray.data.iterator.DataIterator):
+        elif isinstance(it, ray.data.iterator.DataIterator):
             batch_iter = it.iter_torch_batches(
                 batch_size=args.batch_size,
+                # batch_size=64,
+                local_shuffle_buffer_size=32,
             )
+            
+            val_ds = train.get_dataset_shard("val")
+            batch_iter_val = val_ds.iter_torch_batches(batch_size=args.batch_size)
 
         print(f"Epoch {epoch+1} of {args.num_epochs}")
         num_rows = 0
-        num_correct = 0
-        running_loss = 0.0
         start_t = time.time()
+        num_batches = 0.0
+        total_loss = 0.0
         for batch_idx, batch in enumerate(batch_iter):
             if not (args.use_torch or args.use_mosaic):
                 num_rows += batch["image"].size(dim=0)
@@ -252,38 +278,60 @@ def train_loop_per_worker():
                 labels = torch.as_tensor(batch["label"], dtype=torch.int64).to(
                     device=device
                 )
-                # zero the parameter gradients
-                optimizer.zero_grad()
-
                 # forward + backward + optimize
                 outputs = model(inputs)
-
-                output_classes = outputs.argmax(dim=1)
                 loss = criterion(outputs, labels)
+
+                # zero the parameter gradients
+                optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
-                running_loss += loss.item()
-                num_correct += (output_classes == labels).sum().item()
+                num_batches += 1
+                total_loss += loss.item()
 
             # print statistics
             if batch_idx % 2000 == 1999:  # print every 2000 mini-batches
                 print(
-                    f"[{epoch + 1}, {batch_idx + 1:5d}] loss: "
-                    f"{running_loss / 2000:.3f}, "
-                    f"accuracy: {num_correct / num_rows}"
+                    f"[{epoch + 1}, {batch_idx + 1:5d}]"
+                    f"loss: {total_loss / 2000:.3f}, "
                 )
-                running_loss = 0.0
+        end_t = time.time()
+        
+        epoch_accuracy_val = None
+        if run_validation_set:
+            print(f"Starting validation set for epoch {epoch+1}")
+            num_correct_val = 0
+            num_rows_val = 0
+            with torch.no_grad():
+                for batch_idx, batch in enumerate(batch_iter_val):
+                    inputs = torch.as_tensor(batch["image"], dtype=torch.float32).to(
+                        device=device
+                    )
+                    labels = torch.as_tensor(batch["label"], dtype=torch.int64).to(
+                        device=device
+                    )
+
+                    outputs = model(inputs)
+                    loss = criterion(outputs, labels)
+                    output_classes = outputs.argmax(dim=1)
+
+                    num_rows_val += len(labels)
+                    num_correct_val += (output_classes == labels).sum().item()
+            epoch_accuracy_val = num_correct_val / num_rows_val
+            validation_accuracy_per_epoch.append(epoch_accuracy_val)
+
         with tempfile.TemporaryDirectory() as tmpdir:
             torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+            checkpoint = Checkpoint.from_directory(tmpdir)
             train.report(
                 dict(
-                    epoch_accuracy=(num_correct / num_rows),
-                    running_loss=running_loss,
+                    epoch_accuracy=epoch_accuracy_val,
+                    loss_avg=(total_loss / num_batches) if num_batches > 0 else 0,
                 ),
-                # checkpoint=Checkpoint.from_directory(tmpdir),
+                checkpoint=checkpoint
             )
-        end_t = time.time()
+        
         # Workaround to report the epoch start/end time from each worker, so that we
         # can aggregate them at the end when calculating throughput.
         all_workers_time_list = [
@@ -300,7 +348,7 @@ def train_loop_per_worker():
             f"Epoch {epoch+1} of {args.num_epochs}, "
             f"tput: {num_rows / (end_t - start_t)}, "
             f"run time: {end_t - start_t}, "
-            f"accuracy: {num_correct / num_rows}"
+            f"validation accuracy: {epoch_accuracy_val * 100 if epoch_accuracy_val else 0:.3f}%"
         )
     # Similar reporting for aggregating number of rows across workers
     all_num_rows = [
@@ -315,12 +363,32 @@ def train_loop_per_worker():
         ]
         for i in range(args.num_epochs)
     }
-    train.report(
-        {
-            **per_epoch_times,
+
+    final_train_report_metrics = {
+        **per_epoch_times,
             "num_rows": [tensor.item() for tensor in all_num_rows],
-        }
-    )
+    }
+
+    if run_validation_set:
+        all_num_rows_val = [
+            torch.zeros((1), dtype=torch.int32, device=device) for _ in range(world_size)
+        ]
+        curr_num_rows_val = torch.tensor([num_rows_val], dtype=torch.int32, device=device)
+        dist.all_gather(all_num_rows_val, curr_num_rows_val)
+
+        all_num_rows_correct_val = [
+            torch.zeros((1), dtype=torch.int32, device=device) for _ in range(world_size)
+        ]
+        curr_num_rows_correct = torch.tensor([num_correct_val], dtype=torch.int32, device=device)
+        dist.all_gather(all_num_rows_correct_val, curr_num_rows_correct)
+        final_train_report_metrics.update({
+            "num_rows_val": [tensor.item() for tensor in all_num_rows_val],
+            "num_rows_correct_val": [tensor.item() for tensor in all_num_rows_correct_val],
+            # Report the validation accuracy of the final epoch
+            "epoch_accuracy": validation_accuracy_per_epoch[-1],
+        })
+
+    train.report(final_train_report_metrics)
 
 
 # The input files URLs per training worker.
@@ -436,7 +504,7 @@ def benchmark_code(
                 partitioning = Partitioning(
                     "dir",
                     field_names=["class"],
-                    base_dir="s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/train",
+                    base_dir=args.data_root,
                 )
                 ray_dataset = ray.data.read_images(
                     input_paths,
@@ -444,12 +512,18 @@ def benchmark_code(
                     partitioning=partitioning,
                 )
 
+                val_dataset = ray.data.Dataset.copy(ray_dataset)
+                # Full random shuffle results in OOM.
+                # Use iter_batches `local_shuffle_buffer_size` instead.
+                # ray_dataset = ray_dataset.random_shuffle()
+
                 def wnid_to_index(row):
                     row["label"] = IMAGENET_WNID_TO_ID[row["class"]]
                     row.pop("class")
                     return row
 
                 ray_dataset = ray_dataset.map(wnid_to_index)
+                val_dataset = val_dataset.map(wnid_to_index)
             elif args.file_type == "parquet":
                 ray_dataset = ray.data.read_parquet(
                     args.data_root,
@@ -462,6 +536,8 @@ def benchmark_code(
             # 2) Preprocess data by applying transformation with map/map_batches()
             if args.file_type == "image":
                 ray_dataset = ray_dataset.map(crop_and_flip_image)
+                val_dataset = val_dataset.map(center_crop_image)
+                ray_datasets_dict["val"] = val_dataset
             elif args.file_type == "parquet":
                 ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
             if cache_output_ds:
@@ -483,9 +559,14 @@ def benchmark_code(
             datasets_to_split=[] if args.split_input else "all",
             execution_options=options,
         ),
+        run_config=RunConfig(
+            storage_path="/mnt/cluster_storage",
+            failure_config=train.FailureConfig(5),
+        ),
     )
 
     result = torch_trainer.fit()
+    data_benchmark_metrics = {}
 
     # Report the average of per-epoch throughput, excluding the first epoch.
     epoch_tputs = []
@@ -498,15 +579,25 @@ def benchmark_code(
     avg_per_epoch_tput = sum(epoch_tputs) / len(epoch_tputs)
     print("Total num rows read per epoch:", num_rows_per_epoch, "images")
     print("Averaged per-epoch throughput:", avg_per_epoch_tput, "img/s")
-    return {
+    data_benchmark_metrics.update({
         BenchmarkMetric.THROUGHPUT.value: avg_per_epoch_tput,
-    }
+    })
+
+    # Report the training accuracy of the final epoch.
+    if result.metrics.get("num_rows_val") is not None:
+        final_epoch_acc = sum(result.metrics["num_rows_correct_val"]) / sum(result.metrics["num_rows_val"])
+        print(f"Final epoch accuracy: {final_epoch_acc * 100:.3f}%")
+        data_benchmark_metrics.update({
+            BenchmarkMetric.ACCURACY.value: final_epoch_acc,
+        })
+    return data_benchmark_metrics
 
 
 if __name__ == "__main__":
     args = parse_args()
+    data_type = "synthetic" if args.synthetic_data else args.file_type
     benchmark_name = (
-        f"read_{args.file_type}_repeat{args.repeat_ds}_train_"
+        f"read_{data_type}_repeat{args.repeat_ds}_train_"
         f"{args.num_workers}workers_{args.target_worker_gb}gb_per_worker"
     )
 

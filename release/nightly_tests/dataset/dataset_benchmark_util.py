@@ -1012,15 +1012,18 @@ IMAGENET_WNID_TO_LABEL = _get_sysnet_mapping()
 SORTED_WNIDS = sorted(IMAGENET_WNID_TO_LABEL.keys())
 IMAGENET_WNID_TO_ID = {wnid: SORTED_WNIDS.index(wnid) for wnid in SORTED_WNIDS}
 
+IMG_S3_ROOT = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/train"
+PARQUET_S3_DIR = "s3://anyscale-imagenet/parquet"
+PARQUET_S3_ROOT = f"{PARQUET_S3_DIR}/d76458f84f2544bdaac158d1b6b842da"
+
 
 def get_prop_raw_image_paths(num_workers, target_worker_gb):
     """Get a subset of imagenet raw image paths such that the dataset can be divided
     evenly across workers, with each receiving target_worker_gb GB of data.
     The resulting dataset size is roughly num_workers * target_worker_gb GB."""
-    img_s3_root = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/train"
     if target_worker_gb == -1:
         # Return the entire dataset.
-        return img_s3_root
+        return IMG_S3_ROOT
 
     mb_per_file = 143  # averaged across 300 classes
 
@@ -1028,19 +1031,16 @@ def get_prop_raw_image_paths(num_workers, target_worker_gb):
         math.ceil(target_worker_gb * num_workers * 1024 / mb_per_file),
         len(IMAGENET_WNID_TO_LABEL),
     )
-    sorted_class_ids = sorted(IMAGENET_WNID_TO_LABEL.keys())
     file_paths = [
-        f"{img_s3_root}/{class_id}/" for class_id in sorted_class_ids[:TARGET_NUM_DIRS]
+        f"{IMG_S3_ROOT}/{class_id}/" for class_id in SORTED_WNIDS[:TARGET_NUM_DIRS]
     ]
     return file_paths
 
 
 def get_prop_parquet_paths(num_workers, target_worker_gb):
-    parquet_s3_dir = "s3://anyscale-imagenet/parquet"
-    parquet_s3_root = f"{parquet_s3_dir}/d76458f84f2544bdaac158d1b6b842da"
     if target_worker_gb == -1:
         # Return the entire dataset.
-        return parquet_s3_dir
+        return PARQUET_S3_DIR
 
     mb_per_file = 128
     num_files = 200
@@ -1052,7 +1052,7 @@ def get_prop_parquet_paths(num_workers, target_worker_gb):
         for i in range(5):
             if not (fi in [163, 164, 174, 181, 183, 190] and i == 4):
                 # for some files, they only have 4 shards instead of 5.
-                file_paths.append(f"{parquet_s3_root}_{fi:06}_{i:06}.parquet")
+                file_paths.append(f"{PARQUET_S3_ROOT}_{fi:06}_{i:06}.parquet")
             if len(file_paths) >= TARGET_NUM_FILES:
                 break
         if len(file_paths) >= TARGET_NUM_FILES:
