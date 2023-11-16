@@ -728,7 +728,7 @@ httplib2==0.20.4
     #   google-auth-httplib2
     #   gsutil
     #   oauth2client
-httpx==0.25.1
+httpx==0.24.1
     # via
     #   gradio
     #   gradio-client
