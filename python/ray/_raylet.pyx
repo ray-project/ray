@@ -847,6 +847,19 @@ cdef raise_if_dependency_failed(arg):
         raise arg
 
 
+
+def serialize_retry_exception_allowlist(retry_exception_allowlist, func_name):
+        try:
+            return ray_pickle.dumps(   retry_exception_allowlist            )
+        except TypeError as e:
+            msg = (
+                "Could not serialize the retry exception allowlist"
+                f"{retry_exception_allowlist} for task {func_name}. "
+                "Check "
+                "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+                "for more information.")
+            raise TypeError(msg) from e
+
 cdef c_bool determine_if_retryable(
     Exception e,
     const c_string serialized_retry_exception_allowlist,
@@ -3614,18 +3627,7 @@ cdef class CoreWorker:
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
 
-        try:
-            serialized_retry_exception_allowlist = ray_pickle.dumps(
-                retry_exception_allowlist,
-            )
-        except TypeError as e:
-            msg = (
-                "Could not serialize the retry exception allowlist"
-                f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
-                "Check "
-                "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
-                "for more information.")
-            raise TypeError(msg) from e
+        serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(retry_exception_allowlist, function_descriptor.repr)
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -3822,6 +3824,9 @@ cdef class CoreWorker:
                           args,
                           c_string name,
                           int num_returns,
+                            int max_retries,
+                            c_bool retry_exceptions,
+                            retry_exception_allowlist,
                           double num_method_cpus,
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects):
@@ -3838,6 +3843,9 @@ cdef class CoreWorker:
             # This task id is incorrect if async task is used.
             # In this case, we should use task_id_in_async_context
             TaskID current_task = self.get_current_task_id()
+            c_string serialized_retry_exception_allowlist
+
+        serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(retry_exception_allowlist, function_descriptor.repr)
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -3867,6 +3875,9 @@ cdef class CoreWorker:
                         c_resources,
                         concurrency_group_name,
                         generator_backpressure_num_objects),
+                    max_retries,
+                    retry_exceptions,
+                    serialized_retry_exception_allowlist,
                     return_refs,
                     current_c_task_id)
             # These arguments were serialized and put into the local object
@@ -3969,6 +3980,7 @@ cdef class CoreWorker:
             dereference(c_actor_handle).ActorLanguage())
         actor_creation_function_descriptor = CFunctionDescriptorToPython(
             dereference(c_actor_handle).ActorCreationTaskFunctionDescriptor())
+        max_task_retries = dereference(c_actor_handle).MaxTaskRetries()
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
@@ -3981,11 +3993,13 @@ cdef class CoreWorker:
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)
             method_meta = ray.actor._ActorClassMethodMetadata.create(
-                actor_class, actor_creation_function_descriptor)
+                actor_class, actor_creation_function_descriptor, max_task_retries)
             return ray.actor.ActorHandle(language, actor_id,
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_returns,
+                                         method_meta.max_retries,
+                                         method_meta.retry_exceptions,
                                          method_meta.generator_backpressure_num_objects, # noqa
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
@@ -3995,6 +4009,8 @@ cdef class CoreWorker:
                                          {},  # method decorators
                                          {},  # method signatures
                                          {},  # method num_returns
+                                         {},  # method max_retries
+                                         {},  # method retry_exceptions
                                          {},  # generator_backpressure_num_objects
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,

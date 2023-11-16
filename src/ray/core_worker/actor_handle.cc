@@ -118,13 +118,23 @@ ActorHandle::ActorHandle(const rpc::ActorTableData &actor_table_data,
                          const rpc::TaskSpec &task_spec)
     : ActorHandle(CreateInnerActorHandleFromActorData(actor_table_data, task_spec)) {}
 
-void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor) {
+void ActorHandle::SetActorTaskSpec(
+    TaskSpecBuilder &builder,
+    const ObjectID new_cursor,
+    int max_retries,
+    bool retry_exceptions,
+    const std::string &serialized_retry_exception_allowlist) {
   absl::MutexLock guard(&mutex_);
   // Build actor task spec.
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
   const ObjectID actor_creation_dummy_object_id =
       ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
-  builder.SetActorTaskSpec(GetActorID(), actor_creation_dummy_object_id, task_counter_++);
+  builder.SetActorTaskSpec(GetActorID(),
+                           actor_creation_dummy_object_id,
+                           max_retries,
+                           retry_exceptions,
+                           serialized_retry_exception_allowlist,
+                           task_counter_++);
 }
 
 void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,

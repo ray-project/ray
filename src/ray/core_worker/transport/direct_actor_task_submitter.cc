@@ -443,6 +443,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                                        bool skip_queue) {
   const auto task_id = task_spec.TaskId();
 
+  RAY_LOG(INFO) << "void CoreWorkerDirectActorTaskSubmitter::PushActorTask, test spec "
+                << task_spec.DebugString();
+
   auto request = std::make_unique<rpc::PushTaskRequest>();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
@@ -472,7 +475,11 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
 
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
-      [this, task_id, actor_id](const Status &status, const rpc::PushTaskReply &reply) {
+      [this, task_spec, task_id, actor_id](const Status &status,
+                                           const rpc::PushTaskReply &reply) {
+        RAY_LOG(INFO)
+            << "void CoreWorkerDirectActorTaskSubmitter::PushActorTask reply, test spec "
+            << task_spec.DebugString() << ", reply " << reply.DebugString();
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
           absl::MutexLock lock(&mu_);
@@ -508,13 +515,20 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   const auto task_skipped = task_spec.GetMessage().skip_execution();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
+  RAY_LOG(INFO)
+      << "void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply, test spec "
+      << task_spec.DebugString() << ", reply " << reply.DebugString() << ", status "
+      << status;
 
   if (task_skipped) {
     // NOTE(simon):Increment the task counter regardless of the status because the
     // reply for a previously completed task. We are not calling CompletePendingTask
     // because the tasks are pushed directly to the actor, not placed on any queues
     // in task_finisher_.
-  } else if (status.ok()) {
+  } else if (status.ok()
+             // TODO: not as simple as this...
+             // got: status Invalid: client cancelled stale rpc
+             && (!reply.is_retryable_error())) {
     task_finisher_.CompletePendingTask(
         task_id, reply, addr, reply.is_application_error());
   } else if (status.IsSchedulingCancelled()) {
@@ -565,6 +579,12 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         &error_info,
         /*mark_task_object_failed*/ is_actor_dead,
         fail_immediatedly);
+
+    RAY_LOG(INFO)
+        << "ryw void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply, test spec "
+        << task_spec.DebugString() << ", reply " << reply.DebugString() << ", status "
+        << status << ", will retry " << will_retry << ", error_info "
+        << error_info.DebugString();
 
     if (!is_actor_dead && !will_retry) {
       // No retry == actor is dead.
