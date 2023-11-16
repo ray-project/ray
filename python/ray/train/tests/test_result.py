@@ -2,17 +2,14 @@ import pyarrow
 import pytest
 
 import ray
-
+from ray import train
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
-from ray import train
-from ray.train import Result, CheckpointConfig, RunConfig, ScalingConfig
-from ray.train.torch import TorchTrainer
+from ray.train import CheckpointConfig, Result, RunConfig, ScalingConfig
 from ray.train.base_trainer import TrainingFailedError
-from ray.tune import TuneConfig, Tuner
-
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-
+from ray.train.torch import TorchTrainer
+from ray.tune import TuneConfig, Tuner
 
 _PARAM_SPACE = {"a": 1, "b": 2}
 
