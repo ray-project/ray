@@ -527,7 +527,11 @@ Status PlasmaClient::Impl::GetBuffers(
 
       // Wait for the object to become ready to read.
       auto plasma_header = GetPlasmaObjectHeader(*object);
-      object_entry->second->next_version_to_read = plasma_header->ReadAcquire(object_entry->second->next_version_to_read);
+      int64_t version_read = plasma_header->ReadAcquire(object_entry->second->next_version_to_read);
+      if (version_read > 0) {
+        object_entry->second->is_shared = true;
+        object_entry->second->next_version_to_read = version_read;
+      }
 
       std::shared_ptr<Buffer> physical_buf;
       if (object->device_num == 0) {
@@ -641,6 +645,7 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
 }
 
 Status PlasmaClient::Impl::GetRelease(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Try to release Get for object " << object_id;
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   auto object_entry = objects_in_use_.find(object_id);
   if (object_entry == objects_in_use_.end()) {

@@ -5,23 +5,36 @@ import time
 ray.init()
 
 
+def read_and_release(ref, use_bytes, val=None):
+    arr = ray.get(ref)
+    #arr = worker.core_worker.get_if_local(object_refs)
+    if val is not None:
+        if use_bytes:
+            assert int.from_bytes(arr, "little") == val
+        else:
+            assert arr[0] == val, (arr, val)
+
+    # Signal to writer that they can write again.
+    ray.release(ref)
+
+
 @ray.remote
 class Reader:
-    def __init__(self, refs):
+    def __init__(self, refs, use_bytes):
         self.ref = refs[0]
+        # Keep the plasma object pinned.
+        # TODO(swang): Pin the object properly in plasma store.
+        self.pinned = ray.get(self.ref)
+        print("Object ref:", self.ref)
+        self.use_bytes = use_bytes
 
-    def read(self, use_bytes):
-        for i in range(10_000):
-            arr = ray.get(self.ref)
-            #arr = worker.core_worker.get_if_local(object_refs)
-            if use_bytes:
-                assert int.from_bytes(arr, "little") == i
-            else:
-                print("remote", arr[0])
-                assert arr[0] == i
+        read_and_release(self.ref, self.use_bytes)
 
-            # Signal to writer that they can write again.
-            ray.release(self.ref)
+
+    def read(self, num_trials):
+        for _ in range(num_trials):
+            for i in range(10_000):
+                read_and_release(self.ref, self.use_bytes, val=i)
 
 
 def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, read_remote=False):
@@ -44,21 +57,21 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
     else:
         assert np.array_equal(ray.get(ref), arr)
 
-    remote_read_done = None
     if reuse_object_ref:
         # Keep the plasma object pinned.
         # TODO(swang): Pin the object properly in plasma store.
         pinned = ray.get(ref)
         print("Object ref:", ref)
-
-        if read_remote:
-            reader = Reader.remote([ref])
-            remote_read_done = reader.read.remote(use_bytes)
     else:
         assert not read_remote
 
-    if read_remote or read_local:
+    remote_read_done = None
+    if read_local:
         ray.release(ref)
+    elif read_remote:
+        reader = Reader.remote([ref], use_bytes)
+        remote_read_done = reader.read.remote(num_trials)
+
     print("starting...")
 
     for _ in range(num_trials):
@@ -74,12 +87,10 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
                         object_ref=ref, max_readers=max_readers)
             else:
                 ref = ray.put(arr, max_readers=max_readers)
+
             if read_local:
-                if use_bytes:
-                    assert int.from_bytes(ray.get(ref), "little") == i
-                else:
-                    assert ray.get(ref)[0] == i
-                ray.release(ref)
+                read_and_release(self.ref, use_bytes, val=i)
+
         end = time.time()
         print(f"done, tput: {10_000 / (end - start)} puts/s")
 
@@ -102,7 +113,10 @@ if __name__ == "__main__":
     print("Reuse ray.put buffer")
     run(reuse_object_ref=True)
 
-    print("Reuse ray.put buffer + read + release (numpy)")
+    print("Reuse ray.put buffer + local read+release (numpy)")
     # TODO(swang): ray.get doesn't work on bytes? Getting deserialization
     # error.
     run(use_bytes=False, reuse_object_ref=True, read_local=True)
+
+    print("Reuse ray.put buffer + remote read+release (numpy)")
+    run(use_bytes=False, reuse_object_ref=True, read_remote=True)
