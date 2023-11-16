@@ -1464,8 +1464,13 @@ def serve_global_ray_cluster(
             num_worker_nodes=num_worker_nodes,
             **kwargs,
         )
-        Event().wait()  # serve forever until user cancel the command.
-        shutdown_ray_cluster()
+        try:
+            Event().wait()  # serve forever until user cancel the command.
+        finally:
+            # once the program is interrupted,
+            # or the corresponding databricks notebook command is interrupted
+            # shut down the Ray cluster.
+            shutdown_ray_cluster()
 
 
 @DeveloperAPI
