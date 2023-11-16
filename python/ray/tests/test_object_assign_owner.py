@@ -155,6 +155,10 @@ def test_multiple_objects(ray_start_cluster):
 
 
 # https://github.com/ray-project/ray/issues/30341
+@pytest.mark.skipif(
+    os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1",
+    reason="https://github.com/ray-project/ray/issues/41175",
+)
 def test_owner_assign_inner_object(shutdown_only):
 
     ray.init()

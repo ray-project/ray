@@ -327,6 +327,10 @@ def has_client_deprecation_warn(warning: Warning, expected_replacement: str) -> 
 @pytest.mark.filterwarnings(
     "default:Starting a connection through `ray.client` will be deprecated"
 )
+@pytest.mark.skipif(
+    os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1",
+    reason="https://github.com/ray-project/ray/issues/38224",
+)
 def test_client_deprecation_warn():
     """
     Tests that calling ray.client directly raises a deprecation warning with

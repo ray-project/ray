@@ -1272,6 +1272,10 @@ def test_log_get(ray_start_cluster):
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Windows has logging race from tasks."
 )
+@pytest.mark.skipif(
+    os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1",
+    reason="https://github.com/ray-project/ray/issues/40959",
+)
 def test_log_task(shutdown_only):
     from ray.runtime_env import RuntimeEnv
 

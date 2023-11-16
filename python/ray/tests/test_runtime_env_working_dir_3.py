@@ -249,6 +249,10 @@ class TestGC:
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
     )
+    @pytest.mark.skipif(
+        os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1",
+        reason="https://github.com/ray-project/ray/issues/40781",
+    )
     def test_detached_actor_gc(
         self,
         start_cluster,
