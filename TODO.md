@@ -14,6 +14,9 @@
     - Sender CoreWorker actor is the "writer"
     - Receiver CoreWorker actor(s) is the "reader"
     - Implement alternative plasma client put/get calls
+[ ] Serialization edge cases
+    - Implement pinning for plasma client objects (so that we don't need the hack to pin in Python memory, which only works for zero-copy objects)
+    - Implement data size header to account for different-size objects
 [ ] Connect actors and driver
     - Receiver CoreWorker actor selects between normal task queue and signals from shared-memory objects
         - Implement a DependencyWaiter that uses the alternative plasma client to get objects
