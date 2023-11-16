@@ -108,7 +108,7 @@ def test_batching_client_dropped_unary(serve_instance):
 
     serve.run(ModelUnary.bind())
 
-    url = "http://0.0.0.0:8000/"
+    url = "http://localhost:8000/"
 
     # Sending requests with clients that drops the connection.
     for _ in range(3):
@@ -140,7 +140,7 @@ def test_batching_client_dropped_streaming(serve_instance):
 
     serve.run(ModelStreaming.bind())
 
-    url = "http://0.0.0.0:8000/"
+    url = "http://localhost:8000/"
 
     # Sending requests with clients that drops the connection.
     for _ in range(3):
