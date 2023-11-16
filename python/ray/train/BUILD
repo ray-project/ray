@@ -482,7 +482,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_result.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib", ":conftest"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
