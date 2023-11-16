@@ -49,7 +49,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
         self._minibatch_size = minibatch_size
-        self._num_minibatches = math.ceil(len(self._batch) / self._minibatch_size)
         self._num_iters = num_iters
 
         # mapping from module_id to the start index of the batch
@@ -58,40 +57,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
 
     def __iter__(self):
-        """total_length = len(self._batch)
-        current_sublist = []
-        current_length = 0
-        remaining_sublists = self._num_minibatches
-
-        for item in L:
-            # Add the current item to the current sublist
-            current_sublist.append(item)
-            current_length += len(item)
-            total_length -= len(item)
-
-            # Recalculate the average length for the remaining sublists
-            if remaining_sublists > 1:
-                avg_length = total_length / (remaining_sublists - 1)
-            else:
-                avg_length = total_length
-
-            # Check if the current sublist should be closed off
-            if current_length >= avg_length and remaining_sublists > 1:
-                yield current_sublist
-                current_sublist = []
-                current_length = 0
-                remaining_sublists -= 1
-
-        # Add the last sublist if it's not empty
-        if current_sublist:
-            yield current_sublist
-        """
-
-        #count_iters = 0
-        #count_minibatch = 0
         while min(self._num_covered_epochs.values()) < self._num_iters:
-            #count_iters += 1
-            #print(f"minibatch iter={count_iters}")
+
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
 
@@ -102,6 +69,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         "the same number of samples for each module_id."
                     )
                 s = self._start[module_id]  # start
+                n_steps = self._minibatch_size
+
                 samples_to_concat = []
 
                 # get_len is a function that returns the length of a batch
@@ -114,16 +83,14 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         "to be present in the batch for slicing a batch in the batch "
                         "dimension B."
                     )
+
                     def get_len(b):
                         return len(b[SampleBatch.SEQ_LENS])
 
-                    n_steps = int(self._minibatch_ratio * get_len(module_batch))
-
                 else:
+
                     def get_len(b):
                         return len(b)
-
-                    n_steps = self._minibatch_size
 
                 # Cycle through the batch until we have enough samples.
                 while n_steps >= get_len(module_batch) - s:
@@ -148,9 +115,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             # Note (Kourosh): env_steps is the total number of env_steps that this
             # multi-agent batch is covering. It should be simply inherited from the
             # original multi-agent batch.
-            minibatch = MultiAgentBatch(minibatch, env_steps=len(self._batch))
-            #count_minibatch += 1
-            #print(f"Count minibatch={count_minibatch}")
+            minibatch = MultiAgentBatch(minibatch, len(self._batch))
             yield minibatch
 
 

@@ -8,6 +8,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.numpy import convert_to_numpy
 
 
 class DefaultLearnerConnector(ConnectorV2):
@@ -56,7 +57,7 @@ class DefaultLearnerConnector(ConnectorV2):
                     "`config.training(model={'max_seq_len': x})`."
                 )
             # Get model init state.
-            init_state = ctx.rl_module.get_initial_state()
+            init_state = convert_to_numpy(ctx.rl_module.get_initial_state())
             # Get STATE_OUTs for all episodes and only keep those (as STATE_INs) that
             # are located at the `max_seq_len` edges (state inputs to RNNs only have a
             # B-axis, no T-axis).
@@ -68,7 +69,7 @@ class DefaultLearnerConnector(ConnectorV2):
                     # [::T] = only keep every Tth (max_seq_len) state in.
                     # [:-1] = shift state outs by one (ignore very last state out, but
                     # therefore add the init state at the beginning).
-                    lambda i, o: np.concatenate([[i.numpy()], o[:-1]])[::T],
+                    lambda i, o: np.concatenate([[i], o[:-1]])[::T],
                     (
                         # Episode has a (reset) beginning -> Prepend initial state.
                         init_state if episode.t_started == 0

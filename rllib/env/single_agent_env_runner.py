@@ -254,23 +254,27 @@ class SingleAgentEnvRunner(EnvRunner):
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks.
-        # Initialized episodes do not have recorded any step and lack
-        # `extra_model_outputs`.
-        ongoing_episodes_to_return = [
-            episode.convert_lists_to_numpy(
-                #keep_every_n_state_out=self.config.model.get("max_seq_len")
-            )
-            for episode in self._episodes if episode.t > 0
-        ]
-        # Also, make sure, we return a copy and start new chunks so that callers
-        # of this function do not alter the ongoing and returned Episode objects.
-        self._episodes = [
+
+        # Also, make sure we start new episode chunks (continuing the ongoing episodes
+        # from the to-be-returned chunks).
+        ongoing_episodes_continuations = [
             eps.cut(overlap=self.config.episode_lookback_horizon)
             for eps in self._episodes
         ]
-        for eps in ongoing_episodes_to_return:
+
+        ongoing_episodes_to_return = []
+        for eps in self._episodes:
+            # Just started Episodes do not have to be returned. There is no data
+            # in them anyways.
+            if eps.t == 0:
+                continue
             eps.validate()
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
+            # Return finalized (numpy'ized) Episodes.
+            ongoing_episodes_to_return.append(eps.convert_lists_to_numpy())
+
+        # Continue collecting into the cut Episode chunks.
+        self._episodes = ongoing_episodes_continuations
 
         # Record last metrics collection.
         self._ts_since_last_metrics += ts
