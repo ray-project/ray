@@ -119,11 +119,7 @@ class TestActionDistributions(unittest.TestCase):
 
         for fw, sess in framework_iterator(session=True):
             # Create the correct distribution object.
-            cls = (
-                Categorical
-                if fw != "torch"
-                else TorchCategorical
-            )
+            cls = Categorical if fw != "torch" else TorchCategorical
             categorical = cls(inputs, {})
 
             # Do a stability test using extreme NN outputs to see whether
@@ -146,9 +142,7 @@ class TestActionDistributions(unittest.TestCase):
             # Batch of size=3 and non-deterministic -> expect roughly the mean.
             out = categorical.sample()
             check(
-                tf.reduce_mean(out)
-                if fw != "torch"
-                else torch.mean(out.float()),
+                tf.reduce_mean(out) if fw != "torch" else torch.mean(out.float()),
                 1.0,
                 decimals=0,
             )
