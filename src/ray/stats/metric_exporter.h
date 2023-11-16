@@ -53,6 +53,8 @@ class MetricPointExporter final : public opencensus::stats::StatsExporter::Handl
   void ExportViewData(
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                   opencensus::stats::ViewData>> &data) override;
+
+ protected:
   void addGlobalTagsToGrpcMetric(MetricPoint &metric);
 
  private:
@@ -116,7 +118,6 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   void ExportViewData(
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                   opencensus::stats::ViewData>> &data) override;
-  void addGlobalTagsToGrpcMetric(opencensus::proto::metrics::v1::Metric &metric);
   void SendData(rpc::ReportOCMetricsRequest &request);
   void UpdateMetricsData(const std::pair<opencensus::stats::ViewDescriptor,
                                 opencensus::stats::ViewData> &datum, rpc::ReportOCMetricsRequest &request_proto);
