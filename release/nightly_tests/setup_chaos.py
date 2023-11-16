@@ -27,7 +27,7 @@ def parse_script_args():
         ),
     )
     parser.add_argument(
-        "--node-kill-delay",
+        "--kill-delay",
         type=int,
         default=0,
         help=(

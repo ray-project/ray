@@ -1389,6 +1389,13 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
 
 
 class ResourceKillerActor:
+    """Abstract base class used to implement resource killers for chaos testing.
+
+    Subclasses should implement _find_resource_to_kill, which should find a resource
+    to kill. This method should return the args to _kill_resource, which is another
+    abstract method that should kill the resource and add it to the `killed` set.
+    """
+
     def __init__(
         self,
         head_node_id,

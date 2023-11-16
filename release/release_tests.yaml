@@ -211,7 +211,7 @@
 
   run:
     timeout: 1000
-    prepare: python setup_chaos.py --max-nodes-to-kill 2 --node-kill-delay 30
+    prepare: python setup_chaos.py --max-to-kill 2 --kill-delay 30
     script: python dataset/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
 
     wait_for_nodes:
@@ -6250,7 +6250,7 @@
     timeout: 7200
     wait_for_nodes:
       num_nodes: 21
-    prepare: python setup_chaos.py --node-kill-interval 100
+    prepare: python setup_chaos.py --kill-interval 100
     script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
       20 --error_rate 0  --data_save_path /tmp/ray
 
@@ -6280,7 +6280,7 @@
     timeout: 7200
     wait_for_nodes:
       num_nodes: 21
-    prepare: python setup_chaos.py --node-kill-interval 100
+    prepare: python setup_chaos.py --kill-interval 100
     script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
       70 --error_rate 0  --data_save_path /tmp/ray
 
@@ -6311,7 +6311,7 @@
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 1200 --max-nodes-to-kill 3'
+    prepare: ' python setup_chaos.py --kill-interval 1200 --max-to-kill 3'
     script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
@@ -6341,7 +6341,7 @@
 
   run:
     timeout: 7200
-    prepare: 'python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
+    prepare: 'python setup_chaos.py --kill-interval 900 --max-to-kill 3'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
@@ -6374,7 +6374,7 @@
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
+    prepare: ' python setup_chaos.py --kill-interval 600 --max-to-kill 2'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
@@ -6405,7 +6405,7 @@
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
+    prepare: ' python setup_chaos.py --kill-interval 600 --max-to-kill 2'
     script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
