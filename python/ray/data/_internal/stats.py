@@ -190,6 +190,11 @@ class _StatsActor:
             description="Bytes outputted by dataset operators",
             tag_keys=op_tags_keys,
         )
+        self.rows_outputted = Gauge(
+            "data_output_rows",
+            description="Rows outputted by dataset operators",
+            tag_keys=op_tags_keys,
+        )
         self.block_generation_time = Gauge(
             "data_block_generation_seconds",
             description="Time spent generating blocks.",
@@ -260,6 +265,7 @@ class _StatsActor:
             self.bytes_freed.set(stats.get("obj_store_mem_freed", 0), tags)
             self.bytes_current.set(stats.get("obj_store_mem_cur", 0), tags)
             self.bytes_outputted.set(stats.get("bytes_outputs_generated", 0), tags)
+            self.rows_outputted.set(stats.get("rows_outputs_generated", 0), tags)
             self.cpu_usage.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage.set(stats.get("gpu_usage", 0), tags)
             self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
@@ -279,6 +285,7 @@ class _StatsActor:
             self.bytes_freed.set(0, tags)
             self.bytes_current.set(0, tags)
             self.bytes_outputted.set(0, tags)
+            self.rows_outputted.set(0, tags)
             self.cpu_usage.set(0, tags)
             self.gpu_usage.set(0, tags)
             self.block_generation_time.set(0, tags)
