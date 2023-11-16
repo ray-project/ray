@@ -3190,6 +3190,13 @@ cdef class CoreWorker:
         return CCoreWorkerProcess.GetCoreWorker(
             ).ShouldCaptureChildTasksInPlacementGroup()
 
+    def update_task_is_debugger_paused(self, TaskID task_id, is_debugger_paused):
+        cdef:
+            CTaskID c_task_id = task_id.native()
+
+        return CCoreWorkerProcess.GetCoreWorker(
+            ).UpdateTaskIsDebuggerPaused(c_task_id, is_debugger_paused)
+
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
 
