@@ -25,7 +25,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from dataset_benchmark_util import (
-    PARQUET_S3_ROOT,
+    get_prop_parquet_paths,
     IMG_S3_ROOT,
     get_mosaic_epoch_size,
     IMAGENET_WNID_TO_ID,
@@ -83,9 +83,9 @@ def parse_args():
     )
     parser.add_argument(
         "--num-epochs",
-        # Use 7 epochs and report the avg per-epoch throughput
+        # Use 5 epochs and report the avg per-epoch throughput
         # (excluding first epoch in case there is warmup).
-        default=7,
+        default=5,
         type=int,
         help="Number of epochs to run. The avg per-epoch throughput will be reported.",
     )
@@ -164,7 +164,9 @@ def parse_args():
         if args.file_type == "image":
             args.data_root = IMG_S3_ROOT
         elif args.file_type == "parquet":
-            args.data_root = PARQUET_S3_ROOT
+            args.data_root = get_prop_parquet_paths(
+                num_workers=args.num_workers, target_worker_gb=args.target_worker_gb
+            )
         else:
             raise Exception(
                 f"Unknown file type {args.file_type}; "
@@ -256,12 +258,12 @@ def train_loop_per_worker():
         elif isinstance(it, ray.data.iterator.DataIterator):
             batch_iter = it.iter_torch_batches(
                 batch_size=args.batch_size,
-                # batch_size=64,
-                local_shuffle_buffer_size=32,
+                local_shuffle_buffer_size=args.batch_size / 2,
             )
 
-            val_ds = train.get_dataset_shard("val")
-            batch_iter_val = val_ds.iter_torch_batches(batch_size=args.batch_size)
+            if run_validation_set:
+                val_ds = train.get_dataset_shard("val")
+                batch_iter_val = val_ds.iter_torch_batches(batch_size=args.batch_size)
 
         print(f"Epoch {epoch+1} of {args.num_epochs}")
         num_rows = 0

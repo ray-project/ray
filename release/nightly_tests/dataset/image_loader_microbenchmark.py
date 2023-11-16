@@ -1,6 +1,7 @@
 import ray
 import torch
 import torchvision
+from torchvision.transforms.functional import pil_to_tensor
 import os
 import tensorflow as tf
 import numpy as np
@@ -193,6 +194,11 @@ def crop_and_flip_image(row):
 
 
 def center_crop_image(row):
+    # Used to generate the validation set. The main difference between
+    # `crop_and_flip_image` and this method is that the validation set
+    # should avoid random cropping from the full image, but instead
+    # should resize and take the center crop to generate more consistent
+    # outputs.
     val_transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.Resize(256),
@@ -224,7 +230,7 @@ def crop_and_flip_image_batch(image_batch):
 def decode_image_crop_and_flip(row):
     row["image"] = Image.frombytes("RGB", (row["height"], row["width"]), row["image"])
     # Convert back np to avoid storing a np.object array.
-    return {"image": np.array(transform(row["image"]))}
+    return {"image": np.array(transform(pil_to_tensor(row["image"]) / 255.0))}
 
 
 class MdsDatasource(ray.data.datasource.FileBasedDatasource):
