@@ -12,6 +12,7 @@ import ray
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
 from ray._private.test_utils import chdir, check_local_files_gced, wait_for_condition
+from ray._private.test_utils import skip_flaky_test
 from ray._private.utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -250,7 +251,7 @@ class TestGC:
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
     )
     @pytest.mark.skipif(
-        os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1",
+        skip_flaky_test(),
         reason="https://github.com/ray-project/ray/issues/40781",
     )
     def test_detached_actor_gc(

@@ -20,6 +20,7 @@ from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
+    skip_flaky_test,
 )
 
 from ray._private.ray_constants import (
@@ -1273,7 +1274,7 @@ def test_log_get(ray_start_cluster):
     sys.platform == "win32", reason="Windows has logging race from tasks."
 )
 @pytest.mark.skipif(
-    os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1",
+    skip_flaky_test(),
     reason="https://github.com/ray-project/ray/issues/40959",
 )
 def test_log_task(shutdown_only):
