@@ -43,25 +43,27 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        gym.register(
-            "custom-env-v0",
-            partial(
+        if isinstance(self.config.env, str) and _global_registry.contains(
+            ENV_CREATOR, self.config.env
+        ):
+            entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
                 self.config.env_config,
             )
-            if _global_registry.contains(ENV_CREATOR, self.config.env)
-            else partial(
+
+        else:
+            entry_point = partial(
                 _gym_env_creator,
                 env_context=self.config.env_config,
                 env_descriptor=self.config.env,
-            ),
-        )
+            )
+        gym.register("rllib-single-agent-env-runner-v0", entry_point=entry_point)
 
         # Create the vectorized gymnasium env.
         # Wrap into `VectorListInfo`` wrapper to get infos as lists.
         self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
             gym.vector.make(
-                "custom-env-v0",
+                "rllib-single-agent-env-runner-v0",
                 num_envs=self.config.num_envs_per_worker,
                 asynchronous=self.config.remote_worker_envs,
             )
@@ -174,6 +176,10 @@ class SingleAgentEnvRunner(EnvRunner):
         if force_reset or self._needs_initial_reset:
             obs, infos = self.env.reset()
 
+            # We just reset the env. Don't have to force this again in the next
+            # call to `self._sample_timesteps()`.
+            self._needs_initial_reset = False
+
             self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
             states = initial_states
 
@@ -208,7 +214,6 @@ class SingleAgentEnvRunner(EnvRunner):
         # Loop through env in enumerate.(self._episodes):
         ts = 0
 
-        # print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
@@ -244,6 +249,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     states = fwd_out[STATE_OUT]
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+
             ts += self.num_envs
 
             for i in range(self.num_envs):
@@ -465,6 +471,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Compute per-episode metrics (only on already completed episodes).
         metrics = []
         for eps in self._done_episodes_for_metrics:
+            assert eps.is_done
             episode_length = len(eps)
             episode_reward = eps.get_return()
             # Don't forget about the already returned chunks of this episode.
