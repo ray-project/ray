@@ -244,8 +244,10 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
       RAY_LOG(WARNING) << error_message.str();
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+      RAY_LOG(INFO) << "vct ee";
       RAY_CHECK_OK(gcs_publisher_->PublishError(node_id.Hex(), *error_data_ptr, nullptr));
     }
+    RAY_LOG(INFO) << "vct ff";
 
     // Notify all listeners.
     for (auto &listener : node_removed_listeners_) {
@@ -259,7 +261,10 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
   if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
-    node->mutable_death_info()->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+    if (node->death_info().reason() == rpc::NodeDeathInfo::UNSPECIFIED) {
+      // There was no drain in progress.
+      node->mutable_death_info()->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+    }
     AddDeadNodeToCache(node);
     auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
     node_info_delta->set_node_id(node->node_id());

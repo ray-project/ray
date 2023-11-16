@@ -77,9 +77,9 @@ class GcsPublisher {
                               const rpc::WorkerDeltaData &message,
                               const StatusCallback &done);
 
-  Status PublishError(const std::string &id,
-                      const rpc::ErrorTableData &message,
-                      const StatusCallback &done);
+  virtual Status PublishError(const std::string &id,
+                              const rpc::ErrorTableData &message,
+                              const StatusCallback &done);
 
   /// TODO: remove once it is converted to GRPC-based push broadcasting.
   Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,

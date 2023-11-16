@@ -31,7 +31,7 @@ class MockGcsActorSchedulerInterface : public GcsActorSchedulerInterface {
   MOCK_METHOD(
       void,
       ReleaseUnusedWorkers,
-      ((const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
+      ((const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
       (override));
 };
 
@@ -57,12 +57,8 @@ class MockGcsActorScheduler : public GcsActorScheduler {
   MOCK_METHOD(
       void,
       ReleaseUnusedWorkers,
-      ((const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
+      ((const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
       (override));
-  MOCK_METHOD(std::shared_ptr<rpc::GcsNodeInfo>,
-              SelectNode,
-              (std::shared_ptr<GcsActor> actor),
-              (override));
   MOCK_METHOD(void,
               HandleWorkerLeaseReply,
               (std::shared_ptr<GcsActor> actor,
@@ -84,22 +80,5 @@ class MockGcsActorScheduler : public GcsActorScheduler {
 }  // namespace ray
 
 namespace ray {
-namespace gcs {
-
-class MockRayletBasedActorScheduler : public RayletBasedActorScheduler {
- public:
-  MOCK_METHOD(std::shared_ptr<rpc::GcsNodeInfo>,
-              SelectNode,
-              (std::shared_ptr<GcsActor> actor),
-              (override));
-  MOCK_METHOD(void,
-              HandleWorkerLeaseReply,
-              (std::shared_ptr<GcsActor> actor,
-               std::shared_ptr<rpc::GcsNodeInfo> node,
-               const Status &status,
-               const rpc::RequestWorkerLeaseReply &reply),
-              (override));
-};
-
-}  // namespace gcs
+namespace gcs {}  // namespace gcs
 }  // namespace ray

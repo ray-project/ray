@@ -145,6 +145,8 @@ namespace gcs {
 
 class MockGcsTableStorage : public GcsTableStorage {
  public:
+  MockGcsTableStorage(std::shared_ptr<StoreClient> store_client)
+      : GcsTableStorage(store_client) {}
 };
 
 }  // namespace gcs
