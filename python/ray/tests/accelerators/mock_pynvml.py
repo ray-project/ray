@@ -49,7 +49,7 @@ class PyNVMLMock:
         if "mig_devices" in handle:
             return max(7, len(handle["mig_devices"]))
         else:
-            raise pynvml.NVMLError_NotSupported
+            return 0 # if gpu doesnt support mig
 
     def nvmlDeviceGetMigDeviceHandleByIndex(self, handle, mig_index):
         try:
