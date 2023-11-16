@@ -93,6 +93,7 @@ class Container:
             "NVIDIA_DISABLE_REQUIRE=1",
             "--volume",
             "/tmp/artifacts:/artifact-mount",
+            "--privileged",
         ]
         for volume in self.volumes:
             command += ["--volume", volume]

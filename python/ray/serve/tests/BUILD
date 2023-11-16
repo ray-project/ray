@@ -175,3 +175,11 @@ py_test(
     tags = ["exclusive", "team:serve", "xcommit"],
     deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
+
+py_test(
+    name = "test_deployment_in_container.py",
+    srcs = ["test_deployment_in_container.py"],
+    size = "small",
+    tags = ["exclusive", "team:serve"],
+    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+)
