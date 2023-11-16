@@ -91,9 +91,11 @@ async def test_batch_generator_streaming_response_integration_test(serve_instanc
 
 
 def test_batching_client_dropped_unary(serve_instance):
-    """TODO (genesu):
+    """Test unary batching with clients that drops the connection.
 
+    After requests are dropped. The next request should succeed.
     """
+
     @serve.deployment
     class ModelUnary:
         @serve.batch(max_batch_size=5)
@@ -106,21 +108,28 @@ def test_batching_client_dropped_unary(serve_instance):
 
     serve.run(ModelUnary.bind())
 
-    url_unary = "http://0.0.0.0:8000/"
-    with pytest.raises(requests.exceptions.ReadTimeout):
-        requests.get(url_unary, timeout=0.01)
+    url = "http://0.0.0.0:8000/"
 
-    resp = requests.get(url_unary, timeout=None)
+    # Sending requests with clients that drops the connection.
+    for _ in range(10):
+        with pytest.raises(requests.exceptions.ReadTimeout):
+            requests.get(url, timeout=0.005)
+
+    # The following request should succeed.
+    resp = requests.get(url, timeout=1)
+    assert resp.status_code == 200
     assert resp.text == "fake-response"
 
 
 def test_batching_client_dropped_streaming(serve_instance):
-    """TODO (genesu):
+    """Test streaming batching with clients that drops the connection.
 
+    After requests are dropped. The next request should succeed.
     """
+
     @serve.deployment
     class ModelStreaming:
-        @serve.batch(max_batch_size=5)
+        @serve.batch(max_batch_size=3)
         async def handle_batch(self, requests):
             await asyncio.sleep(0.05)
             for i in range(10):
@@ -131,11 +140,18 @@ def test_batching_client_dropped_streaming(serve_instance):
 
     serve.run(ModelStreaming.bind())
 
-    url_streaming = "http://0.0.0.0:8000/streaming"
-    with pytest.raises(requests.exceptions.ReadTimeout):
-        requests.get(url_streaming, timeout=0.001)
+    url = "http://0.0.0.0:8000/"
 
-    resp = requests.get(url_streaming, timeout=None)
+    # Sending requests with clients that drops the connection.
+    for _ in range(10):
+        with pytest.raises(
+            (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError)
+        ):
+            requests.get(url, timeout=0.005)
+
+    # The following request should succeed.
+    resp = requests.get(url, timeout=1)
+    assert resp.status_code == 200
     assert resp.text == "0123456789"
 
 
