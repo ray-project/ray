@@ -45,9 +45,8 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        if (
-            isinstance(self.config.env, str)
-            and _global_registry.contains(ENV_CREATOR, self.config.env)
+        if isinstance(self.config.env, str) and _global_registry.contains(
+            ENV_CREATOR, self.config.env
         ):
             entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
