@@ -1019,3 +1019,12 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                 for app_name, app in self.applications.items()
             },
         )
+
+
+def applications_match(config1: ServeDeploySchema, config2: ServeDeploySchema) -> bool:
+    """Returns whether config1 and config2 contain matching applications."""
+
+    config1_app_names = {app.name for app in config1.applications}
+    config2_app_names = {app.name for app in config2.applications}
+
+    return config1_app_names == config2_app_names

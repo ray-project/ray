@@ -1,5 +1,6 @@
 import logging
 import sys
+from copy import deepcopy
 from typing import Dict, List, Optional, Union
 
 import pytest
@@ -10,10 +11,12 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
+    HTTPOptionsSchema,
     LoggingConfig,
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
+    applications_match,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -711,6 +714,104 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     # Serve will set num_cpus to 1 if it's not set.
     assert len(deployment.ray_actor_options) == 1
     assert deployment.ray_actor_options["num_cpus"] == 1
+
+
+class TestApplicationsMatch:
+    def test_config_with_self(self):
+        config = ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="app1",
+                    import_path="fake.import",
+                    route_prefix="/",
+                ),
+            ],
+        )
+
+        assert applications_match(config, config) is True
+
+    def test_configs_with_matching_app_names(self):
+        config1 = ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="app1",
+                    import_path="fake.import",
+                    route_prefix="/app1",
+                ),
+                ServeApplicationSchema(
+                    name="app2",
+                    import_path="fake.import2",
+                    route_prefix="/app2",
+                ),
+                ServeApplicationSchema(
+                    name="app3",
+                    import_path="fake.import3",
+                    route_prefix="/app3",
+                ),
+            ],
+        )
+
+        # Configs contain apps with same name but different import paths.
+        config2 = deepcopy(config1)
+        config2.applications[0].import_path = "different_fake.import"
+        assert applications_match(config1, config2) is True
+
+        config2.applications[0].import_path = "extended.fake.import"
+        assert applications_match(config1, config2) is True
+
+        config2.applications[0].import_path = "fake:import"
+        assert applications_match(config1, config2) is True
+
+        # Configs contain apps with same name but different route_prefixes.
+        config2 = deepcopy(config1)
+        config2.applications[0].route_prefix += "_suffix"
+        assert applications_match(config1, config2) is True
+
+        # Configs contain apps with same name but different runtime_envs.
+        config2 = deepcopy(config1)
+        config2.applications[1].runtime_env = {"working_dir": "https://fake/uri"}
+        assert applications_match(config1, config2) is True
+
+        # Configs contain apps with same name but different target_capacities.
+        config2 = deepcopy(config1)
+        config2.target_capacity = 50
+        assert applications_match(config1, config2) is True
+
+        # Configs contain apps with same name but different http options.
+        config2 = deepcopy(config1)
+        config2.http_options = HTTPOptionsSchema(host="62.79.45.100")
+        assert applications_match(config1, config2) is True
+
+    def test_configs_with_different_app_names(self):
+        config1 = ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="app1",
+                    import_path="fake.import",
+                    route_prefix="/app1",
+                ),
+                ServeApplicationSchema(
+                    name="app2",
+                    import_path="fake.import2",
+                    route_prefix="/app2",
+                ),
+                ServeApplicationSchema(
+                    name="app3",
+                    import_path="fake.import3",
+                    route_prefix="/app3",
+                ),
+            ],
+        )
+
+        # Configs contain apps with different names but same import paths.
+        config2 = deepcopy(config1)
+        config2.applications[0].name = "different_app1"
+        assert applications_match(config1, config2) is False
+
+        # Configs contain different number of apps.
+        config2 = deepcopy(config1)
+        config2.applications.pop()
+        assert applications_match(config1, config2) is False
 
 
 if __name__ == "__main__":
