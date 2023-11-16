@@ -1533,7 +1533,6 @@ class WorkerKillerActor(ResourceKillerActor):
                 ("name", "!=", "WorkerKillActor.run"),
             ]
         )
-        self.worker_options = ListApiOptions(filters=[("is_alive", "=", "True")])
 
     async def _find_resource_to_kill(self):
         from ray.util.state.common import StateResource
@@ -1547,18 +1546,11 @@ class WorkerKillerActor(ResourceKillerActor):
                 options=self.task_options,
                 raise_on_missing_output=False,
             )
-            workers = {
-                worker.worker_id: worker
-                for worker in self.client.list(
-                    StateResource.WORKERS,
-                    options=self.worker_options,
-                    raise_on_missing_output=False,
-                )
-            }
             if self.task_filter is not None:
                 tasks = list(filter(self.task_filter, tasks))
+
             for task in tasks:
-                if task.worker_id in workers:
+                if task.worker_id is not None and task.node_id is not None:
                     process_to_kill_task_id = task.task_id
                     process_to_kill_pid = task.worker_pid
                     process_to_kill_node_id = task.node_id
