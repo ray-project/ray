@@ -5,8 +5,16 @@ import sys
 
 import pytest
 from fastapi import FastAPI
-from pydantic import BaseModel as BaseModelV2
-from pydantic.v1 import BaseModel as BaseModelV1
+
+try:
+    # Testing with Pydantic 2
+    from pydantic import BaseModel as BaseModelV2
+    from pydantic.v1 import BaseModel as BaseModelV1
+    BASE_MODELS = [BaseModelV1, BaseModelV2]
+except ImportError:
+    # Testing with Pydantic 1
+    from pydantic import BaseModel as BaseModelV1
+    BaseModelV2 = None
 
 import ray
 
@@ -18,7 +26,7 @@ def start_ray():
     ray.init(ignore_reinit_error=True)
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_cls(start_ray, BaseModel: Type):
     class User(BaseModel):
         name: str
@@ -26,7 +34,7 @@ def test_serialize_cls(start_ray, BaseModel: Type):
     ray.get(ray.put(User))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_instance(start_ray, BaseModel: Type):
     class User(BaseModel):
         name: str
@@ -34,23 +42,23 @@ def test_serialize_instance(start_ray, BaseModel: Type):
     ray.get(ray.put(User(name="a")))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_imported_cls(start_ray, BaseModel: Type):
     ray.get(ray.put(User))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_imported_instance(start_ray, BaseModel: Type):
     ray.get(ray.put(user))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_no_route(start_ray, BaseModel: Type):
     app = FastAPI()
     ray.get(ray.put(app))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_no_validation(start_ray, BaseModel: Type):
     app = FastAPI()
 
@@ -61,7 +69,7 @@ def test_serialize_app_no_validation(start_ray, BaseModel: Type):
     ray.get(ray.put(app))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_primitive_type(start_ray, BaseModel: Type):
     app = FastAPI()
 
@@ -72,7 +80,7 @@ def test_serialize_app_primitive_type(start_ray, BaseModel: Type):
     ray.get(ray.put(app))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_pydantic_type_imported(start_ray, BaseModel: Type):
     app = FastAPI()
 
@@ -83,7 +91,7 @@ def test_serialize_app_pydantic_type_imported(start_ray, BaseModel: Type):
     ray.get(ray.put(app))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_pydantic_type_inline(start_ray, BaseModel: Type):
     class User(BaseModel):
         name: str
@@ -97,12 +105,12 @@ def test_serialize_app_pydantic_type_inline(start_ray, BaseModel: Type):
     ray.get(ray.put(app))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_imported(start_ray, BaseModel: Type):
     ray.get(ray.put(app))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_pydantic_type_closure_ref(start_ray, BaseModel: Type):
     class User(BaseModel):
         name: str
@@ -119,7 +127,7 @@ def test_serialize_app_pydantic_type_closure_ref(start_ray, BaseModel: Type):
     ray.get(ray.put(make))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_pydantic_type_closure_ref_import(start_ray, BaseModel: Type):
     def make():
         app = FastAPI()
@@ -133,7 +141,7 @@ def test_serialize_app_pydantic_type_closure_ref_import(start_ray, BaseModel: Ty
     ray.get(ray.put(make))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_pydantic_type_closure(start_ray, BaseModel: Type):
     def make():
         class User(BaseModel):
@@ -150,13 +158,13 @@ def test_serialize_app_pydantic_type_closure(start_ray, BaseModel: Type):
     ray.get(ray.put(make))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_app_imported_closure(start_ray, BaseModel: Type):
     ray.get(ray.put(closure))
 
 
-# TODO: why only new one.
-@pytest.mark.parametrize("BaseModel", [BaseModelV2])
+# TODO: Serializing a Serve dataclass doesn't work in Pydantic 1.10 – 2.0.
+@pytest.mark.parametrize("BaseModel", [BaseModelV2] if BaseModelV2 else [])
 def test_serialize_serve_dataclass(start_ray, BaseModel: Type):
     @dataclass
     class BackendMetadata:
@@ -175,7 +183,7 @@ def test_serialize_serve_dataclass(start_ray, BaseModel: Type):
     ray.get(consume.remote(BackendConfig()))
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_nested_field(start_ray, BaseModel: Type):
     class B(BaseModel):
         v: List[int]
