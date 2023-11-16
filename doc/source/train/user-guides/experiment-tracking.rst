@@ -17,7 +17,8 @@ the setup.
 The following pseudo code demonstrates how to use the native experiment tracking library calls 
 inside of Ray Train: 
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
@@ -44,7 +45,8 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
 
     .. tab:: W&B
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
             
             import ray
             from ray import train
@@ -80,7 +82,8 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
 
     .. tab:: MLflow
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
             
             from ray import train
             import mlflow
@@ -116,7 +119,8 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
     Ray Train lets you apply logging logic to only the rank 0 worker with the following method:
     :meth:`ray.train.get_context().get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         from ray import train
         def train_func(config):
@@ -153,7 +157,8 @@ If applicable, make sure that you properly set up credentials on each training w
         inside of :ref:`train_func<train-overview-training-function>`. See :ref:`Set up credentials<set-up-credentials>` 
         for more information.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
             
             # This is equivalent to `os.environ["WANDB_API_KEY"] = "your_api_key"`
             wandb.login(key="your_api_key")
@@ -164,7 +169,8 @@ If applicable, make sure that you properly set up credentials on each training w
         point the offline directory to a shared storage path that all nodes can write to. 
         See :ref:`Set up a shared file system<set-up-shared-file-system>` for more information.
         
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             os.environ["WANDB_MODE"] = "offline"
             wandb.init(dir="some_shared_storage_path/wandb") 
@@ -179,7 +185,8 @@ If applicable, make sure that you properly set up credentials on each training w
         system, point offline directory to a shared storage path. that all nodes can write 
         to. See :ref:`Set up a shared file system<set-up-shared-file-system>` for more information. 
         
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")
 
@@ -188,7 +195,8 @@ If applicable, make sure that you properly set up credentials on each training w
         Ensure that all nodes have access to the Databricks config file. 
         See :ref:`Set up credentials<set-up-credentials>` for more information.
         
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             # The MLflow client looks for a Databricks config file 
             # at the location specified by `os.environ["DATABRICKS_CONFIG_FILE"]`.
@@ -207,7 +215,8 @@ This step usually involves setting an environment variable or accessing a config
 The easiest way to pass an environment variable credential to training workers is through 
 :ref:`runtime environments <runtime-environments>`, where you initialize with the following code:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import ray
     # This makes sure that training workers have the same env var set
@@ -233,11 +242,12 @@ Refer to the tracking libraries' documentation for semantics.
 .. To conveniently link back to Ray Train run, you may want to log the persistent storage path 
 .. of the run as a config.
 
-.. .. code-block:: python
+.. 
+    .. testcode::
 
-..     def train_func(config):
-..       if ray.train.get_context().get_world_rank() == 0:
-..                 wandb.init(..., config={"ray_train_persistent_storage_path": "TODO: fill in when API stablizes"})
+       def train_func(config):
+            if ray.train.get_context().get_world_rank() == 0:
+                   wandb.init(..., config={"ray_train_persistent_storage_path": "TODO: fill in when API stablizes"})
 
 .. tip::
     
@@ -246,7 +256,8 @@ Refer to the tracking libraries' documentation for semantics.
     One way to acquire an unique ID is with the following method: 
     :meth:`ray.train.get_context().get_trial_id() <ray.train.context.TrainContext.get_trial_id>`.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         import ray
         from ray.train import ScalingConfig, RunConfig, FailureConfig
@@ -286,21 +297,24 @@ Finishing the run makes sure that all logs are synced by the time training worke
 
     .. tab:: W&B
         
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             # https://docs.wandb.ai/ref/python/finish
             wandb.finish()
 
     .. tab:: MLflow
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             # https://mlflow.org/docs/1.2.0/python_api/mlflow.html
             mlflow.end_run()
 
     .. tab:: Comet
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             # https://www.comet.com/docs/v2/api-and-sdk/python-sdk/reference/Experiment/#experimentend
             Experiment.end()    

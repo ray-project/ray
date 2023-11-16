@@ -228,7 +228,7 @@ def decode_image_crop_and_flip(row):
 
 
 class MdsDatasource(ray.data.datasource.FileBasedDatasource):
-    _FILE_EXTENSION = "mds"
+    _FILE_EXTENSIONS = ["mds"]
 
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str

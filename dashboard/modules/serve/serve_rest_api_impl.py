@@ -75,7 +75,6 @@ def create_serve_rest_api(
     ],
     log_deprecation_warning: bool = False,
 ):
-
     # NOTE (shrekris-anyscale): This class uses delayed imports for all
     # Ray Serve-related modules. That way, users can use the Ray dashboard agent for
     # non-Serve purposes without downloading Serve dependencies.
@@ -177,6 +176,7 @@ def create_serve_rest_api(
                 client = await serve_start_async(
                     http_options=full_http_options,
                     grpc_options=grpc_options,
+                    system_logging_config=config.logging_config,
                 )
 
             # Serve ignores HTTP options if it was already running when
@@ -185,6 +185,8 @@ def create_serve_rest_api(
             self.validate_http_options(client, full_http_options)
 
             try:
+                if config.logging_config:
+                    client.update_system_logging_config(config.logging_config)
                 client.deploy_apps(config)
                 record_extra_usage_tag(TagKey.SERVE_REST_API_VERSION, "v2")
             except RayTaskError as e:

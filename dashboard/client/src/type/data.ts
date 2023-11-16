@@ -2,8 +2,18 @@ export type DatasetResponse = {
   datasets: DatasetMetrics[];
 };
 
-export type DatasetMetrics = {
+export type DatasetMetrics = DataMetrics & {
   dataset: string;
+  operators: OperatorMetrics[];
+  start_time: number;
+  end_time: number | undefined;
+};
+
+export type OperatorMetrics = DataMetrics & {
+  operator: string;
+};
+
+export type DataMetrics = {
   state: string;
   ray_data_current_bytes: {
     value: number;
@@ -17,6 +27,4 @@ export type DatasetMetrics = {
   };
   progress: number;
   total: number;
-  start_time: number;
-  end_time: number | undefined;
 };
