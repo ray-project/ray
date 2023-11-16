@@ -51,7 +51,12 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --except-tags use_all_core
         --parallelism-per-worker 2
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --skip-ray-installation
+        --only-tags use_all_core
     depends_on: data12build
     job_env: forge
 
