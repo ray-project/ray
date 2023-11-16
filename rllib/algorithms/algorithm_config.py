@@ -898,8 +898,8 @@ class AlgorithmConfig(_Config):
                 "`config.rollouts(enable_connectors=True)`."
             )
 
-        # Throw a warning if the user has used rl_module_spec but not enabled the
-        # new API stack.
+        # Throw a warning if the user has used `self.rl_module(rl_module_spec=...)` but
+        # has not enabled the new API stack at the same time.
         if self._rl_module_spec is not None and not self._enable_new_api_stack:
             logger.warning(
                 "You have setup a RLModuleSpec (via calling `config.rl_module(...)`), "
@@ -913,7 +913,8 @@ class AlgorithmConfig(_Config):
                 setting_name="lr",
                 description="learning rate",
             )
-
+        # Throw a warning if the user has used `self.training(learner_class=...)` but
+        # has not enabled the new API stack at the same time.
         if self._learner_class is not None and not self._enable_new_api_stack:
             logger.warning(
                 "You specified a custom Learner class (via "
@@ -2652,11 +2653,12 @@ class AlgorithmConfig(_Config):
         default_rl_module_spec = self.get_default_rl_module_spec()
         _check_rl_module_spec(default_rl_module_spec)
 
+        # `self._rl_module_spec` has been user defined (via call to `self.rl_module()`).
         if self._rl_module_spec is not None:
             # Merge provided RL Module spec class with defaults
             _check_rl_module_spec(self._rl_module_spec)
             # We can only merge if we have SingleAgentRLModuleSpecs.
-            # TODO(Artur): Support merging for MultiAgentRLModuleSpecs.
+            # TODO (sven): Support merging for MultiAgentRLModuleSpecs.
             if isinstance(self._rl_module_spec, SingleAgentRLModuleSpec):
                 if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
                     default_rl_module_spec.update(self._rl_module_spec)
@@ -2666,6 +2668,7 @@ class AlgorithmConfig(_Config):
                         "Cannot merge MultiAgentRLModuleSpec with "
                         "SingleAgentRLModuleSpec!"
                     )
+        # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec
 
@@ -3472,6 +3475,11 @@ class AlgorithmConfig(_Config):
                     f"Cannot set attribute ({key}) of an already frozen "
                     "AlgorithmConfig!"
                 )
+        # Backward compatibility for checkpoints taken with wheels, in which
+        # `self.rl_module_spec` was still settable (now it's a property).
+        if key == "rl_module_spec":
+            key = "_rl_module_spec"
+
         super().__setattr__(key, value)
 
     def __getitem__(self, item):
