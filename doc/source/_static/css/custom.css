@@ -58,11 +58,9 @@ tr.row-odd {
 }
 
 /* For Algolia search box
-    * overflow-y: to flow-over horizontally into main content
     * height: to prevent topbar overlap
 */
 #site-navigation {
-  overflow-y: auto;
   height: calc(100vh - var(--sidebar-top));
   position: sticky;
   top: var(--sidebar-top) !important;
@@ -127,12 +125,6 @@ tr.row-odd {
       margin-top: 20px;
     }
   }
-
-/* Make Algolia search box scrollable */
-.algolia-autocomplete .ds-dropdown-menu {
-    height: 60vh !important;
-    overflow-y: scroll !important;
-}
 
 .bd-sidebar__content {
   overflow-y: unset !important;
@@ -909,7 +901,7 @@ footer.col.footer > p {
 #kapa-widget-container figure {
     padding: 0 !important;
   }
-  
+
   .mantine-Modal-root figure {
     padding: 0 !important;
   }
