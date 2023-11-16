@@ -433,7 +433,8 @@ class ApplicationState:
                 unhealthy_deployment_names.append(deployment_status.name)
             elif (
                 deployment_status.status == DeploymentStatus.HEALTHY
-                or deployment_status.status_trigger == DeploymentStatusTrigger.AUTOSCALE
+                or deployment_status.status_trigger
+                == DeploymentStatusTrigger.AUTOSCALING
             ):
                 # If all deployments are HEALTHY or autoscaling, then
                 # application is RUNNING

@@ -1204,7 +1204,9 @@ class DeploymentState:
         self._replica_constructor_error_msg: Optional[str] = None
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-            self._id.name, DeploymentStatus.UPDATING, DeploymentStatusTrigger.DEPLOY
+            self._id.name,
+            DeploymentStatus.UPDATING,
+            DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
 
         self.replica_average_ongoing_requests: Dict[str, float] = dict()
@@ -1370,7 +1372,7 @@ class DeploymentState:
         self._curr_status_info = DeploymentStatusInfo(
             self.deployment_name,
             DeploymentStatus.UPDATING,
-            status_trigger=DeploymentStatusTrigger.DELETE,
+            status_trigger=DeploymentStatusTrigger.DELETING,
         )
         app_msg = f" in application '{self.app_name}'" if self.app_name else ""
         logger.info(
@@ -1508,9 +1510,7 @@ class DeploymentState:
 
         self._set_target_state(
             deployment_info,
-            status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE
-            if existing_info
-            else DeploymentStatusTrigger.DEPLOY,
+            status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
 
         logger.info(
@@ -1583,7 +1583,7 @@ class DeploymentState:
         new_info.set_autoscaled_num_replicas(decision_num_replicas)
         new_info.version = self._target_state.version.code_version
         self._set_target_state(
-            new_info, status_trigger=DeploymentStatusTrigger.AUTOSCALE
+            new_info, status_trigger=DeploymentStatusTrigger.AUTOSCALING
         )
 
     def delete(self) -> None:
@@ -1842,9 +1842,7 @@ class DeploymentState:
             else:
                 self._curr_status_info.update(
                     status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.UNSPECIFIED
-                    if self._curr_status_info.status == DeploymentStatus.HEALTHY
-                    else self._curr_status_info.status_trigger,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=(
                         f"The deployment failed to start {failed_to_start_count} times "
                         "in a row. This may be due to a problem with its "
@@ -1879,13 +1877,29 @@ class DeploymentState:
                 if self._curr_status_info.status == DeploymentStatus.UPSCALING:
                     self._curr_status_info.update(
                         status=DeploymentStatus.HEALTHY,
-                        status_trigger=DeploymentStatusTrigger.UPSCALE,
+                        status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED,
                         message="",
                     )
                 elif self._curr_status_info.status == DeploymentStatus.DOWNSCALING:
                     self._curr_status_info.update(
                         status=DeploymentStatus.HEALTHY,
-                        status_trigger=DeploymentStatusTrigger.DOWNSCALE,
+                        status_trigger=DeploymentStatusTrigger.DOWNSCALE_COMPLETED,
+                        message="",
+                    )
+                elif (
+                    self._curr_status_info.status == DeploymentStatus.UPDATING
+                    and self._curr_status_info.status_trigger
+                    == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+                ):
+                    self._curr_status_info.update(
+                        status=DeploymentStatus.HEALTHY,
+                        status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
+                        message="",
+                    )
+                elif self._curr_status_info.status == DeploymentStatus.UNHEALTHY:
+                    self._curr_status_info.update(
+                        status=DeploymentStatus.HEALTHY,
+                        status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
                         message="",
                     )
                 else:
@@ -2041,9 +2055,7 @@ class DeploymentState:
                     # an update failed.
                     self._curr_status_info.update(
                         status=DeploymentStatus.UNHEALTHY,
-                        status_trigger=DeploymentStatusTrigger.UNSPECIFIED
-                        if self._curr_status_info.status == DeploymentStatus.HEALTHY
-                        else self._curr_status_info.status_trigger,
+                        status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                         message="A replica's health check failed. This "
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",
@@ -2189,9 +2201,7 @@ class DeploymentState:
             )
             self._curr_status_info.update(
                 status=DeploymentStatus.UNHEALTHY,
-                status_trigger=DeploymentStatusTrigger.UNSPECIFIED
-                if self._curr_status_info.status == DeploymentStatus.HEALTHY
-                else self._curr_status_info.status_trigger,
+                status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
 

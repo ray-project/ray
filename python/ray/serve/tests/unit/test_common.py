@@ -72,13 +72,14 @@ class TestDeploymentStatusInfo:
         with pytest.raises(TypeError):
             DeploymentStatusInfo(
                 status=DeploymentStatus.HEALTHY,
-                status_trigger=DeploymentStatusTrigger.DEPLOY,
+                status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
             )
 
     def test_deployment_status_required(self):
         with pytest.raises(TypeError):
             DeploymentStatusInfo(
-                name="test_name", status_trigger=DeploymentStatusTrigger.DEPLOY
+                name="test_name",
+                status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
             )
 
     @pytest.mark.parametrize(
@@ -157,12 +158,12 @@ class TestStatusOverview:
                 DeploymentStatusInfo(
                     name="1",
                     status=DeploymentStatus.HEALTHY,
-                    status_trigger=DeploymentStatusTrigger.DEPLOY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
                 DeploymentStatusInfo(
                     name="2",
                     status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.DEPLOY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
             ],
         )
@@ -173,22 +174,22 @@ class TestStatusOverview:
                 DeploymentStatusInfo(
                     name="1",
                     status=DeploymentStatus.HEALTHY,
-                    status_trigger=DeploymentStatusTrigger.DEPLOY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
                 DeploymentStatusInfo(
                     name="2",
                     status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.DEPLOY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
                 DeploymentStatusInfo(
                     name="3",
                     status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.DEPLOY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
                 DeploymentStatusInfo(
                     name="4",
                     status=DeploymentStatus.UPDATING,
-                    status_trigger=DeploymentStatusTrigger.DEPLOY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
             ],
         )
@@ -208,19 +209,19 @@ class TestStatusOverview:
                     name="name1",
                     status=DeploymentStatus.UPDATING,
                     message="deployment updating",
-                    status_trigger=DeploymentStatusTrigger.DEPLOY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
                 DeploymentStatusInfo(
                     name="name2",
                     status=DeploymentStatus.HEALTHY,
                     message="",
-                    status_trigger=DeploymentStatusTrigger.DEPLOY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
                 DeploymentStatusInfo(
                     name="name3",
                     status=DeploymentStatus.UNHEALTHY,
                     message="this deployment is unhealthy",
-                    status_trigger=DeploymentStatusTrigger.DEPLOY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
             ],
         )
