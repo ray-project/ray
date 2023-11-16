@@ -5,9 +5,7 @@ from ray.data import Dataset
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
-    CoreExecutionMetrics,
     assert_blocks_expected_in_plasma,
-    assert_core_execution_metrics_equals,
     get_initial_core_execution_metrics_last_snapshot,
 )
 from ray.tests.conftest import *  # noqa
