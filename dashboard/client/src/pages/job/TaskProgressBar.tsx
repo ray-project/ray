@@ -6,6 +6,7 @@ import { TaskProgress } from "../../type/job";
 
 export type TaskProgressBarProps = TaskProgress & {
   showAsComplete?: boolean;
+  showLegend?: boolean;
   showTooltip?: boolean;
   expanded?: boolean;
   onClick?: () => void;
@@ -23,6 +24,7 @@ export const TaskProgressBar = ({
   numCancelled = 0,
   numUnknown = 0,
   showAsComplete = false,
+  showLegend = true,
   showTooltip = true,
   expanded,
   onClick,
@@ -71,6 +73,7 @@ export const TaskProgressBar = ({
     <ProgressBar
       progress={progress}
       expanded={expanded}
+      showLegend={showLegend}
       showTooltip={showTooltip}
       onClick={onClick}
       showTotalProgress={numFinished}

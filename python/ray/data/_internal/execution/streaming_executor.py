@@ -127,7 +127,9 @@ class StreamingExecutor(Executor, threading.Thread):
             self._global_info = ProgressBar("Running", dag.num_outputs_total())
 
         self._output_node: OpState = self._topology[dag]
-        register_dataset_to_stats_actor(self._dataset_tag)
+        register_dataset_to_stats_actor(
+            self._dataset_tag, [tag["operator"] for tag in self._get_metrics_tags()]
+        )
         self.start()
 
         class StreamIterator(OutputIterator):
@@ -177,17 +179,16 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._shutdown:
                 return
             logger.get_logger().debug(f"Shutting down {self}.")
-            update_stats_actor_dataset(
-                self._dataset_tag,
-                {
-                    "state": "FINISHED" if execution_completed else "FAILED",
-                    "end_time": time.time(),
-                },
-            )
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
+            update_stats_actor_dataset(
+                self._dataset_tag,
+                self._get_state_dict(
+                    state="FINISHED" if execution_completed else "FAILED"
+                ),
+            )
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
@@ -308,15 +309,10 @@ class StreamingExecutor(Executor, threading.Thread):
         if not DEBUG_TRACE_SCHEDULING:
             _debug_dump_topology(topology, log_to_stdout=False)
 
-        last_op, last_state = list(topology.items())[-1]
         update_stats_actor_metrics(
             [op.metrics for op in self._topology],
             self._get_metrics_tags(),
-            # TODO (Zandew): report progress at operator level
-            {
-                "progress": last_state.num_completed_tasks,
-                "total": last_op.num_outputs_total(),
-            },
+            self._get_state_dict(state="RUNNING"),
         )
 
         # Log metrics of newly completed operators.
@@ -375,6 +371,23 @@ class StreamingExecutor(Executor, threading.Thread):
             {"dataset": self._dataset_tag, "operator": f"{op.name}{i}"}
             for i, op in enumerate(self._topology)
         ]
+
+    def _get_state_dict(self, state):
+        last_op, last_state = list(self._topology.items())[-1]
+        return {
+            "state": state,
+            "progress": last_state.num_completed_tasks,
+            "total": last_op.num_outputs_total(),
+            "end_time": time.time() if state != "RUNNING" else None,
+            "operators": {
+                f"{op.name}{i}": {
+                    "progress": op_state.num_completed_tasks,
+                    "total": op.num_outputs_total(),
+                    "state": state,
+                }
+                for i, (op, op_state) in enumerate(self._topology.items())
+            },
+        }
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
