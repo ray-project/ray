@@ -160,28 +160,28 @@ void OpenCensusProtoExporter::ExportViewData(
   // https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto
   rpc::ReportOCMetricsRequest request_proto;
   request_proto.set_worker_id(worker_id_.Binary());
-  size_t data_batched = 0;
+  // Current number of series to be exported in a batch
+  size_t num_series = 0;
   // To make sure we're not overflowing Agent's set gRPC max message size, we will be tracking
   // target payload binary size and make sure it stays w/in 95% of the threshold
   // TODO define AGENT_GRPC_MAX_MESSAGE_LENGTH to keep it consistent b/w cpp/python
   size_t binary_size_payload_threshold = (size_t) (AGENT_GRPC_MAX_MESSAGE_LENGTH * .95f);
 
   for (const auto &datum : data) {
-    UpdateMetricsData(datum, request_proto);
-    data_batched += 1;
+    num_series += AddMetricsData(datum, request_proto);
     // NOTE: Because each payload size check is linear in the number of fields w/in the payload
     //       we intentionally sample it to happen only every 25 iterations to avoid affecting performance
     bool should_check_payload_size = data_batched % 25 == 0
     /// If it exceeds the batch size, send data.
-    if (data_batched >= report_batch_size_ || (should_check_payload_size && request_proto.ByteSizeLong() >= binary_size_payload_threshold)) {
+    if (num_series >= report_batch_size_ || (should_check_payload_size && request_proto.ByteSizeLong() >= binary_size_payload_threshold)) {
       SendData(request_proto);
       request_proto = rpc::ReportOCMetricsRequest();
       request_proto.set_worker_id(worker_id_.Binary());
-      data_batched = 0;
+      num_series = 0;
     }
   }
 
-  if (data_batched > 0) {
+  if (num_series > 0) {
     SendData(request_proto);
   }
 }
@@ -200,12 +200,14 @@ void OpenCensusProtoExporter::SendData(rpc::ReportOCMetricsRequest &request) {
       });
 }
 
-void OpenCensusProtoExporter::UpdateMetricsData(const std::pair<opencensus::stats::ViewDescriptor,
+size_t OpenCensusProtoExporter::AddMetricsData(const std::pair<opencensus::stats::ViewDescriptor,
                                 opencensus::stats::ViewData> &datum, rpc::ReportOCMetricsRequest &request_proto) {
   // Unpack the fields we need for in memory data structure.
   auto &view_descriptor = datum.first;
   auto &view_data = datum.second;
   auto &measure_descriptor = view_descriptor.measure_descriptor();
+  // Number of time-series bearing new values in the current batch
+  size_t num_series = 0;
 
   // Create one metric `Point` in protobuf.
   auto request_point_proto = request_proto.add_metrics();
@@ -222,9 +224,12 @@ void OpenCensusProtoExporter::UpdateMetricsData(const std::pair<opencensus::stat
   // Helpers for writing the actual `TimeSeries`.
   auto start_time = absl::ToUnixSeconds(view_data.start_time());
   auto end_time = absl::ToUnixSeconds(view_data.end_time());
-  auto make_new_data_point_proto = [&request_point_proto, start_time, end_time](
+  auto make_new_data_point_proto = [&num_series, &request_point_proto, start_time, end_time](
                                         const std::vector<std::string> &tag_values) {
+    // Add new time-series to a proto payload
     auto metric_timeseries_proto = request_point_proto->add_timeseries();
+    num_series++;
+
     metric_timeseries_proto->mutable_start_timestamp()->set_seconds(start_time);
 
     for (const auto &value : tag_values) {
@@ -278,7 +283,10 @@ void OpenCensusProtoExporter::UpdateMetricsData(const std::pair<opencensus::stat
     RAY_LOG(FATAL) << "Unknown view data type.";
     break;
   }
+
   addGlobalTagsToGrpcMetric(*request_point_proto);
+
+  return num_series;
 }
 
 }  // namespace stats
