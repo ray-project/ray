@@ -22,6 +22,7 @@ from pathlib import Path
 
 import boto3
 import yaml
+from google.cloud import storage
 
 import ray
 
@@ -140,7 +141,7 @@ def override_docker_image(config_yaml, docker_image):
     config_yaml["docker"] = docker_config
 
 
-def download_ssh_key():
+def download_ssh_key_aws():
     """Download the ssh key from the S3 bucket to the local machine."""
     print("======================================")
     print("Downloading ssh key...")
@@ -156,6 +157,32 @@ def download_ssh_key():
     if not os.path.exists(os.path.dirname(local_key_path)):
         os.makedirs(os.path.dirname(local_key_path))
     s3_client.download_file(bucket_name, key_name, local_key_path)
+
+    # Set permissions on the key file
+    os.chmod(local_key_path, 0o400)
+
+
+def download_ssh_key_gcp():
+    """Download the ssh key from the google cloud bucket to the local machine."""
+    print("======================================")
+    print("Downloading ssh key from GCP...")
+
+    # Initialize the GCP storage client
+    client = storage.Client()
+
+    # Set the name of the GCS bucket and the blob (key) to download
+    bucket_name = "gcp-cluster-launcher-release-test-ssh-keys"
+    key_name = "ray-autoscaler_gcp_us-west1_anyscale-bridge-cd812d38_ubuntu_0.pem"
+
+    # Get the bucket and blob
+    bucket = client.get_bucket(bucket_name)
+    blob = bucket.get_blob(key_name)
+
+    # Download the blob to a local file
+    local_key_path = os.path.expanduser(f"~/.ssh/{key_name}")
+    if not os.path.exists(os.path.dirname(local_key_path)):
+        os.makedirs(os.path.dirname(local_key_path))
+    blob.download_to_filename(local_key_path)
 
     # Set permissions on the key file
     os.chmod(local_key_path, 0o400)
@@ -318,10 +345,9 @@ if __name__ == "__main__":
 
     provider_type = config_yaml.get("provider", {}).get("type")
     if provider_type == "aws":
-        download_ssh_key()
+        download_ssh_key_aws()
     elif provider_type == "gcp":
-        print("======================================")
-        print("GCP provider detected. Skipping ssh key download step.")
+        download_ssh_key_gcp()
         # Get the active account email
         account_email = (
             subprocess.run(

@@ -32,7 +32,7 @@ def test_deploy_nullify_route_prefix(serve_instance, prefixes):
         handle = serve.run(dag)
         assert requests.get("http://localhost:8000/f").status_code == 200
         assert requests.get("http://localhost:8000/f").text == '"got me"'
-        assert ray.get(handle.predict.remote()) == "got me"
+        assert handle.predict.remote().result() == "got me"
 
 
 @pytest.mark.timeout(10, method="thread")
@@ -93,20 +93,21 @@ def test_json_serialization_user_config(serve_instance):
     ).bind()
     handle = serve.run(app)
 
-    assert ray.get(handle.get_value.remote()) == "Success!"
-    assert ray.get(handle.get_nested_value.remote()) == "Success!"
+    assert handle.get_value.remote().result() == "Success!"
+    assert handle.get_nested_value.remote().result() == "Success!"
 
-    app = SimpleDeployment.options(
-        user_config={
-            "value": "Failure!",
-            "another-value": "Failure!",
-            "nested": {"value": "Success!"},
-        }
-    ).bind()
-    handle = serve.run(app)
+    handle = serve.run(
+        SimpleDeployment.options(
+            user_config={
+                "value": "Failure!",
+                "another-value": "Failure!",
+                "nested": {"value": "Success!"},
+            }
+        ).bind()
+    )
 
-    assert ray.get(handle.get_value.remote()) == "Failure!"
-    assert ray.get(handle.get_nested_value.remote()) == "Success!"
+    assert handle.get_value.remote().result() == "Failure!"
+    assert handle.get_nested_value.remote().result() == "Success!"
 
 
 def test_http_proxy_request_cancellation(serve_instance):
@@ -207,7 +208,7 @@ def test_deploy_application_unhealthy(serve_instance):
                 raise RuntimeError("Intentionally failing.")
 
     handle = serve.run(Model.bind(), name="app")
-    assert ray.get(handle.remote()) == "hello world"
+    assert handle.remote().result() == "hello world"
     assert serve.status().applications["app"].status == ApplicationStatus.RUNNING
 
     # When a deployment becomes unhealthy, application should transition -> UNHEALTHY

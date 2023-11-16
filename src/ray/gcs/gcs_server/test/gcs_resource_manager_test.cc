@@ -41,14 +41,18 @@ class GcsResourceManagerTest : public ::testing::Test {
       const absl::flat_hash_map<std::string, double> &total_resources,
       int64_t idle_ms = 0,
       bool is_draining = false) {
-    rpc::ResourcesData resources_data;
-    Mocker::FillResourcesData(resources_data,
-                              node_id,
-                              available_resources,
-                              total_resources,
-                              idle_ms,
-                              is_draining);
-    gcs_resource_manager_->UpdateFromResourceView(resources_data);
+    syncer::ResourceViewSyncMessage resource_view_sync_message;
+    for (const auto &resource : available_resources) {
+      (*resource_view_sync_message.mutable_resources_available())[resource.first] =
+          resource.second;
+    }
+    for (const auto &resource : total_resources) {
+      (*resource_view_sync_message.mutable_resources_total())[resource.first] =
+          resource.second;
+    }
+    resource_view_sync_message.set_idle_duration_ms(idle_ms);
+    resource_view_sync_message.set_is_draining(is_draining);
+    gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
   }
 
   instrumented_io_context io_service_;
@@ -107,10 +111,10 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
 
   gcs_resource_manager_->OnNodeAdd(*node);
 
-  rpc::ResourcesData resources_data;
-  (*resources_data.mutable_resources_available())["CPU"] = 2;
-  (*resources_data.mutable_resources_total())["CPU"] = 2;
-  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resources_data);
+  syncer::ResourceViewSyncMessage resource_view_sync_message;
+  (*resource_view_sync_message.mutable_resources_available())["CPU"] = 2;
+  (*resource_view_sync_message.mutable_resources_total())["CPU"] = 2;
+  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resource_view_sync_message);
 
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply, send_reply_callback);
@@ -123,7 +127,7 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   ASSERT_EQ(get_all_reply2.resource_usage_data().batch().size(), 0);
 
   // This will be ignored since the node is dead.
-  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resources_data);
+  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resource_view_sync_message);
   rpc::GetAllResourceUsageReply get_all_reply3;
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply3, send_reply_callback);
@@ -135,18 +139,17 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
   node->mutable_resources_total()->insert({"CPU", 10});
   gcs_resource_manager_->OnNodeAdd(*node);
 
-  rpc::ResourcesData resources_data;
-  resources_data.set_node_id(node->node_id());
-  resources_data.mutable_resources_total()->insert({"CPU", 5});
-  resources_data.mutable_resources_available()->insert({"CPU", 5});
-  resources_data.set_cluster_full_of_actors_detected(false);
+  syncer::ResourceViewSyncMessage resource_view_sync_message;
+  resource_view_sync_message.mutable_resources_total()->insert({"CPU", 5});
+  resource_view_sync_message.mutable_resources_available()->insert({"CPU", 5});
 
   // Update resource usage from resource view.
   {
     ASSERT_FALSE(gcs_resource_manager_->NodeResourceReportView()
                      .at(NodeID::FromBinary(node->node_id()))
                      .cluster_full_of_actors_detected());
-    gcs_resource_manager_->UpdateFromResourceView(resources_data);
+    gcs_resource_manager_->UpdateFromResourceView(NodeID::FromBinary(node->node_id()),
+                                                  resource_view_sync_message);
     ASSERT_EQ(
         cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
             .total.GetResourceMap()
@@ -162,12 +165,8 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
   // cluster_full_of_actors_detected flag. (This is how NodeManager currently
   // updates potential resources deadlock).
   {
-    rpc::ResourcesData resources_data;
-    resources_data.set_node_id(node->node_id());
-    resources_data.mutable_resources_total()->insert({"CPU", 10});
-    resources_data.mutable_resources_available()->insert({"CPU", 10});
-    resources_data.set_cluster_full_of_actors_detected(true);
-    gcs_resource_manager_->UpdateFromResourceCommand(resources_data);
+    gcs_resource_manager_->UpdateClusterFullOfActorsDetected(
+        NodeID::FromBinary(node->node_id()), true);
 
     // Still 5 because the syncer COMMANDS message is ignored.
     ASSERT_EQ(
@@ -194,11 +193,10 @@ TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
   gcs_resource_manager_->OnNodeDead(node_id);
   ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
 
-  rpc::ResourcesData resources_data;
-  resources_data.set_node_id(node->node_id());
-  resources_data.mutable_resources_total()->insert({"CPU", 5});
-  resources_data.mutable_resources_available()->insert({"CPU", 5});
-  gcs_resource_manager_->UpdateFromResourceView(resources_data);
+  syncer::ResourceViewSyncMessage resource_view_sync_message;
+  resource_view_sync_message.mutable_resources_total()->insert({"CPU", 5});
+  resource_view_sync_message.mutable_resources_available()->insert({"CPU", 5});
+  gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
   ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
 }
 

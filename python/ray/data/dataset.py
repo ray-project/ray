@@ -1068,12 +1068,18 @@ class Dataset:
         Args:
             seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
-            num_blocks: The number of output blocks after the shuffle, or ``None``
-                to retain the number of blocks.
 
         Returns:
             The shuffled :class:`Dataset`.
         """  # noqa: E501
+
+        if num_blocks is not None:
+            warnings.warn(
+                "`num_blocks` parameter is deprecated in Ray 2.9. random_shuffle() "
+                "does not support to change the number of output blocks. Use "
+                "repartition() instead.",  # noqa: E501
+                DeprecationWarning,
+            )
 
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
@@ -1084,7 +1090,6 @@ class Dataset:
             op = RandomShuffle(
                 logical_plan.dag,
                 seed=seed,
-                num_outputs=num_blocks,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
@@ -1116,7 +1121,7 @@ class Dataset:
 
         Returns:
             The block-shuffled :class:`Dataset`.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
 
@@ -2743,7 +2748,7 @@ class Dataset:
                     /generated/pyarrow.parquet.write_table.html\
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
-        """
+        """  # noqa: E501
         datasink = _ParquetDatasink(
             path,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
@@ -3388,12 +3393,25 @@ class Dataset:
         Args:
             project_id: The name of the associated Google Cloud Project that hosts
                 the dataset to read. For more information, see details in
-                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`.
             dataset: The name of the dataset in the format of ``dataset_id.table_id``.
                 The dataset is created if it doesn't already exist. The table_id is
                 overwritten if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-        """
+        """  # noqa: E501
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        # Each write task will launch individual remote tasks to write each block
+        # To avoid duplicate block writes, the write task should not be retried
+        if ray_remote_args.get("max_retries", 0) != 0:
+            warnings.warn(
+                "The max_retries of a BigQuery Write Task should be set to 0"
+                " to avoid duplicate writes."
+            )
+        else:
+            ray_remote_args["max_retries"] = 0
+
         datasink = _BigQueryDatasink(project_id, dataset)
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
@@ -4721,7 +4739,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4804,7 +4822,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
