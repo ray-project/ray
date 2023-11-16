@@ -35,6 +35,7 @@ def gen_expected_metrics(
             "'bytes_inputs_processed': N",
             "'num_outputs_generated': N",
             "'bytes_outputs_generated': N",
+            "'rows_outputs_generated': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             "'num_outputs_of_finished_tasks': N",
@@ -564,6 +565,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      bytes_inputs_processed: N,\n"
         "      num_outputs_generated: N,\n"
         "      bytes_outputs_generated: N,\n"
+        "      rows_outputs_generated: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
@@ -1193,6 +1195,7 @@ def test_stats_actor_metrics():
         == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
     )
     assert final_metric.bytes_outputs_generated == 1000 * 80 * 80 * 4 * 8  # 8B per int
+    assert final_metric.rows_outputs_generated == 1000 * 80 * 80 * 4
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
 
