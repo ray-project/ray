@@ -1,2 +1,8 @@
 flaky_tests:
+  - //python/ray/tests:test_placement_group
+  - //python/ray/tests:test_runtime_env_working_dir_3
+  - //python/ray/tests:test_state_api_log
+  - //python/ray/tests:test_client_builder
+  - //python/ray/tests:test_client_library_integration
+  - //python/ray/tests:test_object_assign_owner_client_mode
   - //src/ray/common/test:ray_syncer_test
