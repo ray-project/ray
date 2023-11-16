@@ -553,6 +553,19 @@ class Worker:
         ray._private.state.update_worker_debugger_port(worker_id, port)
         self._debugger_port = port
 
+    @contextmanager
+    def task_paused_by_debugger(self):
+        """Use while the task is paused by debugger"""
+        try:
+            self.core_worker.update_task_is_debugger_paused(
+                ray.get_runtime_context()._get_current_task_id(), True
+            )
+            yield
+        finally:
+            self.core_worker.update_task_is_debugger_paused(
+                ray.get_runtime_context()._get_current_task_id(), False
+            )
+
     def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
         """Set the worker's err file where stderr is redirected to"""
         self._err_file = err_file
