@@ -297,7 +297,7 @@ class SingleAgentEpisode:
         nested structure is converted into a numpy ndarray and thus the data is
         converted from a list of (nested) structs into a (nested) struct of
         (batched) ndarrays.
-        
+
         Note that INFOS are not numpy'ized and will remain as list type (normally, a
         list of the original, env-returned dicts).
 
@@ -433,7 +433,7 @@ class SingleAgentEpisode:
             return [self.observations[i] for i in indices]
         else:
             slice_ = indices
-    
+
         if self.is_numpy:
             return tree.map_structure(lambda s: s[slice_], self.observations)
         else:
@@ -634,3 +634,6 @@ class SingleAgentEpisode:
             "first (after which `len(SingleAgentEpisode)` will be 0)."
         )
         return length
+
+    def __repr__(self):
+        return f"SAEps({self.id_} len={len(self)})"

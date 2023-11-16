@@ -165,7 +165,11 @@ class SingleAgentEnvRunner(EnvRunner):
         # Have to reset the env (on all vector sub_envs).
         if force_reset or self._needs_initial_reset:
             obs, infos = self.env.reset()
+
+            # We just reset the env. Don't have to force this again in the next
+            # call to `self._sample_timesteps()`.
             self._needs_initial_reset = False
+
             self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
 
             # Set initial obs in the episodes.
@@ -310,7 +314,6 @@ class SingleAgentEnvRunner(EnvRunner):
             episodes[i].add_env_reset(
                 observation=obs[i],
                 info=infos[i],
-                #initial_state={k: s[i] for k, s in states.items()},
                 render_image=render_images[i],
             )
 
@@ -424,6 +427,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Compute per-episode metrics (only on already completed episodes).
         metrics = []
         for eps in self._done_episodes_for_metrics:
+            assert eps.is_done
             episode_length = len(eps)
             episode_reward = eps.get_return()
             # Don't forget about the already returned chunks of this episode.
