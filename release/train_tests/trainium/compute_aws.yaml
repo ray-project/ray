@@ -20,6 +20,8 @@ aws:
       Tags:
         - Key: ttl-hours
           Value: '24'
+
+aws_advanced_configurations_json:
   NetworkInterfaces:
     - DeviceIndex: 0
       NetworkCardIndex: 0
