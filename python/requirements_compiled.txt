@@ -376,7 +376,7 @@ dask==2022.10.1
     #   distributed
 databricks-cli==0.18.0
     # via mlflow
-datasets==2.14.7
+datasets==2.14.0
     # via
     #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
     #   -r /ray/ci/../python/requirements/ml/train-requirements.txt
@@ -1604,8 +1604,6 @@ pyarrow==12.0.1 ; platform_system != "Windows"
     #   mlflow
     #   ray
     #   raydp
-pyarrow-hotfix==0.5
-    # via datasets
 pyasn1==0.5.0
     # via
     #   oauth2client
@@ -1808,7 +1806,6 @@ pyyaml==6.0.1
     #   bokeh
     #   cfn-lint
     #   dask
-    #   datasets
     #   distributed
     #   flax
     #   gradio
