@@ -526,3 +526,6 @@ class SingleAgentEpisode:
             "first (after which `len(SingleAgentEpisode)` will be 0)."
         )
         return len(self.observations) - 1
+
+    def __repr__(self):
+        return f"SAEps({self.id_} len={len(self)})"
