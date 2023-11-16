@@ -66,13 +66,13 @@ class Caller:
     "--tokens-per-request",
     type=int,
     default=1000,
-    help="Number of requests to send to downstream deployment in each trial.",
+    help="Number of tokens (per request) to stream from downstream deployment",
 )
 @click.option(
     "--batch-size",
     type=int,
     default=10,
-    help="Number of requests to send to downstream deployment in each trial.",
+    help="Number of requests to send to downstream deployment in each batch.",
 )
 @click.option(
     "--num-replicas",
@@ -89,7 +89,7 @@ class Caller:
 @click.option(
     "--trial-runtime",
     type=int,
-    default=1,
+    default=5,
     help="Duration to run each trial of the benchmark for (seconds).",
 )
 def main(
