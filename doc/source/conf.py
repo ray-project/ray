@@ -524,7 +524,8 @@ intersphinx_mapping = {
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
     "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    # TODO(can-anyscale): undo this once scipy doc is back up
+    #    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "skopt": ("https://scikit-optimize.github.io/stable/", None),
     "tensorflow": (
