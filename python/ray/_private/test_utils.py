@@ -1410,6 +1410,7 @@ class ResourceKillerActor:
         self.done = ray._private.utils.get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
         self.task_filter = task_filter
+        self.kill_immediately_after_found = False
         # -- logger. --
         logging.basicConfig(level=logging.INFO)
 
@@ -1424,8 +1425,11 @@ class ResourceKillerActor:
             if not self.is_running:
                 break
 
-            sleep_interval = random.random() * self.kill_interval_s
-            time.sleep(sleep_interval)
+            if self.kill_immediately_after_found:
+                sleep_interval = 0
+            else:
+                sleep_interval = random.random() * self.kill_interval_s
+                time.sleep(sleep_interval)
 
             self._kill_resource(*to_kill)
             if len(self.killed) >= self.max_to_kill:
@@ -1522,6 +1526,10 @@ class WorkerKillerActor(ResourceKillerActor):
         task_filter: Optional[Callable] = None,
     ):
         super().__init__(head_node_id, kill_interval_s, max_to_kill, task_filter)
+
+        # Kill worker immediately so that the task does
+        # not finish successfully on its own.
+        self.kill_immediately_after_found = True
 
         from ray.util.state.common import ListApiOptions
         from ray.util.state.api import StateApiClient
