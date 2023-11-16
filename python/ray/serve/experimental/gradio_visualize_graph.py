@@ -345,9 +345,9 @@ class GraphVisualizer:
             self._make_blocks(node_to_depths)
 
             with gr.Row():
-                submit = gr.Button("Run").style()
+                submit = gr.Button("Run")
                 trigger = gr.Number(0, visible=False)
-                clear = gr.Button("Clear").style()
+                clear = gr.Button("Clear")
 
             # Add event listener that sends the request to the deployment graph
             submit.click(
