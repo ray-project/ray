@@ -16,10 +16,12 @@ def check_application(app_handle: DeploymentHandle, expected: str):
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_basic(ray_start_stop):
     @serve.deployment(
-        runtime_env={
-            "container": {
-                "image": "zcin/runtime-env-prototype:nested",
-                "worker_path": "/home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/workers/default_worker.py",  # noqa
+        ray_actor_options={
+            "runtime_env": {
+                "container": {
+                    "image": "zcin/runtime-env-prototype:nested",
+                    "worker_path": "/home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/workers/default_worker.py",  # noqa
+                }
             }
         }
     )
