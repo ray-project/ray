@@ -237,14 +237,18 @@ def train_loop_per_worker():
     world_size = ray.train.get_context().get_world_size()
     all_workers_time_list_across_epochs = []
     validation_accuracy_per_epoch = []
-    # Validation loop with non-random cropped dataset is only supported for image dataset. 
+    # Validation loop with non-random cropped dataset
+    # is only supported for image dataset.
     run_validation_set = not args.synthetic_data and args.file_type == "image"
     for epoch in range(args.num_epochs):
         if args.synthetic_data:
             # Generate a random batch, and continuously yield the same batch 1000 times.
             sample_batch = {
-                "image": torch.rand((args.batch_size, 3, DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE), device=device),
-                "label": torch.randint(0, 1000, (args.batch_size,), device=device)
+                "image": torch.rand(
+                    (args.batch_size, 3, DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE),
+                    device=device,
+                ),
+                "label": torch.randint(0, 1000, (args.batch_size,), device=device),
             }
             it = itertools.repeat(sample_batch, 1000)
             batch_iter = it
@@ -255,7 +259,7 @@ def train_loop_per_worker():
                 # batch_size=64,
                 local_shuffle_buffer_size=32,
             )
-            
+
             val_ds = train.get_dataset_shard("val")
             batch_iter_val = val_ds.iter_torch_batches(batch_size=args.batch_size)
 
@@ -297,7 +301,7 @@ def train_loop_per_worker():
                     f"loss: {total_loss / 2000:.3f}, "
                 )
         end_t = time.time()
-        
+
         epoch_accuracy_val = None
         if run_validation_set:
             print(f"Starting validation set for epoch {epoch+1}")
@@ -329,9 +333,9 @@ def train_loop_per_worker():
                     epoch_accuracy=epoch_accuracy_val,
                     loss_avg=(total_loss / num_batches) if num_batches > 0 else 0,
                 ),
-                checkpoint=checkpoint
+                checkpoint=checkpoint,
             )
-        
+
         # Workaround to report the epoch start/end time from each worker, so that we
         # can aggregate them at the end when calculating throughput.
         all_workers_time_list = [
@@ -348,7 +352,8 @@ def train_loop_per_worker():
             f"Epoch {epoch+1} of {args.num_epochs}, "
             f"tput: {num_rows / (end_t - start_t)}, "
             f"run time: {end_t - start_t}, "
-            f"validation accuracy: {epoch_accuracy_val * 100 if epoch_accuracy_val else 0:.3f}%"
+            f"validation accuracy: "
+            f"{epoch_accuracy_val * 100 if epoch_accuracy_val else 0:.3f}%"
         )
     # Similar reporting for aggregating number of rows across workers
     all_num_rows = [
@@ -366,27 +371,37 @@ def train_loop_per_worker():
 
     final_train_report_metrics = {
         **per_epoch_times,
-            "num_rows": [tensor.item() for tensor in all_num_rows],
+        "num_rows": [tensor.item() for tensor in all_num_rows],
     }
 
     if run_validation_set:
         all_num_rows_val = [
-            torch.zeros((1), dtype=torch.int32, device=device) for _ in range(world_size)
+            torch.zeros((1), dtype=torch.int32, device=device)
+            for _ in range(world_size)
         ]
-        curr_num_rows_val = torch.tensor([num_rows_val], dtype=torch.int32, device=device)
+        curr_num_rows_val = torch.tensor(
+            [num_rows_val], dtype=torch.int32, device=device
+        )
         dist.all_gather(all_num_rows_val, curr_num_rows_val)
 
         all_num_rows_correct_val = [
-            torch.zeros((1), dtype=torch.int32, device=device) for _ in range(world_size)
+            torch.zeros((1), dtype=torch.int32, device=device)
+            for _ in range(world_size)
         ]
-        curr_num_rows_correct = torch.tensor([num_correct_val], dtype=torch.int32, device=device)
+        curr_num_rows_correct = torch.tensor(
+            [num_correct_val], dtype=torch.int32, device=device
+        )
         dist.all_gather(all_num_rows_correct_val, curr_num_rows_correct)
-        final_train_report_metrics.update({
-            "num_rows_val": [tensor.item() for tensor in all_num_rows_val],
-            "num_rows_correct_val": [tensor.item() for tensor in all_num_rows_correct_val],
-            # Report the validation accuracy of the final epoch
-            "epoch_accuracy": validation_accuracy_per_epoch[-1],
-        })
+        final_train_report_metrics.update(
+            {
+                "num_rows_val": [tensor.item() for tensor in all_num_rows_val],
+                "num_rows_correct_val": [
+                    tensor.item() for tensor in all_num_rows_correct_val
+                ],
+                # Report the validation accuracy of the final epoch
+                "epoch_accuracy": validation_accuracy_per_epoch[-1],
+            }
+        )
 
     train.report(final_train_report_metrics)
 
@@ -579,17 +594,23 @@ def benchmark_code(
     avg_per_epoch_tput = sum(epoch_tputs) / len(epoch_tputs)
     print("Total num rows read per epoch:", num_rows_per_epoch, "images")
     print("Averaged per-epoch throughput:", avg_per_epoch_tput, "img/s")
-    data_benchmark_metrics.update({
-        BenchmarkMetric.THROUGHPUT.value: avg_per_epoch_tput,
-    })
+    data_benchmark_metrics.update(
+        {
+            BenchmarkMetric.THROUGHPUT.value: avg_per_epoch_tput,
+        }
+    )
 
     # Report the training accuracy of the final epoch.
     if result.metrics.get("num_rows_val") is not None:
-        final_epoch_acc = sum(result.metrics["num_rows_correct_val"]) / sum(result.metrics["num_rows_val"])
+        final_epoch_acc = sum(result.metrics["num_rows_correct_val"]) / sum(
+            result.metrics["num_rows_val"]
+        )
         print(f"Final epoch accuracy: {final_epoch_acc * 100:.3f}%")
-        data_benchmark_metrics.update({
-            BenchmarkMetric.ACCURACY.value: final_epoch_acc,
-        })
+        data_benchmark_metrics.update(
+            {
+                BenchmarkMetric.ACCURACY.value: final_epoch_acc,
+            }
+        )
     return data_benchmark_metrics
 
 
