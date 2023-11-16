@@ -1306,16 +1306,16 @@ class Learner:
         # - load module weights
         # - override our module weights
         # - then check whether the conversion results in exactly the same train batch
-        import pickle
-        import torch
-        import os
-        old_path = "/Users/sven/ray_results/PPO_2023-11-14_16-34-14/PPO_CartPole-v1_4458f_00000_0_2023-11-14_16-34-15"
-        with open(os.path.join(old_path, "episodes.pkl"), "rb") as file:
-            episodes = pickle.load(file)
-        for e in episodes:
-            e.convert_lists_to_numpy()
-        with open(os.path.join(old_path, "train_batch.pkl"), "rb") as file:
-            old_train_batch = pickle.load(file)
+        #import pickle
+        #import torch
+        #import os
+        #old_path = "/Users/sven/ray_results/PPO_2023-11-14_16-34-14/PPO_CartPole-v1_4458f_00000_0_2023-11-14_16-34-15"
+        #with open(os.path.join(old_path, "episodes.pkl"), "rb") as file:
+        #    episodes = pickle.load(file)
+        #for e in episodes:
+        #    e.convert_lists_to_numpy()
+        #with open(os.path.join(old_path, "train_batch.pkl"), "rb") as file:
+        #    old_train_batch = pickle.load(file)
         # END: TEST
 
         # Call the train data preprocessor.
@@ -1337,14 +1337,14 @@ class Learner:
             )
 
         # TEST:
-        assert np.allclose(batch["default_policy"]["obs"], old_train_batch["default_policy"]["obs"])
-        assert np.allclose(batch["default_policy"]["actions"], old_train_batch["default_policy"]["actions"])
-        assert np.allclose(batch["default_policy"]["action_logp"], old_train_batch["default_policy"]["action_logp"])
-        assert np.allclose(batch["default_policy"]["action_dist_inputs"], old_train_batch["default_policy"]["action_dist_inputs"])
-        assert np.allclose(batch["default_policy"]["rewards"], old_train_batch["default_policy"]["rewards"])
-        assert np.allclose(batch["default_policy"]["terminateds"], old_train_batch["default_policy"]["terminateds"])
-        assert np.allclose(batch["default_policy"]["truncateds"], old_train_batch["default_policy"]["truncateds"])
-        assert np.allclose(batch["default_policy"]["t"], old_train_batch["default_policy"]["t"])
+        #assert np.allclose(batch["default_policy"]["obs"], old_train_batch["default_policy"]["obs"])
+        #assert np.allclose(batch["default_policy"]["actions"], old_train_batch["default_policy"]["actions"])
+        #assert np.allclose(batch["default_policy"]["action_logp"], old_train_batch["default_policy"]["action_logp"])
+        #assert np.allclose(batch["default_policy"]["action_dist_inputs"], old_train_batch["default_policy"]["action_dist_inputs"])
+        #assert np.allclose(batch["default_policy"]["rewards"], old_train_batch["default_policy"]["rewards"])
+        #assert np.allclose(batch["default_policy"]["terminateds"], old_train_batch["default_policy"]["terminateds"])
+        #assert np.allclose(batch["default_policy"]["truncateds"], old_train_batch["default_policy"]["truncateds"])
+        #assert np.allclose(batch["default_policy"]["t"], old_train_batch["default_policy"]["t"])
         # END: TEST
 
         # TEST CODE to compare against old stack's batch building behavior

@@ -165,7 +165,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Have to reset the env (on all vector sub_envs).
         if force_reset or self._needs_initial_reset:
             obs, infos = self.env.reset()
-
+            self._needs_initial_reset = False
             self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
 
             # Set initial obs in the episodes.

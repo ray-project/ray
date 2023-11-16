@@ -61,23 +61,6 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
             possibly_masked_mean = torch.mean
 
-        ## RNN case: Mask away 0-padded chunks at end of time axis.
-        #if self.module[module_id].is_stateful():
-        #    # In the RNN case, we expect incoming tensors to be padded to the maximum
-        #    # sequence length. We infer the max sequence length from the actions
-        #    # tensor.
-        #    maxlen = torch.max(batch[SampleBatch.SEQ_LENS])
-        #    mask = sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen=maxlen)
-        #    num_valid = torch.sum(mask)
-
-        #    def possibly_masked_mean(t):
-        #        return torch.sum(t[mask]) / num_valid
-
-        # non-RNN case: No masking.
-        #else:
-        #    mask = None
-        #    possibly_masked_mean = torch.mean
-
         action_dist_class_train = (
             self.module[module_id].unwrapped().get_train_action_dist_cls()
         )
