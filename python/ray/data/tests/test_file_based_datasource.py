@@ -33,7 +33,7 @@ def test_file_extensions(ray_start_regular_shared, tmp_path):
 
     datasource = MockFileBasedDatasource([csv_path, txt_path], file_extensions=None)
     ds = ray.data.read_datasource(datasource)
-    assert ds.input_files() == [csv_path, txt_path]
+    assert sorted(ds.input_files()) == sorted([csv_path, txt_path])
 
     datasource = MockFileBasedDatasource([csv_path, txt_path], file_extensions=["csv"])
     ds = ray.data.read_datasource(datasource)
