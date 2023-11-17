@@ -282,7 +282,6 @@ class ApplicationState:
         self,
         deployment_name: str,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
         target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> None:
         """Deploys a deployment in the application."""
@@ -297,7 +296,6 @@ class ApplicationState:
         self._deployment_state_manager.deploy(
             deployment_id,
             deployment_info,
-            target_capacity=target_capacity,
             target_capacity_scale_direction=target_capacity_scale_direction,
         )
 
@@ -577,7 +575,6 @@ class ApplicationState:
 
     def _reconcile_target_deployments(
         self,
-        target_capacity: Optional[float] = None,
         target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> None:
         """Reconcile target deployments in application target state.
@@ -602,7 +599,6 @@ class ApplicationState:
             self.apply_deployment_info(
                 deployment_name,
                 deploy_info,
-                target_capacity=target_capacity,
                 target_capacity_scale_direction=target_capacity_scale_direction,
             )
 
@@ -613,7 +609,6 @@ class ApplicationState:
 
     def update(
         self,
-        target_capacity: Optional[float] = None,
         target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> bool:
         """Attempts to reconcile this application to match its target state.
@@ -641,7 +636,6 @@ class ApplicationState:
         # perform reconciliation or check on deployment statuses
         if self._target_state.deployment_infos is not None:
             self._reconcile_target_deployments(
-                target_capacity=target_capacity,
                 target_capacity_scale_direction=target_capacity_scale_direction,
             )
             status, status_msg = self._determine_app_status()
@@ -860,14 +854,12 @@ class ApplicationStateManager:
 
     def update(
         self,
-        target_capacity: Optional[float] = None,
         target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ):
         """Update each application state"""
         apps_to_be_deleted = []
         for name, app in self._application_states.items():
             ready_to_be_deleted = app.update(
-                target_capacity=target_capacity,
                 target_capacity_scale_direction=target_capacity_scale_direction,
             )
             if ready_to_be_deleted:

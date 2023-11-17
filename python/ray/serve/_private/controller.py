@@ -400,7 +400,6 @@ class ServeController:
             try:
                 asm_update_start_time = time.time()
                 self.application_state_manager.update(
-                    target_capacity=self._target_capacity,
                     target_capacity_scale_direction=self._scale_direction,
                 )
                 self.asm_update_duration_gauge_s.set(

@@ -1451,7 +1451,6 @@ class DeploymentState:
     def deploy(
         self,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
         target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> bool:
         """Deploy the deployment.
@@ -2503,7 +2502,6 @@ class DeploymentStateManager:
         self,
         deployment_id: DeploymentID,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
         target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> bool:
         """Deploy the deployment.
@@ -2522,7 +2520,6 @@ class DeploymentStateManager:
 
         return self._deployment_states[deployment_id].deploy(
             deployment_info,
-            target_capacity=target_capacity,
             target_capacity_scale_direction=target_capacity_scale_direction,
         )
 
