@@ -56,7 +56,7 @@ __all__ = [
     "TPUAcceleratorManager",
     "NeuronAcceleratorManager",
     "HPUAcceleratorManager",
-    "AscendNPUAcceleratorManager"
+    "AscendNPUAcceleratorManager",
     "get_all_accelerator_managers",
     "get_all_accelerator_resource_names",
     "get_accelerator_manager_for_resource",

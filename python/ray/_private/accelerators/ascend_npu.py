@@ -50,6 +50,7 @@ class AscendNPUAcceleratorManager(AcceleratorManager):
         """
         try:
             import acl
+
             device_count, ret = acl.rt.get_device_count()
             if ret == 0:
                 return device_count
@@ -67,6 +68,7 @@ class AscendNPUAcceleratorManager(AcceleratorManager):
     def get_current_node_accelerator_type() -> Optional[str]:
         try:
             import acl
+
             return acl.get_soc_name()
         except Exception:
             logger.exception("Failed to detect NPU type.")
