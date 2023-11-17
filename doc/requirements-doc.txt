@@ -22,7 +22,7 @@ sphinx-remove-toctrees==0.0.3
 autodoc_pydantic==2.0.1
 sphinx_design==0.4.1
 
-pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*
+pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
 
 # MyST
 myst-parser==0.15.2
