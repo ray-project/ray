@@ -535,7 +535,10 @@ def _setup_ray_cluster(
             "--include-dashboard=false",
         ]
 
-    _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
+    _logger.info(
+        f"Ray head hostname: {ray_head_ip}, port: {ray_head_port}, "
+        f"ray client server port: {ray_client_server_port}."
+    )
 
     cluster_unique_id = uuid.uuid4().hex[:8]
 
