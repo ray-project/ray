@@ -66,7 +66,7 @@ class LearnerGroup:
     Args:
         learner_spec: The specification for constructing Learners.
         max_queue_len: The maximum number of batches to queue up if doing async_update
-            If the queue is full itwill evict the oldest batch first.
+            If the queue is full it will evict the oldest batch first.
 
     """
 
@@ -205,20 +205,23 @@ class LearnerGroup:
                 self._learner.update(
                     batch=train_batch,
                     episodes=episodes,
+                    reduce_fn=reduce_fn,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
-                    reduce_fn=reduce_fn,
                 )
             ]
         else:
 
-            def _learner_update(learner: Learner, batch_shard=None, episodes_shard=None):
+            # Define remote function to be called on all Learner actors.
+            def _learner_update(
+                learner: Learner, batch_shard=None, episodes_shard=None
+            ):
                 return learner.update(
                     batch=batch_shard,
                     episodes=episodes_shard,
+                    reduce_fn=reduce_fn,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
-                    reduce_fn=reduce_fn,
                 )
 
             # Only batch provided, split it up into n shards.
@@ -228,17 +231,22 @@ class LearnerGroup:
                     self._worker_manager.foreach_actor(
                         [
                             partial(_learner_update, batch_shard=batch_shard)
-                            for batch_shard in ShardBatchIterator(train_batch, len(self._workers))
+                            for batch_shard in ShardBatchIterator(
+                                train_batch, len(self._workers)
+                            )
                         ]
                     )
                 )
+            # Only episodes provided, split them up into n shards.
             elif batch is None:
                 assert episodes is not None
                 results = self._get_results(
                     self._worker_manager.foreach_actor(
                         [
                             partial(_learner_update, episodes_shard=episodes_shard)
-                            for episodes_shard in ShardEpisodesIterator(episodes, len(self._workers))
+                            for episodes_shard in ShardEpisodesIterator(
+                                episodes, len(self._workers)
+                            )
                         ]
                     )
                 )
@@ -280,9 +288,6 @@ class LearnerGroup:
                 is split amongst these and one list shard is sent to each Learner.
                 If `episodes` is not provided, the user must provide the `batch` arg.
                 Sending both `batch` and `episodes` is also allowed.
-            minibatch_size: The minibatch size to use for the update.
-            num_iters: The number of complete passes over all the sub-batches in the
-                input multi-agent batch.
             reduce_fn: An optional callable to reduce the results from a list of the
                 Learner actors into a single result. This can be any arbitrary function
                 that takes a list of dictionaries and returns a single dictionary. For
@@ -290,6 +295,9 @@ class LearnerGroup:
                 results (for example for metrics) or be more selective about you want to
                 report back to the algorithm's training_step. If None is passed, the
                 results will not get reduced.
+            minibatch_size: The minibatch size to use for the update.
+            num_iters: The number of complete passes over all the sub-batches in the
+                input multi-agent batch.
 
         Returns:
             A list of list of dictionaries of results, where the outer list
@@ -300,19 +308,21 @@ class LearnerGroup:
         """
         if self.is_local:
             raise ValueError(
-                "Cannot call `async_update` when running in local mode with "
-                "num_workers=0."
+                "Cannot call `async_update` when running in local mode "
+                "(`config.num_learner_workers=0`)!"
             )
         else:
             if minibatch_size is not None:
                 minibatch_size //= len(self._workers)
 
-            def _learner_update(learner, minibatch):
+            # Define remote function to be called on all Learner actors.
+            def _learner_update(learner, batch_shard=None, episodes_shard=None):
                 return learner.update(
-                    minibatch,
+                    batch=batch_shard,
+                    episodes=episodes_shard,
+                    reduce_fn=reduce_fn,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
-                    reduce_fn=reduce_fn,
                 )
 
             # Queue the new batches.
@@ -321,7 +331,7 @@ class LearnerGroup:
             if len(self._in_queue) == self._in_queue.maxlen:
                 self._in_queue_ts_dropped += len(self._in_queue[0])
 
-            self._in_queue.append(batch)
+            self._in_queue.append((batch, episodes))
 
             # Retrieve all ready results (kicked off by prior calls to this method).
             results = self._worker_manager.fetch_ready_async_reqs(
@@ -340,23 +350,45 @@ class LearnerGroup:
                     # use the oldest one first).
                     update_tag = str(uuid.uuid4())
                     self._inflight_request_tags.add(update_tag)
-                    batch = self._in_queue.popleft()
-                    self._worker_manager.foreach_actor_async(
-                        [
-                            partial(_learner_update, minibatch=minibatch)
-                            for minibatch in ShardBatchIterator(
-                                batch, len(self._workers)
-                            )
-                        ],
-                        tag=update_tag,
-                    )
+                    batch, episodes = self._in_queue.popleft()
+
+                    # Only batch provided, split it up into n shards.
+                    if episodes is None:
+                        assert batch is not None
+                        self._worker_manager.foreach_actor_async(
+                            [
+                                partial(_learner_update, batch_shard=batch_shard)
+                                for batch_shard in ShardBatchIterator(
+                                    batch, len(self._workers)
+                                )
+                            ],
+                            tag=update_tag,
+                        )
+                    # Only episodes provided, split them up into n shards.
+                    elif batch is None:
+                        assert episodes is not None
+                        self._worker_manager.foreach_actor(
+                            [
+                                partial(_learner_update, episodes_shard=episodes_shard)
+                                for episodes_shard in ShardEpisodesIterator(
+                                    episodes, len(self._workers)
+                                )
+                            ],
+                            tag=update_tag,
+                        )
+                    # TODO (sven): Implement the case in which both batch and episodes
+                    #  might already be provided (or figure out whether this makes sense
+                    #  at all).
+                    else:
+                        raise NotImplementedError
+
                     count += 1
 
             # NOTE: There is a strong assumption here that the requests launched to
-            # learner workers will return at the same time, since they are have a
-            # barrier inside of themselves for gradient aggregation. Therefore results
+            # learner workers will return at the same time, since they have a
+            # barrier inside themselves for gradient aggregation. Therefore, results
             # should be a list of lists where each inner list should be the length of
-            # the number of learner workers, if results from an  non-blocking update are
+            # the number of learner workers, if results from a non-blocking update are
             # ready.
             results = self._get_async_results(results)
 
@@ -484,25 +516,6 @@ class LearnerGroup:
                 refs.append(ref)
             ray.get(refs)
 
-    def set_weights(self, weights: Mapping[str, Any]) -> None:
-        """Set the weights of the MultiAgentRLModule maintained by each Learner.
-
-        The weights don't have to include all the modules in the MARLModule.
-            This way the weights of only some of the Agents can be set.
-
-        Args:
-            weights: The weights to set each RLModule in the MARLModule to.
-
-        """
-        if self.is_local:
-            self._learner.set_module_state(weights)
-        else:
-            results_or_errors = self._worker_manager.foreach_actor(
-                lambda w: w.set_module_state(weights)
-            )
-            # raise errors if any
-            self._get_results(results_or_errors)
-
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Get the weights of the MultiAgentRLModule maintained by each Learner.
 
@@ -524,6 +537,25 @@ class LearnerGroup:
             state = self._get_results(state)[0]
 
         return convert_to_numpy(state)
+
+    def set_weights(self, weights: Mapping[str, Any]) -> None:
+        """Set the weights of the MultiAgentRLModule maintained by each Learner.
+
+        The weights don't have to include all the modules in the MARLModule.
+            This way the weights of only some of the Agents can be set.
+
+        Args:
+            weights: The weights to set each RLModule in the MARLModule to.
+
+        """
+        if self.is_local:
+            self._learner.set_module_state(weights)
+        else:
+            results_or_errors = self._worker_manager.foreach_actor(
+                lambda w: w.set_module_state(weights)
+            )
+            # raise errors if any
+            self._get_results(results_or_errors)
 
     def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
         """Get the states of the first Learners.
@@ -729,16 +761,14 @@ class LearnerGroup:
             # so we should not load any modules in the MARLModule checkpoint that are
             # also in the RLModule checkpoints.
             if modules_to_load:
-                if any(
-                    module_id in modules_to_load
-                    for module_id in rl_module_ckpt_dirs.keys()
-                ):
-                    raise ValueError(
-                        f"module_id {module_id} was specified in both "
-                        "modules_to_load and rl_module_ckpt_dirs. Please only "
-                        "specify a module to be loaded only once, either in "
-                        "modules_to_load or rl_module_ckpt_dirs, but not both."
-                    )
+                for module_id in rl_module_ckpt_dirs.keys():
+                    if module_id in modules_to_load:
+                        raise ValueError(
+                            f"module_id {module_id} was specified in both "
+                            "`modules_to_load` AND `rl_module_ckpt_dirs`! "
+                            "Specify a module to be loaded either in `modules_to_load` "
+                            "or `rl_module_ckpt_dirs`, but not in both."
+                        )
             else:
                 modules_to_load = module_keys - set(rl_module_ckpt_dirs.keys())
 

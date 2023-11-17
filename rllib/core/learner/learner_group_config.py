@@ -99,7 +99,7 @@ class LearnerGroupConfig:
             framework_hyperparameters=framework_hps,
         )
 
-        return self.learner_group_class(learner_spec)
+        return self.learner_group_class(learner_spec=learner_spec)
 
     def framework(
         self,

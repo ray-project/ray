@@ -55,6 +55,7 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
 from ray.rllib.utils.typing import (
+    EpisodeType,
     LearningRateOrSchedule,
     Optimizer,
     Param,
@@ -1234,8 +1235,8 @@ class Learner:
         reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
             _reduce_mean_results
         ),
-        # TODO (sven): Deprecate these in favor of learner hyperparams for only those
-        #  algos actually that need to do minibatching.
+        # TODO (sven): Deprecate these in favor of config attributes for only those
+        #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
@@ -1265,8 +1266,8 @@ class Learner:
         self._check_is_built()
 
         if batch is not None:
-            unknown_module_ids = (
-                set(batch.policy_batches.keys()) - set(self.module.keys())
+            unknown_module_ids = set(batch.policy_batches.keys()) - set(
+                self.module.keys()
             )
             if len(unknown_module_ids) > 0:
                 raise ValueError(
@@ -1346,17 +1347,17 @@ class Learner:
 
         The higher level order, in which this method is called from within
         `Learner.update(batch, episodes)` is:
-        * _preprocess_train_data(batch, episodes)
-        * _learner_connector(batch, episodes)
-        * _update_from_batch(batch)
+        * batch, episodes = self._preprocess_train_data(batch, episodes)
+        * batch = self._learner_connector(batch, episodes)
+        * results = self._update(batch)
 
-        The default implementation does not do any processing and is a mere pass through.
-        However, specific algorithms should override this method to implement their
-        specific training data preprocessing needs. It is possible to perform separate
-        forward passes (besides the main "forward_train()" one during
-        `_update_from_batch`) in this method and custom algorithms might also want to
-        use this Learner's `self._learner_connector` to prepare the data (batch/episodes)
-        for such an extra forward call.
+        The default implementation does not do any processing and is a mere pass
+        through. However, specific algorithms should override this method to implement
+        their specific training data preprocessing needs. It is possible to perform
+        preliminary RLModule forward passes (besides the main "forward_train()" call
+        during `self._update`) in this method and custom algorithms might also want to
+        use this Learner's `self._learner_connector` to prepare the data
+        (batch/episodes) for such extra forward calls.
 
         Args:
             batch: A data batch to preprocess.
