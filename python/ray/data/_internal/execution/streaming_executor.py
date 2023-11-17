@@ -47,6 +47,9 @@ DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
 # progress bar seeming to stall for very large scale workloads.
 PROGRESS_BAR_UPDATE_INTERVAL = 50
 
+# Interval for logging execution progress updates and operator metrics.
+DEBUG_LOG_INTERVAL_SECONDS = 5
+
 # Visible for testing.
 _num_shutdown = 0
 
@@ -83,6 +86,8 @@ class StreamingExecutor(Executor, threading.Thread):
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
+
+        self._last_debug_log_time = 0
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -122,7 +127,8 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._output_node: OpState = self._topology[dag]
         StatsManager.register_dataset_to_stats_actor(
-            self._dataset_tag, [tag["operator"] for tag in self._get_metrics_tags()]
+            self._dataset_tag,
+            self._get_operator_tags(),
         )
         self.start()
 
@@ -183,7 +189,9 @@ class StreamingExecutor(Executor, threading.Thread):
             )
             # Clears metrics for this dataset so that they do
             # not persist in the grafana dashboard after execution
-            StatsManager.clear_stats_actor_metrics(self._get_metrics_tags())
+            StatsManager.clear_execution_metrics(
+                self._dataset_tag, self._get_operator_tags()
+            )
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
@@ -299,9 +307,11 @@ class StreamingExecutor(Executor, threading.Thread):
             op_state.refresh_progress_bar()
 
         self._update_stats_metrics(state="RUNNING")
-        _log_op_metrics(topology)
-        if not DEBUG_TRACE_SCHEDULING:
-            _debug_dump_topology(topology, log_to_stdout=False)
+        if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
+            _log_op_metrics(topology)
+            if not DEBUG_TRACE_SCHEDULING:
+                _debug_dump_topology(topology, log_to_stdout=False)
+            self._last_debug_log_time = time.time()
 
         # Log metrics of newly completed operators.
         for op in topology:
@@ -353,12 +363,9 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._global_info:
             self._global_info.set_description(resources_status)
 
-    def _get_metrics_tags(self):
-        """Returns a list of tags for operator-level metrics."""
-        return [
-            {"dataset": self._dataset_tag, "operator": f"{op.name}{i}"}
-            for i, op in enumerate(self._topology)
-        ]
+    def _get_operator_tags(self):
+        """Returns a list of operator tags."""
+        return [f"{op.name}{i}" for i, op in enumerate(self._topology)]
 
     def _get_state_dict(self, state):
         last_op, last_state = list(self._topology.items())[-1]
@@ -378,9 +385,10 @@ class StreamingExecutor(Executor, threading.Thread):
         }
 
     def _update_stats_metrics(self, state: str, force_update: bool = False):
-        StatsManager.update_stats_actor_metrics(
+        StatsManager.update_execution_metrics(
+            self._dataset_tag,
             [op.metrics for op in self._topology],
-            self._get_metrics_tags(),
+            self._get_operator_tags(),
             self._get_state_dict(state=state),
             force_update=force_update,
         )

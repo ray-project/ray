@@ -179,11 +179,11 @@ class DataIterator(abc.ABC):
                 )
             )
 
-            metrics_tag = {"dataset": self._get_dataset_tag()}
+            dataset_tag = self._get_dataset_tag()
             for batch in iterator:
                 yield batch
-                StatsManager.update_stats_actor_iter_metrics(stats, metrics_tag)
-            StatsManager.clear_stats_actor_iter_metrics(metrics_tag)
+                StatsManager.update_iteration_metrics(stats, dataset_tag)
+            StatsManager.clear_iteration_metrics(dataset_tag)
 
             if stats:
                 stats.iter_total_s.add(time.perf_counter() - time_start)
@@ -851,9 +851,7 @@ class DataIterator(abc.ABC):
 
     def __del__(self):
         # Clear metrics on deletion in case the iterator was not fully consumed.
-        StatsManager.clear_stats_actor_iter_metrics(
-            {"dataset": self._get_dataset_tag()}
-        )
+        StatsManager.clear_iteration_metrics(self._get_dataset_tag())
 
 
 # Backwards compatibility alias.
