@@ -32,8 +32,8 @@ For a more fine-grained overview, each dataset row in the table can also be expa
 .. image:: images/data-overview-table-expanded.png
    :align: center
 
-Ray dashboard
-~~~~~~~~~~~~~
+Ray dashboard metrics
+~~~~~~~~~~~~~~~~~~~~~
 
 For an even finer view, see the Ray Data section in the :ref:`Metrics tab <dash-metrics-view>`. This section contains time-series views of all metrics emitted by Ray Data, grouped by operator.
 
