@@ -436,7 +436,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
             assert deployment.status == DeploymentStatus.HEALTHY
             assert (
                 deployment.status_trigger
-                == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+                == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
             )
             # Route prefix should be app level options eventually
             assert "route_prefix" not in deployment.deployment_config.dict(

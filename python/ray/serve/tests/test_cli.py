@@ -499,7 +499,7 @@ def test_status_basic(ray_start_stop):
     for name, status in default_app["deployments"].items():
         expected_deployments.remove(name)
         assert status["status"] in {"HEALTHY", "UPDATING"}
-        assert status["status_trigger"] == "DEPLOY"
+        assert status["status_trigger"] == "CONFIG_UPDATE_COMPLETED"
         assert status["replica_states"]["RUNNING"] in {0, 1}
         assert "message" in status
     assert len(expected_deployments) == 0
@@ -541,7 +541,7 @@ def test_status_error_msg_format(ray_start_stop):
 
         deployment_status = cli_status["deployments"]["A"]
         assert deployment_status["status"] == "UNHEALTHY"
-        assert deployment_status["status_trigger"] == "DEPLOY"
+        assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
         return True
 
     wait_for_condition(check_for_failed_deployment)
@@ -616,7 +616,7 @@ def test_status_constructor_error(ray_start_stop):
 
         deployment_status = status["deployments"]["A"]
         assert deployment_status["status"] == "UNHEALTHY"
-        assert deployment_status["status_trigger"] == "DEPLOY"
+        assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
         assert "ZeroDivisionError" in deployment_status["message"]
         return True
 
