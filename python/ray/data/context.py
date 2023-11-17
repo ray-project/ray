@@ -227,6 +227,9 @@ class DataContext:
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
+        # Max number of task failures that are allowed before failing
+        # the Dataset execution. -1 means no limit.
+        self.max_allowed_task_failures = 0
         # The extra key-value style configs.
         # These configs are managed by individual components or plugins via
         # `set_config`, `get_config` and `remove_config`.

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Tuple, Union
 
 import ray
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -32,6 +33,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
+
+logger = DatasetLogger(__name__)
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -331,7 +334,8 @@ def build_streaming_topology(
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
-) -> None:
+    max_allowed_task_failures: int,
+) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards."""
 
@@ -352,6 +356,7 @@ def process_completed_tasks(
             )
 
     # Process completed Ray tasks and notify operators.
+    num_failures = 0
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
@@ -362,11 +367,32 @@ def process_completed_tasks(
         for ref in ready:
             state, task = active_tasks.pop(ref)
             if isinstance(task, DataOpTask):
-                num_blocks_read = task.on_data_ready(
-                    max_blocks_to_read_per_op.get(state, None)
-                )
-                if state in max_blocks_to_read_per_op:
-                    max_blocks_to_read_per_op[state] -= num_blocks_read
+                try:
+                    num_blocks_read = task.on_data_ready(
+                        max_blocks_to_read_per_op.get(state, None)
+                    )
+                    if state in max_blocks_to_read_per_op:
+                        max_blocks_to_read_per_op[state] -= num_blocks_read
+                except Exception as e:
+                    error_message = (
+                        f"An exception occurred in a task of operator {state.op}."
+                    )
+                    if max_allowed_task_failures != 0:
+                        num_failures += 1
+                        if max_allowed_task_failures > 0:
+                            max_allowed_task_failures -= 1
+                        error_message += (
+                            " Ingoring this exception with remaining "
+                            f"max_allowed_task_failures={max_allowed_task_failures}."
+                        )
+                        logger.get_logger().error(error_message, e)
+                    else:
+                        error_message += (
+                            " Dataset execution will now abort because of this exception."
+                            " To ignore this exception and continue, set"
+                            " DataContext.max_allowed_task_failures to a larger number."
+                        )
+                        raise RuntimeError(error_message) from e
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()
@@ -375,6 +401,8 @@ def process_completed_tasks(
     for op, op_state in topology.items():
         while op.has_next():
             op_state.add_output(op.get_next())
+
+    return num_failures
 
 
 def update_operator_states(topology: Topology) -> None:
