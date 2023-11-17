@@ -5,11 +5,11 @@
 sudo apt-get install curl
 curl -O https://efa-installer.amazonaws.com/aws-efa-installer-latest.tar.gz
 wget https://efa-installer.amazonaws.com/aws-efa-installer.key && gpg --import aws-efa-installer.key
-cat aws-efa-installer.key | gpg --fingerprint
+gpg --fingerprint < aws-efa-installer.key
 wget https://efa-installer.amazonaws.com/aws-efa-installer-latest.tar.gz.sig && gpg --verify ./aws-efa-installer-latest.tar.gz.sig
 tar -xvf aws-efa-installer-latest.tar.gz
 cd aws-efa-installer && sudo bash efa_installer.sh --yes --skip-kmod
-cd
+cd || exit
 sudo rm -rf aws-efa-installer-latest.tar.gz aws-efa-installer
 
 # Configure Linux for Neuron repository updates
