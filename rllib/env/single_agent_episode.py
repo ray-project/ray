@@ -351,6 +351,27 @@ class SingleAgentEpisode:
             t_started=self.t,
         )
 
+    def split(self, split_at: int) -> "SingleAgentEpisode":
+        """Splits at given index, keeping the 1st half in `self` and returning 2nd half.
+
+        Changes `self` in-place by making it shorter (from 0 to [original length] to
+        0 to `split_at`). The second "half" Episode from split_at till the end is
+        returned as a new SingleAgentEpisode object.
+
+        Args:
+            split_at: The index at which to perform the split.
+
+        Returns:
+            The new SingleAgentEpisode representing the second half of the split. The
+            first half of the split will be `self`, which is changed in-place.
+        """
+        data_dict = self.get_data_dict()
+        if self.is_numpy:
+            self.observations = data_dict[SampleBatch.OBS]
+        new_episode = SingleAgentEpisode(
+            observations=
+        )
+
     def get_data_dict(self):
         """Converts a `SingleAgentEpisode` into a data dict mapping str keys to data.
 
