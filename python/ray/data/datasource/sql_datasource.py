@@ -111,8 +111,8 @@ class SQLDatasource(Datasource):
 
         if not is_limit_supported:
             logger.warning(
-                "Ray Data uses the 'LIMIT' clause to read data in parallel, "
-                "but the queried database doesn't support 'LIMIT'. Forcing parallelism of 1."
+                "Ray Data uses the 'LIMIT' clause to read data in parallel, but the "
+                "queried database doesn't support 'LIMIT'. Forcing parallelism of 1."
             )
             metadata = BlockMetadata(None, None, None, None, None)
             return [ReadTask(fallback_read_fn, metadata)]
