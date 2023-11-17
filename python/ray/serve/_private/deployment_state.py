@@ -1520,34 +1520,40 @@ class DeploymentState:
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
         )
-        if decision_num_replicas == self._target_state.num_replicas:
-            return
 
-        # Adjust the logged replica count based on `target_capacity`. In reality the
-        # autoscaling algorithm operates on the full replica count and the target
-        # will be adjusted in the in the main deployment update cycle, but this log
-        # statement needs to be comprehensible to the user.
-        adjusted_decision_num_replicas = self.get_capacity_adjusted_num_replicas(
-            decision_num_replicas, target_capacity
+        # Clip the replica count by capacity-adjusted bounds.
+        # TODO (shrekris-anyscale): this should logic should be pushed into the
+        # autoscaling_policy. Need to discuss what the right API would look like.
+        upper_bound = self.get_capacity_adjusted_num_replicas(
+            autoscaling_policy.config.max_replicas, target_capacity
+        )
+        if (
+            target_capacity_scale_direction == TargetCapacityScaleDirection.UP
+            and autoscaling_policy.config.initial_replicas is not None
+        ):
+            lower_bound = self.get_capacity_adjusted_num_replicas(
+                autoscaling_policy.config.initial_replicas, target_capacity
+            )
+        else:
+            lower_bound = self.get_capacity_adjusted_num_replicas(
+                autoscaling_policy.config.min_replicas, target_capacity
+            )
+
+        clipped_decision_num_replicas = max(
+            lower_bound, min(decision_num_replicas, upper_bound)
         )
 
-        # When scaling up, lower-bound the num_replicas by the initial_replicas
-        if target_capacity_scale_direction == TargetCapacityScaleDirection.UP:
-            adjusted_decision_num_replicas = max(
-                adjusted_decision_num_replicas,
-                self.get_capacity_adjusted_num_replicas(
-                    autoscaling_policy.config.initial_replicas, target_capacity
-                ),
-            )
+        if clipped_decision_num_replicas == self._target_state.num_replicas:
+            return
 
         logger.info(
             f"Autoscaling replicas for deployment {self.deployment_name} in "
-            f"application {self.app_name} to {adjusted_decision_num_replicas}. "
+            f"application {self.app_name} to {clipped_decision_num_replicas}. "
             f"{current_num_ongoing_requests}, current handle queued queries: "
             f"{current_handle_queued_queries}."
         )
 
-        self._set_target_state_autoscaling(decision_num_replicas)
+        self._set_target_state_autoscaling(clipped_decision_num_replicas)
 
     def delete(self) -> None:
         if not self._target_state.deleting:
