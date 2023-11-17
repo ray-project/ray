@@ -24,13 +24,15 @@ class ConnectorContextV2:
      to agent IDs.
 
     Attributes:
-        env: The Env object used to reset/step through in the current Env -> Module
-            setup.
-        rl_module: The RLModule used for forward passes in the current Env -> Module
-            setup.
+        env: The Env object used to reset/step through in the current Env->Module
+            setup. This will be None in contexts used in a Learner connector pipeline.
+        rl_module: The RLModule used for either action computing forward passes
+            (`forward_exploration|inference()`) in the current Env->Module setup
+            or `forward_train()` calls in a Learner connector pipeline.
         explore: Whether `explore` is currently on. Per convention, if True, the
-            RLModule's `forward_exploration` method should be called, if False, the
-            EnvRunner should call `forward_inference` instead.
+            RLModule's `forward_exploration()` method should be called, if False, the
+            EnvRunner should call `forward_inference()` instead. Should be None inside
+            Learner connector pipelines.
         agent_id: The (optional) current agent ID that the connector should be
             creating/extracting data for.
         episode_index: The (optional) index within the list of SingleAgentEpisodes or
@@ -38,6 +40,8 @@ class ConnectorContextV2:
             to the given agent_id.
         data: Optional additional context data that needs to be exchanged between
             different Connector pieces and -pipelines.
+
+        TODO (sven): Maybe we should have to AlgorithmConfig here as well.
     """
 
     env: Optional[EnvType] = None
