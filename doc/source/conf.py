@@ -479,7 +479,6 @@ autodoc_mock_imports = [
     "numpy",
     "pandas",
     "pyarrow",
-    "pydantic",
     "pytorch_lightning",
     "scipy",
     "setproctitle",

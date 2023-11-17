@@ -212,7 +212,12 @@ def parse_navbar_config(app: sphinx.application.Sphinx, config: sphinx.config.Co
 NavEntry = Dict[str, Union[str, List["NavEntry"]]]
 
 
-def preload_sidebar_nav(get_toctree: Callable[[Any], str]) -> bs4.BeautifulSoup:
+def preload_sidebar_nav(
+    get_toctree: Callable[[Any], str],
+    pathto: Callable[[str], str],
+    root_doc: str,
+    pagename: str,
+) -> bs4.BeautifulSoup:
     """Return the navigation link structure in HTML.
 
     This function is modified from the pydata_sphinx_theme function
@@ -247,59 +252,79 @@ def preload_sidebar_nav(get_toctree: Callable[[Any], str]) -> bs4.BeautifulSoup:
         Soup to display in the side navbar
     """
     if hasattr(preload_sidebar_nav, "cached_toctree"):
-        return preload_sidebar_nav.cached_toctree
+        # Need to retrieve a copy of the cached toctree HTML so as not to modify
+        # the cached version when we set the "checked" state of the inputs
+        soup = copy.copy(preload_sidebar_nav.cached_toctree)
+    else:
+        toctree = get_toctree(
+            collapse=False, includehidden=True, maxdepth=4, titles_only=True
+        )
 
-    toctree = get_toctree(
-        collapse=False, includehidden=True, maxdepth=4, titles_only=True
-    )
+        soup = bs4.BeautifulSoup(toctree, "html.parser")
 
-    soup = bs4.BeautifulSoup(toctree, "html.parser")
+        # Remove "current" class since this toctree HTML is being reused
+        # from some other page
+        for li in soup("li", {"class": "current"}):
+            li["class"].remove("current")
+
+        # Remove sidebar links to sub-headers on the page
+        for li in soup.select("li"):
+            # Remove
+            if li.find("a"):
+                href = li.find("a")["href"]
+                if "#" in href and href != "#":
+                    li.decompose()
+
+        # Add bootstrap classes for first `ul` items
+        for ul in soup("ul", recursive=False):
+            ul.attrs["class"] = ul.attrs.get("class", []) + ["nav", "bd-sidenav"]
+
+        # Add collapse boxes for parts/captions.
+        # Wraps the TOC part in an extra <ul> to behave like chapters with toggles
+        # show_nav_level: 0 means make parts collapsible.
+        partcaptions = soup.find_all("p", attrs={"class": "caption"})
+        if len(partcaptions):
+            new_soup = bs4.BeautifulSoup(
+                "<ul class='list-caption'></ul>", "html.parser"
+            )
+            for caption in partcaptions:
+                # Assume that the next <ul> element is the TOC list
+                # for this part
+                for sibling in caption.next_siblings:
+                    if sibling.name == "ul":
+                        toclist = sibling
+                        break
+                li = soup.new_tag("li", attrs={"class": "toctree-l0"})
+                li.extend([caption, toclist])
+                new_soup.ul.append(li)
+            soup = new_soup
+
+        # Add icons and labels for collapsible nested sections
+        add_collapse_checkboxes(soup)
+
+        # Cache a fresh copy of the toctree HTML
+        preload_sidebar_nav.cached_toctree = copy.copy(soup)
 
     # All the URIs are relative to the current document location, e.g.
     # "../../<whatever.html>". There's no need for this, and it messes up the build if
     # we reuse the same sidebar (with different relative URIs for various pages) on
-    # different pages. Replace the leading "../" sequences in the hrefs
+    # different pages. Replace the leading "../" sequences in the hrefs with the correct
+    # number of "../" for the given rootdoc
+    if pagename == root_doc:
+        to_root_prefix = "./"
+    else:
+        to_root_prefix = re.sub(f"{root_doc}.html", "", pathto(root_doc))
+
     for a in soup.select("a"):
-        a["href"] = re.sub(r"^(\.\.\/)*", "/", a["href"])
+        absolute_href = re.sub(r"^(\.\.\/)*", "", a["href"])
+        a["href"] = to_root_prefix + absolute_href
 
-    # pair "current" with "active" since that's what we use w/ bootstrap
-    for li in soup("li", {"class": "current"}):
-        li["class"].append("active")
+        if absolute_href == f"{pagename}.html":
+            for parent_li in a.find_parents("li", attrs={"class": "has-children"}):
+                el = parent_li.find("input")
+                if el:
+                    el.attrs["checked"] = True
 
-    # Remove sidebar links to sub-headers on the page
-    for li in soup.select("li"):
-        # Remove
-        if li.find("a"):
-            href = li.find("a")["href"]
-            if "#" in href and href != "#":
-                li.decompose()
-
-    # Add bootstrap classes for first `ul` items
-    for ul in soup("ul", recursive=False):
-        ul.attrs["class"] = ul.attrs.get("class", []) + ["nav", "bd-sidenav"]
-
-    # Add collapse boxes for parts/captions.
-    # Wraps the TOC part in an extra <ul> to behave like chapters with toggles
-    # show_nav_level: 0 means make parts collapsible.
-    partcaptions = soup.find_all("p", attrs={"class": "caption"})
-    if len(partcaptions):
-        new_soup = bs4.BeautifulSoup("<ul class='list-caption'></ul>", "html.parser")
-        for caption in partcaptions:
-            # Assume that the next <ul> element is the TOC list
-            # for this part
-            for sibling in caption.next_siblings:
-                if sibling.name == "ul":
-                    toclist = sibling
-                    break
-            li = soup.new_tag("li", attrs={"class": "toctree-l0"})
-            li.extend([caption, toclist])
-            new_soup.ul.append(li)
-        soup = new_soup
-
-    # Add icons and labels for collapsible nested sections
-    add_collapse_checkboxes(soup)
-
-    preload_sidebar_nav.cached_toctree = soup
     return soup
 
 
@@ -396,8 +421,21 @@ def setup_context(app, pagename, templatename, context, doctree):
 
         return bullet_list
 
-    context["cached_toctree"] = preload_sidebar_nav(context["toctree"])
+    context["cached_toctree"] = preload_sidebar_nav(
+        context["toctree"],
+        context["pathto"],
+        context["root_doc"],
+        pagename,
+    )
     context["render_header_nav_links"] = render_header_nav_links
+
+
+def update_hrefs(input_soup: bs4.BeautifulSoup, n_levels_deep=0):
+    soup = copy.copy(input_soup)
+    for a in soup.select("a"):
+        a["href"] = "../" * n_levels_deep + a["href"]
+
+    return soup
 
 
 def add_nav_chevrons(input_soup: bs4.BeautifulSoup) -> bs4.BeautifulSoup:
