@@ -135,11 +135,11 @@ kubectl describe rayservices rayservice-sample
 #       Health Last Update Time:  2023-07-11T22:21:24Z
 #       Last Update Time:         2023-07-11T22:21:24Z
 #       Serve Deployment Statuses:
-#         fruit_app_DAGDriver:
+#         fruit_app_FruitMarket:
 #           Health Last Update Time:  2023-07-11T22:21:24Z
 #           Last Update Time:         2023-07-11T22:21:24Z
 #           Status:                   HEALTHY
-#         fruit_app_FruitMarket:
+#         fruit_app_PearStand:
 #           ...
 #       Status:                       RUNNING
 #     math_app:
@@ -150,7 +150,7 @@ kubectl describe rayservices rayservice-sample
 #           Health Last Update Time:  2023-07-11T22:21:24Z
 #           Last Update Time:         2023-07-11T22:21:24Z
 #           Status:                   HEALTHY
-#         math_app_DAGDriver:
+#         math_app_Multiplier:
 #           ...
 #       Status:                       RUNNING
 

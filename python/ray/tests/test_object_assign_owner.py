@@ -3,6 +3,7 @@ import ray
 import time
 import numpy as np
 import os
+from ray._private.test_utils import skip_flaky_test
 
 
 # https://github.com/ray-project/ray/issues/19659
@@ -155,6 +156,9 @@ def test_multiple_objects(ray_start_cluster):
 
 
 # https://github.com/ray-project/ray/issues/30341
+@pytest.mark.skipif(
+    skip_flaky_test(), reason="https://github.com/ray-project/ray/issues/41175"
+)
 def test_owner_assign_inner_object(shutdown_only):
 
     ray.init()
