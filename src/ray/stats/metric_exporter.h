@@ -111,9 +111,10 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
                        instrumented_io_context &io_service,
                        const std::string address,
                        const WorkerID &worker_id,
-                       size_t report_batch_size) {
+                       size_t report_batch_size,
+                       size_t max_grpc_payload_size) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address, worker_id, report_batch_size));
+        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address, worker_id, report_batch_size, max_grpc_payload_size));
   }
 
   void ExportViewData(
