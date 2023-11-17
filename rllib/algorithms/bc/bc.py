@@ -171,7 +171,7 @@ class BC(MARWIL):
             # Updating the policy.
             is_module_trainable = self.workers.local_worker().is_policy_to_train
             self.learner_group.set_is_module_trainable(is_module_trainable)
-            train_results = self.learner_group.update(train_batch)
+            train_results = self.learner_group.update(batch=train_batch)
 
             # Synchronize weights.
             # As the results contain for each policy the loss and in addition the

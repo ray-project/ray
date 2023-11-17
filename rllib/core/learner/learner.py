@@ -1228,13 +1228,16 @@ class Learner:
 
     def update(
         self,
-        batch: MultiAgentBatch,
         *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
         reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
             _reduce_mean_results
         ),
+        # TODO (sven): Deprecate these in favor of learner hyperparams for only those
+        #  algos actually that need to do minibatching.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Do `num_iters` minibatch updates given the original batch.
 
@@ -1254,22 +1257,29 @@ class Learner:
                 example for metrics) or be more selective about you want to report back
                 to the algorithm's training_step. If None is passed, the results will
                 not get reduced.
+
         Returns:
             A dictionary of results, in numpy format or a list of such dictionaries in
             case `reduce_fn` is None and we have more than one minibatch pass.
         """
         self._check_is_built()
 
-        missing_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
-        if len(missing_module_ids) > 0:
-            raise ValueError(
-                "Batch contains module ids that are not in the learner: "
-                f"{missing_module_ids}"
+        if batch is not None:
+            unknown_module_ids = (
+                set(batch.policy_batches.keys()) - set(self.module.keys())
             )
+            if len(unknown_module_ids) > 0:
+                raise ValueError(
+                    "Batch contains module ids that are not in the learner: "
+                    f"{unknown_module_ids}"
+                )
 
         if num_iters < 1:
             # We must do at least one pass on the batch for training.
             raise ValueError("`num_iters` must be >= 1")
+
+        # Call the train data preprocessor.
+        batch, episodes = self._preprocess_train_data(batch=batch, episodes=episodes)
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator
@@ -1309,12 +1319,12 @@ class Learner:
                 metrics_per_module=defaultdict(dict, **metrics_per_module),
             )
             self._check_result(result)
-            # TODO (sven): Figure out whether `compile_metrics` should be forced
+            # TODO (sven): Figure out whether `compile_results` should be forced
             #  to return all numpy/python data, then we can skip this conversion
             #  step here.
             results.append(convert_to_numpy(result))
 
-        batch = self._set_slicing_by_batch_id(batch, value=False)
+        self._set_slicing_by_batch_id(batch, value=False)
 
         # Reduce results across all minibatches, if necessary.
 
@@ -1329,6 +1339,34 @@ class Learner:
         # Pass list of results dicts through `reduce_fn` and return a single results
         # dict.
         return reduce_fn(results)
+
+    @OverrideToImplementCustomLogic
+    def _preprocess_train_data(self, *, batch, episodes) -> Tuple[Any, Any]:
+        """Allows custom preprocessing of batch/episode data before the actual update.
+
+        The higher level order, in which this method is called from within
+        `Learner.update(batch, episodes)` is:
+        * _preprocess_train_data(batch, episodes)
+        * _learner_connector(batch, episodes)
+        * _update_from_batch(batch)
+
+        The default implementation does not do any processing and is a mere pass through.
+        However, specific algorithms should override this method to implement their
+        specific training data preprocessing needs. It is possible to perform separate
+        forward passes (besides the main "forward_train()" one during
+        `_update_from_batch`) in this method and custom algorithms might also want to
+        use this Learner's `self._learner_connector` to prepare the data (batch/episodes)
+        for such an extra forward call.
+
+        Args:
+            batch: A data batch to preprocess.
+            episodes: A list of episodes to preprocess.
+
+        Returns:
+            A tuple consisting of the processed `batch` and the processed list of
+            `episodes`.
+        """
+        return batch, episodes
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod

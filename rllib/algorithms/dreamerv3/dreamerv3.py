@@ -629,7 +629,7 @@ class DreamerV3(Algorithm):
 
                 # Perform the actual update via our learner group.
                 train_results = self.learner_group.update(
-                    SampleBatch(sample).as_multi_agent(),
+                    batch=SampleBatch(sample).as_multi_agent(),
                     reduce_fn=self._reduce_results,
                 )
                 self._counters[NUM_AGENT_STEPS_TRAINED] += replayed_steps

@@ -951,7 +951,7 @@ class Impala(Algorithm):
             for batch in batches:
                 if blocking:
                     result = self.learner_group.update(
-                        batch,
+                        batch=batch,
                         reduce_fn=_reduce_impala_results,
                         num_iters=self.config.num_sgd_iter,
                         minibatch_size=self.config.minibatch_size,
