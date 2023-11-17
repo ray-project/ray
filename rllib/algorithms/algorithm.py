@@ -1930,7 +1930,10 @@ class Algorithm(Trainable, AlgorithmBase):
         filtered_obs, filtered_state = [], []
         for agent_id, ob in observations.items():
             worker = self.workers.local_worker()
-            preprocessed = worker.preprocessors[policy_id].transform(ob)
+            if worker.preprocessors.get(policy_id) is not None:
+                preprocessed = worker.preprocessors[policy_id].transform(ob)
+            else:
+                preprocessed = ob
             filtered = worker.filters[policy_id](preprocessed, update=False)
             filtered_obs.append(filtered)
             if state is None:
