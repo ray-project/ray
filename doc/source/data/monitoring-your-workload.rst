@@ -9,10 +9,16 @@ This section helps you debug and monitor the execution of your Ray Data :class:`
 * Ray dashboard metrics
 * Ray Data logs
 
-Ray dashboard job detail page
------------------------------
+Ray Data Dashboard
+------------------
 
-For an overview of all datasets that have been running on your cluster, see the Ray Data Overview in the job detail page. This table will show dataset details such as:
+Ray Data emits Prometheus metrics in real-time while a Dataset is executing. These metrics are tagged by both dataset and operator, and are displayed in multiple views across the Ray dashboard.
+
+Ray dashboard job detail page
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For an overview of all datasets that have been running on your cluster, see the Ray Data Overview in the :ref:`job detail page <dash-jobs-view>`. This table will appear once the first dataset starts executing on the cluster, and shows dataset details such as:
+
 * execution progress (measured in blocks)
 * execution state (running, failed, or finished)
 * dataset runtime
@@ -27,9 +33,9 @@ For a more fine-grained overview, each dataset row in the table can also be expa
    :align: center
 
 Ray dashboard
--------------
+~~~~~~~~~~~~~
 
-View the Ray Data dashboard located in the :ref:`Metrics tab <dash-metrics-view>` of the Ray Dashboard to monitor your application and troubleshoot issues. Ray Data emits Prometheus metrics in real-time while a Dataset is executing, and the Ray Data dashboard displays these metrics grouped by Dataset. Datasets can also be assigned a name using :meth:`Dataset._set_name`, which prefixes the dataset ID for a more identifiable label.
+For an even finer view, see the Ray Data section in the :ref:`Metrics tab <dash-metrics-view>`. This section contains time-series views of all metrics emitted by Ray Data, grouped by operator.
 
 The metrics recorded are:
 
