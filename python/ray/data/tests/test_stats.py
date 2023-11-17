@@ -35,6 +35,7 @@ def gen_expected_metrics(
             "'bytes_inputs_processed': N",
             "'num_outputs_generated': N",
             "'bytes_outputs_generated': N",
+            "'rows_outputs_generated': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             "'num_outputs_of_finished_tasks': N",
@@ -564,6 +565,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      bytes_inputs_processed: N,\n"
         "      num_outputs_generated: N,\n"
         "      bytes_outputs_generated: N,\n"
+        "      rows_outputs_generated: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
@@ -1193,6 +1195,7 @@ def test_stats_actor_metrics():
         == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
     )
     assert final_metric.bytes_outputs_generated == 1000 * 80 * 80 * 4 * 8  # 8B per int
+    assert final_metric.rows_outputs_generated == 1000 * 80 * 80 * 4
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
 
@@ -1327,12 +1330,21 @@ def test_stats_actor_datasets(ray_start_cluster):
     datasets = ray.get(stats_actor.get_datasets.remote())
     dataset_name = list(filter(lambda x: x.startswith(ds._name), datasets))
     assert len(dataset_name) == 1
-    dataset_name = dataset_name[0]
+    dataset = datasets[dataset_name[0]]
 
-    assert datasets[dataset_name]["state"] == "FINISHED"
-    assert datasets[dataset_name]["progress"] == 20
-    assert datasets[dataset_name]["total"] == 20
-    assert datasets[dataset_name]["end_time"] is not None
+    assert dataset["state"] == "FINISHED"
+    assert dataset["progress"] == 20
+    assert dataset["total"] == 20
+    assert dataset["end_time"] is not None
+
+    operators = dataset["operators"]
+    assert len(operators) == 2
+    assert "Input0" in operators
+    assert "ReadRange->MapBatches(<lambda>)1" in operators
+    for value in operators.values():
+        assert value["progress"] == 20
+        assert value["total"] == 20
+        assert value["state"] == "FINISHED"
 
 
 if __name__ == "__main__":

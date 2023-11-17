@@ -433,8 +433,8 @@ class StateApiClient(SubmissionClient):
 
         if total != num_after_truncation:
             raise RayStateApiException(
-                f"Failed to retrieve all {resource.value} from the cluster because "
-                "they are not reachable due to data truncation. It happens "
+                f"Failed to retrieve all {total} {resource.value} from the cluster "
+                "because they are not reachable due to data truncation. It happens "
                 "when the returned data is too large "
                 # When the data is truncated, the truncation
                 # threshold == num_after_truncation. We cannot set this to env
@@ -928,7 +928,7 @@ def list_jobs(
     raise_on_missing_output: bool = True,
     _explain: bool = False,
 ) -> List[JobState]:
-    """List jobs submitted to the cluster by :ref: `ray job submission <jobs-overview>`.
+    """List jobs submitted to the cluster by :ref:`ray job submission <jobs-overview>`.
 
     Args:
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.

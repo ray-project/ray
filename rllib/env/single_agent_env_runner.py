@@ -165,6 +165,10 @@ class SingleAgentEnvRunner(EnvRunner):
         if force_reset or self._needs_initial_reset:
             obs, infos = self.env.reset()
 
+            # We just reset the env. Don't have to force this again in the next
+            # call to `self._sample_timesteps()`.
+            self._needs_initial_reset = False
+
             self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
             states = initial_states
 
@@ -234,6 +238,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     states = fwd_out[STATE_OUT]
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+
             ts += self.num_envs
 
             for i in range(self.num_envs):
@@ -455,6 +460,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Compute per-episode metrics (only on already completed episodes).
         metrics = []
         for eps in self._done_episodes_for_metrics:
+            assert eps.is_done
             episode_length = len(eps)
             episode_reward = eps.get_return()
             # Don't forget about the already returned chunks of this episode.
