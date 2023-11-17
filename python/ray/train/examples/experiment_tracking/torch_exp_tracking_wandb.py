@@ -1,13 +1,14 @@
 # flake8: noqa
 # fmt: off
 
-# __start__
-# Run the following script with the WANDB_API_KEY env var set.
-from filelock import FileLock
 import os
 
 import torch
 import wandb
+
+# __start__
+# Run the following script with the WANDB_API_KEY env var set.
+from filelock import FileLock
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from torchvision.models import resnet18
