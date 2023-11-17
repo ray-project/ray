@@ -351,6 +351,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
+  /// Controls the is debugger paused flag.
+  ///
+  /// \param task_id The task id of the task to update.
+  /// \param is_debugger_paused The new value of the flag.
+  void UpdateTaskIsDebuggerPaused(const TaskID &task_id, const bool is_debugger_paused);
+
   int64_t GetCurrentTaskAttemptNumber() const {
     return worker_context_.GetCurrentTask() != nullptr
                ? worker_context_.GetCurrentTask()->AttemptNumber()
