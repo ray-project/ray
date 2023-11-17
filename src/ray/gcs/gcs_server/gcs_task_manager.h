@@ -31,7 +31,6 @@ enum GcsTaskManagerCounter {
   kTotalNumTaskEventsReported,
   kTotalNumTaskAttemptsDropped,
   kTotalNumProfileTaskEventsDropped,
-  kNumTaskEventsBytesStored,
   kNumTaskEventsStored,
   kTotalNumActorCreationTask,
   kTotalNumActorTask,
