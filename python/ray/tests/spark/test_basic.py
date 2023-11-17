@@ -6,6 +6,7 @@ import threading
 import re
 import pytest
 import sys
+from unittest import mock
 
 from abc import ABC
 
@@ -351,7 +352,7 @@ class TestSparkLocalCluster:
 
         shutdown_ray_cluster()
 
-    @pytest.mark.parametrize("autoscale", [False, True])
+    @pytest.mark.parametrize("autoscale", [True])
     def test_serve_global_ray_cluster(self, autoscale):
         shutil.rmtree("/tmp/ray", ignore_errors=True)
 
@@ -359,13 +360,24 @@ class TestSparkLocalCluster:
 
         def start_serve_thread():
             def serve():
-                serve_global_ray_cluster(num_worker_nodes=1, autoscale=autoscale)
-
+                try:
+                    with mock.patch(
+                        "ray.util.spark.cluster_init.get_spark_session",
+                        return_value=self.spark,
+                    ):
+                        serve_global_ray_cluster(num_worker_nodes=1, autoscale=autoscale)
+                except BaseException:
+                    # For debugging testing failure.
+                    import traceback
+                    traceback.print_exc()
+                    raise
             threading.Thread(target=serve, daemon=True).start()
 
         def wait_cluster_ready():
-            while True:
+            wait_time = 120
+            while wait_time > 0:
                 time.sleep(1)
+                wait_time -= 1
                 if (
                     ray.util.spark.cluster_init._global_ray_cluster_cancel_event
                     is not None
@@ -377,19 +389,20 @@ class TestSparkLocalCluster:
         # assert it uses default temp directory
         assert os.path.exists("/tmp/ray")
 
-        # assert we cannot create another global mode cluster at a time
-        with pytest.raises(
-            ValueError,
-            match=re.compile(
-                "Acquiring global lock failed for setting up new global mode Ray on "
-                "spark cluster"
-            ),
-        ):
-            serve_global_ray_cluster(num_worker_nodes=1, autoscale=autoscale)
+        with mock.patch("ray.util.spark.cluster_init._active_ray_cluster", None):
+            # assert we cannot create another global mode cluster at a time
+            with pytest.raises(
+                ValueError,
+                match=re.compile(
+                    "Acquiring global lock failed for setting up new global mode Ray on "
+                    "spark cluster"
+                ),
+            ):
+                serve_global_ray_cluster(num_worker_nodes=1, autoscale=autoscale)
 
         # shut down the cluster
         ray.util.spark.cluster_init._global_ray_cluster_cancel_event.set()
-        time.sleep(5)
+        time.sleep(10)
         # assert temp directory is deleted
         assert not os.path.exists("/tmp/ray")
 

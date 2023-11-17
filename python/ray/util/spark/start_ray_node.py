@@ -45,7 +45,8 @@ if __name__ == "__main__":
         temp_dir = os.path.normpath(temp_dir)
     else:
         # This case is for global mode Ray on spark cluster
-        temp_dir = os.path.join(os.environ.get("RAY_TMPDIR", "/tmp"), "ray")
+        from ray.util.spark.cluster_init import _get_default_ray_tmp_dir
+        temp_dir = _get_default_ray_tmp_dir
 
     ray_cli_cmd = "ray"
     lock_file = temp_dir + ".lock"

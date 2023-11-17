@@ -439,6 +439,10 @@ def _append_resources_config(node_options, resources):
     return node_options
 
 
+def _get_default_ray_tmp_dir():
+    return os.path.join(os.environ.get("RAY_TMPDIR", "/tmp"), "ray")
+
+
 def _setup_ray_cluster(
     *,
     num_worker_nodes: int,
@@ -570,8 +574,9 @@ def _setup_ray_cluster(
             )
 
         ray_temp_dir = None
-        root_tmp_dir = os.environ.get("RAY_TMPDIR", "/tmp")
-        object_spilling_dir = os.path.join(root_tmp_dir, "ray", "ray_spill")
+        ray_default_tmp_dir = _get_default_ray_tmp_dir()
+        os.makedirs(ray_default_tmp_dir, exist_ok=True)
+        object_spilling_dir = os.path.join(ray_default_tmp_dir, "ray_spill")
     else:
         global_cluster_lock_fd = None
         if ray_temp_root_dir is None:
@@ -579,6 +584,7 @@ def _setup_ray_cluster(
         ray_temp_dir = os.path.join(
             ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
         )
+        os.makedirs(ray_temp_dir, exist_ok=True)
         object_spilling_dir = os.path.join(ray_temp_dir, "spill")
 
     os.makedirs(object_spilling_dir, exist_ok=True)
@@ -1568,7 +1574,13 @@ class AutoscalingCluster:
             exec_cmd,
         )
 
-        autoscale_config = os.path.join(ray_temp_dir, "autoscaling_config.json")
+        if ray_temp_dir is not None:
+            autoscale_config = os.path.join(ray_temp_dir, "autoscaling_config.json")
+        else:
+            autoscale_config = os.path.join(
+                _get_default_ray_tmp_dir(),
+                "autoscaling_config.json"
+            )
         with open(autoscale_config, "w") as f:
             f.write(json.dumps(self._config))
 
