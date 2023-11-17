@@ -92,8 +92,6 @@ class InputNode(DAGNode):
         """
         if len(args) != 0 or len(kwargs) != 0:
             raise ValueError("InputNode should not take any args or kwargs.")
-        self._args = args
-        self._kwargs = kwargs
 
         self.input_attribute_nodes = {}
 
@@ -105,14 +103,6 @@ class InputNode(DAGNode):
 
         super().__init__([], {}, {}, other_args_to_resolve=_other_args_to_resolve)
 
-    @property
-    def args(self) -> List[Any]:
-        return self._args
-
-    @property
-    def kwargs(self) -> Dict[Any, Any]:
-        return self._kwargs
-
     def _copy_impl(
         self,
         new_args: List[Any],
@@ -120,9 +110,7 @@ class InputNode(DAGNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return InputNode(
-            *new_args, _other_args_to_resolve=new_other_args_to_resolve, **new_kwargs
-        )
+        return InputNode(_other_args_to_resolve=new_other_args_to_resolve)
 
     def _execute_impl(self, *args, **kwargs):
         """Executor of InputNode."""
@@ -332,14 +320,6 @@ class DAGInputData:
     def __init__(self, *args, **kwargs):
         self._args = list(args)
         self._kwargs = kwargs
-
-    @property
-    def args(self) -> List[Any]:
-        return self._args
-
-    @property
-    def kwargs(self) -> Dict[Any, Any]:
-        return self._kwargs
 
     def __getitem__(self, key: Union[int, str]) -> Any:
         if isinstance(key, int):

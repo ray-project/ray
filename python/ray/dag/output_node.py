@@ -3,8 +3,6 @@ from typing import Any, Dict, List, Union, Tuple
 
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
-from ray.experimental.gradio_utils import type_to_string
-from ray.util.annotations import Deprecated
 
 IN_CONTEXT_MANAGER = "__in_context_manager__"
 

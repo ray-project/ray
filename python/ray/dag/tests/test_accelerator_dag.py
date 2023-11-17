@@ -3,8 +3,6 @@ import pytest
 import ray
 from ray.dag.input_node import InputNode
 from ray.dag.output_node import OutputNode
-from ray.dag import PARENT_CLASS_NODE_KEY
-from ray.dag.vis_utils import plot
 
 
 def test_output_node(shared_ray_instance):
