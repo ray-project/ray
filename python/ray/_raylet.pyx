@@ -1007,6 +1007,9 @@ cdef class StreamingGeneratorExecutionContext:
         # -- Arguments that are not passed--
         # Whether or not a generator is async
         object is_async
+        # The index of the generator. E.g., if it never calls
+        # next(), it is index 0. If it calls next() once, it is 1.
+        object generator_index
         # True if `initialize` API has been called. False otherwise.
         object _is_initialized
         # -- Arguments that are passed. See the docstring for details --
@@ -1064,6 +1067,7 @@ cdef class StreamingGeneratorExecutionContext:
     ):
         cdef StreamingGeneratorExecutionContext self = (
             StreamingGeneratorExecutionContext())
+        self.generator_index = 0
         self.function_name = function_name
         self.function_descriptor = function_descriptor
         self.title = title
@@ -1088,10 +1092,8 @@ cdef class StreamingGeneratorExecutionContext:
 
 
 cdef report_streaming_generator_output(
-    output_or_exception: Union[object, Exception],
-    StreamingGeneratorExecutionContext context,
-    generator_index
-):
+        output_or_exception: Union[object, Exception],
+        StreamingGeneratorExecutionContext context):
     """Report a given generator output to a caller.
 
     If a generator produces an exception, it should be
@@ -1114,6 +1116,7 @@ cdef report_streaming_generator_output(
     cdef:
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+        int64_t generator_index = context.generator_index
 
     if isinstance(output_or_exception, Exception):
         create_generator_error_object(
@@ -1129,7 +1132,7 @@ cdef report_streaming_generator_output(
             context.actor,
             context.actor_id,
             context.return_size,
-            generator_index,
+            context.generator_index,
             context.is_async,
             context.should_retry_exceptions,
             &return_obj,
@@ -1150,6 +1153,7 @@ cdef report_streaming_generator_output(
                 generator_index,
                 context.attempt_number,
                 context.waiter))
+        context.generator_index += 1
         return True
     else:
         # Report the intermediate result if there was no error.
@@ -1160,7 +1164,7 @@ cdef report_streaming_generator_output(
             context.caller_address,
             context.task_id,
             context.return_size,
-            generator_index,
+            context.generator_index,
             context.is_async,
             &return_obj)
         # Del output here so that we can GC the memory
@@ -1172,10 +1176,9 @@ cdef report_streaming_generator_output(
                 return_obj.first,
                 is_plasma_object(return_obj.second)))
 
-        # TODO comment out
         logger.debug(
             "Writes to a ObjectRefStream of an "
-            "index {}".format(generator_index))
+            "index {}".format(context.generator_index))
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 return_obj,
@@ -1184,6 +1187,7 @@ cdef report_streaming_generator_output(
                 generator_index,
                 context.attempt_number,
                 context.waiter))
+        context.generator_index += 1
         return False
 
 
@@ -1202,16 +1206,12 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     Args:
         context: The context to execute streaming generator.
     """
-    cdef:
-        int64_t gen_index = 0
-
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
     # which contains None or exceptions (if system error occurs).
     assert context.return_size == 1
 
     gen = context.generator
-
     while True:
         try:
             output_or_exception = next(gen)
@@ -1220,9 +1220,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
         except Exception as e:
             output_or_exception = e
 
-        done = report_streaming_generator_output(output_or_exception, context, gen_index)
-        gen_index += 1
-
+        done = report_streaming_generator_output(output_or_exception, context)
         if done:
             break
 
@@ -1248,17 +1246,12 @@ async def execute_streaming_generator_async(
     Args:
         context: The context to execute streaming generator.
     """
-    cdef:
-        int64_t gen_index = 0
-
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
     # which contains None or exceptions (if system error occurs).
     assert context.return_size == 1
 
     gen = context.generator
-
-    futures = []
     while True:
         try:
             output_or_exception = await gen.__anext__()
@@ -1275,23 +1268,13 @@ async def execute_streaming_generator_async(
         # Run it in a separate thread to that we can
         # avoid blocking the event loop when serializing
         # the output (which has nogil).
-        futures.append(
-            loop.run_in_executor(
-                worker.core_worker.get_thread_pool_for_async_event_loop(),
-                report_streaming_generator_output,
-                output_or_exception,
-                context,
-                gen_index,
-            )
-        )
-
-        gen_index += 1
-
-        if isinstance(output_or_exception, Exception):
+        done = await loop.run_in_executor(
+            worker.core_worker.get_thread_pool_for_async_event_loop(),
+            report_streaming_generator_output,
+            output_or_exception,
+            context)
+        if done:
             break
-
-    # TODO elaborate
-    await asyncio.gather(futures)
 
 
 cdef create_generator_return_obj(
