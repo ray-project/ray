@@ -93,7 +93,7 @@ class ClassNode(DAGNode):
 class _UnboundClassMethodNode(object):
     def __init__(self, actor: ClassNode, method_name: str, options: dict):
         # TODO(sang): Theoretically, We should use weakref cuz it is
-        # a circular dependency but when I used weakref, it fails 
+        # a circular dependency but when I used weakref, it fails
         # because we cannot serialize the weakref.
         self._actor = actor
         self._method_name = method_name
@@ -146,8 +146,7 @@ class ClassMethodNode(DAGNode):
         self._method_name: str = method_name
         # Parse other_args_to_resolve and assign to variables
         self._parent_class_node: Union[
-                ClassNode,
-                ReferenceType["ray._private.actor.ActorHandle"]
+            ClassNode, ReferenceType["ray._private.actor.ActorHandle"]
         ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
