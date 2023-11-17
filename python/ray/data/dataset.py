@@ -4,6 +4,7 @@ import html
 import itertools
 import logging
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -20,7 +21,6 @@ from typing import (
     TypeVar,
     Union,
 )
-from uuid import uuid4
 
 import numpy as np
 
@@ -83,8 +83,17 @@ from ray.data._internal.stage_impl import (
     SortStage,
     ZipStage,
 )
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data._internal.util import ConsumptionAPI, _is_local_scheme, validate_compute
+from ray.data._internal.stats import (
+    DatasetStats,
+    DatasetStatsSummary,
+    get_dataset_id_from_stats_actor,
+)
+from ray.data._internal.util import (
+    AllToAllAPI,
+    ConsumptionAPI,
+    _is_local_scheme,
+    validate_compute,
+)
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -101,19 +110,22 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import (
-    BigQueryDatasource,
     BlockWritePathProvider,
     Connection,
-    CSVDatasource,
+    Datasink,
     Datasource,
-    DefaultBlockWritePathProvider,
-    ImageDatasource,
-    JSONDatasource,
-    NumpyDatasource,
-    ParquetDatasource,
+    FilenameProvider,
     ReadTask,
-    SQLDatasource,
-    TFRecordDatasource,
+    _BigQueryDatasink,
+    _CSVDatasink,
+    _ImageDatasink,
+    _JSONDatasink,
+    _MongoDatasink,
+    _NumpyDatasink,
+    _ParquetDatasink,
+    _SQLDatasink,
+    _TFRecordDatasink,
+    _WebDatasetDatasink,
 )
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -236,7 +248,6 @@ class Dataset:
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
         self._plan = plan
-        self._set_uuid(uuid4().hex)
         self._logical_plan = logical_plan
         if logical_plan is not None:
             self._plan.link_logical_plan(logical_plan)
@@ -244,6 +255,8 @@ class Dataset:
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
+
+        self._set_uuid(get_dataset_id_from_stats_actor())
 
     @staticmethod
     def copy(
@@ -970,6 +983,7 @@ class Dataset:
 
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
@@ -1025,6 +1039,7 @@ class Dataset:
             logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def random_shuffle(
         self,
         *,
@@ -1053,12 +1068,18 @@ class Dataset:
         Args:
             seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
-            num_blocks: The number of output blocks after the shuffle, or ``None``
-                to retain the number of blocks.
 
         Returns:
             The shuffled :class:`Dataset`.
         """  # noqa: E501
+
+        if num_blocks is not None:
+            warnings.warn(
+                "`num_blocks` parameter is deprecated in Ray 2.9. random_shuffle() "
+                "does not support to change the number of output blocks. Use "
+                "repartition() instead.",  # noqa: E501
+                DeprecationWarning,
+            )
 
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
@@ -1069,12 +1090,12 @@ class Dataset:
             op = RandomShuffle(
                 logical_plan.dag,
                 seed=seed,
-                num_outputs=num_blocks,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def randomize_block_order(
         self,
         *,
@@ -1100,7 +1121,7 @@ class Dataset:
 
         Returns:
             The block-shuffled :class:`Dataset`.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
 
@@ -1829,7 +1850,8 @@ class Dataset:
             logical_plan,
         )
 
-    def groupby(self, key: Optional[str]) -> "GroupedData":
+    @AllToAllAPI
+    def groupby(self, key: Union[str, List[str], None]) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
         Use this method to transform data based on a
@@ -1856,7 +1878,8 @@ class Dataset:
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: A column name. If this is ``None``, place all rows in a single group.
+            key: A column name or list of column names.
+            If this is ``None``, place all rows in a single group.
 
         Returns:
             A lazy :class:`~ray.data.grouped_data.GroupedData`.
@@ -1875,6 +1898,7 @@ class Dataset:
 
         return GroupedData(self, key)
 
+    @AllToAllAPI
     def unique(self, column: str) -> List[Any]:
         """List the unique elements in a given column.
 
@@ -1916,6 +1940,7 @@ class Dataset:
         ds = self.select_columns([column]).groupby(column).count()
         return [item[column] for item in ds.take_all()]
 
+    @AllToAllAPI
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate values using one or more functions.
@@ -1953,6 +1978,7 @@ class Dataset:
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
+    @AllToAllAPI
     @ConsumptionAPI
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -1995,6 +2021,7 @@ class Dataset:
         ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2037,6 +2064,7 @@ class Dataset:
         ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2079,6 +2107,7 @@ class Dataset:
         ret = self._aggregate_on(Max, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2121,6 +2150,7 @@ class Dataset:
         ret = self._aggregate_on(Mean, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def std(
         self,
@@ -2177,6 +2207,7 @@ class Dataset:
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     def sort(
         self,
         key: Union[str, List[str], None] = None,
@@ -2653,7 +2684,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
         **arrow_parquet_args,
@@ -2698,12 +2730,9 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
-            block_path_provider: A
-                :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation specifying the filename structure for each output
-                parquet file. By default, the format of the output files is
-                ``{uuid}_{block_idx}.parquet``, where ``uuid`` is a unique id for the
-                dataset.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.parquet.write_table() <https:/\
                     /arrow.apache.org/docs/python/generated/\
@@ -2719,19 +2748,19 @@ class Dataset:
                     /generated/pyarrow.parquet.write_table.html\
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
-        """
-        self.write_datasource(
-            ParquetDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        """  # noqa: E501
+        datasink = _ParquetDatasink(
+            path,
+            arrow_parquet_args_fn=arrow_parquet_args_fn,
+            arrow_parquet_args=arrow_parquet_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=arrow_parquet_args_fn,
-            **arrow_parquet_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_json(
@@ -2741,7 +2770,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
@@ -2795,12 +2825,9 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
-            block_path_provider: A
-                :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation specifying the filename structure for each output
-                parquet file. By default, the format of the output files is
-                ``{uuid}_{block_idx}.json``, where ``uuid`` is a unique id for the
-                dataset.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             pandas_json_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to
                 `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
@@ -2818,18 +2845,18 @@ class Dataset:
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
         """
-        self.write_datasource(
-            JSONDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _JSONDatasink(
+            path,
+            pandas_json_args_fn=pandas_json_args_fn,
+            pandas_json_args=pandas_json_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=pandas_json_args_fn,
-            **pandas_json_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -2842,6 +2869,7 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        filename_provider: Optional[FilenameProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to images.
@@ -2878,17 +2906,17 @@ class Dataset:
                 opening the file to write to.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            ImageDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _ImageDatasink(
+            path,
+            column,
+            file_format,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
-            column=column,
-            file_format=file_format,
+            filename_provider=filename_provider,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_csv(
@@ -2898,7 +2926,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
         **arrow_csv_args,
@@ -2952,12 +2981,9 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
-            block_path_provider: A
-                :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation specifying the filename structure for each output
-                parquet file. By default,  the format of the output files is
-                ``{uuid}_{block_idx}.csv``, where ``uuid`` is a unique id for the
-                dataset.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             arrow_csv_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.write.write_csv <https://\
                 arrow.apache.org/docs/python/generated/\
@@ -2972,18 +2998,18 @@ class Dataset:
                     #pyarrow.csv.write_csv>`_
                 when writing each block to a file.
         """
-        self.write_datasource(
-            CSVDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _CSVDatasink(
+            path,
+            arrow_csv_args_fn=arrow_csv_args_fn,
+            arrow_csv_args=arrow_csv_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=arrow_csv_args_fn,
-            **arrow_csv_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_tfrecords(
@@ -2994,7 +3020,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the :class:`~ray.data.Dataset` to TFRecord files.
@@ -3049,27 +3076,23 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
-            block_path_provider: A
-                :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation specifying the filename structure for each output
-                parquet file. By default, the format of the output files is
-                ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id for the
-                dataset.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
-
-        self.write_datasource(
-            TFRecordDatasource(),
-            ray_remote_args=ray_remote_args,
+        datasink = _TFRecordDatasink(
             path=path,
-            dataset_uuid=self._uuid,
+            tf_schema=tf_schema,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            tf_schema=tf_schema,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3080,7 +3103,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
     ) -> None:
@@ -3129,20 +3153,17 @@ class Dataset:
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
 
         """
-
-        from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
-
-        self.write_datasource(
-            WebDatasetDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _WebDatasetDatasink(
+            path,
+            encoder=encoder,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            encoder=encoder,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_numpy(
@@ -3153,7 +3174,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
@@ -3199,26 +3221,23 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
-            block_path_provider: A
-                :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation specifying the filename structure for each output
-                parquet file. By default,  the format of the output files is
-                ``{uuid}_{block_idx}.npy``, where ``uuid`` is a unique id for the
-                dataset.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
 
-        self.write_datasource(
-            NumpyDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
-            column=column,
+        datasink = _NumpyDatasink(
+            path,
+            column,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_sql(
@@ -3276,11 +3295,8 @@ class Dataset:
             ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
                 write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            SQLDatasource(connection_factory),
-            ray_remote_args=ray_remote_args,
-            sql=sql,
-        )
+        datasink = _SQLDatasink(sql=sql, connection_factory=connection_factory)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3341,15 +3357,12 @@ class Dataset:
             ValueError: if ``database`` doesn't exist.
             ValueError: if ``collection`` doesn't exist.
         """
-        from ray.data.datasource import MongoDatasource
-
-        self.write_datasource(
-            MongoDatasource(),
-            ray_remote_args=ray_remote_args,
+        datasink = _MongoDatasink(
             uri=uri,
             database=database,
             collection=collection,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_bigquery(
@@ -3373,7 +3386,6 @@ class Dataset:
                 docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_bigquery(
-                    BigQueryDatasource(),
                     project_id="my_project_id",
                     dataset="my_dataset_table",
                 )
@@ -3381,20 +3393,29 @@ class Dataset:
         Args:
             project_id: The name of the associated Google Cloud Project that hosts
                 the dataset to read. For more information, see details in
-                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`.
             dataset: The name of the dataset in the format of ``dataset_id.table_id``.
                 The dataset is created if it doesn't already exist. The table_id is
                 overwritten if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-        """
+        """  # noqa: E501
+        if ray_remote_args is None:
+            ray_remote_args = {}
 
-        self.write_datasource(
-            BigQueryDatasource(),
-            ray_remote_args=ray_remote_args,
-            dataset=dataset,
-            project_id=project_id,
-        )
+        # Each write task will launch individual remote tasks to write each block
+        # To avoid duplicate block writes, the write task should not be retried
+        if ray_remote_args.get("max_retries", 0) != 0:
+            warnings.warn(
+                "The max_retries of a BigQuery Write Task should be set to 0"
+                " to avoid duplicate writes."
+            )
+        else:
+            ray_remote_args["max_retries"] = 0
 
+        datasink = _BigQueryDatasink(project_id, dataset)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+
+    @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasource(
         self,
@@ -3412,6 +3433,13 @@ class Dataset:
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
             write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
         """  # noqa: E501
+        warnings.warn(
+            "`write_datasource` is deprecated in Ray 2.9. Create a `Datasink` and use "
+            "`write_datasink` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/api/doc/ray.data.Datasource.html.",  # noqa: E501
+            DeprecationWarning,
+        )
+
         if ray_remote_args is None:
             ray_remote_args = {}
         path = write_args.get("path", None)
@@ -3463,6 +3491,76 @@ class Dataset:
             datasource.on_write_complete(write_results, **write_args)
         except Exception as e:
             datasource.on_write_failed([], e)
+            raise
+
+    @ConsumptionAPI(pattern="Time complexity:")
+    def write_datasink(
+        self,
+        datasink: Datasink,
+        *,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Writes the dataset to a custom :class:`~ray.data.Datasink`.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            datasink: The :class:`~ray.data.Datasink` to write to.
+            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+        """  # noqa: E501
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        if not datasink.supports_distributed_writes:
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    "If you're using Ray Client, Ray Data won't schedule write tasks "
+                    "on the driver's node."
+                )
+            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
+
+        write_fn = generate_write_fn(datasink)
+
+        def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
+            return write_fn(blocks, ctx)
+
+        plan = self._plan.with_stage(
+            OneToOneStage(
+                "Write",
+                write_fn_wrapper,
+                TaskPoolStrategy(),
+                ray_remote_args,
+                fn=lambda x: x,
+            )
+        )
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            write_op = Write(
+                logical_plan.dag,
+                datasink,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(write_op)
+
+        try:
+            import pandas as pd
+
+            datasink.on_write_start()
+
+            self._write_ds = Dataset(plan, logical_plan).materialize()
+            blocks = ray.get(self._write_ds._plan.execute().get_blocks())
+            assert all(
+                isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
+            )
+            write_results = [block["write_result"][0] for block in blocks]
+
+            datasink.on_write_complete(write_results)
+        except Exception as e:
+            datasink.on_write_failed(e)
             raise
 
     @ConsumptionAPI(
@@ -4641,7 +4739,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4724,7 +4822,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,

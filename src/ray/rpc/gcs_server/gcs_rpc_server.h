@@ -406,10 +406,6 @@ class NodeResourceInfoGcsServiceHandler {
  public:
   virtual ~NodeResourceInfoGcsServiceHandler() = default;
 
-  virtual void HandleGetResources(GetResourcesRequest request,
-                                  GetResourcesReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleGetAllAvailableResources(
       rpc::GetAllAvailableResourcesRequest request,
       rpc::GetAllAvailableResourcesReply *reply,
@@ -418,10 +414,6 @@ class NodeResourceInfoGcsServiceHandler {
   virtual void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
                                       rpc::GetDrainingNodesReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleReportResourceUsage(ReportResourceUsageRequest request,
-                                         ReportResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetAllResourceUsage(GetAllResourceUsageRequest request,
                                          GetAllResourceUsageReply *reply,
@@ -445,10 +437,8 @@ class NodeResourceInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetDrainingNodes);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
   }
 
@@ -478,6 +468,10 @@ class WorkerInfoGcsServiceHandler {
   virtual void HandleAddWorkerInfo(AddWorkerInfoRequest request,
                                    AddWorkerInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateWorkerDebuggerPort(UpdateWorkerDebuggerPortRequest request,
+                                              UpdateWorkerDebuggerPortReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `WorkerInfoGcsService`.
@@ -501,6 +495,7 @@ class WorkerInfoGrpcService : public GrpcService {
     WORKER_INFO_SERVICE_RPC_HANDLER(GetWorkerInfo);
     WORKER_INFO_SERVICE_RPC_HANDLER(GetAllWorkerInfo);
     WORKER_INFO_SERVICE_RPC_HANDLER(AddWorkerInfo);
+    WORKER_INFO_SERVICE_RPC_HANDLER(UpdateWorkerDebuggerPort);
   }
 
  private:

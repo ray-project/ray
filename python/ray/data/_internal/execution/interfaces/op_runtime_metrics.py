@@ -51,6 +51,10 @@ class OpRuntimeMetrics:
     bytes_outputs_generated: int = field(
         default=0, metadata={"map_only": True, "export_metric": True}
     )
+    # Number of rows of generated output blocks that are from finished tasks.
+    rows_outputs_generated: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
 
     # Number of output blocks that are already taken by the downstream.
     num_outputs_taken: int = 0
@@ -91,6 +95,13 @@ class OpRuntimeMetrics:
     obj_store_mem_peak: int = field(default=0, metadata={"map_only": True})
     # Spilled memory size in the object store.
     obj_store_mem_spilled: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
+
+    # === Miscellaneous metrics ===
+
+    # Time spent generating blocks.
+    block_generation_time: float = field(
         default=0, metadata={"map_only": True, "export_metric": True}
     )
 
@@ -208,7 +219,11 @@ class OpRuntimeMetrics:
         if self.obj_store_mem_cur > self.obj_store_mem_peak:
             self.obj_store_mem_peak = self.obj_store_mem_cur
 
-        for block_ref, _ in output.blocks:
+        for block_ref, meta in output.blocks:
+            assert meta.exec_stats and meta.exec_stats.wall_time_s
+            self.block_generation_time += meta.exec_stats.wall_time_s
+            assert meta.num_rows is not None
+            self.rows_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
 
     def on_task_finished(self, task_index: int):

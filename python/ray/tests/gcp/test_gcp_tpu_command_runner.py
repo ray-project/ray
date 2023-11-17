@@ -3,9 +3,14 @@ import pytest
 import os
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
+from ray.autoscaler._private.command_runner import SSHCommandRunner
 from ray._private import ray_constants
 from getpass import getuser
 import hashlib
+from unittest.mock import patch
+
+_MOCK_TPU_NAME = "my-tpu"
+_MOCK_ACCELERATOR_TYPE = "v4-16"
 
 auth_config = {
     "ssh_user": "ray",
@@ -22,6 +27,13 @@ class MockTpuInstance:
 
     def get_external_ip(self, worker_index: int) -> str:
         return "1.2.3.4"
+
+    def get(self, key) -> str:
+        if key == "name":
+            return _MOCK_TPU_NAME
+        elif key == "acceleratorType":
+            return _MOCK_ACCELERATOR_TYPE
+        return ""
 
 
 def test_tpu_ssh_command_runner():
@@ -200,6 +212,44 @@ def test_max_active_connections_env_var():
     num_connections = cmd_runner.num_connections
     assert type(num_connections) == int
     assert num_connections == 1
+
+
+def test_tpu_pod_resources():
+    num_workers = 2
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+    instance = MockTpuInstance(num_workers=num_workers)
+    provider.create_node({}, {}, 1)
+    cluster_name = "cluster"
+    args = {
+        "instance": instance,
+        "log_prefix": "prefix",
+        "node_id": "abc",
+        "provider": provider,
+        "auth_config": auth_config,
+        "cluster_name": cluster_name,
+        "process_runner": process_runner,
+        "use_internal_ip": False,
+    }
+    env_vars = {
+        ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: {
+            "TPU": 4,
+            f"TPU-{_MOCK_ACCELERATOR_TYPE}-head": 1,
+        },
+    }
+
+    def test_command_run(self, environment_variables, **kwargs):
+        resources = environment_variables[ray_constants.RESOURCES_ENVIRONMENT_VARIABLE]
+        if self._worker_id == 0:
+            assert f"TPU-{_MOCK_ACCELERATOR_TYPE}-head" in resources
+        else:
+            assert f"TPU-{_MOCK_ACCELERATOR_TYPE}-head" not in resources
+
+    with patch.object(SSHCommandRunner, "run", new=test_command_run):
+        cmd_runner = TPUCommandRunner(**args)
+        cmd_runner.run(
+            "echo helloo", port_forward=[(8265, 8265)], environment_variables=env_vars
+        )
 
 
 if __name__ == "__main__":

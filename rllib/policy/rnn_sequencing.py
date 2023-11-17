@@ -39,7 +39,7 @@ def pad_batch_to_sequences_of_same_size(
     batch_divisibility_req: int = 1,
     feature_keys: Optional[List[str]] = None,
     view_requirements: Optional[ViewRequirementsDict] = None,
-    _enable_rl_module_api: bool = False,
+    _enable_new_api_stack: bool = False,
     padding: str = "zero",
 ):
     """Applies padding to `batch` so it's choppable into same-size sequences.
@@ -64,7 +64,7 @@ def pad_batch_to_sequences_of_same_size(
         view_requirements: An optional Policy ViewRequirements dict to
             be able to infer whether e.g. dynamic max'ing should be
             applied over the seq_lens.
-        _enable_rl_module_api: This is a temporary flag to enable the new RLModule API.
+        _enable_new_api_stack: This is a temporary flag to enable the new RLModule API.
             After a complete rollout of the new API, this flag will be removed.
         padding: Padding type to use. Either "zero" or "last". Zero padding
             will pad with zeros, last padding will pad with the last value.
@@ -88,7 +88,7 @@ def pad_batch_to_sequences_of_same_size(
 
     # RNN/attention net case. Figure out whether we should apply dynamic
     # max'ing over the list of sequence lengths.
-    if _enable_rl_module_api and ("state_in" in batch or "state_out" in batch):
+    if _enable_new_api_stack and ("state_in" in batch or "state_out" in batch):
         # TODO (Kourosh): This is a temporary fix to enable the new RLModule API.
         # We should think of a more elegant solution once we have confirmed that other
         # parts of the API are stable and user-friendly.
@@ -112,7 +112,7 @@ def pad_batch_to_sequences_of_same_size(
         else:
             dynamic_max = False
 
-    elif not _enable_rl_module_api and (
+    elif not _enable_new_api_stack and (
         "state_in_0" in batch or "state_out_0" in batch
     ):
         # Check, whether the state inputs have already been reduced to their
@@ -148,7 +148,7 @@ def pad_batch_to_sequences_of_same_size(
             state_keys.append(k)
         elif (
             not feature_keys
-            and (not k.startswith("state_out") if not _enable_rl_module_api else True)
+            and (not k.startswith("state_out") if not _enable_new_api_stack else True)
             and k not in [SampleBatch.SEQ_LENS]
         ):
             feature_keys_.append(k)

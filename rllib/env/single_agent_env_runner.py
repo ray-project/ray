@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
     # TODO (sven): This gives a tricky circular import that goes
-    # deep into the library. We have to see, where to dissolve it.
-    from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
+    #  deep into the library. We have to see, where to dissolve it.
+    from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 _, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
@@ -41,63 +41,56 @@ class SingleAgentEnvRunner(EnvRunner):
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
 
+        # Create the vectorized gymnasium env.
+
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        gym.register(
-            "custom-env-v0",
-            partial(
+        if isinstance(self.config.env, str) and _global_registry.contains(
+            ENV_CREATOR, self.config.env
+        ):
+            entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
                 self.config.env_config,
             )
-            if _global_registry.contains(ENV_CREATOR, self.config.env)
-            else partial(
+
+        else:
+            entry_point = partial(
                 _gym_env_creator,
                 env_context=self.config.env_config,
                 env_descriptor=self.config.env,
-            ),
-        )
+            )
+        gym.register("rllib-single-agent-env-runner-v0", entry_point=entry_point)
 
-        # Create the vectorized gymnasium env.
         # Wrap into `VectorListInfo`` wrapper to get infos as lists.
         self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
             gym.vector.make(
-                "custom-env-v0",
+                "rllib-single-agent-env-runner-v0",
                 num_envs=self.config.num_envs_per_worker,
                 asynchronous=self.config.remote_worker_envs,
             )
         )
-
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
-        # Create our own instance of the single-agent `RLModule` (which
+        # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
-        # TODO (sven, simon): We need to get rid here of the policy_dict,
-        # but the 'RLModule' takes the 'policy_spec.observation_space'
-        # from it.
-        # Below is the non nice solution.
-        # policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
         module_spec: SingleAgentRLModuleSpec = self.config.get_default_rl_module_spec()
         module_spec.observation_space = self.env.envs[0].observation_space
         # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
-        # actually hold the spaces for a single env, but for boxes the
-        # shape is (1, 1) which brings a problem with the action dists.
-        # shape=(1,) is expected.
+        #  actually hold the spaces for a single env, but for boxes the
+        #  shape is (1, 1) which brings a problem with the action dists.
+        #  shape=(1,) is expected.
         module_spec.action_space = self.env.envs[0].action_space
         module_spec.model_config_dict = self.config.model
-
-        # TODO (sven): By time the `AlgorithmConfig` will get rid of `PolicyDict`
-        # as well. Then we have to change this function parameter.
-        # module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-        #     policy_dict=module_dict
-        # )
         self.module: RLModule = module_spec.build()
 
         # This should be the default.
         self._needs_initial_reset: bool = True
-        self._episodes: List[Optional["Episode"]] = [None for _ in range(self.num_envs)]
+        self._episodes: List[Optional["SingleAgentEpisode"]] = [
+            None for _ in range(self.num_envs)
+        ]
 
-        self._done_episodes_for_metrics: List["Episode"] = []
+        self._done_episodes_for_metrics: List["SingleAgentEpisode"] = []
         self._ongoing_episodes_for_metrics: Dict[List] = defaultdict(list)
         self._ts_since_last_metrics: int = 0
         self._weights_seq_no: int = 0
@@ -111,7 +104,7 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List["Episode"]:
+    ) -> List["SingleAgentEpisode"]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s)."""
 
         # If not execution details are provided, use the config.
@@ -149,16 +142,14 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         force_reset: bool = False,
-    ) -> List["Episode"]:
+    ) -> List["SingleAgentEpisode"]:
         """Helper method to sample n timesteps."""
 
         # TODO (sven): This gives a tricky circular import that goes
         # deep into the library. We have to see, where to dissolve it.
-        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
-            _Episode as Episode,
-        )
+        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
-        done_episodes_to_return: List["Episode"] = []
+        done_episodes_to_return: List["SingleAgentEpisode"] = []
 
         # Get initial states for all 'batch_size_B` rows in the forward batch,
         # i.e. for all vector sub_envs.
@@ -174,7 +165,11 @@ class SingleAgentEnvRunner(EnvRunner):
         if force_reset or self._needs_initial_reset:
             obs, infos = self.env.reset()
 
-            self._episodes = [Episode() for _ in range(self.num_envs)]
+            # We just reset the env. Don't have to force this again in the next
+            # call to `self._sample_timesteps()`.
+            self._needs_initial_reset = False
+
+            self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
             states = initial_states
 
             # Set initial obs and states in the episodes.
@@ -208,7 +203,6 @@ class SingleAgentEnvRunner(EnvRunner):
         # Loop through env in enumerate.(self._episodes):
         ts = 0
 
-        # print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
@@ -244,6 +238,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     states = fwd_out[STATE_OUT]
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+
             ts += self.num_envs
 
             for i in range(self.num_envs):
@@ -284,7 +279,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     done_episodes_to_return.append(self._episodes[i])
                     # Create a new episode object.
-                    self._episodes[i] = Episode(
+                    self._episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]], infos=[infos[i]], states=s
                     )
                 else:
@@ -320,7 +315,7 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List["Episode"]:
+    ) -> List["SingleAgentEpisode"]:
         """Helper method to run n episodes.
 
         See docstring of `self.sample()` for more details.
@@ -328,14 +323,12 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # TODO (sven): This gives a tricky circular import that goes
         # deep into the library. We have to see, where to dissolve it.
-        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
-            _Episode as Episode,
-        )
+        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
-        done_episodes_to_return: List["Episode"] = []
+        done_episodes_to_return: List["SingleAgentEpisode"] = []
 
         obs, infos = self.env.reset()
-        episodes = [Episode() for _ in range(self.num_envs)]
+        episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
 
         # Multiply states n times according to our vector env batch size (num_envs).
         states = tree.map_structure(
@@ -431,7 +424,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         states[k][i] = (convert_to_numpy(v),)
 
                     # Create a new episode object.
-                    episodes[i] = Episode(
+                    episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]],
                         infos=[infos[i]],
                         states=s,
@@ -467,6 +460,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Compute per-episode metrics (only on already completed episodes).
         metrics = []
         for eps in self._done_episodes_for_metrics:
+            assert eps.is_done
             episode_length = len(eps)
             episode_reward = eps.get_return()
             # Don't forget about the already returned chunks of this episode.

@@ -39,7 +39,7 @@ class TuneRestoreTest(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         test_name = "TuneRestoreTest"
         tune.run(
-            "PG",
+            "PPO",
             name=test_name,
             stop={"training_iteration": 1},
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
@@ -63,7 +63,7 @@ class TuneRestoreTest(unittest.TestCase):
     def testTuneRestore(self):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
         tune.run(
-            "PG",
+            "PPO",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},  # train one more iteration.
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
@@ -78,7 +78,7 @@ class TuneRestoreTest(unittest.TestCase):
         """Tests that checkpoint restored from is not deleted post-restore."""
         self.assertTrue(os.path.isfile(self.checkpoint_path))
         tune.run(
-            "PG",
+            "PPO",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},
             checkpoint_config=CheckpointConfig(
