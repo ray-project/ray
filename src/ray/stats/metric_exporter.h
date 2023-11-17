@@ -102,7 +102,8 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
                           instrumented_io_context &io_service,
                           const std::string address,
                           const WorkerID &worker_id,
-                          size_t report_batch_size);
+                          size_t report_batch_size,
+                          size_t max_grpc_payload_size);
 
   ~OpenCensusProtoExporter() = default;
 
@@ -136,6 +137,9 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   WorkerID worker_id_;
   /// The maximum batch size to be included in a single gRPC metrics report request.
   size_t report_batch_size_;
+  /// Max gRPC payload size being sent to an agent, allowing us to make sure
+  /// that batches stays w/in the threshold of the gRPC max message size set by an agent
+  size_t max_grpc_payload_size_;
 };
 
 }  // namespace stats
