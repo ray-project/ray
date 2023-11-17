@@ -23,14 +23,18 @@ class AnyscaleDockerContainer(DockerContainer):
         ]
         # TODO(can): remove the alias when release test infra uses only the canonical
         # tag
-        for alias in self._get_image_tags():
-            alias_image = f"{ecr}/anyscale/{self.image_type}:{alias}"
-            cmds += [
-                f"docker tag {anyscale_image} {alias_image}",
-                f"docker push {alias_image}",
-            ]
+        if self._should_upload():
+            for alias in self._get_image_tags():
+                alias_image = f"{ecr}/anyscale/{self.image_type}:{alias}"
+                cmds += [
+                    f"docker tag {anyscale_image} {alias_image}",
+                    f"docker push {alias_image}",
+                ]
 
         self.run_script(cmds)
+
+    def _should_upload(self) -> bool:
+        return self.upload
 
     def _get_requirement_file(self) -> str:
         prefix = "requirements" if self.image_type == "ray" else "requirements_ml"
