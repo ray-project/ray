@@ -300,16 +300,17 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             ),
         }
 
-
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict({
-            # b, t for batch major; t, b for time major.
-            SampleBatch.OBS: TensorSpec(
-                "b, t, d", d=self.config.input_dims[0], framework="torch"
-            ),
-            STATE_IN: self._state_in_out_spec,
-        })
+        return SpecDict(
+            {
+                # b, t for batch major; t, b for time major.
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d", d=self.config.input_dims[0], framework="torch"
+                ),
+                STATE_IN: self._state_in_out_spec,
+            }
+        )
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:

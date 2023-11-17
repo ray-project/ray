@@ -329,7 +329,9 @@ class AlgorithmConfig(_Config):
         self.enable_connectors = True
         self.sampling_connectors = None
         self.episode_lookback_horizon = 1
-        # TODO (sven): Rename into `sample_timesteps`.
+        # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
+        #  and `sample_duration_unit` (replacing batch_mode), like we do it
+        #  in the evaluation config).
         self.rollout_fragment_length = 200
         # TODO (sven): Rename into `sample_mode`.
         self.batch_mode = "truncate_episodes"
