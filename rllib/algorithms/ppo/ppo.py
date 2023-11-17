@@ -419,7 +419,7 @@ class PPO(Algorithm):
 
             return PPOTF2Policy
 
-    @ExperimentalAPI
+    @override(Algorithm)
     def training_step(self) -> ResultDict:
         use_rollout_worker = self.config.env_runner_cls is None or issubclass(
             self.config.env_runner_cls, RolloutWorker

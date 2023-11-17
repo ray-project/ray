@@ -133,9 +133,9 @@ class BC(MARWIL):
     def get_default_config(cls) -> AlgorithmConfig:
         return BCConfig()
 
-    @ExperimentalAPI
+    @override(MARWIL)
     def training_step(self) -> ResultDict:
-        if not self.config["_enable_new_api_stack"]:
+        if not self.config._enable_new_api_stack:
             # Using ModelV2.
             return super().training_step()
         else:
