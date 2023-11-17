@@ -494,7 +494,7 @@ RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.
 /// Setting the value to -1 allows for unlimited task events stored in GCS.
-RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
+RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 1 * 1000 * 1000)
 
 /// The number of task attempts being dropped per job tracked at GCS. When GCS is forced
 /// to stop tracking some task attempts that are lost, this will incur potential partial
