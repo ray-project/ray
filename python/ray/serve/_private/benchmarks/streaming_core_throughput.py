@@ -8,6 +8,11 @@ from ray.actor import ActorHandle
 from ray.serve._private.benchmarks.common import run_throughput_benchmark
 
 
+class Blackhole:
+    def sink(self, o):
+        pass
+
+
 @ray.remote
 class SyncDownstream:
     def __init__(self, tokens_per_request: int):
@@ -30,7 +35,7 @@ class AsyncDownstream:
 
 
 @ray.remote
-class Caller:
+class Caller(Blackhole):
     def __init__(
         self,
         downstream: ActorHandle,
@@ -47,8 +52,9 @@ class Caller:
         self._trial_runtime = trial_runtime
 
     async def _consume_single_stream(self):
-        async for _ in self._h.stream.options(num_returns="streaming").remote():
-            pass
+        async for ref in self._h.stream.options(num_returns="streaming").remote():
+            bs = ray.get(ref)
+            self.sink(bs)
 
     async def _do_single_batch(self):
         await asyncio.gather(
