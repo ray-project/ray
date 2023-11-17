@@ -304,9 +304,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Initialized episodes do not have recorded any step and lack
         # `extra_model_outputs`.
         ongoing_episodes_to_return = [
-            episode.convert_lists_to_numpy(
-                # keep_every_n_state_out=self.config.model.get("max_seq_len")
-            )
+            episode.convert_lists_to_numpy()
             for episode in self._episodes
             if episode.t > 0
         ]
