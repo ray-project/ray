@@ -1500,6 +1500,7 @@ class DeploymentState:
         current_handle_queued_queries: int,
         *,
         target_capacity: Optional[float] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> int:
         """
         Autoscale the deployment based on metrics
@@ -1529,6 +1530,16 @@ class DeploymentState:
         adjusted_decision_num_replicas = self.get_capacity_adjusted_num_replicas(
             decision_num_replicas, target_capacity
         )
+
+        # When scaling up, lower-bound the num_replicas by the initial_replicas
+        if target_capacity_scale_direction == TargetCapacityScaleDirection.UP:
+            adjusted_decision_num_replicas = max(
+                adjusted_decision_num_replicas,
+                self.get_capacity_adjusted_num_replicas(
+                    autoscaling_policy.config.initial_replicas, target_capacity
+                ),
+            )
+
         logger.info(
             f"Autoscaling replicas for deployment {self.deployment_name} in "
             f"application {self.app_name} to {adjusted_decision_num_replicas}. "
@@ -2519,7 +2530,11 @@ class DeploymentStateManager:
             current_handle_queued_queries = 0
         return current_handle_queued_queries
 
-    def update(self, target_capacity: Optional[float] = None) -> bool:
+    def update(
+        self,
+        target_capacity: Optional[float] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+    ) -> bool:
         """Updates the state of all deployments to match their goal state.
 
         `target_capacity` represents the target capacity percentage for all deployments
@@ -2548,7 +2563,9 @@ class DeploymentStateManager:
                     deployment_state.get_autoscale_metric_lookback_period(),
                 )
                 deployment_state.autoscale(
-                    current_handle_queued_queries, target_capacity=target_capacity
+                    current_handle_queued_queries,
+                    target_capacity=target_capacity,
+                    target_capacity_scale_direction=target_capacity_scale_direction,
                 )
 
             deployment_state_update_result = deployment_state.update(
