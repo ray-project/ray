@@ -130,8 +130,12 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
                                                  instrumented_io_context &io_service,
                                                  const std::string address,
                                                  const WorkerID &worker_id,
-                                                 size_t report_batch_size)
-    : client_call_manager_(io_service), worker_id_(worker_id), report_batch_size_(report_batch_size) {
+                                                 size_t report_batch_size,
+                                                 size_t max_grpc_payload_size)
+    : client_call_manager_(io_service)
+    , worker_id_(worker_id)
+    , report_batch_size_(report_batch_size)
+    , max_grpc_payload_size_(max_grpc_payload_size) {
   absl::MutexLock l(&mu_);
   client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
 };
@@ -164,14 +168,13 @@ void OpenCensusProtoExporter::ExportViewData(
   size_t num_series = 0;
   // To make sure we're not overflowing Agent's set gRPC max message size, we will be tracking
   // target payload binary size and make sure it stays w/in 95% of the threshold
-  // TODO define AGENT_GRPC_MAX_MESSAGE_LENGTH to keep it consistent b/w cpp/python
-  size_t binary_size_payload_threshold = (size_t) (AGENT_GRPC_MAX_MESSAGE_LENGTH * .95f);
+  size_t binary_size_payload_threshold = (size_t) (max_grpc_payload_size * .95f);
 
   for (const auto &datum : data) {
     num_series += AddMetricsData(datum, request_proto);
     // NOTE: Because each payload size check is linear in the number of fields w/in the payload
     //       we intentionally sample it to happen only every 25 iterations to avoid affecting performance
-    bool should_check_payload_size = data_batched % 25 == 0
+    bool should_check_payload_size = (num_series + 1) % 1000 == 0
     /// If it exceeds the batch size, send data.
     if (num_series >= report_batch_size_ || (should_check_payload_size && request_proto.ByteSizeLong() >= binary_size_payload_threshold)) {
       SendData(request_proto);
