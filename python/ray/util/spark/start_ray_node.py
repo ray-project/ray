@@ -91,7 +91,9 @@ if __name__ == "__main__":
                         if log_dir_prefix == "ray":
                             # global mode cluster case, append a timestamp to it to avoid
                             # name conflict with last Ray global cluster log dir.
-                            log_dir_prefix = log_dir_prefix + f"-global-{int(time.time())}"
+                            log_dir_prefix = (
+                                log_dir_prefix + f"-global-{int(time.time())}"
+                            )
                         base_dir = os.path.join(
                             collect_log_to_path, log_dir_prefix + "-logs"
                         )

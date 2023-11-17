@@ -555,8 +555,7 @@ def _setup_ray_cluster(
         # at a time. So acquiring a global file lock before setting up a new
         # Ray on spark global cluster.
         global_cluster_lock_fd = os.open(
-            "/tmp/ray_on_spark_global_cluster.lock",
-            os.O_RDWR | os.O_CREAT | os.O_TRUNC
+            "/tmp/ray_on_spark_global_cluster.lock", os.O_RDWR | os.O_CREAT | os.O_TRUNC
         )
 
         try:
@@ -702,7 +701,6 @@ def _setup_ray_cluster(
         ray_dashboard_port=ray_dashboard_port,
         spark_job_server=spark_job_server,
         global_cluster_lock_fd=global_cluster_lock_fd,
-
     )
 
     if not autoscale:

@@ -13,7 +13,9 @@ import ray
 
 import ray.util.spark.cluster_init
 from ray.util.spark import (
-    setup_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES,
+    setup_ray_cluster,
+    shutdown_ray_cluster,
+    MAX_NUM_WORKER_NODES,
     serve_global_ray_cluster,
 )
 from ray.util.spark.utils import (
@@ -351,7 +353,7 @@ class TestSparkLocalCluster:
 
     @pytest.mark.parametrize("autoscale", [False, True])
     def test_serve_global_ray_cluster(self, autoscale):
-        shutil.rmtree("/tmp/ray")
+        shutil.rmtree("/tmp/ray", ignore_errors=True)
 
         assert ray.util.spark.cluster_init._global_ray_cluster_cancel_event is None
 
@@ -364,7 +366,10 @@ class TestSparkLocalCluster:
         def wait_cluster_ready():
             while True:
                 time.sleep(1)
-                if ray.util.spark.cluster_init._global_ray_cluster_cancel_event is not None:
+                if (
+                    ray.util.spark.cluster_init._global_ray_cluster_cancel_event
+                    is not None
+                ):
                     return
 
         start_serve_thread()
