@@ -253,7 +253,7 @@ steps:
     job_env: forge
 
   - label: ":ray: core: flaky tests"
-    tags: 
+    tags:
       - python
       - skip-on-premerge
     instance_type: large
@@ -271,3 +271,20 @@ steps:
         --skip-ray-installation
     depends_on: corebuild
     job_env: forge
+
+  - label: ":windows: python tests"
+    tags:
+      - python
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash /c/workdir/.buildkite/windows_ci.sh test_python
+    parallelism: 10
+
+  - label: ":windows: core tests"
+    tags:
+      - core_cpp
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash /c/workdir/.buildkite/windows_ci.sh test_core
