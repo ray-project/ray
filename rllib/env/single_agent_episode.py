@@ -6,7 +6,6 @@ from gymnasium.core import ActType, ObsType
 import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
-from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.spaces.space_utils import batch
 
@@ -486,7 +485,6 @@ class SingleAgentEpisode:
                 "actions": self.actions,
                 "rewards": self.rewards,
                 "infos": self.infos,
-                "states": self.states,
                 "t_started": self.t_started,
                 "t": self.t,
                 "is_terminated": self.is_terminated,
@@ -513,12 +511,11 @@ class SingleAgentEpisode:
         eps.actions = state[2][1]
         eps.rewards = state[3][1]
         eps.infos = state[4][1]
-        eps.states = state[5][1]
-        eps.t_started = state[6][1]
-        eps.t = state[7][1]
-        eps.is_terminated = state[8][1]
-        eps.is_truncated = state[9][1]
-        eps.extra_model_outputs = {k: v for k, v in state[10:]}
+        eps.t_started = state[5][1]
+        eps.t = state[6][1]
+        eps.is_terminated = state[7][1]
+        eps.is_truncated = state[8][1]
+        eps.extra_model_outputs = {k: v for k, v in state[9:]}
         # Validate the episode to ensure complete data.
         eps.validate()
         return eps
@@ -543,3 +540,6 @@ class SingleAgentEpisode:
             "first (after which `len(SingleAgentEpisode)` will be 0)."
         )
         return length
+
+    def __repr__(self):
+        return f"SAEps({self.id_} len={len(self)})"

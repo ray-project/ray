@@ -64,10 +64,8 @@ kubectl exec -it $HEAD_POD -- ray summary actors
 # 0   ServeController                     ALIVE: 1
 # 1   ServeReplica:fruit_app_OrangeStand  ALIVE: 1
 # 2   ProxyActor                          ALIVE: 3
-# 3   ServeReplica:math_app_DAGDriver     ALIVE: 1
 # 4   ServeReplica:math_app_Multiplier    ALIVE: 1
 # 5   ServeReplica:math_app_create_order  ALIVE: 1
-# 6   ServeReplica:fruit_app_DAGDriver    ALIVE: 1
 # 7   ServeReplica:fruit_app_FruitMarket  ALIVE: 1
 # 8   ServeReplica:math_app_Adder         ALIVE: 1
 # 9   ServeReplica:math_app_Router        ALIVE: 1
@@ -296,10 +294,10 @@ kubectl apply -f ray-service.insufficient-resources.yaml
 kubectl describe rayservices.ray.io rayservice-sample -n $YOUR_NAMESPACE
 
 # [Example output]
-# fruit_app_DAGDriver:
+# fruit_app_FruitMarket:
 #   Health Last Update Time:  2023-07-11T02:10:02Z
 #   Last Update Time:         2023-07-11T02:10:35Z
-#   Message:                  Deployment "fruit_app_DAGDriver" has 1 replicas that have taken more than 30s to be scheduled. This may be caused by waiting for the cluster to auto-scale, or waiting for a runtime environment to install. Resources required for each replica: {"CPU": 1.0}, resources available: {}.
+#   Message:                  Deployment "fruit_app_FruitMarket" has 1 replicas that have taken more than 30s to be scheduled. This may be caused by waiting for the cluster to auto-scale, or waiting for a runtime environment to install. Resources required for each replica: {"CPU": 1.0}, resources available: {}.
 #   Status:                   UPDATING
 
 # Step 5: A new RayCluster will be created after `serviceUnhealthySecondThreshold` (300s here) seconds.
