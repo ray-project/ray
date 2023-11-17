@@ -32,6 +32,9 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 _, tf, _ = try_import_tf()
 
 
+# TODO (sven): Use SingleAgentEnvRunner instead of this as soon as we have the new
+#  ConnectorV2 example classes to make Atari work properly with these (w/o requiring the
+#  classes at the bottom of this file here, e.g. `ActionClip`).
 class DreamerV3EnvRunner(EnvRunner):
     """An environment runner to collect data from vectorized gymnasium environments."""
 
@@ -144,6 +147,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         self._needs_initial_reset = True
         self._episodes = [None for _ in range(self.num_envs)]
+        self._states = [None for _ in range(self.num_envs)]
 
         # TODO (sven): Move metrics temp storage and collection out of EnvRunner
         #  and RolloutWorkers. These classes should not continue tracking some data
@@ -254,10 +258,8 @@ class DreamerV3EnvRunner(EnvRunner):
 
             # Set initial obs and states in the episodes.
             for i in range(self.num_envs):
-                self._episodes[i].add_initial_observation(
-                    initial_observation=obs[i],
-                    initial_state={k: s[i] for k, s in states.items()},
-                )
+                self._episodes[i].add_env_reset(observation=obs[i])
+                self._states[i] = {k: s[i] for k, s in states.items()}
         # Don't reset existing envs; continue in already started episodes.
         else:
             # Pick up stored observations and states from previous timesteps.
@@ -319,14 +321,14 @@ class DreamerV3EnvRunner(EnvRunner):
                 if terminateds[i] or truncateds[i]:
                     # Finish the episode with the actual terminal observation stored in
                     # the info dict.
-                    self._episodes[i].add_timestep(
-                        infos["final_observation"][i],
-                        actions[i],
-                        rewards[i],
-                        state=s,
+                    self._episodes[i].add_env_step(
+                        observation=infos["final_observation"][i],
+                        action=actions[i],
+                        reward=rewards[i],
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
                     )
+                    self._states[i] = s
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
                     for k, v in self.module.get_initial_state().items():
@@ -338,9 +340,12 @@ class DreamerV3EnvRunner(EnvRunner):
                         observations=[obs[i]], states=s
                     )
                 else:
-                    self._episodes[i].add_timestep(
-                        obs[i], actions[i], rewards[i], state=s
+                    self._episodes[i].add_env_step(
+                        observation=obs[i],
+                        action=actions[i],
+                        reward=rewards[i],
                     )
+                    self._states[i] = s
                     is_first[i] = False
 
         # Return done episodes ...
@@ -385,11 +390,11 @@ class DreamerV3EnvRunner(EnvRunner):
             render_images = [e.render() for e in self.env.envs]
 
         for i in range(self.num_envs):
-            episodes[i].add_initial_observation(
-                initial_observation=obs[i],
-                initial_state={k: s[i] for k, s in states.items()},
-                initial_render_image=render_images[i],
+            episodes[i].add_env_reset(
+                observation=obs[i],
+                render_image=render_images[i],
             )
+            self._states[i] = {k: s[i] for k, s in states.items()}
 
         eps = 0
         while eps < num_episodes:
@@ -425,14 +430,14 @@ class DreamerV3EnvRunner(EnvRunner):
                 if terminateds[i] or truncateds[i]:
                     eps += 1
 
-                    episodes[i].add_timestep(
-                        infos["final_observation"][i],
-                        actions[i],
-                        rewards[i],
-                        state=s,
+                    episodes[i].add_env_step(
+                        observation=infos["final_observation"][i],
+                        action=actions[i],
+                        reward=rewards[i],
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
                     )
+                    self._states[i] = s
                     done_episodes_to_return.append(episodes[i])
 
                     # Also early-out if we reach the number of episodes within this
@@ -452,13 +457,13 @@ class DreamerV3EnvRunner(EnvRunner):
                         render_images=[render_images[i]],
                     )
                 else:
-                    episodes[i].add_timestep(
-                        obs[i],
-                        actions[i],
-                        rewards[i],
-                        state=s,
+                    episodes[i].add_env_step(
+                        observation=obs[i],
+                        action=actions[i],
+                        reward=rewards[i],
                         render_image=render_images[i],
                     )
+                    self._states[i] = s
                     is_first[i] = False
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
