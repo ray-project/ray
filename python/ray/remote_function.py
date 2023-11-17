@@ -57,7 +57,7 @@ class RemoteFunction:
         _memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         _gpu_memory: The gpu memory request in megabytes for this task/actor
-            from a single gpu, rounded down to the nearest integer.
+            from a single gpu, rounded up to the nearest integer.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
@@ -187,7 +187,7 @@ class RemoteFunction:
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             _gpu_memory: The gpu memory request in megabytes for this task/actor
-            from a single gpu, rounded down to the nearest integer.
+                from a single gpu, rounded up to the nearest integer.
             object_store_memory: The object store memory request for actors only.
             max_calls: This specifies the
                 maximum number of times that a given worker can execute

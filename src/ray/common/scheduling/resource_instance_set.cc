@@ -22,8 +22,7 @@
 namespace ray {
 
 NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
-  auto resource_ids = total.ExplicitResourceIds();
-  for (auto &resource_id : resource_ids) {
+  for (auto &resource_id : total.ExplicitResourceIds()) {
     std::vector<FixedPoint> instances;
     auto value = total.Get(resource_id);
     if (resource_id.IsUnitInstanceResource()) {
@@ -31,13 +30,6 @@ NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
       for (size_t i = 0; i < num_instances; i++) {
         instances.push_back(1.0);
       };
-    } else if (resource_id == ResourceID::GPU_Memory() &&
-               resource_ids.find(ResourceID::GPU()) != resource_ids.end()) {
-      double num_gpus = total.Get(ResourceID::GPU()).Double();
-      for (size_t i = 0; i < static_cast<size_t>(num_gpus); i++) {
-        instances.push_back(value.Double() / num_gpus);
-      };
-
     } else {
       instances.push_back(value);
     }
@@ -101,6 +93,7 @@ bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) c
 std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
 NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> allocations;
+  // update this to TryAllocateBundle
   for (const auto &[resource_id, demand] : resource_demands.Resources()) {
     auto allocation = TryAllocate(resource_id, demand);
     if (allocation) {
@@ -142,6 +135,8 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
       return std::nullopt;
     }
   }
+  // need to update this to support instance > 1
+  // still unit tho, might need to create different TryAllocate function
 
   // If resources has multiple instances, each instance has total capacity of 1.
   //

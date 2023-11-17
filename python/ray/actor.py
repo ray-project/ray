@@ -350,8 +350,7 @@ class _ActorClassMetadata:
         num_gpus: The default number of GPUs required by the actor creation
             task.
         memory: The heap memory quota for this actor.
-        _gpu_memory: The gpu memory request in megabytes for this task/actor
-            from a single gpu, rounded down to the nearest integer.
+        _gpu_memory: The gpu memory request in megabytes for this actor.
         resources: The default resources required by the actor creation task.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
@@ -600,7 +599,7 @@ class ActorClass:
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             _gpu_memory: The gpu memory request in megabytes for this task/actor
-                from a single gpu, rounded down to the nearest integer.
+                from a single gpu, rounded up to the nearest integer.
             object_store_memory: The object store memory request for actors only.
             max_restarts: This specifies the maximum
                 number of times that the actor should be restarted when it dies

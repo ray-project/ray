@@ -1289,7 +1289,7 @@ def init(
         _memory: Amount of reservable memory resource in bytes rounded
             down to the nearest integer.
         _gpu_memory: The gpu memory request in megabytes for this task/actor
-            from a single gpu, rounded down to the nearest integer.
+            from a single gpu, rounded up to the nearest integer.
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
@@ -3307,7 +3307,7 @@ def remote(
         memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         _gpu_memory: The gpu memory request in megabytes for this task/actor
-            from a single gpu, rounded down to the nearest integer.
+            from a single gpu, rounded up to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
