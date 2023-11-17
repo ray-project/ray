@@ -7,6 +7,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
 import ray._private.worker
 import ray._raylet
+from ray.dag.class_node import ClassMethodNode, PARENT_CLASS_NODE_KEY
 from ray import ActorClassID, Language, cross_language
 from ray._private import ray_option_utils
 from ray._private.async_compat import is_async_func
@@ -141,7 +142,7 @@ class ActorMethod:
         decorator=None,
         hardref=False,
     ):
-        self._actor_ref = weakref.ref(actor)
+        self._actor_ref = weakref.proxy(actor)
         self._method_name = method_name
         self._num_returns = num_returns
         self._is_compiled_dag_task = is_compiled_dag_task
@@ -167,6 +168,10 @@ class ActorMethod:
             f"'object.{self._method_name}.remote()'."
         )
 
+    @DeveloperAPI
+    def bind(self, *args, **kwargs):
+        return self._bind(args, kwargs)
+
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
 
@@ -187,8 +192,43 @@ class ActorMethod:
         class FuncWrapper:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(args=args, kwargs=kwargs, **options)
+            
+            @DeveloperAPI
+            def bind(self, *args, **kwargs):
+                return func_cls._bind(args=args, kwargs=kwargs, **options)
 
         return FuncWrapper()
+    
+    @wrap_auto_init
+    @_tracing_actor_method_invocation
+    def _bind(
+        self,
+        args=None,
+        kwargs=None,
+        name="",
+        num_returns=None,
+        concurrency_group=None,
+        _generator_backpressure_num_objects=None,
+    ):
+        # TODO(sang): unify option passing
+        options = {
+            "name": name,
+            "num_returns": num_returns,
+            "concurrency_group": concurrency_group,
+            "_generator_backpressure_num_objects": _generator_backpressure_num_objects
+        }
+        other_args_to_resolve = {
+            PARENT_CLASS_NODE_KEY: self._actor_ref,
+        }
+
+        node = ClassMethodNode(
+            self._method_name,
+            args,
+            kwargs,
+            options,
+            other_args_to_resolve=other_args_to_resolve,
+        )
+        return node
 
     @wrap_auto_init
     @_tracing_actor_method_invocation
@@ -212,7 +252,7 @@ class ActorMethod:
             )
 
         def invocation(args, kwargs):
-            actor = self._actor_hard_ref or self._actor_ref()
+            actor = self._actor_hard_ref or self._actor_ref
             if actor is None:
                 raise RuntimeError("Lost reference to actor")
             return actor._actor_method_call(
@@ -236,7 +276,7 @@ class ActorMethod:
 
     def __getstate__(self):
         return {
-            "actor": self._actor_ref(),
+            "actor": self._actor_ref,
             "method_name": self._method_name,
             "num_returns": self._num_returns,
             "decorator": self._decorator,

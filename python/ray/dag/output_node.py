@@ -29,7 +29,7 @@ class OutputNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve or {},
         )
 
-    def _execute_impl(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    def _execute_impl(self, *args, **kwargs) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         if len(self._bound_args) == 1:
             return self._bound_args[0]
         else:

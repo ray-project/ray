@@ -54,12 +54,11 @@ Q:
 - Iterable DAG -> is it just a repeat of execute?
 
 TODO
-- Curerntly, any bind from actor will become a huge single DAG starting from actor. 
+- [done] Curerntly, any bind from actor will become a huge single DAG starting from actor. 
     - Need to find a way to exclude ClassNode from DAG execution. 
-- Only one input node is possible for a single actor. But input node can have multiple inputs
+- [done] Only one input node is possible for a single actor. But input node can have multiple inputs
     - Maybe we should allow multiple input node for a single actor (and use it as a starting point).
-    - Not needed now.
-- No way to keep the actor alive.
+- [done] No way to keep the actor alive.
     - There's private argument _ray_cache_ref, but it will cache all refs which is not desirable.
     - New API in the part of bind.
 
