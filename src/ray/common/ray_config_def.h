@@ -483,8 +483,9 @@ RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 5)
 RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
 
 /// The batch size for metrics export.
-/// Normally each metrics is about < 1KB. 1000 means it is around 1MB.
-RAY_CONFIG(int64_t, metrics_report_batch_size, 1000)
+/// Normally each time-series << 1Kb. Batch size of 10_000 means expected payload
+/// will be under 10Mb.
+RAY_CONFIG(int64_t, metrics_report_batch_size, 10000)
 
 /// If task events (status change and profiling events) from driver should be ignored.
 /// Currently for testing only.
