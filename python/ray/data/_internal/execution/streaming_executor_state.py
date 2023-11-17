@@ -337,7 +337,15 @@ def process_completed_tasks(
     max_allowed_task_failures: int,
 ) -> int:
     """Process any newly completed tasks. To update operator
-    states, call `update_operator_states()` afterwards."""
+    states, call `update_operator_states()` afterwards.
+
+    Args:
+        topology: The toplogy of operators.
+        backpressure_policies: The backpressure policies to use.
+        max_allowed_task_failures: The maximum number of task failures allowed.
+    Returns:
+        The number of task failures.
+    """
 
     # All active tasks, keyed by their waitables.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
@@ -375,7 +383,7 @@ def process_completed_tasks(
                         max_blocks_to_read_per_op[state] -= num_blocks_read
                 except Exception as e:
                     error_message = (
-                        f"An exception occurred in a task of operator {state.op}."
+                        f'An exception occurred in a task of operator "{state.op}".'
                     )
                     if max_allowed_task_failures != 0:
                         num_failures += 1
@@ -388,7 +396,7 @@ def process_completed_tasks(
                         logger.get_logger().error(error_message, e)
                     else:
                         error_message += (
-                            " Dataset execution will now abort because of this exception."
+                            " Dataset execution will now abort."
                             " To ignore this exception and continue, set"
                             " DataContext.max_allowed_task_failures to a larger number."
                         )

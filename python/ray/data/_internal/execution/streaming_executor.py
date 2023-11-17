@@ -269,7 +269,9 @@ class StreamingExecutor(Executor, threading.Thread):
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
-        failures = process_completed_tasks(topology, self._backpressure_policies, self._max_allowed_task_failures)
+        failures = process_completed_tasks(
+            topology, self._backpressure_policies, self._max_allowed_task_failures
+        )
         self._max_allowed_task_failures -= failures
 
         # Dispatch as many operators as we can for completed tasks.

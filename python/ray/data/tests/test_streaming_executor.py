@@ -694,6 +694,7 @@ def test_execution_allowed_nothrottle():
 
 def test_max_allowed_task_failures(restore_data_context):
     """Test DataContext.max_allowed_task_failures."""
+
     def _run(num_tasks, max_allowed_task_failures, num_failed_tasks, should_fail):
         ctx = ray.data.DataContext.get_current()
         ctx.max_allowed_task_failures = max_allowed_task_failures
