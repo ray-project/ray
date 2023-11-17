@@ -35,9 +35,11 @@ class EnvToModulePipeline(ConnectorPipelineV2):
         ctx: ConnectorContextV2,
         **kwargs,
     ) -> Any:
-        # Make sure user does not have to send initial input into this pipeline.
-        # Might just be empty and to be populated from `episodes`.
+
         return super().__call__(
+            # Make sure user does not have to send initial `input_` into this env-to-module
+            # pipeline. This would be the expected behavior b/c after calling the env,
+            # we don't have any data dict yet, only a list of Episode objects.
             input_=input_ or {},
             episodes=episodes,
             ctx=ctx,

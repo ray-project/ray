@@ -40,7 +40,13 @@ class ConnectorPipelineV2(ConnectorV2):
         ctx: ConnectorContextV2,
         **kwargs,
     ) -> Any:
-        """"""
+        """In a pipeline, we simply call each of our connector pieces after each other.
+
+        Each connector piece receives as input the output of the previous connector
+        piece in the pipeline.
+        """
+        # Loop through connector pieces and call each one with the output of the
+        # previous one. Thereby, time each connector piece's call.
         ret = input_
         for connector in self.connectors:
             timer = self.timers[str(connector)]
@@ -66,55 +72,92 @@ class ConnectorPipelineV2(ConnectorV2):
         else:
             logger.warning(f"Trying to remove a non-existent connector {name}.")
 
-    def insert_before(self, name_or_class: Union[str, Type], connector: ConnectorV2):
-        """Insert a new connector before connector <name>
+    def insert_before(
+        self,
+        name_or_class: Union[str, Type],
+        connector: ConnectorV2,
+    ) -> ConnectorV2:
+        """Insert a new connector piece before an existing piece (by name or class).
 
         Args:
-            name: name of the connector before which a new connector
+            name_or_class: Name or class of the connector piece before which `connector`
                 will get inserted.
-            connector: a new connector to be inserted.
+            connector: The new connector piece to be inserted.
+
+        Returns:
+            The ConnectorV2 before which `connector` has been inserted.
         """
         idx = -1
         for idx, c in enumerate(self.connectors):
-            if c.__class__.__name__ == name:
+            if (
+                (
+                    isinstance(name_or_class, str)
+                    and c.__class__.__name__ == name_or_class
+                )
+                or (isinstance(name_or_class, type) and c.__class__ is name_or_class)
+            ):
                 break
         if idx < 0:
-            raise ValueError(f"Can not find connector {name}")
+            raise ValueError(
+                f"Can not find connector with name or type '{name_or_class}'!"
+            )
+        next_connector = self.connectors[idx]
+
         self.connectors.insert(idx, connector)
         self._fix_input_output_types()
 
         logger.info(
-            f"Inserted {connector.__class__.__name__} before {name} "
+            f"Inserted {connector.__class__.__name__} before {name_or_class} "
             f"to {self.__class__.__name__}."
         )
+        return next_connector
 
-    def insert_after(self, name_or_class: Union[str, Type], connector: ConnectorV2):
-        """Insert a new connector after connector <name>
+    def insert_after(
+        self,
+        name_or_class: Union[str, Type],
+        connector: ConnectorV2,
+    ) -> ConnectorV2:
+        """Insert a new connector piece after an existing piece (by name or class).
 
         Args:
-            name: name of the connector after which a new connector
+            name_or_class: Name or class of the connector piece after which `connector`
                 will get inserted.
-            connector: a new connector to be inserted.
+            connector: The new connector piece to be inserted.
+
+        Returns:
+            The ConnectorV2 after which `connector` has been inserted.
         """
         idx = -1
         for idx, c in enumerate(self.connectors):
-            if c.__class__.__name__ == name:
+            if (
+                (
+                    isinstance(name_or_class, str)
+                    and c.__class__.__name__ == name_or_class
+                )
+                or (isinstance(name_or_class, type) and c.__class__ is name_or_class)
+            ):
                 break
         if idx < 0:
-            raise ValueError(f"Can not find connector {name}")
+            raise ValueError(
+                f"Can not find connector with name or type '{name_or_class}'!"
+            )
+        prev_connector = self.connectors[idx]
+
         self.connectors.insert(idx + 1, connector)
         self._fix_input_output_types()
 
         logger.info(
-            f"Inserted {connector.__class__.__name__} after {name} "
+            f"Inserted {connector.__class__.__name__} after {name_or_class} "
             f"to {self.__class__.__name__}."
         )
 
-    def prepend(self, connector: ConnectorV2):
-        """Append a new connector at the beginning of a connector pipeline.
+        return prev_connector
+
+    def prepend(self, connector: ConnectorV2) -> None:
+        """Prepend a new connector at the beginning of a connector pipeline.
 
         Args:
-            connector: a new connector to be appended.
+            connector: The new connector piece to be prepended to this pipeline.
         """
         self.connectors.insert(0, connector)
         self._fix_input_output_types()
@@ -124,11 +167,11 @@ class ConnectorPipelineV2(ConnectorV2):
             f"{self.__class__.__name__}."
         )
 
-    def append(self, connector: ConnectorV2):
+    def append(self, connector: ConnectorV2) -> None:
         """Append a new connector at the end of a connector pipeline.
 
         Args:
-            connector: a new connector to be appended.
+            connector: The new connector piece to be appended to this pipeline.
         """
         self.connectors.append(connector)
         self._fix_input_output_types()
@@ -138,34 +181,30 @@ class ConnectorPipelineV2(ConnectorV2):
             f"{self.__class__.__name__}."
         )
 
-    # @override(ConnectorV2)
-    # def serialize(self):
-    #    children = []
-    #    for c in self.connectors:
-    #        state = c.serialize()
-    #        assert isinstance(state, tuple) and len(state) == 2, (
-    #            "Serialized connector state must be in the format of "
-    #            f"Tuple[name: str, params: Any]. Instead we got {state}"
-    #            f"for connector {c.__name__}."
-    #        )
-    #        children.append(state)
-    #    return ConnectorPipelineV2.__name__, children
-    #
-    # @override(ConnectorV2)
-    # @staticmethod
-    # def from_state(ctx: ConnectorContextV2, params: List[Any]):
-    #    assert (
-    #        type(params) == list
-    #    ), "AgentConnectorPipeline takes a list of connector params."
-    #    connectors = []
-    #    for state in params:
-    #        try:
-    #            name, subparams = state
-    #            connectors.append(get_connector(name, ctx, subparams))
-    #        except Exception as e:
-    #            logger.error(f"Failed to de-serialize connector state: {state}")
-    #            raise e
-    #    return ConnectorPipelineV2(ctx, connectors)
+    @override(ConnectorV2)
+    def get_state(self):
+        children = []
+        for c in self.connectors:
+            state = c.serialize()
+            assert isinstance(state, tuple) and len(state) == 2, (
+                "Serialized connector state must be in the format of "
+                f"Tuple[name: str, params: Any]. Instead we got {state}"
+                f"for connector {c.__name__}."
+            )
+            children.append(state)
+        return ConnectorPipelineV2.__name__, children
+
+    @override(ConnectorV2)
+    def set_state(self, state: Dict[str, Any]):
+        connectors = []
+        for state in params:
+            try:
+                name, subparams = state
+                connectors.append(get_connector(name, ctx, subparams))
+            except Exception as e:
+                logger.error(f"Failed to de-serialize connector state: {state}")
+                raise e
+        return ConnectorPipelineV2(ctx, connectors)
 
     def __str__(self, indentation: int = 0):
         return "\n".join(
@@ -173,44 +212,50 @@ class ConnectorPipelineV2(ConnectorV2):
             + [c.__str__(indentation + 4) for c in self.connectors]
         )
 
-    def __getitem__(self, key: Union[str, int, type]):
-        """Returns a list of connectors that fit 'key'.
+    def __getitem__(
+        self,
+        key: Union[str, int, Type],
+    ) -> Union[ConnectorV2, List[ConnectorV2]]:
+        """Returns a single ConnectorV2 or list of ConnectorV2s that fit `key`.
 
-        If key is a number n, we return a list with the nth element of this pipeline.
-        If key is a Connector class or a string matching the class name of a
-        Connector class, we return a list of all connectors in this pipeline matching
-        the specified class.
+        If key is an int, we return a single ConnectorV2 at that index in this pipeline.
+        If key is a ConnectorV2 type or a string matching the class name of a
+        ConnectorV2 in this pipeline, we return a list of all ConnectorV2s in this
+        pipeline matching the specified class.
 
         Args:
-            key: The key to index by.
+            key: The key to find or to index by.
 
-        Returns: The Connector at index `key`.
+        Returns:
+            A single ConnectorV2 or a list of ConnectorV2s matching `key`.
         """
-        # In case key is a class
-        if not isinstance(key, str):
-            if isinstance(key, slice):
-                raise NotImplementedError(
-                    "Slicing of ConnectorPipeline is currently not supported."
-                )
-            elif isinstance(key, int):
-                return [self.connectors[key]]
-            elif isinstance(key, type):
-                results = []
-                for c in self.connectors:
-                    if issubclass(c.__class__, key):
-                        results.append(c)
-                return results
-            else:
-                raise NotImplementedError(
-                    "Indexing by {} is currently not supported.".format(type(key))
-                )
-
-        results = []
-        for c in self.connectors:
-            if c.__class__.__name__ == key:
-                results.append(c)
-
-        return results
+        # Key is an int -> Index into pipeline and return.
+        if isinstance(key, int):
+            return self.connectors[key]
+        # Key is a class.
+        elif isinstance(key, type):
+            results = []
+            for c in self.connectors:
+                if issubclass(c.__class__, key):
+                    results.append(c)
+            return results
+        # Key is a string -> Find connector(s) by name.
+        elif isinstance(key, str):
+            results = []
+            for c in self.connectors:
+                if c.name == key:
+                    results.append(c)
+            return results
+        # Slicing not supported (yet).
+        elif isinstance(key, slice):
+            raise NotImplementedError(
+                "Slicing of ConnectorPipelineV2 is currently not supported!"
+            )
+        else:
+            raise NotImplementedError(
+                f"Indexing ConnectorPipelineV2 by {type(key)} is currently not "
+                f"supported!"
+            )
 
     def _fix_input_output_types(self):
         if len(self.connectors) > 0:
