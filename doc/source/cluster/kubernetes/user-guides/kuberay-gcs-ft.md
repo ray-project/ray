@@ -312,7 +312,7 @@ Refer to [this section](kuberay-external-storage-namespace-example) in the earli
 
 ```{admonition} Key eviction setup on Redis
 If you disable `ENABLE_GCS_FT_REDIS_CLEANUP` but want Redis to remove GCS metadata automatically,
-set these two options on Redis:
+set these two options in your `redis.conf` or in the command line options of your redis-server command [(example)](https://github.com/ray-project/ray/pull/40949#issuecomment-1799057691):
 
 * `maxmemory=<your_memory_limit>`
 * `maxmemory-policy=allkeys-lru`
