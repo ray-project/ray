@@ -60,4 +60,3 @@ def get_multi_instantiation_class_nested_deployment_arg_dag():
         ray_dag = combine.__call__.bind(dag_input)
 
     return ray_dag, dag_input
-

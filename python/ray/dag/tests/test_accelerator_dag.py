@@ -6,31 +6,34 @@ from ray.dag.output_node import OutputNode
 from ray.dag import PARENT_CLASS_NODE_KEY
 from ray.dag.vis_utils import plot
 
+
 def test_output_node(shared_ray_instance):
     @ray.remote
     def f(input):
         return input
 
+    with pytest.raises(ValueError):
+        with InputNode() as input_data:
+            dag = OutputNode(f.bind(input_data))
+
     with InputNode() as input_data:
-        dag = OutputNode(f.bind(input_data))
-    
-    assert ray.get(dag.execute(1)) == 1
-    assert ray.get(dag.execute(2)) == 2
+        dag = OutputNode([f.bind(input_data)])
+
+    assert ray.get(dag.execute(1)) == [1]
+    assert ray.get(dag.execute(2)) == [2]
 
     with InputNode() as input_data:
         dag = OutputNode([f.bind(input_data["x"]), f.bind(input_data["y"])])
-    
+
     refs = dag.execute({"x": 1, "y": 2})
     assert len(refs) == 2
     assert ray.get(refs) == [1, 2]
 
     with InputNode() as input_data:
-        dag = OutputNode([
-            f.bind(input_data["x"]),
-            f.bind(input_data["y"]),
-            f.bind(input_data["x"])
-        ])
-    
+        dag = OutputNode(
+            [f.bind(input_data["x"]), f.bind(input_data["y"]), f.bind(input_data["x"])]
+        )
+
     refs = dag.execute({"x": 1, "y": 2})
     assert len(refs) == 3
     assert ray.get(refs) == [1, 2, 1]
@@ -38,6 +41,7 @@ def test_output_node(shared_ray_instance):
 
 def test_dag_with_actor_handle(shared_ray_instance):
     """Verify DAG API works with actor created by .remote"""
+
     @ray.remote
     class Worker:
         def __init__(self):
@@ -53,7 +57,7 @@ def test_dag_with_actor_handle(shared_ray_instance):
             print("initialize")
             self.init_called += 1
             return input
-        
+
         def get(self):
             return (self.forward_called, self.init_called)
 
@@ -99,8 +103,7 @@ def test_tensor_parallel_dag(shared_ray_instance):
         ray.get([worker.initialize.remote() for worker in workers])
 
     with InputNode() as input_data:
-        dag = OutputNode(
-            [worker.forward.bind(input_data) for worker in workers])
+        dag = OutputNode([worker.forward.bind(input_data) for worker in workers])
 
     # Run DAG repetitively.
     ITER = 4
@@ -111,8 +114,7 @@ def test_tensor_parallel_dag(shared_ray_instance):
         assert len(all_outputs) == NUM_WORKERS
         assert all_outputs == [i + j for j in range(NUM_WORKERS)]
 
-    forwarded = ray.get(
-        [worker.get_forwarded.remote() for worker in workers])
+    forwarded = ray.get([worker.get_forwarded.remote() for worker in workers])
     assert forwarded == [ITER for _ in range(NUM_WORKERS)]
 
 
