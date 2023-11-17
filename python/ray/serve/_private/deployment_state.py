@@ -1883,9 +1883,9 @@ class DeploymentState:
                     and self._curr_status_info.status_trigger
                     == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
                 ):
-                    status_trigger = (DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,)
+                    status_trigger = DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
                 elif self._curr_status_info.status == DeploymentStatus.UNHEALTHY:
-                    status_trigger = (DeploymentStatusTrigger.UNSPECIFIED,)
+                    status_trigger = DeploymentStatusTrigger.UNSPECIFIED
                 else:
                     status_trigger = self._curr_status_info.status_trigger
 
@@ -2185,7 +2185,7 @@ class DeploymentState:
             )
             self._curr_status_info.update(
                 status=DeploymentStatus.UNHEALTHY,
-                status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
+                status_trigger=DeploymentStatusTrigger.INTERNAL_ERROR,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
 

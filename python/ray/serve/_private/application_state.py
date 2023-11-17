@@ -427,6 +427,7 @@ class ApplicationState:
         num_healthy_deployments = 0
         num_autoscaling_deployments = 0
         num_updating_deployments = 0
+        num_manually_scaling_deployments = 0
         unhealthy_deployment_names = []
 
         for deployment_status in self.get_deployments_statuses():
@@ -438,8 +439,21 @@ class ApplicationState:
                 deployment_status.status_trigger == DeploymentStatusTrigger.AUTOSCALING
             ):
                 num_autoscaling_deployments += 1
-            else:
+            elif deployment_status.status == DeploymentStatus.UPDATING:
                 num_updating_deployments += 1
+            elif (
+                deployment_status.status
+                in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
+                and deployment_status.status_trigger
+                == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+            ):
+                num_manually_scaling_deployments += 1
+            else:
+                raise RuntimeError(
+                    "Found deployment with unexpected status "
+                    f"{deployment_status.status} and status trigger "
+                    f"{deployment_status.status_trigger}."
+                )
 
         if len(unhealthy_deployment_names):
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
@@ -450,7 +464,7 @@ class ApplicationState:
                 return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
-        elif num_updating_deployments > 0:
+        elif num_updating_deployments + num_manually_scaling_deployments > 0:
             # If deployments are UPDATING or UPSCALING/DOWNSCALING
             # with status trigger CONFIG_UPDATE_STARTED, then
             # application is still DEPLOYING
