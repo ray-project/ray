@@ -1588,7 +1588,6 @@ class AutoscalingCluster:
             sys.executable,
             "-m",
             "ray.util.spark.start_ray_node",
-            f"--temp-dir={ray_temp_dir}",
             "--block",
             "--head",
             f"--node-ip-address={ray_head_ip}",
@@ -1596,6 +1595,9 @@ class AutoscalingCluster:
             f"--autoscaling-config={autoscale_config}",
             *dashboard_options,
         ]
+
+        if ray_temp_dir is not None:
+            ray_head_node_cmd.append(f"--temp-dir={ray_temp_dir}")
 
         if "CPU" in self._head_resources:
             ray_head_node_cmd.append(
