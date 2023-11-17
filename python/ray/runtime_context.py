@@ -440,6 +440,11 @@ class RuntimeContext(object):
         print(node_id)
         self.worker.gcs_client.update_label(node_id,labels)
 
+    def get_node_info(self):
+        worker = self.worker
+        worker.check_connected()
+        print(self.worker.gcs_client.get_all_node_info())
+
 
 
 
