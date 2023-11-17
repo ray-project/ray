@@ -1979,3 +1979,17 @@ def reset_autoscaler_v2_enabled_cache():
     import ray.autoscaler.v2.utils as u
 
     u.cached_is_autoscaler_v2 = None
+
+
+def skip_flaky_test() -> bool:
+    """
+    Skip a test if it is flaky (e.g. in premerge)
+
+    Default we will skip the flaky test if not specified otherwise in
+    CI with CI_SKIP_FLAKY_TEST="0"
+
+
+    Returns:
+        bool: True if the test should be skipped
+    """
+    return os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1"
