@@ -104,12 +104,12 @@ def test_put_get_multi_app(ray_start_stop, url):
         print("Sending PUT request for config1.")
         deploy_config_multi_app(config1, url)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
             == "5 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).json()
+            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).text
             == "8 pizzas please!",
             timeout=15,
         )
@@ -124,7 +124,7 @@ def test_put_get_multi_app(ray_start_stop, url):
         print("Sending PUT request for config2.")
         deploy_config_multi_app(config2, url)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
             == "4 pizzas please!",
             timeout=15,
         )
@@ -230,7 +230,7 @@ def test_delete_multi_app(ray_start_stop, url):
                 "runtime_env": {
                     "working_dir": (
                         "https://github.com/ray-project/test_dag/archive/"
-                        "1a0ca74268de85affc6ead99121e2de7a01fa360.zip"
+                        "78b4a5da38796123d9f9ffff59bab2792a043e95.zip"
                     )
                 },
                 "deployments": [
@@ -258,13 +258,13 @@ def test_delete_multi_app(ray_start_stop, url):
         print("Sending PUT request for config.")
         deploy_config_multi_app(config, url)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 1]).json()
-            == 2,
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 1]).text
+            == "2",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["SUB", 1]).json()
-            == -1,
+            lambda: requests.post("http://localhost:8000/app1", json=["SUB", 1]).text
+            == "-1",
             timeout=15,
         )
         wait_for_condition(
