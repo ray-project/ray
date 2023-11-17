@@ -187,8 +187,10 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
   }
 
   NodeResources *resources = it->second.GetMutableLocalView();
+  const ResourceSet adjusted_resource_request =
+      resources.ConvertRelativeResource(resource_request.GetResourceSet());
 
-  resources->available -= resource_request.GetResourceSet();
+  resources->available -= adjusted_resource_request;
   resources->available.RemoveNegative();
 
   // TODO(swang): We should also subtract object store memory if the task has
@@ -214,7 +216,10 @@ bool ClusterResourceManager::HasSufficientResource(
     return false;
   }
 
-  return resources.available >= resource_request.GetResourceSet();
+  const ResourceSet adjusted_resource_request =
+      resources.ConvertRelativeResource(resource_request.GetResourceSet());
+
+  return resources.available >= adjusted_resource_request;
 }
 
 bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_id,
