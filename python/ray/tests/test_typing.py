@@ -41,20 +41,6 @@ if __name__ == "__main__":
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
 
-    # Copying the source files is necessary for 2 reasons:
-    #   1. On Windows, the file path resembles:
-    #
-    #       \C:\Users\ContainerAdministrator\AppData\Local\Temp\
-    #       Bazel.runfiles_pt_4pkxk\runfiles\com_github_ray_project_ray\python\
-    #       ray\tests\test_typing.py
-    #
-    #      which contains a dot. mypy_api.run() fails since
-    #      Bazel.runfiles_pt_4pkxk is not a Python module.
-    #
-    #   2. If the files aren't copied, Ray is imported from the directory
-    #      `Bazel.runfiles_*/runfiles/com_github_ray_project_ray/python`
-    #      and mypy is unable to detect attributes that should be present in ray.
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
