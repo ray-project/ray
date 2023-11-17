@@ -1044,7 +1044,11 @@ def read_json(
         ...     "s3://anonymous@ray-example-data/log.json",
         ...     read_options=pajson.ReadOptions(block_size=block_size)
         ... )
-        Dataset(num_blocks=8, num_rows=1, schema={timestamp: timestamp[s], size: int64})
+        Dataset(
+           num_blocks=...,
+           num_rows=1,
+           schema={timestamp: timestamp[s], size: int64}
+        )
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
