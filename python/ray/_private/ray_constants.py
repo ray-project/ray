@@ -374,8 +374,8 @@ GRPC_CPP_MAX_MESSAGE_SIZE = 250 * 1024 * 1024
 
 # The gRPC send & receive max length for "dashboard agent" server.
 # NOTE: This is equal to the C++ limit of RayConfig::max_grpc_message_size
-#       and HAVE TO STAY IN SYNC with it (ie, meaning that both of these values have to be set
-#       at the same time)
+#       and HAVE TO STAY IN SYNC with it (ie, meaning that both of these values
+#       have to be set at the same time)
 AGENT_GRPC_MAX_MESSAGE_LENGTH = env_integer(
     "AGENT_GRPC_MAX_MESSAGE_LENGTH", 20 * 1024 * 1024  # 20MB
 )

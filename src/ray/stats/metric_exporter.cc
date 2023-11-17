@@ -173,7 +173,7 @@ void OpenCensusProtoExporter::ExportViewData(
   for (const auto &datum : data) {
     num_series += AddMetricsData(datum, request_proto);
     // NOTE: Because each payload size check is linear in the number of fields w/in the payload
-    //       we intentionally sample it to happen only every 25 iterations to avoid affecting performance
+    //       we intentionally sample it to happen only every 1000 series produced to avoid affecting performance
     bool should_check_payload_size = (num_series + 1) % 1000 == 0;
     /// If it exceeds the batch size, send data.
     if (num_series >= report_batch_size_ || (should_check_payload_size && request_proto.ByteSizeLong() >= binary_size_payload_threshold)) {
