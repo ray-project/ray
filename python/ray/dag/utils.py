@@ -23,9 +23,9 @@ class _DAGNodeNameGenerator(object):
     def get_node_name(self, node: DAGNode):
         # InputNode should be unique.
         if isinstance(node, InputNode):
-            return "OUTPUT_NODE"
-        if isinstance(node, OutputNode):
             return "INPUT_NODE"
+        if isinstance(node, OutputNode):
+            return "OUTPUT_NODE"
         # InputAttributeNode suffixes should match the user-defined key.
         elif isinstance(node, InputAttributeNode):
             return f"INPUT_ATTRIBUTE_NODE_{node._key}"
