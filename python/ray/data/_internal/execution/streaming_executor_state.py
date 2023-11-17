@@ -343,6 +343,7 @@ def process_completed_tasks(
         topology: The toplogy of operators.
         backpressure_policies: The backpressure policies to use.
         max_allowed_task_failures: The maximum number of task failures allowed.
+            Unlimited if negative.
     Returns:
         The number of task failures.
     """
@@ -390,8 +391,8 @@ def process_completed_tasks(
                         if max_allowed_task_failures > 0:
                             max_allowed_task_failures -= 1
                         error_message += (
-                            " Ingoring this exception with remaining "
-                            f"max_allowed_task_failures={max_allowed_task_failures}."
+                            " Ignoring this exception with remaining"
+                            f" max_allowed_task_failures={max_allowed_task_failures}."
                         )
                         logger.get_logger().error(error_message, e)
                     else:
