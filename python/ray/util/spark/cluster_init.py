@@ -1578,8 +1578,7 @@ class AutoscalingCluster:
             autoscale_config = os.path.join(ray_temp_dir, "autoscaling_config.json")
         else:
             autoscale_config = os.path.join(
-                _get_default_ray_tmp_dir(),
-                "autoscaling_config.json"
+                _get_default_ray_tmp_dir(), "autoscaling_config.json"
             )
         with open(autoscale_config, "w") as f:
             f.write(json.dumps(self._config))

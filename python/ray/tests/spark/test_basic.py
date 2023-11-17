@@ -352,7 +352,7 @@ class TestSparkLocalCluster:
 
         shutdown_ray_cluster()
 
-    @pytest.mark.parametrize("autoscale", [True])
+    @pytest.mark.parametrize("autoscale", [False, True])
     def test_serve_global_ray_cluster(self, autoscale):
         shutil.rmtree("/tmp/ray", ignore_errors=True)
 
@@ -365,12 +365,16 @@ class TestSparkLocalCluster:
                         "ray.util.spark.cluster_init.get_spark_session",
                         return_value=self.spark,
                     ):
-                        serve_global_ray_cluster(num_worker_nodes=1, autoscale=autoscale)
+                        serve_global_ray_cluster(
+                            num_worker_nodes=1, autoscale=autoscale
+                        )
                 except BaseException:
                     # For debugging testing failure.
                     import traceback
+
                     traceback.print_exc()
                     raise
+
             threading.Thread(target=serve, daemon=True).start()
 
         def wait_cluster_ready():
@@ -394,8 +398,8 @@ class TestSparkLocalCluster:
             with pytest.raises(
                 ValueError,
                 match=re.compile(
-                    "Acquiring global lock failed for setting up new global mode Ray on "
-                    "spark cluster"
+                    "Acquiring global lock failed for setting up new global mode "
+                    "Ray on spark cluster"
                 ),
             ):
                 serve_global_ray_cluster(num_worker_nodes=1, autoscale=autoscale)

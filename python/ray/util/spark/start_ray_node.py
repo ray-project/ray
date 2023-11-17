@@ -46,7 +46,8 @@ if __name__ == "__main__":
     else:
         # This case is for global mode Ray on spark cluster
         from ray.util.spark.cluster_init import _get_default_ray_tmp_dir
-        temp_dir = _get_default_ray_tmp_dir
+
+        temp_dir = _get_default_ray_tmp_dir()
 
     ray_cli_cmd = "ray"
     lock_file = temp_dir + ".lock"
@@ -90,8 +91,8 @@ if __name__ == "__main__":
                     try:
                         log_dir_prefix = os.path.basename(temp_dir)
                         if log_dir_prefix == "ray":
-                            # global mode cluster case, append a timestamp to it to avoid
-                            # name conflict with last Ray global cluster log dir.
+                            # global mode cluster case, append a timestamp to it to
+                            # avoid name conflict with last Ray global cluster log dir.
                             log_dir_prefix = (
                                 log_dir_prefix + f"-global-{int(time.time())}"
                             )
