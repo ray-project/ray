@@ -1463,7 +1463,7 @@ class DeploymentState:
                 autoscaling_config.initial_replicas is not None
                 and target_capacity_scale_direction != TargetCapacityScaleDirection.DOWN
             ):
-                self.get_capacity_adjusted_num_replicas(
+                autoscaled_num_replicas = self.get_capacity_adjusted_num_replicas(
                     autoscaling_config.initial_replicas, target_capacity
                 )
             else:
