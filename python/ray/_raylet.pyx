@@ -2640,6 +2640,21 @@ cdef class GcsClient:
                          serialized_reply))
 
         return serialized_reply
+    @_auto_reconnect
+    def update_label(
+            self,
+            node_id: c_string,
+            labels: unordered_map[c_string, c_string] 
+    ):
+        cdef:
+            int64_t timeout_ms = -1
+        with nogil:
+            check_status(self.inner.get().UpdateNodeLabels(
+                node_id,labels,timeout_ms))
+
+        return True
+
+
 
     @_auto_reconnect
     def drain_node(

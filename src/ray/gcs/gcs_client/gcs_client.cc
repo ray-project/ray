@@ -230,6 +230,29 @@ Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addres
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::UpdateNodeLabels(const std::string &node_id,
+                                   const std::unordered_map<std::string, std::string> &labels,
+                                   int64_t timeout_ms ) {
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
+  
+  rpc::UpdateNodeLabelsRequest request;
+  request.set_node_id(NodeID::FromHex(node_id).Binary());
+  request.mutable_labels()->insert(
+        labels.begin(), labels.end());
+  rpc::UpdateNodeLabelsReply reply;
+  grpc::Status status = node_info_stub_->UpdateNodeLabels(&context, request, &reply);
+
+  if (status.ok()) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+      
+      return Status::OK();
+    }
+    return HandleGcsError(reply.status());
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::InternalKVGet(const std::string &ns,
                                       const std::string &key,
                                       int64_t timeout_ms,
