@@ -426,8 +426,6 @@ class MultiAgentEpisode:
 
         return extra_model_outputs
 
-    # TODO (simon): Remvoe the `has_initial_value` as this is not used. Check also
-    # if we need the shift.
     def get_rewards(
         self,
         indices: Union[int, List[int]] = -1,
@@ -454,150 +452,155 @@ class MultiAgentEpisode:
             timestep, rewards are returned (i.e. not all agent ids are
             necessarily in the keys).
         """
+
+        if global_ts:
+            # Check, if the indices are iterable.
+            if isinstance(indices, list):
+                indices = [(self.t + idx + 1 if idx < 0 else idx) for idx in indices]
+            # If not make them iterable.
+            else:
+                indices = [self.t + indices + 1] if indices < 0 else [indices]
+        else:
+            if not isinstance(indices, list):
+                indices = [indices]
+
         if not partial and consider_buffer:
             buffered_rewards = {}
+            timestep_mapping = {}
 
-            if global_ts:
-                # Check, if the indices are iterable.
-                if isinstance(indices, list):
-                    indices = [
-                        (self.t + idx + 1 if idx < 0 else idx) for idx in indices
-                    ]
-                # If not make them iterable.
-                else:
-                    indices = [self.t + indices + 1] if indices < 0 else [indices]
-            else:
-                if not isinstance(indices, list):
-                    indices = [indices]
-
-            # Check now, if one of these indices is after the last recorded reward,
-            # i.e. the last timestep in the global timestep mapping.
-            # Buffered rewards are always partial (i.e. orphane, without an
-            # observation, sometimes with an action).
-            # A couple of points have to be met for a full reward buffer:
-            #   1. Either there was no initial observation, yet.
-            #       - Then `global_t_to_local_t` is empty, `global_action_t`
-            #         is empty, but `partial_rewards_t` is filled and the buffer.
-            #   2. There was an action with a reward at a timestep, but the next
-            #      observation is missing.
-            #       - Then there must be timesteps in `partial_rewards_t` that are
-            #         larger than `global_t_to_local_t[agent_id][-1]`.
-            #   3. There was neither an observation nor an action.
-            #       - Then there must be timesteps in `partial_rewards_t` that are
-            #         larger than `global_t_to_local_t[agent_id][-1]`.
             for agent_id, agent_global_t_to_local_t in self.global_t_to_local_t.items():
-                # If the global timestep mapping exists at least the initial
-                # observation for the agent is in it.
+                # If the agent had an initial observation.
                 if agent_global_t_to_local_t:
-                    # Accumulate the partial rewards between the last timestep smaller
-                    # than an index and the index.
-                    if len(agent_global_t_to_local_t[-1]) == len(
-                        self.global_actions_t[agent_id]
+                    # If the agent received rewards after the last observation.
+                    if (
+                        self.partial_rewards_t[agent_id]
+                        and self.partial_rewards_t[agent_id][-1]
+                        > agent_global_t_to_local_t[-1]
+                        and self.partial_rewards_t[agent_id][-1] <= max(indices)
                     ):
-                        # TODO (simon): If truely `partial` use only the rewards at
-                        # index in indices.
-                        # We request only the indices at or after the last observation.
                         indices_at_or_after_last_obs = [
-                            idx
-                            for idx in indices
-                            if idx >= agent_global_t_to_local_t[-1]
-                        ]
-                        # TODO (simon): Create find_indices_between_equal().
-                        # Also, we add up only the rewards received after or at the last
-                        # observation.
-                        reward_after_last_obs_index = min(
-                            self.partial_rewards_t[agent_id].find_indices_right_equal(
-                                agent_global_t_to_local_t[-1]
+                            agent_global_t_to_local_t[-1]
+                        ] + sorted(
+                            [
+                                idx
+                                for idx in indices
+                                if idx > agent_global_t_to_local_t[-1]
+                            ]
+                        )
+                        (
+                            buffered_rewards[agent_id],
+                            indices_wih_rewards,
+                        ) = self.accumulate_partial_rewards(
+                            agent_id,
+                            indices_at_or_after_last_obs,
+                            return_indices=True,
+                        )
+                        # Note, the global timestep mapping begins at zero
+                        # with the initial observation. Rewards start at
+                        # timestep 1.
+                        timestep_mapping[agent_id] = _IndexMapping(
+                            agent_global_t_to_local_t[1:]
+                            + list(
+                                range(
+                                    agent_global_t_to_local_t[-1] + 1,
+                                    agent_global_t_to_local_t[-1]
+                                    + 1
+                                    + len(indices_wih_rewards),
+                                )
                             )
                         )
-                        buffered_rewards = [
-                            sum(
-                                self.partial_rewards[agent_id][
-                                    self.partial_rewards_t[
-                                        reward_after_last_obs_index:
-                                    ].find_indices_left_equal(idx)
-                                ]
-                            )
-                            for idx in indices_at_or_after_last_obs
-                        ]
-                # There has been no initial observation for the agent, yet.
-                else:
-                    # If the agent got partial rewards before its initial observation
-                    # sum them up towards each requested index, e.g. `indices=[1, 3, 4]`
-                    # and `partial_rewards_t[agent_id]=[0, 1, 4, 5, 6]`, and rewards of
-                    # `1.0` at each index, `buffered_rewards[agent_id]=[2, 2, 3]`
-                    # TODO (sven): We could also consider summing partial rewards up to
-                    # the last one before the smallest greater index in `indices` (the
-                    # requested ones). I decided otherwise as assignment plays a role
-                    # in RL and somehow the chosen form here appears more correct and
-                    # natural.
-                    if self.partial_rewards_t[agent_id] and self.partial_rewards_t[
-                        agent_id
-                    ].find_indices_left_equal(max(indices)):
-                        # TODO (simon): If we use this more often, refactor.
-                        buffered_rewards[agent_id] = [
-                            sum(
-                                self.partial_rewards[agent_id][
-                                    min(
-                                        self.partial_rewards_t[
-                                            agent_id
-                                        ].find_indices_left_equal(idx)
-                                    ) :
-                                ]
-                            )
-                            for idx in indices
-                        ]
-                    # This agent has not yet any recorded rewards.
+                    # There are no partial rewards in the range of requested indices.
                     else:
                         buffered_rewards[agent_id] = []
+                        # Note, we need here at least the timestep mapping for the
+                        # recorded timesteps as they have recorded any rewards before.
+                        # TODO (simon): Allow slicing for _IndexMapping. ALso rename to
+                        # TimestepMapping.
+                        # TODO (simon): Check, if we can simply use the `
+                        # has_initial_value`instead of slicing.
+                        timestep_mapping[agent_id] = _IndexMapping(
+                            agent_global_t_to_local_t[1:]
+                        )
 
-            # Check now, if one of these indices is the last in the global
-            # action timestep mapping.
-            for agent_id, agent_global_action_t in self.global_actions_t.items():
-                if agent_global_action_t:
-                    last_action_index = (
-                        agent_global_action_t[-1]
-                        if global_ts
-                        else len(agent_global_action_t) - 1
-                    )
-                # We consider only timesteps that are in the requested indices and
-                # check then, if for these the buffer is full. Note, we cannot use
-                # the extra model outputs buffer as this is by default `None`.
-                if (
-                    agent_global_action_t
-                    and (last_action_index in indices or -1 in indices)
-                    and self.agent_buffers[agent_id]["actions"].full()
-                ):
-                    # TODO (sven): Because the reward buffers have default values of
-                    # `0.0`, agents that did not have a reward in a period, but a
-                    # buffered action would receive a reward of `0.0` here. Is this
-                    # wanted?
-
-                    # Then the buffer must be full and needs to be accessed.
-                    # Note, we do not want to empty the buffer, but only read it.
-                    buffered_rewards[agent_id] = [
-                        self.agent_buffers[agent_id]["rewards"].queue[0]
-                    ]
+                # If the agent had no initial observation, yet.
                 else:
-                    buffered_rewards[agent_id] = []
+                    # Has the agent received partial rewards, yet and if yes, has
+                    # any one received before the last requested index.
+                    if self.partial_rewards_t[agent_id] and self.partial_rewards_t[
+                        agent_id
+                    ][0] < max(indices):
+                        # Then assign the partial rewards to the requested indices.
+                        # Note, the function accumulates from the second index on, so
+                        # we add a zero.
+                        # TODO (simon): Check, if we need here maybe a sifting for
+                        # the first index in partial_rewards_t.
+                        (
+                            buffered_rewards[agent_id],
+                            indices_with_rewards,
+                        ) = self.accumulate_partial_rewards(
+                            agent_id,
+                            [0] + sorted(indices),
+                            return_indices=True,
+                        )
+                        # TODO (simon): This should be all indices at or below which
+                        # rewards existed.
+                        timestep_mapping[agent_id] = _IndexMapping(
+                            range(1, len(indices_wih_rewards) + 1)
+                        )
+                        # timestep_mapping[agent_id] = _IndexMapping(
+                        #     [
+                        #         idx
+                        #         for idx in sorted(indices)
+                        #         if self.partial_rewards_t[
+                        #             "agent_1"
+                        #         ].find_indices_left_equal(idx)
+                        #     ]
+                        # )
+                    # Else, no partial rewards have to be assigned.
+                    else:
+                        buffered_rewards[agent_id] = []
+                        timestep_mapping[agent_id] = _IndexMapping()
 
         # Now request the rewards.
         if partial:
             # Here we simply apply the logic from `_getattr_by_index`, however
             # use simply the the `partial_rewards` dict. Check for indices
             # correspondingly.
-            pass
+            if as_list:
+                return [
+                    {
+                        agent_id: self.partial_rewards[agent_id][
+                            self.partial_rewards_t[agent_id].find_indices(
+                                [idx], shift=0
+                            )[0]
+                        ]
+                        for agent_id, agent_eps in self.agent_episodes.items()
+                        if self.partial_rewards_t[agent_id].find_indices([idx], shift=0)
+                    }
+                    for idx in indices
+                ]
+            else:
+                return {
+                    agent_id: list(
+                        map(
+                            self.partial_rewards[agent_id].__getitem__,
+                            self.partial_rewards_t[agent_id].find_indices(
+                                indices, shift=0
+                            ),
+                        )
+                    )
+                    for agent_id in self._agent_ids
+                }
+
         else:
             if consider_buffer:
-                # Take care of buffered (and therefore cummulated) rewards). Note,
-                # because neglecting partial rewards, but recognizing buffers needs
-                # information about when the cumulated
+                # Note, we do not consider initial values here as the indices are
+                # already positive.
                 return self._getattr_by_index(
                     "rewards",
                     indices,
-                    has_initial_value=False,
                     global_ts=global_ts,
-                    # global_ts_mapping=self.global_actions_t,
+                    global_ts_mapping=timestep_mapping,
                     buffered_values=buffered_rewards,
                     as_list=as_list,
                 )
@@ -613,6 +616,57 @@ class MultiAgentEpisode:
                     as_list=as_list,
                     shift=-1,
                 )
+
+    def accumulate_partial_rewards(
+        self,
+        agent_id: Union[str, int],
+        indices: List[int],
+        return_indices: bool = False,
+    ):
+        """Accumulates rewards along the interval between two indices.
+
+        Assumes the indices are sorted ascendingly. Opeartes along the
+        half-open interval (last_index, index].
+
+        Args:
+            agent_id: Either string or integer. The unique id of the agent in
+                the `MultiAgentEpisode`.
+            indices: List of integers. The ascendingly sorted indices for which
+                the rewards should be accumulated.
+
+        Returns: A list of accumulated rewards for the indices `1:len(indices)`.
+        """
+        if return_indices:
+            index_interval_map = {
+                indices[indices.index(idx) + 1]: self.partial_rewards_t[
+                    agent_id
+                ].find_indices_between_right_equal(idx, indices[indices.index(idx) + 1])
+                for idx in indices[:-1]
+                if self.partial_rewards_t[agent_id].find_indices_between_right_equal(
+                    idx, indices[indices.index(idx) + 1]
+                )
+            }
+            return [
+                sum(map(self.partial_rewards[agent_id].__getitem__, v))
+                for v in index_interval_map.values()
+            ], list(index_interval_map.keys())
+        else:
+            return [
+                sum(
+                    [
+                        self.partial_rewards[agent_id][i]
+                        for i in self.partial_rewards_t[
+                            agent_id
+                        ].find_indices_between_right_equal(
+                            idx, indices[indices.index(idx) + 1]
+                        )
+                    ]
+                )
+                for idx in indices[:-1]
+                if self.partial_rewards_t[agent_id].find_indices_between_right_equal(
+                    idx, indices[indices.index(idx) + 1]
+                )
+            ]
 
     def get_infos(
         self,
@@ -1531,10 +1585,13 @@ class MultiAgentEpisode:
             # If a list should be returned.
             if as_list:
                 if buffered_values:
+                    # Note, for addition we have to ensure that both elements are lists
+                    # and terminated/truncated agents have numpy arrays.
                     return [
                         {
                             agent_id: (
-                                getattr(agent_eps, attr) + buffered_values[agent_id]
+                                list(getattr(agent_eps, attr))
+                                + buffered_values[agent_id]
                             )[global_ts_mapping[agent_id].find_indices([idx], shift)[0]]
                             for agent_id, agent_eps in self.agent_episodes.items()
                             if global_ts_mapping[agent_id].find_indices([idx], shift)
@@ -1557,11 +1614,14 @@ class MultiAgentEpisode:
             # Otherwise we return a dictionary.
             else:
                 if buffered_values:
+                    # Note, for addition we have to ensure that both elements are lists
+                    # and terminated/truncated agents have numpy arrays.
                     return {
                         agent_id: list(
                             map(
                                 (
-                                    getattr(agent_eps, attr) + buffered_values[agent_id]
+                                    list(getattr(agent_eps, attr))
+                                    + buffered_values[agent_id]
                                 ).__getitem__,
                                 global_ts_mapping[agent_id].find_indices(
                                     indices, shift
@@ -1730,18 +1790,23 @@ class _IndexMapping(list):
     See for example `MultiAgentEpisode.get_observations()`.
     """
 
-    def __init__(self, *args, **kwargs):
-        """Initializes and `_IndexMapping` instance."""
+    # def __init__(self, *args, **kwargs):
+    #     """Initializes and `_IndexMapping` instance."""
 
-        super(_IndexMapping, self).__init__(*args, **kwargs)
+    #     super(_IndexMapping, self).__init__(*args, **kwargs)
 
-    def __getitem__(self, key):
-        """Gets the value at an index.
+    # def __getitem__(self, key):
+    #     """Gets the value at an index.
 
-        This ensures that slicing results again in an `_IndexMapping`.
-        """
+    #     This ensures that slicing results again in an `_IndexMapping`.
+    #     """
 
-        return _IndexMapping(list.__getitem__(self, key))
+    #     if isinstance(key, slice):
+    #         item = super().__getitem__(self, key)
+    #         if isinstance(item, int):
+    #             return _IndexMapping([item])
+    #         else:
+    #             return _IndexMapping(super().__getitem__(self, key))
 
     def find_indices(self, indices_to_find: List[int], shift: int = 0):
         """Returns global timesteps at which an agent stepped.
@@ -1798,9 +1863,7 @@ class _IndexMapping(list):
                 indices.append(max(self.index(num) + shift, 0))
         return list(reversed(indices))
 
-    def find_indices_left_equal(
-        self, threshold: Union[int, List[int]], shift: bool = 0
-    ):
+    def find_indices_left_equal(self, threshold: int, shift: bool = 0):
         indices = []
         for num in self:
             if num > threshold or (self.index(num) + shift) < 0:
@@ -1809,4 +1872,17 @@ class _IndexMapping(list):
                 break
             else:
                 indices.append(self.index(num))
+        return indices
+
+    def find_indices_between_right_equal(
+        self, threshold_left: int, threshold_right: int, shift: int = 0
+    ):
+        indices = []
+        for num in self:
+            if num > threshold_right:
+                break
+            elif num <= threshold_left or self.index(num) + shift < 0:
+                continue
+            else:
+                indices.append(self.index(num) + shift)
         return indices
