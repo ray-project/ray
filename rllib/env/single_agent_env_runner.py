@@ -45,9 +45,8 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        if (
-            isinstance(self.config.env, str)
-            and _global_registry.contains(ENV_CREATOR, self.config.env)
+        if isinstance(self.config.env, str) and _global_registry.contains(
+            ENV_CREATOR, self.config.env
         ):
             entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
@@ -306,9 +305,10 @@ class SingleAgentEnvRunner(EnvRunner):
         # `extra_model_outputs`.
         ongoing_episodes_to_return = [
             episode.convert_lists_to_numpy(
-                #keep_every_n_state_out=self.config.model.get("max_seq_len")
+                # keep_every_n_state_out=self.config.model.get("max_seq_len")
             )
-            for episode in self._episodes if episode.t > 0
+            for episode in self._episodes
+            if episode.t > 0
         ]
         # Also, make sure, we return a copy and start new chunks so that callers
         # of this function do not alter the ongoing and returned Episode objects.

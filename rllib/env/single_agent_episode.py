@@ -333,7 +333,7 @@ class SingleAgentEpisode:
         """
         assert not self.is_done
 
-        indices_obs_and_infos = slice(-overlap-1, None)
+        indices_obs_and_infos = slice(-overlap - 1, None)
         indices_rest = slice(-overlap, None) if overlap > 0 else slice(None, 0)
 
         return SingleAgentEpisode(
@@ -402,7 +402,9 @@ class SingleAgentEpisode:
         """
         return SampleBatch(self.get_data_dict())
 
-    def get_observations(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
+    def get_observations(
+        self, indices: Optional[Union[int, List[int], slice]] = None
+    ) -> Any:
         if indices is None:
             slice_ = slice(self._len_pre_buffer, -1)
         elif isinstance(indices, list) and not self.is_numpy:
@@ -426,7 +428,9 @@ class SingleAgentEpisode:
             slice_ = indices
         return self.infos[slice_]
 
-    def get_actions(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
+    def get_actions(
+        self, indices: Optional[Union[int, List[int], slice]] = None
+    ) -> Any:
         if indices is None:
             slice_ = slice(self._len_pre_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
@@ -435,7 +439,9 @@ class SingleAgentEpisode:
             slice_ = indices
         return self.actions[slice_]
 
-    def get_rewards(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
+    def get_rewards(
+        self, indices: Optional[Union[int, List[int], slice]] = None
+    ) -> Any:
         if indices is None:
             slice_ = slice(self._len_pre_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
@@ -444,7 +450,9 @@ class SingleAgentEpisode:
             slice_ = indices
         return self.rewards[slice_]
 
-    def get_extra_model_outputs(self, key: str, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
+    def get_extra_model_outputs(
+        self, key: str, indices: Optional[Union[int, List[int], slice]] = None
+    ) -> Any:
         assert key in self.extra_model_outputs
         data = self.extra_model_outputs[key]
         if indices is None:

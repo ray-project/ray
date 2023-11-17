@@ -345,9 +345,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         env = TestEnv()
         # Add initial observation.
         init_obs, init_info = env.reset()
-        episode.add_env_reset(
-            observation=init_obs, info=init_info
-        )
+        episode.add_env_reset(observation=init_obs, info=init_info)
         # Sample 100 steps.
         for i in range(100):
             action = i
