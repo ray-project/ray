@@ -14,6 +14,7 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
     ApplicationStatus,
+    ApplicationStatusInfo,
     DeploymentID,
     DeploymentInfo,
     EndpointInfo,
@@ -711,18 +712,12 @@ class ServeController:
 
         new_config_checkpoint = {}
 
-        if (
-            len(self.application_state_manager.list_app_statuses()) == 0
-            and config.target_capacity is not None
-        ):
-            # No apps are running. We are deploying the first config.
-            self._scale_direction = TargetCapacityScaleDirection.UP
-        elif self._running_apps_match_config(config):
-            self._scale_direction = calculate_scale_direction(
-                curr_target_capacity=self._target_capacity,
-                next_target_capacity=config.target_capacity,
-                curr_scale_direction=self._scale_direction,
-            )
+        self._scale_direction = calculate_scale_direction(
+            new_config=config,
+            all_app_statuses=self.application_state_manager.list_app_statuses(),
+            curr_target_capacity=self._target_capacity,
+            curr_scale_direction=self._scale_direction,
+        )
 
         for app_config in config.applications:
             for deployments in app_config.deployments:
@@ -1050,36 +1045,62 @@ class ServeController:
                 log_file_path = handler.baseFilename
         return self.system_logging_config, log_file_path
 
-    def _running_apps_match_config(self, config: ServeDeploySchema):
-        config_apps = {app.name for app in config.applications}
-
-        running_apps = set()
-        for (
-            app_name,
-            status_info,
-        ) in self.application_state_manager.list_app_statuses().items():
-            if status_info.status != ApplicationStatus.DELETING:
-                running_apps.add(app_name)
-
-        return config_apps == running_apps
-
 
 def calculate_scale_direction(
+    new_config: ServeDeploySchema,
+    all_app_statuses: Dict[str, ApplicationStatusInfo],
     curr_target_capacity: Optional[float],
-    next_target_capacity: Optional[float],
     curr_scale_direction: Optional[float],
 ) -> Optional[TargetCapacityScaleDirection]:
-    if curr_target_capacity == next_target_capacity:
-        return curr_scale_direction
-    elif curr_target_capacity is None and next_target_capacity is not None:
-        return TargetCapacityScaleDirection.DOWN
-    elif curr_target_capacity is None and next_target_capacity is not None:
-        return None
-    elif curr_target_capacity < next_target_capacity:
-        return TargetCapacityScaleDirection.UP
+    next_scale_dirction = None
+
+    if len(all_app_statuses) == 0 and new_config.target_capacity is not None:
+        next_scale_dirction = TargetCapacityScaleDirection.UP
+
+    if live_applications_match_config(new_config, all_app_statuses):
+        next_target_capacity = new_config.target_capacity
+
+        if curr_target_capacity == next_target_capacity:
+            next_scale_dirction = curr_scale_direction
+        elif curr_target_capacity is None and next_target_capacity is not None:
+            next_scale_dirction = TargetCapacityScaleDirection.DOWN
+        elif curr_target_capacity is None and next_target_capacity is not None:
+            next_scale_dirction = None
+        elif curr_target_capacity < next_target_capacity:
+            next_scale_dirction = TargetCapacityScaleDirection.UP
+        else:
+            assert curr_target_capacity > next_target_capacity
+            next_scale_dirction = TargetCapacityScaleDirection.DOWN
     else:
-        assert curr_target_capacity > next_target_capacity
-        return TargetCapacityScaleDirection.DOWN
+        next_scale_dirction = curr_scale_direction
+
+    if next_scale_dirction != curr_scale_direction:
+        if isinstance(next_scale_dirction, TargetCapacityScaleDirection):
+            logger.info(
+                f"Target capacity scaling {next_scale_dirction.value.lower()} "
+                f"from {curr_target_capacity} to {new_config.target_capacity}."
+            )
+        else:
+            assert next_scale_dirction is None
+            logger.info(f"Target capacity entering 100% at steady state.")  # noqa: F541
+
+    return next_scale_dirction
+
+
+def live_applications_match_config(
+    config: ServeDeploySchema, all_app_statuses: Dict[str, ApplicationStatusInfo]
+) -> bool:
+    config_apps = {app.name for app in config.applications}
+
+    live_apps = set()
+    for (
+        app_name,
+        status_info,
+    ) in all_app_statuses.items():
+        if status_info.status != ApplicationStatus.DELETING:
+            live_apps.add(app_name)
+
+    return config_apps == live_apps
 
 
 @ray.remote(num_cpus=0)
