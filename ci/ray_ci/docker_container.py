@@ -28,6 +28,7 @@ class DockerContainer(Container):
         platform: str,
         image_type: str,
         architecture: str = DEFAULT_ARCHITECTURE,
+        upload: bool = False,
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
@@ -35,6 +36,7 @@ class DockerContainer(Container):
         self.platform = platform
         self.image_type = image_type
         self.architecture = architecture
+        self.upload = upload
 
         super().__init__(
             "forge" if architecture == "x86_64" else "forge-aarch64",
