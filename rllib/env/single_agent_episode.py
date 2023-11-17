@@ -543,3 +543,6 @@ class SingleAgentEpisode:
             "first (after which `len(SingleAgentEpisode)` will be 0)."
         )
         return length
+
+    def __repr__(self):
+        return f"SAEps({self.id_} len={len(self)})"
