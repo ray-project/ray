@@ -57,11 +57,10 @@ NodeResources ResourceMapToNodeResources(
   auto resource_map_total_copy = resource_map_total;
   auto resource_map_available_copy = resource_map_available;
   auto node_labels_copy = node_labels;
-  // move gpu_memory to node labels
+
   if (resource_map_total.find("gpu_memory") != resource_map_total.end()) {
     node_labels_copy["gpu_memory"] = std::to_string(resource_map_total.at("gpu_memory") /
                                                     resource_map_total.at("GPU"));
-    // RAY_CHECK(std::stod(node_labels_copy.at("gpu_memory")) == 1000);
     resource_map_total_copy.erase("gpu_memory");
     resource_map_available_copy.erase("gpu_memory");
   } else {

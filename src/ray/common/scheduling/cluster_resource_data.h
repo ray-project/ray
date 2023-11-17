@@ -119,23 +119,6 @@ class ResourceRequest {
   bool requires_object_store_memory_ = false;
 };
 
-// update this and resource instance set,
-// two options, both same idea: map derived resource id to vector of resource id
-
-// option 1: update in taskresource instance, resourceinstance set to override Set, add,
-// etc for derived resource id for example Set(DerivedNodeID ,
-// abs::flat_hash_map<ResourceID, vector<FixedPoint>> base_resources) how to not expose
-// the base resource??
-
-// option 2: map derived resource id to its base resource ids outside Resource instance
-// problem: Tryallocate is hard to handle, esp need same index for all 3 resources
-// + need to free all when failed allocating
-
-// note: both no need to store DerivedResourceID => vector<FixedPoint>, as all stored as
-// base resource id
-
-// we might need to check if gpu_memory and gpu both exists here??
-
 /// Represents a resource set that contains the per-instance resource values.
 /// NOTE, unlike ResourceRequest, zero values won't be automatically removed in this
 /// class. Because otherwise we will lose the number of instances the set originally had
