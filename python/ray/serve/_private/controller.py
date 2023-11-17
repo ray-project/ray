@@ -711,6 +711,19 @@ class ServeController:
 
         new_config_checkpoint = {}
 
+        if (
+            len(self.application_state_manager.list_app_statuses()) == 0
+            and config.target_capacity is not None
+        ):
+            # No apps are running. We are deploying the first config.
+            self._scale_direction = TargetCapacityScaleDirection.UP
+        elif self._running_apps_match_config(config):
+            self._scale_direction = calculate_scale_direction(
+                curr_target_capacity=self._target_capacity,
+                next_target_capacity=config.target_capacity,
+                curr_scale_direction=self._scale_direction,
+            )
+
         for app_config in config.applications:
             for deployments in app_config.deployments:
                 if deployments.route_prefix != DEFAULT.VALUE:
@@ -1049,6 +1062,24 @@ class ServeController:
                 running_apps.add(app_name)
 
         return config_apps == running_apps
+
+
+def calculate_scale_direction(
+    curr_target_capacity: Optional[float],
+    next_target_capacity: Optional[float],
+    curr_scale_direction: Optional[float],
+) -> Optional[TargetCapacityScaleDirection]:
+    if curr_target_capacity == next_target_capacity:
+        return curr_scale_direction
+    elif curr_target_capacity is None and next_target_capacity is not None:
+        return TargetCapacityScaleDirection.DOWN
+    elif curr_target_capacity is None and next_target_capacity is not None:
+        return None
+    elif curr_target_capacity < next_target_capacity:
+        return TargetCapacityScaleDirection.UP
+    else:
+        assert curr_target_capacity > next_target_capacity
+        return TargetCapacityScaleDirection.DOWN
 
 
 @ray.remote(num_cpus=0)
