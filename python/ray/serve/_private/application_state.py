@@ -424,25 +424,21 @@ class ApplicationState:
         if self._target_state.deleting:
             return ApplicationStatus.DELETING, ""
 
-        num_healthy_or_autoscaling_deployments = 0
+        num_healthy_deployments = 0
+        num_autoscaling_deployments = 0
         num_updating_deployments = 0
         unhealthy_deployment_names = []
 
         for deployment_status in self.get_deployments_statuses():
             if deployment_status.status == DeploymentStatus.UNHEALTHY:
                 unhealthy_deployment_names.append(deployment_status.name)
+            elif deployment_status.status == DeploymentStatus.HEALTHY:
+                num_healthy_deployments += 1
             elif (
-                deployment_status.status == DeploymentStatus.HEALTHY
-                or deployment_status.status_trigger
-                == DeploymentStatusTrigger.AUTOSCALING
+                deployment_status.status_trigger == DeploymentStatusTrigger.AUTOSCALING
             ):
-                # If all deployments are HEALTHY or autoscaling, then
-                # application is RUNNING
-                num_healthy_or_autoscaling_deployments += 1
+                num_autoscaling_deployments += 1
             else:
-                # If deployments are UPDATING or UPSCALING/DOWNSCALING
-                # with status trigger CONFIG_UPDATE, then application is
-                # still DEPLOYING
                 num_updating_deployments += 1
 
         if len(unhealthy_deployment_names):
@@ -455,9 +451,14 @@ class ApplicationState:
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
         elif num_updating_deployments > 0:
+            # If deployments are UPDATING or UPSCALING/DOWNSCALING
+            # with status trigger CONFIG_UPDATE_STARTED, then
+            # application is still DEPLOYING
             return ApplicationStatus.DEPLOYING, ""
         else:
-            assert num_healthy_or_autoscaling_deployments == len(
+            # If all deployments are HEALTHY or autoscaling, then
+            # application is RUNNING
+            assert num_healthy_deployments + num_autoscaling_deployments == len(
                 self.target_deployments
             )
             return ApplicationStatus.RUNNING, ""

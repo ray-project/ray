@@ -1411,13 +1411,13 @@ class DeploymentState:
                 ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
         # Determine whether the updated target state is simply scaling
-        is_scale = target_state.equal_to_state_excluding_num_replicas(
+        is_scaling = target_state.equal_to_state_excluding_num_replicas(
             self._target_state
         )
         # If deployment is not in the middle of updating, and this new
         # target state only changes the number of replicas, then set
         # status to be UPSCALING/DOWNSCALING
-        if self._target_state.info and is_scale:
+        if self._target_state.info and is_scaling:
             if self._curr_status_info.status != DeploymentStatus.UPDATING:
                 new, old = (target_state.num_replicas, self._target_state.num_replicas)
                 # New replicas should never be equal to old replicas because both
@@ -1875,37 +1875,25 @@ class DeploymentState:
                 and running_at_target_version_replica_cnt == all_running_replica_cnt
             ):
                 if self._curr_status_info.status == DeploymentStatus.UPSCALING:
-                    self._curr_status_info.update(
-                        status=DeploymentStatus.HEALTHY,
-                        status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED,
-                        message="",
-                    )
+                    status_trigger = DeploymentStatusTrigger.UPSCALE_COMPLETED
                 elif self._curr_status_info.status == DeploymentStatus.DOWNSCALING:
-                    self._curr_status_info.update(
-                        status=DeploymentStatus.HEALTHY,
-                        status_trigger=DeploymentStatusTrigger.DOWNSCALE_COMPLETED,
-                        message="",
-                    )
+                    status_trigger = DeploymentStatusTrigger.DOWNSCALE_COMPLETED
                 elif (
                     self._curr_status_info.status == DeploymentStatus.UPDATING
                     and self._curr_status_info.status_trigger
                     == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
                 ):
-                    self._curr_status_info.update(
-                        status=DeploymentStatus.HEALTHY,
-                        status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
-                        message="",
-                    )
+                    status_trigger = (DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,)
                 elif self._curr_status_info.status == DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info.update(
-                        status=DeploymentStatus.HEALTHY,
-                        status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
-                        message="",
-                    )
+                    status_trigger = (DeploymentStatusTrigger.UNSPECIFIED,)
                 else:
-                    self._curr_status_info.update(
-                        status=DeploymentStatus.HEALTHY, message=""
-                    )
+                    status_trigger = self._curr_status_info.status_trigger
+
+                self._curr_status_info.update(
+                    status=DeploymentStatus.HEALTHY,
+                    status_trigger=status_trigger,
+                    message="",
+                )
 
                 return False, any_replicas_recovering
 
@@ -2049,10 +2037,6 @@ class DeploymentState:
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
                 if replica.version == self._target_state.version:
-                    # If the deployment transitioned from HEALTHY to
-                    # UNHEALTHY, then there isn't an explicit status
-                    # trigger since it wasn't because a new deployment or
-                    # an update failed.
                     self._curr_status_info.update(
                         status=DeploymentStatus.UNHEALTHY,
                         status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,

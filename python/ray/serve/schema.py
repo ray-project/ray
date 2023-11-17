@@ -851,7 +851,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
         description="The current status of the deployment."
     )
     status_trigger: DeploymentStatusTrigger = Field(
-        description="The trigger for the current status.",
+        description="[EXPERIMENTAL] The trigger for the current status.",
     )
     message: str = Field(
         description=(
