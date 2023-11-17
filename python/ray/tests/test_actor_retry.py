@@ -112,11 +112,11 @@ def test_method_raise_5_times(shutdown_only):
     assert ray.get(could_die.ping.remote()) == "pong"
 
 
-# def test_method_raise_dont_over_retry(shutdown_only):
-#     c = Counter.remote()
-#     could_die = MethodDieNTimesBeforeAlive.remote()
-#     with pytest.raises(MyError):
-#         ray.get(could_die.may_raise_n_times.remote(c, 6))
+def test_method_raise_dont_over_retry(shutdown_only):
+    c = Counter.remote()
+    could_die = MethodDieNTimesBeforeAlive.remote()
+    with pytest.raises(MyError):
+        ray.get(could_die.may_raise_n_times.remote(c, 6))
 
 
 if __name__ == "__main__":

@@ -330,6 +330,19 @@ class CoreWorkerDirectActorTaskSubmitter
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &addr,
                            const TaskSpecification &task_spec) ABSL_LOCKS_EXCLUDED(mu_);
+  enum class PushTaskReplyAction : int {
+    DO_NOTHING = 0,
+    COMPLETE = 1,
+    FAIL_PENDING_TASK_CANCELLED = 2,
+    FAIL_PENDING_TASK_ACTOR_DIED = 3,
+  };
+  // Helper function for HandlePushTaskReply. Decides what to do with the `reply`. Retries
+  // if needed.
+  PushTaskReplyAction RetryOrFindAction(const Status &status,
+                                        const rpc::PushTaskReply &reply,
+                                        const rpc::Address &addr,
+                                        const TaskSpecification &task_spec)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Send all pending tasks for an actor.
   ///

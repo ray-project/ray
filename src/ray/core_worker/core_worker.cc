@@ -39,6 +39,27 @@
 
 namespace ray {
 namespace core {
+namespace {
+
+void DelayAndRun(instrumented_io_context &io_service,
+                 boost::posix_time::milliseconds delay,
+                 std::function<void()> fn) {
+  auto timer = std::make_shared<boost::asio::deadline_timer>(io_service);
+  timer->expires_from_now(delay);
+  timer->async_wait([timer = std::move(timer),
+                     fn = std::move(fn)](const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      // `operation_aborted` is set when `timer` is canceled or destroyed.
+      // The Monitor lifetime may be short than the object who use it. (e.g.
+      // gcs_server)
+      return;
+    }
+    RAY_CHECK(!error) << error.message();
+    fn();
+  });
+}
+
+}  // namespace
 
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
   if (options.worker_type == WorkerType::DRIVER) {
@@ -366,22 +387,27 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
         spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
+        auto fn = [spec, this]() {
+          TaskSpecification copied_spec = spec;
+          if (copied_spec.IsActorTask()) {
+            auto actor_handle = actor_manager_->GetActorHandle(copied_spec.ActorId());
+            actor_handle->SetResubmittedActorTaskSpec(copied_spec,
+                                                      copied_spec.ActorDummyObject());
+            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(std::move(copied_spec)));
+          } else {
+            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(std::move(copied_spec)));
+          }
+        };
+
         if (!object_recovery) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
           RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                         << "ms delay: " << spec.DebugString();
-          absl::MutexLock lock(&mutex_);
-          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
-          to_resubmit_.push(std::move(task_to_retry));
+          DelayAndRun(io_service_, boost::posix_time::milliseconds(delay_ms), fn);
         } else {
-          if (spec.IsActorTask()) {
-            auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-            actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
-            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
-          } else {
-            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
-          }
+          RAY_LOG(INFO) << "Will resubmit task immediately: " << spec.DebugString();
+          fn();
         }
       },
       push_error_callback,
@@ -970,25 +996,6 @@ void CoreWorker::ExitIfParentRayletDies() {
 }
 
 void CoreWorker::InternalHeartbeat() {
-  // Retry tasks.
-  std::vector<TaskSpecification> tasks_to_resubmit;
-  {
-    absl::MutexLock lock(&mutex_);
-    while (!to_resubmit_.empty() &&
-           current_time_ms() > to_resubmit_.top().execution_time_ms) {
-      tasks_to_resubmit.push_back(std::move(to_resubmit_.top().task_spec));
-      to_resubmit_.pop();
-    }
-  }
-
-  for (auto &spec : tasks_to_resubmit) {
-    if (spec.IsActorTask()) {
-      RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
-    } else {
-      RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
-    }
-  }
-
   // Check timeout tasks that are waiting for death info.
   if (direct_actor_submitter_ != nullptr) {
     direct_actor_submitter_->CheckTimeoutTasks();
