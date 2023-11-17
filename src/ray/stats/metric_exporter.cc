@@ -170,8 +170,8 @@ void OpenCensusProtoExporter::ExportViewData(
   // target payload binary size and make sure it stays w/in 95% of the threshold
   size_t binary_size_payload_threshold = (size_t) (max_grpc_payload_size_ * .95f);
 
-  for (const auto &datum : data) {
-    num_series += AddMetricsData(datum, request_proto);
+  for (const auto & [descriptor, datum] : data) {
+    num_series += AddMetricsData(descriptor, datum, request_proto);
     // NOTE: Because each payload size check is linear in the number of fields w/in the payload
     //       we intentionally sample it to happen only every 1000 series produced to avoid affecting performance
     bool should_check_payload_size = (num_series + 1) % 1000 == 0;
@@ -203,11 +203,10 @@ void OpenCensusProtoExporter::SendData(rpc::ReportOCMetricsRequest &request) {
       });
 }
 
-size_t OpenCensusProtoExporter::AddMetricsData(const std::pair<opencensus::stats::ViewDescriptor,
-                                opencensus::stats::ViewData> &datum, rpc::ReportOCMetricsRequest &request_proto) {
+size_t OpenCensusProtoExporter::AddMetricsData(const opencensus::stats::ViewDescriptor &view_descriptor,
+                                               const opencensus::stats::ViewData &view_data,
+                                               rpc::ReportOCMetricsRequest &request_proto) {
   // Unpack the fields we need for in memory data structure.
-  auto &view_descriptor = datum.first;
-  auto &view_data = datum.second;
   auto &measure_descriptor = view_descriptor.measure_descriptor();
   // Number of time-series bearing new values in the current batch
   size_t num_series = 0;
