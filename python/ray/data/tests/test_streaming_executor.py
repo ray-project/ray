@@ -106,7 +106,7 @@ def test_process_completed_tasks():
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
-    process_completed_tasks(topo, [])
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
@@ -117,7 +117,7 @@ def test_process_completed_tasks():
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
-    process_completed_tasks(topo, [])
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
@@ -131,7 +131,7 @@ def test_process_completed_tasks():
     o1.all_dependents_complete = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
-    process_completed_tasks(topo, [])
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -140,7 +140,7 @@ def test_process_completed_tasks():
     # Test dependents completed.
     o2.need_more_inputs = MagicMock(return_value=False)
     o1.all_dependents_complete = MagicMock()
-    process_completed_tasks(topo, [])
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     o1.all_dependents_complete.assert_called_once()
 
@@ -690,6 +690,35 @@ def test_execution_allowed_nothrottle():
         ),
         ExecutionResources(object_store_memory=900),
     )
+
+
+def test_max_allowed_task_failures(restore_data_context):
+    """Test DataContext.max_allowed_task_failures."""
+    def _run(num_tasks, max_allowed_task_failures, num_failed_tasks, should_fail):
+        ctx = ray.data.DataContext.get_current()
+        ctx.max_allowed_task_failures = max_allowed_task_failures
+
+        def map_func(row):
+            id = row["id"]
+            if id < num_failed_tasks:
+                # Fail the first num_failed_tasks tasks.
+                raise Exception(f"Task failed: {id}")
+            return row
+
+        ds = ray.data.range(num_tasks, parallelism=num_tasks).map(map_func)
+        if should_fail:
+            with pytest.raises(RuntimeError):
+                res = ds.take_all()
+        else:
+            res = sorted([row["id"] for row in ds.take_all()])
+            assert res == list(range(num_failed_tasks, num_tasks))
+
+    _run(5, 0, 0, False)
+    _run(5, 0, 1, True)
+    _run(5, 2, 1, False)
+    _run(5, 2, 2, False)
+    _run(5, 2, 3, True)
+    _run(5, -1, 5, False)
 
 
 if __name__ == "__main__":
