@@ -537,12 +537,29 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
     )
     ds1.take_all()
 
+def test_task_reassign_fault_tolerance(ray_start_10_cpus_shared, restore_data_context):
+    DataContext.get_current().new_execution_backend = True
+    DataContext.get_current().use_streaming_executor = True
+
+    def f(x):
+        import os
+
+        if random.random() > 0.9:
+            print("force exit")
+            os._exit(1)
+        return x
+
+    # Test recover from task reassignment. Set (max_restarts=0, max_task_retries=0) to
+    # enable task reassignment.
+    base = ray.data.range(1000, parallelism=100)
     # Test disabling fault tolerance.
-    ds2 = base.map_batches(
-        f, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0
+    ds = base.map_batches(
+        f, batch_size=2, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0, max_task_retries=0,
     )
-    with pytest.raises(ray.exceptions.RayActorError):
-        ds2.take_all()
+    all = ds.take_all()
+    assert len(all) == 1000
+    print(f'all: {all}')
+    print(f'all length: {len(all)}')
 
 
 if __name__ == "__main__":

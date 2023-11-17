@@ -19,6 +19,7 @@ from ray.data._internal.execution.util import locality_string
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+from functools import partial
 
 logger = DatasetLogger(__name__)
 
@@ -81,7 +82,7 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args,
         )
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
-        logger.get_logger().info(f'ActorPoolMapOperator _ray_remote_args: {self._ray_remote_args}')
+        logger.get_logger().info(f'ActorPoolMapOperator _ray_remote_args: {self._ray_remote_args} {id(self)}')
         self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
@@ -202,11 +203,20 @@ class ActorPoolMapOperator(MapOperator):
             def _task_done_callback(actor_to_return):
                 # Return the actor that was running the task to the pool.
                 self._actor_pool.return_actor(actor_to_return)
+                self._data_task_done_count += 1
+                logger.get_logger().info(f"counts: {self._next_data_task_idx} {self._data_task_done_count} {self._data_task_fail_count}")
                 # Dipsatch more tasks.
                 self._dispatch_tasks()
 
-            def _task_failed_callback(actor):
-                logger.get_logger().warning(f'_task_failed_callback called actor {actor}.')
+            def _task_failed_callback(actor, inputs: RefBundle):
+                self._data_task_fail_count += 1
+                logger.get_logger().warning(f'_task_failed_callback called actor {actor} inputs: {len(inputs)}.')
+                logger.get_logger().info(f"counts: {self._next_data_task_idx} {self._data_task_done_count} {self._data_task_fail_count}")
+                if not self._actor_pool.is_failed_actor(actor):
+                    logger.get_logger().info('Fault tolerance, start another actor.')
+                    self._actor_pool.add_failed_actor(actor)
+                    self._start_actor()
+                self._add_bundled_input(inputs)
 
             # For some reason, if we don't define a new variable `actor_to_return`,
             # the following lambda won't capture the correct `actor` variable.
@@ -215,7 +225,7 @@ class ActorPoolMapOperator(MapOperator):
                 gen,
                 bundle,
                 lambda: _task_done_callback(actor_to_return),
-                lambda: _task_failed_callback(actor_to_return),
+                partial(_task_failed_callback, actor_to_return),
             )
 
         # Needed in the bulk execution path for triggering autoscaling. This is a
@@ -264,6 +274,8 @@ class ActorPoolMapOperator(MapOperator):
         self._scale_down_if_needed()
 
     def _kill_inactive_workers_if_done(self):
+        # Add another condition
+        #if self._inputs_done and not self._bundle_queue and self._next_data_task_idx == self._data_task_done_count + self._data_task_fail_count:
         if self._inputs_done and not self._bundle_queue:
             # No more tasks will be submitted, so we kill all current and future
             # inactive workers.
@@ -547,6 +559,7 @@ class _ActorPool:
         # Track locality matching stats.
         self._locality_hits: int = 0
         self._locality_misses: int = 0
+        self._failed_actors = []
 
     def add_pending_actor(self, actor: ray.actor.ActorHandle, ready_ref: ray.ObjectRef):
         """Adds a pending actor to the pool.
@@ -560,6 +573,9 @@ class _ActorPool:
         """
         # The caller shouldn't add new actors to the pool after invoking
         # kill_inactive_actors().
+        if self._should_kill_idle_actors:
+            import traceback
+            traceback.print_stack()
         assert not self._should_kill_idle_actors
         self._pending_actors[ready_ref] = actor
 
@@ -626,6 +642,7 @@ class _ActorPool:
             else:
                 self._locality_misses += 1
         self._num_tasks_in_flight[actor] += 1
+        assert actor not in self._failed_actors, f'Failed actor can not be picked!!! {actor}'
         return actor
 
     def return_actor(self, actor: ray.actor.ActorHandle):
@@ -739,6 +756,7 @@ class _ActorPool:
         ]
         for actor in idle_actors:
             self._kill_running_actor(actor)
+        logger.get_logger().info("_kill_all_idle_actors")
         self._should_kill_idle_actors = True
 
     def _kill_all_running_actors(self):
@@ -765,3 +783,10 @@ class _ActorPool:
             A node id associated with the bundle, or None if unknown.
         """
         return bundle.get_cached_location()
+
+    def add_failed_actor(self, actor):
+        self._failed_actors.append(actor)
+        del self._num_tasks_in_flight[actor]
+
+    def is_failed_actor(self, actor):
+        return actor in self._failed_actors

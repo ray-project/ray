@@ -7,6 +7,7 @@ from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Un
 import ray
 from ray import ObjectRef
 from ray._raylet import StreamingObjectRefGenerator
+from ray.actor import ActorHandle
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -71,7 +72,13 @@ class MapOperator(OneToOneOperator, ABC):
         self._output_metadata: List[BlockMetadata] = []
         # All active `DataOpTask`s.
         self._data_tasks: Dict[int, DataOpTask] = {}
+        # Tasks that failed because the actor failed.
+        self._failed_tasks: Dict[int, DataOpTask] = {}
         self._next_data_task_idx = 0
+        self._data_task_done_count = 0
+        self._data_task_fail_count = 0
+        self._task_done_indexs = []
+        self._task_fail_indexs = []
         # All active `MetadataOpTask`s.
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
@@ -277,7 +284,7 @@ class MapOperator(OneToOneOperator, ABC):
         gen: StreamingObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
-        task_failed_callback: Optional[Callable[[], None]] = None,
+        task_failed_callback: Optional[Callable[[RefBundle], None]] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -298,6 +305,9 @@ class MapOperator(OneToOneOperator, ABC):
             self._output_queue.notify_task_output_ready(task_index, output)
 
         def _task_done_callback(task_index):
+            assert task_index not in self._task_done_indexs
+            assert task_index not in self._task_fail_indexs
+            self._task_done_indexs.append(task_index)
             self._metrics.on_task_finished(task_index)
 
             # Estimate number of tasks from inputs received and tasks submitted so far
@@ -319,15 +329,21 @@ class MapOperator(OneToOneOperator, ABC):
             if task_done_callback:
                 task_done_callback()
 
-        def _task_failed_callback():
+        def _task_failed_callback(task_index):
+            assert task_index not in self._task_done_indexs
+            assert task_index not in self._task_fail_indexs
+            self._task_fail_indexs.append(task_index)
+            task = self._data_tasks.pop(task_index)
+            self._failed_tasks[task_index] = task
             if task_failed_callback:
-                task_failed_callback()
+                task_failed_callback(task._inputs)
 
         self._data_tasks[task_index] = DataOpTask(
             gen,
+            inputs,
             lambda output: _output_ready_callback(task_index, output),
             lambda: _task_done_callback(task_index),
-            lambda: _task_failed_callback(),
+            lambda: _task_failed_callback(task_index),
         )
 
     def _submit_metadata_task(
@@ -347,6 +363,7 @@ class MapOperator(OneToOneOperator, ABC):
         )
 
     def get_active_tasks(self) -> List[OpTask]:
+        # print(f"get_active_tasks {len(list(self._metadata_tasks.values()))} {len(list(self._data_tasks.values()))} {isinstance(self, ray.data._internal.execution.operators.actor_pool_map_operator.ActorPoolMapOperator)}")
         return list(self._metadata_tasks.values()) + list(self._data_tasks.values())
 
     def all_inputs_done(self):
@@ -398,6 +415,9 @@ class MapOperator(OneToOneOperator, ABC):
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
+    # Return all input RefBundles of failed tasks.
+    def _get_failed_task_inputs(self):
+        return [task._inputs for task in self._failed_tasks.values()]
 
 def _map_task(
     map_transformer: MapTransformer,

@@ -35,6 +35,7 @@ class DataOpTask(OpTask):
     def __init__(
         self,
         streaming_gen: StreamingObjectRefGenerator,
+        inputs: RefBundle,
         output_ready_callback: Callable[[RefBundle], None],
         task_done_callback: Callable[[], None],
         task_failed_callback: Callable[[], None],
@@ -51,6 +52,7 @@ class DataOpTask(OpTask):
         # interface. So each individual operator don't need to take care of the
         # BlockMetadata.
         self._streaming_gen = streaming_gen
+        self._inputs = inputs
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
         self._task_failed_callback = task_failed_callback
@@ -66,12 +68,12 @@ class DataOpTask(OpTask):
                 will be read.
         Returns: The number of blocks read.
         """
-        print(f'on_data_ready')
         num_blocks_read = 0
         while max_blocks_to_read is None or num_blocks_read < max_blocks_to_read:
             try:
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
+                    print("unexpected break")
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
                     break
@@ -88,13 +90,12 @@ class DataOpTask(OpTask):
                 # And in this case, the block_ref is the exception object.
                 # TODO(hchen): Ray Core should have a better interface for
                 # detecting and obtaining the exception.
-                print('StopIteration')
                 try:
                     ex = ray.get(block_ref)
                     self._task_done_callback()
                     raise ex
                 except ray.exceptions.RayActorError as e:
-                    print(f'DataOpTask on_data_ready RayActorError')
+                    # RayActorError occurs when actor dead.
                     self._task_failed_callback()
                     break
             self._output_ready_callback(
