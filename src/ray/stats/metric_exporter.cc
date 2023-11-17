@@ -190,7 +190,7 @@ void OpenCensusProtoExporter::ExportViewData(
 }
 
 void OpenCensusProtoExporter::SendData(rpc::ReportOCMetricsRequest &request) {
-  RAY_LOG(DEBUG) << "Exproting metrics. request_proto numbers: " << request.metrics_size() << ", request_proto size bytes: " << request.ByteSizeLong();
+  RAY_LOG(DEBUG) << "Exporting metrics. request_proto numbers: " << request.metrics_size() << ", request_proto size bytes: " << request.ByteSizeLong();
   absl::MutexLock l(&mu_);
   client_->ReportOCMetrics(
       request, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
@@ -286,7 +286,7 @@ size_t OpenCensusProtoExporter::AddMetricsData(const std::pair<opencensus::stats
     RAY_LOG(FATAL) << "Unknown view data type.";
     break;
   }
-
+  // NOTE: We add global tags at the end to make sure these are not overridden by the emitter
   addGlobalTagsToGrpcMetric(*request_point_proto);
 
   return num_series;
