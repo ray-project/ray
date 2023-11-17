@@ -121,8 +121,17 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                   opencensus::stats::ViewData>> &data) override;
   void SendData(rpc::ReportOCMetricsRequest &request);
-  size_t AddMetricsData(const std::pair<opencensus::stats::ViewDescriptor,
-                        opencensus::stats::ViewData> &datum, rpc::ReportOCMetricsRequest &request_proto);
+
+  /// Adds data from the provided ViewDescriptor into target proto payload to be sent to an
+  /// agent aggregating metrics on this node
+  ///
+  /// \param view_descriptor, descriptor of the metric
+  /// \param view_data, data container aggregating time-series for this metric (across different set of tags)
+  /// \param request_proto, target proto payload to embed metric values into
+  /// \return number of time-series added to proto payload
+  size_t AddMetricsData(const opencensus::stats::ViewDescriptor &view_descriptor,
+                        const opencensus::stats::ViewData &view_data,
+                        rpc::ReportOCMetricsRequest &request_proto);
 
  protected:
   void addGlobalTagsToGrpcMetric(opencensus::proto::metrics::v1::Metric &metric);
