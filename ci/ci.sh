@@ -215,7 +215,6 @@ test_serve() {
       -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
       -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
       -python/ray/serve/tests:test_gradio
-      -python/ray/serve/tests:test_gradio_visualization
       -python/ray/serve/tests:test_fastapi
     )
   fi
@@ -257,7 +256,6 @@ test_python() {
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_multi_node_3
-      -python/ray/tests:test_multiprocessing_client_mode # Flaky on Windows
       -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
