@@ -27,7 +27,7 @@ cdef class GcsClientOptions:
             ip, port = gcs_address.split(":")
             port = int(port)
             self.inner.reset(
-                new CGcsClientOptions(ip, port)
+                new CGcsClientOptions(ip, port))
         except Exception:
             raise ValueError(f"Invalid gcs_address: {gcs_address}")
         return self
