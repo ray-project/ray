@@ -133,13 +133,13 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
                                                  size_t report_batch_size,
                                                  size_t max_grpc_payload_size)
   : OpenCensusProtoExporter(
-      std::make_unique<rpc::MetricsAgentClient>(address, port, io_service),
+      std::make_shared<rpc::MetricsAgentClientImpl>(address, port, io_service),
       worker_id,
       report_batch_size,
       max_grpc_payload_size
   ) {}
 
-OpenCensusProtoExporter::OpenCensusProtoExporter(std::unique_ptr<rpc::MetricsAgentClient> &&agent_client,
+OpenCensusProtoExporter::OpenCensusProtoExporter(std::shared_ptr<rpc::MetricsAgentClient> agent_client,
                                                   const WorkerID &worker_id,
                                                   size_t report_batch_size,
                                                   size_t max_grpc_payload_size)
