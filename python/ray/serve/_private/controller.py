@@ -1084,7 +1084,7 @@ def calculate_scale_direction(
             )
         else:
             assert next_scale_dirction is None
-            logger.info(f"Target capacity entering 100% at steady state.")  # noqa: F541
+            logger.info("Target capacity entering 100% at steady state.")
 
     return next_scale_dirction
 
