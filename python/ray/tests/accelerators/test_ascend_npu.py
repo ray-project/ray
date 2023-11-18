@@ -1,0 +1,135 @@
+import os
+import sys
+import pytest
+from unittest.mock import patch
+
+import ray
+from ray._private.accelerators import AscendNPUAcceleratorManager as Accelerator
+
+
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_npus(mock_list, mock_glob):
+    mock_glob.return_value = [f"/dev/davinci{i}" for i in range(4)]
+    mock_list.return_value = []
+    assert Accelerator.get_current_node_num_accelerators() == 4
+
+
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_npus_without_devices(mock_list, mock_glob):
+    mock_list.side_effect = FileNotFoundError
+    mock_glob.return_value = []
+    assert Accelerator.get_current_node_num_accelerators() == 0
+
+
+def test_ascend_npu_accelerator_manager_api():
+    assert Accelerator.get_resource_name() == "NPU"
+    assert Accelerator.get_visible_accelerator_ids_env_var() == "ASCEND_VISIBLE_DEVICES"
+    assert Accelerator.validate_resource_request_quantity(0.5) == (True, None)
+    assert Accelerator.validate_resource_request_quantity(1) == (True, None)
+
+
+def test_visible_ascend_npu_type(shutdown_only):
+    with patch.object(
+        Accelerator, "get_current_node_num_accelerators", return_value=4
+    ), patch.object(
+        Accelerator, "get_current_node_accelerator_type", return_value="Ascend910B"
+    ):
+        os.environ["ASCEND_VISIBLE_DEVICES"] = "0,1,2"
+        manager = ray._private.accelerators.get_accelerator_manager_for_resource("NPU")
+        assert manager.get_current_node_accelerator_type() == "Ascend910B"
+
+
+def test_visible_ascend_npu_ids(shutdown_only):
+    with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=4):
+        old_acl = None
+        if "acl" in sys.modules:
+            old_acl = sys.modules["acl"]
+        sys.modules["acl"] = __import__("mock_acl")
+
+        os.environ["ASCEND_VISIBLE_DEVICES"] = "0,1,2"
+        ray.init()
+        manager = ray._private.accelerators.get_accelerator_manager_for_resource("NPU")
+        assert manager.get_current_node_num_accelerators() == 4
+        assert manager.__name__ == "AscendNPUAcceleratorManager"
+        assert ray.available_resources()["NPU"] == 3
+        del os.environ["ASCEND_VISIBLE_DEVICES"]
+
+        if old_acl is not None:
+         sys.modules["acl"] = old_acl
+
+
+def test_acl_api_function(shutdown_only):
+    old_acl = None
+    if "acl" in sys.modules:
+        old_acl = sys.modules["acl"]
+    sys.modules["acl"] = __import__("mock_acl")
+
+    ray.init()
+    manager = ray._private.accelerators.get_accelerator_manager_for_resource("NPU")
+    assert manager.get_current_node_num_accelerators() == 4
+    assert manager.__name__ == "AscendNPUAcceleratorManager"
+    assert manager.get_current_node_accelerator_type() == "Ascend910B"
+    assert ray.available_resources()["NPU"] == 4
+
+    if old_acl is not None:
+        sys.modules["acl"] = old_acl
+
+
+def test_get_current_process_visible_accelerator_ids():
+    os.environ["ASCEND_VISIBLE_DEVICES"] = "0,1,2"
+    assert Accelerator.get_current_process_visible_accelerator_ids() == ["0", "1", "2"]
+
+    del os.environ["ASCEND_VISIBLE_DEVICES"]
+    assert Accelerator.get_current_process_visible_accelerator_ids() is None
+
+    os.environ["ASCEND_VISIBLE_DEVICES"] = ""
+    assert Accelerator.get_current_process_visible_accelerator_ids() == []
+
+    os.environ["ASCEND_VISIBLE_DEVICES"] = "NoDevFiles"
+    assert Accelerator.get_current_process_visible_accelerator_ids() == []
+
+    del os.environ["ASCEND_VISIBLE_DEVICES"]
+
+
+def test_set_current_process_visible_accelerator_ids():
+    Accelerator.set_current_process_visible_accelerator_ids(["0"])
+    assert os.environ["ASCEND_VISIBLE_DEVICES"] == "0"
+
+    Accelerator.set_current_process_visible_accelerator_ids(["0", "1"])
+    assert os.environ["ASCEND_VISIBLE_DEVICES"] == "0,1"
+
+    Accelerator.set_current_process_visible_accelerator_ids(["0", "1", "2"])
+    assert os.environ["ASCEND_VISIBLE_DEVICES"] == "0,1,2"
+
+    del os.environ["ASCEND_VISIBLE_DEVICES"]
+
+
+@patch(
+    "ray._private.accelerators.AscendNPUAcceleratorManager.get_current_node_num_accelerators",
+    return_value=4,
+)
+def test_auto_detected_more_than_visible(
+    mock_get_num_accelerators, monkeypatch, shutdown_only
+):
+    # If more NPUs are detected than visible.
+    monkeypatch.setenv("ASCEND_VISIBLE_DEVICES", "0,1,2")
+    old_acl = None
+    if "acl" in sys.modules:
+        old_acl = sys.modules["acl"]
+    sys.modules["acl"] = __import__("mock_acl")
+
+    ray.init()
+    mock_get_num_accelerators.called
+    assert ray.available_resources()["NPU"] == 3
+
+    if old_acl is not None:
+        sys.modules["acl"] = old_acl
+
+
+if __name__ == "__main__":
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
