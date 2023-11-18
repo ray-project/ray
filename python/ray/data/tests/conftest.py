@@ -708,14 +708,17 @@ def warmup():
     return np.zeros(1024 * 1024, dtype=np.uint8)
 
 
+def task_metrics_flushed(refs):
+    task_ids = [t.task_id for t in ray.util.state.list_tasks()]
+    # All tasks appear in the metrics.
+    return all(ref.task_id().hex() in task_ids for ref in refs)
+
+
 def get_initial_core_execution_metrics_snapshot():
     # Warmup plasma store and workers.
     refs = [warmup.remote() for _ in range(int(ray.cluster_resources()["CPU"]))]
     ray.get(refs)
-
-    # Wait for all tasks to appear in the metrics.
-    task_ids = [t.task_id for t in ray.util.state.list_tasks()]
-    wait_for_condition(lambda: all(ref.task_id().hex() in task_ids for ref in refs))
+    wait_for_condition(lambda: task_metrics_flushed(refs))
 
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
@@ -734,9 +737,7 @@ def assert_core_execution_metrics_equals(
     if expected_metrics.get_task_count() is not None:
         refs = [barrier.remote() for _ in range(int(ray.cluster_resources()["CPU"]))]
         ray.get(refs)
-        # Wait for all tasks to appear in the metrics.
-        task_ids = [t.task_id for t in ray.util.state.list_tasks()]
-        wait_for_condition(lambda: all(ref.task_id().hex() in task_ids for ref in refs))
+        wait_for_condition(lambda: task_metrics_flushed(refs))
 
     metrics = PhysicalCoreExecutionMetrics(last_snapshot)
     metrics.assert_task_metrics(expected_metrics)
