@@ -36,6 +36,8 @@ do
     conda create -y -n "${env_name}" python="${PYTHON_VERSION}"
     conda activate "${env_name}"
 
+    pip install -U ray=="${RAY_VERSION}" ray[default]=="${RAY_VERSION}"
+
     printf "\n\n\n"
     echo "========================================================="
     printf "Installed ray job server version: "
