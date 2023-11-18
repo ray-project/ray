@@ -463,11 +463,15 @@ autosummary_filename_map = {
 # Mock out external dependencies here.
 autodoc_mock_imports = [
     "aiohttp",
+    "aiosignal",
     "composer",
     "dask",
     "datasets",
     "fastapi",
+    "filelock",
+    "frozenlist",
     "fsspec",
+    "google",
     "grpc",
     "gymnasium",
     "horovod",
