@@ -1067,7 +1067,6 @@ def calculate_scale_direction(
         elif curr_target_capacity < next_target_capacity:
             next_scale_dirction = TargetCapacityScaleDirection.UP
         else:
-            assert curr_target_capacity > next_target_capacity
             next_scale_dirction = TargetCapacityScaleDirection.DOWN
     elif new_config.target_capacity is not None:
         # A config with different apps has been applied, and it contains a
