@@ -321,9 +321,9 @@ RAY_CONFIG(int, worker_oom_score_adjustment, 1000)
 /// NOTE: Linux, Unix and MacOS only.
 RAY_CONFIG(int, worker_niceness, 15)
 
-/// Allow up to 60 seconds for connecting to Redis.
-RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
-RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
+/// Allow at least 60 seconds for connecting to Redis.
+RAY_CONFIG(int64_t, redis_db_connect_retries, 120)
+RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
