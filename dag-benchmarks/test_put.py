@@ -1,13 +1,15 @@
-import ray
-import numpy as np
 import time
+
+import numpy as np
+
+import ray
 
 ray.init()
 
 
 def read(ref, use_bytes, val=None):
     arr = ray.get(ref)
-    #arr = worker.core_worker.get_if_local(object_refs)
+    # arr = worker.core_worker.get_if_local(object_refs)
     if val is not None:
         if use_bytes:
             assert int.from_bytes(arr, "little") == val
@@ -28,7 +30,6 @@ class Reader:
         read(self.ref, self.use_bytes)
         ray.release(self.ref)
 
-
     def read(self, num_trials):
         for _ in range(num_trials):
             for i in range(10_000):
@@ -36,7 +37,13 @@ class Reader:
                 ray.release(self.ref)
 
 
-def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, read_remote=False):
+def run(
+    num_trials=3,
+    use_bytes=True,
+    reuse_object_ref=False,
+    read_local=False,
+    read_remote=False,
+):
     max_readers = -1
     if reuse_object_ref:
         max_readers = 1
@@ -80,8 +87,9 @@ def run(num_trials=3, use_bytes=True, reuse_object_ref=False, read_local=False, 
                 arr[0] = i
 
             if reuse_object_ref:
-                ray.worker.global_worker.put_object(arr,
-                        object_ref=ref, max_readers=max_readers)
+                ray.worker.global_worker.put_object(
+                    arr, object_ref=ref, max_readers=max_readers
+                )
             else:
                 ref = ray.put(arr, max_readers=max_readers)
 
@@ -102,8 +110,10 @@ if __name__ == "__main__":
 
     if not run_local:
         remote_run = ray.remote(run)
+
         def run_fn(*args, **kwargs):
             return ray.get(remote_run.remote(*args, **kwargs))
+
         run = run_fn
 
     print("Dynamic ray.put")

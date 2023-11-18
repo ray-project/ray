@@ -63,12 +63,14 @@ struct TaskOptions {
   TaskOptions() {}
   TaskOptions(std::string name,
               int num_returns,
+              bool is_compiled_dag_task,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
               int64_t generator_backpressure_num_objects = -1,
               const std::string &serialized_runtime_env_info = "{}")
       : name(name),
         num_returns(num_returns),
+        is_compiled_dag_task(is_compiled_dag_task),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
         serialized_runtime_env_info(serialized_runtime_env_info),
@@ -78,6 +80,8 @@ struct TaskOptions {
   std::string name;
   /// Number of returns of this task.
   int num_returns = 1;
+  /// Tasks in compiled dags are cached for recurring execution on workers.
+  bool is_compiled_dag_task = false;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
   /// The name of the concurrency group in which this task will be executed.

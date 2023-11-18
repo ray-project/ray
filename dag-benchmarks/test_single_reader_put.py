@@ -1,8 +1,11 @@
-import ray
-import numpy as np
 import time
 
+import numpy as np
+
+import ray
+
 ray.init()
+
 
 @ray.remote
 def f():
@@ -18,8 +21,9 @@ def f():
         start = time.time()
         for i in range(100_000):
             ray.worker.global_worker.put_object(arr, object_ref=ref)
-            #assert ray.get(ref)[0] == i
+            # assert ray.get(ref)[0] == i
         end = time.time()
         print(f"done, tput: {100_000 / (end - start)} puts/s")
+
 
 ray.get(f.remote())

@@ -319,11 +319,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CTaskOptions "ray::core::TaskOptions":
         CTaskOptions()
-        CTaskOptions(c_string name, int num_returns,
+        CTaskOptions(c_string name, int num_returns, c_bool is_compiled_dag_task,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects)
-        CTaskOptions(c_string name, int num_returns,
+        CTaskOptions(c_string name, int num_returns, c_bool is_compiled_dag_task,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,

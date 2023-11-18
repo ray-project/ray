@@ -3641,7 +3641,7 @@ cdef class CoreWorker:
                 &incremented_put_arg_ids)
 
             task_options = CTaskOptions(
-                name, num_returns, c_resources,
+                name, num_returns, False, c_resources,
                 b"",
                 generator_backpressure_num_objects,
                 serialized_runtime_env_info)
@@ -3827,6 +3827,7 @@ cdef class CoreWorker:
                           args,
                           c_string name,
                           int num_returns,
+                          c_bool is_compiled_dag_task,
                           double num_method_cpus,
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects):
@@ -3869,6 +3870,7 @@ cdef class CoreWorker:
                     CTaskOptions(
                         name,
                         num_returns,
+                        is_compiled_dag_task,
                         c_resources,
                         concurrency_group_name,
                         generator_backpressure_num_objects),
