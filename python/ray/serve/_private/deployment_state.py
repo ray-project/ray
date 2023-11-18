@@ -1494,7 +1494,7 @@ class DeploymentState:
                 else:
                     autoscaled_num_replicas = autoscaling_config.min_replicas
             autoscaled_num_replicas = self.get_capacity_adjusted_num_replicas(
-                autoscaled_num_replicas
+                autoscaled_num_replicas, target_capacity
             )
             deployment_info.set_autoscaled_num_replicas(autoscaled_num_replicas)
         else:

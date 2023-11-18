@@ -345,7 +345,10 @@ def create_hang_app(config: Dict) -> Application:
             "initial_replicas": initial_replicas,
             "max_replicas": max_replicas,
             "target_num_ongoing_requests_per_replicas": 1,
+            "metrics_interval_s": 0.01,
+            "downscale_delay_s": 0.01,
         },
+        graceful_shutdown_timeout_s=0.01,
     ).bind()
 
 
@@ -364,6 +367,7 @@ class TestInitialReplicasHandling:
         self, shutdown_ray_and_serve, client: ServeControllerClient
     ):
         deployment_name = "start_at_ten"
+        min_replicas = 0
 
         config = ServeDeploySchema(
             applications=[
@@ -379,14 +383,17 @@ class TestInitialReplicasHandling:
             ],
         )
 
-        wait_for_condition(lambda: serve.status().target_capacity is None)
+        client.deploy_apps(config)
+        wait_for_condition(lambda: len(serve.status().applications) == 1)
+        assert serve.status().target_capacity is None
 
         test_target_capacities = [100, 60, 20, 0]
-        expected_num_replicas = [1] * len(test_target_capacities)
+        expected_num_replicas = [min_replicas] * len(test_target_capacities)
 
         for target_capacity, num_replicas in zip(
             test_target_capacities, expected_num_replicas
         ):
+            print(f"target_capacity: {target_capacity}, num_replicas: {num_replicas}")
             config.target_capacity = target_capacity
             client.deploy_apps(config)
             wait_for_condition(
@@ -420,11 +427,20 @@ class TestInitialReplicasHandling:
         )
 
         test_target_capacities = [0, 20, 60, 40, 30, 100, None]
-        expected_num_replicas = [1, 2, 6, 1, 1, initial_replicas, min_replicas]
+        expected_num_replicas = [
+            1,
+            2,
+            6,
+            min_replicas,
+            min_replicas,
+            initial_replicas,
+            min_replicas,
+        ]
 
         for target_capacity, num_replicas in zip(
             test_target_capacities, expected_num_replicas
         ):
+            print(f"target_capacity: {target_capacity}, num_replicas: {num_replicas}")
             config.target_capacity = target_capacity
             client.deploy_apps(config)
             wait_for_condition(
@@ -532,7 +548,7 @@ class TestInitialReplicasHandling:
         )
         new_config.target_capacity = new_config_target_capacity
 
-        client.deploy(new_config)
+        client.deploy_apps(new_config)
         wait_for_condition(
             lambda: serve.status().target_capacity == new_config_target_capacity
         )
@@ -548,7 +564,7 @@ class TestInitialReplicasHandling:
         wait_for_condition(
             check_expected_num_replicas,
             deployment_to_num_replicas={
-                deployment_name: int(
+                new_deployment_name: int(
                     initial_replicas * new_config_target_capacity / 100
                 )
             },
