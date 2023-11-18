@@ -418,6 +418,7 @@ py_library(
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = [
+        bk_require("anyscale"),
         bk_require("bazel-runfiles"),
         bk_require("boto3"),
         bk_require("botocore"),
