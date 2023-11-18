@@ -107,7 +107,8 @@ def test_set_current_process_visible_accelerator_ids():
 
 
 @patch(
-    "ray._private.accelerators.AscendNPUAcceleratorManager.get_current_node_num_accelerators",
+    "ray._private.accelerators.AscendNPUAcceleratorManager.\
+        get_current_node_num_accelerators",
     return_value=4,
 )
 def test_auto_detected_more_than_visible(
