@@ -1,7 +1,6 @@
 # Python requirements to run release tests from anyscale byod (cpu type)
 
 ale-py
-annotated_types<0.6.0  # 0.6.0 not available for Python 3.8 in release test infra.
 boto3
 cmake
 crc32c

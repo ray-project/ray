@@ -105,12 +105,10 @@ aiosignal==1.3.1 \
     --hash=sha256:54cd96e15e1649b75d6c87526a6ff0b6c1b0dd3459f43d9ca11d48c339b68cfc \
     --hash=sha256:f8376fb07dd1e86a584e4fcdec80b36b7f81aac666ebc724e2c090300dd83b17
     # via aiohttp
-annotated-types==0.5.0 \
-    --hash=sha256:47cdc3490d9ac1506ce92c7aaa76c579dc3509ff11e098fc867e5130ab7be802 \
-    --hash=sha256:58da39888f92c276ad970249761ebea80ba544b77acddaa1a4d6cf78287d45fd
-    # via
-    #   -r release/ray_release/byod/requirements_ml_byod_3.8.in
-    #   pydantic
+annotated-types==0.6.0 \
+    --hash=sha256:0641064de18ba7a25dee8f96403ebc39113d0cb953a01429249d5c7564666a43 \
+    --hash=sha256:563339e807e53ffd9c267e99fc6d9ea23eb8443c08f112651963e24e22f84a5d
+    # via pydantic
 anyio==3.7.1 \
     --hash=sha256:44a3c9aba0f5defa43261a8b3efb97891f2bd7d804e0e1f56419befa1adfc780 \
     --hash=sha256:91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad004fbb5
