@@ -63,6 +63,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TensorType,
 )
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
@@ -226,6 +227,7 @@ class LearnerHyperparameters:
             return self
 
 
+@PublicAPI(stability="alpha")
 class Learner:
     """Base class for Learners.
 
