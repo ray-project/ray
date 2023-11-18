@@ -105,6 +105,11 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
                           size_t report_batch_size,
                           size_t max_grpc_payload_size);
 
+  OpenCensusProtoExporter(std::unique_ptr<rpc::MetricsAgentClient> &&agent_client,
+                          const WorkerID &worker_id,
+                          size_t report_batch_size,
+                          size_t max_grpc_payload_size);
+
   ~OpenCensusProtoExporter() = default;
 
   static void Register(const int port,
@@ -137,8 +142,6 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   void addGlobalTagsToGrpcMetric(opencensus::proto::metrics::v1::Metric &metric);
 
  private:
-  /// Call Manager for gRPC client.
-  rpc::ClientCallManager client_call_manager_;
   /// Lock to protect the client
   mutable absl::Mutex mu_;
   /// Client to call a metrics agent gRPC server.

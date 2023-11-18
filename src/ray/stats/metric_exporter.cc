@@ -132,12 +132,22 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
                                                  const WorkerID &worker_id,
                                                  size_t report_batch_size,
                                                  size_t max_grpc_payload_size)
-    : client_call_manager_(io_service)
-    , worker_id_(worker_id)
+  : OpenCensusProtoExporter(
+      std::make_unique<rpc::MetricsAgentClient>(address, port, io_service),
+      worker_id,
+      report_batch_size,
+      max_grpc_payload_size
+  ) {}
+
+OpenCensusProtoExporter::OpenCensusProtoExporter(std::unique_ptr<rpc::MetricsAgentClient> &&agent_client,
+                                                  const WorkerID &worker_id,
+                                                  size_t report_batch_size,
+                                                  size_t max_grpc_payload_size)
+    : worker_id_(worker_id)
     , report_batch_size_(report_batch_size)
     , max_grpc_payload_size_(max_grpc_payload_size) {
   absl::MutexLock l(&mu_);
-  client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
+  client_ = std::move(agent_client);
 };
 
 /// Hack. We want to add GlobalTags to all our metrics, but gRPC OpenCencus plugin is not

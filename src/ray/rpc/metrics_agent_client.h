@@ -37,11 +37,13 @@ class MetricsAgentClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   MetricsAgentClient(const std::string &address,
                      const int port,
-                     ClientCallManager &client_call_manager) {
+                     instrumented_io_context &io_service)
+    : client_call_manager_(io_service)
+  {
     RAY_LOG(DEBUG) << "Initiate the metrics client of address:" << address
                    << " port:" << port;
     grpc_client_ =
-        std::make_unique<GrpcClient<ReporterService>>(address, port, client_call_manager);
+        std::make_unique<GrpcClient<ReporterService>>(address, port, client_call_manager_);
   };
 
   /// Report metrics to metrics agent.
@@ -63,6 +65,8 @@ class MetricsAgentClient {
                          /*method_timeout_ms*/ -1, )
 
  private:
+  /// Call Manager for gRPC client.
+  rpc::ClientCallManager client_call_manager_;
   /// The RPC client.
   std::unique_ptr<GrpcClient<ReporterService>> grpc_client_;
 };
