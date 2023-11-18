@@ -1483,9 +1483,9 @@ class DeploymentState:
         autoscaling_config = deployment_info.deployment_config.autoscaling_config
         if autoscaling_config is not None:
             adjust_capacity = False
-            if (
-                autoscaling_config.initial_replicas is not None
-                and target_capacity_scale_direction != TargetCapacityScaleDirection.DOWN
+            if autoscaling_config.initial_replicas is not None and (
+                target_capacity_scale_direction is None
+                or target_capacity_scale_direction == TargetCapacityScaleDirection.UP
             ):
                 autoscaled_num_replicas = autoscaling_config.initial_replicas
             else:
