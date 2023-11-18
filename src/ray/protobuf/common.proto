@@ -494,6 +494,8 @@ message TaskSpec {
   // TODO(sang): Maybe we should consolidate all streaming generator related config
   // to a separate message?
   int64 generator_backpressure_num_objects = 38;
+  // Whether this is a cached task spec for a compiled dag.
+  bool is_compiled_dag_task = 39;
 }
 
 message TaskInfoEntry {

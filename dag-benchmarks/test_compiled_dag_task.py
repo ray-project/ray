@@ -1,12 +1,15 @@
 import ray
 
+
 @ray.remote
 class A:
     def f(self, input_ref, output_ref):
         print("execution invoked")
         ray.worker.global_worker.put_object(
-            b"world", object_ref=output_ref[0], max_readers=1)
+            b"world", object_ref=output_ref[0], max_readers=1
+        )
         ray.release(input_ref)
+
 
 a = A.remote()
 

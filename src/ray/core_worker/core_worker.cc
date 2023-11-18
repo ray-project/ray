@@ -1830,6 +1830,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args,
     int64_t num_returns,
+    bool is_compiled_dag_task,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const std::string &debugger_breakpoint,
@@ -1839,6 +1840,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &concurrency_group_name,
     bool include_job_config,
     int64_t generator_backpressure_num_objects) {
+  RAY_LOG(ERROR) << "is compiled dag task " << is_compiled_dag_task;
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1874,6 +1876,7 @@ void CoreWorker::BuildCommonTaskSpec(
       caller_id,
       address,
       num_returns,
+      is_compiled_dag_task,
       returns_dynamic,
       is_streaming_generator,
       generator_backpressure_num_objects,
@@ -1929,6 +1932,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       function,
                       args,
                       task_options.num_returns,
+                      task_options.is_compiled_dag_task,
                       constrained_resources,
                       constrained_resources,
                       debugger_breakpoint,
@@ -2015,6 +2019,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       function,
                       args,
                       1,
+                      false,
                       new_resource,
                       new_placement_resources,
                       "" /* debugger_breakpoint */,
@@ -2254,6 +2259,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
                       function,
                       args,
                       task_options.num_returns,
+                      task_options.is_compiled_dag_task,
                       task_options.resources,
                       required_resources,
                       "",    /* debugger_breakpoint */

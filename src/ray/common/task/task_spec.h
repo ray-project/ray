@@ -310,6 +310,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   size_t NumReturns() const;
 
+  bool IsCompiledDagTask() const;
+
   size_t NumStreamingGeneratorReturns() const;
 
   ObjectID StreamingGeneratorReturnId(size_t generator_index) const;
