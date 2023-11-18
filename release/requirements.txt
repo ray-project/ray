@@ -8,7 +8,7 @@ google-cloud-storage
 jinja2
 pybuildkite
 PyGithub
-pydantic < 1.10.0
+pydantic >= 2.5.0
 pyyaml
 typer[all]
 toml
