@@ -1,7 +1,4 @@
 # Python requirements to run release tests from anyscale byod (gpu type)
-pydantic>2
-deepspeed==0.12.3
-fastapi==0.104.0
 
 accelerate
 boto3
@@ -9,8 +6,10 @@ cmake
 crc32c
 cupy-cuda113
 datasets
+deepspeed==0.12.3
 diffusers
 evaluate
+fastapi==0.104.0
 filelock
 gcsfs
 gsutil
@@ -22,6 +21,7 @@ numpy
 openskill
 petastorm
 pyarrow
+pydantic>2
 pytest
 pytorch_lightning
 scikit-learn
