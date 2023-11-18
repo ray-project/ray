@@ -112,7 +112,9 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
         return reload_log_state(log_state)
 
 
-def debug_status(status, error, verbose: bool = False, address: str = None) -> str:
+def debug_status(
+    status, error, verbose: bool = False, address: Optional[str] = None
+) -> str:
     """
     Return a debug string for the autoscaler.
 
@@ -1058,7 +1060,7 @@ def attach_cluster(
 def exec_cluster(
     config_file: str,
     *,
-    cmd: str = None,
+    cmd: Optional[str] = None,
     run_env: str = "auto",
     screen: bool = False,
     tmux: bool = False,
