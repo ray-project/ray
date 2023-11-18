@@ -24,6 +24,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_core_execution_metrics_equals,
+    get_initial_core_execution_metrics_snapshot,
 )
 from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
