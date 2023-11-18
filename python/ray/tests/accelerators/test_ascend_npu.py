@@ -57,7 +57,7 @@ def test_visible_ascend_npu_ids(shutdown_only):
         del os.environ["ASCEND_VISIBLE_DEVICES"]
 
         if old_acl is not None:
-         sys.modules["acl"] = old_acl
+            sys.modules["acl"] = old_acl
 
 
 def test_acl_api_function(shutdown_only):
