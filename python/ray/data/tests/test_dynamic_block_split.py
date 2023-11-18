@@ -19,7 +19,7 @@ from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_blocks_expected_in_plasma,
     assert_core_execution_metrics_equals,
-    get_initial_core_execution_metrics_last_snapshot,
+    get_initial_core_execution_metrics_snapshot,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -172,7 +172,7 @@ def test_dataset(
     def warmup():
         return np.zeros(ctx.target_max_block_size, dtype=np.uint8)
 
-    last_snapshot = get_initial_core_execution_metrics_last_snapshot()
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
         parallelism=num_tasks,

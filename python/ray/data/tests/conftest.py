@@ -698,6 +698,7 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
 # Dummy task used to make sure that we wait until (most) stats are available.
 @ray.remote
 def barrier():
+    time.sleep(1)
     return
 
 
@@ -707,13 +708,14 @@ def warmup():
     return np.zeros(1024 * 1024, dtype=np.uint8)
 
 
-def get_initial_core_execution_metrics_last_snapshot():
+def get_initial_core_execution_metrics_snapshot():
     # Warmup plasma store and workers.
-    refs = [warmup.remote() for _ in range(10)]
+    refs = [warmup.remote() for _ in range(int(ray.cluster_resources()["CPU"]))]
     ray.get(refs)
 
-    for ref in refs:
-        wait_for_condition(lambda: ref.task_id().hex() in ray.util.state.list_tasks())
+    # Wait for all tasks to appear in the metrics.
+    task_ids = [t.task_id for t in ray.util.state.list_tasks()]
+    wait_for_condition(lambda: all(ref.task_id().hex() in task_ids for ref in refs))
 
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
@@ -727,15 +729,14 @@ def get_initial_core_execution_metrics_last_snapshot():
 def assert_core_execution_metrics_equals(
     expected_metrics: CoreExecutionMetrics, last_snapshot=None
 ):
-    # Wait for a task to finish to prevent a race condition where not all of
-    # the task metrics have been collected yet.
+    # Wait for one task per CPU to finish to prevent a race condition where not
+    # all of the task metrics have been collected yet.
     if expected_metrics.get_task_count() is not None:
-        ref = barrier.remote()
-        wait_for_condition(
-            lambda: any(
-                ref.hex().startswith(t.task_id) for t in ray.util.state.list_tasks()
-            )
-        )
+        refs = [barrier.remote() for _ in range(int(ray.cluster_resources()["CPU"]))]
+        ray.get(refs)
+        # Wait for all tasks to appear in the metrics.
+        task_ids = [t.task_id for t in ray.util.state.list_tasks()]
+        wait_for_condition(lambda: all(ref.task_id().hex() in task_ids for ref in refs))
 
     metrics = PhysicalCoreExecutionMetrics(last_snapshot)
     metrics.assert_task_metrics(expected_metrics)

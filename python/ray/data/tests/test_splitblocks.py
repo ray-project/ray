@@ -7,7 +7,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_core_execution_metrics_equals,
-    get_initial_core_execution_metrics_last_snapshot,
+    get_initial_core_execution_metrics_snapshot,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -29,7 +29,7 @@ def test_splitrange():
 
 
 def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
-    last_snapshot = get_initial_core_execution_metrics_last_snapshot()
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     ds = ray.data.read_csv("example://iris.csv", parallelism=1)
     materialized_ds = ds.materialize()

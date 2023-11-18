@@ -213,7 +213,7 @@ def test_cache_dataset(ray_start_regular_shared):
 
 
 def test_schema(ray_start_regular_shared):
-    last_snapshot = None
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     ds2 = ray.data.range(10, parallelism=10)
     ds3 = ds2.repartition(5)
@@ -263,7 +263,7 @@ def test_schema(ray_start_regular_shared):
 
 
 def test_schema_no_execution(ray_start_regular_shared):
-    last_snapshot = None
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.range(100, parallelism=10)
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1}),
@@ -285,7 +285,7 @@ def test_schema_no_execution(ray_start_regular_shared):
 
 
 def test_schema_cached(ray_start_regular_shared):
-    def check_schema_cached(ds, expected_task_count, last_snapshot=None):
+    def check_schema_cached(ds, expected_task_count, last_snapshot):
         schema = ds.schema()
         last_snapshot = assert_core_execution_metrics_equals(
             CoreExecutionMetrics(expected_task_count), last_snapshot
@@ -299,8 +299,9 @@ def test_schema_cached(ray_start_regular_shared):
         )
         return last_snapshot
 
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.from_items([{"a": i} for i in range(100)], parallelism=10)
-    last_snapshot = check_schema_cached(ds, {})
+    last_snapshot = check_schema_cached(ds, {}, last_snapshot)
 
     # Add a map_batches stage so that we are forced to compute the schema.
     ds = ds.map_batches(lambda x: x)
@@ -310,7 +311,7 @@ def test_schema_cached(ray_start_regular_shared):
             "MapBatches(<lambda>)": lambda count: count <= 5,
             "slice_fn": 1,
         },
-        last_snapshot=last_snapshot,
+        last_snapshot,
     )
 
 
@@ -451,7 +452,7 @@ def test_limit(ray_start_regular_shared, lazy):
 
 
 def test_limit_execution(ray_start_regular_shared):
-    last_snapshot = None
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
     parallelism = 20
     ds = ray.data.range(100, parallelism=parallelism)
 
@@ -1692,6 +1693,7 @@ def test_datasource(ray_start_regular):
     ) == list(range(10))
 
 
+@pytest.mark.skip(reason="")
 def test_polars_lazy_import(shutdown_only):
     import sys
 

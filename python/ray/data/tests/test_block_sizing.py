@@ -6,7 +6,7 @@ from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
     assert_blocks_expected_in_plasma,
-    get_initial_core_execution_metrics_last_snapshot,
+    get_initial_core_execution_metrics_snapshot,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -24,7 +24,7 @@ def test_map(shutdown_only, restore_data_context):
     ctx.target_min_block_size = 10_000 * 8
     ctx.target_max_block_size = 10_000 * 8
     num_blocks_expected = 10
-    last_snapshot = get_initial_core_execution_metrics_last_snapshot()
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     # Test read.
     ds = ray.data.range(100_000, parallelism=1).materialize()
