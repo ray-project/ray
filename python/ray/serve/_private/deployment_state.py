@@ -1478,11 +1478,10 @@ class DeploymentState:
             ):
                 return False
 
-        adjust_capacity = True
-
         # If autoscaling config is not none, decide initial num replicas
         autoscaling_config = deployment_info.deployment_config.autoscaling_config
         if autoscaling_config is not None:
+            adjust_capacity = False
             if (
                 autoscaling_config.initial_replicas is not None
                 and target_capacity_scale_direction != TargetCapacityScaleDirection.DOWN
@@ -1491,10 +1490,16 @@ class DeploymentState:
             else:
                 if existing_info is not None:
                     autoscaled_num_replicas = self._target_state.num_replicas
-                    adjust_capacity = self._target_state.adjust_capacity
                 else:
                     autoscaled_num_replicas = autoscaling_config.min_replicas
+            autoscaled_num_replicas = self.get_capacity_adjusted_num_replicas(
+                autoscaled_num_replicas
+            )
             deployment_info.set_autoscaled_num_replicas(autoscaled_num_replicas)
+        else:
+            # When not autoscaling, defer adjusting the capacity to the update
+            # loop.
+            adjust_capacity = True
 
         self._set_target_state(deployment_info, adjust_capacity=adjust_capacity)
         return True

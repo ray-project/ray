@@ -332,9 +332,12 @@ class HangDeployment:
         await asyncio.sleep(10000)
 
 
-def create_hang_app(
-    name: str, min_replicas: int, initial_replicas: int, max_replicas: int
-) -> Application:
+def create_hang_app(config: Dict) -> Application:
+    name: str = config["name"]
+    min_replicas: int = config["min_replicas"]
+    initial_replicas: int = config["initial_replicas"]
+    max_replicas: int = config["max_replicas"]
+
     return HangDeployment.options(
         name=name,
         autoscaling_config={
@@ -390,7 +393,8 @@ class TestInitialReplicasHandling:
                 lambda: serve.status().target_capacity == target_capacity
             )
             wait_for_condition(
-                check_expected_num_replicas({deployment_name: num_replicas})
+                check_expected_num_replicas,
+                deployment_to_num_replicas={deployment_name: num_replicas},
             )
 
     def test_initial_replicas_scales_up_and_down(
@@ -427,7 +431,8 @@ class TestInitialReplicasHandling:
                 lambda: serve.status().target_capacity == target_capacity
             )
             wait_for_condition(
-                check_expected_num_replicas({deployment_name: num_replicas})
+                check_expected_num_replicas,
+                deployment_to_num_replicas={deployment_name: num_replicas},
             )
 
     def test_initial_replicas_zero(
@@ -464,7 +469,8 @@ class TestInitialReplicasHandling:
                 lambda: serve.status().target_capacity == target_capacity
             )
             wait_for_condition(
-                check_expected_num_replicas({deployment_name: num_replicas})
+                check_expected_num_replicas,
+                deployment_to_num_replicas={deployment_name: num_replicas},
             )
 
     def test_initial_replicas_new_configs(
@@ -473,7 +479,7 @@ class TestInitialReplicasHandling:
         deployment_name = "start_at_ten"
         min_replicas = 0
         initial_replicas = 20
-        config_target_capacity = 0.4
+        config_target_capacity = 40
 
         config = ServeDeploySchema(
             target_capacity=config_target_capacity,
@@ -498,10 +504,11 @@ class TestInitialReplicasHandling:
             lambda: serve.status().target_capacity == config_target_capacity
         )
         wait_for_condition(
-            check_expected_num_replicas(
-                {deployment_name: config_target_capacity * initial_replicas},
-                app_name="app1",
-            )
+            check_expected_num_replicas,
+            deployment_to_num_replicas={
+                deployment_name: int(initial_replicas * config_target_capacity / 100)
+            },
+            app_name="app1",
         )
 
         # When deploying a new config, initial_replicas * target_capacity
@@ -530,16 +537,22 @@ class TestInitialReplicasHandling:
             lambda: serve.status().target_capacity == new_config_target_capacity
         )
         wait_for_condition(
-            check_expected_num_replicas(
-                {deployment_name: new_config_target_capacity * initial_replicas},
-                app_name="app1",
-            )
+            check_expected_num_replicas,
+            deployment_to_num_replicas={
+                deployment_name: int(
+                    initial_replicas * new_config_target_capacity / 100
+                )
+            },
+            app_name="app1",
         )
         wait_for_condition(
-            check_expected_num_replicas(
-                {deployment_name: new_config_target_capacity * initial_replicas},
-                app_name="app2",
-            )
+            check_expected_num_replicas,
+            deployment_to_num_replicas={
+                deployment_name: int(
+                    initial_replicas * new_config_target_capacity / 100
+                )
+            },
+            app_name="app2",
         )
 
 
