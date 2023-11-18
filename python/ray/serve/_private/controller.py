@@ -1064,7 +1064,7 @@ def calculate_scale_direction(
             next_scale_dirction = curr_scale_direction
         elif curr_target_capacity is None and next_target_capacity is not None:
             next_scale_dirction = TargetCapacityScaleDirection.DOWN
-        elif curr_target_capacity is None and next_target_capacity is not None:
+        elif curr_target_capacity is not None and next_target_capacity is None:
             next_scale_dirction = None
         elif curr_target_capacity < next_target_capacity:
             next_scale_dirction = TargetCapacityScaleDirection.UP

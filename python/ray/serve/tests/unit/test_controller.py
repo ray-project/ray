@@ -1,6 +1,10 @@
 import pytest
 
-from ray.serve._private.common import ApplicationStatus, ApplicationStatusInfo
+from ray.serve._private.common import (
+    ApplicationStatus,
+    ApplicationStatusInfo,
+    TargetCapacityScaleDirection,
+)
 from ray.serve._private.controller import (
     calculate_scale_direction,
     live_applications_match_config,
@@ -102,7 +106,40 @@ class TestLiveApplicationsMatchConfig:
 
 class TestCalculateScaleDirection:
 
-    ...
+    def test_scale_up_numeric(self):
+        ...
+    
+    def test_scale_down_numeric(self):
+        ...
+    
+    def test_no_change_target_capacity(self):
+
+        # Case 1: both target_capacities are values.
+
+        # Case 2: both target_capacities are None.
+
+        ...
+    
+    def test_enter_null_target_capacity(self):
+        """When target capacity becomes null, scale up/down behavior must stop."""
+
+        ...
+    
+    def test_exit_null_target_capacity(self):
+        """When target capacity goes null -> non-null, scale down must start."""
+
+        ...
+    
+    def test_scale_up_first_config(self):
+        ...
+    
+    def test_config_live_apps_mismatch(self):
+
+        # Case 1: target_capacity is set. Serve should transition to scaling up.
+
+        # Case 2: target_capacity is not set. Serve should not be scaling.
+
+        ...
 
 
 if __name__ == "__main__":
