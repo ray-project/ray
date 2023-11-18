@@ -1054,9 +1054,6 @@ def calculate_scale_direction(
 ) -> Optional[TargetCapacityScaleDirection]:
     next_scale_dirction = None
 
-    if len(all_app_statuses) == 0 and new_config.target_capacity is not None:
-        next_scale_dirction = TargetCapacityScaleDirection.UP
-
     if live_applications_match_config(new_config, all_app_statuses):
         next_target_capacity = new_config.target_capacity
 
@@ -1071,8 +1068,12 @@ def calculate_scale_direction(
         else:
             assert curr_target_capacity > next_target_capacity
             next_scale_dirction = TargetCapacityScaleDirection.DOWN
+    elif new_config.target_capacity is not None:
+        # A config with different apps has been applied, and it contains a
+        # target_capacity. Serve must start scaling this config up.
+        next_scale_dirction = TargetCapacityScaleDirection.UP
     else:
-        next_scale_dirction = curr_scale_direction
+        next_scale_dirction = None
 
     if next_scale_dirction != curr_scale_direction:
         if isinstance(next_scale_dirction, TargetCapacityScaleDirection):
