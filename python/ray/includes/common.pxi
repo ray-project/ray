@@ -24,7 +24,8 @@ cdef class GcsClientOptions:
     def from_gcs_address(cls, gcs_address):
         self = GcsClientOptions()
         try:
-            ip, port = gcs_address.split(":")
+            ip, port = gcs_address.split(":", 2)
+            print("DBG>>", ip, port)
             port = int(port)
             self.inner.reset(
                 new CGcsClientOptions(ip, port))
