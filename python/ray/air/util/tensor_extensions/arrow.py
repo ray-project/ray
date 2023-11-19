@@ -14,7 +14,6 @@ from ray.air.util.tensor_extensions.utils import (
 from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
-print("spam")
 
 PYARROW_VERSION = _get_pyarrow_version()
 if PYARROW_VERSION is not None:
