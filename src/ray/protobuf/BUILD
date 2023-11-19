@@ -72,6 +72,7 @@ proto_library(
 proto_library(
     name = "ray_syncer_proto",
     srcs = ["ray_syncer.proto"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(

@@ -252,13 +252,21 @@ void GcsResourceManager::UpdateNodeResourceUsage(
     // we are guaranteed that no resource usage will be reported.
     return;
   }
-  if (resource_view_sync_message.resources_total_size() > 0) {
-    (*iter->second.mutable_resources_total()) =
-        resource_view_sync_message.resources_total();
+  if (resource_view_sync_message.resources_total().resources_size() > 0) {
+    iter->second.mutable_resources_total()->clear();
+    for (const auto &[resource_name, instances] :
+         resource_view_sync_message.resources_total().resources()) {
+      (*iter->second.mutable_resources_total())[resource_name] =
+          std::reduce(instances.instances().begin(), instances.instances().end());
+    }
   }
 
-  (*iter->second.mutable_resources_available()) =
-      resource_view_sync_message.resources_available();
+  iter->second.mutable_resources_available()->clear();
+  for (const auto &[resource_name, instances] :
+       resource_view_sync_message.resources_available().resources()) {
+    (*iter->second.mutable_resources_available())[resource_name] =
+        std::reduce(instances.instances().begin(), instances.instances().end());
+  }
 }
 
 void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {

@@ -57,8 +57,8 @@ void ClusterResourceManager::AddOrUpdateNode(
   AddOrUpdateNode(node_id, node_resources);
 }
 
-void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
-                                             const NodeResources &node_resources) {
+void ClusterResourceManager::AddOrUpdateNode(
+    scheduling::NodeID node_id, const NodeResourceInstances &node_resources) {
   RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id.ToInt()
                  << ", node_resources: " << node_resources.DebugString();
   auto it = nodes_.find(node_id);
@@ -78,16 +78,13 @@ bool ClusterResourceManager::UpdateNode(
     return false;
   }
 
-  auto resources_total = MapFromProtobuf(resource_view_sync_message.resources_total());
-  auto resources_available =
-      MapFromProtobuf(resource_view_sync_message.resources_available());
-  NodeResources node_resources =
-      ResourceMapToNodeResources(resources_total, resources_available);
-  NodeResources local_view;
+  NodeResourceInstances local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
-  local_view.total = node_resources.total;
-  local_view.available = node_resources.available;
+  local_view.total =
+      NodeResourceInstanceSet(resource_view_sync_message.resources_total());
+  local_view.available =
+      NodeResourceInstanceSet(resource_view_sync_message.resources_available());
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
   // Update the idle duration for the node in terms of resources usage.
@@ -108,8 +105,8 @@ bool ClusterResourceManager::RemoveNode(scheduling::NodeID node_id) {
   return nodes_.erase(node_id) != 0;
 }
 
-bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,
-                                              NodeResources *ret_resources) const {
+bool ClusterResourceManager::GetNodeResources(
+    scheduling::NodeID node_id, NodeResourceInstances *ret_resources) const {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
     *ret_resources = it->second.GetLocalView();
@@ -119,7 +116,7 @@ bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,
   }
 }
 
-const NodeResources &ClusterResourceManager::GetNodeResources(
+const NodeResourceInstances &ClusterResourceManager::GetNodeResources(
     scheduling::NodeID node_id) const {
   const auto &node = map_find_or_die(nodes_, node_id);
   return node.GetLocalView();

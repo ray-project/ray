@@ -681,6 +681,14 @@ message Task {
   TaskSpec task_spec = 1;
 }
 
+message NodeResourceInstances {
+  // Quantity of each instance.
+  repeated double instances = 1;
+}
+message NodeResources {
+  map<string, NodeResourceInstances> resources = 1;
+}
+
 // Represents a resource id.
 message ResourceId {
   // The index of the resource (i.e., CPU #3).

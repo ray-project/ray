@@ -18,6 +18,7 @@
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -28,6 +29,8 @@ class NodeResourceInstanceSet {
 
   /// Construct a NodeResourceInstanceSet from a node total resources.
   NodeResourceInstanceSet(const NodeResourceSet &total);
+
+  NodeResourceInstanceSet(const rpc::NodeResources &resources);
 
   /// Check whether a particular node resource exist.
   bool Has(ResourceID resource_id) const;
@@ -81,6 +84,8 @@ class NodeResourceInstanceSet {
 
   /// Convert to node resource set with summed per-instance values.
   NodeResourceSet ToNodeResourceSet() const;
+
+  rpc::NodeResources ToProto() const;
 
   /// Only for testing.
   const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &Resources() const {

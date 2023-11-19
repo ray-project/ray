@@ -352,7 +352,9 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
       ResourceID::CPU(), {2.0}, /*allow_going_negative=*/true);
 
   const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
-  ASSERT_EQ(resource_view_sync_messge.resources_available().at("CPU"), 0);
+  ASSERT_EQ(
+      resource_view_sync_messge.resources_available().resources().at("CPU").instances(0),
+      0);
 }
 
 }  // namespace ray

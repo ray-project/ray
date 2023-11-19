@@ -37,6 +37,16 @@ NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
   }
 }
 
+NodeResourceInstanceSet::NodeResourceInstanceSet(const rpc::NodeResources &resources) {
+  for (const auto &[resource_name, instances] : resources.resources()) {
+    std::vector<FixedPoint> fps;
+    for (const auto &instance : instances.instances()) {
+      fps.emplace_back(instance);
+    }
+    Set(ResourceID(resource_name), fps);
+  }
+}
+
 bool NodeResourceInstanceSet::Has(ResourceID resource_id) const {
   return !(Get(resource_id).empty());
 }
@@ -263,6 +273,19 @@ NodeResourceSet NodeResourceInstanceSet::ToNodeResourceSet() const {
     node_resource_set.Set(resource_id, FixedPoint::Sum(instances));
   }
   return node_resource_set;
+}
+
+rpc::NodeResources NodeResourceInstanceSet::ToProto() const {
+  rpc::NodeResources node_resources_proto;
+  for (const auto &[resource_id, instances] : resources_) {
+    rpc::NodeResourceInstances node_resource_instances_proto;
+    for (const auto &instance : instances) {
+      node_resource_instances_proto.add_instances(instance.Double());
+    }
+    (*node_resources_proto.mutable_resources())[resource_id.Binary()] =
+        std::move(node_resource_instances_proto);
+  }
+  return node_resources_proto;
 }
 
 }  // namespace ray

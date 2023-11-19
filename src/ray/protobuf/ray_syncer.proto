@@ -16,6 +16,8 @@ syntax = "proto3";
 option cc_enable_arenas = true;
 package ray.rpc.syncer;
 
+import "src/ray/protobuf/common.proto";
+
 enum MessageType {
   RESOURCE_VIEW = 0;
   COMMANDS = 1;
@@ -30,9 +32,9 @@ message CommandsSyncMessage {
 
 message ResourceViewSyncMessage {
   // Resource capacity currently available on this node manager.
-  map<string, double> resources_available = 1;
+  NodeResources resources_available = 1;
   // Total resource capacity configured for this node manager.
-  map<string, double> resources_total = 2;
+  NodeResources resources_total = 2;
   // Whether this node has object pulls queued. This can happen if
   // the node has more pull requests than available object store
   // memory. This is a proxy for available object store memory.

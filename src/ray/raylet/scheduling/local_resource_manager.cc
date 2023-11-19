@@ -296,25 +296,27 @@ double LocalResourceManager::GetLocalAvailableCpus() const {
 
 void LocalResourceManager::PopulateResourceViewSyncMessage(
     syncer::ResourceViewSyncMessage &resource_view_sync_message) const {
-  NodeResources resources = ToNodeResources();
+  (*resource_view_sync_message.mutable_resources_total()) =
+      local_resources_.total.ToProto();
+  (*resource_view_sync_message.mutable_resources_available()) =
+      local_resources_.available.ToProto();
 
-  auto total = resources.total.GetResourceMap();
-  resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
-                                                               total.end());
-
-  for (const auto &[resource_name, available] : resources.available.GetResourceMap()) {
-    // Resource availability can be negative locally but treat it as 0
-    // when we broadcast to others since other parts of the
-    // system assume resource availability cannot be negative and
-    // there is no difference between negative and zero from other nodes
-    // and gcs's point of view.
-    (*resource_view_sync_message.mutable_resources_available())[resource_name] =
-        std::max(available, 0.0);
+  for (auto &[resource_name, instances] :
+       *(resource_view_sync_message.mutable_resources_available()->mutable_resources())) {
+    for (auto &instance : *instances.mutable_instances()) {
+      // Resource availability can be negative locally but treat it as 0
+      // when we broadcast to others since other parts of the
+      // system assume resource availability cannot be negative and
+      // there is no difference between negative and zero from other nodes
+      // and gcs's point of view.
+      if (instance < 0) {
+        instance = 0;
+      }
+    }
   }
 
   if (get_pull_manager_at_capacity_ != nullptr) {
-    resources.object_pulls_queued = get_pull_manager_at_capacity_();
-    resource_view_sync_message.set_object_pulls_queued(resources.object_pulls_queued);
+    resource_view_sync_message.set_object_pulls_queued(get_pull_manager_at_capacity_());
   }
 
   auto idle_time = GetResourceIdleTime();
