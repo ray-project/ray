@@ -107,6 +107,28 @@ class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
     pass
 
 
+class _MultiColumnSortedKey:
+    """Represents a tuple of group keys with a ``__lt__`` method
+
+    This is a simple implementation to support multi-column groupby.
+    While a 1D array of tuples suffices to maintain the lexicographical
+    sorted order, a comparison method is also needed in ``np.searchsorted``
+    (for computing the group key boundaries).
+    """
+
+    __slots__ = ("data",)
+
+    def __init__(self, *args):
+        self.data = tuple(args)
+
+    def __lt__(self, obj: "_MultiColumnSortedKey") -> bool:
+        return self.data < obj.data
+
+    def __repr__(self) -> str:
+        """Print as T(1, 2)"""
+        return "T" + self.data.__repr__()
+
+
 @PublicAPI
 class GroupedData:
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
@@ -297,13 +319,20 @@ class GroupedData:
         else:
             sorted_ds = self._dataset.repartition(1)
 
-        # Returns the group boundaries.
-        def get_key_boundaries(block_accessor: BlockAccessor):
+        def get_key_boundaries(block_accessor: BlockAccessor) -> List[int]:
+            """Compute block boundaries based on the key(s)"""
+
             import numpy as np
 
-            boundaries = []
             # Get the keys of the batch in numpy array format
             keys = block_accessor.to_numpy(self._key)
+
+            if isinstance(keys, dict):
+                # For multiple keys, we generate a separate tuple column
+                convert_to_multi_column_sorted_key = np.vectorize(_MultiColumnSortedKey)
+                keys: np.ndarray = convert_to_multi_column_sorted_key(*keys.values())
+
+            boundaries = []
             start = 0
             while start < keys.size:
                 end = start + np.searchsorted(keys[start:], keys[start], side="right")
