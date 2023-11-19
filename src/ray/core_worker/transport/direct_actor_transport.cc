@@ -38,6 +38,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     const rpc::PushTaskRequest &request,
     rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  const rpc::PushTaskRequest req_copy = request;
+
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   // Use `mutable_task_spec()` here as `task_spec()` returns a const reference
   // which doesn't work with std::move.
@@ -77,7 +79,11 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   }
 
-  auto accept_callback = [this, reply, task_spec, resource_ids](
+  auto requeue_callback = [this, req_copy, reply](rpc::SendReplyCallback send_reply_callback) {
+    this->HandleTask(req_copy, reply, send_reply_callback);
+  };
+
+  auto accept_callback = [this, reply, task_spec, requeue_callback, resource_ids](
                              rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -191,7 +197,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         }
       }
     }
-    if (status.ShouldExitWorker()) {
+    if (task_spec.IsCompiledDagTask()) {
+      RAY_LOG(ERROR) << "Requeueing task";
+      requeue_callback(send_reply_callback);
+    } else if (status.ShouldExitWorker()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
       reply->set_worker_exiting(true);
@@ -220,9 +229,49 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   };
 
+  bool is_dag_task = task_spec.IsCompiledDagTask();
+  RAY_LOG(ERROR) << "Queueing actor task " << task_spec.GetName() << " id " << task_spec.TaskId();
+  if (is_dag_task) {
+    RAY_LOG(ERROR) << "Is dag task";
+    auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
+
+    // Create OOO schduling queue.
+    if (it == actor_scheduling_queues_.end()) {
+      RAY_LOG(ERROR) << "Creating OOO scheduling queue";
+      auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
+      RAY_CHECK(cg_it != concurrency_groups_cache_.end());
+      it = actor_scheduling_queues_
+               .emplace(task_spec.CallerWorkerId(),
+                        std::unique_ptr<SchedulingQueue>(
+                            new OutOfOrderActorSchedulingQueue(task_main_io_service_,
+                                                               *waiter_,
+                                                               pool_manager_,
+                                                               fiber_state_manager_,
+                                                               is_asyncio_,
+                                                               fiber_max_concurrency_,
+                                                               cg_it->second)))
+               .first;
+    }
+    RAY_LOG(ERROR) << "Add start";
+
+    it->second->Add(request.sequence_number(),
+                    request.client_processed_up_to(),
+                    std::move(accept_callback),
+                    std::move(cancel_callback),
+                    std::move(send_reply_callback),
+                    task_spec.ConcurrencyGroupName(),
+                    task_spec.FunctionDescriptor(),
+                    task_spec.TaskId(),
+                    /*dependencies=*/{});
+
+    RAY_LOG(ERROR) << "Add done";
+    return;
+  }
+
   auto dependencies = task_spec.GetDependencies();
 
   if (task_spec.IsActorTask()) {
+    RAY_LOG(ERROR) << "Processing actor task " << task_spec.GetName();
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
       auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
@@ -264,6 +313,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                     task_spec.TaskId(),
                     dependencies);
   } else {
+    RAY_LOG(ERROR) << "Processing normal task " << task_spec.GetName();
     // Add the normal task's callbacks to the non-actor scheduling queue.
     RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
                    << " to normal scheduling task queue.";

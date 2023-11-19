@@ -2801,6 +2801,10 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
+  // XXX avoid metric crash on resubmit
+  if (task_spec.IsCompiledDagTask()) {
+    task_counter_.IncPending(func_name, task_spec.IsRetry());
+  }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
 

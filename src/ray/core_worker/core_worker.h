@@ -1336,6 +1336,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args,
       int64_t num_returns,
+      bool is_compiled_dag_task,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint,
