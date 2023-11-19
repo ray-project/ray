@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 import pyarrow.parquet as pq
 
