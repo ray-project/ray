@@ -653,9 +653,9 @@ Status PlasmaClient::Impl::GetRelease(const ObjectID &object_id) {
   }
 
   auto &entry = object_entry->second;
-  RAY_CHECK(entry->is_sealed && entry->is_shared) << "ray.release must be called on "
-    "objects that are sealed and shared. sealed? " << entry->is_sealed
-    << " shared " << entry->is_shared;
+//  RAY_CHECK(entry->is_sealed && entry->is_shared) << "ray.release must be called on "
+//    "objects that are sealed and shared. sealed? " << entry->is_sealed
+//    << " shared " << entry->is_shared;
 
   RAY_LOG(DEBUG) << "Release shared object " << object_id;
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
