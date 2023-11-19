@@ -16,6 +16,7 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     wait_for_condition,
     run_string_as_driver_nonblocking,
+    skip_flaky_test,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -239,6 +240,10 @@ def test_actor_failure_async_2(ray_start_regular, tmp_path):
     "ray_start_regular",
     [{"_system_config": {"timeout_ms_task_wait_for_death_info": 100000000}}],
     indirect=True,
+)
+@pytest.mark.skipif(
+    skip_flaky_test(),
+    reason="https://github.com/ray-project/ray/issues/41188",
 )
 def test_actor_failure_async_3(ray_start_regular):
     @ray.remote(max_restarts=1)

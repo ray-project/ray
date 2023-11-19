@@ -215,7 +215,9 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
 
     ASSERT_NE(idle_time, absl::nullopt);
     ASSERT_NE(*idle_time, absl::InfinitePast());
-    auto dur = absl::ToInt64Seconds(absl::Now() - *idle_time);
+    // Adds a 100ms buffer time. The idle time counting does not always
+    // guarantee to be strictly longer than the sleep time.
+    auto dur = absl::ToInt64Seconds(absl::Now() - *idle_time + absl::Milliseconds(100));
     ASSERT_GE(dur, 1);
   }
 
@@ -264,7 +266,9 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       // Test allocates same resource have the right idle time.
       auto idle_time = manager->GetResourceIdleTime();
       ASSERT_TRUE(idle_time.has_value());
-      ASSERT_GE(absl::Now() - *idle_time, absl::Seconds(1));
+      // Gives it 100ms buffer time. The idle time counting does not always
+      // guarantee that it is larger than 1 second after a 1 second sleep.
+      ASSERT_GE(absl::Now() - *idle_time, absl::Seconds(1) - absl::Milliseconds(100));
     }
 
     // Allocate the resource
