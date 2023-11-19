@@ -1,19 +1,18 @@
 import itertools
 import json
 import sys
-from typing import Iterable, Optional, Tuple, List, Sequence, Union
+from typing import Iterable, List, Optional, Sequence, Tuple, Union
 
-from pkg_resources._vendor.packaging.version import parse as parse_version
 import numpy as np
 import pyarrow as pa
+from pkg_resources._vendor.packaging.version import parse as parse_version
 
+from ray._private.utils import _get_pyarrow_version
 from ray.data.extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
-from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
-
 
 PYARROW_VERSION = _get_pyarrow_version()
 if PYARROW_VERSION is not None:

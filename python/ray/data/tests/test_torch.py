@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data.extensions.tensor_extension import TensorArray
+from ray.data.extensions import TensorArray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 

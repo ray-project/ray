@@ -1,5 +1,5 @@
-from typing import Any, Sequence, Union, TYPE_CHECKING
 import warnings
+from typing import TYPE_CHECKING, Any, Sequence, Union
 
 import numpy as np
 
@@ -82,7 +82,7 @@ def create_ragged_ndarray(values: Sequence[np.ndarray]) -> np.ndarray:
         .. testsetup::
 
             import numpy as np
-            from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
+            from ray.data.extensions.utils import create_ragged_ndarray
 
         .. doctest::
 

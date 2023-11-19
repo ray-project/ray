@@ -6,9 +6,8 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.block import BlockAccessor
-from ray.data.extensions.tensor_extension import (
+from ray.data.extensions import (
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorArray,
@@ -16,6 +15,7 @@ from ray.data.extensions.tensor_extension import (
     TensorArray,
     TensorDtype,
 )
+from ray.data.extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa

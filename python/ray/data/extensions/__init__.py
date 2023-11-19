@@ -1,8 +1,10 @@
-from ray.data.extensions.tensor_extension import (
+from ray.data.extensions.arrow import (
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+)
+from ray.data.extensions.pandas import (
     TensorArray,
     TensorArrayElement,
     TensorDtype,

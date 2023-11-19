@@ -18,7 +18,7 @@ def _concatenate_extension_column(ca: "pyarrow.ChunkedArray") -> "pyarrow.Array"
     extension arrays.
     See https://issues.apache.org/jira/browse/ARROW-16503.
     """
-    from ray.air.util.tensor_extensions.arrow import (
+    from ray.data.extensions.arrow import (
         ArrowTensorArray,
         ArrowTensorType,
         ArrowVariableShapedTensorType,

@@ -456,7 +456,7 @@ def _read_fragments(
     serialized_fragments: List[_SerializedFragment],
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
-    from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
+    from ray.data.extensions import ArrowTensorType  # noqa
 
     # Deserialize after loading the filesystem class.
     fragments: List[

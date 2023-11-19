@@ -6,14 +6,14 @@ from pkg_resources._vendor.packaging.version import parse as parse_version
 import pyarrow as pa
 import pytest
 
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data.extensions.arrow import (
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
 )
-from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
+from ray.data.extensions.pandas import TensorArray, TensorDtype
+from ray.data.extensions.utils import create_ragged_ndarray
 from ray._private.utils import _get_pyarrow_version
 
 

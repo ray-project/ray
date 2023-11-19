@@ -3,7 +3,7 @@ import pytest
 import torch
 
 import ray
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
+from ray.data.extensions.utils import create_ragged_ndarray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 

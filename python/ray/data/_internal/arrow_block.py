@@ -73,10 +73,7 @@ class ArrowRow(TableRow):
     """
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
-        from ray.data.extensions.tensor_extension import (
-            ArrowTensorType,
-            ArrowVariableShapedTensorType,
-        )
+        from ray.data.extensions import ArrowTensorType, ArrowVariableShapedTensorType
 
         def get_item(keys: List[str]) -> Any:
             schema = self._row.schema
@@ -138,7 +135,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
             if col_name == TENSOR_COLUMN_NAME or isinstance(
                 next(iter(col), None), np.ndarray
             ):
-                from ray.data.extensions.tensor_extension import ArrowTensorArray
+                from ray.data.extensions import ArrowTensorArray
 
                 columns[col_name] = ArrowTensorArray.from_numpy(col)
         return pyarrow.Table.from_pydict(columns)
@@ -178,7 +175,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
-        from ray.data.extensions.tensor_extension import ArrowTensorArray
+        from ray.data.extensions import ArrowTensorArray
 
         if isinstance(batch, np.ndarray):
             batch = {TENSOR_COLUMN_NAME: batch}

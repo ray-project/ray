@@ -21,10 +21,7 @@ from ray._private.arrow_serialization import (
     _copy_offsets_buffer_if_needed,
 )
 from ray._private.utils import _get_pyarrow_version
-from ray.data.extensions.tensor_extension import (
-    ArrowTensorArray,
-    ArrowVariableShapedTensorArray,
-)
+from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
 from ray.tests.conftest import *  # noqa
 
 

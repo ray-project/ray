@@ -52,10 +52,7 @@ def unify_schemas(
     variable-shaped tensors in the given schemas."""
     import pyarrow as pa
 
-    from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
-    )
+    from ray.data.extensions.arrow import ArrowTensorType, ArrowVariableShapedTensorType
 
     schemas_to_unify = []
     schema_field_overrides = {}

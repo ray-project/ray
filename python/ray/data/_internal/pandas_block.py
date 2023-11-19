@@ -110,7 +110,7 @@ class PandasBlockBuilder(TableBlockBuilder):
             if key == TENSOR_COLUMN_NAME or isinstance(
                 next(iter(value), None), np.ndarray
             ):
-                from ray.data.extensions.tensor_extension import TensorArray
+                from ray.data.extensions import TensorArray
 
                 columns[key] = TensorArray(value)
         return pandas.DataFrame(columns)

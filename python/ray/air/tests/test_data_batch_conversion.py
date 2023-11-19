@@ -15,8 +15,8 @@ from ray.air.util.data_batch_conversion import (
     _cast_tensor_columns_to_ndarrays,
 )
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.air.util.tensor_extensions.pandas import TensorArray
-from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray.data.extensions.pandas import TensorArray
+from ray.data.extensions.arrow import ArrowTensorArray
 
 
 def test_pandas_pandas():

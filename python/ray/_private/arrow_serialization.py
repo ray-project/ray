@@ -252,7 +252,7 @@ class PicklableArrayPayload:
 def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array":
     """Reconstruct an Arrow Array from a possibly nested PicklableArrayPayload."""
     import pyarrow as pa
-    from ray.air.util.tensor_extensions.arrow import (
+    from ray.data.extensions.arrow import (
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )
@@ -299,7 +299,7 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
     """
     import pyarrow as pa
 
-    from ray.air.util.tensor_extensions.arrow import (
+    from ray.data.extensions.arrow import (
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )

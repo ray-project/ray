@@ -32,19 +32,19 @@
 
 import numbers
 import os
-from packaging.version import Version
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+from packaging.version import Version
 from pandas._typing import Dtype
 from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
 from pandas.core.indexers import check_array_indexer, validate_indices
 from pandas.io.formats.format import ExtensionArrayFormatter
 
-from ray.air.util.tensor_extensions.utils import (
+from ray.data.extensions.utils import (
     _create_possibly_ragged_ndarray,
     _is_ndarray_variable_shaped_tensor,
 )
@@ -244,7 +244,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         >>> # row's value, you get back our TensorArrayElement type.
         >>> tensor = col.mean()
         >>> type(tensor) # doctest: +SKIP
-        ray.data.extensions.tensor_extension.TensorArrayElement
+        ray.data.extensions.TensorArrayElement
         >>> tensor # doctest: +SKIP
         array([[[18., 20.],
                 [22., 24.]],
@@ -663,7 +663,7 @@ class TensorArray(
         >>> # row's value, you get back our TensorArrayElement type.
         >>> tensor = col.mean() # doctest: +SKIP
         >>> type(tensor) # doctest: +SKIP
-        ray.data.extensions.tensor_extension.TensorArrayElement
+        ray.data.extensions.TensorArrayElement
         >>> tensor # doctest: +SKIP
         array([[[18., 20.],
                 [22., 24.]],
@@ -1387,7 +1387,7 @@ class TensorArray(
         https://pandas.pydata.org/pandas-docs/stable/development/extending.html#compatibility-with-apache-arrow
         for more information.
         """
-        from ray.air.util.tensor_extensions.arrow import (
+        from ray.data.extensions.arrow import (
             ArrowTensorArray,
             ArrowVariableShapedTensorArray,
         )

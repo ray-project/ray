@@ -6,7 +6,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data.extensions.tensor_extension import (
+from ray.data.extensions import (
     ArrowTensorArray,
     ArrowTensorType,
     TensorArray,

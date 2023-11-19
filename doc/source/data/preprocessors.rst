@@ -167,7 +167,7 @@ table below to determine which preprocessor to use.
 
 .. warning::
     These preprocessors operate on numeric columns. If your dataset contains columns of
-    type :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`, you may need to
+    type :class:`~ray.data.extensions.pandas.TensorDtype`, you may need to
     :ref:`implement a custom preprocessor <air-custom-preprocessors>`.
 
 Additionally, if your model expects a tensor or ``ndarray``, create a tensor using
@@ -175,7 +175,7 @@ Additionally, if your model expects a tensor or ``ndarray``, create a tensor usi
 
 .. tip::
   Built-in feature scalers like :class:`~ray.data.preprocessors.StandardScaler` don't
-  work on :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype` columns, so apply
+  work on :class:`~ray.data.extensions.pandas.TensorDtype` columns, so apply
   :class:`~ray.data.preprocessors.Concatenator` after feature scaling.
 
   .. literalinclude:: doc_code/preprocessors.py
