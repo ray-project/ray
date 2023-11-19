@@ -14,6 +14,7 @@ from ray.air.util.tensor_extensions.utils import (
 from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
+print("spam")
 
 PYARROW_VERSION = _get_pyarrow_version()
 if PYARROW_VERSION is not None:
@@ -914,7 +915,11 @@ def _to_ndarray_helper(shape, value_type, offset, data_buffer):
     return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset)
 
 
-# Registration needs an extension type instance, but then works for any instance of the
-# same subclass regardless of parametrization of the type.
-pa.register_extension_type(ArrowTensorType((0,), pa.int64()))
-pa.register_extension_type(ArrowVariableShapedTensorType(pa.int64(), 0))
+try:
+    # Registration needs an extension type instance, but then works for any instance of
+    # the same subclass regardless of parametrization of the type.
+    pa.register_extension_type(ArrowTensorType((0,), pa.int64()))
+    pa.register_extension_type(ArrowVariableShapedTensorType(pa.int64(), 0))
+except pa.ArrowKeyError:
+    # Extension types are already registered.
+    pass
