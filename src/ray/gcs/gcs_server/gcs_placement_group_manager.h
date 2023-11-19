@@ -36,7 +36,6 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-class GcsMonitorServerTest;
 namespace gcs {
 
 /// GcsPlacementGroup just wraps `PlacementGroupTableData` and provides some convenient
@@ -532,8 +531,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
-
-  friend GcsMonitorServerTest;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);
