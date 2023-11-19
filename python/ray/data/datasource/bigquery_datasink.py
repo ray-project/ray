@@ -24,7 +24,7 @@ class _BigQueryDatasink(Datasink):
         self,
         project_id: str,
         dataset: str,
-        max_retry_cnt: Optional[int] = None,
+        max_retry_cnt: int = DEFAULT_MAX_RETRY_CNT,
     ) -> None:
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")
@@ -32,10 +32,7 @@ class _BigQueryDatasink(Datasink):
 
         self.project_id = project_id
         self.dataset = dataset
-        if max_retry_cnt is None:
-            self.max_retry_cnt = DEFAULT_MAX_RETRY_CNT
-        else:
-            self.max_retry_cnt = max_retry_cnt
+        self.max_retry_cnt = max_retry_cnt
 
     def on_write_start(self) -> None:
         from google.api_core import exceptions

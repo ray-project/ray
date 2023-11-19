@@ -3369,7 +3369,7 @@ class Dataset:
         self,
         project_id: str,
         dataset: str,
-        max_retry_cnt: Optional[int] = None,
+        max_retry_cnt: int = 10,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -3400,7 +3400,8 @@ class Dataset:
                 overwritten if it exists.
             max_retry_cnt: The maximum number of retries that an individual block write
                 is retried due to BigQuery rate limiting errors. This isn't
-                related to Ray fault tolerance retries.
+                related to Ray fault tolerance retries. The default number of retries
+                is 10.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """  # noqa: E501
         if ray_remote_args is None:
