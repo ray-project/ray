@@ -1,4 +1,5 @@
 import itertools
+import json
 import sys
 from typing import Iterable, Optional, Tuple, List, Sequence, Union
 
@@ -10,7 +11,6 @@ from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
-import ray.cloudpickle as pickle
 from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
@@ -100,14 +100,12 @@ class ArrowTensorType(pa.ExtensionType):
         return TensorDtype(self._shape, self.storage_type.value_type.to_pandas_dtype())
 
     def __arrow_ext_serialize__(self):
-        arguments = (self._shape, self.storage_type.value_type)
-        return pickle.dumps(arguments)
+        return json.dumps(self._shape).encode()
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape, dtype = pickle.loads(serialized)
-        assert storage_type == pa.list_(dtype)
-        return cls(shape, dtype)
+        shape = tuple(json.loads(serialized))
+        return cls(shape, storage_type.value_type)
 
     def __arrow_ext_class__(self):
         """
@@ -588,12 +586,12 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         return self.storage_type[data_field_index].type.value_type
 
     def __arrow_ext_serialize__(self):
-        arguments = (self.storage_type["data"].type.value_type, self._ndim)
-        return pickle.dumps(arguments)
+        return json.dumps(self._ndim).encode()
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        dtype, ndim = pickle.loads(serialized)
+        ndim = json.loads(serialized)
+        dtype = storage_type["data"].type.value_type
         return cls(dtype, ndim)
 
     def __arrow_ext_class__(self):
