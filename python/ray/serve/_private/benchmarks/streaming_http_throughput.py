@@ -11,8 +11,6 @@ from ray import serve
 from ray.serve._private.benchmarks.common import run_throughput_benchmark
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 
-BATCH_SIZE = 1
-
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
 class Downstream:
@@ -22,21 +20,11 @@ class Downstream:
         self._tokens_per_request = tokens_per_request
 
     async def stream(self):
-        batches = []
-        s = time.time()
         for i in range(self._tokens_per_request):
-            batches.append("hi")
-            if i % BATCH_SIZE == 0:
-                yield batches
-                await asyncio.sleep(0)
-                batches = []
-        e = (time.time() - s)
-        print(f"data generation takes {e * 1000} ms. throughput: {self._tokens_per_request / e} / s")
+            yield "hi"
 
     def __call__(self, *args):
         return StreamingResponse(self.stream())
-
-# yield -> serialize (30us) -> send message (inlined object) to the owner (30us) -> object ref is ready.
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
 class Intermediate:
@@ -49,35 +37,8 @@ class Intermediate:
         )
 
     async def stream(self):
-        gen = self._h.stream.remote()
-        # print("wait until downstream is finished")
-        # await asyncio.sleep(10)
-        s = time.time()
-        total_elapsed = 0
-        total_tokens = 0
-        # while True:
-        #     try:
-        #         # anext_time = time.time()
-        #         tokens = await gen.__anext__()
-        #         # print(f"anext took {(time.time() - anext_time) * 1000} ms")
-        #         # await gen._obj_ref_gen._generator_ref
-        #         ss = time.time()
-        #         # yield tokens
-        #         for token in tokens:
-        #             total_tokens += 1
-        #             yield token
-        #         total_elapsed += (time.time() - ss) * 1000
-        #     except StopAsyncIteration:
-        #         break
-        async for tokens in gen:
-            ss = time.time()
-            for token in tokens:
-                total_tokens += 1
-                yield token
-            total_elapsed += (time.time() - ss) * 1000
-            # print(f"inner yield takes {(time.time() - ss) * 1000} ms")
-        e = (time.time() - s)
-        print(f"yield takes {e * 1000} ms, inner elapse: {total_elapsed}, throughput: {total_tokens / e} / s")
+        async for token in self._h.stream.remote():
+            yield token
 
     def __call__(self, *args):
         return StreamingResponse(self.stream())

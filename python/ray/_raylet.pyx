@@ -250,19 +250,6 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 # It is thread-safe.
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
 
-class TimerContextManager:
-    def __init__(self, name):
-        self.name = self.name = name
-
-    def __enter__(self):
-        self.start_time = time.time()
-        return self
-    
-    def __exit__(self, exc_type, exc_value, traceback):
-        end_time = time.time()
-        elapsed_time = end_time - self.start_time
-        print(f"{self.name} Time taken: {elapsed_time * 1000} ms")
-
 
 class ObjectRefGenerator:
     def __init__(self, refs):
@@ -345,7 +332,6 @@ class StreamingObjectRefGenerator:
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
         """
-        # self.worker.check_connected()
         core_worker = self.worker.core_worker
 
         # Wait for the next ObjectRef to become ready.
@@ -395,7 +381,6 @@ class StreamingObjectRefGenerator:
             timeout_s: Optional[float] = None
     ):
         """Same API as _next_sync, but it is for async context."""
-        # self.worker.check_connected()
         core_worker = self.worker.core_worker
         ref, is_ready = core_worker.peek_object_ref_stream(
             self._generator_ref)
@@ -1283,12 +1268,11 @@ async def execute_streaming_generator_async(
         # Run it in a separate thread to that we can
         # avoid blocking the event loop when serializing
         # the output (which has nogil).
-        done = report_streaming_generator_output(output_or_exception, context)
-        # done = await loop.run_in_executor(
-        #     worker.core_worker.get_thread_pool_for_async_event_loop(),
-        #     report_streaming_generator_output,
-        #     output_or_exception,
-        #     context)
+        done = await loop.run_in_executor(
+            worker.core_worker.get_thread_pool_for_async_event_loop(),
+            report_streaming_generator_output,
+            output_or_exception,
+            context)
         if done:
             break
 
@@ -4330,7 +4314,7 @@ cdef class CoreWorker:
         if self.thread_pool_for_async_event_loop is None:
             # Theoretically, we can use multiple threads,
             self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
-                max_workers=64)
+                max_workers=1)
         return self.thread_pool_for_async_event_loop
 
     def get_event_loop(self, function_descriptor, specified_cgname):
