@@ -14,6 +14,9 @@ Ray Data Dashboard
 
 Ray Data emits Prometheus metrics in real-time while a Dataset is executing. These metrics are tagged by both dataset and operator, and are displayed in multiple views across the Ray dashboard.
 
+.. note::
+   Most metrics are only available for physical operators that use the map operation.
+
 Ray dashboard job detail page
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
