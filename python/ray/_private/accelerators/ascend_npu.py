@@ -61,7 +61,7 @@ class AscendNPUAcceleratorManager(AcceleratorManager):
             npu_files = glob.glob("/dev/davinci?")
             return len(npu_files)
         except FileNotFoundError as e:
-            logger.debug("Failed to detect numer of NPUs: %s", e)
+            logger.debug("Failed to detect number of NPUs: %s", e)
         return 0
 
     @staticmethod
