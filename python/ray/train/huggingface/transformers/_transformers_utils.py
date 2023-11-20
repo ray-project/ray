@@ -10,7 +10,6 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data.iterator import _IterableFromIterator
 from ray.train import Checkpoint
-
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -25,6 +24,7 @@ try:
 except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
     TrainerCallback = object
+
 
 @PublicAPI(stability="beta")
 class RayTrainReportCallback(TrainerCallback):
