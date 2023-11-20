@@ -1,31 +1,25 @@
 import os
 import subprocess
 import sys
-from tempfile import NamedTemporaryFile
 from contextlib import contextmanager
+from tempfile import NamedTemporaryFile
 
 import pytest
 import requests
 
 import ray
-import ray.actor
 import ray._private.state
-
+import ray.actor
 from ray import serve
-from ray._private.test_utils import (
-    wait_for_condition,
-    SignalActor,
-)
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_DEFAULT_APP_NAME,
-)
-from ray.serve.context import get_global_client
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve._private.common import ProxyStatus
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.utils import get_head_node_id
-from ray.serve._private.common import HTTPProxyStatus
+from ray.serve.context import _get_global_client
+from ray.serve.schema import ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -133,56 +127,6 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
 
 @pytest.mark.parametrize(
     "ray_instance",
-    [
-        {
-            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
-            "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES": "5",
-        },
-    ],
-    indirect=True,
-)
-@pytest.mark.parametrize("crash", [True, False])
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="No retries w/ new behavior.",
-)
-def test_http_request_number_of_retries(ray_instance, crash):
-    """Test HTTP proxy retry requests."""
-
-    signal_actor = SignalActor.remote()
-
-    @serve.deployment
-    class Model:
-        async def __call__(self):
-            if crash:
-                # Trigger Actor Error
-                os._exit(0)
-            await signal_actor.wait.remote()
-            return "hello"
-
-    serve.run(Model.bind())
-    assert requests.get("http://127.0.0.1:8000/").status_code == 500
-
-    def verify_metrics():
-        resp = requests.get("http://127.0.0.1:9999").text
-        resp = resp.split("\n")
-        # Make sure http proxy retry 5 times
-        verfied = False
-        for metrics in resp:
-            if "# HELP" in metrics or "# TYPE" in metrics:
-                continue
-            if "serve_num_router_requests" in metrics:
-                assert "6.0" in metrics
-                verfied = True
-        return verfied
-
-    wait_for_condition(verify_metrics, timeout=60, retry_interval_ms=500)
-    signal_actor.send.remote()
-    serve.shutdown()
-
-
-@pytest.mark.parametrize(
-    "ray_instance",
     [],
     indirect=True,
 )
@@ -233,7 +177,7 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
         "from ray import serve\n"
         "\n"
         'ray.init(address="auto", namespace="x")\n'
-        "serve.start(detached=True)\n"
+        "serve.start()\n"
         "\n"
         "@serve.deployment\n"
         "def f(*args):\n"
@@ -279,8 +223,6 @@ def test_handle_early_detect_failure(shutdown_ray):
 
     It should detect replica raises ActorError and take them out of the replicas set.
     """
-    ray.init()
-    serve.start(detached=True)
 
     @serve.deployment(num_replicas=2, max_concurrent_queries=1)
     def f(do_crash: bool = False):
@@ -289,22 +231,21 @@ def test_handle_early_detect_failure(shutdown_ray):
         return os.getpid()
 
     handle = serve.run(f.bind())
-    pids = ray.get([handle.remote() for _ in range(2)])
+    pids = ray.get([handle.remote()._to_object_ref_sync() for _ in range(2)])
     assert len(set(pids)) == 2
 
-    client = get_global_client()
+    client = _get_global_client()
     # Kill the controller so that the replicas membership won't be updated
     # through controller health check + long polling.
     ray.kill(client._controller, no_restart=True)
 
     with pytest.raises(RayActorError):
-        ray.get(handle.remote(do_crash=True))
+        handle.remote(do_crash=True).result()
 
-    pids = ray.get([handle.remote() for _ in range(10)])
+    pids = ray.get([handle.remote()._to_object_ref_sync() for _ in range(10)])
     assert len(set(pids)) == 1
 
     # Restart the controller, and then clean up all the replicas
-    serve.start(detached=True)
     serve.shutdown()
 
 
@@ -360,14 +301,12 @@ def test_autoscaler_shutdown_node_http_everynode(
         )
         == 2
     )
-    client = get_global_client()
+    client = _get_global_client()
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    assert len(serve_details.http_proxies) == 1
-    assert (
-        serve_details.http_proxies[get_head_node_id()].status == HTTPProxyStatus.HEALTHY
-    )
+    assert len(serve_details.proxies) == 1
+    assert serve_details.proxies[get_head_node_id()].status == ProxyStatus.HEALTHY
 
     # Only head node should exist now.
     wait_for_condition(
@@ -405,13 +344,11 @@ def test_drain_and_undrain_http_proxy_actors(
     wait_for_condition(lambda: len(ray._private.state.actors()) == 6)
     assert len(ray.nodes()) == 3
 
-    client = get_global_client()
+    client = _get_global_client()
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    proxy_actor_ids = {
-        proxy.actor_id for _, proxy in serve_details.http_proxies.items()
-    }
+    proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
     assert len(proxy_actor_ids) == 3
 
     serve.run(HelloModel.options(num_replicas=1).bind())
@@ -421,37 +358,35 @@ def test_drain_and_undrain_http_proxy_actors(
         serve_details = ServeInstanceDetails(
             **ray.get(client._controller.get_serve_instance_details.remote())
         )
-        proxy_status_list = [
-            proxy.status for _, proxy in serve_details.http_proxies.items()
-        ]
-        return {
+        proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
+        print("all proxies!!!", [proxy for _, proxy in serve_details.proxies.items()])
+        current_status = {
             status: proxy_status_list.count(status) for status in proxy_status_list
-        } == proxy_status_to_count
+        }
+        return current_status == proxy_status_to_count, current_status
 
     wait_for_condition(
         condition_predictor=check_proxy_status,
-        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2, HTTPProxyStatus.DRAINING: 1},
+        proxy_status_to_count={ProxyStatus.HEALTHY: 2, ProxyStatus.DRAINING: 1},
     )
 
     serve.run(HelloModel.options(num_replicas=2).bind())
     # The draining proxy should become healthy.
     wait_for_condition(
         condition_predictor=check_proxy_status,
-        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 3},
+        proxy_status_to_count={ProxyStatus.HEALTHY: 3},
     )
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    {
-        proxy.actor_id for _, proxy in serve_details.http_proxies.items()
-    } == proxy_actor_ids
+    {proxy.actor_id for _, proxy in serve_details.proxies.items()} == proxy_actor_ids
 
     serve.run(HelloModel.options(num_replicas=1).bind())
     # 1 proxy should be draining and eventually be drained.
     wait_for_condition(
         condition_predictor=check_proxy_status,
         timeout=40,
-        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2},
+        proxy_status_to_count={ProxyStatus.HEALTHY: 2},
     )
 
     # Clean up serve.
@@ -607,7 +542,7 @@ def test_controller_shutdown_gracefully(
     assert len(ray.nodes()) == 2
 
     # Call `graceful_shutdown()` on the controller, so it will start shutdown.
-    client = get_global_client()
+    client = _get_global_client()
     if wait_for_controller_shutdown:
         # Waiting for controller shutdown will throw RayActorError when the controller
         # killed itself.
@@ -658,7 +593,7 @@ def test_client_shutdown_gracefully_when_timeout(
 
     # Ensure client times out if the controller does not shutdown within timeout.
     timeout_s = 0.0
-    client = get_global_client()
+    client = _get_global_client()
     client.shutdown(timeout_s=timeout_s)
     assert (
         f"Controller failed to shut down within {timeout_s}s. "
@@ -674,6 +609,43 @@ def test_client_shutdown_gracefully_when_timeout(
 
     # Clean up serve.
     serve.shutdown()
+
+
+def test_serve_shut_down_without_duplicated_logs(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test Serve shut down without duplicated logs.
+
+    When Serve shutdown is called and executing the shutdown process, the controller
+    log should not be spamming controller shutdown and deleting app messages.
+    """
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @serve.deployment
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+    serve.shutdown()
+
+    # Ensure the all resources are shutdown gracefully.
+    wait_for_condition(
+        lambda: all(
+            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+        ),
+    )
+
+    all_serve_logs = ""
+    for filename in os.listdir(get_serve_logs_dir()):
+        with open(os.path.join(get_serve_logs_dir(), filename), "r") as f:
+            all_serve_logs += f.read()
+    assert all_serve_logs.count("Controller shutdown started") == 1
+    assert all_serve_logs.count("Deleting application 'default'") == 1
 
 
 if __name__ == "__main__":

@@ -206,7 +206,7 @@ def test_preprocessor_deprecated():
         DummyTrainer(preprocessor=Preprocessor())
 
 
-def test_resume_from_checkpoint():
+def test_resume_from_checkpoint(tmpdir):
     with pytest.raises(ValueError):
         DummyTrainer(resume_from_checkpoint="invalid")
 
@@ -223,7 +223,7 @@ def test_resume_from_checkpoint():
     DummyTrainer(resume_from_checkpoint=None)
 
     # Succeed
-    DummyTrainer(resume_from_checkpoint=Checkpoint.from_dict({"empty": ""}))
+    DummyTrainer(resume_from_checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 if __name__ == "__main__":

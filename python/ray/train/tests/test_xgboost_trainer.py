@@ -1,18 +1,16 @@
-import pytest
 import json
+
 import pandas as pd
-
+import pytest
 import xgboost as xgb
-
-import ray
-from ray import tune
-from ray.train import Checkpoint, ScalingConfig
-from ray.train.constants import TRAIN_DATASET_KEY
-
-from ray.train.xgboost import LegacyXGBoostCheckpoint, XGBoostTrainer
-
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
+
+import ray
+from ray import train, tune
+from ray.train import ScalingConfig
+from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.xgboost import XGBoostTrainer
 
 
 @pytest.fixture
@@ -64,9 +62,8 @@ def test_fit(ray_start_4_cpus):
 
 class ScalingConfigAssertingXGBoostTrainer(XGBoostTrainer):
     def training_loop(self) -> None:
-        pgf = tune.get_trial_resources()
+        pgf = train.get_context().get_trial_resources()
         assert pgf.strategy == "SPREAD"
-        assert pgf._kwargs["_max_cpu_fraction_per_node"] == 0.9
         return super().training_loop()
 
 
@@ -76,10 +73,8 @@ def test_fit_with_advanced_scaling_config(ray_start_4_cpus):
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = ScalingConfigAssertingXGBoostTrainer(
         scaling_config=ScalingConfig(
-            trainer_resources={"CPU": 0},
             num_workers=2,
             placement_strategy="SPREAD",
-            _max_cpu_fraction_per_node=0.9,
         ),
         label_column="target",
         params=params,
@@ -103,23 +98,16 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     xgb_model = XGBoostTrainer.get_model(checkpoint)
     assert get_num_trees(xgb_model) == 5
 
-    # Move checkpoint to a different directory.
-    checkpoint_dict = result.checkpoint.to_dict()
-    checkpoint = Checkpoint.from_dict(checkpoint_dict)
-    checkpoint_path = checkpoint.to_directory(tmpdir)
-    resume_from = Checkpoint.from_directory(checkpoint_path)
-
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
         params=params,
         num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-        resume_from_checkpoint=resume_from,
+        resume_from_checkpoint=result.checkpoint,
     )
     result = trainer.fit()
-    checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(result.checkpoint)
-    model = checkpoint.get_model()
+    model = XGBoostTrainer.get_model(result.checkpoint)
     assert get_num_trees(model) == 10
 
 
@@ -154,14 +142,11 @@ def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
 
     # Assert number of checkpoints
     assert len(result.best_checkpoints) == expected, str(
-        [
-            (metrics["training_iteration"], _cp._local_path)
-            for _cp, metrics in result.best_checkpoints
-        ]
+        [(metrics["training_iteration"], cp) for cp, metrics in result.best_checkpoints]
     )
 
     # Assert checkpoint numbers are increasing
-    cp_paths = [cp._local_path for cp, _ in result.best_checkpoints]
+    cp_paths = [cp.path for cp, _ in result.best_checkpoints]
     assert cp_paths == sorted(cp_paths), str(cp_paths)
 
 
@@ -226,8 +211,17 @@ def test_distributed_data_loading(ray_start_4_cpus):
     trainer.fit()
 
 
+def test_xgboost_trainer_resources():
+    """`trainer_resources` is not allowed in the scaling config"""
+    with pytest.raises(ValueError):
+        XGBoostTrainer._validate_scaling_config(
+            ScalingConfig(trainer_resources={"something": 1})
+        )
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

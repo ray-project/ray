@@ -123,7 +123,7 @@ if __name__ == "__main__":
             checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=perturbation_interval,
                 checkpoint_score_attribute="mean_accuracy",
-                num_to_keep=2,
+                num_to_keep=4,
             ),
         ),
         tune_config=tune.TuneConfig(

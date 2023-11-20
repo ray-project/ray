@@ -1,10 +1,12 @@
+import os
 from typing import Dict
 
 import torch
+from filelock import FileLock
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
-from torchvision.transforms import ToTensor, Normalize
+from torchvision.transforms import Normalize, ToTensor
 from tqdm import tqdm
 
 import ray.train
@@ -16,23 +18,24 @@ def get_dataloaders(batch_size):
     # Transform to normalize the input images
     transform = transforms.Compose([ToTensor(), Normalize((0.5,), (0.5,))])
 
-    # Download training data from open datasets.
-    training_data = datasets.FashionMNIST(
-        root="~/data",
-        train=True,
-        download=True,
-        transform=transform,
-    )
+    with FileLock(os.path.expanduser("~/data.lock")):
+        # Download training data from open datasets
+        training_data = datasets.FashionMNIST(
+            root="~/data",
+            train=True,
+            download=True,
+            transform=transform,
+        )
 
-    # Download test data from open datasets.
-    test_data = datasets.FashionMNIST(
-        root="~/data",
-        train=False,
-        download=True,
-        transform=transform,
-    )
+        # Download test data from open datasets
+        test_data = datasets.FashionMNIST(
+            root="~/data",
+            train=False,
+            download=True,
+            transform=transform,
+        )
 
-    # Create data loaders.
+    # Create data loaders
     train_dataloader = DataLoader(training_data, batch_size=batch_size)
     test_dataloader = DataLoader(test_data, batch_size=batch_size)
 
@@ -66,7 +69,7 @@ def train_func_per_worker(config: Dict):
     epochs = config["epochs"]
     batch_size = config["batch_size_per_worker"]
 
-    # Get dataloaders inside worker training function
+    # Get dataloaders inside the worker training function
     train_dataloader, test_dataloader = get_dataloaders(batch_size=batch_size)
 
     # [1] Prepare Dataloader for distributed training
@@ -78,7 +81,7 @@ def train_func_per_worker(config: Dict):
     model = NeuralNetwork()
 
     # [2] Prepare and wrap your model with DistributedDataParallel
-    # Move the model the correct GPU/CPU device
+    # Move the model to the correct GPU/CPU device
     # ============================================================
     model = ray.train.torch.prepare_model(model)
 
@@ -134,7 +137,7 @@ def train_fashion_mnist(num_workers=2, use_gpu=False):
         scaling_config=scaling_config,
     )
 
-    # [4] Start Distributed Training
+    # [4] Start distributed training
     # Run `train_func_per_worker` on all workers
     # =============================================
     result = trainer.fit()

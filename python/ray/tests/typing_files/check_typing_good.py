@@ -1,5 +1,6 @@
 import ray
-from ray.types import ObjectRef
+from ray.types import ObjectRef, StreamingObjectRefGeneratorType
+from typing import Generator, AsyncGenerator, AsyncIterable, AsyncIterator, Iterable, Iterator
 
 ray.init()
 
@@ -24,7 +25,7 @@ def h(a: str, b: int) -> str:
     return a
 
 
-def func(a: "ObjectRef[str]"):
+def func(a: ObjectRef[str]):
     pass
 
 
@@ -37,7 +38,7 @@ object_ref_int = int_task.remote()
 print(g.remote(object_ref_str))
 
 # Make sure it is backward compatible after
-# introducing RayWaitable types.
+# introducing generator types.
 func(object_ref_str)
 
 # Make sure there can be mixed T0 and ObjectRef[T1] for args
@@ -47,3 +48,54 @@ ready, unready = ray.wait([object_ref_str, object_ref_int])
 
 # Make sure the return type is checked.
 xy = ray.get(object_ref_str) + "y"
+
+"""
+Test generator
+
+Generator can have 4 different output
+per generator and async generator. See
+https://docs.python.org/3/library/typing.html#typing.Generator
+for more details.
+"""
+
+@ray.remote
+def generator_1() -> Generator[int, None, None]:
+    yield 1
+
+
+@ray.remote
+def generator_2() -> Iterator[int]:
+    yield 1
+
+
+@ray.remote
+def generator_3() -> Iterable[int]:
+    yield 1
+
+
+gen: StreamingObjectRefGeneratorType[int] = generator_1.remote()
+gen2: StreamingObjectRefGeneratorType[int] = generator_2.remote()
+gen3: StreamingObjectRefGeneratorType[int] = generator_3.remote()
+
+
+next_item: ObjectRef[int] = gen.__next__()
+
+
+@ray.remote
+async def async_generator_1() -> AsyncGenerator[int, None]:
+    yield 1
+
+
+@ray.remote
+async def async_generator_2() -> AsyncIterator[int]:
+    yield 1
+
+
+@ray.remote
+async def async_generator_3() -> AsyncIterable[int]:
+    yield 1
+
+
+gen4: StreamingObjectRefGeneratorType[int] = async_generator_1.remote()
+gen5: StreamingObjectRefGeneratorType[int] = async_generator_2.remote()
+gen6: StreamingObjectRefGeneratorType[int] = async_generator_3.remote()

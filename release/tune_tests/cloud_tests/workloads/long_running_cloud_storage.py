@@ -9,8 +9,7 @@ import click
 import numpy as np
 
 from ray import train, tune
-from ray.train import CheckpointConfig, RunConfig
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, CheckpointConfig, RunConfig
 from ray.tune import Callback
 
 
@@ -85,8 +84,8 @@ def main(bucket, smoke_test):
             "checkpoint_iters": 10,
         },
         run_config=RunConfig(
+            storage_path=bucket,
             callbacks=[ProgressCallback()],
-            sync_config=tune.SyncConfig(upload_dir=bucket),
             checkpoint_config=CheckpointConfig(num_to_keep=2),
         ),
     )

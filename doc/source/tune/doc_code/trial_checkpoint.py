@@ -88,97 +88,76 @@ tuner.fit()
 # __class_api_end_checkpointing_end__
 
 
-# __function_api_checkpointing_start__
-from ray import train, tune
-from ray.train import Checkpoint
-
-
-def train_func(config):
-    epochs = config.get("epochs", 2)
-    start = 0
-    loaded_checkpoint = train.get_checkpoint()
-    if loaded_checkpoint:
-        last_step = loaded_checkpoint.to_dict()["step"]
-        start = last_step + 1
-
-    for epoch in range(start, epochs):
-        # Model training here
-        # ...
-
-        # Report metrics and save a checkpoint
-        metrics = {"metric": "my_metric"}
-        checkpoint = Checkpoint.from_dict({"epoch": epoch})
-        train.report(metrics, checkpoint=checkpoint)
-
-
-tuner = tune.Tuner(train_func)
-results = tuner.fit()
-# __function_api_checkpointing_end__
-
-
 class MyModel:
-    pass
+    def state_dict(self) -> dict:
+        return {}
+
+    def load_state_dict(self, state_dict):
+        pass
 
 
 # __function_api_checkpointing_from_dir_start__
+import os
+import tempfile
+
 from ray import train, tune
 from ray.train import Checkpoint
-
-
-# like Keras, or pytorch save methods.
-def write_model_to_dir(model, dir_path):
-    pass
-
-
-def write_epoch_to_dir(epoch: int, dir_path: str):
-    with open(os.path.join(dir_path, "epoch"), "w") as f:
-        f.write(str(epoch))
-
-
-def get_epoch_from_dir(dir_path: str) -> int:
-    with open(os.path.join(dir_path, "epoch"), "r") as f:
-        return int(f.read())
 
 
 def train_func(config):
     start = 1
-    if train.get_checkpoint() is not None:
-        loaded_checkpoint = train.get_checkpoint()
-        with loaded_checkpoint.as_directory() as loaded_checkpoint_path:
-            start = get_epoch_from_dir(loaded_checkpoint_path) + 1
+    my_model = MyModel()
+
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            checkpoint_dict = torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
+            start = checkpoint_dict["epoch"] + 1
+            my_model.load_state_dict(checkpoint_dict["model_state"])
 
     for epoch in range(start, config["epochs"] + 1):
         # Model training here
         # ...
 
-        my_model = MyModel()
-        metrics = {"metric": "my_metric"}
-        # some function to write model to directory
-        write_model_to_dir(my_model, "my_model")
-        write_epoch_to_dir(epoch, "my_model")
-        train.report(metrics=metrics, checkpoint=Checkpoint.from_directory("my_model"))
+        metrics = {"metric": 1}
+        with tempfile.TemporaryDirectory() as tempdir:
+            torch.save(
+                {"epoch": epoch, "model_state": my_model.state_dict()},
+                os.path.join(tempdir, "checkpoint.pt"),
+            )
+            train.report(metrics=metrics, checkpoint=Checkpoint.from_directory(tempdir))
 
 
+tuner = tune.Tuner(train_func, param_space={"epochs": 5})
+result_grid = tuner.fit()
 # __function_api_checkpointing_from_dir_end__
 
+assert not result_grid.errors
 
 # __function_api_checkpointing_periodic_start__
+NUM_EPOCHS = 12
+# checkpoint every three epochs.
+CHECKPOINT_FREQ = 3
+
+
 def train_func(config):
-    # checkpoint every three epochs.
-    checkpoint_freq = 3
     for epoch in range(1, config["epochs"] + 1):
         # Model training here
         # ...
 
         # Report metrics and save a checkpoint
         metrics = {"metric": "my_metric"}
-        if epoch % checkpoint_freq == 0:
-            checkpoint = Checkpoint.from_dict({"epoch": epoch})
-            train.report(metrics, checkpoint=checkpoint)
+        if epoch % CHECKPOINT_FREQ == 0:
+            with tempfile.TemporaryDirectory() as tempdir:
+                # Save a checkpoint in tempdir.
+                train.report(metrics, checkpoint=Checkpoint.from_directory(tempdir))
         else:
             train.report(metrics)
 
 
-tuner = tune.Tuner(train_func, param_space={"epochs": 12})
-
+tuner = tune.Tuner(train_func, param_space={"epochs": NUM_EPOCHS})
+result_grid = tuner.fit()
 # __function_api_checkpointing_periodic_end__
+
+assert not result_grid.errors
+assert len(result_grid[0].best_checkpoints) == NUM_EPOCHS // CHECKPOINT_FREQ

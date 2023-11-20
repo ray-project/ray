@@ -42,6 +42,7 @@ Let's start with the imports:
 """
 from functools import partial
 import os
+from tempfile import TemporaryDirectory
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -125,10 +126,12 @@ class Net(nn.Module):
 #
 #     net = Net(config["l1"], config["l2"])
 #
-#     checkpoint = ray.train.get_checkpoint()
+#     checkpoint = train.get_checkpoint()
 #
 #     if checkpoint:
-#         checkpoint_state = checkpoint.to_dict()
+#         checkpoint_dir = checkpoint.to_directory()
+#         checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
+#         checkpoint_state = torch.load(checkpoint_path)
 #         start_epoch = checkpoint_state["epoch"]
 #         net.load_state_dict(checkpoint_state["net_state_dict"])
 #         optimizer.load_state_dict(checkpoint_state["optimizer_state_dict"])
@@ -181,18 +184,20 @@ class Net(nn.Module):
 # The most interesting part is the communication with Ray Tune:
 #
 # .. code-block:: python
-#
+
 #     checkpoint_data = {
 #         "epoch": epoch,
 #         "net_state_dict": net.state_dict(),
 #         "optimizer_state_dict": optimizer.state_dict(),
 #     }
-#     checkpoint = Checkpoint.from_dict(checkpoint_data)
-#
-#     ray.train.report(
-#         {"loss": val_loss / val_steps, "accuracy": correct / total},
-#         checkpoint=checkpoint,
-#     )
+
+#     with TemporaryDirectory() as tmpdir:
+#         torch.save(checkpoint_data, os.path.join(tmpdir, "checkpoint.pt"))
+    
+#         train.report(
+#             {"loss": val_loss / val_steps, "accuracy": correct / total},
+#             checkpoint=Checkpoint.from_directory(tmpdir),
+#         )
 #
 # Here we first save a checkpoint and then report some metrics back to Ray Tune. Specifically,
 # we send the validation loss and accuracy back to Ray Tune. Ray Tune can then use these metrics
@@ -229,7 +234,9 @@ def train_cifar(config, data_dir=None):
     checkpoint = train.get_checkpoint()
 
     if checkpoint:
-        checkpoint_state = checkpoint.to_dict()
+        checkpoint_dir = checkpoint.to_directory()
+        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
+        checkpoint_state = torch.load(checkpoint_path)
         start_epoch = checkpoint_state["epoch"]
         net.load_state_dict(checkpoint_state["net_state_dict"])
         optimizer.load_state_dict(checkpoint_state["optimizer_state_dict"])
@@ -301,12 +308,12 @@ def train_cifar(config, data_dir=None):
             "net_state_dict": net.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
         }
-        checkpoint = Checkpoint.from_dict(checkpoint_data)
-
-        train.report(
-            {"loss": val_loss / val_steps, "accuracy": correct / total},
-            checkpoint=checkpoint,
-        )
+        with TemporaryDirectory() as tmpdir:
+            torch.save(checkpoint_data, os.path.join(tmpdir, "checkpoint.pt"))
+            train.report(
+                {"loss": val_loss / val_steps, "accuracy": correct / total},
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
     print("Finished Training")
 
 
@@ -439,8 +446,10 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
             best_trained_model = nn.DataParallel(best_trained_model)
     best_trained_model.to(device)
 
-    best_checkpoint = best_trial.checkpoint.to_air_checkpoint()
-    best_checkpoint_data = best_checkpoint.to_dict()
+    best_checkpoint = best_trial.checkpoint
+    best_checkpoint_dir = best_checkpoint.to_directory()
+    best_checkpoint_path = os.path.join(best_checkpoint_dir, "checkpoint.pt")
+    best_checkpoint_data = torch.load(best_checkpoint_path)
 
     best_trained_model.load_state_dict(best_checkpoint_data["net_state_dict"])
 

@@ -54,7 +54,29 @@ message AutoscalingConfig {
 
   // Initial number of replicas deployment should start with. Must be non-negative.
   optional uint32 initial_replicas = 9;
+
+  // The multiplicative "gain" factor to limit upscale.
+  optional double upscale_smoothing_factor = 10;
+
+  // The multiplicative "gain" factor to limit downscale.
+  optional double downscale_smoothing_factor = 11;
 }
+
+//[Begin] LOGGING CONFIG
+// Encoding type
+enum EncodingType {
+  TEXT = 0;
+  JSON = 1;
+}
+
+message LoggingConfig {
+  EncodingType encoding = 1;
+  string log_level = 2;
+  string logs_dir = 3;
+  bool enable_access_log = 4;
+}
+
+//[End] Logging Config
 
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
@@ -95,6 +117,8 @@ message DeploymentConfig {
   string version = 11;
 
   repeated string user_configured_option_names = 12;
+
+  LoggingConfig logging_config = 13;
 }
 
 // Deployment language.
@@ -111,6 +135,10 @@ message RequestMetadata {
   string call_method = 3;
 
   map<string, string> context = 4;
+
+  string multiplexed_model_id = 5;
+
+  string route = 6;
 }
 
 message RequestWrapper {
@@ -154,6 +182,7 @@ message DeploymentVersion {
   string ray_actor_options = 3;
   string placement_group_bundles = 4;
   string placement_group_strategy = 5;
+  int32 max_replicas_per_node = 6;
 }
 
 message ReplicaConfig {
@@ -164,6 +193,7 @@ message ReplicaConfig {
   string ray_actor_options = 5;
   string placement_group_bundles = 6;
   string placement_group_strategy = 7;
+  int32 max_replicas_per_node = 8;
 }
 
 message DeploymentInfo {
@@ -229,19 +259,6 @@ message StatusOverview {
   string name = 3;
 }
 
-// RPC Schema
-message PredictRequest {
-  map<string, bytes> input = 2;
-}
-
-message PredictResponse {
-  bytes prediction = 1;
-}
-
-service PredictAPIsService {
-  rpc Predict(PredictRequest) returns (PredictResponse);
-}
-
 // Used for gRPC proxy health check
 message ListApplicationsRequest {}
 
@@ -297,4 +314,28 @@ service UserDefinedService {
 
 service FruitService {
   rpc FruitStand(FruitAmounts) returns (FruitCosts);
+}
+
+// Used for gRPC benchmark
+message RawData {
+  repeated float nums = 1;
+}
+
+message ModelOutput {
+  float output = 1;
+}
+
+service RayServeBenchmarkService {
+  rpc grpc_call(RawData) returns (ModelOutput);
+}
+
+// The required deployment parameters when deploying an application.
+message DeploymentArgs {
+  string deployment_name = 1;
+  bytes deployment_config = 2;
+  bytes replica_config = 3;
+  string deployer_job_id = 4;
+  optional string route_prefix = 5;
+  bool ingress = 6;
+  optional string docs_path = 7;
 }

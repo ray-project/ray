@@ -12,8 +12,6 @@ Ray Train has built-in fault tolerance to recover from worker failures (i.e.
 ``RayActorError``\s). When a failure is detected, the workers will be shut
 down and new workers will be added in.
 
-.. note:: Elastic Training is not yet supported.
-
 The training function will be restarted, but progress from the previous execution can
 be resumed through checkpointing.
 
@@ -31,6 +29,13 @@ passed to the ``Trainer``:
     :language: python
     :start-after: __failure_config_start__
     :end-before: __failure_config_end__
+
+Which checkpoint will be restored?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Ray Train will automatically resume training from the latest available
+:ref:`checkpoint reported to Ray Train <train-checkpointing>`.
+
+This will be the last checkpoint passed to :func:`train.report() <ray.train.report>`.
 
 .. _train-restore-guide:
 
@@ -99,7 +104,7 @@ If the experiment has been interrupted due to one of the reasons listed above, u
 
 
 Auto-resume
-+++++++++++
+~~~~~~~~~~~
 
 Adding the branching logic below will allow you to run the same script after the interrupt,
 picking up training from where you left on the previous run. Notice that we use the

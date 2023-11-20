@@ -9,18 +9,17 @@ from ray.train import FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.examples.tf.tensorflow_mnist_example import (
-    train_func as tensorflow_mnist_train_func,
-)
 from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func_per_worker as fashion_mnist_train_func,
 )
+from ray.train.examples.tf.tensorflow_mnist_example import (
+    train_func as tensorflow_mnist_train_func,
+)
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
-
-from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture(scope="module")
@@ -219,7 +218,12 @@ def test_retry_with_max_failures(ray_start_4_cpus):
     assert len(df[TRAINING_ITERATION]) == 4
 
 
-def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
+def test_restore_with_new_trainer(
+    ray_start_4_cpus, tmpdir, propagate_logs, caplog, monkeypatch
+):
+
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
+
     def train_func(config):
         raise RuntimeError("failing!")
 
@@ -227,7 +231,7 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
         train_func,
         backend_config=TestConfig(),
         scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(local_dir=str(tmpdir), name="restore_new_trainer"),
+        run_config=RunConfig(name="restore_new_trainer"),
         datasets={"train": ray.data.from_items([{"a": i} for i in range(10)])},
     )
     results = Tuner(trainer).fit()

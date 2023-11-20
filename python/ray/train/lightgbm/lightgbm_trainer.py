@@ -1,24 +1,20 @@
 import os
-from typing import Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
-
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
-
-from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
-from ray.train.gbdt_trainer import GBDTTrainer
-from ray.util.annotations import PublicAPI
-from ray.train.lightgbm.lightgbm_checkpoint import LegacyLightGBMCheckpoint
+from typing import Any, Dict, Union
 
 import lightgbm
 import lightgbm_ray
 import xgboost_ray
 from lightgbm_ray.tune import TuneReportCheckpointCallback
 
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
+from ray.train import Checkpoint
+from ray.train.gbdt_trainer import GBDTTrainer
+from ray.train.lightgbm import LightGBMCheckpoint
+from ray.util.annotations import PublicAPI
+
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
 
 
 @PublicAPI(stability="beta")
@@ -106,20 +102,20 @@ class LightGBMTrainer(GBDTTrainer):
     def get_model(checkpoint: Checkpoint) -> lightgbm.Booster:
         """Retrieve the LightGBM model stored in this checkpoint."""
         with checkpoint.as_directory() as checkpoint_path:
-            return lightgbm.Booster(model_file=os.path.join(checkpoint_path, MODEL_KEY))
+            return lightgbm.Booster(
+                model_file=os.path.join(
+                    checkpoint_path, LightGBMCheckpoint.MODEL_FILENAME
+                )
+            )
 
     def _train(self, **kwargs):
         return lightgbm_ray.train(**kwargs)
 
-    def _load_checkpoint(
-        self, checkpoint: Checkpoint
-    ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-        # TODO(matt): Replace this when preprocessor arg is removed.
-        checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(checkpoint)
-        return checkpoint.get_model(), checkpoint.get_preprocessor()
+    def _load_checkpoint(self, checkpoint: Checkpoint) -> lightgbm.Booster:
+        return self.__class__.get_model(checkpoint)
 
     def _save_model(self, model: lightgbm.LGBMModel, path: str):
-        model.booster_.save_model(path)
+        model.booster_.save_model(os.path.join(path, LightGBMCheckpoint.MODEL_FILENAME))
 
     def _model_iteration(
         self, model: Union[lightgbm.LGBMModel, lightgbm.Booster]

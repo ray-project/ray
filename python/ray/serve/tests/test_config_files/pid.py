@@ -1,9 +1,10 @@
-from ray import serve
+import asyncio
 
 # from ray.serve.deployment_graph import RayServeDAGHandle
 import os
 import time
-import asyncio
+
+from ray import serve
 
 
 @serve.deployment

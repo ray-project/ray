@@ -193,7 +193,7 @@ class ActorManager {
   /// Map from actor ID to a handle to that actor.
   /// Actor handle is a logical abstraction that holds actor handle's states.
   absl::flat_hash_map<ActorID, std::shared_ptr<ActorHandle>> actor_handles_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 
   /// Protects access `cached_actor_name_to_ids_` and `subscribed_actors_`.
   mutable absl::Mutex cache_mutex_;
@@ -201,11 +201,11 @@ class ActorManager {
   /// The map to cache name and id of the named actors in this worker locally, to avoid
   /// getting them from GCS frequently.
   absl::flat_hash_map<std::string, ActorID> cached_actor_name_to_ids_
-      GUARDED_BY(cache_mutex_);
+      ABSL_GUARDED_BY(cache_mutex_);
 
   /// id -> is_killed_or_out_of_scope
   /// The state of actor is true When the actor is out of scope or is killed
-  absl::flat_hash_map<ActorID, bool> subscribed_actors_ GUARDED_BY(cache_mutex_);
+  absl::flat_hash_map<ActorID, bool> subscribed_actors_ ABSL_GUARDED_BY(cache_mutex_);
 
   FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledAfterSubscribeFinished);
   FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished);

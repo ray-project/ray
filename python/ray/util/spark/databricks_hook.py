@@ -9,25 +9,15 @@ import time
 _logger = logging.getLogger(__name__)
 
 
-class _NoDbutilsError(Exception):
-    pass
-
-
-def get_dbutils():
+def get_db_entry_point():
     """
-    Get databricks runtime dbutils module.
+    Return databricks entry_point instance, it is for calling some
+    internal API in databricks runtime
     """
-    try:
-        import IPython
+    from dbruntime import UserNamespaceInitializer
 
-        ip_shell = IPython.get_ipython()
-        if ip_shell is None:
-            raise _NoDbutilsError
-        return ip_shell.ns_table["user_global"]["dbutils"]
-    except ImportError:
-        raise _NoDbutilsError
-    except KeyError:
-        raise _NoDbutilsError
+    user_namespace_initializer = UserNamespaceInitializer.getOrCreate()
+    return user_namespace_initializer.get_spark_entry_point()
 
 
 def display_databricks_driver_proxy_url(spark_context, port, title):
@@ -67,13 +57,6 @@ DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES = (
 )
 
 
-def _get_db_api_entry():
-    """
-    Get databricks API entry point.
-    """
-    return get_dbutils().entry_point
-
-
 _DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
 
 
@@ -87,21 +70,16 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         )
 
     def on_cluster_created(self, ray_cluster_handler):
-        db_api_entry = _get_db_api_entry()
-        try:
-            db_api_entry.registerBackgroundSparkJobGroup(
-                ray_cluster_handler.spark_job_group_id
+        db_api_entry = get_db_entry_point()
+        if ray_cluster_handler.autoscale:
+            # Disable auto shutdown if autoscaling enabled.
+            # because in autoscaling mode, background spark job will be killed
+            # automatically when ray cluster is idle.
+            auto_shutdown_minutes = 0
+        else:
+            auto_shutdown_minutes = float(
+                os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES, "30")
             )
-        except Exception:
-            _logger.warning(
-                "Registering Ray cluster spark job as background job failed. "
-                "You need to manually call `ray.util.spark.shutdown_ray_cluster()` "
-                "before detaching your Databricks notebook."
-            )
-
-        auto_shutdown_minutes = float(
-            os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES, "30")
-        )
         if auto_shutdown_minutes == 0:
             _logger.info(
                 "The Ray cluster will keep running until you manually detach the "

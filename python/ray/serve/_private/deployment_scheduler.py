@@ -1,29 +1,19 @@
+import copy
 import sys
-from typing import Callable, Dict, Tuple, List, Optional, Union, Set
-from dataclasses import dataclass
+from abc import ABC, abstractmethod
 from collections import defaultdict
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import ray
-from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
-    PlacementGroupSchedulingStrategy,
-)
-
-from ray.serve._private.common import DeploymentID
-from ray.serve._private.utils import (
-    get_head_node_id,
-)
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.utils import get_head_node_id
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 class SpreadDeploymentSchedulingPolicy:
     """A scheduling policy that spreads replicas with best effort."""
-
-    pass
-
-
-class DriverDeploymentSchedulingPolicy:
-    """A scheduling policy that schedules exactly one replica on each node."""
 
     pass
 
@@ -47,6 +37,7 @@ class ReplicaSchedulingRequest:
     # These are optional: by default replicas do not have a placement group.
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
     placement_group_strategy: Optional[str] = None
+    max_replicas_per_node: Optional[int] = None
 
 
 @dataclass
@@ -61,12 +52,66 @@ class DeploymentDownscaleRequest:
     num_to_stop: int
 
 
-class DeploymentScheduler:
+class DeploymentScheduler(ABC):
     """A centralized scheduler for all Serve deployments.
 
     It makes a batch of scheduling decisions in each update cycle.
     """
 
+    @abstractmethod
+    def on_deployment_created(
+        self,
+        deployment_id: DeploymentID,
+        scheduling_policy: SpreadDeploymentSchedulingPolicy,
+    ) -> None:
+        """Called whenever a new deployment is created."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def on_deployment_deleted(self, deployment_id: DeploymentID) -> None:
+        """Called whenever a deployment is deleted."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def on_replica_stopping(
+        self, deployment_id: DeploymentID, replica_name: str
+    ) -> None:
+        """Called whenever a deployment replica is being stopped."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def on_replica_running(
+        self, deployment_id: DeploymentID, replica_name: str, node_id: str
+    ) -> None:
+        """Called whenever a deployment replica is running with a known node id."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def on_replica_recovering(
+        self, deployment_id: DeploymentID, replica_name: str
+    ) -> None:
+        """Called whenever a deployment replica is recovering."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def schedule(
+        self,
+        upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]],
+        downscales: Dict[DeploymentID, DeploymentDownscaleRequest],
+    ) -> Dict[DeploymentID, Set[str]]:
+        """Called for each update cycle to do batch scheduling.
+
+        Args:
+            upscales: a dict of deployment name to a list of replicas to schedule.
+            downscales: a dict of deployment name to a downscale request.
+
+        Returns:
+            The name of replicas to stop for each deployment.
+        """
+        raise NotImplementedError
+
+
+class DefaultDeploymentScheduler(DeploymentScheduler):
     def __init__(self, cluster_node_info_cache: ClusterNodeInfoCache):
         # {deployment_id: scheduling_policy}
         self._deployments = {}
@@ -93,9 +138,7 @@ class DeploymentScheduler:
     def on_deployment_created(
         self,
         deployment_id: DeploymentID,
-        scheduling_policy: Union[
-            SpreadDeploymentSchedulingPolicy, DriverDeploymentSchedulingPolicy
-        ],
+        scheduling_policy: SpreadDeploymentSchedulingPolicy,
     ) -> None:
         """Called whenever a new deployment is created."""
         assert deployment_id not in self._pending_replicas
@@ -175,16 +218,7 @@ class DeploymentScheduler:
             if not pending_replicas:
                 continue
 
-            deployment_scheduling_policy = self._deployments[deployment_id]
-            if isinstance(
-                deployment_scheduling_policy, SpreadDeploymentSchedulingPolicy
-            ):
-                self._schedule_spread_deployment(deployment_id)
-            else:
-                assert isinstance(
-                    deployment_scheduling_policy, DriverDeploymentSchedulingPolicy
-                )
-                self._schedule_driver_deployment(deployment_id)
+            self._schedule_spread_deployment(deployment_id)
 
         deployment_to_replicas_to_stop = {}
         for downscale in downscales.values():
@@ -222,9 +256,20 @@ class DeploymentScheduler:
             else:
                 scheduling_strategy = "SPREAD"
 
+            actor_options = copy.copy(replica_scheduling_request.actor_options)
+            if replica_scheduling_request.max_replicas_per_node is not None:
+                if "resources" not in actor_options:
+                    actor_options["resources"] = {}
+                # Using implicit resource (resources that every node
+                # implicitly has and total is 1)
+                # to limit the number of replicas on a single node.
+                actor_options["resources"][
+                    f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}"
+                    f"{deployment_id.app}:{deployment_id.name}"
+                ] = (1.0 / replica_scheduling_request.max_replicas_per_node)
             actor_handle = replica_scheduling_request.actor_def.options(
                 scheduling_strategy=scheduling_strategy,
-                **replica_scheduling_request.actor_options,
+                **actor_options,
             ).remote(*replica_scheduling_request.actor_init_args)
 
             del self._pending_replicas[deployment_id][pending_replica_name]
@@ -233,47 +278,11 @@ class DeploymentScheduler:
                 actor_handle, placement_group=placement_group
             )
 
-    def _schedule_driver_deployment(self, deployment_id: DeploymentID) -> None:
-        if self._recovering_replicas[deployment_id]:
-            # Wait until recovering is done before scheduling new replicas
-            # so that we can make sure we don't schedule two replicas on the same node.
-            return
-
-        all_active_nodes = self._cluster_node_info_cache.get_active_node_ids()
-        scheduled_nodes = set()
-        for node_id in self._launching_replicas[deployment_id].values():
-            assert node_id is not None
-            scheduled_nodes.add(node_id)
-        for node_id in self._running_replicas[deployment_id].values():
-            assert node_id is not None
-            scheduled_nodes.add(node_id)
-        unscheduled_nodes = all_active_nodes - scheduled_nodes
-
-        for pending_replica_name in list(self._pending_replicas[deployment_id].keys()):
-            if not unscheduled_nodes:
-                return
-
-            replica_scheduling_request = self._pending_replicas[deployment_id][
-                pending_replica_name
-            ]
-
-            target_node_id = unscheduled_nodes.pop()
-            actor_handle = replica_scheduling_request.actor_def.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    target_node_id, soft=False
-                ),
-                **replica_scheduling_request.actor_options,
-            ).remote(*replica_scheduling_request.actor_init_args)
-            del self._pending_replicas[deployment_id][pending_replica_name]
-            self._launching_replicas[deployment_id][
-                pending_replica_name
-            ] = target_node_id
-            replica_scheduling_request.on_scheduled(actor_handle, placement_group=None)
-
     def _get_replicas_to_stop(
         self, deployment_id: DeploymentID, max_num_to_stop: int
     ) -> Set[str]:
-        """Prioritize replicas running on a node with fewest replicas of all deployments.
+        """Prioritize replicas running on a node with fewest replicas of
+            all deployments.
 
         This algorithm helps to scale down more intelligently because it can
         relinquish nodes faster. Note that this algorithm doesn't consider

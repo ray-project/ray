@@ -217,15 +217,6 @@ message GetInternalConfigReply {
   string config = 2;
 }
 
-message GetResourcesRequest {
-  bytes node_id = 1;
-}
-
-message GetResourcesReply {
-  GcsStatus status = 1;
-  map<string, ResourceTableData> resources = 2;
-}
-
 message DeleteResourcesReply {
   GcsStatus status = 1;
 }
@@ -235,14 +226,6 @@ message GetAllAvailableResourcesRequest {}
 message GetAllAvailableResourcesReply {
   GcsStatus status = 1;
   repeated AvailableResources resources_list = 2;
-}
-
-message ReportResourceUsageRequest {
-  ResourcesData resources = 1;
-}
-
-message ReportResourceUsageReply {
-  GcsStatus status = 1;
 }
 
 message ReportWorkerFailureRequest {
@@ -286,6 +269,17 @@ message AddWorkerInfoReply {
   GcsStatus status = 1;
 }
 
+message UpdateWorkerDebuggerPortRequest {
+  // ID of this worker.
+  bytes worker_id = 1;
+  // Debugger port
+  uint32 debugger_port = 2;
+}
+
+message UpdateWorkerDebuggerPortReply {
+  GcsStatus status = 1;
+}
+
 // Service for worker info access.
 service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.
@@ -296,6 +290,9 @@ service WorkerInfoGcsService {
   rpc GetAllWorkerInfo(GetAllWorkerInfoRequest) returns (GetAllWorkerInfoReply);
   // Add worker information to GCS Service.
   rpc AddWorkerInfo(AddWorkerInfoRequest) returns (AddWorkerInfoReply);
+  // Update worker debugger port in the GCS Service.
+  rpc UpdateWorkerDebuggerPort(UpdateWorkerDebuggerPortRequest)
+      returns (UpdateWorkerDebuggerPortReply);
 }
 
 message CreateActorRequest {
@@ -614,13 +611,9 @@ message GetDrainingNodesReply {
 
 // Service for node resource info access.
 service NodeResourceInfoGcsService {
-  // Get node's resources from GCS Service.
-  rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
   // Get available resources of all nodes.
   rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
       returns (GetAllAvailableResourcesReply);
-  // Report resource usage of a node to GCS Service.
-  rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
   // Get ids of draining nodes.
@@ -693,6 +686,13 @@ message GetTaskEventsReply {
   int32 num_profile_task_events_dropped = 3;
   // Number of status events dropped at GCS and worker for the queried events.
   int32 num_status_task_events_dropped = 4;
+  // Total number of task events in the storage before truncation and source side
+  // filtering.
+  int64 num_total_stored = 5;
+  // Number of task events filtered on the source.
+  int64 num_filtered_on_gcs = 6;
+  // Number of task events truncated due to the limit.
+  int64 num_truncated = 7;
 }
 
 // Service for task info access.

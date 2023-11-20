@@ -31,16 +31,18 @@ from typing import (
     TypeVar,
     Union,
     overload,
+    Generator,
+    Iterable,
+    AsyncGenerator,
+    AsyncIterable,
+    AsyncIterator,
 )
 from urllib.parse import urlparse
 
 import colorama
 import setproctitle
 
-if sys.version_info >= (3, 8):
-    from typing import Literal, Protocol
-else:
-    from typing_extensions import Literal, Protocol
+from typing import Literal, Protocol
 
 import ray
 import ray._private.node
@@ -58,7 +60,13 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import (
+    StreamingObjectRefGenerator,
+    raise_sys_exit_with_custom_error_message,
+)
+from ray.types import ObjectRef as ObjectRefType
+from ray.types import StreamingObjectRefGeneratorType
+from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -118,27 +126,49 @@ T7 = TypeVar("T7")
 T8 = TypeVar("T8")
 T9 = TypeVar("T9")
 R = TypeVar("R")
+Y = TypeVar("Y")
+S = TypeVar("S")
 
 DAGNode = TypeVar("DAGNode")
 
 
-class RayWaitable(Generic[R]):
-    Type = Union["ObjectRef[R]", StreamingObjectRefGenerator]
-
-
 class RemoteFunctionNoArgs(Generic[R]):
+    def __init__(self, function: Callable[[], Generator[R, S, Y]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[], Iterable[R]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[], Iterator[R]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[], AsyncGenerator[R, None]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[], AsyncIterable[R]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[], AsyncIterator[R]]) -> None:
+        pass
+
+    @overload
     def __init__(self, function: Callable[[], R]) -> None:
         pass
+
+    def remote(
+        self,
+    ) -> "ObjectRefType[R]":
+        ...
 
     @overload
     def remote(
         self,
-    ) -> StreamingObjectRefGenerator:
-        ...
-
-    def remote(
-        self,
-    ) -> "ObjectRef[R]":
+    ) -> StreamingObjectRefGeneratorType[R]:
         ...
 
     def bind(
@@ -147,21 +177,44 @@ class RemoteFunctionNoArgs(Generic[R]):
         ...
 
 
+class RemoteFunctionNoArgsGenerator(Generic[R]):
+    def __init__(self, function: Callable[[], Generator[R, S, Y]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[], Iterable[R]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[], Iterator[R]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[], AsyncGenerator[R, None]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[], AsyncIterable[R]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[], AsyncIterator[R]]) -> None:
+        pass
+
+    def remote(
+        self,
+    ) -> StreamingObjectRefGeneratorType[R]:
+        ...
+
+
 class RemoteFunction0(Generic[R, T0]):
     def __init__(self, function: Callable[[T0], R]) -> None:
         pass
 
-    @overload
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-    ) -> StreamingObjectRefGenerator:
-        ...
-
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-    ) -> "ObjectRef[R]":
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+    ) -> "ObjectRefType[R]":
         ...
 
     def bind(
@@ -171,23 +224,46 @@ class RemoteFunction0(Generic[R, T0]):
         ...
 
 
+class RemoteFunction0Generator(Generic[R, T0]):
+    def __init__(self, function: Callable[[T0], Generator[R, S, Y]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[T0], Iterable[R]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[T0], Iterator[R]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[T0], AsyncGenerator[R, None]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[T0], AsyncIterable[R]]) -> None:
+        pass
+
+    @overload
+    def __init__(self, function: Callable[[T0], AsyncIterator[R]]) -> None:
+        pass
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+    ) -> StreamingObjectRefGeneratorType[R]:
+        ...
+
+
 class RemoteFunction1(Generic[R, T0, T1]):
     def __init__(self, function: Callable[[T0, T1], R]) -> None:
         pass
 
-    @overload
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-    ) -> StreamingObjectRefGenerator:
-        ...
-
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-    ) -> "ObjectRef[R]":
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+        __arg1: "Union[T1, ObjectRefType[T1]]",
+    ) -> "ObjectRefType[R]":
         ...
 
     def bind(
@@ -202,21 +278,21 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
     def __init__(self, function: Callable[[T0, T1, T2], R]) -> None:
         pass
 
-    @overload
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-    ) -> StreamingObjectRefGenerator:
-        ...
+    # @overload
+    # def remote(
+    #     self,
+    #     __arg0: "Union[T0, ObjectRefType[T0]]",
+    #     __arg1: "Union[T1, ObjectRefType[T1]]",
+    #     __arg2: "Union[T2, ObjectRefType[T2]]",
+    # ) -> "StreamingObjectRefGeneratorType[R]":
+    #     ...
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-    ) -> "ObjectRef[R]":
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+        __arg1: "Union[T1, ObjectRefType[T1]]",
+        __arg2: "Union[T2, ObjectRefType[T2]]",
+    ) -> "ObjectRefType[R]":
         ...
 
     def bind(
@@ -232,23 +308,23 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
     def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
         pass
 
-    @overload
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-    ) -> StreamingObjectRefGenerator:
-        ...
+    # @overload
+    # def remote(
+    #     self,
+    #     __arg0: "Union[T0, ObjectRefType[T0]]",
+    #     __arg1: "Union[T1, ObjectRefType[T1]]",
+    #     __arg2: "Union[T2, ObjectRefType[T2]]",
+    #     __arg3: "Union[T3, ObjectRefType[T3]]",
+    # ) -> "StreamingObjectRefGeneratorType[R]":
+    #     ...
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-    ) -> "ObjectRef[R]":
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+        __arg1: "Union[T1, ObjectRefType[T1]]",
+        __arg2: "Union[T2, ObjectRefType[T2]]",
+        __arg3: "Union[T3, ObjectRefType[T3]]",
+    ) -> "ObjectRefType[R]":
         ...
 
     def bind(
@@ -265,25 +341,25 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4], R]) -> None:
         pass
 
-    @overload
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-    ) -> StreamingObjectRefGenerator:
-        ...
+    # @overload
+    # def remote(
+    #     self,
+    #     __arg0: "Union[T0, ObjectRefType[T0]]",
+    #     __arg1: "Union[T1, ObjectRefType[T1]]",
+    #     __arg2: "Union[T2, ObjectRefType[T2]]",
+    #     __arg3: "Union[T3, ObjectRefType[T3]]",
+    #     __arg4: "Union[T4, ObjectRefType[T4]]",
+    # ) -> "StreamingObjectRefGeneratorType[R]":
+    #     ...
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-    ) -> "ObjectRef[R]":
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+        __arg1: "Union[T1, ObjectRefType[T1]]",
+        __arg2: "Union[T2, ObjectRefType[T2]]",
+        __arg3: "Union[T3, ObjectRefType[T3]]",
+        __arg4: "Union[T4, ObjectRefType[T4]]",
+    ) -> "ObjectRefType[R]":
         ...
 
     def bind(
@@ -301,27 +377,27 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
         pass
 
-    @overload
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-    ) -> StreamingObjectRefGenerator:
-        ...
+    # @overload
+    # def remote(
+    #     self,
+    #     __arg0: "Union[T0, ObjectRefType[T0]]",
+    #     __arg1: "Union[T1, ObjectRefType[T1]]",
+    #     __arg2: "Union[T2, ObjectRefType[T2]]",
+    #     __arg3: "Union[T3, ObjectRefType[T3]]",
+    #     __arg4: "Union[T4, ObjectRefType[T4]]",
+    #     __arg5: "Union[T5, ObjectRefType[T5]]",
+    # ) -> "StreamingObjectRefGeneratorType[R]":
+    #     ...
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-    ) -> "ObjectRef[R]":
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+        __arg1: "Union[T1, ObjectRefType[T1]]",
+        __arg2: "Union[T2, ObjectRefType[T2]]",
+        __arg3: "Union[T3, ObjectRefType[T3]]",
+        __arg4: "Union[T4, ObjectRefType[T4]]",
+        __arg5: "Union[T5, ObjectRefType[T5]]",
+    ) -> "ObjectRefType[R]":
         ...
 
     def bind(
@@ -340,29 +416,29 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]) -> None:
         pass
 
-    @overload
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-    ) -> StreamingObjectRefGenerator:
-        ...
+    # @overload
+    # def remote(
+    #     self,
+    #     __arg0: "Union[T0, ObjectRefType[T0]]",
+    #     __arg1: "Union[T1, ObjectRefType[T1]]",
+    #     __arg2: "Union[T2, ObjectRefType[T2]]",
+    #     __arg3: "Union[T3, ObjectRefType[T3]]",
+    #     __arg4: "Union[T4, ObjectRefType[T4]]",
+    #     __arg5: "Union[T5, ObjectRefType[T5]]",
+    #     __arg6: "Union[T6, ObjectRefType[T6]]",
+    # ) -> "StreamingObjectRefGeneratorType[R]":
+    #     ...
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-    ) -> "ObjectRef[R]":
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+        __arg1: "Union[T1, ObjectRefType[T1]]",
+        __arg2: "Union[T2, ObjectRefType[T2]]",
+        __arg3: "Union[T3, ObjectRefType[T3]]",
+        __arg4: "Union[T4, ObjectRefType[T4]]",
+        __arg5: "Union[T5, ObjectRefType[T5]]",
+        __arg6: "Union[T6, ObjectRefType[T6]]",
+    ) -> "ObjectRefType[R]":
         ...
 
     def bind(
@@ -382,31 +458,31 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
         pass
 
-    @overload
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-        __arg7: "Union[T7, ObjectRef[T7]]",
-    ) -> StreamingObjectRefGenerator:
-        ...
+    # @overload
+    # def remote(
+    #     self,
+    #     __arg0: "Union[T0, ObjectRefType[T0]]",
+    #     __arg1: "Union[T1, ObjectRefType[T1]]",
+    #     __arg2: "Union[T2, ObjectRefType[T2]]",
+    #     __arg3: "Union[T3, ObjectRefType[T3]]",
+    #     __arg4: "Union[T4, ObjectRefType[T4]]",
+    #     __arg5: "Union[T5, ObjectRefType[T5]]",
+    #     __arg6: "Union[T6, ObjectRefType[T6]]",
+    #     __arg7: "Union[T7, ObjectRefType[T7]]",
+    # ) -> "StreamingObjectRefGeneratorType[R]":
+    #     ...
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-        __arg7: "Union[T7, ObjectRef[T7]]",
-    ) -> "ObjectRef[R]":
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+        __arg1: "Union[T1, ObjectRefType[T1]]",
+        __arg2: "Union[T2, ObjectRefType[T2]]",
+        __arg3: "Union[T3, ObjectRefType[T3]]",
+        __arg4: "Union[T4, ObjectRefType[T4]]",
+        __arg5: "Union[T5, ObjectRefType[T5]]",
+        __arg6: "Union[T6, ObjectRefType[T6]]",
+        __arg7: "Union[T7, ObjectRefType[T7]]",
+    ) -> "ObjectRefType[R]":
         ...
 
     def bind(
@@ -429,33 +505,33 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
     ) -> None:
         pass
 
-    @overload
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-        __arg7: "Union[T7, ObjectRef[T7]]",
-        __arg8: "Union[T8, ObjectRef[T8]]",
-    ) -> StreamingObjectRefGenerator:
-        ...
+    # @overload
+    # def remote(
+    #     self,
+    #     __arg0: "Union[T0, ObjectRefType[T0]]",
+    #     __arg1: "Union[T1, ObjectRefType[T1]]",
+    #     __arg2: "Union[T2, ObjectRefType[T2]]",
+    #     __arg3: "Union[T3, ObjectRefType[T3]]",
+    #     __arg4: "Union[T4, ObjectRefType[T4]]",
+    #     __arg5: "Union[T5, ObjectRefType[T5]]",
+    #     __arg6: "Union[T6, ObjectRefType[T6]]",
+    #     __arg7: "Union[T7, ObjectRefType[T7]]",
+    #     __arg8: "Union[T8, ObjectRefType[T8]]",
+    # ) -> "StreamingObjectRefGeneratorType[R]":
+    #     ...
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-        __arg7: "Union[T7, ObjectRef[T7]]",
-        __arg8: "Union[T8, ObjectRef[T8]]",
-    ) -> "ObjectRef[R]":
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+        __arg1: "Union[T1, ObjectRefType[T1]]",
+        __arg2: "Union[T2, ObjectRefType[T2]]",
+        __arg3: "Union[T3, ObjectRefType[T3]]",
+        __arg4: "Union[T4, ObjectRefType[T4]]",
+        __arg5: "Union[T5, ObjectRefType[T5]]",
+        __arg6: "Union[T6, ObjectRefType[T6]]",
+        __arg7: "Union[T7, ObjectRefType[T7]]",
+        __arg8: "Union[T8, ObjectRefType[T8]]",
+    ) -> "ObjectRefType[R]":
         ...
 
     def bind(
@@ -479,35 +555,35 @@ class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> None:
         pass
 
-    @overload
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-        __arg7: "Union[T7, ObjectRef[T7]]",
-        __arg8: "Union[T8, ObjectRef[T8]]",
-        __arg9: "Union[T9, ObjectRef[T9]]",
-    ) -> StreamingObjectRefGenerator:
-        ...
+    # @overload
+    # def remote(
+    #     self,
+    #     __arg0: "Union[T0, ObjectRefType[T0]]",
+    #     __arg1: "Union[T1, ObjectRefType[T1]]",
+    #     __arg2: "Union[T2, ObjectRefType[T2]]",
+    #     __arg3: "Union[T3, ObjectRefType[T3]]",
+    #     __arg4: "Union[T4, ObjectRefType[T4]]",
+    #     __arg5: "Union[T5, ObjectRefType[T5]]",
+    #     __arg6: "Union[T6, ObjectRefType[T6]]",
+    #     __arg7: "Union[T7, ObjectRefType[T7]]",
+    #     __arg8: "Union[T8, ObjectRefType[T8]]",
+    #     __arg9: "Union[T9, ObjectRefType[T9]]",
+    # ) -> "StreamingObjectRefGeneratorType[R]":
+    #     ...
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-        __arg7: "Union[T7, ObjectRef[T7]]",
-        __arg8: "Union[T8, ObjectRef[T8]]",
-        __arg9: "Union[T9, ObjectRef[T9]]",
-    ) -> "ObjectRef[R]":
+        __arg0: "Union[T0, ObjectRefType[T0]]",
+        __arg1: "Union[T1, ObjectRefType[T1]]",
+        __arg2: "Union[T2, ObjectRefType[T2]]",
+        __arg3: "Union[T3, ObjectRefType[T3]]",
+        __arg4: "Union[T4, ObjectRefType[T4]]",
+        __arg5: "Union[T5, ObjectRefType[T5]]",
+        __arg6: "Union[T6, ObjectRefType[T6]]",
+        __arg7: "Union[T7, ObjectRefType[T7]]",
+        __arg8: "Union[T8, ObjectRefType[T8]]",
+        __arg9: "Union[T9, ObjectRefType[T9]]",
+    ) -> "ObjectRefType[R]":
         ...
 
     def bind(
@@ -552,9 +628,10 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) environment variables.
-        self.original_gpu_and_accelerator_runtime_ids = (
-            ray._private.utils.get_gpu_and_accelerator_runtime_ids()
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
+        # TPU_VISIBLE_CHIPS, ..) environment variables.
+        self.original_visible_accelerator_ids = (
+            ray._private.utils.get_visible_accelerator_ids()
         )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -591,6 +668,8 @@ class Worker:
         # different drivers that connect to the same Serve instance.
         # See https://github.com/ray-project/ray/pull/35070.
         self._filter_logs_by_job = True
+        # the debugger port for this worker
+        self._debugger_port = None
 
     @property
     def connected(self):
@@ -618,6 +697,12 @@ class Worker:
         if hasattr(self, "core_worker"):
             return self.core_worker.get_actor_id()
         return ActorID.nil()
+
+    @property
+    def actor_name(self):
+        if hasattr(self, "core_worker"):
+            return self.core_worker.get_actor_name().decode("utf-8")
+        return None
 
     @property
     def current_task_id(self):
@@ -659,6 +744,29 @@ class Worker:
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
 
+    @property
+    def debugger_port(self):
+        """Get the debugger port for this worker"""
+        return self._debugger_port
+
+    def set_debugger_port(self, port):
+        worker_id = self.core_worker.get_worker_id()
+        ray._private.state.update_worker_debugger_port(worker_id, port)
+        self._debugger_port = port
+
+    @contextmanager
+    def task_paused_by_debugger(self):
+        """Use while the task is paused by debugger"""
+        try:
+            self.core_worker.update_task_is_debugger_paused(
+                ray.get_runtime_context()._get_current_task_id(), True
+            )
+            yield
+        finally:
+            self.core_worker.update_task_is_debugger_paused(
+                ray.get_runtime_context()._get_current_task_id(), False
+            )
+
     def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
         """Set the worker's err file where stderr is redirected to"""
         self._err_file = err_file
@@ -677,6 +785,9 @@ class Worker:
             # https://github.com/ray-project/ray/issues/35598
             return
 
+        if not hasattr(self, "core_worker"):
+            return
+
         self.core_worker.record_task_log_start(
             self.get_out_file_path(),
             self.get_err_file_path(),
@@ -692,6 +803,9 @@ class Worker:
             # Recording actor task log is expensive and should be enabled only
             # when needed.
             # https://github.com/ray-project/ray/issues/35598
+            return
+
+        if not hasattr(self, "core_worker"):
             return
 
         self.core_worker.record_task_log_end(
@@ -900,8 +1014,10 @@ class Worker:
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
-            shutdown(True)
-            sys.exit(1)
+            raise_sys_exit_with_custom_error_message(
+                "The process receives a SIGTERM.", exit_code=1
+            )
+            # Note: shutdown() function is called from atexit handler.
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
@@ -960,24 +1076,22 @@ class Worker:
             # Close the pubsub client to avoid leaking file descriptors.
             subscriber.close()
 
-    def get_resource_ids_for_resource(
+    def get_accelerator_ids_for_accelerator_resource(
         self, resource_name: str, resource_regex: str
-    ) -> Union[List[str], List[int]]:
-        """Get the resource IDs that are assigned to the given resource.
+    ) -> List[str]:
+        """Get the accelerator IDs that are assigned to the given accelerator resource.
 
         Args:
             resource_name: The name of the resource.
             resource_regex: The regex of the resource.
 
         Returns:
-            (List[str]) The IDs that are assigned to the given resource pre-configured.
-            (List[int]) The IDs that are assigned to the given resource.
-
+            (List[str]) The IDs that are assigned to the given resource.
         """
         resource_ids = self.core_worker.resource_ids()
         assigned_ids = set()
-        # Handle both normal and placement group GPU, accelerator resources.
-        # Note: We should only get the GPU, accelerator ids from the placement
+        # Handle both normal and placement group accelerator resources.
+        # Note: We should only get the accelerator ids from the placement
         # group resource that does not contain the bundle index!
         import re
 
@@ -987,26 +1101,24 @@ class Worker:
                     assigned_ids.add(resource_id)
 
         # If the user had already set the environment variables
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) then respect that
-        # in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
-        # NEURON_RT_VISIBLE_CORES, ..) should be returned.
-        if (
-            self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
-            is not None
-        ):
-            runtime_ids = self.original_gpu_and_accelerator_runtime_ids[resource_name]
-            assigned_ids = [str(runtime_ids[i]) for i in assigned_ids]
-            # Give all accelerator ids local_mode.
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
+        # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
+        # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
+        if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
+            original_ids = self.original_visible_accelerator_ids[resource_name]
+            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            # Give all accelerator ids in local_mode.
             if self.mode == LOCAL_MODE:
                 if resource_name == ray_constants.GPU:
-                    max_runtime_ids = self.node.get_resource_spec().num_gpus
+                    max_accelerators = self.node.get_resource_spec().num_gpus
                 else:
-                    max_runtime_ids = self.node.get_resource_spec().resources.get(
+                    max_accelerators = self.node.get_resource_spec().resources.get(
                         resource_name, None
                     )
-                if max_runtime_ids:
-                    assigned_ids = runtime_ids[:max_runtime_ids]
-        return list(assigned_ids)
+                if max_accelerators:
+                    assigned_ids = original_ids[:max_accelerators]
+        return [str(assigned_id) for assigned_id in assigned_ids]
 
 
 @PublicAPI
@@ -1024,9 +1136,12 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return worker.get_resource_ids_for_resource(
-        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-    )
+    return [
+        int(i)
+        for i in worker.get_accelerator_ids_for_accelerator_resource(
+            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+        )
+    ]
 
 
 @Deprecated(
@@ -1277,6 +1392,7 @@ def init(
     This method handles two cases; either a Ray cluster already exists and we
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
+    Note: This method overwrite sigterm handler of the driver process.
 
     In most cases, it is enough to just call this method with no arguments.
     This will autodetect an existing Ray cluster or start a new Ray instance if
@@ -1427,9 +1543,7 @@ def init(
     )
     _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
-    _node_ip_address: str = kwargs.pop(
-        "_node_ip_address", ray_constants.NODE_DEFAULT_IP
-    )
+    _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
         "_driver_object_store_memory", None
     )
@@ -1447,16 +1561,27 @@ def init(
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
 
+    # terminate any signal before connecting driver
+    def sigterm_handler(signum, frame):
+        sys.exit(signum)
+
+    if threading.current_thread() is threading.main_thread():
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
+    else:
+        logger.warning(
+            "SIGTERM handler is not set because current thread "
+            "is not the main thread."
+        )
+
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
     address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if address_env_var:
-        if address is None or address == "auto":
-            address = address_env_var
-            logger.info(
-                f"Using address {address_env_var} set in the environment "
-                f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
-            )
+    if address_env_var and (address is None or address == "auto"):
+        address = address_env_var
+        logger.info(
+            f"Using address {address_env_var} set in the environment "
+            f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
+        )
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
@@ -1538,29 +1663,35 @@ def init(
         job_config = ray.job_config.JobConfig()
 
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
-        if runtime_env:
-            logger.warning(
-                "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
-                "are provided, only using JSON_ENV_VAR to construct "
-                "job_config. Please ensure no runtime_env is used in driver "
-                "script's ray.init() when using job submission API."
-            )
         injected_job_config_json = json.loads(
             os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR)
         )
         injected_job_config: ray.job_config.JobConfig = (
             ray.job_config.JobConfig.from_json(injected_job_config_json)
         )
-        # NOTE: We always prefer runtime_env injected via RAY_JOB_CONFIG_JSON_ENV_VAR,
-        #       as compared to via ray.init(runtime_env=...) to make sure runtime_env
-        #       specified via job submission API takes precedence
-        runtime_env = injected_job_config.runtime_env
+        driver_runtime_env = runtime_env
+        runtime_env = _merge_runtime_env(
+            injected_job_config.runtime_env,
+            driver_runtime_env,
+            override=os.getenv("RAY_OVERRIDE_JOB_RUNTIME_ENV") == "1",
+        )
+        if runtime_env is None:
+            # None means there was a conflict.
+            raise ValueError(
+                "Failed to merge the Job's runtime env "
+                f"{injected_job_config.runtime_env} with "
+                f"a ray.init's runtime env {driver_runtime_env} because "
+                "of a conflict. Specifying the same runtime_env fields "
+                "or the same environment variable keys is not allowed. "
+                "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
+                "combine Job and Driver's runtime environment in the event of "
+                "a conflict."
+            )
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
-
         job_config.set_runtime_env(runtime_env)
         # Similarly, we prefer metadata provided via job submission API
         for key, value in injected_job_config.metadata.items():
@@ -1583,10 +1714,6 @@ def init(
     if bootstrap_address is not None:
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
-
-    if _node_ip_address is not None:
-        node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
-    raylet_ip_address = node_ip_address
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -1632,8 +1759,7 @@ def init(
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=_node_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_output=None,
@@ -1716,8 +1842,7 @@ def init(
 
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=_node_ip_address,
             gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
@@ -1848,7 +1973,8 @@ def shutdown(_exiting_interpreter: bool = False):
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
-        global_worker.core_worker.shutdown()
+        if global_worker.mode == SCRIPT_MODE or global_worker.mode == LOCAL_MODE:
+            global_worker.core_worker.shutdown_driver()
         del global_worker.core_worker
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)
@@ -1870,20 +1996,6 @@ def shutdown(_exiting_interpreter: bool = False):
 
 
 atexit.register(shutdown, True)
-
-
-# TODO(edoakes): this should only be set in the driver.
-def sigterm_handler(signum, frame):
-    sys.exit(signum)
-
-
-try:
-    ray._private.utils.set_sigterm_handler(sigterm_handler)
-except ValueError:
-    logger.warning(
-        "Failed to set SIGTERM handler, processes might"
-        "not be cleaned up properly on exit."
-    )
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
@@ -1910,7 +2022,7 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
+    should_dedup = data.get("pid") not in ["autoscaler"]
 
     if data["is_err"]:
         if should_dedup:
@@ -2028,9 +2140,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         else:
             res = "pid="
             if data.get("actor_name"):
-                res = data["actor_name"] + " " + res
+                res = f"{data['actor_name']} {res}"
             elif data.get("task_name"):
-                res = data["task_name"] + " " + res
+                res = f"{data['task_name']} {res}"
             return res
 
     def message_for(data: Dict[str, str], line: str) -> str:
@@ -2048,9 +2160,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
-                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+                return colorama.Fore.YELLOW
             else:
-                return colorama.Style.BRIGHT + colorama.Fore.CYAN
+                return colorama.Fore.CYAN
         elif os.getenv("RAY_COLOR_PREFIX") == "1":
             colors = [
                 # colorama.Fore.BLUE, # Too dark
@@ -2090,8 +2202,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,
@@ -2107,8 +2218,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}, ip={}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}, ip={}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,
@@ -2188,7 +2298,13 @@ def listen_error_messages(worker, threads_stopped):
                 # the separate unhandled exception handler.
                 pass
             else:
-                logger.warning(error_message)
+                print_to_stdstream(
+                    {
+                        "lines": [error_message],
+                        "pid": "raylet",
+                        "is_err": False,
+                    }
+                )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
 
@@ -2575,27 +2691,27 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
+    object_refs: "Sequence[ObjectRefType[Any]]", *, timeout: Optional[float] = None
 ) -> List[Any]:
     ...
 
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
+    object_refs: "Sequence[ObjectRefType[R]]", *, timeout: Optional[float] = None
 ) -> List[R]:
     ...
 
 
 @overload
-def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
+def get(object_refs: "ObjectRefType[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
 
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"]],
+    object_refs: Union["ObjectRefType[Any]", Sequence["ObjectRefType[Any]"]],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2615,7 +2731,7 @@ def get(
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
 
-    Passing :class:`~StreamingObjectRefGenerators` is not allowed.
+    Passing :class:`~StreamingObjectRefGenerator` is not allowed.
 
     Related patterns and anti-patterns:
 
@@ -2658,13 +2774,6 @@ def get(
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
-        if isinstance(object_refs, StreamingObjectRefGenerator):
-            # TODO(sang): We should raise an exception.
-            logger.warning(
-                "Calling ray.get on a `StreamingObjectRefGenerator`" "is not allowed."
-            )
-            return object_refs
-
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
             object_refs = [object_refs]
@@ -2772,12 +2881,14 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: List[RayWaitable[T]],
+    ray_waitables: Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
-) -> Tuple[List[RayWaitable[T]], List[RayWaitable[T]]]:
+) -> Tuple[
+        List[Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"]],
+        List[Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"]]]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -2785,22 +2896,17 @@ def wait(
     is not set, the function simply waits until that number of objects is ready
     and returns that exact number of object refs.
 
-    `ray_waitables` is a list of :class:`~ObjectRefs` and
-    :class:`~StreamingObjectRefGenerators`.
+    `ray_waitables` is a list of :class:`~ObjectRef` and
+    :class:`~StreamingObjectRefGenerator`.
 
-    The first list contains ray_waitables that are ready. Ready means
-    different depending on if the ray waitable is ObjectRef or
-    StreamingObjectRefGenerators. The second list contains the
-    rest of ray_waitables. The second list may contain ray_waitables
-    that are ready if num_returns < num_ready_waitables. The first list
-    (ready list) can contain the result upto `num_returns`.
+    The method returns two lists, ready and unready `ray_waitables`.
 
     ObjectRef:
         object refs that correspond to objects that are available
         in the object store are in the first list.
         The rest of the object refs are in the second list.
 
-    StreamingObjectRefGenerators:
+    StreamingObjectRefGenerator:
             Generators whose next reference (that will be obtained
             via `next(generator)`) has a corresponding object available
             in the object store are in the first list.
@@ -2821,8 +2927,8 @@ def wait(
     - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
-        ray_waitables: List of :class:`~ObjectRefs` or
-            :class:`~StreamingObjectRefGenerators` for objects that may or may
+        ray_waitables: List of :class:`~ObjectRef` or
+            :class:`~StreamingObjectRefGenerator` for objects that may or may
             not be ready. Note that these must be unique.
         num_returns: The number of ray_waitables that should be returned.
         timeout: The maximum amount of time in seconds to wait before
@@ -2986,32 +3092,64 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 @PublicAPI
 @client_mode_hook
 def cancel(
-    ray_waitable: RayWaitable[R], *, force: bool = False, recursive: bool = True
+    ray_waitable: Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"],
+    *,
+    force: bool = False,
+    recursive: bool = True
 ) -> None:
-    """Cancels a task according to the following conditions.
+    """Cancels a task.
 
-    If the specified task is pending execution, it will not be executed. If
-    the task is currently executing, the behavior depends on the ``force``
-    flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
-    and when ``force=True``, the executing task will immediately exit.
-    If the task is already finished, nothing will happen.
+    Cancel API has a different behavior depending on if it is a remote function
+    (Task) or a remote Actor method (Actor Task).
 
-    Only non-actor tasks can be canceled. Canceled tasks will not be
-    retried (max_retries will not be respected).
+    Task:
+        If the specified Task is pending execution, it is cancelled and not
+        executed. If the Task is currently executing, the behavior depends
+        on the `force` flag. When `force=False`, a KeyboardInterrupt is
+        raised in Python and when `force=True`, the executing Task
+        immediately exits. If the Task is already finished, nothing happens.
 
-    Calling ray.get on a canceled task will raise a TaskCancelledError or a
-    WorkerCrashedError if ``force=True``.
+        Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
+
+        Calling ray.get on a cancelled Task raises a TaskCancelledError
+        if the Task has been scheduled or interrupted.
+        It raises a WorkerCrashedError if `force=True`.
+
+        If `recursive=True`, all the child Tasks and Actor Tasks
+        are cancelled. If `force=True` and `recursive=True`, `force=True`
+        is ignored for child Actor Tasks.
+
+    Actor Task:
+        If the specified Task is pending execution, it is cancelled and not
+        executed. If the Task is currently executing, the behavior depends
+        on the execution model of an Actor. If it is a regular Actor
+        or a threaded Actor, the execution isn't cancelled.
+        Actor Tasks cannot be interrupted because Actors have
+        states. If it is an async Actor, Ray cancels a `asyncio.Task`.
+        The semantic of cancellation is equivalent to asyncio's cancellation.
+        https://docs.python.org/3/library/asyncio-task.html#task-cancellation
+        If the Task has finished, nothing happens.
+
+        Only `force=False` is allowed for an Actor Task. Otherwise, it raises
+        `ValueError`. Use `ray.kill(actor)` instead to kill an Actor.
+
+        Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
+
+        Calling ray.get on a cancelled Task raises a TaskCancelledError
+        if the Task has been scheduled or interrupted. Also note that
+        only async actor tasks can be interrupted.
+
+        If `recursive=True`, all the child Tasks and actor Tasks
+        are cancelled.
 
     Args:
-        ray_waitable: :class:`~ObjectRefs` and
-            :class:`~StreamingObjectRefGenerators`
+        ray_waitable: :class:`~ObjectRef` and
+            :class:`~StreamingObjectRefGenerator`
             returned by the task that should be canceled.
         force: Whether to force-kill a running task by killing
             the worker that is running the task.
         recursive: Whether to try to cancel tasks submitted by the
             task specified.
-    Raises:
-        TypeError: This is also raised for actor tasks.
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
@@ -3062,6 +3200,10 @@ def _make_remote(function_or_class, options):
 
 
 class RemoteDecorator(Protocol):
+    @overload
+    def __call__(self, __function: Callable[[], Generator[R, S, Y]]) -> RemoteFunctionNoArgsGenerator[R]:
+        ...
+
     @overload
     def __call__(self, __function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
         ...
@@ -3131,6 +3273,21 @@ class RemoteDecorator(Protocol):
 
 # Only used for type annotations as a placeholder
 Undefined: Any = object()
+
+
+@overload
+def remote(__function: Callable[[], Generator[R, S, Y]]) -> RemoteFunctionNoArgsGenerator[R]:
+    ...
+
+
+# @overload
+# def remote(__function: Callable[[], Iterable[R]]) -> RemoteFunctionNoArgsGenerator[R]:
+#     ...
+
+
+# @overload
+# def remote(__function: Callable[[], Iterator[R]]) -> RemoteFunctionNoArgsGenerator[R]:
+#     ...
 
 
 @overload
@@ -3359,7 +3516,7 @@ def remote(
             invocation. The default value is 1.
             Pass "dynamic" to allow the task to decide how many
             return values to return during execution, and the caller will
-            receive an ObjectRef[ObjectRefGenerator].
+            receive an ObjectRefType[ObjectRefGenerator].
             See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU resources to reserve
             for this task or for the lifetime of the actor.
@@ -3385,7 +3542,7 @@ def remote(
             By default it is empty.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
-            See `ray.util.accelerators` for accelerator types.
+            See :ref:`accelerator types <accelerator_types>`.
         memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the

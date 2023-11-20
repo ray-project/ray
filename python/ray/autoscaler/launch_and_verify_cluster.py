@@ -17,10 +17,12 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from pathlib import Path
 
 import boto3
 import yaml
+from google.cloud import storage
 
 import ray
 
@@ -139,7 +141,7 @@ def override_docker_image(config_yaml, docker_image):
     config_yaml["docker"] = docker_config
 
 
-def download_ssh_key():
+def download_ssh_key_aws():
     """Download the ssh key from the S3 bucket to the local machine."""
     print("======================================")
     print("Downloading ssh key...")
@@ -160,6 +162,32 @@ def download_ssh_key():
     os.chmod(local_key_path, 0o400)
 
 
+def download_ssh_key_gcp():
+    """Download the ssh key from the google cloud bucket to the local machine."""
+    print("======================================")
+    print("Downloading ssh key from GCP...")
+
+    # Initialize the GCP storage client
+    client = storage.Client()
+
+    # Set the name of the GCS bucket and the blob (key) to download
+    bucket_name = "gcp-cluster-launcher-release-test-ssh-keys"
+    key_name = "ray-autoscaler_gcp_us-west1_anyscale-bridge-cd812d38_ubuntu_0.pem"
+
+    # Get the bucket and blob
+    bucket = client.get_bucket(bucket_name)
+    blob = bucket.get_blob(key_name)
+
+    # Download the blob to a local file
+    local_key_path = os.path.expanduser(f"~/.ssh/{key_name}")
+    if not os.path.exists(os.path.dirname(local_key_path)):
+        os.makedirs(os.path.dirname(local_key_path))
+    blob.download_to_filename(local_key_path)
+
+    # Set permissions on the key file
+    os.chmod(local_key_path, 0o400)
+
+
 def cleanup_cluster(cluster_config):
     """
     Clean up the cluster using the given cluster configuration file.
@@ -169,7 +197,36 @@ def cleanup_cluster(cluster_config):
     """
     print("======================================")
     print("Cleaning up cluster...")
-    subprocess.run(["ray", "down", "-v", "-y", str(cluster_config)], check=True)
+
+    # We do multiple retries here because sometimes the cluster
+    # fails to clean up properly, resulting in a non-zero exit code (e.g.
+    # when processes have to be killed forcefully).
+
+    last_error = None
+    num_tries = 3
+    for i in range(num_tries):
+        try:
+            subprocess.run(
+                ["ray", "down", "-v", "-y", str(cluster_config)],
+                check=True,
+                capture_output=True,
+            )
+            # Final success
+            return
+        except subprocess.CalledProcessError as e:
+            print(f"ray down fails[{i+1}/{num_tries}]: ")
+            print(e.output.decode("utf-8"))
+
+            # Print full traceback
+            traceback.print_exc()
+
+            # Print stdout and stderr from ray down
+            print(f"stdout:\n{e.stdout.decode('utf-8')}")
+            print(f"stderr:\n{e.stderr.decode('utf-8')}")
+
+            last_error = e
+
+    raise last_error
 
 
 def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes=1):
@@ -192,7 +249,17 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
     if no_config_cache:
         cmd.append("--no-config-cache")
     cmd.append(str(cluster_config))
-    subprocess.run(cmd, check=True)
+
+    print(" ".join(cmd))
+
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        print(e.output)
+        # print stdout and stderr
+        print(f"stdout:\n{e.stdout.decode('utf-8')}")
+        print(f"stderr:\n{e.stderr.decode('utf-8')}")
+        raise e
 
     print("======================================")
     print("Verifying Ray is running...")
@@ -278,10 +345,9 @@ if __name__ == "__main__":
 
     provider_type = config_yaml.get("provider", {}).get("type")
     if provider_type == "aws":
-        download_ssh_key()
+        download_ssh_key_aws()
     elif provider_type == "gcp":
-        print("======================================")
-        print("GCP provider detected. Skipping ssh key download step.")
+        download_ssh_key_gcp()
         # Get the active account email
         account_email = (
             subprocess.run(

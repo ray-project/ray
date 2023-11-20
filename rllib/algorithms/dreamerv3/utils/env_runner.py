@@ -20,12 +20,14 @@ from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
+from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.numpy import one_hot
+from ray.tune.registry import ENV_CREATOR, _global_registry
 
 _, tf, _ = try_import_tf()
 
@@ -103,15 +105,27 @@ class DreamerV3EnvRunner(EnvRunner):
                 asynchronous=self.config.remote_worker_envs,
                 **dict(self.config.env_config),
             )
-        # All other (gym) envs.
+        # All other envs (gym or `tune.register_env()`'d by the user).
         else:
-            wrappers = [] if self.config.env != "FrozenLake-v1" else [OneHot]
+            # Register the env in this local context here.
+            gym.register(
+                "dreamerv3-custom-env-v0",
+                partial(
+                    _global_registry.get(ENV_CREATOR, self.config.env),
+                    self.config.env_config,
+                )
+                if _global_registry.contains(ENV_CREATOR, self.config.env)
+                else partial(
+                    _gym_env_creator,
+                    env_context=self.config.env_config,
+                    env_descriptor=self.config.env,
+                ),
+            )
+            # Create the vectorized gymnasium env.
             self.env = gym.vector.make(
-                self.config.env,
-                wrappers=wrappers,
+                "dreamerv3-custom-env-v0",
                 num_envs=self.config.num_envs_per_worker,
-                asynchronous=self.config.remote_worker_envs,
-                **dict(self.config.env_config, **{"render_mode": "rgb_array"}),
+                asynchronous=False,  # self.config.remote_worker_envs,
             )
         self.num_envs = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
@@ -149,7 +163,7 @@ class DreamerV3EnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> Tuple[List[Episode], List[Episode]]:
+    ) -> Tuple[List[SingleAgentEpisode], List[SingleAgentEpisode]]:
         """Runs and returns a sample (n timesteps or m episodes) on the environment(s).
 
         Timesteps or episodes are counted in total (across all vectorized
@@ -215,7 +229,7 @@ class DreamerV3EnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         force_reset: bool = False,
-    ) -> Tuple[List[Episode], List[Episode]]:
+    ) -> Tuple[List[SingleAgentEpisode], List[SingleAgentEpisode]]:
         """Helper method to run n timesteps.
 
         See docstring of self.sample() for more details.
@@ -232,10 +246,10 @@ class DreamerV3EnvRunner(EnvRunner):
         if force_reset or self._needs_initial_reset:
             obs, _ = self.env.reset()
 
-            self._episodes = [Episode() for _ in range(self.num_envs)]
+            self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
             states = initial_states
             # Set is_first to True for all rows (all sub-envs just got reset).
-            is_first = np.ones((self.num_envs,), dtype=np.float32)
+            is_first = np.ones((self.num_envs,))
             self._needs_initial_reset = False
 
             # Set initial obs and states in the episodes.
@@ -249,7 +263,8 @@ class DreamerV3EnvRunner(EnvRunner):
             # Pick up stored observations and states from previous timesteps.
             obs = np.stack([eps.observations[-1] for eps in self._episodes])
             # Compile the initial state for each batch row: If episode just started, use
-            # model's initial state, if not, use state stored last in Episode.
+            # model's initial state, if not, use state stored last in
+            # SingleAgentEpisode.
             states = {
                 k: np.stack(
                     [
@@ -261,7 +276,7 @@ class DreamerV3EnvRunner(EnvRunner):
             }
             # If a batch row is at the beginning of an episode, set its `is_first` flag
             # to 1.0, otherwise 0.0.
-            is_first = np.zeros((self.num_envs,), dtype=np.float32)
+            is_first = np.zeros((self.num_envs,))
             for i, eps in enumerate(self._episodes):
                 if eps.states is None:
                     is_first[i] = 1.0
@@ -319,7 +334,9 @@ class DreamerV3EnvRunner(EnvRunner):
                     is_first[i] = True
                     done_episodes_to_return.append(self._episodes[i])
                     # Create a new episode object.
-                    self._episodes[i] = Episode(observations=[obs[i]], states=s)
+                    self._episodes[i] = SingleAgentEpisode(
+                        observations=[obs[i]], states=s
+                    )
                 else:
                     self._episodes[i].add_timestep(
                         obs[i], actions[i], rewards[i], state=s
@@ -346,7 +363,7 @@ class DreamerV3EnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List[Episode]:
+    ) -> List[SingleAgentEpisode]:
         """Helper method to run n episodes.
 
         See docstring of `self.sample()` for more details.
@@ -354,14 +371,14 @@ class DreamerV3EnvRunner(EnvRunner):
         done_episodes_to_return = []
 
         obs, _ = self.env.reset()
-        episodes = [Episode() for _ in range(self.num_envs)]
+        episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
 
         # Multiply states n times according to our vector env batch size (num_envs).
         states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
             self.module.get_initial_state(),
         )
-        is_first = np.ones((self.num_envs,), dtype=np.float32)
+        is_first = np.ones((self.num_envs,))
 
         render_images = [None] * self.num_envs
         if with_render_data:
@@ -429,7 +446,7 @@ class DreamerV3EnvRunner(EnvRunner):
                         states[k][i] = v.numpy()
                     is_first[i] = True
 
-                    episodes[i] = Episode(
+                    episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]],
                         states=s,
                         render_images=[render_images[i]],

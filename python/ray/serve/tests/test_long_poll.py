@@ -1,7 +1,7 @@
-import sys
 import asyncio
-import time
 import os
+import sys
+import time
 from typing import Dict
 
 import pytest
@@ -9,20 +9,19 @@ import pytest
 import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-
-from ray.serve.generated.serve_pb2 import (
-    LongPollRequest,
-    LongPollResult,
-    EndpointSet,
-    ActorNameList,
-)
-from ray.serve._private.common import EndpointTag, EndpointInfo, RunningReplicaInfo
+from ray.serve._private.common import EndpointInfo, EndpointTag, RunningReplicaInfo
 from ray.serve._private.long_poll import (
     LongPollClient,
     LongPollHost,
+    LongPollNamespace,
     LongPollState,
     UpdatedObject,
-    LongPollNamespace,
+)
+from ray.serve.generated.serve_pb2 import (
+    ActorNameList,
+    EndpointSet,
+    LongPollRequest,
+    LongPollResult,
 )
 
 
@@ -225,6 +224,8 @@ def test_listen_for_change_java(serve_instance):
         RunningReplicaInfo(
             deployment_name="deployment_name",
             replica_tag=str(i),
+            node_id="node_id",
+            availability_zone="some-az",
             actor_handle=host,
             max_concurrent_queries=1,
         )

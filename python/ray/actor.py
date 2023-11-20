@@ -27,6 +27,7 @@ from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
     PythonFunctionDescriptor,
     StreamingObjectRefGenerator,
+    raise_sys_exit_with_custom_error_message,
 )
 from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -68,7 +69,11 @@ def method(*args, **kwargs):
         num_returns: The number of object refs that should be returned by
             invocations of this actor method.
     """
-    valid_kwargs = ["num_returns", "concurrency_group"]
+    valid_kwargs = [
+        "num_returns",
+        "concurrency_group",
+        "_generator_backpressure_num_objects",
+    ]
     error_string = (
         "The @ray.method decorator must be applied using at least one of "
         f"the arguments in the list {valid_kwargs}, for example "
@@ -87,6 +92,10 @@ def method(*args, **kwargs):
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "concurrency_group" in kwargs:
             method.__ray_concurrency_group__ = kwargs["concurrency_group"]
+        if "_generator_backpressure_num_objects" in kwargs:
+            method.__ray_generator_backpressure_num_objects__ = kwargs[
+                "_generator_backpressure_num_objects"
+            ]
         return method
 
     return annotate_method
@@ -107,6 +116,9 @@ class ActorMethod:
         _num_returns: The default number of return values that the method
             invocation should return. If None is given, it uses
             DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS.
+        _generator_backpressure_num_objects: Generator-only config.
+            If a number of unconsumed objects reach this threshold,
+            a actor task stop pausing.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
             invoking the method. The decorator must return a function that
@@ -122,6 +134,7 @@ class ActorMethod:
         method_name,
         num_returns: Optional[int],
         is_generator: bool,
+        generator_backpressure_num_objects: int,
         decorator=None,
         hardref=False,
     ):
@@ -135,6 +148,7 @@ class ActorMethod:
             else:
                 self._num_returns = ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS
 
+        self._generator_backpressure_num_objects = generator_backpressure_num_objects
         # This is a decorator that is used to wrap the function invocation (as
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
@@ -182,10 +196,20 @@ class ActorMethod:
     @wrap_auto_init
     @_tracing_actor_method_invocation
     def _remote(
-        self, args=None, kwargs=None, name="", num_returns=None, concurrency_group=None
+        self,
+        args=None,
+        kwargs=None,
+        name="",
+        num_returns=None,
+        concurrency_group=None,
+        _generator_backpressure_num_objects=None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
+        if _generator_backpressure_num_objects is None:
+            _generator_backpressure_num_objects = (
+                self._generator_backpressure_num_objects
+            )
 
         def invocation(args, kwargs):
             actor = self._actor_hard_ref or self._actor_ref()
@@ -198,6 +222,9 @@ class ActorMethod:
                 name=name,
                 num_returns=num_returns,
                 concurrency_group_name=concurrency_group,
+                generator_backpressure_num_objects=(
+                    _generator_backpressure_num_objects
+                ),
             )
 
         # Apply the decorator if there is one.
@@ -272,6 +299,7 @@ class _ActorClassMethodMetadata(object):
         self.signatures = {}
         self.num_returns = {}
         self.method_is_generator = {}
+        self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
 
         for method_name, method in actor_methods:
@@ -309,6 +337,11 @@ class _ActorClassMethodMetadata(object):
             ) or inspect.isasyncgenfunction(method)
             self.method_is_generator[method_name] = is_generator
 
+            if hasattr(method, "__ray_generator_backpressure_num_objects__"):
+                self.generator_backpressure_num_objects[
+                    method_name
+                ] = method.__ray_generator_backpressure_num_objects__
+
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
         return self
@@ -333,6 +366,7 @@ class _ActorClassMetadata:
         resources: The default resources required by the actor creation task.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
+            See :ref:`accelerator types <accelerator_types>`.
         runtime_env: The runtime environment for this actor.
         scheduling_strategy: Strategy about how to schedule this actor.
         last_export_session_and_job: A pair of the last exported session
@@ -571,7 +605,7 @@ class ActorClass:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.util.accelerators` for accelerator types.
+                See :ref:`accelerator types <accelerator_types>`.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
@@ -1021,6 +1055,7 @@ class ActorClass:
             meta.method_meta.decorators,
             meta.method_meta.signatures,
             meta.method_meta.num_returns,
+            meta.method_meta.generator_backpressure_num_objects,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
@@ -1064,6 +1099,9 @@ class ActorHandle:
         _ray_method_signatures: The signatures of the actor methods.
         _ray_method_num_returns: The default number of return values for
             each method.
+        _ray_method_generator_backpressure_num_objects: Generator-only
+            config. The max number of objects to generate before it
+            starts pausing a generator.
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
@@ -1080,8 +1118,9 @@ class ActorHandle:
         method_is_generator,
         method_decorators,
         method_signatures,
-        method_num_returns,
-        actor_method_cpus,
+        method_num_returns: Dict[str, int],
+        method_generator_backpressure_num_objects: Dict[str, int],
+        actor_method_cpus: int,
         actor_creation_function_descriptor,
         session_and_job,
         original_handle=False,
@@ -1093,6 +1132,9 @@ class ActorHandle:
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
         self._ray_method_num_returns = method_num_returns
+        self._ray_method_generator_backpressure_num_objects = (
+            method_generator_backpressure_num_objects
+        )
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_session_and_job = session_and_job
         self._ray_is_cross_language = language != Language.PYTHON
@@ -1117,6 +1159,9 @@ class ActorHandle:
                     method_name,
                     self._ray_method_num_returns[method_name],
                     self._ray_method_is_generator[method_name],
+                    self._ray_method_generator_backpressure_num_objects.get(
+                        method_name
+                    ),  # noqa
                     decorator=self._ray_method_decorators.get(method_name),
                 )
                 setattr(self, method_name, method)
@@ -1143,6 +1188,7 @@ class ActorHandle:
         name: str = "",
         num_returns: Optional[int] = None,
         concurrency_group_name: Optional[str] = None,
+        generator_backpressure_num_objects: Optional[int] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -1197,6 +1243,9 @@ class ActorHandle:
             # Remove it when we migrate to the streaming generator.
             num_returns = ray._raylet.STREAMING_GENERATOR_RETURN
 
+        if generator_backpressure_num_objects is None:
+            generator_backpressure_num_objects = -1
+
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
             self._ray_actor_id,
@@ -1206,6 +1255,7 @@ class ActorHandle:
             num_returns,
             self._ray_actor_method_cpus,
             concurrency_group_name if concurrency_group_name is not None else b"",
+            generator_backpressure_num_objects,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:
@@ -1247,9 +1297,9 @@ class ActorHandle:
         return ActorMethod(
             self,
             item,
-            None,
-            # Attributes are not a generator.
+            ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,
             False,
+            self._ray_method_generator_backpressure_num_objects.get(item, -1),
             # Currently, cross-lang actor method not support decorator
             decorator=None,
         )
@@ -1291,6 +1341,9 @@ class ActorHandle:
                     "method_decorators": self._ray_method_decorators,
                     "method_signatures": self._ray_method_signatures,
                     "method_num_returns": self._ray_method_num_returns,
+                    "method_generator_backpressure_num_objects": (
+                        self._ray_method_generator_backpressure_num_objects
+                    ),
                     "actor_method_cpus": self._ray_actor_method_cpus,
                     "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,  # noqa: E501
                 },
@@ -1329,6 +1382,7 @@ class ActorHandle:
                 state["method_decorators"],
                 state["method_signatures"],
                 state["method_num_returns"],
+                state["method_generator_backpressure_num_objects"],
                 state["actor_method_cpus"],
                 state["actor_creation_function_descriptor"],
                 worker.current_session_and_job,
@@ -1428,10 +1482,7 @@ def exit_actor():
 
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.
-        exit = SystemExit(0)
-        exit.is_ray_terminate = True
-        exit.ray_terminate_msg = "exit_actor() is called."
-        raise exit
+        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
     else:
         raise TypeError(
             "exit_actor API is called on a non-actor worker, "

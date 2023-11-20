@@ -7,14 +7,13 @@ import warnings
 
 from ray import train, tune
 
-from ray.air.checkpoint import Checkpoint as LegacyCheckpoint
-from ray.train._checkpoint import Checkpoint
-from ray.train._internal.storage import _use_storage_context
+from ray.train import Checkpoint
 from ray.tune.utils import flatten_dict
 from ray.util import log_once
 
 from lightgbm.callback import CallbackEnv
 from lightgbm.basic import Booster
+from ray.util.annotations import Deprecated
 
 
 class TuneCallback:
@@ -146,7 +145,7 @@ class TuneReportCheckpointCallback(TuneCallback):
     @contextmanager
     def _get_checkpoint(
         self, model: Booster, epoch: int, filename: str, frequency: int
-    ) -> Optional[Union[Checkpoint, LegacyCheckpoint]]:
+    ) -> Optional[Checkpoint]:
         if not frequency or epoch % frequency > 0 or (not epoch and frequency > 1):
             # Skip 0th checkpoint if frequency > 1
             yield None
@@ -154,12 +153,7 @@ class TuneReportCheckpointCallback(TuneCallback):
 
         with tempfile.TemporaryDirectory() as checkpoint_dir:
             model.save_model(os.path.join(checkpoint_dir, filename))
-
-            if _use_storage_context():
-                checkpoint = Checkpoint.from_directory(checkpoint_dir)
-            else:
-                checkpoint = LegacyCheckpoint.from_directory(checkpoint_dir)
-
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
             yield checkpoint
 
     def __call__(self, env: CallbackEnv) -> None:
@@ -195,6 +189,7 @@ class _TuneCheckpointCallback(TuneCallback):
         )
 
 
+@Deprecated
 class TuneReportCallback(TuneReportCheckpointCallback):
     def __init__(
         self,
@@ -203,7 +198,7 @@ class TuneReportCallback(TuneReportCheckpointCallback):
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
     ):
-        if log_once("tune_report_deprecated"):
+        if log_once("tune_lightgbm_report_deprecated"):
             warnings.warn(
                 "`ray.tune.integration.lightgbm.TuneReportCallback` is deprecated. "
                 "Use `ray.tune.integration.lightgbm.TuneCheckpointReportCallback` "

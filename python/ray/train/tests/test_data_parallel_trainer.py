@@ -1,20 +1,20 @@
 import os
 import time
 from unittest.mock import patch
+
 import pytest
 
 import ray
 from ray import train, tune
-from ray.train import ScalingConfig, RunConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.tune.callback import Callback
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
-from ray.tune.callback import Callback
-
-from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture

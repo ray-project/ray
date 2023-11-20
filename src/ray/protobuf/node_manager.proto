@@ -131,6 +131,8 @@ message ReturnWorkerRequest {
   bool disconnect_worker = 3;
   // Whether the worker is exiting and cannot be reused.
   bool worker_exiting = 4;
+  // The error message for disconnect_worker.
+  string disconnect_worker_error_detail = 5;
 }
 
 message ReturnWorkerReply {
@@ -283,16 +285,6 @@ message GetSystemConfigReply {
   string system_config = 1;
 }
 
-message UpdateResourceUsageRequest {
-  // This is a serialized version of ResourceUsageBatchData. This extra layer of
-  // serialization allows the sender to cache the expensive operation of serializing a
-  // `ResourceUsageBatchData` when sending this request to all nodes.
-  bytes serialized_resource_usage_batch = 1;
-}
-
-message UpdateResourceUsageReply {
-}
-
 message GetTasksInfoRequest {
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
@@ -361,8 +353,6 @@ message DrainRayletReply {
 
 // Service for inter-node-manager communication.
 service NodeManagerService {
-  // Update the node's view of the cluster resource usage.
-  rpc UpdateResourceUsage(UpdateResourceUsageRequest) returns (UpdateResourceUsageReply);
   // Handle the case when GCS restarted.
   rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
   // Get the resource load of the raylet.

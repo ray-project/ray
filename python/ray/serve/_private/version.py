@@ -1,14 +1,14 @@
+import json
+import logging
 from abc import ABC
 from copy import deepcopy
-import json
-from typing import Any, Optional, Dict, List
+from typing import Any, Dict, List, Optional
 from zlib import crc32
 
-from ray.serve._private.utils import get_random_letters, DeploymentOptionUpdateType
+from ray._private.pydantic_compat import BaseModel
+from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_letters
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
-from ray.serve.config import DeploymentConfig
-
-import logging
 
 logger = logging.getLogger("ray.serve")
 
@@ -21,14 +21,13 @@ class DeploymentVersion:
         ray_actor_options: Optional[Dict],
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        max_replicas_per_node: Optional[int] = None,
     ):
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
         if code_version is None:
-            self.unversioned = True
             self.code_version = get_random_letters()
         else:
-            self.unversioned = False
             self.code_version = code_version
 
         # Options for this field may be mutated over time, so any logic that uses this
@@ -37,6 +36,7 @@ class DeploymentVersion:
         self.ray_actor_options = ray_actor_options
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
+        self.max_replicas_per_node = max_replicas_per_node
         self.compute_hashes()
 
     @classmethod
@@ -63,6 +63,7 @@ class DeploymentVersion:
             or self.ray_actor_options_hash != new_version.ray_actor_options_hash
             or self.placement_group_options_hash
             != new_version.placement_group_options_hash
+            or self.max_replicas_per_node != new_version.max_replicas_per_node
         )
 
     def requires_actor_reconfigure(self, new_version):
@@ -109,6 +110,7 @@ class DeploymentVersion:
             self.code_version.encode("utf-8")
             + serialized_ray_actor_options
             + serialized_placement_group_options
+            + str(self.max_replicas_per_node).encode("utf-8")
             + self._get_serialized_options(
                 [
                     DeploymentOptionUpdateType.NeedsReconfigure,
@@ -129,6 +131,9 @@ class DeploymentVersion:
             placement_group_strategy=self.placement_group_strategy
             if self.placement_group_strategy is not None
             else "",
+            max_replicas_per_node=self.max_replicas_per_node
+            if self.max_replicas_per_node is not None
+            else 0,
         )
 
     @classmethod
@@ -144,6 +149,9 @@ class DeploymentVersion:
             ),
             placement_group_version=(
                 proto.placement_group_version if proto.placement_group_version else None
+            ),
+            max_replicas_per_node=(
+                proto.max_replicas_per_node if proto.max_replicas_per_node else None
             ),
         )
 
@@ -167,6 +175,8 @@ class DeploymentVersion:
                 reconfigure_dict[option_name] = getattr(
                     self.deployment_config, option_name
                 )
+                if isinstance(reconfigure_dict[option_name], BaseModel):
+                    reconfigure_dict[option_name] = reconfigure_dict[option_name].dict()
 
         if (
             isinstance(self.deployment_config.user_config, bytes)

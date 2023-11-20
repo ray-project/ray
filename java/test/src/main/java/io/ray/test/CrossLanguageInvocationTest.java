@@ -8,6 +8,7 @@ import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.exception.CrossLanguageException;
 import io.ray.api.exception.RayException;
+import io.ray.api.exception.RayTimeoutException;
 import io.ray.api.function.CppActorClass;
 import io.ray.api.function.CppActorMethod;
 import io.ray.api.function.CppFunction;
@@ -548,5 +549,30 @@ public class CrossLanguageInvocationTest extends BaseTest {
         Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_call_java_overloaded_method", Object.class))
             .remote();
     Assert.assertEquals(true, res.get());
+  }
+
+  @Test
+  public void testCppActorMaxConcurrency() {
+    CppActorHandle actor =
+        Ray.actor(CppActorClass.of("ActorConcurrentCall::FactoryCreate", "ActorConcurrentCall"))
+            .setMaxConcurrency(3)
+            .remote();
+    ObjectRef<String> ref1 = actor.task(CppActorMethod.of("CountDown", String.class)).remote();
+    ObjectRef<String> ref2 = actor.task(CppActorMethod.of("CountDown", String.class)).remote();
+    ObjectRef<String> ref3 = actor.task(CppActorMethod.of("CountDown", String.class)).remote();
+    Assert.assertEquals(ref1.get(), "ok");
+    Assert.assertEquals(ref2.get(), "ok");
+    Assert.assertEquals(ref3.get(), "ok");
+
+    CppActorHandle actor2 =
+        Ray.actor(CppActorClass.of("ActorConcurrentCall::FactoryCreate", "ActorConcurrentCall"))
+            .setMaxConcurrency(1)
+            .remote();
+    ObjectRef<String> r1 = actor2.task(CppActorMethod.of("CountDown", String.class)).remote();
+    ObjectRef<String> r2 = actor2.task(CppActorMethod.of("CountDown", String.class)).remote();
+    ObjectRef<String> r3 = actor2.task(CppActorMethod.of("CountDown", String.class)).remote();
+    Assert.expectThrows(RayTimeoutException.class, () -> r1.get(2000));
+    Assert.expectThrows(RayTimeoutException.class, () -> r2.get(2000));
+    Assert.expectThrows(RayTimeoutException.class, () -> r3.get(2000));
   }
 }

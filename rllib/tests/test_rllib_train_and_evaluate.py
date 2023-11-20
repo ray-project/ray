@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import sys
 import unittest
+from unittest import mock
 
 import ray
 from ray import air, tune
@@ -20,13 +21,6 @@ rllib_dir = str(Path(__file__).parent.parent.absolute())
 
 def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
     extra_config = ""
-    if algo == "ARS":
-        extra_config = ',"train_batch_size": 10, "noise_size": 250000'
-    elif algo == "ES":
-        extra_config = (
-            ',"episodes_per_batch": 1,"train_batch_size": 10, ' '"noise_size": 250000'
-        )
-
     for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ', "framework": "{}"'.format(fw)
 
@@ -38,8 +32,8 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
 
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
-            "python {}/train.py --local-dir={} --run={} "
-            "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo)
+            "TEST_TMPDIR='{}' python {}/train.py --local-dir={} --run={} "
+            "--checkpoint-freq=1 ".format(tmp_dir, rllib_dir, tmp_dir, algo)
             + "--config='{"
             + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
             + ', "min_sample_timesteps_per_iteration": 5,'
@@ -49,7 +43,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
         )
 
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_000001/algorithm_state.pkl".format(tmp_dir)
+            "ls {}/default/*/checkpoint_000000/algorithm_state.pkl".format(tmp_dir)
         ).read()[:-1]
         if not os.path.exists(checkpoint_path):
             sys.exit(1)
@@ -102,15 +96,17 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
         # call rllib train here to see if the RLModule API is enabled.
         algo_cls = get_trainable_cls(algo)
         config = algo_cls.get_default_config()
-        if config._enable_rl_module_api:
+        if config._enable_new_api_stack:
             eval_ = ', \\"evaluation_config\\": {}'
         else:
             eval_ = ', \\"evaluation_config\\": {\\"explore\\": false}'
 
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
-            "python {}/train.py --local-dir={} --run={} "
-            "--checkpoint-freq=1 --checkpoint-at-end ".format(rllib_dir, tmp_dir, algo)
+            "TEST_TMPDIR='{}' python {}/train.py --local-dir={} --run={} "
+            "--checkpoint-freq=1 --checkpoint-at-end ".format(
+                tmp_dir, rllib_dir, tmp_dir, algo
+            )
             + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1'
             + eval_
             + fw_
@@ -207,19 +203,19 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
 
         stop = {"episode_reward_mean": 100.0}
 
-        results = tune.Tuner(
-            algo,
-            param_space=config,
-            run_config=air.RunConfig(
-                stop=stop,
-                verbose=1,
-                checkpoint_config=air.CheckpointConfig(
-                    checkpoint_frequency=1, checkpoint_at_end=True
+        with mock.patch.dict({"TEST_TMPDIR": tmp_dir}):
+            results = tune.Tuner(
+                algo,
+                param_space=config,
+                run_config=air.RunConfig(
+                    stop=stop,
+                    verbose=1,
+                    checkpoint_config=air.CheckpointConfig(
+                        checkpoint_frequency=1, checkpoint_at_end=True
+                    ),
+                    failure_config=air.FailureConfig(fail_fast="raise"),
                 ),
-                local_dir=tmp_dir,
-                failure_config=air.FailureConfig(fail_fast="raise"),
-            ),
-        ).fit()
+            ).fit()
 
         # Find last checkpoint and use that for the rollout.
         best_checkpoint = results.get_best_result(
@@ -234,7 +230,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             "python {}/evaluate.py --run={} "
             "--steps=400 "
             '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
-                rllib_dir, algo, tmp_dir, best_checkpoint._local_path
+                rllib_dir, algo, tmp_dir, best_checkpoint.path
             )
         ).read()[:-1]
         if not os.path.exists(tmp_dir + "/rollouts_n_steps.pkl"):
@@ -257,22 +253,11 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
 
 
 class TestEvaluate1(unittest.TestCase):
-    def test_a3c(self):
-        evaluate_test("A3C")
-
-    def test_ddpg(self):
-        evaluate_test("DDPG", env="Pendulum-v1")
-
-
-class TestEvaluate2(unittest.TestCase):
     def test_dqn(self):
         evaluate_test("DQN")
 
-    def test_es(self):
-        evaluate_test("ES")
 
-
-class TestEvaluate3(unittest.TestCase):
+class TestEvaluate2(unittest.TestCase):
     def test_impala(self):
         evaluate_test("IMPALA", env="CartPole-v1")
 
@@ -280,7 +265,7 @@ class TestEvaluate3(unittest.TestCase):
         evaluate_test("PPO", env="CartPole-v1", test_episode_rollout=True)
 
 
-class TestEvaluate4(unittest.TestCase):
+class TestEvaluate3(unittest.TestCase):
     def test_sac(self):
         evaluate_test("SAC", env="Pendulum-v1")
 

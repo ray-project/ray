@@ -17,7 +17,7 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionFilter,
 )
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
@@ -216,7 +216,7 @@ def test_read_json_ignore_missing_paths(
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_json(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.fully_executed()
+            ds.materialize()
 
 
 def test_zipped_json_read(ray_start_regular_shared, tmp_path):
@@ -444,6 +444,7 @@ def test_json_read_partitioned_with_filter(
         ds = ray.data.read_json(
             base_dir,
             partition_filter=partition_path_filter,
+            file_extensions=None,
             filesystem=fs,
         )
         assert_base_partitioned_ds(ds)

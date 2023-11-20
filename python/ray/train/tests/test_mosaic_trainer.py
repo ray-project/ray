@@ -1,25 +1,24 @@
-import pytest
+import os
 
+import pytest
 import torch
 import torch.utils.data
-
 import torchvision
-from torchvision import transforms, datasets
+from filelock import FileLock
+from torchvision import datasets, transforms
 
-from ray.train import ScalingConfig
-from ray.air.constants import TRAINING_ITERATION
 import ray.train as train
+from ray.train import ScalingConfig
 from ray.train.trainer import TrainingFailedError
-
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
 
 def trainer_init_per_worker(config):
-    from torchmetrics.classification.accuracy import Accuracy
+    import composer.optim
     from composer.core.evaluator import Evaluator
     from composer.models.tasks import ComposerClassifier
-    import composer.optim
+    from torchmetrics.classification.accuracy import Accuracy
 
     BATCH_SIZE = 32
     model = ComposerClassifier(
@@ -33,19 +32,20 @@ def trainer_init_per_worker(config):
         [transforms.ToTensor(), transforms.Normalize(mean, std)]
     )
 
-    data_directory = "~/data"
-    train_dataset = torch.utils.data.Subset(
-        datasets.CIFAR10(
-            data_directory, train=True, download=True, transform=cifar10_transforms
-        ),
-        list(range(64)),
-    )
-    test_dataset = torch.utils.data.Subset(
-        datasets.CIFAR10(
-            data_directory, train=False, download=True, transform=cifar10_transforms
-        ),
-        list(range(64)),
-    )
+    data_directory = os.path.expanduser("~/data")
+    with FileLock(os.path.expanduser("~/data.lock")):
+        train_dataset = torch.utils.data.Subset(
+            datasets.CIFAR10(
+                data_directory, train=True, download=True, transform=cifar10_transforms
+            ),
+            list(range(BATCH_SIZE)),
+        )
+        test_dataset = torch.utils.data.Subset(
+            datasets.CIFAR10(
+                data_directory, train=False, download=True, transform=cifar10_transforms
+            ),
+            list(range(BATCH_SIZE)),
+        )
 
     batch_size_per_worker = BATCH_SIZE // train.get_context().get_world_size()
     train_dataloader = torch.utils.data.DataLoader(
@@ -81,22 +81,6 @@ def trainer_init_per_worker(config):
 
 
 trainer_init_per_worker.__test__ = False
-
-
-def test_mosaic_cifar10(ray_start_4_cpus):
-    from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
-
-    result = train_mosaic_cifar10(max_duration="5ep").metrics_dataframe
-
-    # check the max epoch value
-    assert result["epoch"][result.index[-1]] == 4
-
-    # check train_iterations
-    assert result[TRAINING_ITERATION][result.index[-1]] == 5
-
-    # check metrics/train/Accuracy has increased
-    acc = list(result["metrics/train/Accuracy"])
-    assert acc[-1] > acc[0]
 
 
 def test_init_errors(ray_start_4_cpus):
@@ -143,12 +127,12 @@ def test_init_errors(ray_start_4_cpus):
 
 
 def test_loggers(ray_start_4_cpus):
-    from ray.train.mosaic import MosaicTrainer
-
-    from composer.loggers.logger_destination import LoggerDestination
+    from composer.core.callback import Callback
     from composer.core.state import State
     from composer.loggers import Logger
-    from composer.core.callback import Callback
+    from composer.loggers.logger_destination import LoggerDestination
+
+    from ray.train.mosaic import MosaicTrainer
 
     class _CallbackExistsError(ValueError):
         pass
@@ -260,10 +244,10 @@ def test_metrics_key(ray_start_4_cpus):
 
 
 def test_monitor_callbacks(ray_start_4_cpus):
-    from ray.train.mosaic import MosaicTrainer
-
     # Test Callbacks involving logging (SpeedMonitor, LRMonitor)
-    from composer.callbacks import SpeedMonitor, LRMonitor
+    from composer.callbacks import LRMonitor, SpeedMonitor
+
+    from ray.train.mosaic import MosaicTrainer
 
     trainer_init_config = {
         "max_duration": "1ep",

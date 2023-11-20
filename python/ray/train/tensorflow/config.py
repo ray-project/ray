@@ -5,14 +5,10 @@ from dataclasses import dataclass
 from typing import List
 
 import ray
-from ray.air.checkpoint import Checkpoint
-from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
-from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
-from ray.train.tensorflow.tensorflow_checkpoint import LegacyTensorflowCheckpoint
+from ray.train.backend import Backend, BackendConfig
 from ray.util import PublicAPI
-
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +58,3 @@ class _TensorflowBackend(Backend):
                 )
             )
         ray.get(setup_futures)
-
-    # TODO(justinvyu): [code_removal]
-    @classmethod
-    def _encode_data(cls, checkpoint: Checkpoint):
-        if _use_storage_context():
-            return checkpoint
-
-        checkpoint = super()._encode_data(checkpoint)
-        if type(checkpoint) is Checkpoint:
-            _warn_about_bad_checkpoint_type(LegacyTensorflowCheckpoint)
-            checkpoint = LegacyTensorflowCheckpoint.from_checkpoint(checkpoint)
-        return checkpoint

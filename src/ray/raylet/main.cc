@@ -14,6 +14,10 @@
 
 #include <iostream>
 
+#ifdef __linux__
+#include <stdlib.h>
+#endif
+
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -50,6 +54,8 @@ DEFINE_int32(num_prestart_python_workers,
              0,
              "Number of prestarted default Python workers on raylet startup.");
 DEFINE_bool(head, false, "Whether this node is a head node.");
+/// NOTE: This value is overwritten inside worker_pool.h by
+/// worker_maximum_startup_concurrency.
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
@@ -120,6 +126,13 @@ int main(int argc, char *argv[]) {
   ray::RayLog::InstallTerminateHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+#ifdef __linux__
+  // Reset LD_PRELOAD if it's loaded with ray jemalloc
+  auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");
+  if (ray_ld_preload != nullptr && std::string(ray_ld_preload) == "1") {
+    unsetenv("LD_PRELOAD");
+  }
+#endif
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
   const std::string store_socket_name = FLAGS_store_socket_name;
   const std::string node_name =

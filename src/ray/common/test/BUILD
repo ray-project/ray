@@ -42,7 +42,7 @@ ray_cc_test(
 ray_cc_test(
     name = "ray_syncer_test",
     srcs = ["ray_syncer_test.cc"],
-    tags = ["team:core"],
+    tags = ["team:core", "no_ubsan", "no_tsan"],
     deps = [
         "//:grpc_common_lib",
         "//:ray_mock",
@@ -58,6 +58,17 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "event_stats_test",
+    size = "small",
+    srcs = ["event_stats_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:event_stats",
         "@com_google_googletest//:gtest_main",
     ],
 )

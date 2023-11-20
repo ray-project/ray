@@ -31,19 +31,6 @@ public class RunManager {
     command.add(rayConfig.redisPassword);
     command.addAll(rayConfig.headArgs);
 
-    String numGpus = System.getProperty("num-gpus");
-    if (numGpus != null) {
-      command.add("--num-gpus");
-      command.add(numGpus);
-    }
-
-    // Set node labels.
-    String labels = System.getProperty("ray.labels");
-    if (labels != null) {
-      command.add("--labels");
-      command.add(labels);
-    }
-
     String output;
     try {
       output = runCommand(command);

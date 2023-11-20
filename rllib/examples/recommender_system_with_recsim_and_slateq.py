@@ -14,7 +14,6 @@ from scipy.stats import sem
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
     InterestExplorationRecSimEnv,
@@ -22,6 +21,7 @@ from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
 )
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -123,7 +123,8 @@ def main():
     }
 
     config = (
-        AlgorithmConfig(algo_class=args.run)
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment(
             InterestEvolutionRecSimEnv
             if args.env == "interest-evolution"

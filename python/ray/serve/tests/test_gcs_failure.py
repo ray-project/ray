@@ -6,11 +6,12 @@ import pytest
 import requests
 
 import ray
-import ray.serve as serve
+from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
-from ray.tests.conftest import external_redis  # noqa: F401
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
+from ray.serve.context import _get_global_client
+from ray.tests.conftest import external_redis  # noqa: F401
 
 
 @pytest.fixture(scope="function")
@@ -22,7 +23,8 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
         _metrics_export_port=9999,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
-    yield (address_info, serve.start(detached=True))
+    serve.start()
+    yield (address_info, _get_global_client())
     ray.shutdown()
 
 

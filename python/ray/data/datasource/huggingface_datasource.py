@@ -3,8 +3,8 @@ from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _check_pyarrow_version
-from ray.data.block import Block, BlockMetadata
-from ray.data.datasource import Datasource, Reader, ReadTask
+from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 logger = DatasetLogger(__name__)
@@ -60,21 +60,14 @@ class HuggingFaceDatasource(Datasource):
     directly for faster performance.
     """  # noqa: E501
 
-    def create_reader(
-        self,
-        dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
-    ) -> "_HuggingFaceDatasourceReader":
-        if TRANSFORMERS_IMPORT_ERROR is not None:
-            raise TRANSFORMERS_IMPORT_ERROR
-        return _HuggingFaceDatasourceReader(dataset)
-
-
-class _HuggingFaceDatasourceReader(Reader):
     def __init__(
         self,
         dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
         batch_size: int = 4096,
     ):
+        if TRANSFORMERS_IMPORT_ERROR is not None:
+            raise TRANSFORMERS_IMPORT_ERROR
+
         self._dataset = dataset
         self._batch_size = batch_size
 
@@ -88,11 +81,35 @@ class _HuggingFaceDatasourceReader(Reader):
         # Note: `parallelism` arg is currently not used by HuggingFaceDatasource.
         # We always generate a single ReadTask to perform the read.
         _check_pyarrow_version()
+        import numpy as np
+        import pandas as pd
         import pyarrow
 
         def _read_dataset(dataset: "datasets.IterableDataset") -> Iterable[Block]:
             for batch in dataset.with_format("arrow").iter(batch_size=self._batch_size):
-                block = pyarrow.Table.from_pydict(batch)
+                # HuggingFace IterableDatasets do not fully support methods like
+                # `set_format`, `with_format`, and `formatted_as`, so the dataset
+                # can return whatever is the default configured batch type, even if
+                # the format is manually overriden before iterating above.
+                # Therefore, we limit support to batch formats which have native
+                # block types in Ray Data (pyarrow.Table, pd.DataFrame),
+                # or can easily be converted to such (dict, np.array).
+                # See: https://github.com/huggingface/datasets/issues/3444
+                if not isinstance(batch, (pyarrow.Table, pd.DataFrame, dict, np.array)):
+                    raise ValueError(
+                        f"Batch format {type(batch)} isn't supported. Only the "
+                        f"following batch formats are supported: "
+                        f"dict (corresponds to `None` in `dataset.with_format()`), "
+                        f"pyarrow.Table, np.array, pd.DataFrame."
+                    )
+                # Ensure np.arrays are wrapped in a dict
+                # (subsequently converted to a pyarrow.Table).
+                if isinstance(batch, np.ndarray):
+                    batch = {"item": batch}
+                if isinstance(batch, dict):
+                    batch = pyarrow.Table.from_pydict(batch)
+                # Ensure that we return the default block type.
+                block = BlockAccessor.for_block(batch).to_default()
                 yield block
 
         # TODO(scottjlee): IterableDataset doesn't provide APIs

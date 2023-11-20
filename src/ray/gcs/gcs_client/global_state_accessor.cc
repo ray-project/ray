@@ -105,31 +105,6 @@ std::vector<std::string> GlobalStateAccessor::GetAllTaskEvents() {
   return task_events;
 }
 
-std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
-  rpc::ResourceMap node_resource_map;
-  std::promise<void> promise;
-  auto on_done =
-      [&node_resource_map, &promise](
-          const Status &status,
-          const boost::optional<ray::gcs::NodeResourceInfoAccessor::ResourceMap>
-              &result) {
-        RAY_CHECK_OK(status);
-        if (result) {
-          auto result_value = result.get();
-          for (auto &data : result_value) {
-            (*node_resource_map.mutable_items())[data.first] = *data.second;
-          }
-        }
-        promise.set_value();
-      };
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(node_id, on_done));
-  }
-  promise.get_future().get();
-  return node_resource_map.SerializeAsString();
-}
-
 std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
   std::vector<std::string> available_resources;
   std::promise<bool> promise;
@@ -168,12 +143,18 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
   return resource_batch_data;
 }
 
-std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
+std::vector<std::string> GlobalStateAccessor::GetAllActorInfo(
+    const std::optional<ActorID> &actor_id,
+    const std::optional<JobID> &job_id,
+    const std::optional<std::string> &actor_state_name) {
   std::vector<std::string> actor_table_data;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAllByFilter(
+        actor_id,
+        job_id,
+        actor_state_name,
         TransformForMultiItemCallback<rpc::ActorTableData>(actor_table_data, promise)));
   }
   promise.get_future().get();
@@ -235,6 +216,28 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
   }
   promise.get_future().get();
   return true;
+}
+
+bool GlobalStateAccessor::UpdateWorkerDebuggerPort(const WorkerID &worker_id,
+                                                   const uint32_t debugger_port) {
+  std::promise<bool> promise;
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncUpdateDebuggerPort(
+        worker_id, debugger_port, [&promise](const Status &status) {
+          RAY_CHECK_OK(status);
+          promise.set_value(status.ok());
+        }));
+  }
+  // Setup a timeout for the update request
+  auto future = promise.get_future();
+  if (future.wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    RAY_LOG(FATAL) << "Failed to update the debugger port within the timeout setting.";
+    return false;
+  }
+  return future.get();
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllPlacementGroupInfo() {

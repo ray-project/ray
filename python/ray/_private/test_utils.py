@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+import inspect
 import fnmatch
 import functools
 import io
@@ -8,6 +9,7 @@ import logging
 import math
 import os
 import pathlib
+import random
 import socket
 import subprocess
 import sys
@@ -24,7 +26,6 @@ from dataclasses import dataclass
 import requests
 from ray._raylet import Config
 
-import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
     ray_constants,
@@ -579,8 +580,12 @@ async def async_wait_for_condition(
     last_ex = None
     while time.time() - start <= timeout:
         try:
-            if condition_predictor(**kwargs):
-                return
+            if inspect.iscoroutinefunction(condition_predictor):
+                if await condition_predictor(**kwargs):
+                    return
+            else:
+                if condition_predictor(**kwargs):
+                    return
         except Exception as ex:
             last_ex = ex
         await asyncio.sleep(retry_interval_ms / 1000.0)
@@ -1389,6 +1394,7 @@ def get_and_run_node_killer(
     lifetime=None,
     no_start=False,
     max_nodes_to_kill=2,
+    node_kill_delay_s=0,
 ):
     assert ray.is_initialized(), "The API is only available when Ray is initialized."
 
@@ -1438,7 +1444,7 @@ def get_and_run_node_killer(
                 if not self.is_running:
                     break
 
-                sleep_interval = np.random.rand() * self.node_kill_interval_s
+                sleep_interval = random.random() * self.node_kill_interval_s
                 time.sleep(sleep_interval)
 
                 if node_to_kill_port is not None:
@@ -1509,6 +1515,7 @@ def get_and_run_node_killer(
     ray.get(node_killer.ready.remote())
     print("Node killer actor is ready now.")
     if not no_start:
+        time.sleep(node_kill_delay_s)
         node_killer.run.remote()
     return node_killer
 
@@ -1964,3 +1971,25 @@ def find_available_port(start, end, port_num=1):
             f"Can't find {port_num} available port from {start} to {end}."
         )
     return ports
+
+
+# TODO(rickyx): We could remove this once we unify the autoscaler v1 and v2
+# code path for ray status
+def reset_autoscaler_v2_enabled_cache():
+    import ray.autoscaler.v2.utils as u
+
+    u.cached_is_autoscaler_v2 = None
+
+
+def skip_flaky_test() -> bool:
+    """
+    Skip a test if it is flaky (e.g. in premerge)
+
+    Default we will skip the flaky test if not specified otherwise in
+    CI with CI_SKIP_FLAKY_TEST="0"
+
+
+    Returns:
+        bool: True if the test should be skipped
+    """
+    return os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1"

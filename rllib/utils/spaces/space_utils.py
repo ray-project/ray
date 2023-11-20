@@ -69,12 +69,17 @@ def get_base_struct_from_space(space):
             Note that the returned struct still contains all original
             "primitive" Spaces (e.g. Box, Discrete).
 
-    Examples:
-        >>> get_base_struct_from_space(Dict({
-        >>>     "a": Box(),
-        >>>     "b": Tuple([Discrete(2), Discrete(3)])
-        >>> }))
-        >>> # Will return: dict(a=Box(), b=tuple(Discrete(2), Discrete(3)))
+    .. testcode::
+        :skipif: True
+
+        get_base_struct_from_space(Dict({
+            "a": Box(),
+            "b": Tuple([Discrete(2), Discrete(3)])
+        }))
+
+    .. testoutput::
+
+        dict(a=Box(), b=tuple(Discrete(2), Discrete(3)))
     """
 
     def _helper_struct(space_):
@@ -177,15 +182,19 @@ def flatten_to_single_ndarray(input_):
     Returns:
         np.ndarray: The result after concatenating all single arrays in input_.
 
-    Examples:
-        >>> flatten_to_single_ndarray([
-        >>>     np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
-        >>>     np.array([7, 8, 9]),
-        >>> ])
-        >>> # Will return:
-        >>> # np.array([
-        >>> #     1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0
-        >>> # ])
+    .. testcode::
+        :skipif: True
+
+        flatten_to_single_ndarray([
+            np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+            np.array([7, 8, 9]),
+        ])
+
+    .. testoutput::
+
+        np.array([
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0
+        ])
     """
     # Concatenate complex inputs.
     if isinstance(input_, (list, tuple, dict)):
@@ -194,6 +203,63 @@ def flatten_to_single_ndarray(input_):
             expanded.append(np.reshape(in_, [-1]))
         input_ = np.concatenate(expanded, axis=0).flatten()
     return input_
+
+
+@DeveloperAPI
+def batch(
+    list_of_structs: List[Any],
+    individual_items_already_have_batch_1: bool = False,
+):
+    """Converts input from a list of (nested) structs to a (nested) struct of batches.
+
+    Input: List of structs (each of these structs representing a single batch item).
+        [
+            {"a": 1, "b": (4, 7.0)},  <- batch item 1
+            {"a": 2, "b": (5, 8.0)},  <- batch item 2
+            {"a": 3, "b": (6, 9.0)},  <- batch item 3
+        ]
+
+    Output: Struct of different batches (each batch has size=3 b/c there were 3 items
+        in the original list):
+        {
+            "a": np.array([1, 2, 3]),
+            "b": (np.array([4, 5, 6]), np.array([7.0, 8.0, 9.0]))
+        }
+
+    Args:
+        list_of_structs: The list of (possibly nested) structs. Each item
+            in this list represents a single batch item.
+        individual_items_already_have_batch_1: True, if the individual items in
+            `list_of_structs` already have a batch dim (of 1). In this case, we will
+            concatenate (instead of stack) at the end. In the example above, this would
+            look like this: Input: [{"a": [1], "b": ([4], [7.0])}, ...] -> Output: same
+            as in above example.
+
+    Returns:
+        The struct of component batches. Each leaf item in this struct represents the
+        batch for a single component (in case struct is tuple/dict). If the input is a
+        simple list of primitive items, e.g. a list of floats, a np.array of floats
+        will be returned.
+    """
+    flat = item = None
+
+    if not list_of_structs:
+        raise ValueError("Input `list_of_structs` does not contain any items.")
+
+    for item in list_of_structs:
+        flattened_item = tree.flatten(item)
+        # Create the main list, in which each slot represents one leaf in the (nested)
+        # struct. Each slot holds a list of batch values.
+        if flat is None:
+            flat = [[] for _ in range(len(flattened_item))]
+        for i, value in enumerate(flattened_item):
+            flat[i].append(value)
+
+    # Unflatten everything into the
+    out = tree.unflatten_as(item, flat)
+    np_func = np.stack if not individual_items_already_have_batch_1 else np.concatenate
+    out = tree.map_structure_up_to(item, lambda s: np_func(s, axis=0), out)
+    return out
 
 
 @DeveloperAPI
@@ -221,8 +287,8 @@ def unbatch(batches_struct):
             primitives (non tuple/dict).
 
     Returns:
-        List[struct[components]]: The list of rows. Each item
-            in the returned list represents a single (maybe complex) struct.
+        The list of individual structs. Each item in the returned list represents a
+        single (maybe complex) batch item.
     """
     flat_batches = tree.flatten(batches_struct)
 

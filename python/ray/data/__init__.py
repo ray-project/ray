@@ -12,7 +12,13 @@ from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema
 from ray.data.dataset_pipeline import DatasetPipeline
-from ray.data.datasource import Datasource, ReadTask
+from ray.data.datasource import (
+    BlockBasedFileDatasink,
+    Datasink,
+    Datasource,
+    ReadTask,
+    RowBasedFileDatasink,
+)
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
@@ -31,10 +37,11 @@ from ray.data.read_api import (  # noqa: F401
     from_tf,
     from_torch,
     range,
-    range_table,
     range_tensor,
+    read_bigquery,
     read_binary_files,
     read_csv,
+    read_databricks_tables,
     read_datasource,
     read_images,
     read_json,
@@ -55,17 +62,20 @@ _cached_cls = None
 
 __all__ = [
     "ActorPoolStrategy",
+    "BlockBasedFileDatasink",
     "Dataset",
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.
     "DataIterator",
     "DatasetIterator",  # Backwards compatibility alias.
     "DatasetPipeline",
+    "Datasink",
     "Datasource",
     "ExecutionOptions",
     "ExecutionResources",
     "NodeIdStr",
     "ReadTask",
+    "RowBasedFileDatasink",
     "Schema",
     "from_dask",
     "from_items",
@@ -82,7 +92,6 @@ __all__ = [
     "from_torch",
     "from_huggingface",
     "range",
-    "range_table",
     "range_tensor",
     "read_text",
     "read_binary_files",

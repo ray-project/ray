@@ -2,24 +2,24 @@
 
 
 # Exit if any of the test commands fail.
-set -e pipeline
+set -x -e pipeline
 
-INPUT_DIR=~/imagenet-1gb
-OUTPUT_DIR=~/imagenet-1gb-data
+DIR="/tmp/imagenet-1gb"
+MOSAIC_DIR="/tmp/mosaicml-data"
+TFRECORDS_DIR="/tmp/tf-data"
+PARQUET_DIR="/tmp/parquet-data"
 
-# Download 1GB dataset from S3 to local disk.
-aws s3 sync s3://air-cuj-imagenet-1gb $INPUT_DIR
+rm -rf "$DIR"
+rm -rf "$MOSAIC_DIR"
+rm -rf "$TFRECORDS_DIR"
+rm -rf "$PARQUET_DIR"
 
-# Preprocess files to get to the directory structure that torch dataloader
-# expects.
-for filename in "$INPUT_DIR"/*; do
-    filename=$(basename "$filename")
-    class_dir=$(echo "$filename" | awk '{split($0, array, "_"); print array[1]}')
-    img_path=$(echo "$filename" | awk '{split($0, array, "_"); print array[2]}')
-    mkdir -p "$OUTPUT_DIR"/"$class_dir"
-    out_path="$OUTPUT_DIR/$class_dir/$img_path"
-    echo "$out_path"
-    cp "$INPUT_DIR"/"$filename" "$out_path"
-done
+# Download 1GB dataset from S3 to local disk so we can preprocess with mosaic.
+aws s3 sync s3://imagenetmini1000/1gb $DIR
+# Generated with 
+# https://github.com/tensorflow/tpu/blob/master/tools/datasets/imagenet_to_gcs.py.
+aws s3 sync s3://imagenetmini1000/1gb-tfrecords $TFRECORDS_DIR
+# Preprocess parquet and mosaic files.
+python preprocess_images.py --data-root "$DIR" --mosaic-data-root "$MOSAIC_DIR" --parquet-data-root "$PARQUET_DIR"
 
-python image_loader_microbenchmark.py
+python image_loader_microbenchmark.py --data-root "$DIR" --mosaic-data-root "$MOSAIC_DIR" --parquet-data-root "$PARQUET_DIR" --tf-data-root "$TFRECORDS_DIR"/train

@@ -3,6 +3,7 @@ accelerate
 bitsandbytes
 dataset
 datasets
+decord
 deepspeed
 diffusers
 evaluate
@@ -12,6 +13,7 @@ ipywidgets
 lm_eval
 matplotlib
 numpy
+openai-whisper
 protobuf
 pytorch-lightning
 sentencepiece
@@ -23,4 +25,5 @@ torchmetrics
 torchtext
 torchvision
 transformers>=4.31.0
+typepy>=1.3.2
 wandb

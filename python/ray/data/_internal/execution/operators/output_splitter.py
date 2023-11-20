@@ -1,6 +1,6 @@
 import math
 from collections import deque
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -38,7 +38,9 @@ class OutputSplitter(PhysicalOperator):
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]] = None,
     ):
-        super().__init__(f"split({n}, equal={equal})", [input_op])
+        super().__init__(
+            f"split({n}, equal={equal})", [input_op], target_max_block_size=None
+        )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
         self._buffer: List[RefBundle] = []
@@ -84,19 +86,19 @@ class OutputSplitter(PhysicalOperator):
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         return self._output_queue.popleft()
 
     def get_stats(self) -> StatsDict:
         return {"split": []}  # TODO(ekl) add split metrics?
 
-    def get_metrics(self) -> Dict[str, int]:
+    def _extra_metrics(self) -> Dict[str, Any]:
         stats = {}
         for i, num in enumerate(self._num_output):
             stats[f"num_output_{i}"] = num
         return stats
 
-    def add_input(self, bundle, input_index) -> None:
+    def _add_input_inner(self, bundle, input_index) -> None:
         if bundle.num_rows() is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
         self._buffer.append(bundle)

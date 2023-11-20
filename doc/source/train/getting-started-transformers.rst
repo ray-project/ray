@@ -1,22 +1,23 @@
 .. _train-pytorch-transformers:
 
-Getting Started with Hugging Face Transformers
-==============================================
+Get Started with Hugging Face Transformers
+==========================================
 
-This tutorial will walk you through the process of converting an existing Hugging Face Transformers script to use Ray Train.
+This tutorial walks through the process of converting an existing Hugging Face Transformers script to use Ray Train.
 
-By the end of this, you will learn how to:
+Learn how to:
 
-1. Configure your training function to report metrics and save checkpoints.
-2. Configure scale and CPU/GPU resource requirements for your training job.
+1. Configure a :ref:`training function <train-overview-training-function>` to report metrics and save checkpoints.
+2. Configure :ref:`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for your training job.
 3. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
 
 Quickstart
 ----------
 
-Before we begin, you can expect that the final code will look something like this:
+For reference, the final code follows:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
@@ -28,17 +29,20 @@ Before we begin, you can expect that the final code will look something like thi
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. Your `train_func` will be the Python code that is executed on each distributed training worker.
-2. Your :class:`~ray.train.ScalingConfig` will define the number of distributed training workers and computing resources (e.g. GPUs).
-3. Your :class:`~ray.train.torch.TorchTrainer` will launch the distributed training job.
+1. `train_func` is the Python code that executes on each distributed training worker.
+2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
+3. :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
-Let's compare a Hugging Face Transformers training script with and without Ray Train.
+Compare a Hugging Face Transformers training script with and without Ray Train.
 
 .. tabs::
 
     .. group-tab:: Hugging Face Transformers
 
-        .. code-block:: python
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
+        .. testcode::
+            :skipif: True
 
             # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
 
@@ -96,6 +100,7 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
     .. group-tab:: Hugging Face Transformers + Ray Train
 
         .. code-block:: python
+            :emphasize-lines: 11-13, 15-18, 55-72
 
             import numpy as np
             import evaluate
@@ -171,36 +176,35 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
             ray_trainer.fit()
 
 
-Now, let's get started!
+Set up a training function
+--------------------------
 
-Setting up your training function
----------------------------------
+First, update your training code to support distributed training. 
+You can begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
-First, you'll want to update your training code to support distributed training. 
-You can begin by wrapping your code in a function:
-
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     def train_func(config):
         # Your Transformers training code here.
 
-This function will be executed on each distributed training worker. Ray Train will set up the distributed 
+This function executes on each distributed training worker. Ray Train sets up the distributed 
 process group on each worker before entering this function.
 
-Please put all the logics into this function, including dataset construction and preprocessing, 
+Put all the logic into this function, including dataset construction and preprocessing, 
 model initialization, transformers trainer definition and more.
 
 .. note::
 
     If you are using Hugging Face Datasets or Evaluate, make sure to call ``datasets.load_dataset`` and ``evaluate.load`` 
-    inside the training function. We do not recommend passing the loaded datasets and metrics from outside of the training 
+    inside the training function. Don't pass the loaded datasets and metrics from outside of the training 
     function, because it might cause serialization errors while transferring the objects to the workers.
 
 
-Reporting checkpoints and metrics
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Report checkpoints and metrics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To persist your checkpoints and monitor training progress, simply add a 
+To persist your checkpoints and monitor training progress, add a 
 :class:`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Trainer. 
 
 
@@ -217,11 +221,11 @@ To persist your checkpoints and monitor training progress, simply add a
 
 
 Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`. 
-Note that the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` only provides a simple implementation, and can be :ref:`further customized <train-dl-saving-checkpoints>`.
+Note that the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` only provides a simple implementation, and you can :ref:`further customize <train-dl-saving-checkpoints>` it.
 
 
-Preparing your Transformers Trainer
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Prepare a Transformers Trainer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Finally, pass your Transformers Trainer into
 :meth:`~ray.train.huggingface.transformers.prepare_trainer` to validate 
@@ -241,15 +245,15 @@ your configurations and enable Ray Data Integration.
          ...
 
 
-Configuring scale and GPUs
----------------------------
+Configure scale and GPUs
+------------------------
 
 Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
 
 1. `num_workers` - The number of distributed training worker processes.
 2. `use_gpu` - Whether each worker should use a GPU (or CPU).
 
-.. code-block:: python
+.. testcode::
 
     from ray.train import ScalingConfig
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
@@ -257,32 +261,40 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 
 For more details, see :ref:`train_scaling_config`.
 
-Launching your training job
----------------------------
+Launch a training job
+---------------------
 
 Tying this all together, you can now launch a distributed training job 
 with a :class:`~ray.train.torch.TorchTrainer`.
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    from ray.train import ScalingConfig
+
+    train_func = lambda: None
+    scaling_config = ScalingConfig(num_workers=1)
+
+.. testcode::
 
     from ray.train.torch import TorchTrainer
 
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-Please also refer to :ref:`train-run-config` for more configuration options for `TorchTrainer`.
+Refer to :ref:`train-run-config` for more configuration options for `TorchTrainer`.
 
-Accessing training results
---------------------------
+Access training results
+-----------------------
 
-After training completes, a :class:`~ray.train.Result` object will be returned which contains
+After training completes, a :class:`~ray.train.Result` object is returned which contains
 information about the training run, including the metrics and checkpoints reported during training.
 
-.. code-block:: python
+.. testcode::
 
     result.metrics     # The metrics reported during training.
     result.checkpoint  # The latest checkpoint reported during training.
-    result.log_dir     # The path where logs are stored.
+    result.path     # The path where logs are stored.
     result.error       # The exception that was raised, if training failed.
 
 .. TODO: Add results guide
@@ -290,24 +302,24 @@ information about the training run, including the metrics and checkpoints report
 Next steps
 ---------- 
 
-Congratulations! You have successfully converted your Hugging Face Transformers training script to use Ray Train.
+After you have converted your Hugging Face Transformers training script to use Ray Train:
 
-* Head over to the :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
+* See :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
 * Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
 * Dive into the :ref:`API Reference <train-api>` for more details on the classes and methods used in this tutorial.
 
 
 .. _transformers-trainer-migration-guide:
 
-``TransformersTrainer`` Migration Guide
----------------------------------------
+TransformersTrainer Migration Guide
+-----------------------------------
 
-The `TransformersTrainer` was added in Ray 2.1. It exposes a `trainer_init_per_worker` interface 
-to define `transformers.Trainer`, then runs a pre-defined training loop in a black box.
+Ray 2.1 introduced the `TransformersTrainer`, which exposes a `trainer_init_per_worker` interface 
+to define `transformers.Trainer`, then runs a pre-defined training function in a black box.
 
-In Ray 2.7, we're pleased to introduce the newly unified :class:`~ray.train.torch.TorchTrainer` API, 
-which offers enhanced transparency, flexibility, and simplicity. This API is more aligned
-with standard Hugging Face Transformers scripts, ensuring users have better control over their 
+Ray 2.7 introduced the newly unified :class:`~ray.train.torch.TorchTrainer` API, 
+which offers enhanced transparency, flexibility, and simplicity. This API aligns more
+with standard Hugging Face Transformers scripts, ensuring that you have better control over your 
 native Transformers training code.
 
 
@@ -315,9 +327,11 @@ native Transformers training code.
 
     .. group-tab:: (Deprecating) TransformersTrainer
 
+        .. This snippet isn't tested because it contains skeleton code.
 
-        .. code-block:: python
-            
+        .. testcode::
+            :skipif: True
+
             import transformers
             from transformers import AutoConfig, AutoModelForCausalLM
             from datasets import load_dataset
@@ -369,8 +383,11 @@ native Transformers training code.
 
     .. group-tab:: (New API) TorchTrainer
 
-        .. code-block:: python
-            
+        .. This snippet isn't tested because it contains skeleton code.
+
+        .. testcode::
+            :skipif: True
+
             import transformers
             from transformers import AutoConfig, AutoModelForCausalLM
             from datasets import load_dataset

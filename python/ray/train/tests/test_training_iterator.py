@@ -1,34 +1,32 @@
 import functools
 import time
-import tempfile
 from unittest.mock import patch
+
 import pytest
-from ray.train._internal.worker_group import WorkerGroup
-from ray.train.trainer import TrainingIterator
 
 import ray
 from ray import train
-from ray.train import CheckpointConfig, DataConfig
 from ray.air._internal.util import StartTraceback
-from ray.train.backend import BackendConfig
-from ray.train._internal.session import init_session, get_session
-from ray.train._internal.storage import StorageContext
+from ray.train import DataConfig
 from ray.train._internal.backend_executor import BackendExecutor
+from ray.train._internal.session import get_session, init_session
 from ray.train._internal.utils import construct_train_func
-from ray.train._internal.checkpoint import CheckpointManager
-from ray.train.examples.tf.tensorflow_mnist_example import (
-    train_func as tensorflow_mnist_train_func,
-)
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import BackendConfig
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
+from ray.train.examples.tf.tensorflow_mnist_example import (
+    train_func as tensorflow_mnist_train_func,
+)
+from ray.train.tests.util import mock_storage_context
+from ray.train.trainer import TrainingIterator
 
 MAX_RETRIES = 3
 
 
 @pytest.fixture(autouse=True, scope="module")
 def patch_tune_session():
-    tempdir = tempfile.mkdtemp()
     if not get_session():
         init_session(
             training_func=None,
@@ -37,11 +35,7 @@ def patch_tune_session():
             node_rank=None,
             local_world_size=None,
             world_size=None,
-            storage=StorageContext(
-                storage_path=tempdir,
-                experiment_dir_name="exp_name",
-                trial_dir_name="trial_name",
-            ),
+            storage=mock_storage_context(),
         )
     yield
 
@@ -108,13 +102,10 @@ def create_iterator(
         backend_executor=backend_executor,
         backend_config=backend_config,
         train_func=train_func,
-        run_dir=None,
         datasets={},
         metadata={},
         data_config=DataConfig(),
         checkpoint=None,
-        checkpoint_strategy=CheckpointConfig(),
-        checkpoint_manager=CheckpointManager(),
     )
 
 

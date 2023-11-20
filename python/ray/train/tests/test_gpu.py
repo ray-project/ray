@@ -1,7 +1,10 @@
+import json
 import os
 import time
-
+from pathlib import Path
+from typing import Dict, List, Union
 from unittest.mock import patch
+
 import pytest
 import torch
 import torchvision
@@ -10,16 +13,15 @@ from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
 import ray.data
+from ray import train
 from ray.exceptions import RayTaskError
-from ray import train, tune
-
 from ray.train import ScalingConfig
+from ray.train._internal.worker_group import WorkerGroup
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.torch.config import TorchConfig, _TorchBackend
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.train.trainer import TrainingFailedError
-from ray.train._internal.worker_group import WorkerGroup
 
 
 class LinearDatasetDict(LinearDataset):
@@ -36,19 +38,26 @@ class NonTensorDataset(LinearDataset):
         return {"x": self.x[index, None], "y": 2}
 
 
-# Currently in DataParallelTrainers we only report metrics from rank 0.
-# For testing purposes here, we need to be able to report from all
-# workers.
-class TorchTrainerPatchedMultipleReturns(TorchTrainer):
-    def _report(self, training_iterator) -> None:
-        for results in training_iterator:
-            tune.report(results=results)
+def write_rank_data(tmp_path: Path, data: Union[int, List, Dict]):
+    rank = train.get_context().get_world_rank()
+    with open(tmp_path / f"{rank}.json", "w") as f:
+        json.dump(data, f)
+
+
+def get_data_from_all_ranks(tmp_path: Path) -> Dict[int, Union[int, List, Dict]]:
+    rank_data = {}
+    for rank_file in tmp_path.glob("*.json"):
+        rank = int(rank_file.stem)
+        with open(rank_file, "r") as f:
+            data = json.load(f)
+        rank_data[rank] = data
+    return rank_data
 
 
 @pytest.mark.parametrize("cuda_visible_devices", ["", "1,2"])
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
 def test_torch_get_device(
-    shutdown_only, num_gpus_per_worker, cuda_visible_devices, monkeypatch
+    shutdown_only, num_gpus_per_worker, cuda_visible_devices, monkeypatch, tmp_path
 ):
     if cuda_visible_devices:
         # Test if `get_device` is correct even with user specified env var.
@@ -61,18 +70,15 @@ def test_torch_get_device(
         if cuda_visible_devices:
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
             assert visible_devices == "1,2"
-        if num_gpus_per_worker > 1:
-            train.report(
-                dict(
-                    devices=sorted(
-                        [device.index for device in train.torch.get_device()]
-                    )
-                )
-            )
-        else:
-            train.report(dict(devices=train.torch.get_device().index))
 
-    trainer = TorchTrainerPatchedMultipleReturns(
+        devices = (
+            sorted([device.index for device in train.torch.get_device()])
+            if num_gpus_per_worker > 1
+            else train.torch.get_device().index
+        )
+        write_rank_data(tmp_path, devices)
+
+    trainer = TorchTrainer(
         train_fn,
         scaling_config=ScalingConfig(
             num_workers=int(2 / num_gpus_per_worker),
@@ -80,8 +86,10 @@ def test_torch_get_device(
             resources_per_worker={"GPU": num_gpus_per_worker},
         ),
     )
-    results = trainer.fit()
-    devices = [result["devices"] for result in results.metrics["results"]]
+    trainer.fit()
+
+    rank_data = get_data_from_all_ranks(tmp_path)
+    devices = list(rank_data.values())
 
     if num_gpus_per_worker == 0.5:
         assert sorted(devices) == [0, 0, 1, 1]
@@ -97,21 +105,17 @@ def test_torch_get_device(
 
 
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
-def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
+def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
-        if num_gpus_per_worker > 1:
-            train.report(
-                dict(
-                    devices=sorted(
-                        [device.index for device in train.torch.get_device()]
-                    )
-                )
-            )
-        else:
-            train.report(dict(devices=train.torch.get_device().index))
+        devices = (
+            sorted([device.index for device in train.torch.get_device()])
+            if num_gpus_per_worker > 1
+            else train.torch.get_device().index
+        )
+        write_rank_data(tmp_path, devices)
 
-    trainer = TorchTrainerPatchedMultipleReturns(
+    trainer = TorchTrainer(
         train_fn,
         # use gloo instead of nccl, since nccl is not supported
         # on this virtual gpu ray environment
@@ -122,8 +126,10 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
             resources_per_worker={"GPU": num_gpus_per_worker},
         ),
     )
-    results = trainer.fit()
-    devices = [result["devices"] for result in results.metrics["results"]]
+    trainer.fit()
+
+    rank_data = get_data_from_all_ranks(tmp_path)
+    devices = list(rank_data.values())
 
     # cluster setups: 2 nodes, 2 gpus per node
     # `CUDA_VISIBLE_DEVICES` is set to "0,1" on node 1 and node 2

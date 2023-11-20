@@ -15,7 +15,6 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
-import ray._private.resource_spec as resource_spec
 import ray._private.utils
 import ray.cluster_utils
 import ray.util.accelerators
@@ -202,44 +201,6 @@ def test_ray_labels_environment_variables(shutdown_only):
     assert node_info["Labels"]["custom1"] == "1"
     assert node_info["Labels"]["custom2"] == "2"
     assert node_info["Labels"]["custom3"] == "3"
-
-
-def test_gpu_info_parsing():
-    info_string = """Model:           Tesla V100-SXM2-16GB
-IRQ:             107
-GPU UUID:        GPU-8eaaebb8-bb64-8489-fda2-62256e821983
-Video BIOS:      88.00.4f.00.09
-Bus Type:        PCIe
-DMA Size:        47 bits
-DMA Mask:        0x7fffffffffff
-Bus Location:    0000:00:1e.0
-Device Minor:    0
-Blacklisted:     No
-    """
-    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
-    expected_dict = {
-        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}V100": 1,
-    }
-    assert constraints_dict == expected_dict
-
-    info_string = """Model:           Tesla T4
-IRQ:             10
-GPU UUID:        GPU-415fe7a8-f784-6e3d-a958-92ecffacafe2
-Video BIOS:      90.04.84.00.06
-Bus Type:        PCIe
-DMA Size:        47 bits
-DMA Mask:        0x7fffffffffff
-Bus Location:    0000:00:1b.0
-Device Minor:    0
-Blacklisted:     No
-    """
-    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
-    expected_dict = {
-        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}T4": 1,
-    }
-    assert constraints_dict == expected_dict
-
-    assert resource_spec._constraints_from_gpu_info(None) == {}
 
 
 @pytest.mark.parametrize(

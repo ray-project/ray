@@ -29,7 +29,7 @@ By default, Ray Data automatically selects the read ``parallelism`` according to
 2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it's set to 8.
 3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
 
-Occasionally, it's advantageous to manually tune the parallelism to optimize the application. This can be done when loading data via the ``parallelism`` parameter.
+Occasionally, it's advantageous to manually tune the parallelism to optimize the application. You can do this by setting the ``parallelism`` parameter.
 For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
 
 Tuning read resources
@@ -187,5 +187,19 @@ To enable deterministic execution, set the preceding to True. This setting may d
 Monitoring your application
 ---------------------------
 
-View the Ray Dashboard to monitor your application and troubleshoot issues. To learn
-more about the Ray dashboard, see :ref:`Ray Dashboard <observability-getting-started>`.
+View the Ray Data dashboard located in the :ref:`Metrics tab <dash-metrics-view>` of the Ray Dashboard to monitor your application and troubleshoot issues. Ray Data emits Prometheus metrics in real-time while a Dataset is executing, and the Ray Data dashboard displays these metrics grouped by Dataset. Datasets can also be assigned a name using :meth:`Dataset._set_name`, which prefixes the dataset ID for a more identifiable label.
+
+The metrics recorded are:
+
+* Bytes spilled by objects from object store to disk
+* Bytes of objects allocated in object store
+* Bytes of objects freed in object store
+* Current total bytes of objects in object store
+* Logical CPUs allocated to dataset operators
+* Logical GPUs allocated to dataset operators
+* Bytes outputted by dataset operators
+
+.. image:: images/data-dashboard.png
+   :align: center
+
+To learn more about the Ray dashboard, including detailed setup instructions, see :ref:`Ray Dashboard <observability-getting-started>`.
