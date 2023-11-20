@@ -280,6 +280,7 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
         merged_config = merge_legacy_yaml_with_defaults(merged_config)
     # Take care of this here, in case a config does not specify any of head,
     # workers, node types, but does specify min workers:
+    merged_config.pop("min_workers", None)
     merged_config.pop("min_worker_nodes", None)
 
     translate_trivial_legacy_config(merged_config)
