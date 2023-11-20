@@ -71,9 +71,10 @@ try:
     # written with earlier version of Ray Data, we enable auto-loading of serialized
     # tensor extensions.
     pyarrow_version = _get_pyarrow_version()
+    assert pyarrow_version is not None, (pyarrow_version, pa)
     if parse_version(pyarrow_version) >= parse_version("14.0.1"):
         pa.PyExtensionType.set_auto_load(True)
-except ImportError:
+except ModuleNotFoundError:
     pass
 
 
