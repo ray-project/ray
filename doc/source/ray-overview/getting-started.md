@@ -530,7 +530,7 @@ Learn more about Ray Core
 
 ## Ray Cluster Quickstart
 
-Deploy your applications on Ray clusters on AWS, GCP, Azure and more, often with minimal code changes to your existing code.
+Deploy your applications on Ray clusters on AWS, GCP, Azure, and more, often with minimal code changes to your existing code.
 
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on AWS
