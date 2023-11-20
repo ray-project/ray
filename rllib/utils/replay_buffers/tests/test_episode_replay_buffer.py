@@ -13,7 +13,7 @@ class TestEpisodeReplayBuffer(unittest.TestCase):
         eps = SingleAgentEpisode(id_=id_, observations=[0.0], infos=[{}])
         ts = np.random.randint(1, 200) if episode_len is None else episode_len
         for t in range(ts):
-            eps.add_timestep(
+            eps.add_env_step(
                 observation=float(t + 1),
                 action=int(t),
                 reward=0.1 * (t + 1),
