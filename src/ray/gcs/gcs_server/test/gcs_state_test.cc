@@ -64,14 +64,14 @@ class GcsStateTest : public ::testing::Test {
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::shared_ptr<MockGcsPublisher> gcs_publisher_;
+  std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
 
   void SetUp() override {
     raylet_client_ = std::make_shared<MockRayletClientInterface>();
     client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
-    shared_ptr<StoreClient> store_client = std::make_shared<MockStoreClient>();
-    gcs_table_storage_ = std::make_shared<MockGcsTableStorage>(store_client);
+    gcs_table_storage_ = std::make_shared<MockGcsTableStorage>();
     gcs_publisher_ = std::make_shared<MockGcsPublisher>();
     gcs_node_manager_ = std::make_shared<GcsNodeManager>(
         gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
@@ -91,8 +91,13 @@ class GcsStateTest : public ::testing::Test {
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
         std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()));
     function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+    MockGcsActorTable gcs_actor_table;
+    gcs_actor_scheduler_ = std::make_shared<MockGcsActorScheduler>(
+      io_service_,
+      gcs_actor_table,
+      *gcs_node_manager_);
     gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-        nullptr,
+        gcs_actor_scheduler_,
         gcs_table_storage_,
         gcs_publisher_,
         *gcs_node_manager_,
@@ -111,6 +116,7 @@ class GcsStateTest : public ::testing::Test {
 };
 
 TEST_F(GcsStateTest, TestDrainNode) {
+  // TODO create an actor on this node
   auto node = Mocker::GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 2});
   node->mutable_resources_total()->insert({"GPU", 1});
@@ -155,8 +161,6 @@ TEST_F(GcsStateTest, TestDrainNode) {
   gcs_autoscaler_state_manager_->HandleDrainNode(request, &reply, send_reply_callback);
   ASSERT_TRUE(reply.is_accepted());
 
-  RAY_LOG(INFO) << "vct aa";
-
   // This is normally in GCS.
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -164,11 +168,14 @@ TEST_F(GcsStateTest, TestDrainNode) {
         const auto node_ip_address = node->node_manager_address();
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
       });
-  RAY_LOG(INFO) << "vct bb";
 
   // Simulate raylet failure
   gcs_node_manager_->OnNodeFailure(node_id);
-  RAY_LOG(INFO) << "vct cc";
+  ON_CALL(*gcs_publisher_, PublishError)
+      .WillByDefault(Return(Status::OK()));
+
+  // Expect gcs_table_storage_.Put(actor_id, mutable_actor_table_data, *)
+  // mutable_actor_table_data.death_cause = (preempted)
 }
 
 }  // namespace gcs

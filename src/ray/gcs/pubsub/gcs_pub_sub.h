@@ -68,7 +68,7 @@ class GcsPublisher {
                     const rpc::JobTableData &message,
                     const StatusCallback &done);
 
-  Status PublishNodeInfo(const NodeID &id,
+  virtual Status PublishNodeInfo(const NodeID &id,
                          const rpc::GcsNodeInfo &message,
                          const StatusCallback &done);
 

@@ -22,8 +22,15 @@ class MockGcsPublisher : public GcsPublisher {
   MOCK_METHOD(Status,
               PublishError,
               (const std::string &id,
-               const rpc::WorkerDeltaData &message,
-               const StatusCallback &done));
+               const rpc::ErrorTableData &message,
+               const StatusCallback &done),
+              (override));
+  MOCK_METHOD(Status,
+              PublishNodeInfo,
+              (const NodeID &id,
+               const rpc::GcsNodeInfo &message,
+               const StatusCallback &done),
+              (override));
 };
 
 }  // namespace gcs

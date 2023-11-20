@@ -105,6 +105,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
 
+  /// Get a node that may be dead.
   std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetDeadNode(
       const NodeID &node_id) const;
 
@@ -156,6 +157,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   virtual void DrainNode(const NodeID &node_id);
 
  private:
+  /// Check whether node at a given address is preempted.
+  bool IsNodePreempted(const std::string &raylet_addr);
+
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
   ///

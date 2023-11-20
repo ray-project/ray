@@ -43,6 +43,12 @@ namespace gcs {
 
 class MockGcsActorScheduler : public GcsActorScheduler {
  public:
+  MockGcsActorScheduler(
+      instrumented_io_context &io_context,
+      GcsActorTable &gcs_actor_table,
+      const GcsNodeManager &gcs_node_manager) :
+      GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager, nullptr, [](std::shared_ptr<GcsActor>, rpc::RequestWorkerLeaseReply::SchedulingFailureType, const std::string &) {}, [](std::shared_ptr<GcsActor>, const rpc::PushTaskReply &) {}, nullptr) {}
+  
   MOCK_METHOD(void, Schedule, (std::shared_ptr<GcsActor> actor), (override));
   MOCK_METHOD(void, Reschedule, (std::shared_ptr<GcsActor> actor), (override));
   MOCK_METHOD(std::vector<ActorID>, CancelOnNode, (const NodeID &node_id), (override));

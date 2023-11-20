@@ -204,6 +204,7 @@ const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
     const ray::gcs::GcsActor *actor,
     const std::string ip_address,
     const NodeID &node_id) {
+  RAY_LOG(INFO) << "vct @#$@#$@";
   ray::rpc::ActorDeathCause death_cause;
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);

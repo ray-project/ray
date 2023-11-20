@@ -17,19 +17,21 @@
 #include "msgpack.hpp"
 
 namespace {
-std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const std::string &str) {
-  // casting away const is okay because copy_data is true.
-  uint8_t *metadata =
-      const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(str.data()));
+std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
+                                                             size_t data_size) {
+  auto metadata = const_cast<uint8_t *>(data);
   auto meta_buffer =
-      std::make_shared<ray::LocalMemoryBuffer>(metadata, str.size(), /*copy_data=*/true);
+      std::make_shared<ray::LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
   return meta_buffer;
+}
+
+std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const std::string &str) {
+  return MakeBufferFromString(reinterpret_cast<const uint8_t *>(str.data()), str.size());
 }
 
 std::shared_ptr<ray::LocalMemoryBuffer> MakeErrorMetadataBuffer(
     ray::rpc::ErrorType error_type) {
   std::string meta = std::to_string(static_cast<int>(error_type));
-  // TODO
   return MakeBufferFromString(meta);
 }
 
@@ -58,7 +60,7 @@ std::shared_ptr<ray::LocalMemoryBuffer> MakeSerializedErrorBuffer(
   // --(msgpack Serialization)-->
   // msgpack_serialized_exception(MSE)
 
-  // Then add its length to the head(for cross-language deserialization):
+  // Then add it's length to the head(for coross-language deserialization):
   // [MSE's length(9 bytes)] [MSE]
 
   std::string pb_serialized_exception;

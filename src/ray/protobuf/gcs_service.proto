@@ -208,6 +208,7 @@ message CheckAliveReply {
   GcsStatus status = 1;
   string ray_version = 2;
   repeated bool raylet_alive = 3;
+  repeated bool raylet_preempted = 4;
 }
 
 message GetInternalConfigRequest {}

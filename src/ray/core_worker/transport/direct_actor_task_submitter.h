@@ -35,6 +35,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -73,11 +74,13 @@ class CoreWorkerDirectActorTaskSubmitter
       CoreWorkerMemoryStore &store,
       TaskFinisherInterface &task_finisher,
       ActorCreatorInterface &actor_creator,
+      gcs::GcsClient &gcs_client,
       std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
       instrumented_io_context &io_service)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher, actor_creator),
         task_finisher_(task_finisher),
+        gcs_client_(gcs_client),
         warn_excess_queueing_(warn_excess_queueing),
         io_service_(io_service) {
     next_queueing_warn_threshold_ =
@@ -313,6 +316,12 @@ class CoreWorkerDirectActorTaskSubmitter
     }
   };
 
+  /// Check the death reason is because of drain. 
+  void FailTaskWithError(
+    const ray::TaskID &task_id,
+    const Status status,
+    const bool preempted);
+
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
   /// sending the request, this task will be treated as failed.
@@ -365,6 +374,9 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Used to complete tasks.
   TaskFinisherInterface &task_finisher_;
+
+  /// GCS client.
+  gcs::GcsClient &gcs_client_;
 
   /// Used to warn of excessive queueing.
   std::function<void(const ActorID &, uint64_t num_queued)> warn_excess_queueing_;

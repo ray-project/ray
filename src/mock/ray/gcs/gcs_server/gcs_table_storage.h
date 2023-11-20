@@ -74,6 +74,8 @@ namespace gcs {
 
 class MockGcsActorTable : public GcsActorTable {
  public:
+  MockGcsActorTable() : GcsActorTable(nullptr) {}
+
   MOCK_METHOD(JobID, GetJobIdFromKey, (const ActorID &key), (override));
 };
 
@@ -145,8 +147,8 @@ namespace gcs {
 
 class MockGcsTableStorage : public GcsTableStorage {
  public:
-  MockGcsTableStorage(std::shared_ptr<StoreClient> store_client)
-      : GcsTableStorage(store_client) {}
+  MockGcsTableStorage()
+      : GcsTableStorage(nullptr) {}
 };
 
 }  // namespace gcs

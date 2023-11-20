@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 
 #include <utility>
+#include <optional>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
@@ -69,12 +70,30 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
+bool GcsNodeManager::IsNodePreempted(const std::string &raylet_addr) {
+  auto iter = node_map_.right.find(raylet_addr);
+  if (iter == node_map_.right.end()) {
+    return false;
+  }
+  auto maybe_node = GetDeadNode(iter->second);
+  if (!maybe_node.has_value() || maybe_node.value() == nullptr) {
+    return false;
+  }
+
+  auto& death_info = maybe_node.value()->death_info();
+  return death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN &&
+  death_info.drain_reason() == rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION;
+}
+
 void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::CheckAliveReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
   reply->set_ray_version(kRayVersion);
   for (const auto &addr : request.raylet_address()) {
-    reply->mutable_raylet_alive()->Add(node_map_.right.count(addr) != 0);
+    bool is_alive = node_map_.right.count(addr) != 0;
+    reply->mutable_raylet_alive()->Add(is_alive);
+    bool is_preempted = !is_alive && IsNodePreempted(addr);
+    reply->mutable_raylet_preempted()->Add(is_preempted);
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -244,10 +263,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
       RAY_LOG(WARNING) << error_message.str();
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
-      RAY_LOG(INFO) << "vct ee";
       RAY_CHECK_OK(gcs_publisher_->PublishError(node_id.Hex(), *error_data_ptr, nullptr));
     }
-    RAY_LOG(INFO) << "vct ff";
 
     // Notify all listeners.
     for (auto &listener : node_removed_listeners_) {
@@ -308,13 +325,19 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 
 std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetDeadNode(
     const ray::NodeID &node_id) const {
-  auto iter = dead_nodes_.find(node_id);
-  if (iter != alive_nodes_.end()) {
+  if (auto iter = dead_nodes_.find(node_id);
+      iter != dead_nodes_.end()) {
     return iter->second;
   }
+  if (auto iter = alive_nodes_.find(node_id);
+      iter != alive_nodes_.end()) {
+    return std::nullopt;
+  }
 
+  // In the event that we don't find the node in memory, we will have to fetch
+  // from storage.
   std::promise<std::optional<std::shared_ptr<rpc::GcsNodeInfo>>> node_info;
-  auto f = node_info.get_future();
+  auto fut = node_info.get_future();
   gcs_table_storage_->NodeTable().Get(
       node_id,
       [&node_info](Status status, const boost::optional<GcsNodeInfo> &maybe_info) {
@@ -325,8 +348,8 @@ std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetDeadNode(
         }
       });
 
-  f.wait();
-  return f.get();
+  fut.wait();
+  return fut.get();
 }
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
