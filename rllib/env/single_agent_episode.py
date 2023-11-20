@@ -47,7 +47,7 @@ class SingleAgentEpisode:
         extra_model_outputs: Optional[Dict[str, Any]] = None,
         render_images: Optional[List[np.ndarray]] = None,
         t_started: Optional[int] = None,
-        len_lookback_buffer: Optional[int] = None,
+        len_lookback_buffer: Optional[int] = 0,
     ) -> "SingleAgentEpisode":
         """Initializes a SingleAgentEpisode instance.
 
@@ -102,7 +102,11 @@ class SingleAgentEpisode:
                 observation onwards (i.e. `t_started = len(observations) - 1). If
                 this parameter is provided the episode starts at the provided value.
             len_lookback_buffer: The size of an optional lookback buffer to keep in
-                front of this Episode. If >0, will
+                front of this Episode. If >0, will interpret the first
+                `len_lookback_buffer` items in each data as NOT part of this actual
+                episode chunk, but instead serve as historic data that may be viewed.
+                If None, will interpret all provided data in constructor as part of the
+                lookback buffer. 
         """
         self.id_ = id_ or uuid.uuid4().hex
         # Observations: t0 (initial obs) to T.
@@ -442,10 +446,10 @@ class SingleAgentEpisode:
         end_self = index + self._len_lookback_buffer
         self.t = index
         self.observations = tree.map_structure(
-            lambda s: s[:end_self],
+            lambda s: s[:end_self + 1],
             self.observations,
         )
-        self.infos = self.infos[:end_self]
+        self.infos = self.infos[:end_self + 1]
         self.actions = tree.map_structure(
             lambda s: s[:end_self],
             self.actions,
@@ -458,6 +462,8 @@ class SingleAgentEpisode:
         # Set our own terminated/truncated back to False.
         self.is_terminated = False
         self.is_truncated = False
+
+        self.validate()
 
         return second_chunk
 
