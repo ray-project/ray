@@ -22,3 +22,4 @@ starlette==0.26.1
 aiorwlock==1.3.0
 pydantic==1.10.8
 trustme==0.9.0
+bytedance.metrics==0.4.0
