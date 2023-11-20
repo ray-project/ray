@@ -46,6 +46,24 @@ steps:
       - forge
     job_env: forge
 
+  - label: ":windows: wheel {{matrix}}"
+    # we have linux/mac wheels tag, but do not have a windows wheels tag..
+    # so using python and core_cpp here, to make sure at least it builds
+    tags:
+      - oss
+      - python
+      - core_cpp
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - export BUILD_ONE_PYTHON_ONLY={{matrix}}
+      - bash /c/workdir/.buildkite/windows_ci.sh wheels
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
   - label: ":tapioca: build: jar"
     tags:
       - java
@@ -65,11 +83,10 @@ steps:
     depends_on: docbuild
     job_env: forge
 
-  - label: ":tapioca: build: ray py{{matrix}} docker"
+  - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
     tags:
       - python_dependencies
       - docker
-      - core_cpp
       - oss
     instance_type: medium
     commands:
@@ -89,11 +106,35 @@ steps:
       - "3.10"
       - "3.11"
 
-  - label: ":tapioca: build: ray-ml py{{matrix}} docker"
+  - label: ":tapioca: build: ray py{{matrix}} docker (aarch64)"
     tags:
       - python_dependencies
       - docker
       - core_cpp
+      - oss
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
+        --platform cu11.5.2 --platform cu11.6.2 --platform cu11.7.1 
+        --platform cu11.8.0 --platform cu12.1.1 --platform cpu
+        --image-type ray
+        --architecture aarch64
+    depends_on:
+      - manylinux-aarch64
+      - forge-aarch64
+      - raycudabase-aarch64
+      - raycpubase-aarch64
+    job_env: forge-aarch64
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
+  - label: ":tapioca: build: ray-ml py{{matrix}} docker (x86_64)"
+    tags:
+      - python_dependencies
+      - docker
       - oss
     instance_type: medium
     commands:

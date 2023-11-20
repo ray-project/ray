@@ -1297,7 +1297,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
              worker_type == rpc::WorkerType::RESTORE_WORKER) {
     RAY_CHECK(job_id.IsNil());
   }
-  auto worker = std::dynamic_pointer_cast<WorkerInterface>(
+  auto worker = std::static_pointer_cast<WorkerInterface>(
       std::make_shared<Worker>(job_id,
                                runtime_env_hash,
                                worker_id,

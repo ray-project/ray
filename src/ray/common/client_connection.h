@@ -44,6 +44,9 @@ Status ConnectSocketRetry(local_stream_socket &socket,
 /// can be used to write messages synchronously to the server.
 class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
  public:
+  ServerConnection(const ServerConnection &) = delete;
+  ServerConnection &operator=(const ServerConnection &) = delete;
+
   /// ServerConnection destructor.
   virtual ~ServerConnection();
 
@@ -186,6 +189,9 @@ using MessageHandler = std::function<void(
 class ClientConnection : public ServerConnection {
  public:
   using std::enable_shared_from_this<ServerConnection>::shared_from_this;
+
+  ClientConnection(const ClientConnection &) = delete;
+  ClientConnection &operator=(const ClientConnection &) = delete;
 
   /// Allocate a new node client connection.
   ///

@@ -16,7 +16,7 @@ class NumpyDatasource(FileBasedDatasource):
     """Numpy datasource, for reading and writing Numpy files."""
 
     _COLUMN_NAME = "data"
-    _FILE_EXTENSION = "npy"
+    _FILE_EXTENSIONS = ["npy"]
 
     def __init__(
         self,

@@ -1,17 +1,15 @@
-import os
+import pyarrow
 import pytest
 
 import ray
-
-from ray.air.constants import EXPR_RESULT_FILE
 from ray import train
-from ray.train import Result, CheckpointConfig, RunConfig, ScalingConfig
-from ray.train.torch import TorchTrainer
+from ray.air._internal.uri_utils import URI
+from ray.air.constants import EXPR_RESULT_FILE
+from ray.train import CheckpointConfig, Result, RunConfig, ScalingConfig
 from ray.train.base_trainer import TrainingFailedError
-from ray.tune import TuneConfig, Tuner
-
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-
+from ray.train.torch import TorchTrainer
+from ray.tune import TuneConfig, Tuner
 
 _PARAM_SPACE = {"a": 1, "b": 2}
 
@@ -30,11 +28,14 @@ def build_dummy_trainer(configs):
             # Do some random reports in between checkpoints.
             train.report({"metric_a": -100, "metric_b": -100})
 
-            with create_dict_checkpoint({"iter": i}) as checkpoint:
-                train.report(
-                    metrics={"metric_a": i, "metric_b": -i},
-                    checkpoint=checkpoint,
-                )
+            if ray.train.get_context().get_world_rank() == 0:
+                with create_dict_checkpoint({"iter": i}) as checkpoint:
+                    train.report(
+                        metrics={"metric_a": i, "metric_b": -i},
+                        checkpoint=checkpoint,
+                    )
+            else:
+                train.report(metrics={"metric_a": i, "metric_b": -i})
         raise RuntimeError()
 
     trainer = TorchTrainer(
@@ -62,13 +63,20 @@ def build_dummy_tuner(configs):
     )
 
 
+@pytest.mark.parametrize("storage", ["local", "remote"])
 @pytest.mark.parametrize("mode", ["trainer", "tuner"])
-def test_result_restore(ray_start_4_cpus, monkeypatch, tmpdir, mode):
+def test_result_restore(
+    ray_start_4_cpus, monkeypatch, tmpdir, mock_s3_bucket_uri, storage, mode
+):
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir / "ray_results"))
 
     NUM_ITERATIONS = 5
     NUM_CHECKPOINTS = 3
-    storage_path = str(tmpdir)
+    if storage == "local":
+        storage_path = str(tmpdir)
+    elif storage == "remote":
+        storage_path = str(URI(mock_s3_bucket_uri))
+
     exp_name = "test_result_restore"
 
     configs = {
@@ -87,13 +95,16 @@ def test_result_restore(ray_start_4_cpus, monkeypatch, tmpdir, mode):
         tuner.fit()
 
     # Find the trial directory to restore
-    exp_dir = os.path.join(storage_path, exp_name)
-    for dirname in os.listdir(exp_dir):
-        if dirname.startswith("TorchTrainer"):
-            trial_dir = os.path.join(exp_dir, dirname)
+    exp_dir = str(URI(storage_path) / exp_name)
+    fs, fs_exp_dir = pyarrow.fs.FileSystem.from_uri(exp_dir)
+    for item in fs.get_file_info(pyarrow.fs.FileSelector(fs_exp_dir)):
+        if item.type == pyarrow.fs.FileType.Directory and item.base_name.startswith(
+            "TorchTrainer"
+        ):
+            trial_dir = str(URI(exp_dir) / item.base_name)
             break
 
-    # [1] Restore from local path
+    # [1] Restore from path
     result = Result.from_path(trial_dir)
 
     # Check if we restored all checkpoints
@@ -124,8 +135,8 @@ def test_result_restore(ray_start_4_cpus, monkeypatch, tmpdir, mode):
     # Check that the config is properly formatted in the result metrics
     assert result.metrics.get("config") == {"train_loop_config": _PARAM_SPACE}
 
-    # [2] Restore from local path without result.json
-    os.remove(f"{trial_dir}/{EXPR_RESULT_FILE}")
+    # [2] Restore from path without result.json
+    fs.delete_file((URI(trial_dir) / EXPR_RESULT_FILE).path)
     result = Result.from_path(trial_dir)
 
     # Do the same checks as above

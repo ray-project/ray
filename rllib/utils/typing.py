@@ -19,6 +19,8 @@ from ray.rllib.utils.annotations import ExperimentalAPI
 
 if TYPE_CHECKING:
     from ray.rllib.env.env_context import EnvContext
+    from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+    from ray.rllib.env.single_agent_episode import SingleAgentEpisode
     from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
     from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.policy import PolicySpec
@@ -75,7 +77,8 @@ EnvID = Union[int, str]
 
 # Represents a BaseEnv, MultiAgentEnv, ExternalEnv, ExternalMultiAgentEnv,
 # VectorEnv, gym.Env, or ActorHandle.
-EnvType = Any
+# TODO (sven): Specify this type more strictly (it should just be gym.Env).
+EnvType = Union[Any, gym.Env]
 
 # A callable, taking a EnvContext object
 # (config dict + properties: `worker_index`, `vector_index`, `num_workers`,
@@ -100,6 +103,9 @@ TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]
 
 # Represents an episode id.
 EpisodeID = int
+
+# A new stack Episode type: Either single-agent or multi-agent.
+EpisodeType = Type[Union["SingleAgentEpisode", "MultiAgentEpisode"]]
 
 # Represents an "unroll" (maybe across different sub-envs in a vector env).
 UnrollID = int

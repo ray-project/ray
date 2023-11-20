@@ -31,7 +31,10 @@ from ray.data.datasource.file_meta_provider import (
     _handle_read_os_error,
 )
 from ray.data.datasource.partitioning import PathPartitionFilter
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.data.datasource.path_util import (
+    _has_file_extension,
+    _resolve_paths_and_filesystem,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -179,6 +182,7 @@ class ParquetDatasource(Datasource):
         partition_filter: PathPartitionFilter = None,
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
+        file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
 
@@ -205,13 +209,20 @@ class ParquetDatasource(Datasource):
 
         # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
         # files. To avoid this, we expand the input paths with the default metadata
-        # provider and then apply the partition filter.
-        if partition_filter is not None:
+        # provider and then apply the partition filter or file extensions.
+        if partition_filter is not None or file_extensions is not None:
             default_meta_provider = get_generic_metadata_provider(file_extensions=None)
             expanded_paths, _ = map(
                 list, zip(*default_meta_provider.expand_paths(paths, filesystem))
             )
-            paths = partition_filter(expanded_paths)
+
+            paths = list(expanded_paths)
+            if partition_filter is not None:
+                paths = partition_filter(paths)
+            if file_extensions is not None:
+                paths = [
+                    path for path in paths if _has_file_extension(path, file_extensions)
+                ]
 
             filtered_paths = set(expanded_paths) - set(paths)
             if filtered_paths:

@@ -34,6 +34,24 @@ def test_include_paths(ray_start_regular_shared, tmp_path):
     assert paths == [path]
 
 
+def test_file_extensions(ray_start_regular_shared, tmp_path):
+    csv_path = os.path.join(tmp_path, "file.csv")
+    with open(csv_path, "w") as file:
+        file.write("spam")
+
+    txt_path = os.path.join(tmp_path, "file.txt")
+    with open(txt_path, "w") as file:
+        file.write("ham")
+
+    datasource = MockFileBasedDatasource([csv_path, txt_path], file_extensions=None)
+    ds = ray.data.read_datasource(datasource)
+    assert sorted(ds.input_files()) == sorted([csv_path, txt_path])
+
+    datasource = MockFileBasedDatasource([csv_path, txt_path], file_extensions=["csv"])
+    ds = ray.data.read_datasource(datasource)
+    assert ds.input_files() == [csv_path]
+
+
 def test_open_file_with_retry(ray_start_regular_shared):
     class FlakyFileOpener:
         def __init__(self, max_attempts: int):

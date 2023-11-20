@@ -240,7 +240,6 @@ class TestReadImages:
             size=(image_size, image_size),
             mode=image_mode,
             filesystem=LocalFileSystem(),
-            partition_filter=ImageDatasource.file_extension_filter(),
             partitioning=None,
             meta_provider=_ImageFileMetadataProvider(),
         )
