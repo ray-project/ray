@@ -35,7 +35,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
@@ -419,7 +419,7 @@ class PPO(Algorithm):
 
             return PPOTF2Policy
 
-    @ExperimentalAPI
+    @override(Algorithm)
     def training_step(self) -> ResultDict:
         use_rollout_worker = self.config.env_runner_cls is None or issubclass(
             self.config.env_runner_cls, RolloutWorker
