@@ -139,8 +139,20 @@ li.active-link > .ref-container {
   border: 1px solid var(--pst-color-border);
 }
 
-/* Center the search button in the sidebar */
+/* Remove margin for the release header in the sidebar, otherwise it's too much space */
+#release-header {
+  margin: 0;
+}
+
+/* Center the Ray release header in the sidebar */
 div.sidebar-primary-item:nth-child(1) {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
+
+/* Center the search button in the sidebar */
+div.sidebar-primary-item:nth-child(2) {
   display: flex;
   flex-direction: row;
   justify-content: center;
@@ -149,11 +161,6 @@ div.sidebar-primary-item:nth-child(1) {
 /* Disable the "Back to top" button that appears if you scroll down */
 button#pst-back-to-top {
   display: none !important;
-}
-
-/* Hide the rtd-footer-container; we aren't using it */
-#rtd-footer-container {
-  display: none;
 }
 
 .bottom-right-promo-banner {

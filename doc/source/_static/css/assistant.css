@@ -12,10 +12,10 @@
 }
 
 .chat-widget {
-    position: fixed;
-    bottom: 10px;
-    right: 10px;
-    z-index: 1000;
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  z-index: 1000;
 }
 
 .chat-popup {
@@ -45,15 +45,15 @@
 }
 
 #openChatBtn {
-    background-color: var(--pst-color-on-background);
-    color: var(--pst-color-text-base);
-    width: 70px;
-    height: 70px;
-    border-radius: 10px;
-    border: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  border: 1px solid var(--pst-color-border);
+  background-color: var(--pst-color-surface);
+  color: var(--pst-color-text-base);
+  width: 70px;
+  height: 70px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #closeChatBtn {

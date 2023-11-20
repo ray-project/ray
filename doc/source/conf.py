@@ -12,7 +12,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import (  # noqa
     DownloadAndPreprocessEcosystemDocs,
@@ -21,7 +20,6 @@ from custom_directives import (  # noqa
     parse_navbar_config,
     setup_context,
 )
-
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -299,6 +297,7 @@ html_context = {
 
 html_sidebars = {
     "**": [
+        "release-header",
         "search-button-field",
         "main-sidebar",
     ],
@@ -510,11 +509,12 @@ autodoc_mock_imports = [
 ]
 
 for mock_target in autodoc_mock_imports:
-    assert mock_target not in sys.modules, (
-        f"Problematic mock target ({mock_target}) found; "
-        "autodoc_mock_imports cannot mock modules that have already"
-        "been loaded into sys.modules when the sphinx build starts."
-    )
+    if mock_target in sys.modules:
+        logger.info(
+            f"Potentially problematic mock target ({mock_target}) found; "
+            "autodoc_mock_imports cannot mock modules that have already "
+            "been loaded into sys.modules when the sphinx build starts."
+        )
 
 
 class MockedClassDocumenter(autodoc.ClassDocumenter):

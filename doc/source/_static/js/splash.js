@@ -22,5 +22,27 @@ function animateTabs() {
   })
 }
 
+function updateHighlight() {
+  const { theme } = document.documentElement.dataset;
+  ["dark", "light"].forEach(title => {
+    const stylesheet = document.querySelector(`link[title="${title}"]`)
+    if (title === theme) {
+      stylesheet.removeAttribute("disabled")
+    } else {
+      stylesheet.setAttribute("disabled", "disabled")
+    }
+  })
+}
+
+
+function setHighlightListener() {
+  const observer = new MutationObserver(mutations => updateHighlight())
+  observer.observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+}
+
 document.addEventListener("DOMContentLoaded", animateTabs)
-document.addEventListener("DOMContentLoaded", () => hljs.highlightAll())
+document.addEventListener("DOMContentLoaded", () => {
+  hljs.highlightAll()
+  updateHighlight()
+})
+document.addEventListener("DOMContentLoaded", setHighlightListener)
