@@ -74,15 +74,20 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
-        module_spec: SingleAgentRLModuleSpec = self.config.get_default_rl_module_spec()
-        module_spec.observation_space = self.env.envs[0].observation_space
-        # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
-        #  actually hold the spaces for a single env, but for boxes the
-        #  shape is (1, 1) which brings a problem with the action dists.
-        #  shape=(1,) is expected.
-        module_spec.action_space = self.env.envs[0].action_space
-        module_spec.model_config_dict = self.config.model
-        self.module: RLModule = module_spec.build()
+        try:
+            module_spec: SingleAgentRLModuleSpec = (
+                self.config.get_default_rl_module_spec()
+            )
+            module_spec.observation_space = self.env.envs[0].observation_space
+            # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
+            #  actually hold the spaces for a single env, but for boxes the
+            #  shape is (1, 1) which brings a problem with the action dists.
+            #  shape=(1,) is expected.
+            module_spec.action_space = self.env.envs[0].action_space
+            module_spec.model_config_dict = self.config.model
+            self.module: RLModule = module_spec.build()
+        except NotImplementedError:
+            self.module = None
 
         # This should be the default.
         self._needs_initial_reset: bool = True
@@ -111,6 +116,7 @@ class SingleAgentEnvRunner(EnvRunner):
         with_render_data: bool = False,
     ) -> List["SingleAgentEpisode"]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s)."""
+        assert not (num_timesteps is not None and num_episodes is not None)
 
         # If not execution details are provided, use the config.
         if num_timesteps is None and num_episodes is None:
@@ -210,7 +216,8 @@ class SingleAgentEnvRunner(EnvRunner):
             # Act randomly.
             if random_actions:
                 actions = self.env.action_space.sample()
-                # TODO (simon): Add action_logp for smapled actions.
+                action_logp = np.zeros(shape=(actions.shape[0],))
+                fwd_out = {}
             # Compute an action using the RLModule.
             else:
                 # Note, RLModule `forward()` methods expect `NestedDict`s.
@@ -231,6 +238,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 else:
                     fwd_out = self.module.forward_inference(batch)
 
+                # TODO (sven): Will be completely replaced by connector logic in
+                #  upcoming PR.
                 actions, action_logp = self._sample_actions_if_necessary(
                     fwd_out, explore
                 )
@@ -277,8 +286,9 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     # Reset h-states to nthe model's intiial ones b/c we are starting a
                     # new episode.
-                    for k, v in self.module.get_initial_state().items():
-                        states[k][i] = convert_to_numpy(v)
+                    if hasattr(self.module, "get_initial_state"):
+                        for k, v in self.module.get_initial_state().items():
+                            states[k][i] = convert_to_numpy(v)
 
                     done_episodes_to_return.append(
                         self._episodes[i].convert_lists_to_numpy()
@@ -300,6 +310,10 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
+        # Also, make sure, we return a copy and start new chunks so that callers
+        # of this function do not alter the ongoing and returned Episode objects.
+        new_episodes = [eps.cut() for eps in self._episodes]
+
         # ... and all ongoing episode chunks.
         # Initialized episodes do not have recorded any step and lack
         # `extra_model_outputs`.
@@ -308,14 +322,13 @@ class SingleAgentEnvRunner(EnvRunner):
             for episode in self._episodes
             if episode.t > 0
         ]
-        # Also, make sure, we return a copy and start new chunks so that callers
-        # of this function do not alter the ongoing and returned Episode objects.
-        self._episodes = [eps.cut() for eps in self._episodes]
         for eps in ongoing_episodes_to_return:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
         # Record last metrics collection.
         self._ts_since_last_metrics += ts
+
+        self._episodes = new_episodes
 
         return done_episodes_to_return + ongoing_episodes_to_return
 
@@ -330,21 +343,28 @@ class SingleAgentEnvRunner(EnvRunner):
 
         See docstring of `self.sample()` for more details.
         """
-
         # TODO (sven): This gives a tricky circular import that goes
         # deep into the library. We have to see, where to dissolve it.
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+
+        # If user calls sample(num_timesteps=..) after this, we must reset again
+        # at the beginning.
+        self._needs_initial_reset = True
 
         done_episodes_to_return: List["SingleAgentEpisode"] = []
 
         obs, infos = self.env.reset()
         episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
 
-        # Multiply states n times according to our vector env batch size (num_envs).
-        states = tree.map_structure(
-            lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module.get_initial_state(),
-        )
+        # Get initial states for all 'batch_size_B` rows in the forward batch,
+        # i.e. for all vector sub_envs.
+        if hasattr(self.module, "get_initial_state"):
+            states = tree.map_structure(
+                lambda s: np.repeat(s, self.num_envs, axis=0),
+                self.module.get_initial_state(),
+            )
+        else:
+            states = {} 
 
         render_images = [None] * self.num_envs
         if with_render_data:
@@ -357,12 +377,14 @@ class SingleAgentEnvRunner(EnvRunner):
                 info=infos[i],
                 render_image=render_images[i],
             )
-            states[i] = {k: s[i] for k, s in states.items()}
+            #self._states[i] = {k: s[i] for k, s in states.items()}
 
         eps = 0
         while eps < num_episodes:
             if random_actions:
                 actions = self.env.action_space.sample()
+                action_logp = np.zeros(shape=(actions.shape[0]))
+                fwd_out = {}
             else:
                 batch = {
                     STATE_IN: tree.map_structure(
@@ -415,7 +437,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
                     )
-                    states[i] = s
+                    #self._states[i] = s
 
                     done_episodes_to_return.append(episodes[i])
 
@@ -426,8 +448,9 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     # Reset h-states to the model's initial ones b/c we are starting
                     # a new episode.
-                    for k, v in self.module.get_initial_state().items():
-                        states[k][i] = (convert_to_numpy(v),)
+                    if hasattr(self.module, "get_initial_state"):
+                        for k, v in self.module.get_initial_state().items():
+                            states[k][i] = (convert_to_numpy(v),)
 
                     # Create a new episode object.
                     episodes[i] = SingleAgentEpisode(
@@ -437,7 +460,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         if render_images[i] is None
                         else [render_images[i]],
                     )
-                    states[i] = s
                 else:
                     episodes[i].add_env_step(
                         obs[i],
@@ -447,14 +469,9 @@ class SingleAgentEnvRunner(EnvRunner):
                         render_image=render_images[i],
                         extra_model_output=extra_model_output,
                     )
-                    states[i] = s
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         self._ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)
-
-        # If user calls sample(num_timesteps=..) after this, we must reset again
-        # at the beginning.
-        self._needs_initial_reset = True
 
         # Initialized episodes have to be removed as they lack `extra_model_outputs`.
         return [episode for episode in done_episodes_to_return if episode.t > 0]

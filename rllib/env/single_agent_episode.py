@@ -11,6 +11,29 @@ from ray.rllib.utils.spaces.space_utils import batch
 
 
 class SingleAgentEpisode:
+    """A class representing RL environment episodes for individual agents.
+
+    SingleAgentEpisode stores observations, info dicts, actions, rewards, and all
+    module outputs (e.g. state outs, action logp, etc..) for an individual agent within
+    some single-agent or multi-agent environment.
+    The two main APIs are the `add_env_reset()` and `add_env_step()` methods, which
+    should be called passing the outputs of the respective gym.Env API calls:
+    `env.reset()` and `env.step()`.
+
+    A SingleAgentEpisode might also only represent a chunk of an episode, which is
+    useful for cases, in which partial (non-complete episode) sampling is performed
+    and collected episode data has to be returned before the actual gym.Env episode has
+    finished (see `SingleAgentEpisode.cut()`). In order to still maintain visibility
+    onto past experiences within such a "cut" episode, SingleAgentEpisode instances
+    might have a "lookback buffer" of n timesteps at their beginning (left side), which
+    solely exists for the purpose of compiling extra data (e.g. "prev. reward"), but
+    is not considered part of the finished/packaged episode (b/c the data in the
+    lookback buffer is already part of a previous episode chunk).
+
+    Examples:
+        >>> e = SingleAgentEpisode()
+
+    """
     def __init__(
         self,
         id_: Optional[str] = None,
@@ -26,10 +49,11 @@ class SingleAgentEpisode:
         t_started: Optional[int] = None,
         len_lookback_buffer: Optional[int] = None,
     ) -> "SingleAgentEpisode":
-        """Initializes a `SingleAgentEpisode` instance.
+        """Initializes a SingleAgentEpisode instance.
 
-        This constructor can be called with or without already sampled data. Note
-        that if data is provided the episode will start at timestep
+        This constructor can be called with or without already sampled data, part of
+        which might be .
+        Note that if data is provided the episode will start at timestep
         `t_started = len(observations) - 1` (the initial observation is not
         counted). If the episode should start at `t_started = 0` (e.g.
         because the instance should simply store episode data) this has to
@@ -105,22 +129,24 @@ class SingleAgentEpisode:
         assert render_images is None or observations is not None
         self.render_images = [] if render_images is None else render_images
 
-        TODO: Fix this!
+        # Lookback buffer length is provided.
+        if len_lookback_buffer is not None:
+            self._len_lookback_buffer = len_lookback_buffer
+        # Lookback buffer length is not provided. Interpret already given data as
+        # lookback buffer.
+        else:
+            self._len_lookback_buffer = len(self.rewards)
+
         # The global last timestep of the episode and the timesteps when this chunk
-        # started.
-        # TODO (simon): Check again what are the consequences of this decision for
-        # the methods of this class. For example the `validate()` method or
-        # `create_successor`. Write a test.
-        # Note, the case `t_started > len(observations) - 1` can occur, if a user
-        # wants to have an episode that is ongoing but does not want to carry the
-        # stale data from the last rollout in it.
-        self.t = self.t_started = (
-            t_started if t_started is not None else max(len(self.observations) - 1, 0)
-        )
-        self._len_lookback_buffer = (
-            len_lookback_buffer if len_lookback_buffer is not None
-            else len(self.rewards)
-        )
+        # started (excluding a possible lookback buffer).
+        if t_started is not None:
+            self.t_started = t_started
+        else:
+            self.t_started = self._len_lookback_buffer
+
+        self.t = len(self.rewards) - self._len_lookback_buffer + self.t_started
+
+        # Validate the episode data thus far.
         self.validate()
 
     def concat_episode(self, episode_chunk: "SingleAgentEpisode"):
@@ -257,18 +283,27 @@ class SingleAgentEpisode:
         in order (e.g. that the correct number of observations, actions, rewards
         are there).
         """
+        assert len(self.observations) == len(self.infos)
+        if len(self.observations) == 0:
+            assert (
+                len(self.observations)
+                == len(self.infos)
+                == len(self.rewards)
+                == len(self.actions)
+            )
         # Make sure we always have one more obs stored than rewards (and actions)
         # due to the reset and last-obs logic of an MDP.
-        assert (
-            len(self.observations)
-            == len(self.infos)
-            == len(self.rewards) + 1
-            == len(self.actions) + 1
-        )
-        for k, v in self.extra_model_outputs.items():
-            assert len(v) == len(self.observations) - 1
-        # Make sure, length of pre-buffer and len(self) make sense.
-        assert self._len_lookback_buffer + len(self) == len(self.rewards)
+        else:
+            assert (
+                len(self.observations)
+                == len(self.infos)
+                == len(self.rewards) + 1
+                == len(self.actions) + 1
+            )
+            for k, v in self.extra_model_outputs.items():
+                assert len(v) == len(self.observations) - 1
+            # Make sure, length of pre-buffer and len(self) make sense.
+            assert self._len_lookback_buffer + len(self) == len(self.rewards)
 
     @property
     def is_numpy(self) -> bool:
