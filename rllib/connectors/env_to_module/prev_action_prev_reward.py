@@ -42,7 +42,7 @@ class PrevRewardPrevActionConnector(ConnectorV2):
         # all episodes and store them inside the `input_` data dict.
 
         # 0th reward == 0.0.
-        r0 = 0.0
+        r0 = [0.0] * self.n_prev_rewards
         # Set 0th action (prior to first action taken in episode) to all 0s.
         a0 = tree.map_structure(
             lambda s: np.zeros_like(s),
@@ -54,10 +54,14 @@ class PrevRewardPrevActionConnector(ConnectorV2):
         prev_a = []
         prev_r = []
         for episode in episodes:
+            # Learner connector pipeline. Episodes have been numpy'ized.
             if self.as_learner_connector:
+                assert episode.is_numpy
                 prev_r.extend([r0] + list(episode.rewards[:-1]))
                 prev_a.extend([a0] + list(episode.actions[:-1]))
+            # Env-to-module pipeline. Episodes still operate on lists.
             else:
+                assert not episode.is_numpy
                 prev_a.append(episode.actions[-1] if len(episode) else a0)
                 prev_r.append(episode.rewards[-1] if len(episode) else r0)
 
