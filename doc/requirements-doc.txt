@@ -6,7 +6,7 @@ watchfiles==0.19.0 # Required because sphinx-click doesn't support mocking
 Pygments==2.16.1
 
 # Sphinx
-sphinx==7.2.6
+sphinx==7.1.2
 sphinx-click==5.0.1
 sphinx-copybutton==0.5.2
 sphinxemoji==0.2.0
