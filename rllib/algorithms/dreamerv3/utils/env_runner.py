@@ -270,7 +270,9 @@ class DreamerV3EnvRunner(EnvRunner):
             states = {
                 k: np.stack(
                     [
-                        initial_states[k][i] if eps.states is None else eps.states[k]
+                        initial_states[k][i]
+                        if self._states[i] is None
+                        else self._states[i][k]
                         for i, eps in enumerate(self._episodes)
                     ]
                 )
@@ -280,7 +282,7 @@ class DreamerV3EnvRunner(EnvRunner):
             # to 1.0, otherwise 0.0.
             is_first = np.zeros((self.num_envs,))
             for i, eps in enumerate(self._episodes):
-                if eps.states is None:
+                if len(eps) == 0:
                     is_first[i] = 1.0
 
         # Loop through env for n timesteps.
@@ -336,17 +338,16 @@ class DreamerV3EnvRunner(EnvRunner):
                     is_first[i] = True
                     done_episodes_to_return.append(self._episodes[i])
                     # Create a new episode object.
-                    self._episodes[i] = SingleAgentEpisode(
-                        observations=[obs[i]], states=s
-                    )
+                    self._episodes[i] = SingleAgentEpisode(observations=[obs[i]])
                 else:
                     self._episodes[i].add_env_step(
                         observation=obs[i],
                         action=actions[i],
                         reward=rewards[i],
                     )
-                    self._states[i] = s
                     is_first[i] = False
+
+                self._states[i] = s
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
@@ -354,7 +355,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # a copy and start new chunks so that callers of this function
         # don't alter our ongoing and returned Episode objects.
         ongoing_episodes = self._episodes
-        self._episodes = [eps.create_successor() for eps in self._episodes]
+        self._episodes = [eps.cut() for eps in self._episodes]
         for eps in ongoing_episodes:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
