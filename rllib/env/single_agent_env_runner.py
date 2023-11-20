@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -22,9 +23,6 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-    # TODO (sven): This gives a tricky circular import that goes
-    #  deep into the library. We have to see, where to dissolve it.
-    from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 _, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
@@ -75,15 +73,18 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
-        module_spec: SingleAgentRLModuleSpec = self.config.get_default_rl_module_spec()
-        module_spec.observation_space = self.env.envs[0].observation_space
-        # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
-        #  actually hold the spaces for a single env, but for boxes the
-        #  shape is (1, 1) which brings a problem with the action dists.
-        #  shape=(1,) is expected.
-        module_spec.action_space = self.env.envs[0].action_space
-        module_spec.model_config_dict = self.config.model
-        self.module: RLModule = module_spec.build()
+        try:
+            module_spec: SingleAgentRLModuleSpec = self.config.get_default_rl_module_spec()
+            module_spec.observation_space = self.env.envs[0].observation_space
+            # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
+            #  actually hold the spaces for a single env, but for boxes the
+            #  shape is (1, 1) which brings a problem with the action dists.
+            #  shape=(1,) is expected.
+            module_spec.action_space = self.env.envs[0].action_space
+            module_spec.model_config_dict = self.config.model
+            self.module: RLModule = module_spec.build()
+        except NotImplementedError:
+            self.module = None
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         (
@@ -114,6 +115,7 @@ class SingleAgentEnvRunner(EnvRunner):
         with_render_data: bool = False,
     ) -> List["SingleAgentEpisode"]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s)."""
+        assert not (num_timesteps is not None and num_episodes is not None)
 
         # If not execution details are provided, use the config.
         if num_timesteps is None and num_episodes is None:
@@ -216,7 +218,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 # certain env parameter during different episodes (for example for
                 # benchmarking).
                 extra_model_output = tree.map_structure(lambda s: s[i], to_env)
-                #convert_to_numpy(extra_model_output)
 
                 # In inference we have only the action logits.
                 if terminateds[i] or truncateds[i]:
@@ -234,13 +235,11 @@ class SingleAgentEnvRunner(EnvRunner):
                     )
 
                     done_episodes_to_return.append(
-                        self._episodes[i].convert_lists_to_numpy(
-                            #keep_every_n_state_out=self.config.model.get("max_seq_len"),
-                        )
+                        self._episodes[i].convert_lists_to_numpy()
                     )
                     # Create a new episode object.
                     self._episodes[i] = SingleAgentEpisode(
-                        observations=[obs[i]], infos=[infos[i]], #states=s
+                        observations=[obs[i]], infos=[infos[i]]
                     )
                 else:
                     self._episodes[i].add_env_step(
@@ -292,29 +291,24 @@ class SingleAgentEnvRunner(EnvRunner):
 
         See docstring of `self.sample()` for more details.
         """
-
         # TODO (sven): This gives a tricky circular import that goes
         # deep into the library. We have to see, where to dissolve it.
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+
+        # If user calls sample(num_timesteps=..) after this, we must reset again
+        # at the beginning.
+        self._needs_initial_reset = True
 
         done_episodes_to_return: List["SingleAgentEpisode"] = []
 
         obs, infos = self.env.reset()
         episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
 
-        # Multiply states n times according to our vector env batch size (num_envs).
-        states = tree.map_structure(
-            lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module.get_initial_state(),
-        )
-
         render_images = [None] * self.num_envs
         if with_render_data:
             render_images = [e.render() for e in self.env.envs]
 
         for i in range(self.num_envs):
-            # TODO (sven): Maybe move this into connector pipeline
-            # (even if automated).
             episodes[i].add_env_reset(
                 observation=obs[i],
                 info=infos[i],
@@ -326,30 +320,23 @@ class SingleAgentEnvRunner(EnvRunner):
             if random_actions:
                 actions = self.env.action_space.sample()
             else:
-                batch = {
-                    STATE_IN: tree.map_structure(
-                        lambda s: self._convert_from_numpy(s), states
-                    ),
-                    SampleBatch.OBS: self._convert_from_numpy(obs),
-                }
-
+                to_module = self.env_to_module(
+                    episodes=self._episodes,
+                    ctx=self.connector_ctx,
+                )
                 # Explore or not.
                 if explore:
-                    fwd_out = self.module.forward_exploration(batch)
+                    to_env = self.module.forward_exploration(to_module)
                 else:
-                    fwd_out = self.module.forward_inference(batch)
+                    to_env = self.module.forward_inference(to_module)
 
-                actions, action_logp = self._sample_actions_if_necessary(
-                    fwd_out, explore
+                to_env = self.module_to_env(
+                    input_=to_env,
+                    episodes=self._episodes,
+                    ctx=self.connector_ctx,
                 )
-
-                fwd_out = convert_to_numpy(fwd_out)
-
-                if STATE_OUT in fwd_out:
-                    states = convert_to_numpy(fwd_out[STATE_OUT])
-                    # states = tree.map_structure(
-                    #     lambda s: s.numpy(), fwd_out[STATE_OUT]
-                    # )
+                to_env = convert_to_numpy(to_env)
+                actions = to_env.pop(SampleBatch.ACTIONS)
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             if with_render_data:
@@ -358,15 +345,9 @@ class SingleAgentEnvRunner(EnvRunner):
             for i in range(self.num_envs):
                 # Extract info and state for vector sub_env.
                 # info = {k: v[i] for k, v in infos.items()}
-                s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
-                extra_model_output = {}
-                for k, v in fwd_out.items():
-                    if SampleBatch.ACTIONS not in k:
-                        extra_model_output[k] = v[i]
-                # TODO (simon, sven): Some algos do not have logps.
-                extra_model_output[SampleBatch.ACTION_LOGP] = action_logp[i]
+                extra_model_output = tree.map_structure(lambda s: s[i], to_env)
 
                 if terminateds[i] or truncateds[i]:
                     eps += 1
@@ -376,7 +357,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         actions[i],
                         rewards[i],
                         info=infos[i]["final_info"],
-                        state=s,
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
@@ -389,16 +369,10 @@ class SingleAgentEnvRunner(EnvRunner):
                     if eps == num_episodes:
                         break
 
-                    # Reset h-states to the model's initial ones b/c we are starting
-                    # a new episode.
-                    for k, v in self.module.get_initial_state().items():
-                        states[k][i] = (convert_to_numpy(v),)
-
                     # Create a new episode object.
                     episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]],
                         infos=[infos[i]],
-                        states=s,
                         render_images=None
                         if render_images[i] is None
                         else [render_images[i]],
@@ -409,17 +383,12 @@ class SingleAgentEnvRunner(EnvRunner):
                         actions[i],
                         rewards[i],
                         info=infos[i],
-                        state=s,
                         render_image=render_images[i],
                         extra_model_output=extra_model_output,
                     )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         self._ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)
-
-        # If user calls sample(num_timesteps=..) after this, we must reset again
-        # at the beginning.
-        self._needs_initial_reset = True
 
         # Initialized episodes have to be removed as they lack `extra_model_outputs`.
         return [episode for episode in done_episodes_to_return if episode.t > 0]

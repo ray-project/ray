@@ -1,12 +1,14 @@
-import gymnasium as gym
-import numpy as np
+from collections import defaultdict
+from typing import Any, Dict, Optional, SupportsFloat, Tuple
 import unittest
 
+import gymnasium as gym
 from gymnasium.core import ActType, ObsType
-from typing import Any, Dict, Optional, SupportsFloat, Tuple
+import numpy as np
 
 import ray
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.utils.test_utils import check
 
 # TODO (simon): Add to the tests `info` and `extra_model_outputs`
 #  as soon as #39732 is merged.
@@ -64,46 +66,32 @@ class TestSingelAgentEpisode(unittest.TestCase):
         episode = SingleAgentEpisode(t_started=10)
         self.assertTrue(episode.t == episode.t_started == 10)
 
-        # Sample 100 values and initialize episode with observations and infos.
-        env = gym.make("CartPole-v1")
-        # Initialize containers.
-        observations = []
-        rewards = []
-        actions = []
-        infos = []
-        extra_model_outputs = {
-            "extra_1": [],
-            "state_out": np.random.random(10),
-        }
-
-        # Initialize observation and info.
-        init_obs, init_info = env.reset()
-        observations.append(init_obs)
-        infos.append(init_info)
-        # Run 100 samples.
-        for _ in range(100):
-            action = env.action_space.sample()
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
-            observations.append(obs)
-            actions.append(action)
-            rewards.append(reward)
-            infos.append(info)
-            extra_model_outputs["extra_1"].append(np.random.random())
-
-        # Build the episode.
-        episode = SingleAgentEpisode(
-            observations=observations,
-            actions=actions,
-            rewards=rewards,
-            infos=infos,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
-            extra_model_outputs=extra_model_outputs,
-        )
+        episode = self._create_episode(num_data=100)
         # The starting point and count should now be at `len(observations) - 1`.
-        self.assertTrue(episode.t == episode.t_started == (len(observations) - 1))
+        self.assertTrue(len(episode) == 100)
+        self.assertTrue(episode.t == 100)
+        self.assertTrue(episode.t_started == 0)
 
-    def test_add_env_reset_data(self):
+        # Build the same episode, but with a 10 ts lookback buffer.
+        episode = self._create_episode(num_data=100, len_lookback_buffer=10)
+        # The lookback buffer now takes 10 ts and the length of the episode is only 90.
+        self.assertTrue(len(episode) == 90)
+        self.assertTrue(episode.t_started == 10)
+        self.assertTrue(episode.t == 100)
+        self.assertTrue(len(episode.rewards) == 100)
+
+        # Build the same episode, but with a 10 ts lookback buffer AND a specific
+        # `t_started`.
+        episode = self._create_episode(
+            num_data=100, len_lookback_buffer=10, t_started=50
+        )
+        # The lookback buffer now takes 10 ts and the length of the episode is only 90.
+        self.assertTrue(len(episode) == 90)
+        self.assertTrue(episode.t_started == 50)
+        self.assertTrue(episode.t == 140)
+        self.assertTrue(len(episode.rewards) == 100)
+
+    def test_add_env_reset(self):
         """Tests adding initial observations and infos.
 
         This test ensures that when initial observation and info are provided
@@ -126,7 +114,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Assert that the timesteps are still at zero as we have not stepped, yet.
         self.assertTrue(episode.t == episode.t_started == 0)
 
-    def test_add_env_step_data(self):
+    def test_add_env_step(self):
         """Tests if adding timestep data to a `SingleAgentEpisode` works.
 
         Adding timestep data is the central part of collecting episode
@@ -175,7 +163,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.is_done == is_terminated or is_truncated)
 
     def test_cut(self):
-        """Tests cutting a `SingleAgentEpisode` (and creating a successor).
+        """Tests creation of a scucessor of a `SingleAgentEpisode`.
 
         This test makes sure that when creating a successor the successor's
         data is coherent with the episode that should be succeeded.
@@ -189,9 +177,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         env = TestEnv()
         # Add initial observation.
         init_obs, init_info = env.reset()
-        episode_1.add_env_reset(
-            observation=init_obs, info=init_info
-        )
+        episode_1.add_env_reset(observation=init_obs, info=init_info)
         # Sample 100 steps.
         for i in range(100):
             action = i
@@ -238,6 +224,59 @@ class TestSingelAgentEpisode(unittest.TestCase):
         )
         # Assert that this does not change also the predecessor's data.
         self.assertFalse(len(episode_1.observations) == len(episode_2.observations))
+
+    def test_split_at(self):
+        # TEST #1: even split (50/50)
+        episode = self._create_episode(100)
+        self.assertTrue(episode.t == 100 and episode.t_started == 0)
+
+        # Convert to numpy before splitting.
+        episode.convert_lists_to_numpy()
+
+        # Create two 50/50 episode chunks.
+        # The first chunk will be `episode` itself (changed in place).
+        # The second chunk will be `s2`
+        e2 = episode.split_at(index=50)
+
+        # Make sure, `episode` and split chunk make sense.
+        self.assertTrue(len(episode) == 50)
+        self.assertTrue(len(e2) == 50)
+        self.assertTrue(episode.id_ == e2.id_)
+        self.assertTrue(episode.t_started == 0)
+        self.assertTrue(episode.t == 50)
+        self.assertTrue(e2.t_started == 50)
+        self.assertTrue(e2.t == 100)
+        # Make sure the chunks are not identical, but last obs of episode matches
+        # last obs of e2.
+        check(episode.get_observations(-1), e2.get_observations(0))
+        check(episode.observations[4], e2.observations[4], false=True)
+        check(episode.observations[10], e2.observations[10], false=True)
+
+        # TEST #2: Uneven split (33/66).
+        episode = self._create_episode(99)
+        self.assertTrue(episode.t == 99 and episode.t_started == 0)
+
+        # Convert to numpy before splitting.
+        episode.convert_lists_to_numpy()
+
+        # Create two 50/50 episode chunks.
+        # The first chunk will be `episode` itself (changed in place).
+        # The second chunk will be `s2`
+        e2 = episode.split_at(index=33)
+
+        # Make sure, `episode` and split chunk make sense.
+        self.assertTrue(len(episode) == 33)
+        self.assertTrue(len(e2) == 66)
+        self.assertTrue(episode.id_ == e2.id_)
+        self.assertTrue(episode.t_started == 0)
+        self.assertTrue(episode.t == 33)
+        self.assertTrue(e2.t_started == 33)
+        self.assertTrue(e2.t == 99)
+        # Make sure the chunks are not identical, but last obs of episode matches
+        # last obs of e2.
+        check(episode.get_observations(-1), e2.get_observations(0))
+        check(episode.observations[4], e2.observations[4], false=True)
+        check(episode.observations[10], e2.observations[10], false=True)
 
     def test_concat_episode(self):
         """Tests if concatenation of two `SingleAgentEpisode`s works.
@@ -347,9 +386,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         env = TestEnv()
         # Add initial observation.
         init_obs, init_info = env.reset()
-        episode.add_env_reset(
-            observation=init_obs, info=init_info
-        )
+        episode.add_env_reset(observation=init_obs, info=init_info)
         # Sample 100 steps.
         for i in range(100):
             action = i
@@ -380,7 +417,6 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertListEqual(episode.infos, episode_reproduced.infos)
         self.assertEqual(episode.is_terminated, episode_reproduced.is_terminated)
         self.assertEqual(episode.is_truncated, episode_reproduced.is_truncated)
-        self.assertEqual(episode.states, episode_reproduced.states)
         self.assertListEqual(episode.render_images, episode_reproduced.render_images)
         self.assertDictEqual(
             episode.extra_model_outputs, episode_reproduced.extra_model_outputs
@@ -390,6 +426,41 @@ class TestSingelAgentEpisode(unittest.TestCase):
         state[1][1].pop()
         with self.assertRaises(AssertionError):
             episode_reproduced = SingleAgentEpisode.from_state(state)
+
+    def _create_episode(self, num_data, t_started=None, len_lookback_buffer=0):
+        # Sample 100 values and initialize episode with observations and infos.
+        env = gym.make("CartPole-v1")
+        # Initialize containers.
+        observations = []
+        rewards = []
+        actions = []
+        infos = []
+        extra_model_outputs = defaultdict(list)
+
+        # Initialize observation and info.
+        init_obs, init_info = env.reset()
+        observations.append(init_obs)
+        infos.append(init_info)
+        # Run n samples.
+        for _ in range(num_data):
+            action = env.action_space.sample()
+            obs, reward, _, _, info = env.step(action)
+            observations.append(obs)
+            actions.append(action)
+            rewards.append(reward)
+            infos.append(info)
+            extra_model_outputs["extra_1"].append(np.random.random())
+            extra_model_outputs["state_out"].append(np.random.random())
+
+        return SingleAgentEpisode(
+            observations=observations,
+            infos=infos,
+            actions=actions,
+            rewards=rewards,
+            extra_model_outputs=extra_model_outputs,
+            t_started=t_started,
+            len_lookback_buffer=len_lookback_buffer,
+        )
 
 
 if __name__ == "__main__":

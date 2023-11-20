@@ -566,7 +566,7 @@ class MultiAgentEpisode:
         # timesteps instead of agent steps.
         return MultiAgentBatch(
             policy_batches={
-                agent_id: agent_eps.to_sample_batch()
+                agent_id: agent_eps.get_sample_batch()
                 for agent_id, agent_eps in self.agent_episodes.items()
             },
             env_steps=self.t,
