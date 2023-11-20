@@ -9,7 +9,7 @@ import traceback
 
 import psutil
 
-from typing import List, Optional, Tuple, TypedDict
+from typing import List, Optional, Tuple, TypedDict, Union
 from collections import defaultdict
 
 import ray
@@ -400,6 +400,12 @@ class ReporterAgent(
         if not enable_gpu_usage_check:
             return []
         gpu_utilizations = []
+
+        def decode(b: Union[str, bytes]) -> str:
+            if isinstance(b, bytes):
+                return b.decode("utf-8")  # for python3, to unicode
+            return b
+
         try:
             pynvml.nvmlInit()
             num_gpus = pynvml.nvmlDeviceGetCount()
@@ -423,8 +429,8 @@ class ReporterAgent(
                     )
                     processes_pids = [
                         ProcessGPUInfo(
-                            pid=nv_process.pid,
-                            gpu_memory_usage=nv_process.usedGpuMemory // MB
+                            pid=int(nv_process.pid),
+                            gpu_memory_usage=int(nv_process.usedGpuMemory) // MB
                             if nv_process.usedGpuMemory
                             else 0,
                         )
@@ -435,8 +441,8 @@ class ReporterAgent(
 
                 info = GpuUtilizationInfo(
                     index=i,
-                    name=pynvml.nvmlDeviceGetName(gpu_handle),
-                    uuid=pynvml.nvmlDeviceGetUUID(gpu_handle),
+                    name=decode(pynvml.nvmlDeviceGetName(gpu_handle)),
+                    uuid=decode(pynvml.nvmlDeviceGetUUID(gpu_handle)),
                     utilization_gpu=utilization,
                     memory_used=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).used)
                     // MB,
