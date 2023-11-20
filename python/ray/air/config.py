@@ -395,14 +395,16 @@ class FailureConfig:
     fail_fast: Union[bool, str] = False
 
     def __post_init__(self):
-        # Same check as in tune.run
-        if self.fail_fast and self.max_failures != 0:
-            raise ValueError("max_failures must be 0 if fail_fast=True.")
-
         # Same check as in TuneController
         if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
+            )
+
+        # Same check as in tune.run
+        if self.fail_fast and self.max_failures != 0:
+            raise ValueError(
+                f"max_failures must be 0 if fail_fast={repr(self.fail_fast)}."
             )
 
     def __repr__(self):
