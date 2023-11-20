@@ -51,6 +51,12 @@ def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "shutdown", "-y"])
 
 
+def check_http_response(json, expected_text):
+    resp = requests.post("http://localhost:8000/", json=json)
+    assert resp.text == expected_text
+    return True
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_basic(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
@@ -78,20 +84,20 @@ def test_deploy_basic(ray_start_stop):
         print("Deploy request sent successfully.")
 
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-            == "3 pizzas please!",
+            check_http_response,
+            json=["ADD", 2],
+            expected_text="3 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
-            == "-4 pizzas please!",
+            check_http_response,
+            json=["MUL", 2],
+            expected_text="-4 pizzas please!",
             timeout=15,
         )
         print("Deployments are reachable over HTTP.")
 
         deployments = [
-            DeploymentID("DAGDriver", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("create_order", SERVE_DEFAULT_APP_NAME),
             DeploymentID("Router", SERVE_DEFAULT_APP_NAME),
             DeploymentID("Multiplier", SERVE_DEFAULT_APP_NAME),
             DeploymentID("Adder", SERVE_DEFAULT_APP_NAME),
@@ -107,19 +113,20 @@ def test_deploy_basic(ray_start_stop):
         print("Deploy request sent successfully.")
 
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json()
-            == 1,
+            check_http_response,
+            json=["ADD", 0],
+            expected_text="1",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["SUB", 5]).json()
-            == 3,
+            check_http_response,
+            json=["SUB", 5],
+            expected_text="3",
             timeout=15,
         )
         print("Deployments are reachable over HTTP.")
 
         deployments = [
-            DeploymentID("DAGDriver", SERVE_DEFAULT_APP_NAME),
             DeploymentID("Router", SERVE_DEFAULT_APP_NAME),
             DeploymentID("Add", SERVE_DEFAULT_APP_NAME),
             DeploymentID("Subtract", SERVE_DEFAULT_APP_NAME),
@@ -476,7 +483,7 @@ def test_status_basic(ray_start_stop):
         return len(serve_status["applications"][app_name]["deployments"])
 
     wait_for_condition(
-        lambda: num_live_deployments(SERVE_DEFAULT_APP_NAME) == 5, timeout=15
+        lambda: num_live_deployments(SERVE_DEFAULT_APP_NAME) == 3, timeout=15
     )
     status_response = subprocess.check_output(
         ["serve", "status", "-a", "http://localhost:52365/"]
@@ -485,11 +492,9 @@ def test_status_basic(ray_start_stop):
     default_app = serve_status["applications"][SERVE_DEFAULT_APP_NAME]
 
     expected_deployments = {
-        "DAGDriver",
         "Multiplier",
         "Adder",
         "Router",
-        "create_order",
     }
     for name, status in default_app["deployments"].items():
         expected_deployments.remove(name)
@@ -630,7 +635,7 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
         assert "some_wrong_url" in status["deployments"]["TestDeployment"]["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment, timeout=15)
+    wait_for_condition(check_for_failed_deployment, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

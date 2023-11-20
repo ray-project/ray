@@ -146,22 +146,9 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/http_guide/streaming_example.py",
         "source/serve/doc_code/http_guide/websockets_example.py",
         "source/serve/doc_code/vllm_example.py",
-        "source/serve/doc_code/production_guide/text_ml.py",
-        "source/serve/doc_code/fake_email_creator.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
-)
-
-py_test_run_all_subdirectory(
-    size = "medium",
-    include = [
-        "source/serve/doc_code/production_guide/text_ml.py",
-        "source/serve/doc_code/fake_email_creator.py",
-    ],
-    exclude = [],
-    extra_srcs = [],
-    tags = ["exclusive", "team:serve", "xcommit"],
 )
 
 py_test_run_all_subdirectory(
@@ -312,8 +299,8 @@ doctest(
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            "source/train/faq.rst",
-	    "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/**/*.rst",
+            "source/train/**/*.md",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/rllib/**/*.rst",
@@ -323,6 +310,33 @@ doctest(
     ),
     size = "large",
     tags = ["team:none"]
+)
+
+
+doctest(
+    name="doctest[train]",
+    files = glob(
+        include=[
+            "source/train/**/*.rst",
+            "source/train/**/*.md"
+        ],
+        exclude=[
+            # GPU
+            "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/user-guides/using-gpus.rst"
+        ]
+    ),
+    tags = ["team:ml"]
+)
+
+doctest(
+    name="doctest[train]",
+    files = [
+        "source/train/user-guides/data-loading-preprocessing.rst",
+        "source/train/user-guides/using-gpus.rst"
+    ],
+    tags = ["team:ml"],
+    gpu = True,
 )
 
 
@@ -362,10 +376,3 @@ doctest(
     gpu = True
 )
 
-doctest(
-    name="quarantine",
-    files = [
-	"source/train/user-guides/data-loading-preprocessing.rst",
-    ],
-    tags = ["team:data"],
-)

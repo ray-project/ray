@@ -835,15 +835,17 @@ def setup_ray_cluster(
     Args:
         num_worker_nodes: This argument represents how many ray worker nodes to start
             for the ray cluster.
-            Specifying the `num_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
+            If autoscale=True, then the ray cluster starts with zero worker node,
+            and it can scale up to at most `num_worker_nodes` worker nodes.
+            In non-autoscaling mode, you can
+            specify the `num_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
             represents a ray cluster
             configuration that will use all available resources configured for the
             spark application.
             To create a spark application that is intended to exclusively run a
-            shared ray cluster, it is recommended to set this argument to
-            `ray.util.spark.MAX_NUM_WORKER_NODES`.
-            If autoscale=True, then the ray cluster starts with zero worker node,
-            and it can scale up to at most `num_worker_nodes` worker nodes.
+            shared ray cluster in non-scaling, it is recommended to set this argument
+            to `ray.util.spark.MAX_NUM_WORKER_NODES`.
+
         num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
             provided, use spark application configuration 'spark.task.cpus' instead.
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
@@ -1444,6 +1446,11 @@ class AutoscalingCluster:
             "node_config": {},
             "max_workers": 0,
         }
+
+        custom_config["max_workers"] = sum(
+            v["max_workers"] for _, v in worker_node_types.items()
+        )
+
         custom_config["provider"].update(extra_provider_config)
 
         custom_config["upscaling_speed"] = upscaling_speed

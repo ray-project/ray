@@ -12,7 +12,6 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor
 from ray.serve.context import _get_global_client
-from ray.serve.drivers import DAGDriver
 from ray.serve.handle import DeploymentHandle
 
 
@@ -65,18 +64,17 @@ def test_np_in_composed_model(serve_instance):
         def __init__(self, handle: DeploymentHandle):
             self.model = handle
 
-        async def __call__(self, *args):
+        async def __call__(self):
             data = np.ones((10, 10))
             return await self.model.remote(data)
 
     sum_d = Sum.bind()
     cm_d = ComposedModel.bind(sum_d)
-    dag = DAGDriver.bind(cm_d)
-    serve.run(dag)
+    serve.run(cm_d)
 
     result = requests.get("http://127.0.0.1:8000/")
     assert result.status_code == 200
-    assert result.json() == 100.0
+    assert float(result.text) == 100.0
 
 
 def test_replica_memory_growth(serve_instance):

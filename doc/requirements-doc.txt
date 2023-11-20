@@ -19,10 +19,10 @@ sphinx-sitemap==2.2.0
 sphinxcontrib-redoc==1.6.0
 sphinx-tabs==3.4.0
 sphinx-remove-toctrees==0.0.3
-autodoc_pydantic==1.6.1
+autodoc_pydantic==2.0.1
 sphinx_design==0.4.1
 
-pydantic<2 # Pydantic is required by autodoc_pydantic, but must be <2 for ray
+pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
 
 # MyST
 myst-parser==0.15.2

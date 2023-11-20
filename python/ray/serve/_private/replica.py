@@ -63,6 +63,7 @@ from ray.serve._private.utils import (
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -89,10 +90,19 @@ def create_replica_wrapper(actor_class_name: str):
             app_name: str = None,
         ):
             self._replica_tag = replica_tag
+            deployment_config = DeploymentConfig.from_proto_bytes(
+                deployment_config_proto_bytes
+            )
+            if deployment_config.logging_config is None:
+                logging_config = LoggingConfig()
+            else:
+                logging_config = LoggingConfig(**deployment_config.logging_config)
+
             configure_component_logger(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
+                logging_config=logging_config,
             )
             configure_component_memory_profiler(
                 component_type=ServeComponentType.DEPLOYMENT,
@@ -129,10 +139,6 @@ def create_replica_wrapper(actor_class_name: str):
 
             init_args = cloudpickle.loads(serialized_init_args)
             init_kwargs = cloudpickle.loads(serialized_init_kwargs)
-
-            deployment_config = DeploymentConfig.from_proto_bytes(
-                deployment_config_proto_bytes
-            )
 
             if inspect.isfunction(deployment_def):
                 is_function = True
@@ -659,6 +665,15 @@ class RayServeReplica:
             self.version, self.deployment_config
         )
 
+        if deployment_config.logging_config:
+            logging_config = LoggingConfig(**deployment_config.logging_config)
+            configure_component_logger(
+                component_type=ServeComponentType.DEPLOYMENT,
+                component_name=self.deployment_id.name,
+                component_id=self.replica_tag,
+                logging_config=logging_config,
+            )
+
         if old_user_config != deployment_config.user_config:
             await self.update_user_config(deployment_config.user_config)
 
@@ -703,7 +718,7 @@ class RayServeReplica:
 
         logger.info(
             f"Started executing request {request_metadata.request_id}",
-            extra={"log_to_stderr": False},
+            extra={"log_to_stderr": False, "serve_access_log": True},
         )
         start_time = time.time()
         user_exception = None
@@ -732,7 +747,8 @@ class RayServeReplica:
                 method=request_metadata.call_method,
                 status=status_str,
                 latency_ms=latency_ms,
-            )
+            ),
+            extra={"serve_access_log": True},
         )
         if user_exception is None:
             self.request_counter.inc(tags={"route": request_metadata.route})
