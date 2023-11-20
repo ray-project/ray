@@ -1,6 +1,9 @@
+import os
 import time
 
 import ray
+
+verbose = os.environ.get("VERBOSE", "1") == "1"
 
 
 @ray.remote
@@ -19,7 +22,8 @@ class A:
         return self.output_ref
 
     def f(self, input_obj):
-        print("worker iteration", self.i, input_obj)
+        if verbose:
+            print("worker iteration", self.i, input_obj)
         self.i += 1
         ray.worker.global_worker.put_object(
             b"world", object_ref=self.output_ref, max_readers=1
@@ -44,13 +48,16 @@ print("out ref:", out_ref)
 
 a.f.options(_is_compiled_dag_task=True).remote(in_ref)
 
-for i in range(10):
-    print("driver iteration", i, "start")
+for i in range(10000):
+    if verbose:
+        print("driver iteration", i, "start")
     ray.worker.global_worker.put_object(b"hello", object_ref=in_ref, max_readers=1)
 
-    print("driver iteration", i, "output", ray.get(out_ref))
+    x = ray.get(out_ref)
+    if verbose:
+        print("driver iteration", i, "output", x)
     ray.release(out_ref)  # todo crashes
 
-# TODO: Test actor can also execute other tasks.
-a.foo.remote()
+## TODO: Test actor can also execute other tasks.
+#a.foo.remote()
 time.sleep(5)

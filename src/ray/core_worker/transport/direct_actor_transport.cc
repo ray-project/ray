@@ -198,7 +198,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       }
     }
     if (task_spec.IsCompiledDagTask()) {
-      RAY_LOG(ERROR) << "Requeueing task";
+      RAY_LOG(DEBUG) << "Requeueing task";
       requeue_callback(send_reply_callback);
     } else if (status.ShouldExitWorker()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
@@ -230,14 +230,14 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   };
 
   bool is_dag_task = task_spec.IsCompiledDagTask();
-  RAY_LOG(ERROR) << "Queueing actor task " << task_spec.GetName() << " id " << task_spec.TaskId();
+  RAY_LOG(DEBUG) << "Queueing actor task " << task_spec.GetName() << " id " << task_spec.TaskId();
   if (is_dag_task) {
-    RAY_LOG(ERROR) << "Is dag task";
+    RAY_LOG(DEBUG) << "Is dag task";
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
 
     // Create OOO schduling queue.
     if (it == actor_scheduling_queues_.end()) {
-      RAY_LOG(ERROR) << "Creating OOO scheduling queue";
+      RAY_LOG(DEBUG) << "Creating OOO scheduling queue";
       auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
       RAY_CHECK(cg_it != concurrency_groups_cache_.end());
       it = actor_scheduling_queues_
@@ -252,7 +252,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                                                                cg_it->second)))
                .first;
     }
-    RAY_LOG(ERROR) << "Add start";
+    RAY_LOG(DEBUG) << "Add start";
 
     it->second->Add(request.sequence_number(),
                     request.client_processed_up_to(),
@@ -264,14 +264,14 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                     task_spec.TaskId(),
                     /*dependencies=*/{});
 
-    RAY_LOG(ERROR) << "Add done";
+    RAY_LOG(DEBUG) << "Add done";
     return;
   }
 
   auto dependencies = task_spec.GetDependencies();
 
   if (task_spec.IsActorTask()) {
-    RAY_LOG(ERROR) << "Processing actor task " << task_spec.GetName();
+    RAY_LOG(DEBUG) << "Processing actor task " << task_spec.GetName();
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
       auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
@@ -313,7 +313,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                     task_spec.TaskId(),
                     dependencies);
   } else {
-    RAY_LOG(ERROR) << "Processing normal task " << task_spec.GetName();
+    RAY_LOG(DEBUG) << "Processing normal task " << task_spec.GetName();
     // Add the normal task's callbacks to the non-actor scheduling queue.
     RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
                    << " to normal scheduling task queue.";
