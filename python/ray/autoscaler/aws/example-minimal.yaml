@@ -7,7 +7,7 @@ provider:
     region: us-west-2
 
 # Tell the autoscaler the allowed node types and the resources they provide.
-# The key is the name of the node type, which is just for debugging purposes.
+# The key is the name of the node type, which is for debugging purposes.
 # The node config specifies the launch config and physical instance type.
 available_node_types:
     ray.head.default:
