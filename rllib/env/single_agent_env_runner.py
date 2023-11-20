@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -22,9 +23,6 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-    # TODO (sven): This gives a tricky circular import that goes
-    #  deep into the library. We have to see, where to dissolve it.
-    from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 _, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
@@ -371,13 +369,11 @@ class SingleAgentEnvRunner(EnvRunner):
             render_images = [e.render() for e in self.env.envs]
 
         for i in range(self.num_envs):
-            # TODO (sven): Maybe move this into connector pipeline (even if automated).
             episodes[i].add_env_reset(
                 observation=obs[i],
                 info=infos[i],
                 render_image=render_images[i],
             )
-            #self._states[i] = {k: s[i] for k, s in states.items()}
 
         eps = 0
         while eps < num_episodes:
@@ -387,6 +383,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 fwd_out = {}
             else:
                 batch = {
+                    # TODO (sven): This will move entirely into connector logic in
+                    #  upcoming PR.
                     STATE_IN: tree.map_structure(
                         lambda s: self._convert_from_numpy(s), states
                     ),
@@ -399,12 +397,16 @@ class SingleAgentEnvRunner(EnvRunner):
                 else:
                     fwd_out = self.module.forward_inference(batch)
 
+                # TODO (sven): This will move entirely into connector logic in upcoming
+                # PR.
                 actions, action_logp = self._sample_actions_if_necessary(
                     fwd_out, explore
                 )
 
                 fwd_out = convert_to_numpy(fwd_out)
 
+                # TODO (sven): This will move entirely into connector logic in upcoming
+                # PR.
                 if STATE_OUT in fwd_out:
                     states = convert_to_numpy(fwd_out[STATE_OUT])
 
@@ -415,14 +417,14 @@ class SingleAgentEnvRunner(EnvRunner):
             for i in range(self.num_envs):
                 # Extract info and state for vector sub_env.
                 # info = {k: v[i] for k, v in infos.items()}
-                s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
                 extra_model_output = {}
                 for k, v in fwd_out.items():
                     if SampleBatch.ACTIONS not in k:
                         extra_model_output[k] = v[i]
-                # TODO (simon, sven): Some algos do not have logps.
+                # TODO (sven): This will move entirely into connector logic in upcoming
+                #  PR.
                 extra_model_output[SampleBatch.ACTION_LOGP] = action_logp[i]
 
                 if terminateds[i] or truncateds[i]:
@@ -437,7 +439,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
                     )
-                    #self._states[i] = s
 
                     done_episodes_to_return.append(episodes[i])
 
@@ -446,8 +447,8 @@ class SingleAgentEnvRunner(EnvRunner):
                     if eps == num_episodes:
                         break
 
-                    # Reset h-states to the model's initial ones b/c we are starting
-                    # a new episode.
+                    # TODO (sven): This will move entirely into connector logic in
+                    #  upcoming PR.
                     if hasattr(self.module, "get_initial_state"):
                         for k, v in self.module.get_initial_state().items():
                             states[k][i] = (convert_to_numpy(v),)
