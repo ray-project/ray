@@ -131,9 +131,9 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
-        --build-name datanbuild
+        --build-name data12build
         --parallelism-per-worker 3
-    depends_on: datanbuild
+    depends_on: data12build
     job_env: forge
 
   - label: ":database: data: flaky tests"

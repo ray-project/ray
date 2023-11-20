@@ -20,7 +20,6 @@
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
-#include "src/ray/protobuf/monitor.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -287,52 +286,6 @@ class ActorInfoGrpcService : public GrpcService {
   ActorInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
   ActorInfoGcsServiceHandler &service_handler_;
-};
-
-class MonitorGcsServiceHandler {
- public:
-  virtual ~MonitorGcsServiceHandler() = default;
-
-  virtual void HandleGetRayVersion(GetRayVersionRequest request,
-                                   GetRayVersionReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleDrainAndKillNode(DrainAndKillNodeRequest request,
-                                      DrainAndKillNodeReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetSchedulingStatus(GetSchedulingStatusRequest request,
-                                         GetSchedulingStatusReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `MonitorServer`.
-class MonitorGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit MonitorGrpcService(instrumented_io_context &io_service,
-                              MonitorGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    MONITOR_SERVICE_RPC_HANDLER(GetRayVersion);
-    MONITOR_SERVICE_RPC_HANDLER(DrainAndKillNode);
-    MONITOR_SERVICE_RPC_HANDLER(GetSchedulingStatus);
-  }
-
- private:
-  /// The grpc async service object.
-  MonitorGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  MonitorGcsServiceHandler &service_handler_;
 };
 
 class NodeInfoGcsServiceHandler {
@@ -731,7 +684,6 @@ class InternalPubSubGrpcService : public GrpcService {
 
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
-using MonitorServiceHandler = MonitorGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;

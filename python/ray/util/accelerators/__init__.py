@@ -1,5 +1,6 @@
 import warnings
 
+from ray.util.accelerators import tpu
 from ray.util.accelerators.accelerators import (
     NVIDIA_TESLA_V100,
     NVIDIA_TESLA_P100,
@@ -18,6 +19,7 @@ from ray.util.accelerators.accelerators import (
 )
 
 __all__ = [
+    "tpu",
     "NVIDIA_TESLA_V100",
     "NVIDIA_TESLA_P100",
     "NVIDIA_TESLA_T4",
