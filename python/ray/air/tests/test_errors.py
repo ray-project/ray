@@ -16,15 +16,20 @@ These tests should:
 - Assert how errors from the Tune driver get propagated to the user.
 """
 import gc
+import os
+from typing import List
 import pytest
 from tempfile import TemporaryDirectory
 
 import ray
 from ray import train, tune
 from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
+from ray.train._internal.session import _TrainingResult
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.trainer import BaseTrainer, TrainingFailedError
 from ray.tune import Tuner, TuneConfig, TuneError
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture(scope="module")
@@ -193,6 +198,65 @@ def test_driver_error_with_trainer(ray_start_4_cpus, tmp_path, error_on):
     #     trainer_cls_name="DataParallelTrainer", path=str(tmp_path / name)
     # ) in str(exc_info.value)
     assert TrainingFailedError._FAILURE_CONFIG_MSG not in str(exc_info.value)
+
+
+class FailingDataParallelTrainer(DataParallelTrainer):
+    def _propagate_results(self, training_results: List[_TrainingResult]):
+        super()._propagate_results(training_results)
+
+        if training_results[0].metrics["round"] == 2:
+            print("[Round 2b] Failing the coordinator actor!!")
+            # NOTE: ray.actor.exit_actor raises a SystemExit, which only exits out
+            # of this training thread. This is because the actors spawned by
+            # Ray Train looks like:
+            # Coordinator (event handling main thread + training thread <- we are here)
+            #   Worker 0 (event handling main thread + training thread)
+            #   ...
+            #   Worker n-1 (same as above)
+            # We need to use os._exit to exit out of the entire actor main thread.
+            os._exit(1)
+
+
+def test_preemption_error(tmp_path):
+    def train_fn(config):
+        checkpoint = train.get_checkpoint()
+        round = 0
+        if checkpoint:
+            round = load_dict_checkpoint(checkpoint)["round"] + 1
+
+        with create_dict_checkpoint({"round": round}) as checkpoint:
+            ray.train.report({"round": round}, checkpoint=checkpoint)
+
+        if round == 0:
+            print("\n[Round 0] Ray actor error from the training worker\n")
+            os._exit(1)
+        elif round == 1:
+            print("\n[Round 1] User training loop error\n")
+            raise RuntimeError("This is an error in the user code.")
+        elif round == 2:
+            print(
+                "\n[Round 2a] No worker error -- instead, "
+                "mock a Train coordinator actor failure (2b)\n"
+            )
+        elif round == 3:
+            # No error the last time.
+            print("\n[Round 3] No error on the last round.\n")
+        else:
+            raise RuntimeError("Should stop after round=3...")
+
+    trainer = FailingDataParallelTrainer(
+        train_loop_per_worker=train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            name="test_preemption_error",
+            failure_config=train.FailureConfig(fail_fast="raise", max_failures=3),
+        ),
+    )
+    result = trainer.fit()
+    assert result.metrics["round"] == 3
+
+    # TODO(justinvyu): Add some way to get the history of errors from the result.
 
 
 if __name__ == "__main__":
