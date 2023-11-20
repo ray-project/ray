@@ -626,7 +626,7 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
     """
 
     def __init__(self, last_snapshot=None):
-        self.task_metrics = ray.util.state.list_tasks(detail=True)
+        self.task_metrics = ray.util.state.list_tasks(detail=True, limit=10_000)
         self.last_snapshot = last_snapshot
 
         memory_info = get_memory_info_reply(
@@ -643,7 +643,7 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
             ),
         }
 
-        self.actor_metrics = ray.util.state.list_actors()
+        self.actor_metrics = ray.util.state.list_actors(limit=10_000)
 
     def clear_task_count(self):
         self.task_metrics = []
@@ -709,7 +709,7 @@ def warmup():
 
 
 def task_metrics_flushed(refs):
-    task_ids = [t.task_id for t in ray.util.state.list_tasks()]
+    task_ids = [t.task_id for t in ray.util.state.list_tasks(limit=10_000)]
     # All tasks appear in the metrics.
     return all(ref.task_id().hex() in task_ids for ref in refs)
 
