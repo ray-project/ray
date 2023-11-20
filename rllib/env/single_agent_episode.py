@@ -225,8 +225,8 @@ class SingleAgentEpisode:
         self.infos.append(info)
         if render_image is not None:
             self.render_images.append(render_image)
-        # TODO (sven): Do we have to call validate here? It is our own function
-        # that manipulates the object.
+
+        # Validate our data.
         self.validate()
 
     def add_env_step(
@@ -278,6 +278,8 @@ class SingleAgentEpisode:
                 self.extra_model_outputs[k].append(v)
         self.is_terminated = is_terminated
         self.is_truncated = is_truncated
+
+        # Validate our data.
         self.validate()
 
     def validate(self) -> None:
