@@ -385,7 +385,7 @@ def debug(address):
     "--gpu-memory",
     required=False,
     type=int,
-    help="The total amount of memory (in megabytes) to make available to workers. "
+    help="The total amount of memory (in bytes) to make available to workers. "
     "By default, this is set to the sum of available memory "
     "from the gpus detected gpus in the node.",
 )

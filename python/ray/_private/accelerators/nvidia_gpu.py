@@ -133,8 +133,6 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         cuda_device_memory = 0
         if device_count > 0:
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            cuda_device_memory = int(pynvml.nvmlDeviceGetMemoryInfo(handle).total) // (
-                1024 * 1024
-            )  # in MB
+            cuda_device_memory = int(pynvml.nvmlDeviceGetMemoryInfo(handle).total)
         pynvml.nvmlShutdown()
         return cuda_device_memory
