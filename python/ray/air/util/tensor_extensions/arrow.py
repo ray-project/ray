@@ -99,6 +99,12 @@ class ArrowTensorType(pa.ExtensionType):
 
         return TensorDtype(self._shape, self.storage_type.value_type.to_pandas_dtype())
 
+    def __reduce__(self):
+        return self.__arrow_ext_deserialize__, (
+            self.storage_type,
+            self.__arrow_ext_serialize__(),
+        )
+
     def __arrow_ext_serialize__(self):
         return json.dumps(self._shape).encode()
 
@@ -116,12 +122,6 @@ class ArrowTensorType(pa.ExtensionType):
             A subclass of pd.api.extensions.ExtensionArray.
         """
         return ArrowTensorArray
-
-    def __reduce__(self):
-        return self.__arrow_ext_deserialize__, (
-            self.storage_type,
-            self.__arrow_ext_serialize__(),
-        )
 
     if _arrow_extension_scalars_are_subclassable():
         # TODO(Clark): Remove this version guard once we only support Arrow 9.0.0+.
@@ -591,6 +591,12 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         data_field_index = self.storage_type.get_field_index("data")
         return self.storage_type[data_field_index].type.value_type
 
+    def __reduce__(self):
+        return self.__arrow_ext_deserialize__, (
+            self.storage_type,
+            self.__arrow_ext_serialize__(),
+        )
+
     def __arrow_ext_serialize__(self):
         return json.dumps(self._ndim).encode()
 
@@ -609,12 +615,6 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
             A subclass of pd.api.extensions.ExtensionArray.
         """
         return ArrowVariableShapedTensorArray
-
-    def __reduce__(self):
-        return self.__arrow_ext_deserialize__, (
-            self.storage_type,
-            self.__arrow_ext_serialize__(),
-        )
 
     if _arrow_extension_scalars_are_subclassable():
         # TODO(Clark): Remove this version guard once we only support Arrow 9.0.0+.
