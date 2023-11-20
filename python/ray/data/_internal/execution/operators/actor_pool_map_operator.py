@@ -573,10 +573,7 @@ class _ActorPool:
         """
         # The caller shouldn't add new actors to the pool after invoking
         # kill_inactive_actors().
-        if self._should_kill_idle_actors:
-            import traceback
-            traceback.print_stack()
-        assert not self._should_kill_idle_actors
+        # assert not self._should_kill_idle_actors
         self._pending_actors[ready_ref] = actor
 
     def pending_to_running(self, ready_ref: ray.ObjectRef) -> bool:

@@ -554,7 +554,7 @@ def test_task_reassign_fault_tolerance(ray_start_10_cpus_shared, restore_data_co
     base = ray.data.range(1000, parallelism=100)
     # Test disabling fault tolerance.
     ds = base.map_batches(
-        f, batch_size=2, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0, max_task_retries=0,
+        f, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0, max_task_retries=0,
     )
     all = ds.take_all()
     assert len(all) == 1000
