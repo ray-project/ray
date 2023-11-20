@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Iterator, List
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
@@ -27,7 +28,7 @@ class TextDatasource(FileBasedDatasource):
         self.drop_empty_lines = drop_empty_lines
         self.encoding = encoding
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str) -> List[str]:
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         data = f.readall()
 
         builder = DelegatingBlockBuilder()
@@ -40,4 +41,4 @@ class TextDatasource(FileBasedDatasource):
             builder.add(item)
 
         block = builder.build()
-        return block
+        yield block
