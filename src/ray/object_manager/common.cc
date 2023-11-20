@@ -47,8 +47,6 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version) {
       << ". Are you sure this is the only writer?";
 
   version = write_version;
-  // Block readers from reading until we reset this to nonzero.
-  max_readers = 0;
 
   RAY_LOG(DEBUG) << "WriteAcquire done";
   PrintPlasmaObjectHeader(this);
@@ -122,6 +120,8 @@ void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
     RAY_CHECK(num_reads_remaining >= 0);
     if (num_reads_remaining == 0) {
       all_readers_done = true;
+      // Block other readers from reading until we reset this to nonzero.
+      max_readers = 0;
     }
   }
 

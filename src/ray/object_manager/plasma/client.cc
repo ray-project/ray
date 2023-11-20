@@ -314,7 +314,8 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id,
     object_entry = objects_in_use_[object_id].get();
   } else {
     object_entry = elem->second.get();
-    RAY_CHECK(object_entry->count > 0);
+    // TODO(swang): Nicer way to pin shared objects.
+    //RAY_CHECK(object_entry->count > 0);
   }
   // Increment the count of the number of instances of this object that are
   // being used by this client. The corresponding decrement should happen in
@@ -600,6 +601,18 @@ Status PlasmaClient::Impl::GetBuffers(
     // If we are here, the object was not currently in use, so we need to
     // process the reply from the object store.
     if (object->data_size != -1) {
+      // Increment the count of the number of instances of this object that this
+      // client is using. Cache the reference to the object.
+      IncrementObjectCount(received_object_ids[i], object, true);
+      auto &object_entry = objects_in_use_[received_object_ids[i]];
+      // Wait for the object to become ready to read.
+      auto plasma_header = GetPlasmaObjectHeader(*object);
+      int64_t version_read = plasma_header->ReadAcquire(/*version=*/1);
+      if (version_read > 0) {
+        object_entry->is_shared = true;
+        object_entry->next_version_to_read = version_read;
+      }
+
       std::shared_ptr<Buffer> physical_buf;
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
@@ -615,9 +628,6 @@ Status PlasmaClient::Impl::GetBuffers(
       object_buffers[i].metadata = SharedMemoryBuffer::Slice(
           physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
-      // Increment the count of the number of instances of this object that this
-      // client is using. Cache the reference to the object.
-      IncrementObjectCount(received_object_ids[i], object, true);
     } else {
       // The object was not retrieved.  The caller can detect this condition
       // by checking the boolean value of the metadata/data buffers.
@@ -689,7 +699,8 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   object_entry->second->count -= 1;
   RAY_CHECK(object_entry->second->count >= 0);
   // Check if the client is no longer using this object.
-  if (object_entry->second->count == 0) {
+  // TODO(swang): Nicer way to pin shared objects.
+  if (object_entry->second->count == 0 && !object_entry->second->is_shared) {
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
     MEMFD_TYPE fd = object_entry->second->object.store_fd;
     // Tell the store that the client no longer needs the object.
