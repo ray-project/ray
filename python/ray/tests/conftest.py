@@ -25,7 +25,7 @@ from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 
 from ray._private.test_utils import (
-    get_and_run_node_killer,
+    get_and_run_resource_killer,
     init_error_pubsub,
     init_log_pubsub,
     setup_tls,
@@ -37,6 +37,7 @@ from ray._private.test_utils import (
     find_available_port,
     wait_for_condition,
     find_free_port,
+    NodeKillerActor,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -909,13 +910,13 @@ def _ray_start_chaos_cluster(request):
     assert len(nodes) == 1
 
     if kill_interval is not None:
-        node_killer = get_and_run_node_killer(kill_interval)
+        node_killer = get_and_run_resource_killer(NodeKillerActor, kill_interval)
 
     yield cluster
 
     if kill_interval is not None:
         ray.get(node_killer.stop_run.remote())
-        killed = ray.get(node_killer.get_total_killed_nodes.remote())
+        killed = ray.get(node_killer.get_total_killed.remote())
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
         assert died.issubset(
