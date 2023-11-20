@@ -398,7 +398,7 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
     return;
   }
   if (it->second.local_ref_count == 0) {
-    RAY_LOG(WARNING)
+    RAY_LOG(DEBUG)  // XXX fix for compiled dag
         << "Tried to decrease ref count for object ID that has count 0 " << object_id
         << ". This should only happen if ray.internal.free was called earlier.";
     return;

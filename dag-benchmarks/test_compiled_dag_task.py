@@ -5,7 +5,6 @@ import ray
 
 verbose = os.environ.get("VERBOSE", "1") == "1"
 
-
 @ray.remote
 class A:
     def __init__(self, input_ref):
