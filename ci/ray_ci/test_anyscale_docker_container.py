@@ -7,6 +7,7 @@ import pytest
 
 from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
 from ci.ray_ci.test_base import RayCITestBase
+from ci.ray_ci.container import _DOCKER_GCP_REGISTRY, _DOCKER_ECR_REPO
 
 
 class TestAnyscaleDockerContainer(RayCITestBase):
@@ -23,18 +24,27 @@ class TestAnyscaleDockerContainer(RayCITestBase):
             container = AnyscaleDockerContainer("3.9", "cu11.8.0", "ray-ml")
             container.run()
             cmd = self.cmds[-1]
-            ecr = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
-            project = f"{ecr}/anyscale/ray-ml"
+            aws_ecr = _DOCKER_ECR_REPO.split("/")[0]
+            aws_prj = f"{aws_ecr}/anyscale/ray-ml"
+            gcp_prj = f"{_DOCKER_GCP_REGISTRY}/anyscale/ray-ml"
             assert cmd == [
                 "./ci/build/build-anyscale-docker.sh "
                 "rayproject/ray-ml:123456-py39-cu118 "
-                f"{project}:123456-py39-cu118 requirements_ml_byod_3.9.txt {ecr}",
-                f"docker tag {project}:123456-py39-cu118 {project}:123456-py39-cu118",
-                f"docker push {project}:123456-py39-cu118",
-                f"docker tag {project}:123456-py39-cu118 {project}:123456-py39-gpu",
-                f"docker push {project}:123456-py39-gpu",
-                f"docker tag {project}:123456-py39-cu118 {project}:123456-py39",
-                f"docker push {project}:123456-py39",
+                f"{aws_prj}:123456-py39-cu118 requirements_ml_byod_3.9.txt {aws_ecr}",
+                "./release/gcloud_docker_login.sh release/aws2gce_iam.json",
+                "export PATH=$(pwd)/google-cloud-sdk/bin:$PATH",
+                f"docker tag {aws_prj}:123456-py39-cu118 {aws_prj}:123456-py39-cu118",
+                f"docker push {aws_prj}:123456-py39-cu118",
+                f"docker tag {aws_prj}:123456-py39-cu118 {gcp_prj}:123456-py39-cu118",
+                f"docker push {gcp_prj}:123456-py39-cu118",
+                f"docker tag {aws_prj}:123456-py39-cu118 {aws_prj}:123456-py39-gpu",
+                f"docker push {aws_prj}:123456-py39-gpu",
+                f"docker tag {aws_prj}:123456-py39-cu118 {gcp_prj}:123456-py39-gpu",
+                f"docker push {gcp_prj}:123456-py39-gpu",
+                f"docker tag {aws_prj}:123456-py39-cu118 {aws_prj}:123456-py39",
+                f"docker push {aws_prj}:123456-py39",
+                f"docker tag {aws_prj}:123456-py39-cu118 {gcp_prj}:123456-py39",
+                f"docker push {gcp_prj}:123456-py39",
             ]
 
 
