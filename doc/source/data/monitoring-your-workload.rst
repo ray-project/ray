@@ -17,7 +17,7 @@ Ray Data emits Prometheus metrics in real-time while a Dataset is executing. The
 Ray dashboard job detail page
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For an overview of all datasets that have been running on your cluster, see the Ray Data Overview in the :ref:`job detail page <dash-jobs-view>`. This table will appear once the first dataset starts executing on the cluster, and shows dataset details such as:
+For an overview of all datasets that have been running on your cluster, see the Ray Data Overview in the :ref:`job detail page <dash-jobs-view>`. This table appears once the first dataset starts executing on the cluster, and shows dataset details such as:
 
 * execution progress (measured in blocks)
 * execution state (running, failed, or finished)
@@ -35,7 +35,7 @@ For a more fine-grained overview, each dataset row in the table can also be expa
 Ray dashboard metrics
 ~~~~~~~~~~~~~~~~~~~~~
 
-For an even finer view, see the Ray Data section in the :ref:`Metrics tab <dash-metrics-view>`. This section contains time-series views of all metrics emitted by Ray Data, grouped by operator.
+For an even finer view, see the Ray Data section in the :ref:`Metrics tab <dash-metrics-view>`. This section contains time-series views of all metrics emitted by Ray Data. Execution metrics are grouped by dataset and operator, and iteration metrics are grouped by dataset.
 
 The metrics recorded are:
 
@@ -58,9 +58,9 @@ To learn more about the Ray dashboard, including detailed setup instructions, se
 
 Ray Data logs
 -------------
-During execution, Ray Data will periodically log status updates to `ray-data.log`. 
+During execution, Ray Data periodically logs updates to `ray-data.log`.
 
-At the end of every scheduling loop, Ray Data will log execution progress of every operator in the DAG. For more frequent updates, `RAY_DATA_TRACE_SCHEDULING=1` can be set so that the progress is logged after each task is dispatched.
+At the end of every scheduling loop, Ray Data logs execution progress of every operator in the dataset. For more frequent updates, `RAY_DATA_TRACE_SCHEDULING=1` can be set so that the progress is logged after each task is dispatched.
 
 .. code-block:: text
 
@@ -68,7 +68,7 @@ At the end of every scheduling loop, Ray Data will log execution progress of eve
    0: - Input: 0 active, 0 queued, 0.0 MiB objects, Blocks Outputted: 200/200
    1: - ReadRange->MapBatches(<lambda>): 10 active, 190 queued, 381.47 MiB objects, Blocks Outputted: 100/200
 
-When an operator completes, the metrics for that operator will also be logged.
+When an operator completes, the metrics for that operator are also logged.
 
 .. code-block:: text
 
