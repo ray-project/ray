@@ -60,8 +60,11 @@ void setFdCloseOnFork(const NativeHandleType &handle) {
 // Not thread safe.
 // See https://github.com/ray-project/ray/issues/40813
 void setFdCloseOnFork(int fd) {
+  if (fd < 0) {
+    return;
+  }
   int flags = fcntl(fd, F_GETFD, 0);
-  RAY_CHECK(flags != -1) << "fcntl error: errno = " << errno;
+  RAY_CHECK(flags != -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
   fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
   RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
 }
