@@ -102,11 +102,13 @@ class _DeploymentHandleBase:
         _router: Optional[Router] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
+        _handle_id: str = get_random_letters(),
     ):
         self.deployment_id = DeploymentID(deployment_name, app_name)
         self.handle_options = handle_options or _HandleOptions()
         self._recorded_telemetry = _recorded_telemetry
         self._sync = sync
+        self._handle_id = _handle_id
 
         self.request_counter = _request_counter or metrics.Counter(
             "serve_handle_request_counter",
@@ -117,9 +119,9 @@ class _DeploymentHandleBase:
             tag_keys=("handle", "deployment", "route", "application"),
         )
         if app_name:
-            handle_tag = f"{app_name}#{deployment_name}#{get_random_letters()}"
+            handle_tag = f"{app_name}#{deployment_name}#{_handle_id}"
         else:
-            handle_tag = f"{deployment_name}#{get_random_letters()}"
+            handle_tag = f"{deployment_name}#{_handle_id}"
 
         # TODO(zcin): Separate deployment_id into deployment and application tags
         self.request_counter.set_default_tags(
@@ -229,6 +231,7 @@ class _DeploymentHandleBase:
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _request_counter=self.request_counter,
             _recorded_telemetry=self._recorded_telemetry,
+            _handle_id=self._handle_id,
         )
 
     def _remote(
