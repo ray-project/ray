@@ -1,18 +1,4 @@
 
-a2c-cartpole-v1:
-    env: CartPole-v1
-    run: A2C
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        sampler_results/episode_reward_mean: 150.0
-        timesteps_total: 500000
-    stop:
-        time_total_s: 600
-    config:
-        num_gpus: 2
-        num_workers: 23
-        lr: 0.001
-
 appo-cartpole-v1-no-vtrace:
     env: CartPole-v1
     run: APPO
@@ -60,26 +46,6 @@ appo-cartpole-v1-vtrace:
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
-ddpg-repeat-after-me-env:
-    env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
-    run: DDPG
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        sampler_results/episode_reward_mean: -50.0
-        timesteps_total: 8000
-    stop:
-        time_total_s: 600
-    config:
-        env_config:
-            config:
-                continuous: true
-                repeat_delay: 0
-
-        num_gpus: 2
-        num_workers: 0
-        # Double batch size (2 GPUs).
-        train_batch_size: 512
-
 dqn-cartpole-v1:
     env: CartPole-v1
     run: DQN
@@ -114,24 +80,6 @@ impala-cartpole-v1:
         num_workers: 23
         # Double batch size (2 GPUs).
         train_batch_size: 1000
-
-pg-cartpole-v1:
-    env: CartPole-v1
-    run: PG
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        sampler_results/episode_reward_mean: 130.0
-        timesteps_total: 500000
-    stop:
-        time_total_s: 600
-    config:
-        num_gpus: 2
-        num_workers: 23
-        # Double batch size (2 GPUs).
-        train_batch_size: 400
-        model:
-            fcnet_hiddens: [64]
-            fcnet_activation: linear
 
 ppo-cartpole-v1:
     env: CartPole-v1
@@ -201,37 +149,3 @@ sac-repeat-after-me-env-continuous:
         train_batch_size: 512
         # start learning immediately 
         num_steps_sampled_before_learning_starts: 0
-
-
-simpleq-cartpole-v1:
-    env: CartPole-v1
-    run: SimpleQ
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        sampler_results/episode_reward_mean: 150.0
-        timesteps_total: 85000
-    stop:
-        time_total_s: 600
-    config:
-        num_gpus: 2
-        num_workers: 0
-
-td3-repeat-after-me-env:
-    env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
-    run: TD3
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        sampler_results/episode_reward_mean: -50.0
-        timesteps_total: 25000
-    stop:
-        time_total_s: 600
-    config:
-        env_config:
-            config:
-                continuous: true
-                repeat_delay: 0
-
-        num_gpus: 2
-        num_workers: 0
-        # Double batch size (2 GPUs).
-        train_batch_size: 200

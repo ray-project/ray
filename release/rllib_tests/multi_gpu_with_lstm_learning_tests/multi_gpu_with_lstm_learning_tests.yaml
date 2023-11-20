@@ -1,24 +1,4 @@
 
-a2c-stateless-cartpole:
-    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
-    run: A2C
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        sampler_results/episode_reward_mean: 150.0
-        timesteps_total: 500000
-    stop:
-        time_total_s: 600
-    config:
-        num_gpus: 2
-        num_workers: 23
-        # Use a large train batch size to make sure mini batches work
-        # after split to 2 GPU towers.
-        train_batch_size: 200
-        lr: 0.001
-        # Test w/ LSTMs.
-        model:
-            use_lstm: true
-
 appo-stateless-cartpole-no-vtrace:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: APPO
@@ -89,26 +69,6 @@ impala-stateless-cartpole:
         model:
             use_lstm: true
 
-pg-stateless-cartpole:
-    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
-    run: PG
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        sampler_results/episode_reward_mean: 130.0
-        timesteps_total: 500000
-    stop:
-        time_total_s: 600
-    config:
-        num_gpus: 2
-        num_workers: 23
-        # Double batch size (2 GPUs).
-        train_batch_size: 400
-        model:
-            fcnet_hiddens: [64]
-            fcnet_activation: linear
-            # Test w/ LSTMs.
-            use_lstm: true
-
 ppo-stateless-cartpole:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: PPO
@@ -133,5 +93,4 @@ ppo-stateless-cartpole:
             use_lstm: true
         # Double batch size (2 GPUs).
         train_batch_size: 8000
-        _enable_learner_api: false
-        _enable_rl_module_api: false
+        _enable_new_api_stack: false
