@@ -9,6 +9,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
+    DeploymentStatusTrigger,
     ReplicaName,
     ReplicaState,
     ReplicaTag,
@@ -339,7 +340,7 @@ class MockClusterNodeInfoCache:
 
 
 @pytest.fixture
-def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
+def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
     timer = MockTimer()
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
@@ -598,8 +599,8 @@ def check_counts(
             assert curr_count == count, msg
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_create_delete_single_replica(mock_deployment_state):
+    deployment_state: DeploymentState
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {"node-id"}
 
@@ -619,11 +620,19 @@ def test_create_delete_single_replica(mock_deployment_state):
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     deployment_state._replicas.get()[0]._actor.set_ready()
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Now the replica should be marked running.
     deployment_state.update()
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     # Removing the replica should transition it to stopping.
     deployment_state.delete()
@@ -638,6 +647,10 @@ def test_create_delete_single_replica(mock_deployment_state):
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert deployment_state._replicas.get()[0]._actor.stopped
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.DELETING
+    )
 
     # Once it's done stopping, replica should be removed.
     replica = deployment_state._replicas.get()[0]
@@ -647,7 +660,6 @@ def test_create_delete_single_replica(mock_deployment_state):
     check_counts(deployment_state, total=0)
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_force_kill(mock_deployment_state):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {"node-id"}
@@ -690,12 +702,20 @@ def test_force_kill(mock_deployment_state):
     assert deployment_state._replicas.get()[0]._actor.force_stopped_counter == 1
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.DELETING
+    )
 
     # Force stop should be called repeatedly until the replica stops.
     deployment_state.update()
     assert deployment_state._replicas.get()[0]._actor.force_stopped_counter == 2
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.DELETING
+    )
 
     # Once the replica is done stopping, it should be removed.
     replica = deployment_state._replicas.get()[0]
@@ -705,7 +725,6 @@ def test_force_kill(mock_deployment_state):
     check_counts(deployment_state, total=0)
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_redeploy_same_version(mock_deployment_state):
     # Redeploying with the same version and code should do nothing.
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -726,11 +745,20 @@ def test_redeploy_same_version(mock_deployment_state):
         by_state=[(ReplicaState.STARTING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Test redeploying while the initial deployment is still pending.
     updating = deployment_state.deploy(b_info_1)
     assert not updating
+    # Redeploying the exact same info shouldn't cause any change in status
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     deployment_state.update()
     check_counts(
@@ -750,11 +778,19 @@ def test_redeploy_same_version(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     # Test redeploying after the initial deployment has finished.
     updating = deployment_state.deploy(b_info_1)
     assert not updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
     check_counts(
         deployment_state,
         version=b_version_1,
@@ -762,9 +798,12 @@ def test_redeploy_same_version(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_redeploy_no_version(mock_deployment_state):
     # Redeploying with no version specified (`None`) should always redeploy
     # the replicas.
@@ -781,11 +820,19 @@ def test_redeploy_no_version(mock_deployment_state):
     )
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Test redeploying while the initial deployment is still pending.
     updating = deployment_state.deploy(b_info_1)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # The initial replica should be stopping. The new replica shouldn't start
     # until the old one has completely stopped.
@@ -804,6 +851,10 @@ def test_redeploy_no_version(mock_deployment_state):
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Check that the new replica has started.
     deployment_state.update()
@@ -812,12 +863,20 @@ def test_redeploy_no_version(mock_deployment_state):
 
     deployment_state.update()
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     # Now deploy a third version after the transition has finished.
     b_info_3, b_version_3 = deployment_info(version="3")
     updating = deployment_state.deploy(b_info_3)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     deployment_state.update()
     check_counts(deployment_state, total=1)
@@ -835,14 +894,21 @@ def test_redeploy_no_version(mock_deployment_state):
     deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     deployment_state_update_result = deployment_state.update()
     assert not deployment_state_update_result.deleted
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_redeploy_new_version(mock_deployment_state):
     # Redeploying with a new version should start a new replica.
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -863,12 +929,20 @@ def test_redeploy_new_version(mock_deployment_state):
         by_state=[(ReplicaState.STARTING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Test redeploying while the initial deployment is still pending.
     b_info_2, b_version_2 = deployment_info(version="2")
     updating = deployment_state.deploy(b_info_2)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # The initial replica should be stopping. The new replica shouldn't start
     # until the old one has completely stopped.
@@ -910,12 +984,20 @@ def test_redeploy_new_version(mock_deployment_state):
 
     deployment_state.update()
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     # Now deploy a third version after the transition has finished.
     b_info_3, b_version_3 = deployment_info(version="3")
     updating = deployment_state.deploy(b_info_3)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     deployment_state.update()
     check_counts(deployment_state, total=1)
@@ -952,9 +1034,12 @@ def test_redeploy_new_version(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 @pytest.mark.parametrize(
     "option,value",
     [
@@ -976,6 +1061,10 @@ def test_deploy_new_config_same_code_version(mock_deployment_state, option, valu
     updated = deployment_state.deploy(b_info_1)
     assert updated
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Create the replica initially.
     deployment_state_update_result = deployment_state.update()
@@ -991,12 +1080,20 @@ def test_deploy_new_config_same_code_version(mock_deployment_state, option, valu
         by_state=[(ReplicaState.RUNNING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     # Update to a new config without changing the code version.
     b_info_2, b_version_2 = deployment_info(version="1", **{option: value})
     updated = deployment_state.deploy(b_info_2)
     assert updated
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
     check_counts(
         deployment_state,
         version=b_version_1,
@@ -1025,9 +1122,12 @@ def test_deploy_new_config_same_code_version(mock_deployment_state, option, valu
         by_state=[(ReplicaState.RUNNING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_new_config_same_code_version_2(mock_deployment_state):
     # Make sure we don't transition from STARTING to UPDATING directly.
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -1037,6 +1137,10 @@ def test_deploy_new_config_same_code_version_2(mock_deployment_state):
     updated = deployment_state.deploy(b_info_1)
     assert updated
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Create the replica initially.
     deployment_state_update_result = deployment_state.update()
@@ -1055,6 +1159,10 @@ def test_deploy_new_config_same_code_version_2(mock_deployment_state):
     updated = deployment_state.deploy(b_info_2)
     assert updated
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     deployment_state.update()
     # Since it's STARTING, we cannot transition to UPDATING
@@ -1085,9 +1193,12 @@ def test_deploy_new_config_same_code_version_2(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_new_config_new_version(mock_deployment_state):
     # Deploying a new config with a new version should deploy a new replica.
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -1111,6 +1222,10 @@ def test_deploy_new_config_new_version(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     # Update to a new config and a new version.
     b_info_2, b_version_2 = deployment_info(version="2", user_config={"hello": "world"})
@@ -1142,6 +1257,10 @@ def test_deploy_new_config_new_version(mock_deployment_state):
         by_state=[(ReplicaState.STARTING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Check that the new version is now running.
     deployment_state.update()
@@ -1152,9 +1271,12 @@ def test_deploy_new_config_new_version(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_stop_replicas_on_draining_nodes(mock_deployment_state):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
@@ -1169,6 +1291,10 @@ def test_stop_replicas_on_draining_nodes(mock_deployment_state):
     )
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Drain node-2.
     cluster_node_info_cache.draining_node_ids = {"node-2"}
@@ -1211,7 +1337,6 @@ def test_stop_replicas_on_draining_nodes(mock_deployment_state):
     )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_initial_deploy_no_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -1227,6 +1352,10 @@ def test_initial_deploy_no_throttling(mock_deployment_state):
     )
     check_counts(deployment_state, total=10, by_state=[(ReplicaState.STARTING, 10)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     for replica in deployment_state._replicas.get():
         replica._actor.set_ready()
@@ -1235,9 +1364,12 @@ def test_initial_deploy_no_throttling(mock_deployment_state):
     deployment_state.update()
     check_counts(deployment_state, total=10, by_state=[(ReplicaState.RUNNING, 10)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_new_version_deploy_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     # When the version is updated, it should be throttled. The throttling
@@ -1257,6 +1389,10 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     )
     check_counts(deployment_state, total=10, by_state=[(ReplicaState.STARTING, 10)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     for replica in deployment_state._replicas.get():
         replica._actor.set_ready()
@@ -1265,6 +1401,10 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     deployment_state.update()
     check_counts(deployment_state, total=10, by_state=[(ReplicaState.RUNNING, 10)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     # Now deploy a new version. Two old replicas should be stopped.
     b_info_2, b_version_2 = deployment_info(
@@ -1332,6 +1472,10 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     ]._actor.set_done_stopping()
 
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Old replicas should be stopped and new versions started in batches of 2.
     new_replicas = 1
@@ -1393,6 +1537,10 @@ def test_new_version_deploy_throttling(mock_deployment_state):
         ]._actor.set_done_stopping()
 
         assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
     # 2 left to update.
     # Replicas starting up.
@@ -1452,6 +1600,10 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     )
 
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Set both ready.
     deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
@@ -1464,9 +1616,12 @@ def test_new_version_deploy_throttling(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 10)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_reconfigure_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     # When the version is updated, it should be throttled.
@@ -1485,6 +1640,10 @@ def test_reconfigure_throttling(mock_deployment_state):
     )
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     for replica in deployment_state._replicas.get():
         replica._actor.set_ready()
@@ -1493,6 +1652,10 @@ def test_reconfigure_throttling(mock_deployment_state):
     deployment_state.update()
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     # Now deploy a new user_config. One replica should be updated.
     b_info_2, b_version_2 = deployment_info(
@@ -1501,6 +1664,10 @@ def test_reconfigure_throttling(mock_deployment_state):
     updating = deployment_state.deploy(b_info_2)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     deployment_state.update()
     check_counts(
@@ -1529,6 +1696,10 @@ def test_reconfigure_throttling(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.UPDATING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Mark the updating replica as ready.
     deployment_state._replicas.get(states=[ReplicaState.UPDATING])[0]._actor.set_ready()
@@ -1542,9 +1713,12 @@ def test_reconfigure_throttling(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 2)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
 def test_new_version_and_scale_down(mock_deployment_state):
     # Test the case when we reduce the number of replicas and change the
     # version at the same time. First the number of replicas should be
@@ -1562,6 +1736,10 @@ def test_new_version_and_scale_down(mock_deployment_state):
     )
     check_counts(deployment_state, total=10, by_state=[(ReplicaState.STARTING, 10)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     for replica in deployment_state._replicas.get():
         replica._actor.set_ready()
@@ -1570,6 +1748,10 @@ def test_new_version_and_scale_down(mock_deployment_state):
     deployment_state.update()
     check_counts(deployment_state, total=10, by_state=[(ReplicaState.RUNNING, 10)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     # Now deploy a new version and scale down the number of replicas to 2.
     # First, 8 old replicas should be stopped to bring it down to the target.
@@ -1686,9 +1868,12 @@ def test_new_version_and_scale_down(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 2)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
 def test_new_version_and_scale_up(mock_deployment_state):
     # Test the case when we increase the number of replicas and change the
     # version at the same time. The new replicas should all immediately be
@@ -1705,6 +1890,10 @@ def test_new_version_and_scale_up(mock_deployment_state):
     )
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     for replica in deployment_state._replicas.get():
         replica._actor.set_ready()
@@ -1713,6 +1902,10 @@ def test_new_version_and_scale_up(mock_deployment_state):
     deployment_state.update()
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     # Now deploy a new version and scale up the number of replicas to 10.
     # 8 new replicas should be started.
@@ -1788,9 +1981,302 @@ def test_new_version_and_scale_up(mock_deployment_state):
 
     deployment_state.update()
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@pytest.mark.parametrize("scale_direction", ["up", "down"])
+def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction):
+    """Test upscaling and downscaling the number of replicas manually.
+
+    Upscaling version:
+    1. Deploy deployment with num_replicas=3.
+    2. 3 replicas starting, status=UPDATING, trigger=DEPLOY.
+    3. It becomes healthy with 3 running replicas.
+    4. Update deployment to num_replicas=5.
+    5. 2 replicas starting, status=UPSCALING, trigger=CONFIG_UPDATE.
+    6. It becomes healthy with 5 running replicas, status=HEALTHY, trigger=CONFIG_UPDATE
+    """
+
+    # State
+    version = get_random_letters()
+    deployment_id = DeploymentID("test_deployment", "test_app")
+
+    # Create deployment state manager
+    create_deployment_state_manager, _, _ = mock_deployment_state_manager_full
+    deployment_state_manager: DeploymentStateManager = create_deployment_state_manager()
+
+    # Deploy deployment with 3 replicas
+    info_1, _ = deployment_info(num_replicas=3, version=version)
+    deployment_state_manager.deploy(deployment_id, info_1)
+    deployment_state: DeploymentState = deployment_state_manager._deployment_states[
+        deployment_id
+    ]
+
+    # status=UPDATING, status_trigger=DEPLOY
+    deployment_state_manager.update()
+    check_counts(deployment_state, total=3, by_state=[(ReplicaState.STARTING, 3)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    # Set replicas ready and check statuses
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+
+    # status=HEALTHY, status_trigger=DEPLOY
+    deployment_state_manager.update()
+    check_counts(deployment_state, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
+
+    # upscale or downscale the number of replicas manually
+    new_num_replicas = 5 if scale_direction == "up" else 1
+    info_2, _ = deployment_info(num_replicas=new_num_replicas, version=version)
+    deployment_state_manager.deploy(deployment_id, info_2)
+    deployment_state_manager.update()
+
+    # status=UPSCALING/DOWNSCALING, status_trigger=CONFIG_UPDATE
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+    if scale_direction == "up":
+        check_counts(
+            deployment_state,
+            total=5,
+            by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 2)],
+        )
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+        for replica in deployment_state._replicas.get():
+            replica._actor.set_ready()
+    else:
+        check_counts(
+            deployment_state,
+            total=3,
+            by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 2)],
+        )
+        assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+        for replica in deployment_state._replicas.get():
+            replica._actor.set_done_stopping()
+
+    # After the upscaling/downscaling finishes
+    # status=HEALTHY, status_trigger=UPSCALING_COMPLETED/DOWNSCALE_COMPLETED
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=new_num_replicas,
+        by_state=[(ReplicaState.RUNNING, new_num_replicas)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert deployment_state.curr_status_info.status_trigger == (
+        DeploymentStatusTrigger.UPSCALE_COMPLETED
+        if scale_direction == "up"
+        else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+    )
+
+
+@pytest.mark.parametrize("scale_direction", ["up", "down"])
+def test_autoscale(mock_deployment_state_manager_full, scale_direction):
+    """Test autoscaling up and down.
+
+    Upscaling version:
+    1. Deploy deployment with autoscaling limits [0,6], initial_replicas=3, target=1.
+    2. It becomes healthy with 3 running replicas.
+    3. Set average request metrics to 2 (compare to target=1).
+    4. Deployment autoscales, 3 replicas starting, status=UPSCALING, trigger=AUTOSCALE.
+    5. It becomes healthy with 6 running replicas, status=HEALTHY, trigger=UPSCALE.
+    """
+
+    # State
+    deployment_id = DeploymentID("test_deployment", "test_app")
+
+    # Create deployment state manager
+    create_deployment_state_manager, timer, _ = mock_deployment_state_manager_full
+    deployment_state_manager: DeploymentStateManager = create_deployment_state_manager()
+
+    # Deploy deployment with 3 replicas
+    info, _ = deployment_info(
+        autoscaling_config={
+            "target_num_ongoing_requests_per_replica": 1,
+            "min_replicas": 0,
+            "max_replicas": 6,
+            "initial_replicas": 3,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        }
+    )
+    deployment_state_manager.deploy(deployment_id, info)
+    depstate: DeploymentState = deployment_state_manager._deployment_states[
+        deployment_id
+    ]
+
+    # status=UPDATING, status_trigger=DEPLOY
+    deployment_state_manager.update()
+    check_counts(depstate, total=3, by_state=[(ReplicaState.STARTING, 3)])
+    assert depstate.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        depstate.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    # Set replicas ready and check statuses
+    for replica in depstate._replicas.get():
+        replica._actor.set_ready()
+
+    # status=HEALTHY, status_trigger=DEPLOY
+    deployment_state_manager.update()
+    check_counts(depstate, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+    assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        depstate.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
+
+    for replica in depstate._replicas.get():
+        deployment_state_manager.record_autoscaling_metrics(
+            (replica._actor.replica_tag, 2 if scale_direction == "up" else 0), None
+        )
+
+    # status=UPSCALING/DOWNSCALING, status_trigger=AUTOSCALE
+    deployment_state_manager.update()
+    if scale_direction == "up":
+        check_counts(
+            depstate,
+            total=6,
+            by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
+        )
+        assert depstate.curr_status_info.status == DeploymentStatus.UPSCALING
+    else:
+        check_counts(depstate, total=3, by_state=[(ReplicaState.STOPPING, 3)])
+        assert depstate.curr_status_info.status == DeploymentStatus.DOWNSCALING
+    assert (
+        depstate.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+    )
+
+    # Set replicas ready and check statuses
+    for replica in depstate._replicas.get():
+        if scale_direction == "up":
+            replica._actor.set_ready()
+        else:
+            replica._actor.set_done_stopping()
+
+    # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
+    deployment_state_manager.update()
+    assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert depstate.curr_status_info.status_trigger == (
+        DeploymentStatusTrigger.UPSCALE_COMPLETED
+        if scale_direction == "up"
+        else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+    )
+
+
+def test_update_autoscaling_config(mock_deployment_state_manager_full):
+    """Test updating the autoscaling config.
+
+    1. Deploy deployment with autoscaling limits [0,6] and initial replicas = 3.
+    2. It becomes healthy with 3 running replicas.
+    3. Update autoscaling config to limits [6,10].
+    4. 3 new replicas should be STARTING, and deployment status should be UPDATING.
+    5. It becomes healthy with 6 running replicas.
+    """
+
+    # State
+    deployment_id = DeploymentID("test_deployment", "test_app")
+
+    # Create deployment state manager
+    create_deployment_state_manager, timer, _ = mock_deployment_state_manager_full
+    deployment_state_manager: DeploymentStateManager = create_deployment_state_manager()
+
+    # Deploy deployment with 3 replicas
+    info1, _ = deployment_info(
+        autoscaling_config={
+            "target_num_ongoing_requests_per_replica": 1,
+            "min_replicas": 0,
+            "max_replicas": 6,
+            "initial_replicas": 3,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        },
+        version="1",
+    )
+    deployment_state_manager.deploy(deployment_id, info1)
+    depstate: DeploymentState = deployment_state_manager._deployment_states[
+        deployment_id
+    ]
+
+    # Set replicas ready
+    deployment_state_manager.update()
+    for replica in depstate._replicas.get():
+        replica._actor.set_ready()
+
+    # status=HEALTHY, status_trigger=DEPLOY
+    deployment_state_manager.update()
+    check_counts(depstate, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+    assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        depstate.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
+
+    # Num ongoing requests = 1, status should remain HEALTHY
+    for replica in depstate._replicas.get():
+        deployment_state_manager.record_autoscaling_metrics(
+            (replica._actor.replica_tag, 1), None
+        )
+    check_counts(depstate, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+    assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        depstate.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
+
+    # Update autoscaling config
+    info2, _ = deployment_info(
+        autoscaling_config={
+            "target_num_ongoing_requests_per_replica": 1,
+            "min_replicas": 6,
+            "max_replicas": 10,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        },
+        version="1",
+    )
+    deployment_state_manager.deploy(deployment_id, info2)
+
+    # 3 new replicas should be starting, status should be UPDATING (not upscaling)
+    deployment_state_manager.update()
+    check_counts(
+        depstate,
+        total=6,
+        by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
+    )
+    assert depstate.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        depstate.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    # Set replicas ready
+    deployment_state_manager.update()
+    for replica in depstate._replicas.get():
+        replica._actor.set_ready()
+    deployment_state_manager.update()
+    check_counts(depstate, total=6, by_state=[(ReplicaState.RUNNING, 6)])
+    assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        depstate.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
+
+
 def test_health_check(mock_deployment_state):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
@@ -1805,6 +2291,10 @@ def test_health_check(mock_deployment_state):
     )
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     for replica in deployment_state._replicas.get():
         replica._actor.set_ready()
@@ -1815,6 +2305,10 @@ def test_health_check(mock_deployment_state):
     deployment_state.update()
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     deployment_state.update()
     for replica in deployment_state._replicas.get():
@@ -1830,6 +2324,11 @@ def test_health_check(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    # If state transitioned from healthy -> unhealthy, status driver should be none
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+    )
 
     replica = deployment_state._replicas.get(states=[ReplicaState.STOPPING])[0]
     replica._actor.set_done_stopping()
@@ -1844,17 +2343,28 @@ def test_health_check(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+    )
 
     replica = deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]
     replica._actor.set_ready()
     assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+    )
 
     deployment_state.update()
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.UNSPECIFIED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_update_while_unhealthy(mock_deployment_state):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
@@ -1869,6 +2379,10 @@ def test_update_while_unhealthy(mock_deployment_state):
     )
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     for replica in deployment_state._replicas.get():
         replica._actor.set_ready()
@@ -1879,6 +2393,10 @@ def test_update_while_unhealthy(mock_deployment_state):
     deployment_state.update()
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
     deployment_state.update()
     for replica in deployment_state._replicas.get():
@@ -1894,6 +2412,10 @@ def test_update_while_unhealthy(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+    )
 
     replica = deployment_state._replicas.get(states=[ReplicaState.STOPPING])[0]
     replica._actor.set_done_stopping()
@@ -1921,6 +2443,10 @@ def test_update_while_unhealthy(mock_deployment_state):
         by_state=[(ReplicaState.STARTING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Check that a failure in the old version replica does not mark the
     # deployment as UNHEALTHY.
@@ -1941,6 +2467,10 @@ def test_update_while_unhealthy(mock_deployment_state):
         by_state=[(ReplicaState.STARTING, 1)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     replica = deployment_state._replicas.get(states=[ReplicaState.STOPPING])[0]
     replica._actor.set_done_stopping()
@@ -1970,6 +2500,10 @@ def test_update_while_unhealthy(mock_deployment_state):
         by_state=[(ReplicaState.RUNNING, 2)],
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
 def _constructor_failure_loop_two_replica(deployment_state, num_loops):
@@ -1998,7 +2532,6 @@ def _constructor_failure_loop_two_replica(deployment_state, num_loops):
         replica_2._actor.set_done_stopping()
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
     """
     Test deploy() multiple replicas with consistent constructor failure.
@@ -2012,15 +2545,22 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
     updating = deployment_state.deploy(b_info_1)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
     _constructor_failure_loop_two_replica(deployment_state, 3)
 
     assert deployment_state._replica_constructor_retry_counter == 6
     assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
+    )
     check_counts(deployment_state, total=2)
     assert deployment_state.curr_status_info.message != ""
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     """
     Test deploy() multiple replicas with constructor failure exceedining
@@ -2042,9 +2582,17 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     updating = deployment_state.deploy(b_info_1)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     _constructor_failure_loop_two_replica(deployment_state, 2)
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     deployment_state_update_result = deployment_state.update()
     deployment_state._deployment_scheduler.schedule(
@@ -2053,6 +2601,10 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
     assert deployment_state._replica_constructor_retry_counter == 4
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Let one replica reach RUNNING state while the other still fails
     replica_1 = deployment_state._replicas.get()[0]
@@ -2087,6 +2639,10 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     assert deployment_state._replica_constructor_retry_counter == -1
     # Deployment should NOT be considered complete yet
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 1)])
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.STOPPING, 1)])
@@ -2112,9 +2668,12 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state):
 
     # Deployment should be considered complete
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_with_transient_constructor_failure(mock_deployment_state):
     """
     Test deploy() multiple replicas with transient constructor failure.
@@ -2134,10 +2693,18 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
     updating = deployment_state.deploy(b_info_1)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Burn 4 retries from both replicas.
     _constructor_failure_loop_two_replica(deployment_state, 2)
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     # Let both replicas succeed in last try.
     deployment_state_update_result = deployment_state.update()
@@ -2146,6 +2713,10 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
     )
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     assert deployment_state._replica_constructor_retry_counter == 4
     replica_1 = deployment_state._replicas.get()[0]
@@ -2158,9 +2729,12 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
 
     assert deployment_state._replica_constructor_retry_counter == 4
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
 def test_exponential_backoff(mock_deployment_state):
     """Test exponential backoff."""
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -2170,6 +2744,10 @@ def test_exponential_backoff(mock_deployment_state):
     updating = deployment_state.deploy(b_info_1)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
 
     _constructor_failure_loop_two_replica(deployment_state, 3)
     assert deployment_state._replica_constructor_retry_counter == 6
