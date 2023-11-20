@@ -5,13 +5,14 @@ import sys
 import signal
 from collections import Counter
 from typing import List, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
+from ray._private.state_api_test_utils import get_state_api_manager
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
-from ray._private.gcs_utils import GcsAioClient, GcsChannel
+from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
@@ -119,11 +120,6 @@ from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
-if sys.version_info >= (3, 8, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
-
 """
 Unit tests
 """
@@ -156,14 +152,7 @@ def state_source_client(gcs_address):
 def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_address = address_info["gcs_address"]
-    gcs_aio_client = GcsAioClient(address=gcs_address)
-    gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
-    gcs_channel.connect()
-    state_api_data_source_client = StateDataSourceClient(
-        gcs_channel.channel(), gcs_aio_client
-    )
-    manager = StateAPIManager(state_api_data_source_client)
-
+    manager = get_state_api_manager(gcs_address)
     yield manager
 
 
@@ -277,6 +266,7 @@ def generate_task_data(events_by_task):
         events_by_task=events_by_task,
         num_status_task_events_dropped=0,
         num_profile_task_events_dropped=0,
+        num_total_stored=len(events_by_task),
     )
 
 
@@ -914,10 +904,6 @@ async def test_api_manager_list_workers(state_api_manager):
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -999,10 +985,6 @@ async def test_api_manager_list_tasks(state_api_manager):
     assert len(result.result) == 1
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks_events(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1111,10 +1093,6 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     assert result["end_time_ms"] is None
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summarize_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1202,10 +1180,6 @@ async def test_api_manager_summarize_tasks(state_api_manager):
     assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1314,10 +1288,6 @@ async def test_api_manager_list_objects(state_api_manager):
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -3469,6 +3439,10 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
             "RAY_MAX_LIMIT_FROM_DATA_SOURCE",
             "10",
         )
+        m.setenv(
+            "RAY_task_events_skip_driver_for_test",
+            "1",
+        )
         ray.init()
 
         @ray.remote
@@ -3485,7 +3459,7 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
         try:
             list_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "Failed to retrieve all" in str(e)
             assert "(> 10)" in str(e)
         else:
             assert False
@@ -3493,7 +3467,7 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
         try:
             summarize_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "Failed to retrieve all" in str(e)
             assert "(> 10)" in str(e)
         else:
             assert False
