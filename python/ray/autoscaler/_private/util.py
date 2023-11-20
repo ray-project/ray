@@ -365,7 +365,7 @@ def fill_node_type_min_max_worker_nodes(config):
     Sets default per-node min workers to zero.
     Also sets default max_worker_nodes for the head node to zero.
     """
-    assert "max_worker_nodes" in config, "Global max workers should be set."
+    assert "max_worker_nodes" in config, "Global max worker nodes should be set."
     node_types = config["available_node_types"]
     for node_type_name in node_types:
         node_type_data = node_types[node_type_name]
