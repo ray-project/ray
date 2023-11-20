@@ -1414,10 +1414,13 @@ class DeploymentState:
         is_scaling = target_state.equal_to_state_excluding_num_replicas(
             self._target_state
         )
-        # If deployment is not in the middle of updating, and this new
-        # target state only changes the number of replicas, then set
-        # status to be UPSCALING/DOWNSCALING
+        # If there is no existing info in target state, this is being
+        # deployed for the first time, therefore the status should be
+        # UPDATING.
         if self._target_state.info and is_scaling:
+            # If deployment is not in the middle of updating, and this new
+            # target state only changes the number of replicas, then set
+            # status to be UPSCALING/DOWNSCALING
             if self._curr_status_info.status != DeploymentStatus.UPDATING:
                 new, old = (target_state.num_replicas, self._target_state.num_replicas)
                 # New replicas should never be equal to old replicas because both
@@ -1430,7 +1433,7 @@ class DeploymentState:
                     if new > old
                     else DeploymentStatus.DOWNSCALING
                 )
-                self._curr_status_info.update(
+                self._curr_status_info = self._curr_status_info.update(
                     status=scaling_decision,
                     status_trigger=status_trigger,
                     message=(
@@ -1439,7 +1442,7 @@ class DeploymentState:
                 )
         else:
             # Otherwise, the deployment configuration has actually been updated.
-            self._curr_status_info.update(
+            self._curr_status_info = self._curr_status_info.update(
                 status=DeploymentStatus.UPDATING, status_trigger=status_trigger
             )
 
@@ -1840,7 +1843,7 @@ class DeploymentState:
                 # reached target replica count
                 self._replica_constructor_retry_counter = -1
             else:
-                self._curr_status_info.update(
+                self._curr_status_info = self._curr_status_info.update(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=(
@@ -1889,10 +1892,9 @@ class DeploymentState:
                 else:
                     status_trigger = self._curr_status_info.status_trigger
 
-                self._curr_status_info.update(
+                self._curr_status_info = self._curr_status_info.update(
                     status=DeploymentStatus.HEALTHY,
                     status_trigger=status_trigger,
-                    message="",
                 )
 
                 return False, any_replicas_recovering
@@ -2037,7 +2039,7 @@ class DeploymentState:
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
                 if replica.version == self._target_state.version:
-                    self._curr_status_info.update(
+                    self._curr_status_info = self._curr_status_info.update(
                         status=DeploymentStatus.UNHEALTHY,
                         status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                         message="A replica's health check failed. This "
@@ -2089,7 +2091,7 @@ class DeploymentState:
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info.update(
+                    self._curr_status_info = self._curr_status_info.update(
                         status=DeploymentStatus.UPDATING,
                         message=message,
                     )
@@ -2107,7 +2109,7 @@ class DeploymentState:
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info.update(
+                    self._curr_status_info = self._curr_status_info.update(
                         status=DeploymentStatus.UPDATING,
                         message=message,
                     )
@@ -2183,7 +2185,7 @@ class DeploymentState:
                 "Exception occurred trying to update deployment state:\n"
                 + traceback.format_exc()
             )
-            self._curr_status_info.update(
+            self._curr_status_info = self._curr_status_info.update(
                 status=DeploymentStatus.UNHEALTHY,
                 status_trigger=DeploymentStatusTrigger.INTERNAL_ERROR,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",

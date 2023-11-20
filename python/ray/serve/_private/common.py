@@ -132,10 +132,18 @@ class DeploymentStatusInfo:
     def debug_string(self):
         return json.dumps(asdict(self), indent=4)
 
-    def update(self, **kwargs):
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
+    def update(
+        self,
+        status: DeploymentStatus = None,
+        status_trigger: DeploymentStatusTrigger = None,
+        message: str = "",
+    ):
+        return DeploymentStatusInfo(
+            name=self.name,
+            status=status if status else self.status,
+            status_trigger=status_trigger if status_trigger else self.status_trigger,
+            message=message,
+        )
 
     def to_proto(self):
         return DeploymentStatusInfoProto(
