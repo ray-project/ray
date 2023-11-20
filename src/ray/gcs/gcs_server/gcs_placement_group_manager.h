@@ -36,7 +36,6 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-class GcsMonitorServerTest;
 namespace gcs {
 
 /// GcsPlacementGroup just wraps `PlacementGroupTableData` and provides some convenient
@@ -379,20 +378,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     usage_stats_client_ = usage_stats_client;
   }
 
-  /// Get a read only view of the pending placement groups.
-  ///
-  /// \return Pending placement groups.
-  const absl::btree_multimap<
-      int64_t,
-      std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-      &GetPendingPlacementGroups() const;
-
-  /// Get a read only view of the infeasible placement groups.
-  ///
-  /// \return Infeasible placement groups.
-  const std::deque<std::shared_ptr<GcsPlacementGroup>> &GetInfeasiblePlacementGroups()
-      const;
-
   /// Get the placement group load information.
   ///
   /// The API guarantees the returned placement groups' states
@@ -532,8 +517,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
-
-  friend GcsMonitorServerTest;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);

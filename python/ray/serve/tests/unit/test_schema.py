@@ -624,10 +624,10 @@ class TestLoggingConfig:
                 "enable_access_log": True,
             }
         )
-        assert schema.log_level == logging.DEBUG
+        assert schema.log_level == "DEBUG"
         assert schema.encoding == "JSON"
         assert schema.logs_dir == "/my_dir"
-        assert schema.enable_access_log is True
+        assert schema.enable_access_log
 
         # Test string values for log_level.
         schema = LoggingConfig.parse_obj(
@@ -635,7 +635,7 @@ class TestLoggingConfig:
                 "log_level": "DEBUG",
             }
         )
-        assert schema.log_level == logging.DEBUG
+        assert schema.log_level == "DEBUG"
 
     def test_wrong_encoding_type(self):
         with pytest.raises(ValidationError):
@@ -650,7 +650,7 @@ class TestLoggingConfig:
 
     def test_default_values(self):
         schema = LoggingConfig.parse_obj({})
-        assert schema.log_level == logging.INFO
+        assert schema.log_level == "INFO"
         assert schema.encoding == "TEXT"
         assert schema.logs_dir is None
         assert schema.enable_access_log

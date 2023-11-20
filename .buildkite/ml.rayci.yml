@@ -214,7 +214,24 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --parallelism-per-worker 2
-        --except-tags gpu_only,gpu
+        --except-tags gpu_only,gpu,needs_credentials
+    depends_on: mlbuild
+    job_env: forge
+    soft_fail: true
+
+  - label: ":train: ml: flaky authentication tests"
+    tags:
+      - train
+      - branch
+      - skip-on-premerge
+    instance_type: medium
+    commands:
+      - pip install -U boto3==1.28.70 awscli==1.29.70 
+      - $(python ci/env/setup_credentials.py)
+      - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
+        --parallelism-per-worker 3
+        --only-tags needs_credentials
+        --test-env=WANDB_API_KEY --test-env=COMET_API_KEY
     depends_on: mlbuild
     job_env: forge
     soft_fail: true
@@ -232,3 +249,11 @@ steps:
     depends_on: mlgpubuild
     job_env: forge
     soft_fail: true
+
+  - label: ":windows: train tests"
+    tags:
+      - train
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash /c/workdir/.buildkite/windows_ci.sh test_train_windows

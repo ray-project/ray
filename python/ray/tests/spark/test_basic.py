@@ -344,6 +344,67 @@ class TestSparkLocalCluster:
 
         shutdown_ray_cluster()
 
+    def test_autoscaling_config_generation(self):
+        from ray.util.spark.cluster_init import AutoscalingCluster
+
+        autoscaling_cluster = AutoscalingCluster(
+            head_resources={
+                "CPU": 3,
+                "GPU": 4,
+                "memory": 10000000,
+                "object_store_memory": 20000000,
+            },
+            worker_node_types={
+                "ray.worker": {
+                    "resources": {
+                        "CPU": 5,
+                        "GPU": 6,
+                        "memory": 30000000,
+                        "object_store_memory": 40000000,
+                    },
+                    "node_config": {},
+                    "min_workers": 0,
+                    "max_workers": 100,
+                },
+            },
+            extra_provider_config={
+                "extra_aa": "abc",
+                "extra_bb": 789,
+            },
+            upscaling_speed=2.0,
+            idle_timeout_minutes=3.0,
+        )
+
+        config = autoscaling_cluster._config
+
+        assert config["max_workers"] == 100
+
+        assert config["available_node_types"]["ray.head.default"] == {
+            "resources": {
+                "CPU": 3,
+                "GPU": 4,
+                "memory": 10000000,
+                "object_store_memory": 20000000,
+            },
+            "node_config": {},
+            "max_workers": 0,
+        }
+        assert config["available_node_types"]["ray.worker"] == {
+            "resources": {
+                "CPU": 5,
+                "GPU": 6,
+                "memory": 30000000,
+                "object_store_memory": 40000000,
+            },
+            "node_config": {},
+            "min_workers": 0,
+            "max_workers": 100,
+        }
+        assert config["upscaling_speed"] == 2.0
+        assert config["idle_timeout_minutes"] == 3.0
+        assert config["provider"]["extra_aa"] == "abc"
+        assert config["provider"]["extra_bb"] == 789
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

@@ -266,6 +266,7 @@ class RuntimeEnv(dict):
         "docker",
         "worker_process_setup_hook",
         "_nsight",
+        "mpi",
     }
 
     extensions_fields: Set[str] = {
@@ -287,6 +288,7 @@ class RuntimeEnv(dict):
         nsight: Optional[Union[str, Dict[str, str]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
+        mpi: Optional[Dict] = None,
         **kwargs,
     ):
         super().__init__()
@@ -310,7 +312,8 @@ class RuntimeEnv(dict):
             runtime_env["config"] = config
         if worker_process_setup_hook is not None:
             runtime_env["worker_process_setup_hook"] = worker_process_setup_hook
-
+        if mpi is not None:
+            runtime_env["mpi"] = mpi
         if runtime_env.get("java_jars"):
             runtime_env["java_jars"] = runtime_env.get("java_jars")
 
@@ -443,6 +446,9 @@ class RuntimeEnv(dict):
         if "java_jars" in self:
             return list(self["java_jars"])
         return []
+
+    def mpi(self) -> Optional[Union[str, Dict[str, str]]]:
+        return self.get("mpi", None)
 
     def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
         return self.get("_nsight", None)
