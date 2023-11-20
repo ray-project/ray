@@ -1592,7 +1592,6 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
     @OverrideToImplementCustomLogic
-    @DeveloperAPI
     def training_step(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
 
