@@ -560,7 +560,7 @@ Take this simple example that waits for individual nodes to join the cluster.
 You can also download this example from the [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/yarn/example.py).
 Store it locally in a file called `example.py`.
 
-To execute this script in the cloud, just download [this configuration file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-minimal.yaml),
+To execute this script in the cloud, download [this configuration file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-minimal.yaml),
 or copy it here:
 
 ````{dropdown} cluster.yaml
