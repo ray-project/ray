@@ -557,7 +557,7 @@ Take this simple example that waits for individual nodes to join the cluster.
 :language: python
 ```
 ````
-You can also download this example from our [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/yarn/example.py).
+You can also download this example from the [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/yarn/example.py).
 Go ahead and store it locally in a file called `example.py`.
 
 To execute this script in the cloud, just download [this configuration file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-minimal.yaml),
