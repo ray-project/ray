@@ -35,7 +35,6 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
-    _is_local_scheme,
     _lazy_import_pyarrow_dataset,
     _warn_on_high_parallelism,
     get_table_block_metadata,
@@ -305,18 +304,11 @@ def read_datasource(
     if ray_remote_args is None:
         ray_remote_args = {}
 
-    local_uri = False
-    paths = read_args.get("paths", None)
-    if paths and _is_local_scheme(paths):
-        if ray.util.client.ray.is_connected():
-            raise ValueError(
-                f"The local scheme paths {paths} are not supported in Ray Client."
-            )
+    if not datasource.supports_distributed_reads:
         ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-        local_uri = True
 
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
@@ -336,7 +328,6 @@ def read_datasource(
         datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
             datasource,
             ctx,
-            local_uri,
             read_args,
         )
     else:
@@ -355,7 +346,6 @@ def read_datasource(
             get_datasource_or_legacy_reader.remote(
                 datasource,
                 ctx,
-                local_uri,
                 _wrap_arrow_serialization_workaround(read_args),
             )
         )
@@ -505,14 +495,17 @@ def read_bigquery(
     """Create a dataset from BigQuery.
 
     The data to read from is specified via the ``project_id``, ``dataset``
-    and/or ``query``parameters. The dataset is created from the results of
-    executing``query`` if a query is provided. Otherwise, the entire
+    and/or ``query`` parameters. The dataset is created from the results of
+    executing ``query`` if a query is provided. Otherwise, the entire
     ``dataset`` is read.
 
     For more information about BigQuery, see the following concepts:
-    - Project id: `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>` # noqa: E501
-    - Dataset: `Datasets Intro <https://cloud.google.com/bigquery/docs/datasets-intro>` # noqa: E501
-    - Query: `Query Syntax <https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax>` # noqa: E501
+
+    - Project id: `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_
+
+    - Dataset: `Datasets Intro <https://cloud.google.com/bigquery/docs/datasets-intro>`_
+
+    - Query: `Query Syntax <https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax>`_
 
     This method uses the BigQuery Storage Read API which reads in parallel,
     with a Ray read task to handle each stream. The number of streams is
@@ -520,7 +513,7 @@ def read_bigquery(
     or automatically chosen if unspecified (see the ``parallelism`` arg below).
 
     .. warning::
-        The maximum query response size is 10GB. For more information, see `BigQuery response too large to return <https://cloud.google.com/knowledge/kb/bigquery-response-too-large-to-return-consider-setting-allowlargeresults-to-true-in-your-job-configuration-000004266>` # noqa: E501
+        The maximum query response size is 10GB. For more information, see `BigQuery response too large to return <https://cloud.google.com/knowledge/kb/bigquery-response-too-large-to-return-consider-setting-allowlargeresults-to-true-in-your-job-configuration-000004266>`_.
 
     Examples:
         .. testcode::
@@ -535,7 +528,7 @@ def read_bigquery(
 
     Args:
         project_id: The name of the associated Google Cloud Project that hosts the dataset to read.
-            For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+            For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_.
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
         parallelism: The requested parallelism of the read. If -1, it will be
@@ -546,7 +539,7 @@ def read_bigquery(
     Returns:
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
         on the specified BigQuery dataset.
-    """
+    """  # noqa: E501
     datasource = BigQueryDatasource(project_id=project_id, dataset=dataset, query=query)
     return read_datasource(
         datasource,
@@ -567,6 +560,7 @@ def read_parquet(
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -679,6 +673,7 @@ def read_parquet(
             set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
@@ -690,17 +685,27 @@ def read_parquet(
         tensor_column_schema,
         **arrow_parquet_args,
     )
-    return read_datasource(
-        ParquetDatasource(),
-        parallelism=parallelism,
-        paths=paths,
-        filesystem=filesystem,
+
+    dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
+    _block_udf = arrow_parquet_args.pop("_block_udf", None)
+    schema = arrow_parquet_args.pop("schema", None)
+    datasource = ParquetDatasource(
+        paths,
         columns=columns,
-        ray_remote_args=ray_remote_args,
+        dataset_kwargs=dataset_kwargs,
+        to_batch_kwargs=arrow_parquet_args,
+        _block_udf=_block_udf,
+        filesystem=filesystem,
+        schema=schema,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
-        **arrow_parquet_args,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -713,15 +718,14 @@ def read_images(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = ImageDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     size: Optional[Tuple[int, int]] = None,
     mode: Optional[str] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -816,6 +820,7 @@ def read_images(
             that are not found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
@@ -828,21 +833,23 @@ def read_images(
     """
     if meta_provider is None:
         meta_provider = get_image_metadata_provider()
-    return read_datasource(
-        ImageDatasource(),
-        paths=paths,
-        filesystem=filesystem,
-        parallelism=parallelism,
-        meta_provider=meta_provider,
-        ray_remote_args=ray_remote_args,
-        open_stream_args=arrow_open_file_args,
-        partition_filter=partition_filter,
-        partitioning=partitioning,
+
+    datasource = ImageDatasource(
+        paths,
         size=size,
         mode=mode,
         include_paths=include_paths,
+        filesystem=filesystem,
+        meta_provider=meta_provider,
+        open_stream_args=arrow_open_file_args,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -857,10 +864,9 @@ def read_parquet_bulk(
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
-    partition_filter: Optional[PathPartitionFilter] = (
-        ParquetBaseDatasource.file_extension_filter()
-    ),
+    partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = ParquetBaseDatasource._FILE_EXTENSIONS,
     **arrow_parquet_args,
 ) -> Dataset:
     """Create :class:`~ray.data.Dataset` from parquet files without reading metadata.
@@ -935,6 +941,7 @@ def read_parquet_bulk(
             set of arguments, see
             the `PyArrow API <https://arrow.apache.org/docs/python/generated/\
                 pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
        :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -945,18 +952,22 @@ def read_parquet_bulk(
         tensor_column_schema,
         **arrow_parquet_args,
     )
-    return read_datasource(
-        ParquetBaseDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = ParquetBaseDatasource(
+        paths,
+        read_table_args=arrow_parquet_args,
         filesystem=filesystem,
-        columns=columns,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_file_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        file_extensions=file_extensions,
         **arrow_parquet_args,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -969,12 +980,11 @@ def read_json(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = JSONDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
     **arrow_json_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from JSON and JSONL files.
@@ -1021,6 +1031,21 @@ def read_json(
         >>> ds.take(1)
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
+        When reading large files, the default block size configured in PyArrow can be too small,
+        resulting in the following error:
+        ``pyarrow.lib.ArrowInvalid: straddling object straddles two block boundaries
+        (try to increase block size?)``.
+
+        To resolve this, use the ``read_options`` parameter to set a larger block size:
+
+        >>> import pyarrow.json as pajson
+        >>> block_size = 10 << 20 # Set block size to 10MB
+        >>> ray.data.read_json(
+        ...     "s3://anonymous@ray-example-data/log.json",
+        ...     read_options=pajson.ReadOptions(block_size=block_size)
+        ... )
+        Dataset(num_blocks=8, num_rows=1, schema={timestamp: timestamp[s], size: int64})
+
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
@@ -1065,25 +1090,28 @@ def read_json(
         arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
             arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
             json.read_json>`_.
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(JSONDatasource._FILE_EXTENSION)
-    return read_datasource(
-        JSONDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+        meta_provider = get_generic_metadata_provider(JSONDatasource._FILE_EXTENSIONS)
+
+    datasource = JSONDatasource(
+        paths,
+        arrow_json_args=arrow_json_args,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        **arrow_json_args,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -1100,6 +1128,7 @@ def read_csv(
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
     **arrow_csv_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from CSV files.
@@ -1168,9 +1197,8 @@ def read_csv(
 
         Read only ``*.csv`` files from a directory.
 
-        >>> from ray.data.datasource import FileExtensionFilter
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
-        ...     partition_filter=FileExtensionFilter("csv"))
+        ...     file_extensions=["csv"])
         Dataset(num_blocks=..., num_rows=1, schema={a: int64, b: int64})
 
     Args:
@@ -1204,9 +1232,6 @@ def read_csv(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
-            To filter out all file paths except those whose file extension
-            matches e.g., "*.csv*", you can provide a
-            :class:`~ray.data.datasource.FileExtensionFilter`.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
@@ -1219,26 +1244,30 @@ def read_csv(
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
             pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
             when opening CSV files.
-
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(CSVDatasource._FILE_EXTENSION)
-    return read_datasource(
-        CSVDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+        meta_provider = get_generic_metadata_provider(CSVDatasource._FILE_EXTENSIONS)
+
+    datasource = CSVDatasource(
+        paths,
+        arrow_csv_args=arrow_csv_args,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        **arrow_csv_args,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -1257,6 +1286,7 @@ def read_text(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
@@ -1308,36 +1338,36 @@ def read_text(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
-            To filter out all file paths except those whose file extension
-            matches e.g., "*.txt*", you can provide a
-            :class:`~ray.data.datasource.FileExtensionFilter`.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(TextDatasource._FILE_EXTENSION)
-    return read_datasource(
-        TextDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+        meta_provider = get_generic_metadata_provider(TextDatasource._FILE_EXTENSIONS)
+
+    datasource = TextDatasource(
+        paths,
+        drop_empty_lines=drop_empty_lines,
+        encoding=encoding,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
-        drop_empty_lines=drop_empty_lines,
-        encoding=encoding,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -1349,12 +1379,11 @@ def read_numpy(
     parallelism: int = -1,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = NumpyDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
@@ -1396,16 +1425,17 @@ def read_numpy(
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(NumpyDatasource._FILE_EXTENSION)
-    return read_datasource(
-        NumpyDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+        meta_provider = get_generic_metadata_provider(NumpyDatasource._FILE_EXTENSIONS)
+
+    datasource = NumpyDatasource(
+        paths,
+        numpy_load_args=numpy_load_args,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
@@ -1413,7 +1443,11 @@ def read_numpy(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        **numpy_load_args,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
     )
 
 
@@ -1429,6 +1463,7 @@ def read_tfrecords(
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1494,14 +1529,13 @@ def read_tfrecords(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset.
-            By default, this filters out any file paths whose file extension does not
-            match ``"*.tfrecords*"``.
         ignore_missing_paths:  If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
             of the underlying Dataset.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1511,20 +1545,21 @@ def read_tfrecords(
     """
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(
-            TFRecordDatasource._FILE_EXTENSION
+            TFRecordDatasource._FILE_EXTENSIONS
         )
-    return read_datasource(
-        TFRecordDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = TFRecordDatasource(
+        paths,
+        tf_schema=tf_schema,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
-        tf_schema=tf_schema,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI(stability="alpha")
@@ -1542,6 +1577,7 @@ def read_webdataset(
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
@@ -1569,6 +1605,7 @@ def read_webdataset(
         verbose_open: Whether to print the file names as they are opened.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1580,23 +1617,24 @@ def read_webdataset(
     """  # noqa: E501
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(
-            WebDatasetDatasource._FILE_EXTENSION
+            WebDatasetDatasource._FILE_EXTENSIONS
         )
-    return read_datasource(
-        WebDatasetDatasource(),
-        parallelism=parallelism,
-        paths=paths,
-        filesystem=filesystem,
-        open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
-        partition_filter=partition_filter,
+
+    datasource = WebDatasetDatasource(
+        paths,
         decoder=decoder,
         fileselect=fileselect,
         filerename=filerename,
         suffixes=suffixes,
         verbose_open=verbose_open,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
         shuffle=shuffle,
+        file_extensions=file_extensions,
     )
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI
@@ -1613,6 +1651,7 @@ def read_binary_files(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from binary files of arbitrary contents.
 
@@ -1679,27 +1718,28 @@ def read_binary_files(
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
 
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
-    output_arrow_format = True
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(BinaryDatasource._FILE_EXTENSION)
-    return read_datasource(
-        BinaryDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+        meta_provider = get_generic_metadata_provider(BinaryDatasource._FILE_EXTENSIONS)
+
+    datasource = BinaryDatasource(
+        paths,
         include_paths=include_paths,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        output_arrow_format=output_arrow_format,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -2477,7 +2517,6 @@ def from_torch(
 def _get_datasource_or_legacy_reader(
     ds: Datasource,
     ctx: DataContext,
-    local_uri: bool,
     kwargs: dict,
 ) -> Union[Datasource, Reader]:
     """Generates reader.
@@ -2485,7 +2524,6 @@ def _get_datasource_or_legacy_reader(
     Args:
         ds: Datasource to read from.
         ctx: Dataset config to use.
-        local_uri:
         kwargs: Additional kwargs to pass to the legacy reader if
             `Datasource.create_reader` is implemented.
 
@@ -2493,13 +2531,6 @@ def _get_datasource_or_legacy_reader(
         The datasource or a generated legacy reader.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-
-    # NOTE: `ParquetDatasource` has separate steps to fetch metadata and sample rows,
-    # so it needs `local_uri` parameter for now.
-    # TODO(chengsu): stop passing `local_uri` parameter to
-    # `ParquetDatasource.create_reader()`.
-    if local_uri and isinstance(ds, ParquetDatasource):
-        kwargs["local_uri"] = local_uri
 
     DataContext._set_current(ctx)
 

@@ -160,6 +160,51 @@ steps:
     depends_on: rllibbuild
     job_env: forge
 
+  - label: ":brain: rllib: memory leak tf2-eager-tracing tests"
+    tags: rllib
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --only-tags memory_leak_tests
+        --except-tags flaky
+        --test-arg --framework=tf2
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: memory leak pytorch tests"
+    tags: rllib
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --only-tags memory_leak_tests
+        --except-tags flaky
+        --test-arg --framework=torch
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: doc tests"
+    tags: 
+      - rllib_directly
+      - doc
+    instance_type: medium
+    commands:
+      # doc tests
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... rllib 
+        --except-tags gpu
+        --only-tags doctest
+        --parallelism-per-worker 2
+      # doc examples
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... rllib 
+        --except-tags gpu,post_wheel_build,timeseries_libs,doctest
+        --parallelism-per-worker 2
+        --skip-ray-installation
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --only-tags documentation
+        --parallelism-per-worker 2
+        --skip-ray-installation
+    depends_on: rllibbuild
+    job_env: forge
+
   - label: ":brain: rllib: multi-gpu tests"
     tags: 
       - rllib
@@ -177,6 +222,7 @@ steps:
   - label: ":brain: rllib: flaky multi-gpu tests"
     tags: 
       - rllib
+      - skip-on-premerge
       - gpu
     instance_type: gpu-large
     commands:
@@ -190,7 +236,9 @@ steps:
     job_env: forge
 
   - label: ":brain: rllib: flaky tests (learning tests)"
-    tags: rllib
+    tags: 
+      - rllib
+      - skip-on-premerge
     instance_type: large
     commands:
       # torch
@@ -217,7 +265,9 @@ steps:
     job_env: forge
 
   - label: ":brain: rllib: flaky tests (examples/rlmodule/models/tests_dir)"
-    tags: rllib
+    tags: 
+      - rllib
+      - skip-on-premerge
     instance_type: large
     commands:
       # examples
@@ -245,6 +295,21 @@ steps:
         --except-tags multi_gpu,manual
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         --skip-ray-installation # reuse the same docker image as the previous run
+    depends_on: rllibbuild
+    soft_fail: true
+    job_env: forge
+
+  - label: ":brain: rllib: flaky tests (memory leak)"
+    tags: 
+      - rllib
+      - skip-on-premerge
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --run-flaky-tests
+        --only-tags memory_leak_tests
+        --except-tags flaky
+        --test-arg --framework=tf2
     depends_on: rllibbuild
     soft_fail: true
     job_env: forge

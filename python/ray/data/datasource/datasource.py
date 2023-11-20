@@ -157,6 +157,11 @@ class Datasource:
             or not has_implemented_estimate_inmemory_data_size
         )
 
+    @property
+    def supports_distributed_reads(self) -> bool:
+        """If ``False``, only launch read tasks on the driver's node."""
+        return True
+
 
 @Deprecated
 class Reader:
