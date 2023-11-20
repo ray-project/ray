@@ -749,7 +749,9 @@ class Trial:
             return None
         return os.path.join(self.local_path, self.run_metadata.pickled_error_filename)
 
-    def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
+    def handle_error(
+        self, exc: Optional[Union[TuneError, RayTaskError, RayActorError]] = None
+    ):
         if isinstance(exc, _TuneRestoreError):
             exc = exc.exc
             if self.temporary_state.num_restore_failures >= int(
@@ -760,12 +762,17 @@ class Trial:
                 self.run_metadata.num_failures += 1
             else:
                 self.temporary_state.num_restore_failures += 1
+        elif isinstance(exc, RayActorError):
+            exc._preempted = True  # TODO(justinvyu): Test the real integration
+            if not exc._preempted:
+                # Only count non-preempted actor errors as failures.
+                self.run_metadata.num_failures += 1
         else:
             self.run_metadata.num_failures += 1
 
         if self.local_path:
             self.run_metadata.error_filename = EXPR_ERROR_FILE
-            if isinstance(exc, RayTaskError):
+            if isinstance(exc, (RayTaskError, RayActorError)):
                 # Piping through the actual error to result grid.
                 self.run_metadata.pickled_error_filename = EXPR_ERROR_PICKLE_FILE
                 with open(self.pickled_error_file, "wb") as f:
