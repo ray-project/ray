@@ -1013,7 +1013,7 @@ class TensorArray(
         extension array to object dtype. This uses the helper method
         :func:`pandas.api.extensions.take`.
 
-        .. code-block:: python
+        .. testcode::
 
            def take(self, indices, allow_fill=False, fill_value=None):
                from pandas.core.algorithms import take
