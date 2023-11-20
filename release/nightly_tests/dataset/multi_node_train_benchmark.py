@@ -21,6 +21,7 @@ from image_loader_microbenchmark import get_mosaic_dataloader
 import torch
 import torch.distributed as dist
 from torchvision.models import resnet50
+from torchvision.transforms.functional import pil_to_tensor
 import torch.nn as nn
 import torch.optim as optim
 
@@ -37,8 +38,9 @@ from dataset_benchmark_util import (
 # 2) Apply preprocessing with map()
 # 3) Train TorchTrainer on processed data with resnet50 model
 # Metrics recorded to the output file are:
-# - ray.torchtrainer.fit: Throughput of the final epoch in
-#   TorchTrainer.fit() (step 3 above)
+# - Runtime of benchmark (s)
+# - Final epoch throughput (img/s)
+# - Final epoch top-1 accuracy (%)
 
 
 def parse_args():
@@ -90,6 +92,12 @@ def parse_args():
         help="Number of epochs to run. The avg per-epoch throughput will be reported.",
     )
     parser.add_argument(
+        "--num-retries",
+        default=3,
+        type=int,
+        help="Number of retries for the Traine before exiting the benchmark.",
+    )
+    parser.add_argument(
         "--num-workers",
         default=1,
         type=int,
@@ -120,7 +128,7 @@ def parse_args():
         help="",
     )
     parser.add_argument(
-        "--synthetic-data",
+        "--use-synthetic-data",
         action="store_true",
         default=False,
         help=(
@@ -159,6 +167,11 @@ def parse_args():
         }
     )
 
+    if not (args.use_torch or args.use_mosaic or args.use_synthetic_data):
+        args.use_ray_data = True
+    else:
+        args.use_ray_data = False
+
     if args.data_root is None and not args.use_mosaic:
         # use default datasets if data root is not provided
         if args.file_type == "image":
@@ -174,7 +187,7 @@ def parse_args():
             )
         if args.repeat_ds > 1:
             args.data_root = [args.data_root] * args.repeat_ds
-    if args.file_type == "parquet":
+    if args.file_type == "parquet" or args.use_torch or args.use_mosaic:
         # Training model is only supported for images currently.
         # Parquet files do not have labels.
         args.skip_train_model = True
@@ -185,9 +198,31 @@ def parse_args():
 DEFAULT_IMAGE_SIZE = 224
 
 
+def _get_ray_data_batch_iterator(args, worker_rank):
+    if args.split_input:
+        it = train.get_dataset_shard(f"train_{worker_rank}")
+    else:
+        it = train.get_dataset_shard("train")
+    return it.iter_torch_batches(
+        batch_size=args.batch_size,
+        local_shuffle_buffer_size=args.batch_size / 2,
+    )
+
+
+def _get_batch_num_rows(batch):
+    if not (args.use_torch or args.use_mosaic):
+        return batch["image"].size(dim=0)
+    return batch.size(dim=0)
+
+
 def train_loop_per_worker():
     worker_rank = train.get_context().get_world_rank()
     device = train.torch.get_device()
+    world_size = ray.train.get_context().get_world_size()
+    local_world_size = ray.train.get_context().get_local_world_size()
+    torch_num_workers = args.torch_num_workers or os.cpu_count()
+    # Divide by the number of Train workers because each has its own dataloader.
+    torch_num_workers //= local_world_size
 
     # Setup the model
     raw_model = resnet50(weights=None)
@@ -195,75 +230,65 @@ def train_loop_per_worker():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
 
-    # Get the appropriate data loading solution.
+    # Get the configured data loading solution.
     batch_iter = None
-    if not args.synthetic_data:
-        if args.split_input:
-            it = train.get_dataset_shard(f"train_{worker_rank}")
-        else:
-            it = train.get_dataset_shard("train")
 
-    if args.use_torch or args.use_mosaic:
-        torch_num_workers = args.torch_num_workers or os.cpu_count()
-        # Divide by the number of Train workers because each has its own dataloader.
-        torch_num_workers //= ray.train.get_context().get_local_world_size()
+    if args.use_torch:
+        batch_iter = get_torch_data_loader(
+            worker_rank=worker_rank,
+            batch_size=args.batch_size,
+            num_workers=torch_num_workers,
+            transform=get_transform(False),
+        )
+    elif args.use_mosaic:
+        target_epoch_size = get_mosaic_epoch_size(
+            args.num_workers, target_worker_gb=args.target_worker_gb
+        )
+        print(
+            "Epoch size:",
+            target_epoch_size if target_epoch_size is not None else "all",
+            "images",
+        )
+        num_physical_nodes = world_size // local_world_size
+        batch_iter = get_mosaic_dataloader(
+            args.data_root,
+            batch_size=args.batch_size,
+            num_physical_nodes=num_physical_nodes,
+            epoch_size=target_epoch_size,
+            num_workers=torch_num_workers,
+        )
 
-        if args.use_torch:
-            batch_iter = get_torch_data_loader(
-                worker_rank=worker_rank,
-                batch_size=args.batch_size,
-                num_workers=torch_num_workers,
-                transform=get_transform(True),
-            )
-        elif args.use_mosaic:
-            target_epoch_size = get_mosaic_epoch_size(
-                args.num_workers, target_worker_gb=args.target_worker_gb
-            )
-            print(
-                "Epoch size:",
-                target_epoch_size if target_epoch_size is not None else "all",
-                "images",
-            )
-            num_physical_nodes = (
-                ray.train.get_context().get_world_size()
-                // ray.train.get_context().get_local_world_size()
-            )
-            batch_iter = get_mosaic_dataloader(
-                args.data_root,
-                batch_size=args.batch_size,
-                num_physical_nodes=num_physical_nodes,
-                epoch_size=target_epoch_size,
-                num_workers=torch_num_workers,
-            )
-
-    world_size = ray.train.get_context().get_world_size()
     all_workers_time_list_across_epochs = []
     validation_accuracy_per_epoch = []
     # Validation loop with non-random cropped dataset
     # is only supported for image dataset.
-    run_validation_set = not args.synthetic_data and args.file_type == "image"
+    run_validation_set = args.use_ray_data and args.file_type == "image"
+
+    # Begin training over the configured number of epochs.
     for epoch in range(args.num_epochs):
-        if args.synthetic_data:
+        # Ray Data needs to call iter_torch_batches on each epoch.
+        if args.use_ray_data:
+            batch_iter = _get_ray_data_batch_iterator(args, worker_rank)
+            if run_validation_set:
+                val_ds = train.get_dataset_shard("val")
+                batch_iter_val = val_ds.iter_torch_batches(batch_size=args.batch_size)
+        # For synthetic data, we need to create the iterator each epoch.
+        elif args.use_synthetic_data:
             # Generate a random batch, and continuously yield the same batch 1000 times.
+            NUM_BATCHES_PER_EPOCH = 1000
             sample_batch = {
                 "image": torch.rand(
                     (args.batch_size, 3, DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE),
                     device=device,
                 ),
-                "label": torch.randint(0, 1000, (args.batch_size,), device=device),
+                "label": torch.randint(
+                    0,
+                    NUM_BATCHES_PER_EPOCH,
+                    (args.batch_size,),
+                    device=device,
+                ),
             }
-            it = itertools.repeat(sample_batch, 1000)
-            batch_iter = it
-        # Ray Data needs to call iter_torch_batches on each epoch.
-        elif isinstance(it, ray.data.iterator.DataIterator):
-            batch_iter = it.iter_torch_batches(
-                batch_size=args.batch_size,
-                local_shuffle_buffer_size=args.batch_size / 2,
-            )
-
-            if run_validation_set:
-                val_ds = train.get_dataset_shard("val")
-                batch_iter_val = val_ds.iter_torch_batches(batch_size=args.batch_size)
+            batch_iter = itertools.repeat(sample_batch, NUM_BATCHES_PER_EPOCH)
 
         print(f"Epoch {epoch+1} of {args.num_epochs}")
         num_rows = 0
@@ -271,10 +296,7 @@ def train_loop_per_worker():
         num_batches = 0.0
         total_loss = 0.0
         for batch_idx, batch in enumerate(batch_iter):
-            if not (args.use_torch or args.use_mosaic):
-                num_rows += batch["image"].size(dim=0)
-            else:
-                num_rows += batch.size(dim=0)
+            num_rows += _get_batch_num_rows(batch)
 
             if not args.skip_train_model:
                 # get the inputs; data is a list of [inputs, labels]
@@ -300,7 +322,7 @@ def train_loop_per_worker():
             if batch_idx % 2000 == 1999:  # print every 2000 mini-batches
                 print(
                     f"[{epoch + 1}, {batch_idx + 1:5d}]"
-                    f"loss: {total_loss / 2000:.3f}, "
+                    f"loss: {total_loss / 2000:.3f}"
                 )
         end_t = time.time()
 
@@ -418,7 +440,11 @@ def split_input_files_per_worker(args):
     import numpy as np
     from torchdata.datapipes.iter import IterableWrapper
 
-    file_url_dp = IterableWrapper(args.data_root).list_files_by_s3()
+    data_root_iter = args.data_root
+    if isinstance(data_root_iter, str):
+        data_root_iter = [data_root_iter]
+
+    file_url_dp = IterableWrapper(data_root_iter).list_files_by_s3()
     all_files = list(file_url_dp)
     INPUT_FILES_PER_WORKER = [
         f.tolist() for f in np.array_split(all_files, args.num_workers)
@@ -448,7 +474,9 @@ def get_torch_data_loader(worker_rank, batch_size, num_workers, transform=None):
         image = Image.open(io.BytesIO(data))
         image = image.convert("RGB")
         if transform is not None:
-            image = transform(image)
+            image = transform(
+                pil_to_tensor(image) / 255.0,
+            )
         return image
 
     class FileURLDataset:
@@ -530,8 +558,9 @@ def benchmark_code(
                 )
 
                 val_dataset = ray.data.Dataset.copy(ray_dataset)
-                # Full random shuffle results in OOM.
-                # Use iter_batches `local_shuffle_buffer_size` instead.
+                # Full random shuffle results in OOM. Instead, use the
+                # `ds.iter_batches(local_shuffle_buffer_size=...)`
+                # parameter in the training loop.
                 # ray_dataset = ray_dataset.random_shuffle()
 
                 def wnid_to_index(row):
@@ -578,7 +607,7 @@ def benchmark_code(
         ),
         run_config=RunConfig(
             storage_path="/mnt/cluster_storage",
-            failure_config=train.FailureConfig(5),
+            failure_config=train.FailureConfig(args.num_retries),
         ),
     )
 
@@ -618,7 +647,7 @@ def benchmark_code(
 
 if __name__ == "__main__":
     args = parse_args()
-    data_type = "synthetic" if args.synthetic_data else args.file_type
+    data_type = "synthetic" if args.use_synthetic_data else args.file_type
     benchmark_name = (
         f"read_{data_type}_repeat{args.repeat_ds}_train_"
         f"{args.num_workers}workers_{args.target_worker_gb}gb_per_worker"
@@ -626,6 +655,8 @@ if __name__ == "__main__":
 
     if args.preserve_order:
         benchmark_name = f"{benchmark_name}_preserve_order"
+    if not args.skip_train_model:
+        benchmark_name = f"{benchmark_name}_resnet50"
     if args.cache_input_ds:
         case_name = "cache-input"
     elif args.cache_output_ds:

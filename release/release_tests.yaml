@@ -5769,7 +5769,7 @@
 
   run:
     timeout: 21600
-    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 3
 
   variations:
     - __suffix__: aws
