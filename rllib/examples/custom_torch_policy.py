@@ -46,6 +46,7 @@ if __name__ == "__main__":
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "num_workers": 2,
             "framework": "torch",
+            "_enable_rl_module_api": False,
         },
     )
     tuner.fit()
