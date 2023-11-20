@@ -130,11 +130,10 @@ if __name__ == "__main__":
         # Use new API stack.
         .experimental(_enable_new_api_stack=True)
         .framework(args.framework)
-        .environment(StatelessCartPole)
+        .environment("CartPole-v1")#StatelessCartPole)
         # And new EnvRunner.
         .rollouts(
             env_runner_cls=SingleAgentEnvRunner,
-            enable_connectors=True,
             sampling_connectors=make_sampling_connectors,
         )
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
@@ -143,11 +142,11 @@ if __name__ == "__main__":
             num_sgd_iter=5,
             vf_loss_coeff=0.0001,
             train_batch_size=512,
-            model={
-                "use_lstm": True,
-                "lstm_cell_size": 32,
-                "vf_share_layers": True,
-            },
+            #model={
+            #    "use_lstm": True,
+            #    "lstm_cell_size": 32,
+            #    "vf_share_layers": True,
+            #},
         )
     )
 

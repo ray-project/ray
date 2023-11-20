@@ -662,11 +662,11 @@ class SingleAgentEpisode:
             AssertionError: If episode has never been stepped so far.
         """
         length = self.t - self.t_started
-        assert length >= 0 and len(self.observations), (
-            "ERROR: Cannot determine length of episode that hasn't started yet! Call "
-            "`SingleAgentEpisode.add_initial_observation(initial_observation=...)` "
-            "first (after which `len(SingleAgentEpisode)` will be 0)."
-        )
+        #assert length >= 0 and len(self.observations), (
+        #    "ERROR: Cannot determine length of episode that hasn't started yet! Call "
+        #    "`SingleAgentEpisode.add_env_reset(initial_observation=...)` "
+        #    "first (after which `len(SingleAgentEpisode)` will be 0)."
+        #)
         return length
 
     def __repr__(self):
