@@ -21,7 +21,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
             agent_id: gym.spaces.Discrete(200) for agent_id in self._agent_ids
         }
 
-        self.agents_alive = set(self._agent_ids)
+        self._agents_alive = set(self._agent_ids)
 
     def reset(
         self,
@@ -29,25 +29,21 @@ class MultiAgentTestEnv(MultiAgentEnv):
         seed: Optional[int] = None,
         options: Optional[dict] = None,
     ) -> Tuple[MultiAgentDict, MultiAgentDict]:
-        # TODO (simon): Seed does not work. The results are always different.
-        super().reset(seed=seed)
-        for agent_id, space in self.action_space.items():
-            space.seed(seed)
-            self.observation_space[agent_id].seed(seed)
+        super().reset(seed=seed, options=options)
 
         self.t = 0
         # The number of agents that are ready at this timestep.
-        num_agents_step = np.random.randint(1, len(self._agent_ids))
+        num_agents_step = self._np_random.integers(1, len(self._agent_ids))
         # The agents that are ready.
-        agents_step = np.random.choice(
-            np.array(list(self._agent_ids)), num_agents_step, replace=False
+        agents_step = self._np_random.choice(
+            np.array(sorted(self._agent_ids)), num_agents_step, replace=False
         )
         # Initialize observations.
         init_obs = {agent_id: 0 for agent_id in agents_step}
         init_info = {agent_id: {} for agent_id in agents_step}
 
         # Reset all alive agents to all agents.
-        self.agents_alive = set(self._agent_ids)
+        self._agents_alive = set(self._agent_ids)
 
         return init_obs, init_info
 
@@ -58,10 +54,10 @@ class MultiAgentTestEnv(MultiAgentEnv):
     ]:
         self.t += 1
         # The number of agents that are ready at this timestep.
-        num_agents_step = np.random.randint(1, len(self.agents_alive))
+        num_agents_step = self._np_random.integers(1, len(self._agents_alive))
         # The agents that are ready.
-        agents_step = np.random.choice(
-            np.array(list(self.agents_alive)), num_agents_step, replace=False
+        agents_step = self._np_random.choice(
+            np.array(sorted(self._agents_alive)), num_agents_step, replace=False
         )
         # Initialize observations.
         obs = {agent_id: self.t for agent_id in agents_step}
@@ -71,8 +67,8 @@ class MultiAgentTestEnv(MultiAgentEnv):
         reward.update(
             {
                 agent_id: 1.0
-                for agent_id in np.random.choice(
-                    np.array(list(self.agents_alive)), 8, replace=False
+                for agent_id in self._np_random.choice(
+                    np.array(sorted(self._agents_alive)), 8, replace=False
                 )
                 if agent_id not in reward
             }
@@ -87,7 +83,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
             # Let agent 1 die.
             is_terminated["agent_1"] = True
             is_truncated["agent_1"] = False
-            self.agents_alive -= {"agent_1"}
+            self._agents_alive -= {"agent_1"}
             obs.update({"agent_1": self.t})
             reward.update({"agent_1": 1.0})
             info.update({"agent_1": {}})
@@ -95,7 +91,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
             # Let agent 5 die.
             is_terminated["agent_5"] = True
             is_truncated["agent_5"] = False
-            self.agents_alive -= {"agent_5"}
+            self._agents_alive -= {"agent_5"}
             obs.update({"agent_5": self.t})
             reward.update({"agent_5": 1.0})
             info.update({"agent_5": {}})
@@ -151,7 +147,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             action = {
                 agent_id: i + 1
                 for agent_id in agents_stepped
-                if agent_id in env.agents_alive
+                if agent_id in env._agents_alive
             }
             # action = env.action_space_sample(agents_stepped)
             obs, reward, is_terminated, is_truncated, info = env.step(action)
@@ -162,10 +158,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             is_terminateds.append(is_terminated)
             is_truncateds.append(is_truncated)
             extra_model_outputs.append(
-                {
-                    agent_id: {"extra_1": np.random.random()}
-                    for agent_id in agents_stepped
-                }
+                {agent_id: {"extra_1": 10.5} for agent_id in agents_stepped}
             )
 
         episode = MultiAgentEpisode(
@@ -198,7 +191,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Test now intiializing an episode and setting the starting timestep at once.
         episode = MultiAgentEpisode(
-            agent_ids=list(env.agents_alive) + ["agent_5"],
+            agent_ids=list(env._agents_alive) + ["agent_5"],
             observations=observations[-11:],
             actions=actions[-10:],
             rewards=rewards[-10:],
@@ -295,7 +288,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Sample 100 timesteps and add them to the episode.
         for i in range(100):
             action = {
-                agent_id: i + 1 for agent_id in obs if agent_id in env.agents_alive
+                agent_id: i + 1 for agent_id in obs if agent_id in env._agents_alive
             }
             obs, reward, is_terminated, is_truncated, info = env.step(action)
 
@@ -306,9 +299,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 info=info,
                 is_terminated=is_terminated,
                 is_truncated=is_truncated,
-                extra_model_output={
-                    agent_id: {"extra": np.random.random()} for agent_id in action
-                },
+                extra_model_output={agent_id: {"extra": 10.5} for agent_id in action},
             )
 
         # Assert that the timestep is at 100.
@@ -335,7 +326,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Run another 100 timesteps.
         for i in range(100, 200):
             action = {
-                agent_id: i + 1 for agent_id in obs if agent_id in env.agents_alive
+                agent_id: i + 1 for agent_id in obs if agent_id in env._agents_alive
             }
             obs, reward, is_terminated, is_truncated, info = env.step(action)
             episode.add_timestep(
@@ -345,9 +336,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 info=info,
                 is_terminated=is_terminated,
                 is_truncated=is_truncated,
-                extra_model_output={
-                    agent_id: {"extra": np.random.random()} for agent_id in action
-                },
+                extra_model_output={agent_id: {"extra": 10.5} for agent_id in action},
             )
 
         # Assert that the environment is done.
@@ -434,7 +423,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 is_terminated=is_terminated,
                 is_truncated=is_truncated,
                 extra_model_output={
-                    agent_id: {"extra": np.random.random(10)} for agent_id in action
+                    agent_id: {"extra": env.np_random.random(10)} for agent_id in action
                 },
             )
         # Assert that the episode has 100 timesteps.
@@ -887,13 +876,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         episode_1 = MultiAgentEpisode(agent_ids=env._agent_ids)
 
         # Generate initial observation and info.
-        obs, info = env.reset(seed=0)
+        obs, info = env.reset(seed=42)
         episode_1.add_initial_observation(
             initial_observation=obs,
             initial_info=info,
         )
         # Now, generate 100 samples.
-        # np.random.seed(0)
         for i in range(100):
             action = {agent_id: i for agent_id in obs}
             obs, reward, is_terminated, is_truncated, info = env.step(action)
@@ -907,18 +895,634 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 extra_model_output={agent_id: {"extra": 10} for agent_id in action},
             )
 
+        # First, receive the last rewards without considering buffered values.
+        last_rewards = episode_1.get_rewards(partial=False, consider_buffer=False)
+        self.assertIn("agent_9", last_rewards)
+        self.assertEqual(episode_1.global_t_to_local_t["agent_9"][-1], 100)
+        self.assertEqual(episode_1.agent_episodes["agent_9"].rewards[-1], 1.0)
+        self.assertEqual(last_rewards["agent_9"][0], 1.0)
+        self.assertIn("agent_0", last_rewards)
+        self.assertEqual(episode_1.global_t_to_local_t["agent_0"][-1], 100)
+        self.assertEqual(episode_1.agent_episodes["agent_0"].rewards[-1], 1.0)
+        self.assertEqual(last_rewards["agent_0"][0], 1.0)
+        self.assertIn("agent_2", last_rewards)
+        self.assertEqual(episode_1.global_t_to_local_t["agent_2"][-1], 100)
+        self.assertEqual(episode_1.agent_episodes["agent_2"].rewards[-1], 1.0)
+        self.assertEqual(last_rewards["agent_2"][0], 1.0)
+        self.assertIn("agent_5", last_rewards)
+        self.assertEqual(episode_1.global_t_to_local_t["agent_5"][-1], 100)
+        self.assertEqual(episode_1.agent_episodes["agent_5"].rewards[-1], 1.0)
+        self.assertEqual(last_rewards["agent_5"][0], 1.0)
+        self.assertIn("agent_8", last_rewards)
+        self.assertEqual(episode_1.global_t_to_local_t["agent_8"][-1], 100)
+        self.assertEqual(episode_1.agent_episodes["agent_8"].rewards[-1], 1.0)
+        self.assertEqual(last_rewards["agent_8"][0], 1.0)
+        self.assertIn("agent_4", last_rewards)
+        self.assertEqual(episode_1.global_t_to_local_t["agent_4"][-1], 100)
+        self.assertEqual(episode_1.agent_episodes["agent_4"].rewards[-1], 1.0)
+        self.assertEqual(last_rewards["agent_4"][0], 1.0)
+        self.assertIn("agent_3", last_rewards)
+        self.assertEqual(episode_1.global_t_to_local_t["agent_3"][-1], 100)
+        # Agent 3 had a partial reward before the last recorded observation.
+        self.assertEqual(episode_1.agent_episodes["agent_3"].rewards[-1], 2.0)
+        self.assertEqual(last_rewards["agent_3"][0], 2.0)
+        # Assert that all the other agents are not in the returned rewards.
+        self.assertNotIn("agent_1", last_rewards)
+        self.assertNotIn("agent_6", last_rewards)
+        self.assertNotIn("agent_7", last_rewards)
+
+        # Now return the same as list.
+        last_rewards = episode_1.get_rewards(
+            partial=False, consider_buffer=False, as_list=True
+        )
+        self.assertIn("agent_9", last_rewards[0])
+        self.assertEqual(last_rewards[0]["agent_9"], 1.0)
+        self.assertIn("agent_0", last_rewards[0])
+        self.assertEqual(last_rewards[0]["agent_0"], 1.0)
+        self.assertIn("agent_2", last_rewards[0])
+        self.assertEqual(last_rewards[0]["agent_2"], 1.0)
+        self.assertIn("agent_5", last_rewards[0])
+        self.assertEqual(last_rewards[0]["agent_5"], 1.0)
+        self.assertIn("agent_8", last_rewards[0])
+        self.assertEqual(last_rewards[0]["agent_8"], 1.0)
+        self.assertIn("agent_4", last_rewards[0])
+        self.assertEqual(last_rewards[0]["agent_4"], 1.0)
+        self.assertIn("agent_3", last_rewards[0])
+        self.assertEqual(last_rewards[0]["agent_3"], 2.0)
+        # Assert that all the other agents are not in the returned rewards.
+        self.assertNotIn("agent_1", last_rewards)
+        self.assertNotIn("agent_6", last_rewards)
+        self.assertNotIn("agent_7", last_rewards)
+
+        # Now request the last two indices.
+        last_rewards = episode_1.get_rewards(
+            [-1, -2], partial=False, consider_buffer=False
+        )
+        self.assertIn("agent_9", last_rewards)
+        self.assertListEqual(episode_1.global_t_to_local_t["agent_9"][-2:], [99, 100])
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_9"].rewards[-2:], last_rewards["agent_9"]
+        )
+        self.assertIn("agent_5", last_rewards)
+        self.assertListEqual(episode_1.global_t_to_local_t["agent_5"][-2:], [99, 100])
+        # Agent 5 has already died, so we need to convert back to list.
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_5"].rewards.tolist()[-2:],
+            last_rewards["agent_5"],
+        )
+        self.assertIn("agent_2", last_rewards)
+        self.assertListEqual(episode_1.global_t_to_local_t["agent_2"][-2:], [99, 100])
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_2"].rewards[-1:-3:-1],
+            last_rewards["agent_2"],
+        )
+        # Agent 2 had no observation at `ts=98`, but partial rewards.
+        self.assertGreater(99, episode_1.global_t_to_local_t["agent_2"][-3])
+        # Ensure that for agent 2 there had been three partial rewards in between the
+        # observation at `ts=95` and the next at `ts=99`.
+        self.assertListEqual(
+            episode_1.partial_rewards_t["agent_2"][-4:-1], [96, 98, 99]
+        )
+        self.assertIn("agent_3", last_rewards)
+        # Agent 3 had no observation at `ts=99`.
+        self.assertListEqual(episode_1.global_t_to_local_t["agent_3"][-2:], [98, 100])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards["agent_3"][0]
+        )
+        # Ensure that there was a partial reward at `ts=99`.
+        self.assertListEqual(episode_1.partial_rewards_t["agent_3"][-2:], [99, 100])
+        self.assertIn("agent_4", last_rewards)
+        self.assertListEqual(episode_1.global_t_to_local_t["agent_4"][-2:], [99, 100])
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_4"].rewards[-2:], last_rewards["agent_4"]
+        )
+        self.assertIn("agent_8", last_rewards)
+        # Ensure that the third-last observation is before `ts=98`.
+        self.assertListEqual(
+            episode_1.global_t_to_local_t["agent_8"][-3:], [97, 99, 100]
+        )
+        # Ensure also that at `ts=97` there was a reward.
+        self.assertListEqual(episode_1.partial_rewards_t["agent_8"][-3:-1], [98, 99])
+        self.assertListEqual([1.0, 2.0], last_rewards["agent_8"])
+        self.assertIn("agent_7", last_rewards)
+        # Agent 7 has no observation at `ts=100`, but at `ts=98`.
+        self.assertListEqual(episode_1.global_t_to_local_t["agent_7"][-2:], [98, 99])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_7"].rewards[-1], last_rewards["agent_7"][0]
+        )
+        self.assertIn("agent_0", last_rewards)
+        self.assertListEqual(episode_1.global_t_to_local_t["agent_0"][-2:], [99, 100])
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_0"].rewards[-2:], last_rewards["agent_0"]
+        )
+        self.assertNotIn("agent_1", last_rewards)
+        self.assertNotIn("agent_6", last_rewards)
+
+        # Now request the last two indices as list.
+        last_rewards = episode_1.get_rewards(
+            [-1, -2], partial=False, consider_buffer=False, as_list=True
+        )
+        self.assertIn("agent_9", last_rewards[0])
+        self.assertIn("agent_9", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_9"].rewards[-1], last_rewards[0]["agent_9"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_9"].rewards[-2], last_rewards[1]["agent_9"]
+        )
+        self.assertIn("agent_5", last_rewards[0])
+        self.assertIn("agent_5", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_5"].rewards[-1], last_rewards[0]["agent_5"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_5"].rewards[-2], last_rewards[1]["agent_5"]
+        )
+        self.assertIn("agent_2", last_rewards[0])
+        self.assertIn("agent_2", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_2"].rewards[-1], last_rewards[0]["agent_2"]
+        )
+        self.assertEqual(3.0, last_rewards[1]["agent_2"])
+        # Agent 3 has only recorded rewards at `ts=100`.
+        self.assertIn("agent_3", last_rewards[0])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards[0]["agent_3"]
+        )
+        self.assertIn("agent_4", last_rewards[0])
+        self.assertIn("agent_4", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_4"].rewards[-1], last_rewards[0]["agent_4"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_4"].rewards[-2], last_rewards[1]["agent_4"]
+        )
+        self.assertIn("agent_8", last_rewards[0])
+        self.assertIn("agent_8", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_8"].rewards[-1], last_rewards[0]["agent_8"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_8"].rewards[-2], last_rewards[1]["agent_8"]
+        )
+        # Agent 7 has no observation at `ts=100`.
+        self.assertIn("agent_7", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_7"].rewards[-1], last_rewards[1]["agent_7"]
+        )
+        self.assertIn("agent_0", last_rewards[0])
+        self.assertIn("agent_0", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_0"].rewards[-1], last_rewards[0]["agent_0"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_0"].rewards[-2], last_rewards[1]["agent_0"]
+        )
+        self.assertNotIn("agent_1", last_rewards[0])
+        self.assertNotIn("agent_6", last_rewards[0])
+        self.assertNotIn("agent_1", last_rewards[1])
+        self.assertNotIn("agent_6", last_rewards[1])
+
+        # Second, get the last rewards with a single index, consider all partial
+        # rewards after the last recorded observation of an agent, i.e. set
+        # `consider_buffer` to `True`.
         last_rewards = episode_1.get_rewards(partial=False, consider_buffer=True)
+        self.assertIn("agent_9", last_rewards)
+        self.assertEqual(
+            episode_1.agent_episodes["agent_9"].rewards[-1], last_rewards["agent_9"][0]
+        )
+        self.assertIn("agent_0", last_rewards)
+        self.assertEqual(
+            episode_1.agent_episodes["agent_0"].rewards[-1], last_rewards["agent_0"][0]
+        )
+        self.assertIn("agent_2", last_rewards)
+        self.assertEqual(
+            episode_1.agent_episodes["agent_2"].rewards[-1], last_rewards["agent_2"][0]
+        )
+        self.assertIn("agent_5", last_rewards)
+        self.assertEqual(
+            episode_1.agent_episodes["agent_5"].rewards[-1], last_rewards["agent_5"][0]
+        )
+        self.assertIn("agent_8", last_rewards)
+        self.assertEqual(
+            episode_1.agent_episodes["agent_8"].rewards[-1], last_rewards["agent_8"][0]
+        )
+        self.assertIn("agent_4", last_rewards)
+        self.assertEqual(
+            episode_1.agent_episodes["agent_4"].rewards[-1], last_rewards["agent_4"][0]
+        )
+        self.assertIn("agent_3", last_rewards)
+        # Agent 3 had a partial reward before the last recorded observation.
+        self.assertEqual(
+            episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards["agent_3"][0]
+        )
+        # Agent 7 has a partial reward at `ts=100` after its last observation at
+        # `ts=99`.
+        self.assertIn("agent_7", last_rewards)
+        self.assertEqual(episode_1.partial_rewards_t["agent_7"][-1], 100)
+        self.assertEqual(
+            episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][0]
+        )
+        # Assert that all the other agents are not in the returned rewards.
+        self.assertNotIn("agent_1", last_rewards)
+        self.assertNotIn("agent_6", last_rewards)
+
+        # Now request the last rewards as a list while considering the buffer.
+        last_rewards = episode_1.get_rewards(
+            partial=False, consider_buffer=True, as_list=True
+        )
+        self.assertIn("agent_9", last_rewards[0])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_9"].rewards[-1], last_rewards[0]["agent_9"]
+        )
+        self.assertIn("agent_0", last_rewards[0])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_0"].rewards[-1], last_rewards[0]["agent_0"]
+        )
+        self.assertIn("agent_2", last_rewards[0])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_2"].rewards[-1], last_rewards[0]["agent_2"]
+        )
+        self.assertIn("agent_5", last_rewards[0])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_5"].rewards[-1], last_rewards[0]["agent_5"]
+        )
+        self.assertIn("agent_8", last_rewards[0])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_8"].rewards[-1], last_rewards[0]["agent_8"]
+        )
+        self.assertIn("agent_4", last_rewards[0])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_4"].rewards[-1], last_rewards[0]["agent_4"]
+        )
+        self.assertIn("agent_3", last_rewards[0])
+        # Agent 3 had a partial reward before the last recorded observation.
+        self.assertEqual(
+            episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards[0]["agent_3"]
+        )
+        # Agent 7 has a partial reward at `ts=100` after its last observation at
+        # `ts=99`.
+        self.assertIn("agent_7", last_rewards[0])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
+        )
+        # Assert that all the other agents are not in the returned rewards.
+        self.assertNotIn("agent_1", last_rewards[0])
+        self.assertNotIn("agent_6", last_rewards[0])
+
+        # Now request the last two indices and consider buffered partial rewards after
+        # the last observation.
         last_rewards = episode_1.get_rewards(
             [-1, -2], partial=False, consider_buffer=True
         )
+        self.assertIn("agent_9", last_rewards)
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_9"].rewards[-1:-3:-1],
+            last_rewards["agent_9"],
+        )
+        self.assertIn("agent_0", last_rewards)
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_0"].rewards[-1:-3:-1],
+            last_rewards["agent_0"],
+        )
+        self.assertIn("agent_2", last_rewards)
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_2"].rewards[-1:-3:-1],
+            last_rewards["agent_2"],
+        )
+        self.assertIn("agent_5", last_rewards)
+        # Agent 5 already died, so we need to convert to list first.
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_5"].rewards.tolist()[-1:-3:-1],
+            last_rewards["agent_5"],
+        )
+        self.assertIn("agent_8", last_rewards)
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_8"].rewards[-1:-3:-1],
+            last_rewards["agent_8"],
+        )
+        self.assertIn("agent_4", last_rewards)
+        self.assertListEqual(
+            episode_1.agent_episodes["agent_4"].rewards[-1:-3:-1],
+            last_rewards["agent_4"],
+        )
+        # Nothing changes for agent 3 as it has an observation at the last requested
+        # timestep 100, but not at `ts=99`.
+        self.assertIn("agent_3", last_rewards)
+        self.assertEqual(
+            episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards["agent_3"][0]
+        )
+        # The entries for agent 6 have changed now b/c it has partial rewards during the
+        # requested timesteps 100 and 99.
+        self.assertIn("agent_6", last_rewards)
+        self.assertListEqual(episode_1.global_t_to_local_t["agent_6"][-2:], [95, 98])
+        self.assertListEqual(episode_1.partial_rewards_t["agent_6"][-2:], [99, 100])
+        self.assertListEqual(
+            episode_1.partial_rewards["agent_6"][-2:], last_rewards["agent_6"]
+        )
+        # Entries for agent 7 also change b/c this agent has a partial reward at
+        # `ts=100` while it has no observation recorded at this timestep.
+        self.assertIn("agent_7", last_rewards)
+        self.assertListEqual(episode_1.global_t_to_local_t["agent_7"][-2:], [98, 99])
+        self.assertListEqual(episode_1.partial_rewards_t["agent_7"][-2:], [99, 100])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][0]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_7"].rewards[-1], last_rewards["agent_7"][1]
+        )
+        # Assert that all the other agents are not in the returned rewards.
+        self.assertNotIn("agent_1", last_rewards)
+
+        # Now request the same indices with `consider_buffer=True` and return them as
+        # a list.
         last_rewards = episode_1.get_rewards(
             [-1, -2], partial=False, consider_buffer=True, as_list=True
         )
-        self.assertEqual(0, 0)
-        last_rewards = episode_1.get_rewards(
-            [-1, -2], partial=True, consider_buffer=False, as_list=False
+        self.assertIn("agent_9", last_rewards[0])
+        self.assertIn("agent_9", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_9"].rewards[-1], last_rewards[0]["agent_9"]
         )
-        self.assertEqual(0, 0)
+        self.assertEqual(
+            episode_1.agent_episodes["agent_9"].rewards[-2], last_rewards[1]["agent_9"]
+        )
+        self.assertIn("agent_0", last_rewards[0])
+        self.assertIn("agent_0", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_0"].rewards[-1], last_rewards[0]["agent_0"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_0"].rewards[-2], last_rewards[1]["agent_0"]
+        )
+        self.assertIn("agent_2", last_rewards[0])
+        self.assertIn("agent_2", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_2"].rewards[-1], last_rewards[0]["agent_2"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_2"].rewards[-2], last_rewards[1]["agent_2"]
+        )
+        self.assertIn("agent_5", last_rewards[0])
+        self.assertIn("agent_5", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_5"].rewards[-1], last_rewards[0]["agent_5"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_5"].rewards[-2], last_rewards[1]["agent_5"]
+        )
+        self.assertIn("agent_8", last_rewards[0])
+        self.assertIn("agent_8", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_8"].rewards[-1], last_rewards[0]["agent_8"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_8"].rewards[-2], last_rewards[1]["agent_8"]
+        )
+        self.assertIn("agent_4", last_rewards[0])
+        self.assertIn("agent_4", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_4"].rewards[-1], last_rewards[0]["agent_4"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_4"].rewards[-2], last_rewards[1]["agent_4"]
+        )
+        # Nothing changes for agent 3 as it has an observation at the last requested
+        # timestep 100.
+        self.assertIn("agent_3", last_rewards[0])
+        self.assertNotIn("agent_3", last_rewards[1])
+        self.assertEqual(
+            episode_1.agent_episodes["agent_3"].rewards[-1], last_rewards[0]["agent_3"]
+        )
+        # The entries for agent 6 have changed now b/c it has partial rewards during the
+        # requested timesteps 100 and 99.
+        self.assertIn("agent_6", last_rewards[0])
+        self.assertIn("agent_6", last_rewards[1])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"]
+        )
+        self.assertEqual(
+            episode_1.partial_rewards["agent_6"][-2], last_rewards[1]["agent_6"]
+        )
+        # Entries for agent 7 also change b/c this agent has a partial reward at
+        # `ts=100` while it has no observation recorded at this timestep.
+        self.assertIn("agent_7", last_rewards[0])
+        self.assertIn("agent_7", last_rewards[1])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
+        )
+        self.assertEqual(
+            episode_1.agent_episodes["agent_7"].rewards[-1], last_rewards[1]["agent_7"]
+        )
+        # Assert that all the other agents are not in the returned rewards.
+        self.assertNotIn("agent_1", last_rewards[0])
+        self.assertNotIn("agent_1", last_rewards[1])
+
+        # Third, request only partial rewards, i.e. rewards do not get buffered and
+        # added up.
+        last_rewards = episode_1.get_rewards(partial=True, consider_buffer=False)
+        self.assertIn("agent_9", last_rewards)
+        self.assertEqual(episode_1.partial_rewards_t["agent_9"][-1], 100)
+        self.assertEqual(
+            episode_1.partial_rewards["agent_9"][-1], last_rewards["agent_9"][-1]
+        )
+        self.assertIn("agent_0", last_rewards)
+        self.assertEqual(episode_1.partial_rewards_t["agent_0"][-1], 100)
+        self.assertEqual(
+            episode_1.partial_rewards["agent_0"][-1], last_rewards["agent_0"][-1]
+        )
+        self.assertIn("agent_2", last_rewards)
+        self.assertEqual(episode_1.partial_rewards_t["agent_2"][-1], 100)
+        self.assertEqual(
+            episode_1.partial_rewards["agent_2"][-1], last_rewards["agent_2"][-1]
+        )
+        self.assertIn("agent_8", last_rewards)
+        self.assertEqual(episode_1.partial_rewards_t["agent_8"][-1], 100)
+        self.assertEqual(
+            episode_1.partial_rewards["agent_8"][-1], last_rewards["agent_8"][-1]
+        )
+        self.assertIn("agent_4", last_rewards)
+        self.assertEqual(episode_1.partial_rewards_t["agent_4"][-1], 100)
+        self.assertEqual(
+            episode_1.partial_rewards["agent_4"][-1], last_rewards["agent_4"][-1]
+        )
+        self.assertIn("agent_3", last_rewards)
+        self.assertEqual(episode_1.partial_rewards_t["agent_3"][-1], 100)
+        self.assertEqual(
+            episode_1.partial_rewards["agent_3"][-1], last_rewards["agent_3"][-1]
+        )
+        self.assertIn("agent_6", last_rewards)
+        self.assertEqual(episode_1.partial_rewards_t["agent_6"][-1], 100)
+        self.assertEqual(
+            episode_1.partial_rewards["agent_6"][-1], last_rewards["agent_6"][-1]
+        )
+        self.assertIn("agent_7", last_rewards)
+        self.assertEqual(episode_1.partial_rewards_t["agent_7"][-1], 100)
+        self.assertEqual(
+            episode_1.partial_rewards["agent_7"][-1], last_rewards["agent_7"][-1]
+        )
+        # Assert that all the other agents are not in the returned rewards.
+        self.assertNotIn("agent_1", last_rewards)
+
+        # Now request all partial rewards at the last timestep and return them as
+        # a list.
+        last_rewards = episode_1.get_rewards(
+            partial=True, consider_buffer=False, as_list=True
+        )
+        self.assertIn("agent_9", last_rewards[0])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_9"][-1], last_rewards[0]["agent_9"]
+        )
+        self.assertIn("agent_0", last_rewards[0])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_0"][-1], last_rewards[0]["agent_0"]
+        )
+        self.assertIn("agent_2", last_rewards[0])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_2"][-1], last_rewards[0]["agent_2"]
+        )
+        self.assertIn("agent_8", last_rewards[0])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_8"][-1], last_rewards[0]["agent_8"]
+        )
+        self.assertIn("agent_4", last_rewards[0])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_4"][-1], last_rewards[0]["agent_4"]
+        )
+        self.assertIn("agent_3", last_rewards[0])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_3"][-1], last_rewards[0]["agent_3"]
+        )
+        self.assertIn("agent_6", last_rewards[0])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"]
+        )
+        self.assertIn("agent_7", last_rewards[0])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
+        )
+        # Assert that all the other agents are not in the returned rewards.
+        self.assertNotIn("agent_1", last_rewards[0])
+
+        # Request the last two indices, but consider only partial rewards.
+        last_rewards = episode_1.get_rewards(
+            [-1, -2], partial=True, consider_buffer=False
+        )
+        self.assertIn("agent_9", last_rewards)
+        self.assertListEqual(episode_1.partial_rewards_t["agent_9"][-2:], [99, 100])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_9"][-1:-3:-1], last_rewards["agent_9"]
+        )
+        self.assertIn("agent_0", last_rewards)
+        self.assertListEqual(episode_1.partial_rewards_t["agent_0"][-2:], [99, 100])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_0"][-1:-3:-1], last_rewards["agent_0"]
+        )
+        self.assertIn("agent_2", last_rewards)
+        self.assertListEqual(episode_1.partial_rewards_t["agent_2"][-2:], [99, 100])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_2"][-1:-3:-1], last_rewards["agent_2"]
+        )
+        self.assertIn("agent_8", last_rewards)
+        self.assertListEqual(episode_1.partial_rewards_t["agent_8"][-2:], [99, 100])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_8"][-1:-3:-1], last_rewards["agent_8"]
+        )
+        self.assertIn("agent_4", last_rewards)
+        self.assertListEqual(episode_1.partial_rewards_t["agent_4"][-2:], [99, 100])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_4"][-1:-3:-1], last_rewards["agent_4"]
+        )
+        self.assertIn("agent_3", last_rewards)
+        self.assertListEqual(episode_1.partial_rewards_t["agent_3"][-2:], [99, 100])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_3"][-1:-3:-1], last_rewards["agent_3"]
+        )
+        self.assertIn("agent_6", last_rewards)
+        self.assertListEqual(episode_1.partial_rewards_t["agent_6"][-2:], [99, 100])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_6"][-1:-3:-1], last_rewards["agent_6"]
+        )
+        self.assertIn("agent_7", last_rewards)
+        self.assertListEqual(episode_1.partial_rewards_t["agent_7"][-2:], [99, 100])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_7"][-1:-3:-1], last_rewards["agent_7"]
+        )
+        # Assert that all the other agents are not in the returned rewards.
+        self.assertNotIn("agent_1", last_rewards)
+
+        # At last, request the last two indices for only partial rewards and return
+        # them as list.
+        last_rewards = episode_1.get_rewards(
+            [-1, -2], partial=True, consider_buffer=False, as_list=True
+        )
+        self.assertIn("agent_9", last_rewards[0])
+        self.assertIn("agent_9", last_rewards[1])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_9"][-1], last_rewards[0]["agent_9"]
+        )
+        self.assertEqual(
+            episode_1.partial_rewards["agent_9"][-2], last_rewards[1]["agent_9"]
+        )
+        self.assertIn("agent_0", last_rewards[0])
+        self.assertIn("agent_0", last_rewards[1])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_0"][-1], last_rewards[0]["agent_0"]
+        )
+        self.assertEqual(
+            episode_1.partial_rewards["agent_0"][-2], last_rewards[1]["agent_0"]
+        )
+        self.assertIn("agent_2", last_rewards[0])
+        self.assertIn("agent_2", last_rewards[1])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_2"][-1], last_rewards[0]["agent_2"]
+        )
+        self.assertEqual(
+            episode_1.partial_rewards["agent_2"][-2], last_rewards[1]["agent_2"]
+        )
+        self.assertIn("agent_8", last_rewards[0])
+        self.assertIn("agent_8", last_rewards[1])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_8"][-1], last_rewards[0]["agent_8"]
+        )
+        self.assertEqual(
+            episode_1.partial_rewards["agent_8"][-2], last_rewards[1]["agent_8"]
+        )
+        self.assertIn("agent_4", last_rewards[0])
+        self.assertIn("agent_4", last_rewards[1])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_4"][-1], last_rewards[0]["agent_4"]
+        )
+        self.assertEqual(
+            episode_1.partial_rewards["agent_4"][-2], last_rewards[1]["agent_4"]
+        )
+        self.assertIn("agent_3", last_rewards[0])
+        self.assertIn("agent_3", last_rewards[1])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_3"][-1], last_rewards[0]["agent_3"]
+        )
+        self.assertEqual(
+            episode_1.partial_rewards["agent_3"][-2], last_rewards[1]["agent_3"]
+        )
+        self.assertIn("agent_6", last_rewards[0])
+        self.assertIn("agent_6", last_rewards[1])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_6"][-1], last_rewards[0]["agent_6"]
+        )
+        self.assertEqual(
+            episode_1.partial_rewards["agent_6"][-2], last_rewards[1]["agent_6"]
+        )
+        self.assertIn("agent_7", last_rewards[0])
+        self.assertIn("agent_7", last_rewards[1])
+        self.assertEqual(
+            episode_1.partial_rewards["agent_7"][-1], last_rewards[0]["agent_7"]
+        )
+        self.assertEqual(
+            episode_1.partial_rewards["agent_7"][-2], last_rewards[1]["agent_7"]
+        )
+        # Assert that all the other agents are not in the returned rewards.
+        self.assertNotIn("agent_1", last_rewards[0])
+        self.assertNotIn("agent_1", last_rewards[1])
 
     def _generate_multi_agent_records(self):
         # Now test, if the specific values in the buffers are correct.

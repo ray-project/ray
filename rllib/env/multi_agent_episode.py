@@ -277,6 +277,7 @@ class MultiAgentEpisode:
     # indices, specifically, if we want to insert buffered actions.
     # TODO (simon): Users might want to receive only actions that have a
     # corresponding 'next observation' (i.e. no buffered actions). Take care of this.
+    # Also in the `extra_model_outputs`.
     def get_actions(
         self,
         indices: Union[int, List[int]] = -1,
@@ -545,7 +546,7 @@ class MultiAgentEpisode:
                         # TODO (simon): This should be all indices at or below which
                         # rewards existed.
                         timestep_mapping[agent_id] = _IndexMapping(
-                            range(1, len(indices_wih_rewards) + 1)
+                            range(1, len(indices_with_rewards) + 1)
                         )
                         # timestep_mapping[agent_id] = _IndexMapping(
                         #     [
@@ -590,6 +591,7 @@ class MultiAgentEpisode:
                         )
                     )
                     for agent_id in self._agent_ids
+                    if self.partial_rewards_t[agent_id].find_indices(indices, shift=0)
                 }
 
         else:
