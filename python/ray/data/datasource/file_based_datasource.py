@@ -404,19 +404,12 @@ class FileBasedDatasource(Datasource):
         return None
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
-        """Streaming read a single file, passing all kwargs to the reader.
-
-        By default, delegates to self._read_file().
-        """
-        yield self._read_file(f, path)
-
-    def _read_file(self, f: "pyarrow.NativeFile", path: str) -> Block:
-        """Reads a single file, passing all kwargs to the reader.
+        """Streaming read a single file.
 
         This method should be implemented by subclasses.
         """
         raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _read_file()."
+            "Subclasses of FileBasedDatasource must implement _read_stream()."
         )
 
     def on_write_start(
