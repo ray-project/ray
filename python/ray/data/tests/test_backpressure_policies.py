@@ -106,6 +106,12 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             self.assertEqual(policy._cap_multiply_threshold, 0.3)
             self.assertEqual(policy._cap_multiplier, 1.5)
 
+        with self._patch_config(10, 0.3, 1):
+            policy = ConcurrencyCapBackpressurePolicy(topology)
+            self.assertEqual(policy._init_cap, 10)
+            self.assertEqual(policy._cap_multiply_threshold, 0.3)
+            self.assertEqual(policy._cap_multiplier, 1)
+
         # Test bad configs.
         with self._patch_config(-1, 0.3, 1.5):
             with self.assertRaises(AssertionError):
@@ -117,42 +123,49 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 policy = ConcurrencyCapBackpressurePolicy(topology)
 
-    def test_e2e(self):
-        """A simple E2E test with ConcurrencyCapBackpressurePolicy enabled."""
-
+    def _create_record_time_actor(self):
         @ray.remote(num_cpus=0)
         class RecordTimeActor:
             def __init__(self):
-                self._start_time = defaultdict(lambda: float("inf"))
-                self._end_time = defaultdict(lambda: 0.0)
+                self._start_time = defaultdict(lambda: [])
+                self._end_time = defaultdict(lambda: [])
 
             def record_start_time(self, index):
-                self._start_time[index] = min(time.time(), self._start_time[index])
+                self._start_time[index].append(time.time())
 
             def record_end_time(self, index):
-                self._end_time[index] = max(time.time(), self._end_time[index])
+                self._end_time[index].append(time.time())
 
-            def get_start_and_end_time(self, index):
+            def get_start_and_end_time_for_op(self, index):
+                return min(self._start_time[index]), max(self._end_time[index])
+
+            def get_start_and_end_time_for_all_tasks_of_op(self, index):
                 return self._start_time[index], self._end_time[index]
 
         actor = RecordTimeActor.remote()
+        return actor
 
-        def map_func(data, index):
+    def _get_map_func(self, actor, index):
+        def map_func(data, actor, index):
             actor.record_start_time.remote(index)
             yield data
             actor.record_end_time.remote(index)
+
+        return functools.partial(map_func, actor=actor, index=index)
+
+    def test_e2e_normal(self):
+        """A simple E2E test with ConcurrencyCapBackpressurePolicy enabled."""
+        actor = self._create_record_time_actor()
+        map_func1 = self._get_map_func(actor, 1)
+        map_func2 = self._get_map_func(actor, 2)
 
         # Creat a dataset with 2 map ops. Each map op has N tasks, where N is
         # the number of cluster CPUs.
         N = self.__class__._cluster_cpus
         ds = ray.data.range(N, parallelism=N)
         # Use different `num_cpus` to make sure they don't fuse.
-        ds = ds.map_batches(
-            functools.partial(map_func, index=1), batch_size=None, num_cpus=1
-        )
-        ds = ds.map_batches(
-            functools.partial(map_func, index=2), batch_size=None, num_cpus=1.1
-        )
+        ds = ds.map_batches(map_func1, batch_size=None, num_cpus=1)
+        ds = ds.map_batches(map_func2, batch_size=None, num_cpus=1.1)
         res = ds.take_all()
         self.assertEqual(len(res), N)
 
@@ -160,9 +173,27 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         # check that these 2 ops are executed interleavingly.
         # This means that the executor didn't allocate all resources to the first
         # op in the beginning.
-        start1, end1 = ray.get(actor.get_start_and_end_time.remote(1))
-        start2, end2 = ray.get(actor.get_start_and_end_time.remote(2))
+        start1, end1 = ray.get(actor.get_start_and_end_time_for_op.remote(1))
+        start2, end2 = ray.get(actor.get_start_and_end_time_for_op.remote(2))
         assert start1 < start2 < end1 < end2, (start1, start2, end1, end2)
+
+    def test_e2e_no_ramping_up(self):
+        """Test setting the multiplier to 1.0, which means no ramping up of the
+        concurrency cap."""
+        with self._patch_config(1, 1, 1):
+            actor = self._create_record_time_actor()
+            map_func1 = self._get_map_func(actor, 1)
+            N = self.__class__._cluster_cpus
+            ds = ray.data.range(N, parallelism=N)
+            ds = ds.map_batches(map_func1, batch_size=None, num_cpus=1)
+            res = ds.take_all()
+            self.assertEqual(len(res), N)
+
+            start, end = ray.get(
+                actor.get_start_and_end_time_for_all_tasks_of_op.remote(1)
+            )
+            for i in range(len(start) - 1):
+                assert start[i] < end[i] < start[i + 1], (i, start, end)
 
 
 class TestStreamOutputBackpressurePolicy(unittest.TestCase):

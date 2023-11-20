@@ -46,7 +46,8 @@ variable set up for you.
 The `MultiWorkerMirroredStrategy <https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/MultiWorkerMirroredStrategy>`_
 enables synchronous distributed training. You *must* build and compile the ``Model`` within the scope of the strategy.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     with tf.distribute.MultiWorkerMirroredStrategy().scope():
         model = ... # build model
@@ -81,7 +82,12 @@ execute training. For distributed Tensorflow,
 use a :class:`~ray.train.tensorflow.TensorflowTrainer`
 that you can setup like this:
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    train_func = lambda: None
+
+.. testcode::
 
     from ray.train import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
@@ -95,7 +101,8 @@ that you can setup like this:
 To customize the backend setup, you can pass a
 :class:`~ray.train.tensorflow.TensorflowConfig`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.train import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer, TensorflowConfig
@@ -116,7 +123,8 @@ Run a training function
 With a distributed training function and a Ray Train ``Trainer``, you are now
 ready to start training.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     trainer.fit()
 
@@ -138,7 +146,7 @@ API for model training.
 `See this example <https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tune_tensorflow_autoencoder_example.py>`__
 for distributed data loading. The relevant parts are:
 
-.. code-block:: python
+.. testcode::
 
     import tensorflow as tf
     from ray import train
@@ -188,7 +196,7 @@ local log files. The logging also triggers :ref:`checkpoint bookkeeping <train-d
 The easiest way to report your results with Keras is by using the
 :class:`~ray.train.tensorflow.keras.ReportCheckpointCallback`:
 
-.. code-block:: python
+.. testcode::
 
     from ray.train.tensorflow.keras import ReportCheckpointCallback
 
@@ -223,8 +231,9 @@ attribute.
 These concrete examples demonstrate how Ray Train appropriately saves checkpoints, model weights but not models, in distributed training.
 
 
-.. code-block:: python
+.. testcode::
 
+    import json
     import os
     import tempfile
 
@@ -275,7 +284,7 @@ directory <train-log-dir>` of each run.
 Load checkpoints
 ~~~~~~~~~~~~~~~~
 
-.. code-block:: python
+.. testcode::
 
     import os
     import tempfile

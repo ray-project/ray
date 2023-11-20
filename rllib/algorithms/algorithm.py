@@ -49,9 +49,6 @@ from ray.rllib.evaluation.metrics import (
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_THIS_ITER_COUNTER,  # TODO: Backward compatibility.
-)
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline import get_dataset_and_shards
@@ -99,6 +96,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
     SAMPLE_TIMER,
+    STEPS_TRAINED_THIS_ITER_COUNTER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
@@ -1592,7 +1590,6 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
     @OverrideToImplementCustomLogic
-    @DeveloperAPI
     def training_step(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
 
@@ -1932,7 +1929,10 @@ class Algorithm(Trainable, AlgorithmBase):
         filtered_obs, filtered_state = [], []
         for agent_id, ob in observations.items():
             worker = self.workers.local_worker()
-            preprocessed = worker.preprocessors[policy_id].transform(ob)
+            if worker.preprocessors.get(policy_id) is not None:
+                preprocessed = worker.preprocessors[policy_id].transform(ob)
+            else:
+                preprocessed = ob
             filtered = worker.filters[policy_id](preprocessed, update=False)
             filtered_obs.append(filtered)
             if state is None:

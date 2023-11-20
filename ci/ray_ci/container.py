@@ -8,6 +8,10 @@ _DOCKER_ECR_REPO = os.environ.get(
     "RAYCI_WORK_REPO",
     "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
 )
+_DOCKER_GCP_REGISTRY = os.environ.get(
+    "RAYCI_GCP_REGISTRY",
+    "us-west1-docker.pkg.dev/anyscale-oss-ci",
+)
 _DOCKER_ENV = [
     "BUILDKITE_BUILD_URL",
     "BUILDKITE_BRANCH",
@@ -89,6 +93,8 @@ class Container:
             "run",
             "-i",
             "--rm",
+            "--env",
+            "NVIDIA_DISABLE_REQUIRE=1",
             "--volume",
             "/tmp/artifacts:/artifact-mount",
         ]

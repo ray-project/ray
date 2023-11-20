@@ -64,7 +64,6 @@ provider:
             # this datastore must be a shared datastore among the ESXi hosts.
             datastore:
 
-
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ray

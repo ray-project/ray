@@ -17,6 +17,7 @@ from ray.serve._private.common import (
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusTrigger,
     EndpointInfo,
     EndpointTag,
 )
@@ -262,10 +263,11 @@ class ApplicationState:
 
     def delete(self):
         """Delete the application"""
-        logger.info(
-            f"Deleting application '{self._name}'",
-            extra={"log_to_stderr": False},
-        )
+        if self._status != ApplicationStatus.DELETING:
+            logger.info(
+                f"Deleting application '{self._name}'",
+                extra={"log_to_stderr": False},
+            )
         self._set_target_state_deleting()
 
     def is_deleted(self) -> bool:
@@ -287,6 +289,7 @@ class ApplicationState:
             )
 
         deployment_id = DeploymentID(deployment_name, self._name)
+
         self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
         if deployment_info.route_prefix is not None:
@@ -406,7 +409,7 @@ class ApplicationState:
 
         Returns:
             Status (ApplicationStatus):
-                RUNNING: all deployments are healthy.
+                RUNNING: all deployments are healthy or autoscaling.
                 DEPLOYING: there is one or more updating deployments,
                     and there are no unhealthy deployments.
                 DEPLOY_FAILED: one or more deployments became unhealthy
@@ -422,17 +425,37 @@ class ApplicationState:
             return ApplicationStatus.DELETING, ""
 
         num_healthy_deployments = 0
+        num_autoscaling_deployments = 0
+        num_updating_deployments = 0
+        num_manually_scaling_deployments = 0
         unhealthy_deployment_names = []
 
         for deployment_status in self.get_deployments_statuses():
             if deployment_status.status == DeploymentStatus.UNHEALTHY:
                 unhealthy_deployment_names.append(deployment_status.name)
-            if deployment_status.status == DeploymentStatus.HEALTHY:
+            elif deployment_status.status == DeploymentStatus.HEALTHY:
                 num_healthy_deployments += 1
+            elif (
+                deployment_status.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+            ):
+                num_autoscaling_deployments += 1
+            elif deployment_status.status == DeploymentStatus.UPDATING:
+                num_updating_deployments += 1
+            elif (
+                deployment_status.status
+                in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
+                and deployment_status.status_trigger
+                == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+            ):
+                num_manually_scaling_deployments += 1
+            else:
+                raise RuntimeError(
+                    "Found deployment with unexpected status "
+                    f"{deployment_status.status} and status trigger "
+                    f"{deployment_status.status_trigger}."
+                )
 
-        if num_healthy_deployments == len(self.target_deployments):
-            return ApplicationStatus.RUNNING, ""
-        elif len(unhealthy_deployment_names):
+        if len(unhealthy_deployment_names):
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
             if self._status in [
                 ApplicationStatus.DEPLOYING,
@@ -441,8 +464,18 @@ class ApplicationState:
                 return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
-        else:
+        elif num_updating_deployments + num_manually_scaling_deployments > 0:
+            # If deployments are UPDATING or UPSCALING/DOWNSCALING
+            # with status trigger CONFIG_UPDATE_STARTED, then
+            # application is still DEPLOYING
             return ApplicationStatus.DEPLOYING, ""
+        else:
+            # If all deployments are HEALTHY or autoscaling, then
+            # application is RUNNING
+            assert num_healthy_deployments + num_autoscaling_deployments == len(
+                self.target_deployments
+            )
+            return ApplicationStatus.RUNNING, ""
 
     def _reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:
         """If necessary, reconcile the in-progress build task.
@@ -572,7 +605,18 @@ class ApplicationState:
 
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
-            self.apply_deployment_info(deployment_name, info)
+            deploy_info = deepcopy(info)
+            # Apply the application logging config to the deployment logging config
+            # if it is not set.
+            if (
+                self._target_state.config
+                and self._target_state.config.logging_config
+                and deploy_info.deployment_config.logging_config is None
+            ):
+                deploy_info.deployment_config.logging_config = (
+                    self._target_state.config.logging_config
+                )
+            self.apply_deployment_info(deployment_name, deploy_info)
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
@@ -888,6 +932,9 @@ def build_serve_application(
         name: application name. If specified, application will be deployed
             without removing existing applications.
         args: Arguments to be passed to the application builder.
+        logging_config: The application logging config, if deployment logging
+            config is not set, application logging config will be applied to the
+            deployment logging config.
     Returns:
         Deploy arguments: a list of deployment arguments if application
             was built successfully, otherwise None.
@@ -1018,7 +1065,6 @@ def override_deployment_info(
         options.pop("name", None)
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
-
         deployment_infos[deployment_name] = info.update(**override_options)
 
     # Overwrite ingress route prefix
