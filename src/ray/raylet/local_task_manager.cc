@@ -551,6 +551,12 @@ bool LocalTaskManager::PoppedWorkerHandler(
     // the worker.
     RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
                    << worker->WorkerId();
+    if (task.GetTaskSpecification().IsActorCreationTask()) {
+      RAY_LOG(INFO) << "[actor-schedule] Dispatching actor creation task " << task_id
+                    << " to worker " << worker->WorkerId()
+                    << " pid: " << worker->GetProcess().GetId()
+                    << " task: " << task.DebugString();
+    }
 
     Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
     erase_from_dispatch_queue_fn(work, scheduling_class);

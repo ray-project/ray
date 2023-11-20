@@ -105,8 +105,11 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
 }
 
 void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
+  RAY_LOG(INFO) << "[actor-schedule] ScheduleByRaylet actor: " << actor->GetActorID();
   // Select a node to where the actor is forwarded.
   auto node_id = SelectForwardingNode(actor);
+  RAY_LOG(INFO) << "[actor-schedule] ScheduleByRaylet actor: " << actor->GetActorID()
+                << " select node: " << node_id;
 
   auto node = gcs_node_manager_.GetAliveNode(node_id);
   if (!node.has_value()) {
@@ -139,6 +142,8 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   // If an actor has resource requirements, we will try to schedule it on the same node as
   // the owner if possible.
   const auto &task_spec = actor->GetCreationTaskSpecification();
+  RAY_LOG(INFO) << "[actor-schedule] SelectForwardingNode task_spec: "
+                << task_spec.DebugString();
   if (!task_spec.GetRequiredResources().IsEmpty()) {
     auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
     node = maybe_node.has_value() ? maybe_node.value() : SelectNodeRandomly();
@@ -309,8 +314,9 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   RAY_CHECK(actor && node);
 
   auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO) << "Start leasing worker from node " << node_id << " for actor "
-                << actor->GetActorID() << ", job id = " << actor->GetActorID().JobId();
+  RAY_LOG(INFO) << "[actor-schedule] Start leasing worker from node " << node_id
+                << " for actor " << actor->GetActorID()
+                << ", job id = " << actor->GetActorID().JobId();
 
   // We need to ensure that the RequestWorkerLease won't be sent before the reply of
   // ReleaseUnusedWorkers is returned.
@@ -373,6 +379,9 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
     auto maybe_spill_back_node = gcs_node_manager_.GetAliveNode(spill_back_node_id);
     if (maybe_spill_back_node.has_value()) {
+      RAY_LOG(INFO)
+          << "[actor-schedule] HandleWorkerLeaseGrantedReply schedule failed, actor: "
+          << actor->GetActorID() << ", retry on " << spill_back_node_id;
       auto spill_back_node = maybe_spill_back_node.value();
       actor->UpdateAddress(retry_at_raylet_address);
       RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
@@ -386,11 +395,17 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
       LeaseWorkerFromNode(actor, spill_back_node);
     } else {
       // If the spill back node is dead, we need to schedule again.
+      RAY_LOG(INFO)
+          << "[actor-schedule] HandleWorkerLeaseGrantedReply schedule failed, actor: "
+          << actor->GetActorID() << ", schedule again.";
       actor->UpdateAddress(rpc::Address());
       actor->GetMutableActorTableData()->clear_resource_mapping();
       Schedule(actor);
     }
   } else {
+    RAY_LOG(INFO)
+        << "[actor-schedule] HandleWorkerLeaseGrantedReply schedule succeed, actor: "
+        << actor->GetActorID();
     // The worker is leased successfully from the specified node.
     std::vector<rpc::ResourceMapEntry> resources;
     for (auto &resource : reply.resource_mapping()) {
@@ -481,7 +496,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
               if (iter->second.empty()) {
                 node_to_workers_when_creating_.erase(iter);
               }
-              RAY_LOG(INFO) << "Finished actor creation task for actor "
+              RAY_LOG(INFO) << "[actor-schedule] Finished actor creation task for actor "
                             << actor->GetActorID() << " on worker "
                             << worker->GetWorkerID() << " at node " << actor->GetNodeID()
                             << ", job id = " << actor->GetActorID().JobId();
@@ -576,6 +591,8 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
   // cancelled as the node is dead, just do nothing in this case because the
   // gcs_actor_manager will reconstruct it again.
   auto node_id = NodeID::FromBinary(node->node_id());
+  RAY_LOG(INFO) << "[actor-schedule] HandleWorkerLeaseReply from node " << node_id
+                << " actor " << actor->GetActorID();
   auto iter = node_to_actors_when_leasing_.find(node_id);
   if (iter != node_to_actors_when_leasing_.end()) {
     auto actor_iter = iter->second.find(actor->GetActorID());
@@ -630,8 +647,8 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
                       << actor->GetActorID().JobId();
         HandleWorkerLeaseRejectedReply(actor, reply);
       } else {
-        RAY_LOG(INFO) << "Finished leasing worker from " << node_id << " for actor "
-                      << actor->GetActorID()
+        RAY_LOG(INFO) << "[actor-schedule] Finished leasing worker from " << node_id
+                      << " for actor " << actor->GetActorID()
                       << ", job id = " << actor->GetActorID().JobId();
         HandleWorkerLeaseGrantedReply(actor, reply);
       }

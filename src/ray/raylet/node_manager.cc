@@ -1724,6 +1724,8 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   RayTask task(task_message);
+  RAY_LOG(INFO) << "[actor-schedule] HandleRequestWorkerLease request resource: "
+                << task.DebugString();
   const bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
@@ -1738,6 +1740,9 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   auto send_reply_callback_wrapper =
       [this, is_actor_creation_task, actor_id, reply, send_reply_callback](
           Status status, std::function<void()> success, std::function<void()> failure) {
+        RAY_LOG(INFO) << "[actor-schedule] HandleRequestWorkerLease actor" << actor_id
+                  << " status: " << status << " rejected: " << reply->rejected()
+                  << " has raylet id " << !reply->worker_address().raylet_id().empty();
         if (reply->rejected() && is_actor_creation_task) {
           auto resources_data = reply->mutable_resources_data();
           resources_data->set_node_id(self_node_id_.Binary());
@@ -1747,7 +1752,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
           // its resource view of this raylet.
           if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
             auto normal_task_resources = local_task_manager_->CalcNormalTaskResources();
-            RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
+            RAY_LOG(INFO) << "[actor-schedule] Reject leasing as the raylet has no enough resources."
                            << " actor_id = " << actor_id << ", normal_task_resources = "
                            << normal_task_resources.DebugString()
                            << ", local_resoruce_view = "
