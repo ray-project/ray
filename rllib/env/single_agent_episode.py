@@ -34,6 +34,7 @@ class SingleAgentEpisode:
         >>> e = SingleAgentEpisode()
 
     """
+
     def __init__(
         self,
         id_: Optional[str] = None,
@@ -106,7 +107,7 @@ class SingleAgentEpisode:
                 `len_lookback_buffer` items in each data as NOT part of this actual
                 episode chunk, but instead serve as historic data that may be viewed.
                 If None, will interpret all provided data in constructor as part of the
-                lookback buffer. 
+                lookback buffer.
         """
         self.id_ = id_ or uuid.uuid4().hex
         # Observations: t0 (initial obs) to T.
@@ -419,9 +420,9 @@ class SingleAgentEpisode:
         """
         # For now, only allow splitting on finalized, numpy'ized episodes.
         assert self.is_numpy, "Cannot split a non-numpy-converted SingleAgentEpisode!"
-        assert len(self) > index - 1, (
-            f"Cannot split at {index}! SingleAgentEpisode is only {len(self)} ts long."
-        )
+        assert (
+            len(self) > index - 1
+        ), f"Cannot split at {index}! SingleAgentEpisode is only {len(self)} ts long."
 
         # Keep the same pre-buffer length.
         start_2nd_chunk = index - self._len_lookback_buffer
@@ -448,10 +449,10 @@ class SingleAgentEpisode:
         end_self = index + self._len_lookback_buffer
         self.t = index
         self.observations = tree.map_structure(
-            lambda s: s[:end_self + 1],
+            lambda s: s[: end_self + 1],
             self.observations,
         )
-        self.infos = self.infos[:end_self + 1]
+        self.infos = self.infos[: end_self + 1]
         self.actions = tree.map_structure(
             lambda s: s[:end_self],
             self.actions,

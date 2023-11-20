@@ -27,14 +27,12 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             AssertionError,
             lambda: env_runner.sample(
                 num_timesteps=10, num_episodes=10, random_actions=True
-            )
+            ),
         )
 
         # Sample 10 episodes (5 per env) 100 times.
         for _ in range(100):
-            episodes = (
-                env_runner.sample(num_episodes=10, random_actions=True)
-            )
+            episodes = env_runner.sample(num_episodes=10, random_actions=True)
             self.assertTrue(len(episodes) == 10)
             # Since we sampled complete episodes, there should be no ongoing episodes
             # being returned.
@@ -42,9 +40,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
         # Sample 10 timesteps (5 per env) 100 times.
         for _ in range(100):
-            episodes = (
-                env_runner.sample(num_timesteps=10, random_actions=True)
-            )
+            episodes = env_runner.sample(num_timesteps=10, random_actions=True)
             # Check, whether the sum of lengths of all episodes returned is 20
             self.assertTrue(sum(len(e) for e in episodes) == 10)
 

@@ -362,7 +362,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 self.module.get_initial_state(),
             )
         else:
-            states = {} 
+            states = {}
 
         render_images = [None] * self.num_envs
         if with_render_data:
