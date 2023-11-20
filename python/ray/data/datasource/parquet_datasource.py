@@ -181,6 +181,7 @@ class ParquetDatasource(Datasource):
         meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
         shuffle: Union[Literal["files"], None] = None,
+        include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
@@ -294,6 +295,7 @@ class ParquetDatasource(Datasource):
         self._schema = schema
         self._encoding_ratio = self._estimate_files_encoding_ratio()
         self._file_metadata_shuffler = None
+        self._include_paths = include_paths
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 
@@ -388,6 +390,7 @@ class ParquetDatasource(Datasource):
                         columns,
                         schema,
                         f,
+                        self._include_paths,
                     ),
                     meta,
                 )
@@ -465,6 +468,7 @@ def _read_fragments(
     columns,
     schema,
     serialized_fragments: List[_SerializedFragment],
+    include_paths: bool,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -501,6 +505,8 @@ def _read_fragments(
                         col,
                         pa.array([value] * len(table)),
                     )
+            if include_paths:
+                table = table.append_column("path", [[fragment.path]] * len(table))
             # If the table is empty, drop it.
             if table.num_rows > 0:
                 if block_udf is not None:

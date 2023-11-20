@@ -143,6 +143,7 @@ class FileBasedDatasource(Datasource):
     def __init__(
         self,
         paths: Union[str, List[str]],
+        *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -151,6 +152,7 @@ class FileBasedDatasource(Datasource):
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
         shuffle: Union[Literal["files"], None] = None,
+        include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
@@ -160,6 +162,7 @@ class FileBasedDatasource(Datasource):
         self._partition_filter = partition_filter
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
+        self._include_paths = include_paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         paths, file_sizes = map(
             list,
@@ -274,10 +277,15 @@ class FileBasedDatasource(Datasource):
                     read_path,
                     lambda: open_input_source(fs, read_path, **open_stream_args),
                 ) as f:
-                    for data in read_stream(f, read_path):
+                    for block in read_stream(f, read_path):
                         if partitions:
-                            data = _add_partitions(data, partitions)
-                        yield data
+                            block = _add_partitions(block, partitions)
+                        if self._include_paths:
+                            block_accessor = BlockAccessor.for_block(block)
+                            block = block_accessor.append_column(
+                                "path", [read_path] * block_accessor.num_rows()
+                            )
+                        yield block
 
         def create_read_task_fn(read_paths, num_threads):
             def read_task_fn():
