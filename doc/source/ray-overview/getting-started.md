@@ -582,7 +582,7 @@ ray submit cluster.yaml example.py --start
 :outline:
 :expand:
 
-Learn more about launching Ray Clusters on AWS, GCP, Azure and more
+Learn more about launching Ray Clusters on AWS, GCP, Azure, and more
 ```
 
 `````
