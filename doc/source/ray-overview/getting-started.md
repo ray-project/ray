@@ -545,7 +545,7 @@ To run this example install the following:
 pip install -U "ray[default]" boto3
 ```
 
-If you haven't already, you’ll need to configure your credentials as described in the https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#guide-credentials[documentation for boto3].
+If you haven't already, configure your credentials as described in the https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#guide-credentials[documentation for boto3].
 :::
 
 Take this simple example that waits for individual nodes to join the cluster.
