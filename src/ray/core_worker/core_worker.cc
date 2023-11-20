@@ -1840,7 +1840,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &concurrency_group_name,
     bool include_job_config,
     int64_t generator_backpressure_num_objects) {
-  RAY_LOG(ERROR) << "is compiled dag task " << is_compiled_dag_task;
+  RAY_LOG(DEBUG) << "is compiled dag task " << is_compiled_dag_task;
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);

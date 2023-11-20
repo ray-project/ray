@@ -48,15 +48,18 @@ print("out ref:", out_ref)
 
 a.f.options(_is_compiled_dag_task=True).remote(in_ref)
 
-for i in range(10000):
-    if verbose:
-        print("driver iteration", i, "start")
-    ray.worker.global_worker.put_object(b"hello", object_ref=in_ref, max_readers=1)
+for _ in range(5):
+    start = time.time()
+    for i in range(1000):
+        if verbose:
+            print("driver iteration", i, "start")
+        ray.worker.global_worker.put_object(b"hello", object_ref=in_ref, max_readers=1)
 
-    x = ray.get(out_ref)
-    if verbose:
-        print("driver iteration", i, "output", x)
-    ray.release(out_ref)  # todo crashes
+        x = ray.get(out_ref)
+        if verbose:
+            print("driver iteration", i, "output", x)
+        ray.release(out_ref)  # todo crashes
+    print(time.time() - start)
 
 ## TODO: Test actor can also execute other tasks.
 #a.foo.remote()
