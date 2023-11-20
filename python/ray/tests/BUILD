@@ -113,7 +113,7 @@ py_test_module_list(
   tags = ["exclusive", "no_main", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
-    
+
 py_test_module_list(
   files = [
     "test_actor_bounded_threads.py",
@@ -297,7 +297,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_e2e.py",
-    "test_monitor_service.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],

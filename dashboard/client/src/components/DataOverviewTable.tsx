@@ -5,6 +5,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -33,9 +34,9 @@ const columns = [
     helpInfo: <Typography>Blocks outputted by output operator.</Typography>,
   },
   { label: "State", align: "center" },
-  { label: "Bytes Outputted" },
+  { label: "Rows Outputted" },
   {
-    label: "Memory Usage (Current / Max)",
+    label: "Memory Usage (current / max)",
     helpInfo: (
       <Typography>
         Amount of object store memory used by a dataset. Includes spilled
@@ -52,6 +53,14 @@ const columns = [
         = True" to collect spill stats.
       </Typography>
     ),
+  },
+  {
+    label: "Logical CPU Cores (current / max)",
+    align: "center",
+  },
+  {
+    label: "Logical GPU Cores (current / max)",
+    align: "center",
   },
   { label: "Start Time", align: "center" },
   { label: "End Time", align: "center" },
@@ -100,7 +109,7 @@ const DataOverviewTable = ({
           <StateCounter type="task" list={datasetList} />
         </div>
       </div>
-      <div className={classes.tableContainer}>
+      <TableContainer>
         <Table>
           <TableHead>
             <TableRow>
@@ -123,7 +132,7 @@ const DataOverviewTable = ({
             </TableRow>
           </TableHead>
           <TableBody>
-            {list.map((dataset, index) => (
+            {list.map((dataset) => (
               <DatasetTable
                 datasetMetrics={dataset}
                 isExpanded={expandedDatasets[dataset.dataset]}
@@ -139,7 +148,7 @@ const DataOverviewTable = ({
             ))}
           </TableBody>
         </Table>
-      </div>
+      </TableContainer>
     </div>
   );
 };
@@ -196,7 +205,7 @@ const DataRow = ({
         {isDatasetRow && datasetMetrics.dataset}
         {isOperatorRow && operatorMetrics.operator}
       </TableCell>
-      <TableCell align="right" size={"small"}>
+      <TableCell align="right" style={{ width: 200 }}>
         <TaskProgressBar
           showLegend={false}
           numFinished={data.progress}
@@ -212,15 +221,21 @@ const DataRow = ({
       <TableCell align="center">
         <StatusChip type="task" status={data.state} />
       </TableCell>
-      <TableCell align="right">
-        {memoryConverter(Number(data.ray_data_output_bytes.max))}
-      </TableCell>
+      <TableCell align="right">{data.ray_data_output_rows.max}</TableCell>
       <TableCell align="right">
         {memoryConverter(Number(data.ray_data_current_bytes.value))}/
         {memoryConverter(Number(data.ray_data_current_bytes.max))}
       </TableCell>
       <TableCell align="right">
         {memoryConverter(Number(data.ray_data_spilled_bytes.max))}
+      </TableCell>
+      <TableCell align="center" style={{ width: 200 }}>
+        {data.ray_data_cpu_usage_cores.value}/
+        {data.ray_data_cpu_usage_cores.max}
+      </TableCell>
+      <TableCell align="center" style={{ width: 200 }}>
+        {data.ray_data_gpu_usage_cores.value}/
+        {data.ray_data_gpu_usage_cores.max}
       </TableCell>
       <TableCell align="center">
         {isDatasetRow && formatDateFromTimeMs(datasetMetrics.start_time * 1000)}

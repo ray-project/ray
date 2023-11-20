@@ -108,7 +108,7 @@ def build_docker(
     """
     BuilderContainer(python_version, build_type, architecture).run()
     for p in platform:
-        RayDockerContainer(python_version, p, image_type).run()
+        RayDockerContainer(python_version, p, image_type, architecture).run()
 
 
 def build_anyscale(
@@ -123,8 +123,8 @@ def build_anyscale(
     """
     BuilderContainer(python_version, build_type, architecture).run()
     for p in platform:
-        RayDockerContainer(python_version, p, image_type).run()
-        AnyscaleDockerContainer(python_version, p, image_type).run()
+        RayDockerContainer(python_version, p, image_type, architecture).run()
+        AnyscaleDockerContainer(python_version, p, image_type, architecture).run()
 
 
 def build_doc() -> None:

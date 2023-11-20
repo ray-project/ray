@@ -8,9 +8,6 @@ from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRY_CNT = 10
-RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
-
 
 @PublicAPI(stability="alpha")
 class BigQueryDatasource(Datasource):
