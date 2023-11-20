@@ -568,9 +568,6 @@ class _ActorPool:
             actor: The not-yet-ready actor to add as pending to the pool.
             ready_ref: The ready future for the actor.
         """
-        # The caller shouldn't add new actors to the pool after invoking
-        # kill_inactive_actors().
-        # assert not self._should_kill_idle_actors
         self._pending_actors[ready_ref] = actor
 
     def pending_to_running(self, ready_ref: ray.ObjectRef) -> bool:
