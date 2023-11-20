@@ -23,7 +23,6 @@ steps:
       - python
       - data
     instance_type: medium
-    soft_fail: true
     parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
@@ -134,15 +133,16 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
-        --build-name datanbuild
+        --build-name data12build
         --parallelism-per-worker 3
-    depends_on: datanbuild
+    depends_on: data12build
     job_env: forge
 
   - label: ":database: data: flaky tests"
     tags: 
       - python
       - data
+      - skip-on-premerge
     instance_type: medium
     soft_fail: true
     commands:

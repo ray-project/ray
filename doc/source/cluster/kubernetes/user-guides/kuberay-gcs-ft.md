@@ -308,7 +308,21 @@ Refer to [this section](kuberay-external-storage-namespace-example) in the earli
 (kuberay-redis-cleanup-gate)=
 ### 4. Turn off Redis cleanup
 
-* `ENABLE_GCS_FT_REDIS_CLEANUP`: The feature gate `ENABLE_GCS_FT_REDIS_CLEANUP` is true by default, and users can turn if off by setting the environment variable in [KubeRay operator's Helm chart](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml).
+* `ENABLE_GCS_FT_REDIS_CLEANUP`: True by default. You can turn this feature off by setting the environment variable in the [KubeRay operator's Helm chart](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml).
+
+```{admonition} Key eviction setup on Redis
+If you disable `ENABLE_GCS_FT_REDIS_CLEANUP` but want Redis to remove GCS metadata automatically,
+set these two options in your `redis.conf` or in the command line options of your redis-server command [(example)](https://github.com/ray-project/ray/pull/40949#issuecomment-1799057691):
+
+* `maxmemory=<your_memory_limit>`
+* `maxmemory-policy=allkeys-lru`
+
+These two options instruct Redis to delete the least recently used keys when it reaches the `maxmemory` limit.
+See [Key eviction](https://redis.io/docs/reference/eviction/) from Redis for more information.
+
+Note that Redis does this eviction and it doesn't guarantee that
+Ray won't use the deleted keys.
+```
 
 ## Next steps
 
