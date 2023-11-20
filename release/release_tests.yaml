@@ -6501,6 +6501,20 @@
     timeout: 3000
     script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20
 
+- name: aws_cluster_launcher_full_legacy_min_and_max_workers
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: nightly
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 3000
+    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --legacy-min-and-max-workers
+
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/

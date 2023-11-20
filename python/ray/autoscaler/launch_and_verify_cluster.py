@@ -7,7 +7,7 @@ cluster configuration file.
 Usage:
     python launch_and_verify_cluster.py [--no-config-cache] [--retries NUM_RETRIES]
         [--num-expected-nodes NUM_NODES] [--docker-override DOCKER_OVERRIDE]
-        [--wheel-override WHEEL_OVERRIDE]
+        [--wheel-override WHEEL_OVERRIDE] [--legacy-min-and-max-workers]
         <cluster_configuration_file_path>
 """
 import argparse
@@ -63,6 +63,13 @@ def check_arguments():
         help="Override the wheel used for the head node and worker nodes",
     )
     parser.add_argument(
+        "--legacy-min-and-max-workers",
+        action="store_true",
+        help="Overwrite min_worker_nodes and max_worker_nodes "
+        "to the legacy fields min_workers and max_workers "
+        "to test backwards compatibility",
+    )
+    parser.add_argument(
         "cluster_config", type=str, help="Path to the cluster configuration file"
     )
     args = parser.parse_args()
@@ -78,6 +85,7 @@ def check_arguments():
         args.num_expected_nodes,
         args.docker_override,
         args.wheel_override,
+        args.legacy_min_and_max_workers,
     )
 
 
@@ -289,6 +297,7 @@ if __name__ == "__main__":
         num_expected_nodes,
         docker_override,
         wheel_override,
+        legacy_min_and_max_workers,
     ) = check_arguments()
     cluster_config = Path(cluster_config)
     check_file(cluster_config)
@@ -303,6 +312,20 @@ if __name__ == "__main__":
     config_yaml["cluster_name"] = (
         config_yaml["cluster_name"] + "-" + str(int(time.time()))
     )
+
+    if legacy_min_and_max_workers:
+        print("======================================")
+        print(
+            "Overriding min_worker_nodes and max_worker_nodes to min_workers "
+            "and max_workers to test backwards compatibility"
+        )
+        config_yaml["max_workers"] = config_yaml["max_worker_nodes"]
+        del config_yaml["max_worker_nodes"]
+        for type in config_yaml["available_node_types"]:
+            type["max_workers"] = type["max_worker_nodes"]
+            del type["max_worker_nodes"]
+            type["min_workers"] = type["min_worker_nodes"]
+            del type["min_worker_nodes"]
 
     print("======================================")
     print(f"Overriding ray wheel...: {wheel_override}")
