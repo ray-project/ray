@@ -38,7 +38,7 @@ For a more fine-grained overview, each dataset row in the table can also be expa
 Ray dashboard metrics
 ~~~~~~~~~~~~~~~~~~~~~
 
-For an even finer view, see the Ray Data section in the :ref:`Metrics tab <dash-metrics-view>`. This section contains time-series views of all metrics emitted by Ray Data. Execution metrics are grouped by dataset and operator, and iteration metrics are grouped by dataset.
+For a time-series view of these metrics, see the Ray Data section in the :ref:`Metrics tab <dash-metrics-view>`. This section contains time-series graphs of all metrics emitted by Ray Data. Execution metrics are grouped by dataset and operator, and iteration metrics are grouped by dataset.
 
 The metrics recorded are:
 
@@ -63,7 +63,7 @@ Ray Data logs
 -------------
 During execution, Ray Data periodically logs updates to `ray-data.log`.
 
-At the end of every scheduling loop, Ray Data logs execution progress of every operator in the dataset. For more frequent updates, `RAY_DATA_TRACE_SCHEDULING=1` can be set so that the progress is logged after each task is dispatched.
+Every 5 seconds, Ray Data logs the execution progress of every operator in the dataset. For more frequent updates, `RAY_DATA_TRACE_SCHEDULING=1` can be set so that the progress is logged after each task is dispatched.
 
 .. code-block:: text
 
