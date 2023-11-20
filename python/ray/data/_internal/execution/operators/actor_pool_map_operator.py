@@ -103,7 +103,7 @@ class ActorPoolMapOperator(MapOperator):
 
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
-        for _ in range(self._autoscaling_policy.min_worker_nodes):
+        for _ in range(self._autoscaling_policy.min_workers):
             self._start_actor()
         refs = self._actor_pool.get_pending_actor_refs()
 
@@ -272,13 +272,13 @@ class ActorPoolMapOperator(MapOperator):
         # Warn if the user specified a batch or block size that prevents full
         # parallelization across the actor pool. We only know this information after
         # execution has completed.
-        min_worker_nodes = self._autoscaling_policy.min_worker_nodes
-        if len(self._output_metadata) < min_worker_nodes:
+        min_workers = self._autoscaling_policy.min_workers
+        if len(self._output_metadata) < min_workers:
             # The user created a stream that has too few blocks to begin with.
             logger.get_logger().warning(
                 "To ensure full parallelization across an actor pool of size "
-                f"{min_worker_nodes}, the Dataset should consist of at least "
-                f"{min_worker_nodes} distinct blocks. Consider increasing "
+                f"{min_workers}, the Dataset should consist of at least "
+                f"{min_workers} distinct blocks. Consider increasing "
                 "the parallelism when creating the Dataset."
             )
 
@@ -296,10 +296,10 @@ class ActorPoolMapOperator(MapOperator):
         return base
 
     def base_resource_usage(self) -> ExecutionResources:
-        min_worker_nodes = self._autoscaling_policy.min_worker_nodes
+        min_workers = self._autoscaling_policy.min_workers
         return ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0) * min_worker_nodes,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * min_worker_nodes,
+            cpu=self._ray_remote_args.get("num_cpus", 0) * min_workers,
+            gpu=self._ray_remote_args.get("num_gpus", 0) * min_workers,
         )
 
     def current_resource_usage(self) -> ExecutionResources:
@@ -398,9 +398,9 @@ class AutoscalingConfig:
     """Configuration for an autoscaling actor pool."""
 
     # Minimum number of workers in the actor pool.
-    min_worker_nodes: int
+    min_workers: int
     # Maximum number of workers in the actor pool.
-    max_worker_nodes: int
+    max_workers: int
     # Maximum number of tasks that can be in flight for a single worker.
     # TODO(Clark): Have this informed by the prefetch_batches configuration, once async
     # prefetching has been ported to this new actor pool.
@@ -413,18 +413,18 @@ class AutoscalingConfig:
     idle_to_total_workers_ratio: float = 0.5
 
     def __post_init__(self):
-        if self.min_worker_nodes < 1:
+        if self.min_workers < 1:
             raise ValueError(
-                "min_worker_nodes must be >= 1, got: ", self.min_worker_nodes
+                "min_workers must be >= 1, got: ", self.min_workers
             )
         if (
-            self.max_worker_nodes is not None
-            and self.min_worker_nodes > self.max_worker_nodes
+            self.max_workers is not None
+            and self.min_workers > self.max_workers
         ):
             raise ValueError(
-                "min_worker_nodes must be <= max_worker_nodes, got: ",
-                self.min_worker_nodes,
-                self.max_worker_nodes,
+                "min_workers must be <= max_workers, got: ",
+                self.min_workers,
+                self.max_workers,
             )
         if self.max_tasks_in_flight < 1:
             raise ValueError(
@@ -438,8 +438,8 @@ class AutoscalingConfig:
         # TODO(Clark): Remove this once the legacy compute strategies are deprecated.
         assert isinstance(compute_strategy, ActorPoolStrategy)
         return cls(
-            min_worker_nodes=compute_strategy.min_size,
-            max_worker_nodes=compute_strategy.max_size,
+            min_workers=compute_strategy.min_size,
+            max_workers=compute_strategy.max_size,
             max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor
             or DEFAULT_MAX_TASKS_IN_FLIGHT,
             ready_to_total_workers_ratio=compute_strategy.ready_to_total_workers_ratio,
@@ -455,14 +455,14 @@ class AutoscalingPolicy:
         self._config = autoscaling_config
 
     @property
-    def min_worker_nodes(self) -> int:
+    def min_workers(self) -> int:
         """The minimum number of actors that must be in the actor pool."""
-        return self._config.min_worker_nodes
+        return self._config.min_workers
 
     @property
-    def max_worker_nodes(self) -> int:
+    def max_workers(self) -> int:
         """The maximum number of actors that can be added to the actor pool."""
-        return self._config.max_worker_nodes
+        return self._config.max_workers
 
     def should_scale_up(self, num_total_workers: int, num_running_workers: int) -> bool:
         """Whether the actor pool should scale up by adding a new actor.
@@ -481,13 +481,13 @@ class AutoscalingPolicy:
         # time, and task execution time to tailor the work queue heuristic to the
         # running workload and observed Ray performance. E.g. this could be done via an
         # augmented EMA using a queueing model
-        if num_total_workers < self._config.min_worker_nodes:
+        if num_total_workers < self._config.min_workers:
             # The actor pool does not reach the configured minimum size.
             return True
         else:
             return (
                 # 1. The actor pool will not exceed the configured maximum size.
-                num_total_workers < self._config.max_worker_nodes
+                num_total_workers < self._config.max_workers
                 # TODO: Remove this once we have a good work queue heuristic and our
                 # resource-based backpressure is working well.
                 # 2. At least 80% of the workers in the pool have already started.
@@ -518,7 +518,7 @@ class AutoscalingPolicy:
         # arrival rate, worker startup time, and task execution time.
         return (
             # 1. The actor pool will not go below the configured minimum size.
-            num_total_workers > self._config.min_worker_nodes
+            num_total_workers > self._config.min_workers
             # 2. The actor pool contains more than 50% idle workers.
             and num_idle_workers / num_total_workers
             > self._config.idle_to_total_workers_ratio

@@ -501,34 +501,34 @@ class TestActorPool:
 
 
 class TestAutoscalingConfig:
-    def test_min_worker_nodes_validation(self):
-        # Test min_worker_nodes positivity validation.
+    def test_min_workers_validation(self):
+        # Test min_workers positivity validation.
         with pytest.raises(ValueError):
-            AutoscalingConfig(min_worker_nodes=0, max_worker_nodes=2)
+            AutoscalingConfig(min_workers=0, max_workers=2)
 
-    def test_max_worker_nodes_validation(self):
-        # Test max_worker_nodes not being less than min_worker_nodes validation.
+    def test_max_workers_validation(self):
+        # Test max_workers not being less than min_workers validation.
         with pytest.raises(ValueError):
-            AutoscalingConfig(min_worker_nodes=3, max_worker_nodes=2)
+            AutoscalingConfig(min_workers=3, max_workers=2)
 
     def test_max_tasks_in_flight_validation(self):
         # Test max_tasks_in_flight positivity validation.
         with pytest.raises(ValueError):
             AutoscalingConfig(
-                min_worker_nodes=1, max_worker_nodes=2, max_tasks_in_flight=0
+                min_workers=1, max_workers=2, max_tasks_in_flight=0
             )
 
     def test_full_specification(self):
         # Basic regression test for full specification.
         config = AutoscalingConfig(
-            min_worker_nodes=2,
-            max_worker_nodes=100,
+            min_workers=2,
+            max_workers=100,
             max_tasks_in_flight=3,
             ready_to_total_workers_ratio=0.8,
             idle_to_total_workers_ratio=0.25,
         )
-        assert config.min_worker_nodes == 2
-        assert config.max_worker_nodes == 100
+        assert config.min_workers == 2
+        assert config.max_workers == 100
         assert config.max_tasks_in_flight == 3
         assert config.ready_to_total_workers_ratio == 0.8
         assert config.idle_to_total_workers_ratio == 0.25
@@ -539,38 +539,38 @@ class TestAutoscalingConfig:
             min_size=2, max_size=5, max_tasks_in_flight_per_actor=3
         )
         config = AutoscalingConfig.from_compute_strategy(compute)
-        assert config.min_worker_nodes == 2
-        assert config.max_worker_nodes == 5
+        assert config.min_workers == 2
+        assert config.max_workers == 5
         assert config.max_tasks_in_flight == 3
         assert config.ready_to_total_workers_ratio == 0.8
         assert config.idle_to_total_workers_ratio == 0.5
 
 
 class TestAutoscalingPolicy:
-    def test_min_worker_nodes(self):
-        # Test that the autoscaling policy forwards the config's min_worker_nodes.
-        config = AutoscalingConfig(min_worker_nodes=1, max_worker_nodes=4)
+    def test_min_workers(self):
+        # Test that the autoscaling policy forwards the config's min_workers.
+        config = AutoscalingConfig(min_workers=1, max_workers=4)
         policy = AutoscalingPolicy(config)
-        assert policy.min_worker_nodes == 1
+        assert policy.min_workers == 1
 
-    def test_max_worker_nodes(self):
-        # Test that the autoscaling policy forwards the config's max_worker_nodes.
-        config = AutoscalingConfig(min_worker_nodes=1, max_worker_nodes=4)
+    def test_max_workers(self):
+        # Test that the autoscaling policy forwards the config's max_workers.
+        config = AutoscalingConfig(min_workers=1, max_workers=4)
         policy = AutoscalingPolicy(config)
-        assert policy.max_worker_nodes == 4
+        assert policy.max_workers == 4
 
-    def test_should_scale_up_over_min_worker_nodes(self):
-        config = AutoscalingConfig(min_worker_nodes=1, max_worker_nodes=4)
+    def test_should_scale_up_over_min_workers(self):
+        config = AutoscalingConfig(min_workers=1, max_workers=4)
         policy = AutoscalingPolicy(config)
         num_total_workers = 0
         num_running_workers = 0
         # Should scale up since under pool min workers.
         assert policy.should_scale_up(num_total_workers, num_running_workers)
 
-    def test_should_scale_up_over_max_worker_nodes(self):
+    def test_should_scale_up_over_max_workers(self):
         # Test that scale-up is blocked if the pool would go over the configured max
         # workers.
-        config = AutoscalingConfig(min_worker_nodes=1, max_worker_nodes=4)
+        config = AutoscalingConfig(min_workers=1, max_workers=4)
         policy = AutoscalingPolicy(config)
         num_total_workers = 4
         num_running_workers = 4
@@ -586,7 +586,7 @@ class TestAutoscalingPolicy:
         # Test that scale-up is blocked if under the ready workers to total workers
         # ratio.
         config = AutoscalingConfig(
-            min_worker_nodes=1, max_worker_nodes=4, ready_to_total_workers_ratio=0.5
+            min_workers=1, max_workers=4, ready_to_total_workers_ratio=0.5
         )
         policy = AutoscalingPolicy(config)
 
@@ -600,10 +600,10 @@ class TestAutoscalingPolicy:
         # Shouldn scale up due to being over ready workers to total workers ratio.
         assert policy.should_scale_up(num_total_workers, num_running_workers)
 
-    def test_should_scale_down_min_worker_nodes(self):
+    def test_should_scale_down_min_workers(self):
         # Test that scale-down is blocked if the pool would go under the configured min
         # workers.
-        config = AutoscalingConfig(min_worker_nodes=2, max_worker_nodes=4)
+        config = AutoscalingConfig(min_workers=2, max_workers=4)
         policy = AutoscalingPolicy(config)
         num_total_workers = 2
         num_idle_workers = 2
@@ -619,7 +619,7 @@ class TestAutoscalingPolicy:
         # Test that scale-down is blocked if under the idle workers to total workers
         # ratio.
         config = AutoscalingConfig(
-            min_worker_nodes=1, max_worker_nodes=4, idle_to_total_workers_ratio=0.5
+            min_workers=1, max_workers=4, idle_to_total_workers_ratio=0.5
         )
         policy = AutoscalingPolicy(config)
         num_total_workers = 4
