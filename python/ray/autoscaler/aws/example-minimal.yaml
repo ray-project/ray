@@ -13,7 +13,7 @@ available_node_types:
     ray.head.default:
         # Provider-specific config for this node type, e.g. instance type. By default
         # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
-        # For more documentation on available fields, see:
+        # For more documentation on available fields, see
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
             InstanceType: m5.large
