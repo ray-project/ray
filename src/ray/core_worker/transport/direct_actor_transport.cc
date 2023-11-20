@@ -39,7 +39,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const rpc::PushTaskRequest req_copy = request;
-
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   // Use `mutable_task_spec()` here as `task_spec()` returns a const reference
   // which doesn't work with std::move.
@@ -62,7 +61,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     worker_context_.SetCurrentActorId(task_spec.ActorCreationId());
     SetupActor(task_spec.IsAsyncioActor(),
                task_spec.MaxActorConcurrency(),
-               task_spec.ExecuteOutOfOrder());
+               /*out_of_order=*/true); // XXX fix for compiled dag  // task_spec.ExecuteOutOfOrder());
   }
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
@@ -80,7 +79,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   }
 
   auto requeue_callback = [this, req_copy, reply](rpc::SendReplyCallback send_reply_callback) {
-    this->HandleTask(req_copy, reply, send_reply_callback);
+    this->task_main_io_service_.post([this, req_copy, reply, send_reply_callback]() {
+      this->HandleTask(req_copy, reply, send_reply_callback);
+    }, "requeue");
   };
 
   auto accept_callback = [this, reply, task_spec, requeue_callback, resource_ids](
@@ -252,7 +253,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                                                                cg_it->second)))
                .first;
     }
-    RAY_LOG(DEBUG) << "Add start";
 
     it->second->Add(request.sequence_number(),
                     request.client_processed_up_to(),
@@ -264,7 +264,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                     task_spec.TaskId(),
                     /*dependencies=*/{});
 
-    RAY_LOG(DEBUG) << "Add done";
     return;
   }
 
@@ -313,7 +312,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                     task_spec.TaskId(),
                     dependencies);
   } else {
-    RAY_LOG(DEBUG) << "Processing normal task " << task_spec.GetName();
     // Add the normal task's callbacks to the non-actor scheduling queue.
     RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
                    << " to normal scheduling task queue.";

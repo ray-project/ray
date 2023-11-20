@@ -1,4 +1,6 @@
-import ray, time
+import time
+
+import ray
 
 
 @ray.remote
