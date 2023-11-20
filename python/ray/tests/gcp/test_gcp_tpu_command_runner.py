@@ -135,7 +135,6 @@ def test_tpu_docker_command_runner():
         "docker_config": docker_config,
     }
     cmd_runner = TPUCommandRunner(**args)
-
     env_vars = {"var1": 'quote between this " and this', "var2": "123"}
     cmd_runner.run("echo hello", environment_variables=env_vars)
 
@@ -186,6 +185,36 @@ def test_tpu_docker_command_runner():
     for i in range(num_workers):
         for x, y in zip(calls[i], expected):
             assert x == y
+
+
+def test_tpu_docker_run_init():
+    num_workers = 1
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+    instance = MockTpuInstance(num_workers=num_workers)
+    provider.create_node({}, {}, 1)
+    cluster_name = "cluster"
+    docker_config = {
+        "container_name": "container",
+        "image": "rayproject/ray:latest",
+    }
+    args = {
+        "instance": instance,
+        "log_prefix": "prefix",
+        "node_id": "0",
+        "provider": provider,
+        "auth_config": auth_config,
+        "cluster_name": cluster_name,
+        "process_runner": process_runner,
+        "use_internal_ip": False,
+        "docker_config": docker_config,
+    }
+    cmd_runner = TPUCommandRunner(**args)
+
+    # Test for run_init
+    process_runner.respond_to_call("json .Config.Env", 2 * ["[]"])
+    cmd_runner.run_init(as_head=True, file_mounts={}, sync_run_yet=True)
+    process_runner.assert_has_call("1.2.3.4", pattern="docker")
 
 
 def test_max_active_connections_env_var():
