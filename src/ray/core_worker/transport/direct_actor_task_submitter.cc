@@ -363,7 +363,7 @@ void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
   // The bool here indicates whether the task is the first for the raylet address.
-  std::vector<std::pair<std::pair<TaskSpecification, Status>, bool>> task_info_list;
+  auto task_info_list = std::make_shared<TaskInfoList>();
   rpc::CheckAliveRequest request;
   {
     absl::MutexLock lock(&mu_);
@@ -379,7 +379,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
           // Cannot add outside the loop in case there are no tasks to add.
           request.add_raylet_address(addr.ip_address() + ":" + std::to_string(addr.port()));
         }
-        task_info_list.push_back(std::make_pair(task_spec_status_pair, first));
+        task_info_list->push_back(std::make_pair(task_spec_status_pair, first));
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
         first = false;
       }
@@ -392,20 +392,20 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
   if (RayConfig::instance().enable_reap_actor_death()) {
   // Check GCS for preemption info here before failing.
   gcs_client_.GetGcsRpcClient().CheckAlive(request,
-  [this, &task_info_list](const Status &status, const rpc::CheckAliveReply &reply) {
-  auto iter = reply.raylet_preempted().begin();
-  bool firstAddr = true;
-  for (auto &task_info : task_info_list) {
-    FailTaskWithError(task_info.first.first.TaskId(), task_info.first.second, *iter);
-    if (task_info.second && !firstAddr) {
-      iter++;
+  [this, task_info_list = std::move(task_info_list)](const Status &status, const rpc::CheckAliveReply &reply) {
+    auto iter = reply.raylet_preempted().begin();
+    bool firstAddr = true;
+    for (auto &task_info : *task_info_list) {
+      FailTaskWithError(task_info.first.first.TaskId(), task_info.first.second, *iter);
+      if (task_info.second && !firstAddr) {
+        iter++;
+      }
+      firstAddr = false;
     }
-    firstAddr = false;
-  }
   },
   -1 /* timeout */); 
   } else {
-    for (auto &task_info : task_info_list) {
+    for (auto &task_info : *task_info_list) {
   GetTaskFinisherWithoutMu().FailPendingTask(task_info.first.first.TaskId(),
                                              rpc::ErrorType::ACTOR_DIED,
                                              &task_info.first.second /* status */);

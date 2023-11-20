@@ -232,6 +232,9 @@ class CoreWorkerDirectActorTaskSubmitter
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
  private:
+  typedef std::vector<std::pair<std::pair<TaskSpecification, Status>, bool>>
+      TaskInfoList;
+
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access
   /// - FailOrRetryPendingTask
