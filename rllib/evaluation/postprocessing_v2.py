@@ -43,10 +43,10 @@ def postprocess_episodes_to_sample_batch(
         # a list.
         if isinstance(episode_or_list, list):
             for episode in episode_or_list:
-                batches.append(episode.to_sample_batch())
+                batches.append(episode.get_sample_batch())
         # During exploration we have an episode.
         else:
-            batches.append(episode_or_list.to_sample_batch())
+            batches.append(episode_or_list.get_sample_batch())
 
     batch = concat_samples(batches)
     # TODO (sven): During evalaution we do not have infos at all.

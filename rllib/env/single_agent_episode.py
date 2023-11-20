@@ -19,15 +19,16 @@ class SingleAgentEpisode:
         actions: List[ActType] = None,
         rewards: List[SupportsFloat] = None,
         infos: List[Dict] = None,
-        t_started: Optional[int] = None,
         is_terminated: bool = False,
         is_truncated: bool = False,
-        render_images: Optional[List[np.ndarray]] = None,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
+        render_images: Optional[List[np.ndarray]] = None,
+        t_started: Optional[int] = None,
+        len_lookback_buffer: Optional[int] = None,
     ) -> "SingleAgentEpisode":
         """Initializes a `SingleAgentEpisode` instance.
 
-        This constructor can be called with or without sampled data. Note
+        This constructor can be called with or without already sampled data. Note
         that if data is provided the episode will start at timestep
         `t_started = len(observations) - 1` (the initial observation is not
         counted). If the episode should start at `t_started = 0` (e.g.
@@ -59,23 +60,25 @@ class SingleAgentEpisode:
                 rewards, is_terminated, is_truncated, and all necessary
                 `extra_model_outputs`). States are only avasilable if a stateful
                 model (`RLModule`) is used.
-            t_started: Optional. The starting timestep of the episode. The default
-                is zero. If data is provided, the starting point is from the last
-                observation onwards (i.e. `t_started = len(observations) - 1). If
-                this parameter is provided the episode starts at the provided value.
             is_terminated: Optional. A boolean indicating, if the episode is already
                 terminated. Note, this parameter is only needed, if episode data is
                 provided in the constructor. The default is `False`.
             is_truncated: Optional. A boolean indicating, if the episode was
                 truncated. Note, this parameter is only needed, if episode data is
                 provided in the constructor. The default is `False`.
-            render_images: Optional. A list of RGB uint8 images from rendering
-                the environment.
             extra_model_outputs: Optional. A list of dictionaries containing specific
                 model outputs for the algorithm used (e.g. `vf_preds` and `action_logp`
                 for PPO) from a rollout. If data is provided it should be complete
                 (i.e. observations, actions, rewards, is_terminated, is_truncated,
                 and all necessary `extra_model_outputs`).
+            render_images: Optional. A list of RGB uint8 images from rendering
+                the environment.
+            t_started: Optional. The starting timestep of the episode. The default
+                is zero. If data is provided, the starting point is from the last
+                observation onwards (i.e. `t_started = len(observations) - 1). If
+                this parameter is provided the episode starts at the provided value.
+            len_lookback_buffer: The size of an optional lookback buffer to keep in
+                front of this Episode. If >0, will
         """
         self.id_ = id_ or uuid.uuid4().hex
         # Observations: t0 (initial obs) to T.
@@ -90,6 +93,19 @@ class SingleAgentEpisode:
         else:
             self.infos = infos
 
+        # obs[-1] is the final observation in the episode.
+        self.is_terminated = is_terminated
+        # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
+        # observations in following chunks for this episode).
+        self.is_truncated = is_truncated
+        # Extra model outputs, e.g. `action_dist_input` needed in the batch.
+        self.extra_model_outputs = defaultdict(list, extra_model_outputs or {})
+        # RGB uint8 images from rendering the env; the images include the corresponding
+        # rewards.
+        assert render_images is None or observations is not None
+        self.render_images = [] if render_images is None else render_images
+
+        TODO: Fix this!
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
         # TODO (simon): Check again what are the consequences of this decision for
@@ -101,19 +117,11 @@ class SingleAgentEpisode:
         self.t = self.t_started = (
             t_started if t_started is not None else max(len(self.observations) - 1, 0)
         )
-        self._len_pre_buffer = len(self.rewards)
-
-        # obs[-1] is the final observation in the episode.
-        self.is_terminated = is_terminated
-        # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
-        # observations in following chunks for this episode).
-        self.is_truncated = is_truncated
-        # RGB uint8 images from rendering the env; the images include the corresponding
-        # rewards.
-        assert render_images is None or observations is not None
-        self.render_images = [] if render_images is None else render_images
-        # Extra model outputs, e.g. `action_dist_input` needed in the batch.
-        self.extra_model_outputs = defaultdict(list, extra_model_outputs or {})
+        self._len_lookback_buffer = (
+            len_lookback_buffer if len_lookback_buffer is not None
+            else len(self.rewards)
+        )
+        self.validate()
 
     def concat_episode(self, episode_chunk: "SingleAgentEpisode"):
         """Adds the given `episode_chunk` to the right side of self.
@@ -260,7 +268,7 @@ class SingleAgentEpisode:
         for k, v in self.extra_model_outputs.items():
             assert len(v) == len(self.observations) - 1
         # Make sure, length of pre-buffer and len(self) make sense.
-        assert self._len_pre_buffer + len(self) == len(self.rewards)
+        assert self._len_lookback_buffer + len(self) == len(self.rewards)
 
     @property
     def is_numpy(self) -> bool:
@@ -281,19 +289,22 @@ class SingleAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
-    def convert_lists_to_numpy(self) -> None:
+    def convert_lists_to_numpy(self) -> "SingleAgentEpisode":
         """Converts this Episode's list attributes to numpy arrays.
 
         In case some data is nested (e.g. we have a dict obs space), each leaf in the
         nested structure is converted into a numpy ndarray and thus the data is
         converted from a list of (nested) structs into a (nested) struct of
-        (batched) ndarrays.
+        ndarrays of shape (B, ...), where B is always the length of the original list
+        of (nested) structs.
 
-        Note that INFOS are not numpy'ized and will remain as list type (normally, a
-        list of the original, env-returned dicts).
+        Note that SampleBatch.INFOS are not numpy'ized and will remain a list
+        (normally, a list of the original, env-returned dicts). This is due to the
+        herterogenous nature of INFOS returned by envs, which would make it unwieldy to
+        convert this information to numpy arrays.
 
         Returns:
-             This `SingleAgentEpisode` object with the converted data.
+             This `SingleAgentEpisode` object with the converted numpy data.
         """
 
         self.observations = batch(self.observations)
@@ -351,7 +362,7 @@ class SingleAgentEpisode:
             t_started=self.t,
         )
 
-    def split(self, split_at: int) -> "SingleAgentEpisode":
+    def split_at(self, index: int) -> "SingleAgentEpisode":
         """Splits at given index, keeping the 1st half in `self` and returning 2nd half.
 
         Changes `self` in-place by making it shorter (from 0 to [original length] to
@@ -359,18 +370,61 @@ class SingleAgentEpisode:
         returned as a new SingleAgentEpisode object.
 
         Args:
-            split_at: The index at which to perform the split.
+            index: The index at which to perform the split.
 
         Returns:
             The new SingleAgentEpisode representing the second half of the split. The
             first half of the split will be `self`, which is changed in-place.
         """
-        data_dict = self.get_data_dict()
-        if self.is_numpy:
-            self.observations = data_dict[SampleBatch.OBS]
-        new_episode = SingleAgentEpisode(
-            observations=
+        # For now, only allow splitting on finalized, numpy'ized episodes.
+        assert self.is_numpy, "Cannot split a non-numpy-converted SingleAgentEpisode!"
+        assert len(self) > index - 1, (
+            f"Cannot split at {index}! SingleAgentEpisode is only {len(self)} ts long."
         )
+
+        # Keep the same pre-buffer length.
+        start_2nd_chunk = index - self._len_lookback_buffer
+        second_chunk = SingleAgentEpisode(
+            id_=self.id_,
+            observations=tree.map_structure(
+                lambda s: s[start_2nd_chunk:],
+                self.observations,
+            ),
+            infos=self.infos[start_2nd_chunk:],
+            actions=tree.map_structure(
+                lambda s: s[start_2nd_chunk:],
+                self.actions,
+            ),
+            rewards=self.rewards[start_2nd_chunk:],
+            is_terminated=self.is_terminated,
+            is_truncated=self.is_truncated,
+            # Provide correct timestep- and pre-buffer information.
+            t_started=index,
+            len_lookback_buffer=self._len_lookback_buffer,
+        )
+
+        # Fix self.
+        end_self = index + self._len_lookback_buffer
+        self.t = index
+        self.observations = tree.map_structure(
+            lambda s: s[:end_self],
+            self.observations,
+        )
+        self.infos = self.infos[:end_self]
+        self.actions = tree.map_structure(
+            lambda s: s[:end_self],
+            self.actions,
+        )
+        self.rewards = self.rewards[:end_self]
+        self.extra_model_outputs = tree.map_structure(
+            lambda s: s[:end_self],
+            self.extra_model_outputs,
+        )
+        # Set our own terminated/truncated back to False.
+        self.is_terminated = False
+        self.is_truncated = False
+
+        return second_chunk
 
     def get_data_dict(self):
         """Converts a `SingleAgentEpisode` into a data dict mapping str keys to data.
@@ -427,7 +481,7 @@ class SingleAgentEpisode:
         self, indices: Optional[Union[int, List[int], slice]] = None
     ) -> Any:
         if indices is None:
-            slice_ = slice(self._len_pre_buffer, -1)
+            slice_ = slice(self._len_lookback_buffer, -1)
         elif isinstance(indices, list) and not self.is_numpy:
             return [self.observations[i] for i in indices]
         else:
@@ -440,7 +494,7 @@ class SingleAgentEpisode:
 
     def get_infos(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
         if indices is None:
-            slice_ = slice(self._len_pre_buffer, -1)
+            slice_ = slice(self._len_lookback_buffer, -1)
         elif isinstance(indices, int):
             slice_ = slice(indices, indices + 1)
         elif isinstance(indices, list):
@@ -453,7 +507,7 @@ class SingleAgentEpisode:
         self, indices: Optional[Union[int, List[int], slice]] = None
     ) -> Any:
         if indices is None:
-            slice_ = slice(self._len_pre_buffer, None)
+            slice_ = slice(self._len_lookback_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
             return [self.actions[i] for i in indices]
         else:
@@ -464,7 +518,7 @@ class SingleAgentEpisode:
         self, indices: Optional[Union[int, List[int], slice]] = None
     ) -> Any:
         if indices is None:
-            slice_ = slice(self._len_pre_buffer, None)
+            slice_ = slice(self._len_lookback_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
             return [self.rewards[i] for i in indices]
         else:
@@ -477,7 +531,7 @@ class SingleAgentEpisode:
         assert key in self.extra_model_outputs
         data = self.extra_model_outputs[key]
         if indices is None:
-            slice_ = slice(self._len_pre_buffer, None)
+            slice_ = slice(self._len_lookback_buffer, None)
         elif isinstance(indices, list) and not self.is_numpy:
             return [data[i] for i in indices]
         else:
