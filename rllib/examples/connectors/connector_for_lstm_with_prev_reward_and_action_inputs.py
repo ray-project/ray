@@ -6,6 +6,7 @@ import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
+from ray.rllib.connectors.env_to_module import
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_pipeline_v2 import (
     ConnectorPipelineV2,
@@ -42,45 +43,6 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
 )
-
-
-class PrevRewardPrevActionConnector(ConnectorV2):
-    def __init__(self, *, ctx, as_learner_connector=False):
-        super().__init__(ctx=ctx)
-        self.action_space = ctx.rl_module.config.action_space
-        self.as_learner_connector = as_learner_connector
-
-    # Only need to override the __call__ method to implement the extraction of
-    # reward and action data from the ongoing episodes.
-    def __call__(self, *, input_, episodes, ctx, **kwargs):
-        # This is a data-in-data-out connector, so we expect `input_` to be a dict
-        # with: key=column name, e.g. "obs" and value=[data to be processed by RLModule].
-        # We will just extract the most recent rewards and/or most recent actions from
-        # all episodes and store them inside the `input_` data dict.
-
-        # 0th reward == 0.0.
-        r0 = 0.0
-        # Set 0th action (prior to first action taken in episode) to all 0s.
-        a0 = tree.map_structure(
-            lambda s: np.zeros_like(s),
-            (
-                self.action_space.sample()
-            ),
-        )
-
-        prev_a = []
-        prev_r = []
-        for episode in episodes:
-            if self.as_learner_connector:
-                prev_r.extend([r0] + list(episode.rewards[:-1]))
-                prev_a.extend([a0] + list(episode.actions[:-1]))
-            else:
-                prev_a.append(episode.actions[-1] if len(episode) else a0)
-                prev_r.append(episode.rewards[-1] if len(episode) else r0)
-
-        input_[SampleBatch.PREV_ACTIONS] = batch(prev_a)
-        input_[SampleBatch.PREV_REWARDS] = np.array(prev_r)
-        return input_
 
 
 if __name__ == "__main__":
