@@ -734,7 +734,6 @@ class ServeController:
         self._scale_direction = calculate_scale_direction(
             curr_config=curr_config,
             new_config=config,
-            curr_target_capacity=self._target_capacity,
             curr_scale_direction=self._scale_direction,
         )
 
