@@ -73,7 +73,6 @@ class DataOpTask(OpTask):
             try:
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
-                    print("unexpected break")
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
                     break

@@ -363,7 +363,6 @@ class MapOperator(OneToOneOperator, ABC):
         )
 
     def get_active_tasks(self) -> List[OpTask]:
-        # print(f"get_active_tasks {len(list(self._metadata_tasks.values()))} {len(list(self._data_tasks.values()))} {isinstance(self, ray.data._internal.execution.operators.actor_pool_map_operator.ActorPoolMapOperator)}")
         return list(self._metadata_tasks.values()) + list(self._data_tasks.values())
 
     def all_inputs_done(self):
@@ -414,10 +413,6 @@ class MapOperator(OneToOneOperator, ABC):
     @abstractmethod
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
-
-    # Return all input RefBundles of failed tasks.
-    def _get_failed_task_inputs(self):
-        return [task._inputs for task in self._failed_tasks.values()]
 
 def _map_task(
     map_transformer: MapTransformer,

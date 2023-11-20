@@ -82,7 +82,6 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args,
         )
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
-        logger.get_logger().info(f'ActorPoolMapOperator _ray_remote_args: {self._ray_remote_args} {id(self)}')
         self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
@@ -274,8 +273,6 @@ class ActorPoolMapOperator(MapOperator):
         self._scale_down_if_needed()
 
     def _kill_inactive_workers_if_done(self):
-        # Add another condition
-        #if self._inputs_done and not self._bundle_queue and self._next_data_task_idx == self._data_task_done_count + self._data_task_fail_count:
         if self._inputs_done and not self._bundle_queue:
             # No more tasks will be submitted, so we kill all current and future
             # inactive workers.
