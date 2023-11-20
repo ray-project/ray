@@ -1,12 +1,14 @@
 import atexit
 import logging
 import ssl
+import time
 from enum import Enum
 
 from pyVim.connect import Disconnect, SmartStubAdapter, VimSessionOrientedStub
+from pyVim.task import WaitForTask
 from pyVmomi import vim, vmodl
 
-from ray.autoscaler._private.vsphere.utils import Constants, singleton_client
+from ray.autoscaler._private.vsphere.utils import Constants, is_ipv4, singleton_client
 
 logger = logging.getLogger(__name__)
 
@@ -189,3 +191,94 @@ class PyvmomiSdkProvider:
         except Exception as e:
             self.cached.clear()
             raise RuntimeError(f"failed to ensure the connect, exception: {e}")
+
+    def name_to_id(self, vimtype, name):
+        obj = self.get_pyvmomi_obj(vimtype, name)
+        return obj._moId
+
+    def power_on_vm(self, vm_name):
+        vm = self.get_pyvmomi_obj([vim.VirtualMachine], vm_name)
+        if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
+            logger.debug(f"Frozen VM {vm._moId} is off. Powering it ON")
+            WaitForTask(vm.PowerOnVM_Task())
+            logger.debug(f"VM {vm_name} is power on. Done.")
+
+    def power_off_vm(self, vm_name):
+        vm_obj = self.get_pyvmomi_obj([vim.VirtualMachine], vm_name)
+        logger.debug(f"power_off_vm: {vm_name}...")
+        time.sleep(10)
+        logger.debug(f"power_off_vm: powerState={vm_obj.runtime.powerState}...")
+        if vm_obj.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
+            logger.debug(f"Power off VM {vm_name}...")
+            WaitForTask(vm_obj.PowerOffVM_Task())
+            logger.debug(f"VM {vm_name} is power off. Done.")
+
+    def is_vm_power_on(self, vm_id):
+        vm = self.get_pyvmomi_obj([vim.VirtualMachine], obj_id=vm_id)
+        return vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn
+
+    def is_vm_power_off(self, vm_id):
+        vm = self.get_pyvmomi_obj([vim.VirtualMachine], obj_id=vm_id)
+        return vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff
+
+    def wait_until_vm_is_frozen(self, vm_name):
+        """The function waits until a VM goes into the frozen state."""
+
+        vm = self.get_pyvmomi_obj([vim.VirtualMachine], vm_name)
+        start = time.time()
+
+        while time.time() - start < Constants.VM_FREEZE_TIMEOUT:
+            time.sleep(Constants.VM_FREEZE_SLEEP_TIME)
+            if vm.runtime.instantCloneFrozen:
+                logger.info(
+                    "VM {} went into frozen state successfully.".format(vm.name)
+                )
+                return vm
+
+        raise RuntimeError("VM {} didn't go into frozen state".format(vm.name))
+
+    def get_vm_external_ip(self, vm_id):
+        # Return the external IP of the VM
+        # Fetch vSphere VM object
+        vm = self.get_pyvmomi_obj([vim.VirtualMachine], obj_id=vm_id)
+        if vm.guest.net:
+            for ipaddr in vm.guest.net[0].ipAddress:
+                if is_ipv4(ipaddr):
+                    logger.debug("Fetch IP {} for VM {}".format(ipaddr, vm.name))
+                    return ipaddr
+        else:
+            logger.warning(f"Net of VM {vm.name} is not ready")
+        logger.warning(f"External IPv4 address of VM {vm.name} is not available")
+        return None
+
+    def instance_clone_vm(
+        self,
+        source_vm_name,
+        target_vm_name,
+        target_resource_pool_name,
+        target_datastore_name,
+    ):
+        # If resource pool is not provided, then the resource pool
+        # of the source VM will also be the resource pool of the target VM.
+        resource_pool = (
+            self.get_pyvmomi_obj([vim.ResourcePool], target_resource_pool_name)
+            if target_resource_pool_name
+            else None
+        )
+        # If datastore is not provided, then the datastore
+        # of the source VM will also be the resource pool of the target VM.
+        datastore = (
+            self.get_pyvmomi_obj([vim.Datastore], target_datastore_name)
+            if target_datastore_name
+            else None
+        )
+        vm_relocate_spec = vim.vm.RelocateSpec(
+            pool=resource_pool,
+            datastore=datastore,
+        )
+        instant_clone_spec = vim.vm.InstantCloneSpec(
+            name=target_vm_name, location=vm_relocate_spec
+        )
+        source_vm = self.get_pyvmomi_obj([vim.VirtualMachine], source_vm_name)
+        WaitForTask(source_vm.InstantClone_Task(spec=instant_clone_spec))
+        logger.info(f"Clone VM {target_vm_name} from Frozen-VM {source_vm_name}")

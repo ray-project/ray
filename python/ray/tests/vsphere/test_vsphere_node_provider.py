@@ -41,7 +41,7 @@ def mock_vsphere_node_provider():
         self.vsphere_config = provider_config["vsphere_config"]
         self.get_pyvmomi_sdk_provider = MagicMock()
         self.get_vsphere_sdk_client = MagicMock()
-        self.frozen_vm_scheduler = None
+        self.frozen_vm_scheduler = MagicMock()
 
     with patch.object(VsphereNodeProvider, "__init__", __init__):
         node_provider = VsphereNodeProvider(_PROVIDER_CONFIG, _CLUSTER_NAME)
@@ -143,8 +143,7 @@ def test_non_terminated_nodes_with_multiple_filters_not_matching():
 def test_is_terminated():
     """Should return true if a cached node is not in POWERED_ON state"""
     vnp = mock_vsphere_node_provider()
-    node1 = MagicMock()
-    node1.power_state = HardPower.State.POWERED_OFF
+    vnp.get_pyvmomi_sdk_provider().is_vm_power_on.return_value = False
     is_terminated = vnp.is_terminated("node1")
     assert is_terminated is True
 
@@ -168,7 +167,7 @@ def test_node_tags():
 
 @patch("ray.autoscaler._private.vsphere.node_provider.vim.vm.RelocateSpec")
 @patch("ray.autoscaler._private.vsphere.node_provider.vim.vm.InstantCloneSpec")
-@patch("ray.autoscaler._private.vsphere.node_provider.WaitForTask")
+@patch("ray.autoscaler._private.vsphere.pyvmomi_sdk_provider.WaitForTask")
 def test_create_instant_clone_node(mock_wait_task, mock_ic_spec, mock_relo_spec):
     vnp = mock_vsphere_node_provider()
     VM.InstantCloneSpec = MagicMock(return_value="Clone Spec")
@@ -180,9 +179,8 @@ def test_create_instant_clone_node(mock_wait_task, mock_ic_spec, mock_relo_spec)
     )
     vnp.connect_nics = MagicMock(return_value=None)
     vnp.get_vsphere_sdk_client().vcenter.vm.hardware.Ethernet.list.return_value = None
-    vnp.pyvmomi_vm_to_vsphere_sdk_vm = MagicMock(return_value="test VM")
+    vnp.get_vsphere_sdk_vm_obj = MagicMock(return_value="test VM")
 
-    vm_clone_from = MagicMock(vm="test-1")
     node_config = {"resource_pool": "rp1", "datastore": "ds1", "resources": {}}
     tags = {"key": "value"}
     gpu_ids_map = None
@@ -190,8 +188,8 @@ def test_create_instant_clone_node(mock_wait_task, mock_ic_spec, mock_relo_spec)
     mock_ic_spec.return_value = MagicMock()
     mock_relo_spec.return_value = MagicMock()
     vm = vnp.create_instant_clone_node(
-        vm_clone_from,
-        "target-vm",
+        "test-1",
+        "test VM",
         node_config,
         tags,
         gpu_ids_map,
@@ -226,6 +224,9 @@ def test__create_node():
     vnp.attach_tag = MagicMock(return_value=None)
     vnp.delete_vm = MagicMock(return_value=None)
     vnp.create_new_or_fetch_existing_frozen_vms = MagicMock(return_value={"vm": "vm-d"})
+    vnp.frozen_vm_scheduler().next_frozen_vm = MagicMock(
+        return_value=MagicMock(name=MagicMock("frozen-vm"))
+    )
     vnp.lock = RLock()
 
     created_nodes_dict = vnp._create_node(
@@ -306,7 +307,7 @@ def test_terminate_node():
 
 def test_create_new_or_fetch_existing_frozen_vms():
     vnp = mock_vsphere_node_provider()
-    vnp.check_frozen_vm_status = MagicMock()
+    vnp.ensure_frozen_vm_status = MagicMock()
     vnp.create_frozen_vm_from_ovf = MagicMock()
     vnp.create_frozen_vm_on_each_host = MagicMock()
     vnp.get_pyvmomi_sdk_provider().get_pyvmomi_obj.return_value = MagicMock(
@@ -314,7 +315,7 @@ def test_create_new_or_fetch_existing_frozen_vms():
     )
     node_config = {"frozen_vm": {"name": "frozen"}}
     vnp.create_new_or_fetch_existing_frozen_vms(node_config)
-    vnp.check_frozen_vm_status.assert_called()
+    vnp.ensure_frozen_vm_status.assert_called()
 
     node_config = {"frozen_vm": {"name": "frozen", "resource_pool": "frozen-rp"}}
     vnp.create_new_or_fetch_existing_frozen_vms(node_config)
