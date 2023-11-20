@@ -28,7 +28,7 @@ However it's not that easy:
 - We can't assert that len(all_sockets) == 2, because in MacOS, there are some
     system-created sockets like '/var/run/mDNSResponder'.
 
-So we do it good old way (see python/ray/tests/test_actor_bounded_sockets.py), test that
+So we do it good old way (see python/ray/tests/test_actor_bounded_threads.py), test that
 number of sockets do not grow as time goes, across workers.
 """
 
@@ -94,7 +94,7 @@ def test_actors_have_bounded_num_of_sockets(shutdown_only):
         a = A.remote()
         actors.append(a)
         assert_bounded_sockets(driver_sockets, ray.get(a.sockets.remote()))
-        assert a.sum.remote(2, 3) == 5
+        assert ray.get(a.sum.remote(2, 3)) == 5
         assert_bounded_sockets(driver_sockets, ray.get(a.sockets.remote()))
 
 
