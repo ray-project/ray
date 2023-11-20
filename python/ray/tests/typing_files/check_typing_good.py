@@ -1,6 +1,6 @@
 import ray
-from ray.types import ObjectRef, StreamingObjectRefGeneratorType
-from typing import Generator, AsyncGenerator, AsyncIterable, AsyncIterator, Iterable, Iterator
+from ray.types import ObjectRef
+from typing import Generator
 
 ray.init()
 
@@ -49,7 +49,18 @@ ready, unready = ray.wait([object_ref_str, object_ref_int])
 # Make sure the return type is checked.
 xy = ray.get(object_ref_str) + "y"
 
+
+# Right now, we only check if it doesn't raise errors.
+@ray.remote
+def generator_1() -> Generator[int, None, None]:
+    yield 1
+
+
+gen = generator_1.remote()
+
+
 """
+TODO(sang): Enable it.
 Test generator
 
 Generator can have 4 different output
@@ -58,44 +69,44 @@ https://docs.python.org/3/library/typing.html#typing.Generator
 for more details.
 """
 
-@ray.remote
-def generator_1() -> Generator[int, None, None]:
-    yield 1
+# @ray.remote
+# def generator_1() -> Generator[int, None, None]:
+#     yield 1
 
 
-@ray.remote
-def generator_2() -> Iterator[int]:
-    yield 1
+# @ray.remote
+# def generator_2() -> Iterator[int]:
+#     yield 1
 
 
-@ray.remote
-def generator_3() -> Iterable[int]:
-    yield 1
+# @ray.remote
+# def generator_3() -> Iterable[int]:
+#     yield 1
 
 
-gen: StreamingObjectRefGeneratorType[int] = generator_1.remote()
-gen2: StreamingObjectRefGeneratorType[int] = generator_2.remote()
-gen3: StreamingObjectRefGeneratorType[int] = generator_3.remote()
+# gen: StreamingObjectRefGeneratorType[int] = generator_1.remote()
+# gen2: StreamingObjectRefGeneratorType[int] = generator_2.remote()
+# gen3: StreamingObjectRefGeneratorType[int] = generator_3.remote()
 
 
-next_item: ObjectRef[int] = gen.__next__()
+# next_item: ObjectRef[int] = gen.__next__()
 
 
-@ray.remote
-async def async_generator_1() -> AsyncGenerator[int, None]:
-    yield 1
+# @ray.remote
+# async def async_generator_1() -> AsyncGenerator[int, None]:
+#     yield 1
 
 
-@ray.remote
-async def async_generator_2() -> AsyncIterator[int]:
-    yield 1
+# @ray.remote
+# async def async_generator_2() -> AsyncIterator[int]:
+#     yield 1
 
 
-@ray.remote
-async def async_generator_3() -> AsyncIterable[int]:
-    yield 1
+# @ray.remote
+# async def async_generator_3() -> AsyncIterable[int]:
+#     yield 1
 
 
-gen4: StreamingObjectRefGeneratorType[int] = async_generator_1.remote()
-gen5: StreamingObjectRefGeneratorType[int] = async_generator_2.remote()
-gen6: StreamingObjectRefGeneratorType[int] = async_generator_3.remote()
+# gen4: StreamingObjectRefGeneratorType[int] = async_generator_1.remote()
+# gen5: StreamingObjectRefGeneratorType[int] = async_generator_2.remote()
+# gen6: StreamingObjectRefGeneratorType[int] = async_generator_3.remote()

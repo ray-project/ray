@@ -31,11 +31,6 @@ from typing import (
     TypeVar,
     Union,
     overload,
-    Generator,
-    Iterable,
-    AsyncGenerator,
-    AsyncIterable,
-    AsyncIterator,
 )
 from urllib.parse import urlparse
 
@@ -65,7 +60,7 @@ from ray._raylet import (
     raise_sys_exit_with_custom_error_message,
 )
 from ray.types import ObjectRef as ObjectRefType
-from ray.types import StreamingObjectRefGeneratorType
+from ray.types import StreamingObjectRefGenerator as StreamingObjectRefGeneratorType
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -133,30 +128,6 @@ DAGNode = TypeVar("DAGNode")
 
 
 class RemoteFunctionNoArgs(Generic[R]):
-    def __init__(self, function: Callable[[], Generator[R, S, Y]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[], Iterable[R]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[], Iterator[R]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[], AsyncGenerator[R, None]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[], AsyncIterable[R]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[], AsyncIterator[R]]) -> None:
-        pass
-
-    @overload
     def __init__(self, function: Callable[[], R]) -> None:
         pass
 
@@ -165,45 +136,9 @@ class RemoteFunctionNoArgs(Generic[R]):
     ) -> "ObjectRefType[R]":
         ...
 
-    @overload
-    def remote(
-        self,
-    ) -> StreamingObjectRefGeneratorType[R]:
-        ...
-
     def bind(
         self,
     ) -> "DAGNode[R]":
-        ...
-
-
-class RemoteFunctionNoArgsGenerator(Generic[R]):
-    def __init__(self, function: Callable[[], Generator[R, S, Y]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[], Iterable[R]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[], Iterator[R]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[], AsyncGenerator[R, None]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[], AsyncIterable[R]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[], AsyncIterator[R]]) -> None:
-        pass
-
-    def remote(
-        self,
-    ) -> StreamingObjectRefGeneratorType[R]:
         ...
 
 
@@ -221,37 +156,6 @@ class RemoteFunction0(Generic[R, T0]):
         self,
         __arg0: "Union[T0, DAGNode[T0]]",
     ) -> "DAGNode[R]":
-        ...
-
-
-class RemoteFunction0Generator(Generic[R, T0]):
-    def __init__(self, function: Callable[[T0], Generator[R, S, Y]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[T0], Iterable[R]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[T0], Iterator[R]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[T0], AsyncGenerator[R, None]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[T0], AsyncIterable[R]]) -> None:
-        pass
-
-    @overload
-    def __init__(self, function: Callable[[T0], AsyncIterator[R]]) -> None:
-        pass
-
-    def remote(
-        self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-    ) -> StreamingObjectRefGeneratorType[R]:
         ...
 
 
@@ -278,15 +182,6 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
     def __init__(self, function: Callable[[T0, T1, T2], R]) -> None:
         pass
 
-    # @overload
-    # def remote(
-    #     self,
-    #     __arg0: "Union[T0, ObjectRefType[T0]]",
-    #     __arg1: "Union[T1, ObjectRefType[T1]]",
-    #     __arg2: "Union[T2, ObjectRefType[T2]]",
-    # ) -> "StreamingObjectRefGeneratorType[R]":
-    #     ...
-
     def remote(
         self,
         __arg0: "Union[T0, ObjectRefType[T0]]",
@@ -307,16 +202,6 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
 class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
     def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
         pass
-
-    # @overload
-    # def remote(
-    #     self,
-    #     __arg0: "Union[T0, ObjectRefType[T0]]",
-    #     __arg1: "Union[T1, ObjectRefType[T1]]",
-    #     __arg2: "Union[T2, ObjectRefType[T2]]",
-    #     __arg3: "Union[T3, ObjectRefType[T3]]",
-    # ) -> "StreamingObjectRefGeneratorType[R]":
-    #     ...
 
     def remote(
         self,
@@ -340,17 +225,6 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
 class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4], R]) -> None:
         pass
-
-    # @overload
-    # def remote(
-    #     self,
-    #     __arg0: "Union[T0, ObjectRefType[T0]]",
-    #     __arg1: "Union[T1, ObjectRefType[T1]]",
-    #     __arg2: "Union[T2, ObjectRefType[T2]]",
-    #     __arg3: "Union[T3, ObjectRefType[T3]]",
-    #     __arg4: "Union[T4, ObjectRefType[T4]]",
-    # ) -> "StreamingObjectRefGeneratorType[R]":
-    #     ...
 
     def remote(
         self,
@@ -376,18 +250,6 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
 class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
         pass
-
-    # @overload
-    # def remote(
-    #     self,
-    #     __arg0: "Union[T0, ObjectRefType[T0]]",
-    #     __arg1: "Union[T1, ObjectRefType[T1]]",
-    #     __arg2: "Union[T2, ObjectRefType[T2]]",
-    #     __arg3: "Union[T3, ObjectRefType[T3]]",
-    #     __arg4: "Union[T4, ObjectRefType[T4]]",
-    #     __arg5: "Union[T5, ObjectRefType[T5]]",
-    # ) -> "StreamingObjectRefGeneratorType[R]":
-    #     ...
 
     def remote(
         self,
@@ -415,19 +277,6 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
 class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]) -> None:
         pass
-
-    # @overload
-    # def remote(
-    #     self,
-    #     __arg0: "Union[T0, ObjectRefType[T0]]",
-    #     __arg1: "Union[T1, ObjectRefType[T1]]",
-    #     __arg2: "Union[T2, ObjectRefType[T2]]",
-    #     __arg3: "Union[T3, ObjectRefType[T3]]",
-    #     __arg4: "Union[T4, ObjectRefType[T4]]",
-    #     __arg5: "Union[T5, ObjectRefType[T5]]",
-    #     __arg6: "Union[T6, ObjectRefType[T6]]",
-    # ) -> "StreamingObjectRefGeneratorType[R]":
-    #     ...
 
     def remote(
         self,
@@ -457,20 +306,6 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
 class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
         pass
-
-    # @overload
-    # def remote(
-    #     self,
-    #     __arg0: "Union[T0, ObjectRefType[T0]]",
-    #     __arg1: "Union[T1, ObjectRefType[T1]]",
-    #     __arg2: "Union[T2, ObjectRefType[T2]]",
-    #     __arg3: "Union[T3, ObjectRefType[T3]]",
-    #     __arg4: "Union[T4, ObjectRefType[T4]]",
-    #     __arg5: "Union[T5, ObjectRefType[T5]]",
-    #     __arg6: "Union[T6, ObjectRefType[T6]]",
-    #     __arg7: "Union[T7, ObjectRefType[T7]]",
-    # ) -> "StreamingObjectRefGeneratorType[R]":
-    #     ...
 
     def remote(
         self,
@@ -504,21 +339,6 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
         self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
     ) -> None:
         pass
-
-    # @overload
-    # def remote(
-    #     self,
-    #     __arg0: "Union[T0, ObjectRefType[T0]]",
-    #     __arg1: "Union[T1, ObjectRefType[T1]]",
-    #     __arg2: "Union[T2, ObjectRefType[T2]]",
-    #     __arg3: "Union[T3, ObjectRefType[T3]]",
-    #     __arg4: "Union[T4, ObjectRefType[T4]]",
-    #     __arg5: "Union[T5, ObjectRefType[T5]]",
-    #     __arg6: "Union[T6, ObjectRefType[T6]]",
-    #     __arg7: "Union[T7, ObjectRefType[T7]]",
-    #     __arg8: "Union[T8, ObjectRefType[T8]]",
-    # ) -> "StreamingObjectRefGeneratorType[R]":
-    #     ...
 
     def remote(
         self,
@@ -554,22 +374,6 @@ class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
         self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
     ) -> None:
         pass
-
-    # @overload
-    # def remote(
-    #     self,
-    #     __arg0: "Union[T0, ObjectRefType[T0]]",
-    #     __arg1: "Union[T1, ObjectRefType[T1]]",
-    #     __arg2: "Union[T2, ObjectRefType[T2]]",
-    #     __arg3: "Union[T3, ObjectRefType[T3]]",
-    #     __arg4: "Union[T4, ObjectRefType[T4]]",
-    #     __arg5: "Union[T5, ObjectRefType[T5]]",
-    #     __arg6: "Union[T6, ObjectRefType[T6]]",
-    #     __arg7: "Union[T7, ObjectRefType[T7]]",
-    #     __arg8: "Union[T8, ObjectRefType[T8]]",
-    #     __arg9: "Union[T9, ObjectRefType[T9]]",
-    # ) -> "StreamingObjectRefGeneratorType[R]":
-    #     ...
 
     def remote(
         self,
@@ -2887,8 +2691,9 @@ def wait(
     timeout: Optional[float] = None,
     fetch_local: bool = True,
 ) -> Tuple[
-        List[Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"]],
-        List[Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"]]]:
+    List[Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"]],
+    List[Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"]],
+]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -3095,7 +2900,7 @@ def cancel(
     ray_waitable: Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"],
     *,
     force: bool = False,
-    recursive: bool = True
+    recursive: bool = True,
 ) -> None:
     """Cancels a task.
 
@@ -3201,10 +3006,6 @@ def _make_remote(function_or_class, options):
 
 class RemoteDecorator(Protocol):
     @overload
-    def __call__(self, __function: Callable[[], Generator[R, S, Y]]) -> RemoteFunctionNoArgsGenerator[R]:
-        ...
-
-    @overload
     def __call__(self, __function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
         ...
 
@@ -3273,21 +3074,6 @@ class RemoteDecorator(Protocol):
 
 # Only used for type annotations as a placeholder
 Undefined: Any = object()
-
-
-@overload
-def remote(__function: Callable[[], Generator[R, S, Y]]) -> RemoteFunctionNoArgsGenerator[R]:
-    ...
-
-
-# @overload
-# def remote(__function: Callable[[], Iterable[R]]) -> RemoteFunctionNoArgsGenerator[R]:
-#     ...
-
-
-# @overload
-# def remote(__function: Callable[[], Iterator[R]]) -> RemoteFunctionNoArgsGenerator[R]:
-#     ...
 
 
 @overload
