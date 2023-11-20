@@ -8,6 +8,8 @@ class A:
     def __init__(self, input_ref):
         self.input_ref = input_ref[0]
         time.sleep(1)
+        # TODO: For reusable objects, it's easiest right now if we always make
+        # sure to write from the same process.
         self.output_ref = ray.put(b"111111111", max_readers=1)
         ray.release(self.output_ref)
 
