@@ -18,11 +18,11 @@ def test_flaky_block_write(ray_start_regular_shared, tmp_path):
     class FlakyCSVDatasink(BlockBasedFileDatasink):
         def __init__(self, path: str):
             super().__init__(path)
-            self._has_failed = False
+            self._num_attempts = 0
 
         def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
-            if not self._has_failed:
-                self._has_failed = True
+            if self._num_attempts < 2:
+                self._num_attempts += 1
                 raise RuntimeError("AWS Error INTERNAL_FAILURE")
 
             block.to_pandas().to_csv(file)
@@ -40,11 +40,11 @@ def test_flaky_row_write(ray_start_regular_shared, tmp_path):
     class FlakyTextDatasink(RowBasedFileDatasink):
         def __init__(self, path: str):
             super().__init__(path)
-            self._has_failed = False
+            self._num_attempts = 0
 
         def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
-            if not self._has_failed:
-                self._has_failed = True
+            if self._num_attempts < 2:
+                self._num_attempts += 1
                 raise RuntimeError("AWS Error INTERNAL_FAILURE")
 
             file.write(f"{row['id']}".encode())
