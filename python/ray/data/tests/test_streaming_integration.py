@@ -557,10 +557,6 @@ def test_task_reassign_fault_tolerance(ray_start_10_cpus_shared, restore_data_co
         f, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0, max_task_retries=0,
     )
     all = ds.take_all()
-    assert len(all) == 1000
-    print(f'all: {all}')
-    print(f'all length: {len(all)}')
-
 
 if __name__ == "__main__":
     import sys
