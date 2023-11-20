@@ -1,13 +1,13 @@
 import io
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
-from ray.data.block import BlockMetadata
+from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
 from ray.util.annotations import DeveloperAPI
@@ -32,7 +32,7 @@ class ImageDatasource(FileBasedDatasource):
     """A datasource that lets you read images."""
 
     _WRITE_FILE_PER_ROW = True
-    _FILE_EXTENSION = ["png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"]
+    _FILE_EXTENSIONS = ["png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"]
     # Use 8 threads per task to read image files.
     _NUM_THREADS_PER_TASK = 8
 
@@ -70,11 +70,11 @@ class ImageDatasource(FileBasedDatasource):
         else:
             self._encoding_ratio = IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
 
-    def _read_file(
+    def _read_stream(
         self,
         f: "pyarrow.NativeFile",
         path: str,
-    ) -> "pyarrow.Table":
+    ) -> Iterator[Block]:
         from PIL import Image, UnidentifiedImageError
 
         data = f.readall()
@@ -99,28 +99,10 @@ class ImageDatasource(FileBasedDatasource):
         builder.add(item)
         block = builder.build()
 
-        return block
+        yield block
 
     def _rows_per_file(self):
         return 1
-
-    def _write_row(
-        self,
-        f: "pyarrow.NativeFile",
-        row,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        column: str = None,
-        file_format: str = None,
-        **writer_args,
-    ):
-        import io
-
-        from PIL import Image
-
-        image = Image.fromarray(row[column])
-        buffer = io.BytesIO()
-        image.save(buffer, format=file_format)
-        f.write(buffer.getvalue())
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0

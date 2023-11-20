@@ -244,6 +244,8 @@ message TaskStateUpdate {
   optional string actor_repr_name = 11;
   // Worker Pid.
   optional int32 worker_pid = 12;
+  // Is task paused by debugger.
+  optional bool is_debugger_paused = 13;
 }
 
 // Represents events and state changes from a single task run.
@@ -282,11 +284,6 @@ message TaskEventData {
   int32 num_profile_events_dropped = 3;
   // Current job the worker is reporting data for.
   bytes job_id = 4;
-}
-
-message ResourceTableData {
-  // The total capacity of this resource type.
-  double resource_capacity = 1;
 }
 
 message AvailableResources {
@@ -474,10 +471,6 @@ message WorkerTableData {
 message WorkerDeltaData {
   bytes raylet_id = 1;
   bytes worker_id = 2;
-}
-
-message ResourceMap {
-  map<string, ResourceTableData> items = 1;
 }
 
 message StoredConfig {
