@@ -24,7 +24,7 @@ available_node_types:
         # The maximum number of worker nodes of this type to launch.
         # This parameter takes precedence over min_workers.
         max_workers: 4
-        # Provider-specific config for this node type, e.g. instance type. By default
+        # Provider-specific config for this node type, e.g., instance type. By default
         # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
         # For more documentation on available fields, see:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
