@@ -32,8 +32,6 @@
 
 namespace ray {
 
-class GcsMonitorServerTest;
-
 using raylet::ClusterTaskManager;
 
 namespace gcs {
@@ -73,11 +71,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
 
   /// Handle the resource update.
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
-
-  /// Handle get resource rpc request.
-  void HandleGetResources(rpc::GetResourcesRequest request,
-                          rpc::GetResourcesReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get available resources of all nodes.
   /// Autoscaler-specific RPC called from Python.
@@ -189,7 +182,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
 
   /// Debug info.
   enum CountType {
-    GET_RESOURCES_REQUEST = 0,
     GET_ALL_AVAILABLE_RESOURCES_REQUEST = 1,
     REPORT_RESOURCE_USAGE_REQUEST = 2,
     GET_ALL_RESOURCE_USAGE_REQUEST = 3,
@@ -203,8 +195,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// Num of alive nodes in the cluster.
   size_t num_alive_nodes_ = 0;
-
-  friend GcsMonitorServerTest;
 };
 
 }  // namespace gcs
