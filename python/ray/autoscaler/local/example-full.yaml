@@ -46,13 +46,13 @@ auth:
 # node. This number should be >= 0.
 # Typically, min_worker_nodes == max_worker_nodes == len(worker_node_ips).
 # This field is optional.
-min_worker_nodes: TYPICALLY_THE_NUMBER_OF_worker_node_ips
+min_worker_nodes: TYPICALLY_THE_NUMBER_OF_WORKER_NODE_IPS
 
 # The maximum number of workers nodes to launch in addition to the head node.
 # This takes precedence over min_worker_nodes.
 # Typically, min_worker_nodes == max_worker_nodes == len(worker_node_ips).
 # This field is optional.
-max_worker_nodes: TYPICALLY_THE_NUMBER_OF_worker_node_ips
+max_worker_nodes: TYPICALLY_THE_NUMBER_OF_WORKER_NODE_IPS
 # The default behavior for manually managed clusters is
 # min_worker_nodes == max_worker_nodes == len(worker_node_ips),
 # meaning that Ray is started on all available nodes of the cluster.
