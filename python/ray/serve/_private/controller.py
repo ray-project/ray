@@ -13,8 +13,6 @@ from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
-    ApplicationStatus,
-    ApplicationStatusInfo,
     DeploymentID,
     DeploymentInfo,
     EndpointInfo,
@@ -485,21 +483,39 @@ class ServeController:
         )
 
     def _recover_config_from_checkpoint(self):
+        serve_config, deployment_time = self._get_curr_serve_config()
+        if serve_config is not None:
+            logger.info(
+                "Recovered config from checkpoint.", extra={"log_to_stderr": False}
+            )
+            self.deploy_config(serve_config, deployment_time=deployment_time)
+
+    def _get_curr_serve_config(self) -> Tuple[Optional[ServeDeploySchema], float]:
+        """Gets the current active Serve config.
+
+        Returns: Tuple containing:
+            1. A Serve config, if the GCS contains a config checkpoint. None
+               otherwise
+            2. A deployment timestamp, if the GCS contains a config checkpoint.
+               0 otherwise.
+        """
+
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            logger.info(
-                "Recovering config from checkpoint.", extra={"log_to_stderr": False}
-            )
+
             deployment_time, target_capacity, config_checkpoints_dict = pickle.loads(
                 checkpoint
             )
-            self.deploy_config(
+
+            return (
                 ServeDeploySchema(
                     applications=list(config_checkpoints_dict.values()),
                     target_capacity=target_capacity,
                 ),
-                deployment_time=deployment_time,
+                deployment_time,
             )
+        else:
+            return (None, 0)
 
     def _all_running_replicas(self) -> Dict[DeploymentID, List[RunningReplicaInfo]]:
         """Used for testing.
@@ -713,9 +729,11 @@ class ServeController:
 
         new_config_checkpoint = {}
 
+        curr_config, _ = self._get_curr_serve_config()
+
         self._scale_direction = calculate_scale_direction(
+            curr_config=curr_config,
             new_config=config,
-            all_app_statuses=self.application_state_manager.list_app_statuses(),
             curr_target_capacity=self._target_capacity,
             curr_scale_direction=self._scale_direction,
         )
@@ -1048,60 +1066,59 @@ class ServeController:
 
 
 def calculate_scale_direction(
+    curr_config: Optional[ServeDeploySchema],
     new_config: ServeDeploySchema,
-    all_app_statuses: Dict[str, ApplicationStatusInfo],
-    curr_target_capacity: Optional[float],
     curr_scale_direction: Optional[float],
 ) -> Optional[TargetCapacityScaleDirection]:
-    next_scale_dirction = None
+    """Compares two Serve configs to calculate the next scaling direction."""
 
-    if live_applications_match_config(new_config, all_app_statuses):
+    curr_target_capacity = None
+    next_scale_direction = None
+
+    if curr_config is not None and applications_match(curr_config, new_config):
+        curr_target_capacity = curr_config.target_capacity
         next_target_capacity = new_config.target_capacity
 
         if curr_target_capacity == next_target_capacity:
-            next_scale_dirction = curr_scale_direction
+            next_scale_direction = curr_scale_direction
         elif curr_target_capacity is None and next_target_capacity is not None:
-            next_scale_dirction = TargetCapacityScaleDirection.DOWN
+            next_scale_direction = TargetCapacityScaleDirection.DOWN
         elif curr_target_capacity is not None and next_target_capacity is None:
-            next_scale_dirction = None
+            next_scale_direction = None
         elif curr_target_capacity < next_target_capacity:
-            next_scale_dirction = TargetCapacityScaleDirection.UP
+            next_scale_direction = TargetCapacityScaleDirection.UP
         else:
-            next_scale_dirction = TargetCapacityScaleDirection.DOWN
+            next_scale_direction = TargetCapacityScaleDirection.DOWN
     elif new_config.target_capacity is not None:
         # A config with different apps has been applied, and it contains a
         # target_capacity. Serve must start scaling this config up.
-        next_scale_dirction = TargetCapacityScaleDirection.UP
+        next_scale_direction = TargetCapacityScaleDirection.UP
     else:
-        next_scale_dirction = None
+        next_scale_direction = None
 
-    if next_scale_dirction != curr_scale_direction:
-        if isinstance(next_scale_dirction, TargetCapacityScaleDirection):
+    if next_scale_direction != curr_scale_direction:
+        if isinstance(next_scale_direction, TargetCapacityScaleDirection):
             logger.info(
-                f"Target capacity scaling {next_scale_dirction.value.lower()} "
+                f"Target capacity scaling {next_scale_direction.value.lower()} "
                 f"from {curr_target_capacity} to {new_config.target_capacity}."
             )
         else:
-            assert next_scale_dirction is None
+            assert next_scale_direction is None
             logger.info("Target capacity entering 100% at steady state.")
 
-    return next_scale_dirction
+    return next_scale_direction
 
 
-def live_applications_match_config(
-    config: ServeDeploySchema, all_app_statuses: Dict[str, ApplicationStatusInfo]
-) -> bool:
-    config_apps = {app.name for app in config.applications}
+def applications_match(config1: ServeDeploySchema, config2: ServeDeploySchema) -> bool:
+    """Checks whether the applications in config1 and config2 match.
 
-    live_apps = set()
-    for (
-        app_name,
-        status_info,
-    ) in all_app_statuses.items():
-        if status_info.status != ApplicationStatus.DELETING:
-            live_apps.add(app_name)
+    Two applications match if they have the same name.
+    """
 
-    return config_apps == live_apps
+    config1_app_names = {app.name for app in config1.applications}
+    config2_app_names = {app.name for app in config2.applications}
+
+    return config1_app_names == config2_app_names
 
 
 @ray.remote(num_cpus=0)

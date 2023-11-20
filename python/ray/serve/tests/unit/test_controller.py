@@ -1,15 +1,14 @@
+from copy import deepcopy
+
 import pytest
 
-from ray.serve._private.common import (
-    ApplicationStatus,
-    ApplicationStatusInfo,
-    TargetCapacityScaleDirection,
+from ray.serve._private.common import TargetCapacityScaleDirection
+from ray.serve._private.controller import applications_match, calculate_scale_direction
+from ray.serve.schema import (
+    HTTPOptionsSchema,
+    ServeApplicationSchema,
+    ServeDeploySchema,
 )
-from ray.serve._private.controller import (
-    calculate_scale_direction,
-    live_applications_match_config,
-)
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 
 def create_app_config(name: str) -> ServeApplicationSchema:
@@ -18,88 +17,102 @@ def create_app_config(name: str) -> ServeApplicationSchema:
     )
 
 
-class TestLiveApplicationsMatchConfig:
-    def test_config_with_matching_app_names(self):
-        config = ServeDeploySchema(
-            applications=[create_app_config(name="app1")],
-        )
-
-        app_statuses = {
-            "app1": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-        }
-
-        assert live_applications_match_config(config, app_statuses) is True
-
-    def test_config_with_fewer_apps(self):
-        config = ServeDeploySchema(
-            applications=[create_app_config(name="app1")],
-        )
-
-        app_statuses = {
-            "app1": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-            "app2": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-        }
-
-        assert live_applications_match_config(config, app_statuses) is False
-
-    def test_config_with_more_apps(self):
+class TestApplicationsMatch:
+    def test_config_with_self(self):
         config = ServeDeploySchema(
             applications=[
-                create_app_config(name="app1"),
-                create_app_config(name="app2"),
+                ServeApplicationSchema(
+                    name="app1",
+                    import_path="fake.import",
+                    route_prefix="/",
+                ),
             ],
         )
 
-        app_statuses = {
-            "app1": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-        }
+        assert applications_match(config, config) is True
 
-        assert live_applications_match_config(config, app_statuses) is False
-
-    def test_live_app_statuses(self):
-        """Check that all live app statuses are actually counted as live."""
-
-        live_app_statuses = [
-            ApplicationStatus.NOT_STARTED,
-            ApplicationStatus.DEPLOYING,
-            ApplicationStatus.DEPLOY_FAILED,
-            ApplicationStatus.RUNNING,
-            ApplicationStatus.UNHEALTHY,
-        ]
-
-        config = ServeDeploySchema(
+    def test_configs_with_matching_app_names(self):
+        config1 = ServeDeploySchema(
             applications=[
-                create_app_config(name=f"app_{app_id}")
-                for app_id in range(len(live_app_statuses))
+                ServeApplicationSchema(
+                    name="app1",
+                    import_path="fake.import",
+                    route_prefix="/app1",
+                ),
+                ServeApplicationSchema(
+                    name="app2",
+                    import_path="fake.import2",
+                    route_prefix="/app2",
+                ),
+                ServeApplicationSchema(
+                    name="app3",
+                    import_path="fake.import3",
+                    route_prefix="/app3",
+                ),
             ],
         )
 
-        app_statuses = {
-            f"app_{app_id}": ApplicationStatusInfo(status=live_app_statuses[app_id])
-            for app_id in range(len(live_app_statuses))
-        }
+        # Configs contain apps with same name but different import paths.
+        config2 = deepcopy(config1)
+        config2.applications[0].import_path = "different_fake.import"
+        assert applications_match(config1, config2) is True
 
-        assert live_applications_match_config(config, app_statuses) is True
+        config2.applications[0].import_path = "extended.fake.import"
+        assert applications_match(config1, config2) is True
 
-    def test_non_live_app_statuses(self):
-        """Check that non-live apps are ignored."""
+        config2.applications[0].import_path = "fake:import"
+        assert applications_match(config1, config2) is True
 
-        non_live_app_statuses = [ApplicationStatus.DELETING]
+        # Configs contain apps with same name but different route_prefixes.
+        config2 = deepcopy(config1)
+        config2.applications[0].route_prefix += "_suffix"
+        assert applications_match(config1, config2) is True
 
-        config = ServeDeploySchema(
-            # Only live apps should be compared.
-            applications=[create_app_config(name="live_app")],
+        # Configs contain apps with same name but different runtime_envs.
+        config2 = deepcopy(config1)
+        config2.applications[1].runtime_env = {"working_dir": "https://fake/uri"}
+        assert applications_match(config1, config2) is True
+
+        # Configs contain apps with same name but different target_capacities.
+        config2 = deepcopy(config1)
+        config2.target_capacity = 50
+        assert applications_match(config1, config2) is True
+
+        # Configs contain apps with same name but different http options.
+        config2 = deepcopy(config1)
+        config2.http_options = HTTPOptionsSchema(host="62.79.45.100")
+        assert applications_match(config1, config2) is True
+
+    def test_configs_with_different_app_names(self):
+        config1 = ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="app1",
+                    import_path="fake.import",
+                    route_prefix="/app1",
+                ),
+                ServeApplicationSchema(
+                    name="app2",
+                    import_path="fake.import2",
+                    route_prefix="/app2",
+                ),
+                ServeApplicationSchema(
+                    name="app3",
+                    import_path="fake.import3",
+                    route_prefix="/app3",
+                ),
+            ],
         )
 
-        app_statuses = {
-            f"app_{app_id}": ApplicationStatusInfo(status=non_live_app_statuses[app_id])
-            for app_id in range(len(non_live_app_statuses))
-        }
-        app_statuses.update(
-            {"live_app": ApplicationStatusInfo(status=ApplicationStatus.RUNNING)}
-        )
+        # Configs contain apps with different names but same import paths.
+        config2 = deepcopy(config1)
+        config2.applications[0].name = "different_app1"
+        assert applications_match(config1, config2) is False
 
-        assert live_applications_match_config(config, app_statuses) is True
+        # Configs contain different number of apps.
+        config2 = deepcopy(config1)
+        config2.applications.pop()
+        assert applications_match(config1, config2) is False
 
 
 class TestCalculateScaleDirection:
@@ -114,30 +127,27 @@ class TestCalculateScaleDirection:
     def test_change_target_capacity_numeric(self, curr_direction, new_direction):
         curr_target_capacity = 5
 
-        if new_direction == TargetCapacityScaleDirection.UP:
-            new_target_capacity = curr_target_capacity * 3.3
-        elif new_direction == TargetCapacityScaleDirection.DOWN:
-            new_target_capacity = curr_target_capacity / 3.3
-
-        app_statuses = {
-            "app1": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-            "app2": ApplicationStatusInfo(status=ApplicationStatus.DEPLOYING),
-        }
-
-        new_config = ServeDeploySchema(
-            target_capacity=new_target_capacity,
+        curr_config = ServeDeploySchema(
+            target_capacity=curr_target_capacity,
             applications=[
                 create_app_config(name="app1"),
                 create_app_config(name="app2"),
             ],
         )
 
+        if new_direction == TargetCapacityScaleDirection.UP:
+            new_target_capacity = curr_target_capacity * 3.3
+        elif new_direction == TargetCapacityScaleDirection.DOWN:
+            new_target_capacity = curr_target_capacity / 3.3
+
+        new_config = deepcopy(curr_config)
+        new_config.target_capacity = new_target_capacity
+
         # The new direction must be returned, regardless of the current direction.
         assert (
             calculate_scale_direction(
+                curr_config,
                 new_config,
-                app_statuses,
-                curr_target_capacity,
                 curr_direction,
             )
             == new_direction
@@ -155,13 +165,7 @@ class TestCalculateScaleDirection:
             # When target_capacity is None, the current direction must be None.
             curr_direction = None
 
-        app_statuses = {
-            "app1": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-            "app2": ApplicationStatusInfo(status=ApplicationStatus.DEPLOYING),
-            "app3": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-        }
-
-        new_config = ServeDeploySchema(
+        curr_config = ServeDeploySchema(
             target_capacity=target_capacity,
             applications=[
                 create_app_config(name="app1"),
@@ -172,9 +176,8 @@ class TestCalculateScaleDirection:
 
         assert (
             calculate_scale_direction(
-                new_config,
-                app_statuses,
-                target_capacity,
+                curr_config,
+                curr_config,
                 curr_direction,
             )
             == curr_direction
@@ -192,14 +195,8 @@ class TestCalculateScaleDirection:
             # When target_capacity is None, the current direction must be None.
             curr_direction = None
 
-        app_statuses = {
-            "app1": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-            "app2": ApplicationStatusInfo(status=ApplicationStatus.DEPLOYING),
-            "app3": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-        }
-
-        new_config = ServeDeploySchema(
-            target_capacity=None,
+        curr_config = ServeDeploySchema(
+            target_capacity=curr_target_capacity,
             applications=[
                 create_app_config(name="app1"),
                 create_app_config(name="app2"),
@@ -207,11 +204,13 @@ class TestCalculateScaleDirection:
             ],
         )
 
+        new_config = deepcopy(curr_config)
+        new_config.target_capacity = None
+
         assert (
             calculate_scale_direction(
+                curr_config,
                 new_config,
-                app_statuses,
-                curr_target_capacity,
                 curr_direction,
             )
             is None
@@ -221,23 +220,21 @@ class TestCalculateScaleDirection:
     def test_exit_null_target_capacity(self, new_target_capacity):
         """When target capacity goes null -> non-null, scale down must start."""
 
-        app_statuses = {
-            "app1": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-        }
-
-        new_config = ServeDeploySchema(
-            target_capacity=new_target_capacity,
+        curr_config = ServeDeploySchema(
+            target_capacity=None,
             applications=[create_app_config(name="app1")],
         )
+
+        new_config = deepcopy(curr_config)
+        new_config.target_capacity = new_target_capacity
 
         # When Serve is already running the applications at target_capacity
         # None, and then a target_capacity is applied, the direction must
         # become DOWN.
         assert (
             calculate_scale_direction(
+                curr_config,
                 new_config,
-                app_statuses,
-                None,
                 None,
             )
             == TargetCapacityScaleDirection.DOWN
@@ -245,9 +242,6 @@ class TestCalculateScaleDirection:
 
     def test_scale_up_first_config(self):
         """Check how Serve handles the first config that's applied."""
-
-        # No config is running, so no application statuses exist yet.
-        app_statuses = {}
 
         # Case 1: target_capacity is set. Serve should transition to scaling up.
 
@@ -257,9 +251,8 @@ class TestCalculateScaleDirection:
         )
         assert (
             calculate_scale_direction(
-                new_config,
-                app_statuses,
                 None,
+                new_config,
                 None,
             )
             == TargetCapacityScaleDirection.UP
@@ -273,35 +266,37 @@ class TestCalculateScaleDirection:
         )
         assert (
             calculate_scale_direction(
-                new_config,
-                app_statuses,
                 None,
+                new_config,
                 None,
             )
             is None
         )
 
-    @pytest.mark.parametrize("prev_target_capacity", [0, 50, 100, None])
+    @pytest.mark.parametrize("curr_target_capacity", [0, 50, 100, None])
     @pytest.mark.parametrize(
-        "prev_direction",
+        "curr_direction",
         [TargetCapacityScaleDirection.UP, TargetCapacityScaleDirection.DOWN, None],
     )
-    def test_config_live_apps_mismatch(self, prev_target_capacity, prev_direction):
+    def test_config_live_apps_mismatch(self, curr_target_capacity, curr_direction):
         """Apply a config with apps that don't match the live apps.
 
         Serve should treat this like applying the first config. Its scaling
         direction should not be based on the previous config's target_capacity.
         """
 
-        if prev_target_capacity is None:
+        if curr_target_capacity is None:
             # When target_capacity is None, the current direction must be None.
-            prev_direction = None
+            curr_direction = None
 
-        prev_app_statuses = {
-            "app1": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-            "app2": ApplicationStatusInfo(status=ApplicationStatus.DEPLOYING),
-            "app3": ApplicationStatusInfo(status=ApplicationStatus.RUNNING),
-        }
+        curr_config = ServeDeploySchema(
+            target_capacity=curr_target_capacity,
+            applications=[
+                create_app_config(name="app1"),
+                create_app_config(name="app2"),
+                create_app_config(name="app3"),
+            ],
+        )
 
         # Case 1: target_capacity is set. Serve should transition to scaling up.
         new_config = ServeDeploySchema(
@@ -314,10 +309,9 @@ class TestCalculateScaleDirection:
 
         assert (
             calculate_scale_direction(
+                curr_config,
                 new_config,
-                prev_app_statuses,
-                prev_target_capacity,
-                prev_direction,
+                curr_direction,
             )
             is TargetCapacityScaleDirection.UP
         )
@@ -333,10 +327,9 @@ class TestCalculateScaleDirection:
 
         assert (
             calculate_scale_direction(
+                curr_config,
                 new_config,
-                prev_app_statuses,
-                prev_target_capacity,
-                prev_direction,
+                curr_direction,
             )
             is None
         )
