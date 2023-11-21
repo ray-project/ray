@@ -1,11 +1,11 @@
 import logging
+import threading
 import time
 from typing import Any, Callable, Optional
 
 import requests
 
 import ray
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import JobStatus
 from ray.experimental.client2.pickler import (
     ClientToServerPickler,
@@ -18,6 +18,8 @@ from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 
+WATCHDOG_PING_PERIOD_SECS = 60  # ping every 1 minute
+
 
 def poll_until(func: Callable[[], bool], times: int, delay_s: int):
     # Wait for N loops, each sleeps D secs until func() to return True
@@ -29,17 +31,130 @@ def poll_until(func: Callable[[], bool], times: int, delay_s: int):
 
 
 class Client:
+    """
+    Client to connect to an existing Ray Cluster.
+
+    # Overview
+
+    client = Client2("http://localhost:8265", "your_channel_name")
+
+    Upon connnection, this Python instance can not initialize with Ray, or connect to
+    another Client, unless this Client has been disconnected.
+
+    User can use these methods to talk to Ray Cluster:
+
+    - client.get(o: ObjectRef) -> Any
+    - client.put(any: Any) -> ObjectRef
+    - client.task(f).remote(*args, **kwargs) -> ObjectRef
+    - client.actor(actor_cls).remote(*args, **kwargs) -> ActorHandle
+    - client.method(actor.method).remote(*args, **kwargs) -> ObjectRef
+
+    Besides, we provide these EXPERIMENTAL conveinence helper:
+
+    - client.run(o: ObjectRef).f(*args, **kwargs) -> ObjectRef
+        Invokes `obj.f(*args, **wkargs)` remotely.
+    - client(task).remote(args)
+    - client(Actor).remote(args)
+    - client(actor.method).remote(args)
+
+    # Find your execution context: `client`, `ray` and local
+
+    The goal of this API is to make it dead clear where your code is gonna run. It's
+    simple as this:
+
+    - If you don't see anything `ray` or `client`, it's executed in local.
+    - `client` means a request is made from local, executed in remote.
+    - `ray` means a request is made from remote, executed in remote.
+
+    For example, consider this code:
+
+    @ray.remote
+    def fib(i: int):
+        if i < 2:
+            return 1
+        return sum(ray.get([fib.remote(i-1), fib.remote(i-2)]))
+    object_ref = client.task(fib).remote(5)
+    result = client.get(object_ref)
+
+    ```
+    +---------------------------------+ +--------------------------------------+
+    | LOCAL                           | | RAY CLUSTER                          |
+    |                                 | |                                      |
+    |  fib and 5 are serialized       | |                      +-------------+ |
+    |  and transmitted to the cluster | |                    +>|fib.remote(4)| |
+    | +----------------------------+  | |    +-------------+ | +-------------+ |
+    | |"client.task(fib).remote(5)"+--+-+--->|fib.remote(5)+-+                 |
+    | +----------------------------+  | |    +------+------+ | +-------------+ |
+    |                                 | |           |        +>|fib.remote(3)| |
+    |                                 | |           |          +-------------+ |
+    |                                 | |           |        In-cluster calls  |
+    | +------------+                  | |           |        use good old Ray  |
+    | |object_ref  |<-----------------+-+-----------+        APIs (ray.get)    |
+    | +-----+------+                  | |           |                          |
+    |       |                         | |           |                          |
+    |       v "client.get(object_ref)"| |           v                          |
+    | +------------+                  | |    +------------+                    |
+    | | result     |<-----------------+-+----+ result     |                    |
+    | +------------+                  | |    +------------+                    |
+    |                                 | |     result is serialized and         |
+    |                                 | |     transmitted to local             |
+    +---------------------------------+ +--------------------------------------+
+    ```
+
+    # Connection
+
+    Initing a Client instance connect-or-creates a "channel" in the exising Ray Cluster.
+
+    By default the time-to-live for a channel is 1 hour. This means if the connection
+    breaks and there's no client connected to the same channel, the remote channel stays
+    alive for 1 hour. During this period, a user can use client to re-connect the channel.
+    If no reconnections and the 1 hour expired, the remote job is destroyed along with
+    all the objects, tasks and actors. To set this number, use `ttl_secs=your_ttl_secs`
+    in the Client constructor.
+
+    One can specify a runtime_env during client creation. For example,
+
+    client = Client2("http://localhost:8265", "your_channel_name", runtime_env={"pip":["torch", "transformers", "datasets"]})
+
+    # Tips
+
+    - Version skew: you can have a different `torch` version locally vs remotely. You
+        can even don't have a local `torch` installation; the remote one is the source
+        of truth.
+    - Wrap your code in a `@ray.remote` function as much as possible, and only do `client.get`
+        if you want do do local visualizations (e.g. plotting).
+
+    # Limitations (TODOs)
+
+    Before we can call it "production-ready", there are a bunch of things to do:
+
+    - client.get now limits to 200MB, needs a larger limit, maybe chunking and streaming.
+    - tasks' prints are not forwarded to the client.
+    - exceptions on client.get are not properly forwarded (can only see a HTTP 500)
+    - on user interrupt in jupyter, client_head should cancel the task.
+    - Same `channel_name` can only be created once, even if the driver had died.
+    - `client.get(client.task(f).remote(2))` is still kinda verbose.
+        - `c.get(c.task(f).remote(2))` can be better?
+    - One still have to pip install and import a lib to easily use them, even though the usage is mostly wrapped in a remote function.
+        - for example, if you define a `class NeuralNetwork(nn.Module)` you need to first `from torch import nn`, even though the invocations are in remote.
+    - Not showing good exception info on driver init failure (e.g. invalid rt env)
+
+
+    """
+
     # static variables
     dumps = dumps_with_pickler_cls(ClientToServerPickler)
     loads = loads_with_unpickler_cls(ServerToClientUnpickler)
     # Ray methods to be hijecked
     ray_get = ray.get
     ray_put = ray.put
+    ray_init = ray.init
     ray_remotefunction_remote = ray.remote_function.RemoteFunction._remote
     ray_actorclass_remote = ray.actor.ActorClass._remote
     ray_actormethod_remote = ray.actor.ActorMethod._remote
     # active client (can only have 1)
     active_client = None
+    watchdog_thread = None
 
     def __init__(
         self,
@@ -78,14 +193,17 @@ class Client:
             self.connect_or_create()
 
     def connect_or_create(self):
-        if self.connect_once():
-            return
-        self.create()
+        if not self.ping_once():
+            self.create()
         self.connect()
 
     def connect(self):
-        if not poll_until(lambda: self.connect_once(), times=10, delay_s=1):
+        # TODO: now it waits for 10s for the Job to spin up. If we have `pip` runtime envs
+        # this may not be enough. Add probes on the client_head to return 503 Service Unavailable
+        # and wait further here.
+        if not poll_until(lambda: self.ping_once(), times=10, delay_s=1):
             raise ValueError("Can't connect after 10s of waiting")
+        logger.info(f"client2 channel {self.channel_name} connected!")
         self.set_active()
 
     def disconnect(self, kill_channel=False):
@@ -95,11 +213,13 @@ class Client:
         """
         ray.get = Client.ray_get
         ray.put = Client.ray_put
+        ray.init = Client.ray_init
         ray.remote_function.RemoteFunction._remote = Client.ray_remotefunction_remote
         ray.actor.ActorClass._remote = Client.ray_actorclass_remote
         ray.actor.ActorMethod._remote = Client.ray_actormethod_remote
 
         Client.active_client = None
+        Client.watchdog_thread = None
 
         if kill_channel:
             self.kill_actor()
@@ -126,6 +246,8 @@ class Client:
         Example:
 
         obj_ref = client.put(obj_ref)
+
+        TODO: size of an upload is limited to 100MB (see dashboard/http_server_head.py:181)
         """
         self.check_self_is_active()
         # TODO: streaming/chunked big ones to reduce agent mem cost,
@@ -164,7 +286,7 @@ class Client:
 
         return FuncWrapper()
 
-    def actor(self, actor_cls):
+    def actor(self, actor_cls: ray.actor.ActorClass):
         """
         Example:
 
@@ -218,6 +340,46 @@ class Client:
 
         return MethodWrapper()
 
+    ###################### experimental public methods ######################
+
+    def run(self, obj):
+        """
+        EXPERIMENTAL.
+
+        Convenience helper to invoke a method remotely on an object ref. This only works
+        for a single method call. If you have chained method calls, or don't want a transmission,
+        define a `@ray.remote` function and call `client.task(f).remote(obj)`.
+
+        Transforms this:
+            client.task(ray.remote(lambda o: o.f(arg1)))).remote(obj)
+        To this:
+            client.run(obj).f(arg1)
+        """
+        client = self
+
+        class RunRemotely:
+            def __getattr__(self, attr: str) -> Any:
+                def callable(*args, **kwargs):
+                    @ray.remote
+                    def run_get_helper(remote_obj):
+                        m = getattr(remote_obj, attr)
+                        return m(*args, **kwargs)
+
+                    return client.task(run_get_helper).remote(obj)
+
+                return callable
+
+        return RunRemotely()
+
+    def __call__(self, task_or_actor_or_method):
+        if isinstance(task_or_actor_or_method, ray.remote_function.RemoteFunction):
+            return self.task(task_or_actor_or_method)
+        if isinstance(task_or_actor_or_method, ray.actor.ActorClass):
+            return self.actor(task_or_actor_or_method)
+        if isinstance(task_or_actor_or_method, ray.actor.ActorMethod):
+            return self.method(task_or_actor_or_method)
+        raise TypeError(f"arg needs to be a Ray task, or Actor, or Actor's Method.")
+
     ###################### private methods ######################
 
     def create(self) -> None:
@@ -244,7 +406,7 @@ class Client:
             f"Job {self.submission_id} not running after 10 seconds of waiting"
         )
 
-    def connect_once(self) -> bool:
+    def ping_once(self) -> bool:
         """
         - if 200 -> return True
         - if 404 -> not exist, return False
@@ -284,9 +446,13 @@ class Client:
         self.check_no_active_client_or_ray()
 
         Client.active_client = self
+        Client.watchdog_thread = self.start_watchdog_thread()
 
         ray.get = self.warning_dont_use("ray.get(obj_ref)", "client.get(obj_ref)")
         ray.put = self.warning_dont_use("ray.put(obj)", "client.put(obj)")
+        ray.init = self.warning_dont_use(
+            "ray.init()", "client = Client(addr, channel_name)"
+        )
         ray.remote_function.RemoteFunction._remote = self.warning_dont_use(
             "my_task.remote(params)", "client.task(my_task).remote(params)"
         )
@@ -356,6 +522,24 @@ class Client:
         resp.raise_for_status()
         object_ref = Client.loads(resp.content)
         return object_ref
+
+    def ping_forever(self):
+        while self is Client.active_client:
+            try:
+                if not self.ping_once():
+                    logger.warning(
+                        f"Client {self.channel_name} ping failure: not found"
+                    )
+            except Exception as e:
+                logger.exception(f"Client {self.channel_name} ping failure")
+            time.sleep(WATCHDOG_PING_PERIOD_SECS)
+        logger.info(f"Client {self.channel_name} is no longer active, stop pinging...")
+
+    def start_watchdog_thread(self):
+        thread = threading.Thread(target=lambda: self.ping_forever())
+        thread.daemon = True
+        thread.start()
+        return thread
 
 
 def actor_name_for_channel_name(name: str):

@@ -98,7 +98,6 @@ class ClientHead(dashboard_utils.DashboardHeadModule):
 
         obj_serialized = await req.read()
         obj_ref_bytes = await actor.ray_put.remote(obj_serialized)
-        logger.info(f"put {obj_serialized} to {obj_ref_bytes}")
         return Response(body=obj_ref_bytes)
 
     @routes.post("/api/clients/{client_actor_id}/task_remote")
@@ -133,7 +132,6 @@ class ClientHead(dashboard_utils.DashboardHeadModule):
 
         pickled_func_and_args = await req.read()
         actor_state_bytes = await actor.actor_remote.remote(pickled_func_and_args)
-        logger.info(f"actor state bytes {actor_state_bytes}")
         return Response(body=actor_state_bytes)
 
     @routes.post("/api/clients/{client_actor_id}/method_remote")
@@ -151,7 +149,6 @@ class ClientHead(dashboard_utils.DashboardHeadModule):
 
         pickled_func_and_args = await req.read()
         obj_ref_bytes = await actor.method_remote.remote(pickled_func_and_args)
-        logger.info(f"actor state bytes {obj_ref_bytes}")
         return Response(body=obj_ref_bytes)
 
     @routes.delete("/api/clients/{client_actor_id}")
