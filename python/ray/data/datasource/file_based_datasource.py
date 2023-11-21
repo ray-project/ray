@@ -24,8 +24,8 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _is_local_scheme,
+    call_with_retry,
     make_async_gen,
-    retry,
 )
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
@@ -757,7 +757,7 @@ def _open_file_with_retry(
             f"{OPEN_FILE_MAX_ATTEMPTS}"
         )
 
-    return retry(
+    return call_with_retry(
         open_file,
         match=OPEN_FILE_RETRY_ON_ERRORS,
         description=f"open file {file_path}",

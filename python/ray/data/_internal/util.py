@@ -868,7 +868,7 @@ def make_async_gen(
             output_queue.release(num_threads_alive)
 
 
-def retry(
+def call_with_retry(
     f: Callable[[], Any],
     match: List[str],
     description: str,
