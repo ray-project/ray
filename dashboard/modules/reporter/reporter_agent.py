@@ -411,6 +411,7 @@ class ReporterAgent(
             num_gpus = pynvml.nvmlDeviceGetCount()
             for i in range(num_gpus):
                 gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                memory_info = pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
                 utilization = None
                 try:
                     utilization_info = pynvml.nvmlDeviceGetUtilizationRates(gpu_handle)
@@ -444,10 +445,8 @@ class ReporterAgent(
                     name=decode(pynvml.nvmlDeviceGetName(gpu_handle)),
                     uuid=decode(pynvml.nvmlDeviceGetUUID(gpu_handle)),
                     utilization_gpu=utilization,
-                    memory_used=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).used)
-                    // MB,
-                    memory_total=int(pynvml.nvmlDeviceGetMemoryInfo(gpu_handle).total)
-                    // MB,
+                    memory_used=int(memory_info.used) // MB,
+                    memory_total=int(memory_info.total) // MB,
                     processes_pids=processes_pids,
                 )
                 gpu_utilizations.append(info)
