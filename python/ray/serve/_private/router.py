@@ -147,15 +147,7 @@ class Query:
         return request_kwargs
 
     def __post_init__(self):
-        """Resolve any `ray.ObjectRef` arguments in `args` and `kwargs`."""
-        args = []
-        for arg in self.args:
-            if isinstance(arg, ray.ObjectRef):
-                args.append(ray.get(arg))
-            else:
-                args.append(arg)
-        self.args = args
-
+        """Resolve any `ray.ObjectRef` arguments in `kwargs`."""
         kwargs = {}
         for k, v in self.kwargs.items():
             if isinstance(v, ray.ObjectRef):
