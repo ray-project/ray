@@ -3,7 +3,7 @@
 Monitoring Your Workload
 ========================
 
-This section helps you debug and monitor the execution of your Ray Data :class:`Dataset <ray.data.Dataset>` by viewing the:
+This section helps you debug and monitor the execution of your Ray Data :class:`~ray.data.Dataset` by viewing the:
 
 * Ray dashboard job detail page
 * Ray dashboard metrics
@@ -63,7 +63,7 @@ Ray Data logs
 -------------
 During execution, Ray Data periodically logs updates to `ray-data.log`.
 
-Every 5 seconds, Ray Data logs the execution progress of every operator in the dataset. For more frequent updates, `RAY_DATA_TRACE_SCHEDULING=1` can be set so that the progress is logged after each task is dispatched.
+Every 5 seconds, Ray Data logs the execution progress of every operator in the dataset. For more frequent updates, set `RAY_DATA_TRACE_SCHEDULING=1` so that the progress is logged after each task is dispatched.
 
 .. code-block:: text
 
