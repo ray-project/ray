@@ -443,9 +443,6 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                                        bool skip_queue) {
   const auto task_id = task_spec.TaskId();
 
-  RAY_LOG(INFO) << "void CoreWorkerDirectActorTaskSubmitter::PushActorTask, test spec "
-                << task_spec.DebugString();
-
   auto request = std::make_unique<rpc::PushTaskRequest>();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
@@ -477,9 +474,6 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
       [this, task_spec, task_id, actor_id](const Status &status,
                                            const rpc::PushTaskReply &reply) {
-        RAY_LOG(INFO)
-            << "void CoreWorkerDirectActorTaskSubmitter::PushActorTask reply, test spec "
-            << task_spec.DebugString() << ", reply " << reply.DebugString();
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
           absl::MutexLock lock(&mu_);

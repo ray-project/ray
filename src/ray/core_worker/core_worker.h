@@ -1431,6 +1431,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool *is_retryable_error,
       std::string *application_error);
 
+  /// Updates the task and submits it as a retry.
+  /// CHECK-fails if the submit fails.
+  void RetrySubmitTask(TaskSpecification task_spec);
+
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,
                                const ObjectID &object_id,

@@ -439,8 +439,6 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
     jint maxRetries,
     jboolean retryExceptions,
     jstring serializedRetryExceptionAllowlist) {
-  RAY_CHECK_JAVA_EXCEPTION(env);
-
   auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   const auto &ray_function =
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);

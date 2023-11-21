@@ -386,28 +386,17 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
-        spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
-        auto fn = [spec, this]() {
-          TaskSpecification copied_spec = spec;
-          if (copied_spec.IsActorTask()) {
-            auto actor_handle = actor_manager_->GetActorHandle(copied_spec.ActorId());
-            actor_handle->SetResubmittedActorTaskSpec(copied_spec,
-                                                      copied_spec.ActorDummyObject());
-            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(std::move(copied_spec)));
-          } else {
-            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(std::move(copied_spec)));
-          }
-        };
-
         if (!object_recovery) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
           RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                         << "ms delay: " << spec.DebugString();
-          DelayAndRun(io_service_, boost::posix_time::milliseconds(delay_ms), fn);
+          DelayAndRun(io_service_,
+                      boost::posix_time::milliseconds(delay_ms),
+                      [spec, this]() { this->RetrySubmitTask(spec); });
         } else {
           RAY_LOG(INFO) << "Will resubmit task immediately: " << spec.DebugString();
-          fn();
+          RetrySubmitTask(spec);
         }
       },
       push_error_callback,
@@ -2828,6 +2817,17 @@ Status CoreWorker::ExecuteTask(
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
   return status;
+}
+
+void CoreWorker::RetrySubmitTask(TaskSpecification task_spec) {
+  task_spec.GetMutableMessage().set_attempt_number(task_spec.AttemptNumber() + 1);
+  if (task_spec.IsActorTask()) {
+    auto actor_handle = actor_manager_->GetActorHandle(task_spec.ActorId());
+    actor_handle->SetResubmittedActorTaskSpec(task_spec, task_spec.ActorDummyObject());
+    RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(std::move(task_spec)));
+  } else {
+    RAY_CHECK_OK(direct_task_submitter_->SubmitTask(std::move(task_spec)));
+  }
 }
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,

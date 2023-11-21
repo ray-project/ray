@@ -134,3 +134,22 @@ terminating <ray-kill-actors>` the actor. You can do this by calling
 original handle to the actor.
 
 If ``max_restarts`` is set, you can also allow Ray to automatically restart the actor by passing ``no_restart=False`` to ``ray.kill``.
+
+
+Actor method exceptions
+---------------------------------
+
+Sometime it's desired to retry when an actor method raises exceptions. You can use ``max_retries`` in combination with ``retry_exceptions`` to achieve it.
+
+``retry_exceptions`` can be set to `@ray.method(retry_exceptions=...)` decorator.
+
+- (Default case) If ``retry_exceptions == False``: no retries for user exceptions.
+- If ``retry_exceptions == True``: a method may be retried on user exception for up to ``max_retries`` times.
+- If ``retry_exceptions`` is a list of exceptions: a method may be retried on user exception for up to ``max_retries`` times, only if it raises an exception from these specific classes.
+
+``max_retries`` works for both exceptions and actor crashes. It can be set up in many ways:
+
+- If it's set in the `.options(max_retries=2)` call, use that value.
+- Otherwise, if the method is set with the `@ray.method(max_retries=2)` decorator, use that value.
+- Otherwise, if the Actor class is set with `@ray.remote(max_task_retries=2)` decorator, use that value.
+- Otherwise, consider it's not set, or equivalently, set to zero.

@@ -214,6 +214,8 @@ class ActorMethod:
             num_returns = self._num_returns
         if max_retries is None:
             max_retries = self._max_retries
+        if max_retries is None:
+            max_retries = 0
         if retry_exceptions is None:
             retry_exceptions = self._retry_exceptions
         if _generator_backpressure_num_objects is None:

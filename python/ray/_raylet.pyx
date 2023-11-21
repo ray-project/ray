@@ -850,7 +850,7 @@ cdef raise_if_dependency_failed(arg):
 
 def serialize_retry_exception_allowlist(retry_exception_allowlist, func_name):
         try:
-            return ray_pickle.dumps(   retry_exception_allowlist            )
+            return ray_pickle.dumps(retry_exception_allowlist)
         except TypeError as e:
             msg = (
                 "Could not serialize the retry exception allowlist"
@@ -3824,9 +3824,9 @@ cdef class CoreWorker:
                           args,
                           c_string name,
                           int num_returns,
-                            int max_retries,
-                            c_bool retry_exceptions,
-                            retry_exception_allowlist,
+                          int max_retries,
+                          c_bool retry_exceptions,
+                          retry_exception_allowlist,
                           double num_method_cpus,
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects):

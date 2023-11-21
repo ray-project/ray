@@ -191,8 +191,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         }
       }
     }
-    RAY_LOG(INFO) << "ryw task " << task_spec.DebugString() << ", reply "
-                  << reply->DebugString();
     if (status.ShouldExitWorker()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
