@@ -222,58 +222,89 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Assert that this does not change also the predecessor's data.
         self.assertFalse(len(episode_1.observations) == len(episode_2.observations))
 
-    def test_split_at(self):
+    def test_slices(self):
         # TEST #1: even split (50/50)
         episode = self._create_episode(100)
         self.assertTrue(episode.t == 100 and episode.t_started == 0)
 
         # Convert to numpy before splitting.
-        episode.convert_lists_to_numpy()
+        episode.finalize()
 
         # Create two 50/50 episode chunks.
         # The first chunk will be `episode` itself (changed in place).
         # The second chunk will be `s2`
-        e2 = episode.split_at(index=50)
+        e1 = episode[:50]
+        e2 = episode.slice(slice(50, None))
 
         # Make sure, `episode` and split chunk make sense.
-        self.assertTrue(len(episode) == 50)
+        self.assertTrue(len(e1) == 50)
         self.assertTrue(len(e2) == 50)
-        self.assertTrue(episode.id_ == e2.id_)
-        self.assertTrue(episode.t_started == 0)
-        self.assertTrue(episode.t == 50)
+        self.assertTrue(e1.id_ == e2.id_)
+        self.assertTrue(e1.t_started == 0)
+        self.assertTrue(e1.t == 50)
         self.assertTrue(e2.t_started == 50)
         self.assertTrue(e2.t == 100)
         # Make sure the chunks are not identical, but last obs of episode matches
         # last obs of e2.
-        check(episode.get_observations(-1), e2.get_observations(0))
-        check(episode.observations[4], e2.observations[4], false=True)
-        check(episode.observations[10], e2.observations[10], false=True)
+        check(e1.get_observations(-1), e2.get_observations(0))
+        check(e1.observations[4], e2.observations[4], false=True)
+        check(e1.observations[10], e2.observations[10], false=True)
 
         # TEST #2: Uneven split (33/66).
         episode = self._create_episode(99)
         self.assertTrue(episode.t == 99 and episode.t_started == 0)
 
         # Convert to numpy before splitting.
-        episode.convert_lists_to_numpy()
+        episode.finalize()
 
         # Create two 50/50 episode chunks.
         # The first chunk will be `episode` itself (changed in place).
         # The second chunk will be `s2`
-        e2 = episode.split_at(index=33)
+        e1 = episode.slice(slice(None, 33))
+        e2 = episode[33:]
 
         # Make sure, `episode` and split chunk make sense.
-        self.assertTrue(len(episode) == 33)
+        self.assertTrue(len(e1) == 33)
         self.assertTrue(len(e2) == 66)
-        self.assertTrue(episode.id_ == e2.id_)
-        self.assertTrue(episode.t_started == 0)
-        self.assertTrue(episode.t == 33)
+        self.assertTrue(e1.id_ == e2.id_)
+        self.assertTrue(e1.t_started == 0)
+        self.assertTrue(e1.t == 33)
         self.assertTrue(e2.t_started == 33)
         self.assertTrue(e2.t == 99)
         # Make sure the chunks are not identical, but last obs of episode matches
         # last obs of e2.
-        check(episode.get_observations(-1), e2.get_observations(0))
-        check(episode.observations[4], e2.observations[4], false=True)
-        check(episode.observations[10], e2.observations[10], false=True)
+        check(e1.get_observations(-1), e2.get_observations(0))
+        check(e1.observations[4], e2.observations[4], false=True)
+        check(e1.observations[10], e2.observations[10], false=True)
+
+        # TEST #3: Split with lookback buffer (buffer=10, split=20/30).
+        episode = self._create_episode(
+            num_data=60, t_started=15, len_lookback_buffer=10
+        )
+        self.assertTrue(episode.t == 65 and episode.t_started == 15)
+
+        # Convert to numpy before splitting.
+        episode.finalize()
+
+        # Create two 50/50 episode chunks.
+        # The first chunk will be `episode` itself (changed in place).
+        # The second chunk will be `s2`
+        e1 = episode[:20]
+        e2 = episode.slice(slice(20, None))
+
+        # Make sure, `episode` and split chunk make sense.
+        self.assertTrue(len(e1) == 20)
+        self.assertTrue(len(e2) == 30)
+        self.assertTrue(e1.id_ == e2.id_)
+        self.assertTrue(e1.t_started == 15)
+        self.assertTrue(e1.t == 35)
+        self.assertTrue(e2.t_started == 35)
+        self.assertTrue(e2.t == 65)
+        # Make sure the chunks are not identical, but last obs of episode matches
+        # last obs of e2.
+        check(e1.get_observations(-1), e2.get_observations(0))
+        check(e1.observations[5], e2.observations[5], false=True)
+        check(e1.observations[11], e2.observations[11], false=True)
 
     def test_concat_episode(self):
         """Tests if concatenation of two `SingleAgentEpisode`s works.

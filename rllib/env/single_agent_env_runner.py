@@ -288,9 +288,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         for k, v in self.module.get_initial_state().items():
                             states[k][i] = convert_to_numpy(v)
 
-                    done_episodes_to_return.append(
-                        self._episodes[i].convert_lists_to_numpy()
-                    )
+                    done_episodes_to_return.append(self._episodes[i].finalize())
                     # Create a new episode object with already the reset data in it.
                     self._episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]], infos=[infos[i]]
@@ -316,9 +314,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Initialized episodes do not have recorded any step and lack
         # `extra_model_outputs`.
         ongoing_episodes_to_return = [
-            episode.convert_lists_to_numpy()
-            for episode in self._episodes
-            if episode.t > 0
+            episode.finalize() for episode in self._episodes if episode.t > 0
         ]
         for eps in ongoing_episodes_to_return:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)

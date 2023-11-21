@@ -331,19 +331,21 @@ class SingleAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
-    def convert_lists_to_numpy(self) -> "SingleAgentEpisode":
+    def finalize(self) -> "SingleAgentEpisode":
         """Converts this Episode's list attributes to numpy arrays.
 
-        In case some data is nested (e.g. we have a dict obs space), each leaf in the
-        nested structure is converted into a numpy ndarray and thus the data is
-        converted from a list of (nested) structs into a (nested) struct of
-        ndarrays of shape (B, ...), where B is always the length of the original list
-        of (nested) structs.
+        This means in particular that this episodes' lists of (possibly complex)
+        data (e.g. we have a dict obs space) will be converted to (possibly complex)
+        structs, whose leafs are now numpy arrays. Each of these leaf numpy arrays will
+        have the same length as the length of the original lists.
 
         Note that SampleBatch.INFOS are not numpy'ized and will remain a list
         (normally, a list of the original, env-returned dicts). This is due to the
         herterogenous nature of INFOS returned by envs, which would make it unwieldy to
         convert this information to numpy arrays.
+
+        After calling this method, no further data may be added to this episode via
+        the `self.add_env_step()` method.
 
         Returns:
              This `SingleAgentEpisode` object with the converted numpy data.
@@ -351,7 +353,7 @@ class SingleAgentEpisode:
 
         self.observations = batch(self.observations)
         self.actions = batch(self.actions)
-        self.rewards = np.array(self.rewards)
+        self.rewards = batch(self.rewards)
         self.render_images = np.array(self.render_images, dtype=np.uint8)
         for k, v in self.extra_model_outputs.items():
             self.extra_model_outputs[k] = batch(v)
@@ -404,71 +406,57 @@ class SingleAgentEpisode:
             t_started=self.t,
         )
 
-    def split_at(self, index: int) -> "SingleAgentEpisode":
-        """Splits at given index, keeping the 1st half in `self` and returning 2nd half.
+    def slice(self, slice_: slice) -> "SingleAgentEpisode":
+        """Returns a slice of this episode with the given slice object.
 
-        Changes `self` in-place by making it shorter (from 0 to [original length] to
-        0 to `split_at`). The second "half" Episode from split_at till the end is
-        returned as a new SingleAgentEpisode object.
+        For example, if `self` contains o0 (the reset observation), o1, o2, o3, and o4
+        and the actions a1, a2, a3, and a4 (len of `self` is 4), then a call to
+        `self.slice(slice(1, 3))` would return a new SingleAgentEpisode with
+        observations o1, o2, and o3, and actions a2 and a3. Note here that there is
+        always one observation more in an episode than there are actions (and rewards
+        and extra model outputs) due to the initial observation received after an env
+        reset.
+
+        Note that in any case, the lookback buffer will remain (if possible) at the same
+        size as it has been previously set to (`self._len_lookback_buffer`) and the
+        given slice object will NOT have to provide for this extra offset at the
+        beginning.
 
         Args:
-            index: The index at which to perform the split.
+            slice_: The slice object to use for slicing. This should exclude the
+                lookback buffer, which will be prepended automatically to the returned
+                slice.
 
         Returns:
-            The new SingleAgentEpisode representing the second half of the split. The
-            first half of the split will be `self`, which is changed in-place.
+            The new SingleAgentEpisode representing the requested slice.
         """
         # For now, only allow splitting on finalized, numpy'ized episodes.
-        assert self.is_numpy, "Cannot split a non-numpy-converted SingleAgentEpisode!"
-        assert (
-            len(self) > index - 1
-        ), f"Cannot split at {index}! SingleAgentEpisode is only {len(self)} ts long."
-
+        if not self.is_numpy:
+            raise RuntimeError(
+                "Cannot split a non-finalized SingleAgentEpisode! "
+                "Call `episode.finalize()` first."
+            )
         # Keep the same pre-buffer length.
-        start_2nd_chunk = index - self._len_lookback_buffer
-        second_chunk = SingleAgentEpisode(
+        start_slice = (slice_.start or 0) - self._len_lookback_buffer
+        stop_slice = slice_.stop or len(self)
+        return SingleAgentEpisode(
             id_=self.id_,
             observations=tree.map_structure(
-                lambda s: s[start_2nd_chunk:],
+                lambda s: s[start_slice : stop_slice + 1],
                 self.observations,
             ),
-            infos=self.infos[start_2nd_chunk:],
+            infos=self.infos[start_slice : stop_slice + 1],
             actions=tree.map_structure(
-                lambda s: s[start_2nd_chunk:],
+                lambda s: s[start_slice:stop_slice],
                 self.actions,
             ),
-            rewards=self.rewards[start_2nd_chunk:],
-            is_terminated=self.is_terminated,
-            is_truncated=self.is_truncated,
+            rewards=self.rewards[start_slice:stop_slice],
+            is_terminated=(self.is_terminated if stop_slice == len(self) else False),
+            is_truncated=(self.is_truncated if stop_slice == len(self) else False),
             # Provide correct timestep- and pre-buffer information.
-            t_started=index,
+            t_started=start_slice,
             len_lookback_buffer=self._len_lookback_buffer,
         )
-
-        # Fix self.
-        end_self = index + self._len_lookback_buffer
-        self.t = index
-        self.observations = tree.map_structure(
-            lambda s: s[: end_self + 1],
-            self.observations,
-        )
-        self.infos = self.infos[: end_self + 1]
-        self.actions = tree.map_structure(
-            lambda s: s[:end_self],
-            self.actions,
-        )
-        self.rewards = self.rewards[:end_self]
-        self.extra_model_outputs = tree.map_structure(
-            lambda s: s[:end_self],
-            self.extra_model_outputs,
-        )
-        # Set our own terminated/truncated back to False.
-        self.is_terminated = False
-        self.is_truncated = False
-
-        self.validate()
-
-        return second_chunk
 
     def get_data_dict(self):
         """Converts a `SingleAgentEpisode` into a data dict mapping str keys to data.
@@ -524,6 +512,14 @@ class SingleAgentEpisode:
     def get_observations(
         self, indices: Optional[Union[int, List[int], slice]] = None
     ) -> Any:
+        """Returns individual indices or ranges of observation data from this episode.
+
+        Args:
+            indices: A single int is interpreted as an index, from which to return the
+                individual observation stored at this index. A list of
+                ints is interpreted as a list of indices from which to gather individual
+                observations.
+        """
         if indices is None:
             slice_ = slice(self._len_lookback_buffer, -1)
         elif isinstance(indices, list) and not self.is_numpy:
@@ -537,15 +533,19 @@ class SingleAgentEpisode:
             return self.observations[slice_]
 
     def get_infos(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
+        # Nothing provided -> Return all infos as-is by default.
         if indices is None:
-            slice_ = slice(self._len_lookback_buffer, -1)
+            return self.infos(slice(self._len_lookback_buffer, -1))
+        # Individual int -> Return individual INFO at this index.
         elif isinstance(indices, int):
-            slice_ = slice(indices, indices + 1)
+            return self.infos[indices]
+        # List of ints -> Return list of individual info dicts at these given indices.
         elif isinstance(indices, list):
             return [self.infos[i] for i in indices]
+        # Slice object -> Return a slice of our infos list.
         else:
-            slice_ = indices
-        return self.infos[slice_]
+            assert isinstance(indices, slice)
+            return self.infos[indices]
 
     def get_actions(
         self, indices: Optional[Union[int, List[int], slice]] = None
@@ -670,3 +670,12 @@ class SingleAgentEpisode:
 
     def __repr__(self):
         return f"SAEps({self.id_} len={len(self)})"
+
+    def __getitem__(self, key: Union[str, slice]) -> "SingleAgentEpisode":
+        if isinstance(key, slice):
+            return self.slice(slice_=key)
+        else:
+            raise NotImplementedError(
+                f"SingleAgentEpisode does not support getting item '{item}'! "
+                "Only slice objects allowed with the syntax: `episode[a:b]`."
+            )
