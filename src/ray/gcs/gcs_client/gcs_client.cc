@@ -234,6 +234,7 @@ Status PythonGcsClient::InternalKVGet(const std::string &ns,
                                       const std::string &key,
                                       int64_t timeout_ms,
                                       std::string &value) {
+  RAY_LOG(INFO) << "vct internal kv get key " << key << " value " << value;
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
@@ -244,7 +245,9 @@ Status PythonGcsClient::InternalKVGet(const std::string &ns,
   rpc::InternalKVGetReply reply;
 
   grpc::Status status = kv_stub_->InternalKVGet(&context, request, &reply);
+  RAY_LOG(INFO) << "vct 111";
   if (status.ok()) {
+    RAY_LOG(INFO) << "vct 222";
     if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       value = reply.value();
       return Status::OK();

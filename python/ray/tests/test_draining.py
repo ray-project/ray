@@ -282,6 +282,7 @@ def test_draining_reason(ray_start_cluster):
 
     cluster.remove_node(n, True)
     time.sleep(10)
+    print("doing ray.get now")
 
     ray.get(actor.ping.remote())
 

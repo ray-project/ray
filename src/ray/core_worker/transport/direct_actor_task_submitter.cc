@@ -367,21 +367,29 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
   rpc::CheckAliveRequest request;
   {
     absl::MutexLock lock(&mu_);
+  RAY_LOG(INFO) << "vct bbb";
     for (auto &queue_pair : client_queues_) {
       auto &queue = queue_pair.second;
+      if (!queue.rpc_client) {
+        RAY_LOG(INFO) << "No address found for raylet.";
+        continue;
+      }
       const rpc::Address &addr = queue.rpc_client->Addr();
-      bool first = true;
+      bool is_first = true;
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
+  RAY_LOG(INFO) << "vct ff";
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
         auto &task_spec_status_pair = deque_itr->second;
-        if (first) {
+        if (is_first) {
+          RAY_LOG(INFO) << "vct cc";
           // Cannot add outside the loop in case there are no tasks to add.
           request.add_raylet_address(addr.ip_address() + ":" + std::to_string(addr.port()));
         }
-        task_info_list->push_back(std::make_pair(task_spec_status_pair, first));
+          RAY_LOG(INFO) << "vct dd";
+        task_info_list->push_back(std::make_pair(task_spec_status_pair, is_first));
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
-        first = false;
+        is_first = false;
       }
     }
   }
@@ -391,8 +399,10 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
 
   if (RayConfig::instance().enable_reap_actor_death()) {
   // Check GCS for preemption info here before failing.
+  RAY_LOG(INFO) << "vct aaa";
   gcs_client_.GetGcsRpcClient().CheckAlive(request,
   [this, task_info_list = std::move(task_info_list)](const Status &status, const rpc::CheckAliveReply &reply) {
+    RAY_LOG(INFO) << "vct zzz";
     auto iter = reply.raylet_preempted().begin();
     bool firstAddr = true;
     for (auto &task_info : *task_info_list) {
