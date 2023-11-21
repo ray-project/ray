@@ -332,12 +332,16 @@ def create_replica_wrapper(actor_class_name: str):
 
         async def handle_request_streaming(
             self,
-            pickled_request_metadata: bytes,
+            pickled_query: bytes,
             *request_args,
             **request_kwargs,
         ) -> AsyncGenerator[Any, None]:
             """Generator that is the entrypoint for all `stream=True` handle calls."""
-            request_metadata = pickle.loads(pickled_request_metadata)
+            query = pickle.loads(pickled_query)
+            request_metadata = query.metadata
+            request_args = list(request_args) + query.args
+            request_kwargs.update(query.kwargs)
+
             if request_metadata.is_grpc_request:
                 # Ensure the request args are a single gRPCRequest object.
                 assert len(request_args) == 1 and isinstance(
