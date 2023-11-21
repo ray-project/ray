@@ -239,17 +239,6 @@ Synchronous Sampler API
     SyncSampler
 
 
-Asynchronous Sampler API
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. currentmodule:: ray.rllib.evaluation.sampler
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    AsyncSampler
-
 
 .. _offline-reference-docs:
 
