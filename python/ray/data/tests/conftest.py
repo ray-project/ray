@@ -590,6 +590,7 @@ class CoreExecutionMetrics:
             "AutoscalingRequester:AutoscalingRequester.__init__": lambda count: count
             <= 1,
             "_StatsActor.clear_metrics": lambda count: count < 100,
+            "_StatsActor.clear_execution_metrics": lambda count: count < 100,
             "_StatsActor.update_metrics": lambda count: count < 100,
             "_StatsActor.clear_iter_metrics": lambda count: count < 100,
             "_StatsActor.update_iter_metrics": lambda count: count < 100,
