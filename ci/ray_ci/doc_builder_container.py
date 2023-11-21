@@ -10,6 +10,7 @@ class DocBuilderContainer(Container):
         self.run_script(
             [
                 "cd doc",
+                "pip install -r requirements-doc.txt",
                 "FAST=True make html",
             ]
         )
