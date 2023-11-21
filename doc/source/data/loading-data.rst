@@ -641,7 +641,7 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
 Reading databases
 =================
 
-Ray Data reads from databases like MySQL, PostgreSQL, and MongoDB.
+Ray Data reads from databases like MySQL, PostgreSQL, MongoDB, and BigQuery.
 
 .. _reading_sql:
 

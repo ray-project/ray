@@ -66,14 +66,6 @@ class GlobalStateAccessor {
   /// \return All task events info.
   std::vector<std::string> GetAllTaskEvents() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Get information of a node resource from GCS Service.
-  ///
-  /// \param node_id The ID of node to look up in the GCS Service.
-  /// \return node resource map info. To support multi-language, we serialize each
-  /// ResourceTableData and return the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
-  std::string GetNodeResourceInfo(const NodeID &node_id) ABSL_LOCKS_EXCLUDED(mutex_);
-
   /// Get available resources of all nodes.
   ///
   /// \return available resources of all nodes. To support multi-language, we serialize
