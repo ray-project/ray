@@ -343,13 +343,15 @@ def process_completed_tasks(
 
     max_blocks_to_read_per_op: Dict[OpState, int] = {}
     for policy in backpressure_policies:
-        non_empty = len(max_blocks_to_read_per_op) > 0
-        max_blocks_to_read_per_op = policy.calculate_max_blocks_to_read_per_op(topology)
-        if non_empty and len(max_blocks_to_read_per_op) > 0:
-            raise ValueError(
-                "At most one backpressure policy that implements "
-                "calculate_max_blocks_to_read_per_op() can be used at a time."
-            )
+        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        if len(res) > 0:
+            if len(max_blocks_to_read_per_op) > 0:
+                raise ValueError(
+                    "At most one backpressure policy that implements "
+                    "calculate_max_blocks_to_read_per_op() can be used at a time."
+                )
+            else:
+                max_blocks_to_read_per_op = res
 
     # Process completed Ray tasks and notify operators.
     if active_tasks:
