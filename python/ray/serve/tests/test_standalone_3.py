@@ -648,9 +648,7 @@ def test_serve_shut_down_without_duplicated_logs(
     assert all_serve_logs.count("Deleting application 'default'") == 1
 
 
-def test_serve_passing_task_id_kargs(
-    shutdown_ray, call_ray_stop_only  # noqa: F811
-):
+def test_serve_passing_task_id_kargs(shutdown_ray, call_ray_stop_only):  # noqa: F811
     """Test Serve shut down without duplicated logs.
 
     When Serve shutdown is called and executing the shutdown process, the controller
