@@ -83,11 +83,7 @@ from ray.data._internal.stage_impl import (
     SortStage,
     ZipStage,
 )
-from ray.data._internal.stats import (
-    DatasetStats,
-    DatasetStatsSummary,
-    get_dataset_id_from_stats_actor,
-)
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
@@ -256,7 +252,7 @@ class Dataset:
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
 
-        self._set_uuid(get_dataset_id_from_stats_actor())
+        self._set_uuid(StatsManager.get_dataset_id_from_stats_actor())
 
     @staticmethod
     def copy(

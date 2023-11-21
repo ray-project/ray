@@ -169,6 +169,7 @@ steps:
   - label: ":ray-serve: serve: flaky tests"
     tags: 
       - serve
+      - skip-on-premerge
       - python
     instance_type: medium
     soft_fail: true

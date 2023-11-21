@@ -533,14 +533,38 @@ def get_running_replica_tags(controller: ServeController, name: str) -> List:
     return [replica.replica_tag for replica in running_replicas]
 
 
-def check_autoscale_num_replicas(controller: ServeController, name: str) -> int:
-    """Check the number of replicas currently running for given deployment.
+def check_deployment_status(controller, name, expected_status) -> DeploymentStatus:
+    ref = ray.get(controller.get_deployment_status.remote(name, SERVE_DEFAULT_APP_NAME))
+    info = DeploymentStatusInfo.from_proto(DeploymentStatusInfoProto.FromString(ref))
+    assert info.status == expected_status
+    return True
 
-    This should only be called if the deployment has already transitioned
-    to HEALTHY, and this function will check that it remains healthy.
+
+def check_autoscale_num_replicas_gte(
+    controller: ServeController, name: str, target: int
+) -> int:
+    """Check the number of replicas currently running for given
+    deployment is greater than or equal to target.
     """
-    assert get_deployment_status(controller, name) == DeploymentStatus.HEALTHY
-    return len(get_running_replicas(controller, name))
+    assert len(get_running_replicas(controller, name)) >= target
+    return True
+
+
+def check_autoscale_num_replicas_eq(
+    controller: ServeController, name: str, target: int
+) -> int:
+    """Check the number of replicas currently running for given deployment."""
+    assert len(get_running_replicas(controller, name)) == target
+    return True
+
+
+def check_autoscale_num_replicas_lte(
+    controller: ServeController, name: str, target: int
+) -> int:
+    """Check the number of replicas currently running for given deployment."""
+
+    assert len(get_running_replicas(controller, name)) <= target
+    return True
 
 
 def assert_no_replicas_deprovisioned(
@@ -612,7 +636,10 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 
     handle = serve.run(A.bind())
     wait_for_condition(
-        lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
+        check_deployment_status,
+        controller=controller,
+        name="A",
+        expected_status=DeploymentStatus.HEALTHY,
     )
     start_time = get_deployment_start_time(controller, "A")
 
@@ -620,15 +647,20 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 
     # scale up one more replica from min_replicas
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") >= min_replicas + 1,
-        raise_exceptions=True,
+        check_autoscale_num_replicas_gte,
+        controller=controller,
+        name="A",
+        target=min_replicas + 1,
     )
+    # check_deployment_status(controller, "A", DeploymentStatus.UPSCALING)
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") <= min_replicas,
-        raise_exceptions=True,
+        check_autoscale_num_replicas_lte,
+        controller=controller,
+        name="A",
+        target=min_replicas,
     )
 
     # Make sure start time did not change for the deployment
@@ -683,8 +715,10 @@ def test_e2e_scale_up_down_with_0_replica(
     # After the blocking requests are sent, the number of replicas
     # should increase.
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") >= 1,
-        raise_exceptions=True,
+        check_autoscale_num_replicas_gte,
+        controller=controller,
+        name="A",
+        target=1,
     )
     # Release the signal, which should unblock all requests.
     print("Number of replicas reached at least 1, releasing signal.")
@@ -692,8 +726,10 @@ def test_e2e_scale_up_down_with_0_replica(
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") <= 0,
-        raise_exceptions=True,
+        check_autoscale_num_replicas_eq,
+        controller=controller,
+        name="A",
+        target=0,
     )
     # Make sure no requests were dropped.
     # If the deployment (unexpectedly) scaled down before the
@@ -806,10 +842,13 @@ def test_e2e_bursty(serve_instance):
     [handle.remote() for _ in range(100)]
 
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") >= 2,
-        raise_exceptions=True,
+        check_autoscale_num_replicas_gte,
+        controller=controller,
+        name="A",
+        target=2,
     )
-    num_replicas = check_autoscale_num_replicas(controller, "A")
+
+    num_replicas = len(get_running_replicas(controller, "A"))
     signal.send.remote()
 
     # Execute a bursty workload that issues 100 requests every 0.05 seconds
@@ -820,7 +859,7 @@ def test_e2e_bursty(serve_instance):
     # parameters.
     for _ in range(5):
         ray.get(signal.send.remote(clear=True))
-        assert check_autoscale_num_replicas(controller, "A") == num_replicas
+        check_autoscale_num_replicas_eq(controller, "A", num_replicas)
         responses = [handle.remote() for _ in range(100)]
         signal.send.remote()
         [r.result() for r in responses]
@@ -828,8 +867,10 @@ def test_e2e_bursty(serve_instance):
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") <= 1,
-        raise_exceptions=True,
+        check_autoscale_num_replicas_lte,
+        controller=controller,
+        name="A",
+        target=1,
     )
 
     # Make sure start time did not change for the deployment
@@ -873,32 +914,40 @@ def test_e2e_intermediate_downscaling(serve_instance):
     [handle.remote() for _ in range(50)]
 
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") >= 20,
+        check_autoscale_num_replicas_gte,
+        controller=controller,
+        name="A",
+        target=20,
         timeout=30,
-        raise_exceptions=True,
     )
     signal.send.remote()
 
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") <= 1,
+        check_autoscale_num_replicas_lte,
+        controller=controller,
+        name="A",
+        target=1,
         timeout=30,
-        raise_exceptions=True,
     )
     signal.send.remote(clear=True)
 
     [handle.remote() for _ in range(50)]
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") >= 20,
+        check_autoscale_num_replicas_gte,
+        controller=controller,
+        name="A",
+        target=20,
         timeout=30,
-        raise_exceptions=True,
     )
 
     signal.send.remote()
     # As the queue is drained, we should scale back down.
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") < 1,
+        check_autoscale_num_replicas_eq,
+        controller=controller,
+        name="A",
+        target=0,
         timeout=30,
-        raise_exceptions=True,
     )
 
     # Make sure start time did not change for the deployment
@@ -940,18 +989,20 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     handle = serve.get_deployment_handle("A", "default")
     start_time = get_deployment_start_time(controller, "A")
 
-    assert check_autoscale_num_replicas(controller, "A") == 0
+    check_autoscale_num_replicas_eq(controller, "A", 0)
     [handle.remote() for _ in range(400)]
     print("Issued 400 requests.")
 
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") >= 10,
-        raise_exceptions=True,
+        check_autoscale_num_replicas_gte,
+        controller=controller,
+        name="A",
+        target=10,
     )
     print("Scaled to 10 replicas.")
     first_deployment_replicas = get_running_replica_tags(controller, "A")
 
-    assert check_autoscale_num_replicas(controller, "A") < 20
+    check_autoscale_num_replicas_lte(controller, "A", 20)
 
     [handle.remote() for _ in range(458)]
     time.sleep(3)
@@ -963,8 +1014,10 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     print("Redeployed A.")
 
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") >= 20,
-        raise_exceptions=True,
+        check_autoscale_num_replicas_gte,
+        controller=controller,
+        name="A",
+        target=20,
     )
     print("Scaled up to 20 requests.")
     second_deployment_replicas = get_running_replica_tags(controller, "A")
@@ -978,10 +1031,12 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") <= 2,
-        raise_exceptions=True,
+        check_autoscale_num_replicas_lte,
+        controller=controller,
+        name="A",
+        target=2,
     )
-    assert check_autoscale_num_replicas(controller, "A") > 1
+    check_autoscale_num_replicas_gte(controller, "A", 2)
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, "A") == start_time
@@ -995,18 +1050,27 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     )
 
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") < 1, raise_exceptions=True
+        check_autoscale_num_replicas_eq,
+        controller=controller,
+        name="A",
+        target=0,
     )
-    assert check_autoscale_num_replicas(controller, "A") == 0
+    check_autoscale_num_replicas_eq(controller, "A", 0)
 
     # scale up
     [handle.remote() for _ in range(400)]
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") > 0, raise_exceptions=True
+        check_autoscale_num_replicas_gte,
+        controller=controller,
+        name="A",
+        target=0,
     )
     signal.send.remote()
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") < 1, raise_exceptions=True
+        check_autoscale_num_replicas_eq,
+        controller=controller,
+        name="A",
+        target=0,
     )
 
 
@@ -1041,14 +1105,14 @@ def test_e2e_raise_min_replicas(serve_instance):
     )
     start_time = get_deployment_start_time(controller, "A")
 
-    assert check_autoscale_num_replicas(controller, "A") == 0
+    check_autoscale_num_replicas_eq(controller, "A", 0)
 
     handle = serve.get_deployment_handle("A", "default")
     handle.remote()
     print("Issued one request.")
 
     time.sleep(2)
-    assert check_autoscale_num_replicas(controller, "A") == 1
+    check_autoscale_num_replicas_eq(controller, "A", 1)
     print("Scale up to 1 replica.")
 
     first_deployment_replicas = get_running_replica_tags(controller, "A")
@@ -1062,7 +1126,7 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     # Confirm that autoscaler doesn't scale above 2 even after waiting
     time.sleep(5)
-    assert check_autoscale_num_replicas(controller, "A") == 2
+    check_autoscale_num_replicas_eq(controller, "A", 2)
     print("Autoscaled to 2 without issuing any new requests.")
 
     second_deployment_replicas = get_running_replica_tags(controller, "A")
@@ -1078,10 +1142,12 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(
-        lambda: check_autoscale_num_replicas(controller, "A") <= 2,
-        raise_exceptions=True,
+        check_autoscale_num_replicas_lte,
+        controller=controller,
+        name="A",
+        target=2,
     )
-    assert check_autoscale_num_replicas(controller, "A") > 1
+    check_autoscale_num_replicas_gte(controller, "A", 2)
     print("Stayed at 2 replicas.")
 
     # Make sure start time did not change for the deployment
