@@ -2060,7 +2060,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
 
     def testScaleUpMinSanityWithHeadNode(self):
-        """Make sure when min_worker_nodes is used with head node it does not count
+        """Make sure when you use min_worker_nodes with head node, it doesn't include
         head_node in min_worker_nodes."""
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["available_node_types"]["empty_node"]["min_worker_nodes"] = 2
