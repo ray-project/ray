@@ -114,7 +114,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
         assert self._init_cap > 0
         assert 0 < self._cap_multiply_threshold <= 1
-        assert self._cap_multiplier > 1
+        assert self._cap_multiplier >= 1
 
         logger.debug(
             "ConcurrencyCapBackpressurePolicy initialized with config: "
@@ -126,7 +126,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
     def can_add_input(self, op: "PhysicalOperator") -> bool:
         metrics = op.metrics
-        while metrics.num_tasks_finished >= (
+        while self._cap_multiplier > 1 and metrics.num_tasks_finished >= (
             self._concurrency_caps[op] * self._cap_multiply_threshold
         ):
             self._concurrency_caps[op] *= self._cap_multiplier

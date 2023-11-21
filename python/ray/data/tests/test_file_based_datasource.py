@@ -1,4 +1,5 @@
 import os
+from typing import Iterator
 from unittest import mock
 
 import pyarrow
@@ -16,10 +17,22 @@ from ray.data.datasource.path_util import _is_local_windows_path
 
 
 class MockFileBasedDatasource(FileBasedDatasource):
-    def _read_file(self, f: "pyarrow.NativeFile", path: str) -> Block:
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         builder = DelegatingBlockBuilder()
         builder.add({"data": f.readall()})
-        return builder.build()
+        yield builder.build()
+
+
+def test_include_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test.txt")
+    with open(path, "w"):
+        pass
+
+    datasource = MockFileBasedDatasource(path, include_paths=True)
+    ds = ray.data.read_datasource(datasource)
+
+    paths = [row["path"] for row in ds.take_all()]
+    assert paths == [path]
 
 
 def test_file_extensions(ray_start_regular_shared, tmp_path):
