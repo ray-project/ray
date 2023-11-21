@@ -692,34 +692,44 @@ def test_execution_allowed_nothrottle():
     )
 
 
-def test_max_allowed_task_failures(restore_data_context):
+@pytest.mark.parametrize(
+    "max_allowed_task_failures, num_failed_tasks",
+    [
+        (0, 0),
+        (0, 1),
+        (2, 1),
+        (2, 2),
+        (2, 3),
+        (-1, 5),
+    ],
+)
+def test_max_allowed_task_failures(
+    ray_start_regular_shared,
+    restore_data_context,
+    max_allowed_task_failures,
+    num_failed_tasks,
+):
     """Test DataContext.max_allowed_task_failures."""
+    num_tasks = 5
 
-    def _run(num_tasks, max_allowed_task_failures, num_failed_tasks, should_fail):
-        ctx = ray.data.DataContext.get_current()
-        ctx.max_allowed_task_failures = max_allowed_task_failures
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_allowed_task_failures = max_allowed_task_failures
 
-        def map_func(row):
-            id = row["id"]
-            if id < num_failed_tasks:
-                # Fail the first num_failed_tasks tasks.
-                raise RuntimeError(f"Task failed: {id}")
-            return row
+    def map_func(row):
+        id = row["id"]
+        if id < num_failed_tasks:
+            # Fail the first num_failed_tasks tasks.
+            raise RuntimeError(f"Task failed: {id}")
+        return row
 
-        ds = ray.data.range(num_tasks, parallelism=num_tasks).map(map_func)
-        if should_fail:
-            with pytest.raises(RuntimeError):
-                res = ds.take_all()
-        else:
-            res = sorted([row["id"] for row in ds.take_all()])
-            assert res == list(range(num_failed_tasks, num_tasks))
-
-    _run(5, 0, 0, False)
-    _run(5, 0, 1, True)
-    _run(5, 2, 1, False)
-    _run(5, 2, 2, False)
-    _run(5, 2, 3, True)
-    _run(5, -1, 5, False)
+    ds = ray.data.range(num_tasks, parallelism=num_tasks).map(map_func)
+    should_fail = 0 <= max_allowed_task_failures < num_failed_tasks
+    if should_fail:
+        with pytest.raises(Exception, match="Task failed"):
+            res = ds.take_all()
+    else:
+        res = sorted([row["id"] for row in ds.take_all()])
+        assert res == list(range(num_failed_tasks, num_tasks))
 
 
 if __name__ == "__main__":
