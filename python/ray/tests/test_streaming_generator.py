@@ -110,7 +110,7 @@ def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
 
             # Simulate the worker failure happens.
             next_ref = ray.ObjectRef.from_random()
-            c.peek_object_ref_stream.return_value = next_ref
+            c.peek_object_ref_stream.return_value = (next_ref, False)
             mocked_ray_wait.return_value = [next_ref], []
             mocked_ray_get.side_effect = WorkerCrashedError()
 
