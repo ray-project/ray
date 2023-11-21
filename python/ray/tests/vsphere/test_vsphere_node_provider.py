@@ -590,6 +590,8 @@ def test_singleton():
         ([{"CPU": 16, "Memory": 49152}], (16, 65536)),
         ([{"CPU": 32, "Memory": 98304}], (32, 65535)),
         ([{"CPU": -1, "Memory": -1}], (1, 4)),
+        ([{"CPU": 5}, {"CPU": 7}, {"CPU": 9}], (16, 4096)),
+        ([{"CPU": 16, "Memory": 16384}, {"Memory": 30702}], (16, 32768)),
     ],
 )
 def test_dynamic_resource_adjust(unfulfilled_tasks, expected_output):

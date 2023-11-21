@@ -25,8 +25,8 @@ from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
-    MIN_CPU_NUM,
-    MIN_MEM_SIZE,
+    VSPHERE_MIN_CPU_NUM,
+    VSPHERE_MIN_MEM_SIZE,
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
@@ -252,8 +252,8 @@ class StandardAutoscaler:
 
         # Below 2 variable will not be used if dynamic resource adjustment is not
         # supported by the provider.
-        self.dynamic_cpu = MIN_CPU_NUM
-        self.dynamic_mem = MIN_MEM_SIZE
+        self.dynamic_cpu = VSPHERE_MIN_CPU_NUM
+        self.dynamic_mem = VSPHERE_MIN_MEM_SIZE
         self.last_resource_adjust_time = 0.0
 
         self.reset(errors_fatal=True)
@@ -1085,8 +1085,8 @@ class StandardAutoscaler:
             self.available_node_types = self.config["available_node_types"]
             if self.provider.dra_enabled():
                 if not self.dra_triggered_recently():
-                    self.dynamic_cpu = MIN_CPU_NUM
-                    self.dynamic_mem = MIN_MEM_SIZE
+                    self.dynamic_cpu = VSPHERE_MIN_CPU_NUM
+                    self.dynamic_mem = VSPHERE_MIN_MEM_SIZE
                 # Increase CPU and memory in the config object's worker node part in the
                 # memory, so that the resource demand schedular can take this into
                 # consideration, and will report that there are nodes to be created.

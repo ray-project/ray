@@ -84,10 +84,10 @@ BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 
 # The minimum CPU number for a vSphere node
-MIN_CPU_NUM = env_integer("MIN_CPU_NUM", 1)
+VSPHERE_MIN_CPU_NUM = env_integer("MIN_CPU_NUM", 1)
 
 # The minimum memory size for a vSphere node
-MIN_MEM_SIZE = env_integer("MIN_MEM_SIZE", 4096)
+VSPHERE_MIN_MEM_SIZE = env_integer("MIN_MEM_SIZE", 4096)
 
 # ray home path in the container image
 RAY_HOME = "/home/ray"
