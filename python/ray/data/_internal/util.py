@@ -110,7 +110,9 @@ def _autodetect_parallelism(
 
     This detects parallelism using the following heuristics, applied in order:
 
-     1) We start with the default parallelism of 200. This can be overridden by setting the `min_parallelism` attribute of :class:`~ray.data.context.DataContext`.
+     1) We start with the default parallelism of 200. This can be overridden by
+        setting the `min_parallelism` attribute of
+        :class:`~ray.data.context.DataContext`.
      2) Min block size. If the parallelism would make blocks smaller than this
         threshold, the parallelism is reduced to avoid the overhead of tiny blocks.
      3) Max block size. If the parallelism would make blocks larger than this
