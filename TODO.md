@@ -6,20 +6,30 @@
 [x] Implement normal Seal path with shared memory instead of IPC, using max readers header
     - CoreWorker is the "writer"
     - plasma store is the "reader"
-[ ] Harden shared-memory based Seal
-    - [ ] edge case: object aborted/client dies while waiting for seal
-    - [ ] fix plasma client ref counting
-    - [ ] disable ref counting for real
 [x] Implement max readers=N semaphore pattern and test with ray.put/ray.get
     - Sender CoreWorker actor is the "writer"
     - Receiver CoreWorker actor(s) is the "reader"
     - Implement alternative plasma client put/get calls
-[ ] Serialization edge cases
+[x] VLLM + DAG
+    - Implement OutputNode
+    - Fix DAG API
+[ ] Serialization edge cases -> Sang
     - Implement pinning for plasma client objects (so that we don't need the hack to pin in Python memory, which only works for zero-copy objects)
     - Implement data size header to account for different-size objects
-[ ] Connect actors and driver
+[ ] Connect actors and driver -> Stephanie
     - Receiver CoreWorker actor selects between normal task queue and signals from shared-memory objects
         - Implement a DependencyWaiter that uses the alternative plasma client to get objects
+[ ] Performance optimization -> Eric
+    - Specialize Get/Put path
+    - Specialize Execution
+[ ] Harden shared-memory based Seal
+    - [ ] edge case: object aborted/client dies while waiting for seal
+    - [ ] fix plasma client ref counting
+    - [ ] disable ref counting for real
+
+Limitation:
+- Not working well with regular actor tasks
+- Cannot cancel blocked actor task.
 
 
 Issues:
