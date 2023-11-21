@@ -108,7 +108,10 @@ class MetadataOpTask(OpTask):
     """Represents an OpTask that only handles metadata, instead of Block data."""
 
     def __init__(
-        self, task_index: int, object_ref: ray.ObjectRef, task_done_callback: Callable[[], None]
+        self,
+        task_index: int,
+        object_ref: ray.ObjectRef,
+        task_done_callback: Callable[[], None],
     ):
         """
         Args:
