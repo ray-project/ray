@@ -25,17 +25,119 @@ Tuning read parallelism
 
 By default, Ray Data automatically selects the read ``parallelism`` according to the following procedure:
 
-1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
-2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it's set to 8.
-3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
+The ``parallelism`` parameter passed to Ray Data's :ref:`read APIs <input-output>` specifies the number of read tasks that should be used.
+Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``parallelism`` also determines the parallelism used during map.
 
-Occasionally, it's advantageous to manually tune the parallelism to optimize the application. You can do this by setting the ``parallelism`` parameter.
-For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
+The default value for ``parallelism`` is decided based on the following heuristics, applied in order:
+
+1. We start with the default parallelism of 200. This can be overridden by setting :class:`DataContext.min_parallelism <ray.data.context.DataContext>`.
+2. Min block size (default=1MiB). If the parallelism would make blocks smaller than this threshold, the parallelism is reduced to avoid the overhead of tiny blocks. This can be overridden by setting :class:`DataContext.target_min_block_size <ray.data.context.DataContext>` (bytes).
+3. Max block size (default=128MiB). If the parallelism would make blocks larger than this
+threshold, the parallelism is increased to avoid OOMs during processing. This can be overridden by setting :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` (bytes).
+4. Available CPUs. If the parallelism cannot make use of all the available
+CPUs in the cluster, the parallelism is increased until it can. To ensure utilization, Ray Data will attempt to produce at least 2x the available CPUs.
+
+Occasionally, it's advantageous to manually tune the parallelism to optimize the application.
+For example, the following code will batch multiple files into the same read task to avoid creating blocks that are too large, so the total number of output blocks will be less than the number of input files.
+
+    .. testcode::
+
+        import ray
+        # Pretend we have two CPUs.
+        ray.init(num_cpus=2)
+
+        # Repeat the iris.csv file 16 times.
+        ds = ray.data.read_images(["example://iris.csv"] * 16)
+        print(ds.materialize())
+        # 2023-11-20 14:28:47,597 INFO plan.py:760 -- Using autodetected parallelism=4 for stage ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
+        # MaterializedDataset(
+        #    num_blocks=4,
+        #    num_rows=2400,
+        #    ...
+        # )
+
+But suppose that you knew that you wanted to read all 16 files in parallel, for example because you know that additional CPUs should get added to the cluster by the autoscaler or because the downstream stage should transform each file's contents in parallel.
+Then, you can do this by setting the ``parallelism`` parameter.
+Notice how the number of output blocks is equal to ``parallelism`` in the following code:
+
+    .. testcode::
+
+        import ray
+        # Pretend we have two CPUs.
+        ray.init(num_cpus=2)
+
+        # Repeat the iris.csv file 16 times.
+        ds = ray.data.read_images(["example://iris.csv"] * 16, parallelism=16)
+        print(ds.materialize())
+        # MaterializedDataset(
+        #    num_blocks=16,
+        #    num_rows=2400,
+        #    ...
+        # )
+
+
+Note that because Ray Data cannot perfectly predict the size of each task's output, it is possible that each task produces one or more output blocks, based on :class:`DataContext.target_max_block_size <ray.data.context.DataContext>`.
+Thus, the total blocks produced in the final :class:`~ray.data.Dataset` may differ from the specified ``parallelism``.
+Here's an example where we'll manually specify ``parallelism=1``, but the one task will still produce multiple blocks in the materialized Dataset:
+
+    .. testcode::
+
+        import ray
+        # Pretend we have two CPUs.
+        ray.init(num_cpus=2)
+
+        # Generate ~400MB of data.
+        ds = ray.data.range_tensor(5_000, shape=(10_000, ), parallelism=1)
+        print(ds.materialize())
+        # MaterializedDataset(
+        #    num_blocks=3,
+        #    num_rows=5000,
+        #    schema={data: numpy.ndarray(shape=(10000,), dtype=int64)}
+        # )
+
+
+Currently, Ray Data can assign at most one read task per input file.
+Thus, if the number of input files is smaller than the autodetected or specified ``parallelism``, Ray Data will cap the number of read tasks to the number of input files.
+To ensure that downstream transforms can still execute with the desired parallelism, Ray Data will split the read tasks' outputs into a total of ``parallelism`` blocks and disable fusing with the downstream transform, i.e. the read tasks' output blocks will be materialized to Ray's object store before any map stage executes.
+For example, in the following code, we will execute :func:`~ray.data.read_csv` with only one task, but its output will get split into 4 blocks before executing the :func:`~ray.data.Dataset.map`:
+
+    .. testcode::
+
+        import ray
+        # Pretend we have two CPUs.
+        ray.init(num_cpus=2)
+
+        ds = ray.data.read_csv("example://iris.csv").map(lambda row: row)
+        print(ds.materialize().stats())
+        # 2023-11-20 15:47:02,404 INFO split_read_output_blocks.py:101 -- Using autodetected parallelism=4 for stage ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
+        # 2023-11-20 15:47:02,405 INFO split_read_output_blocks.py:106 -- To satisfy the requested parallelism of 4, each read task output is split into 4 smaller blocks.
+        # ...
+        # Stage 1 ReadCSV->SplitBlocks(4): 4/4 blocks executed in 0.01s
+        # ...
+        # 
+        # Stage 2 Map(<lambda>): 4/4 blocks executed in 0.03s
+        # ...
+
+To disable this behavior and allow the read and map stages to be fused, manually set ``parallelism``.
+For example, here we set it to equal the number of files:
+
+    .. testcode::
+
+        import ray
+        # Pretend we have two CPUs.
+        ray.init(num_cpus=2)
+
+        ds = ray.data.read_csv("example://iris.csv", parallelism=1).map(lambda row: row)
+        print(ds.materialize().stats())
+        # ...
+        # Stage 1 ReadCSV->Map(<lambda>): 1/1 blocks executed in 0.03s
+        # ...
+
 
 Tuning read resources
 ~~~~~~~~~~~~~~~~~~~~~
 
-By default, Ray requests 1 CPU per read task, which means one read tasks per CPU can execute concurrently.
+By default, Ray requests 1 CPU per read task, which means one read task per CPU can execute concurrently.
 For datasources that benefit from more IO parallelism, you can specify a lower ``num_cpus`` value for the read function with the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
@@ -161,6 +263,8 @@ You can configure execution options with the global DataContext. The options are
    ctx.execution_options.resource_limits.gpu = 5
    ctx.execution_options.resource_limits.object_store_memory = 10e9
 
+.. note::
+    It is *not* recommended to modify the Ray Core object store memory limit, as this can reduce available memory for task execution. The one exception to this is if you are using machines with a very large amount of RAM (1TB or more each); then it is recommended to set the object store to ~30-40%.
 
 Locality with output (ML ingest use case)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
