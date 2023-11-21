@@ -99,6 +99,7 @@ def _has_outdated(
     outdated = []
     for (lib, version) in deps:
         try:
+
             module = importlib.import_module(lib)
             if version and Version(module.__version__) < Version(version):
                 outdated.append([lib, version, module.__version__])

@@ -135,7 +135,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
                 """This sampler only maintains a queue to get metrics from."""
 
                 def __init__(self, metrics_queue):
-                    """Initializes an AsyncSampler instance.
+                    """Initializes a MetricsDummySampler instance.
 
                     Args:
                         metrics_queue: A queue of metrics

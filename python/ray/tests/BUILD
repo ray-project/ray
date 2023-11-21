@@ -117,6 +117,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_bounded_threads.py",
+    "test_bounded_unix_sockets.py",
     "test_autoscaler_fake_scaledown.py",
     "accelerators/test_neuron.py",
     "accelerators/test_tpu.py",
@@ -138,6 +139,7 @@ py_test_module_list(
     "test_multi_node_2.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
+    "test_mpi.py",
     "test_node_manager.py",
     "test_object_assign_owner.py",
     "test_placement_group_2.py",
@@ -295,7 +297,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_e2e.py",
-    "test_monitor_service.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],

@@ -108,26 +108,8 @@ class _DeploymentHandleBase:
         self._recorded_telemetry = _recorded_telemetry
         self._sync = sync
 
-        self.request_counter = _request_counter or metrics.Counter(
-            "serve_handle_request_counter",
-            description=(
-                "The number of handle.remote() calls that have been "
-                "made on this handle."
-            ),
-            tag_keys=("handle", "deployment", "route", "application"),
-        )
-        if app_name:
-            handle_tag = f"{app_name}#{deployment_name}#{get_random_letters()}"
-        else:
-            handle_tag = f"{deployment_name}#{get_random_letters()}"
-
-        # TODO(zcin): Separate deployment_id into deployment and application tags
-        self.request_counter.set_default_tags(
-            {
-                "handle": handle_tag,
-                "deployment": self.deployment_id.name,
-                "application": self.deployment_id.app,
-            }
+        self.request_counter = _request_counter or self._create_request_counter(
+            app_name, deployment_name
         )
 
         self._router: Optional[Router] = _router
@@ -177,6 +159,33 @@ class _DeploymentHandleBase:
             )
 
         return self._router, self._router._event_loop
+
+    @staticmethod
+    def _gen_handle_tag(app_name: str, deployment_name: str, handle_id: str):
+        if app_name:
+            return f"{app_name}#{deployment_name}#{handle_id}"
+        else:
+            return f"{deployment_name}#{handle_id}"
+
+    @classmethod
+    def _create_request_counter(cls, app_name, deployment_name):
+        return metrics.Counter(
+            "serve_handle_request_counter",
+            description=(
+                "The number of handle.remote() calls that have been "
+                "made on this handle."
+            ),
+            tag_keys=("handle", "deployment", "route", "application"),
+        ).set_default_tags(
+            # TODO(zcin): Separate deployment_id into deployment and application tags
+            {
+                "handle": cls._gen_handle_tag(
+                    app_name, deployment_name, handle_id=get_random_letters()
+                ),
+                "deployment": deployment_name,
+                "application": app_name,
+            }
+        )
 
     @property
     def deployment_name(self) -> str:
