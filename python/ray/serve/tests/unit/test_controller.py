@@ -218,7 +218,7 @@ class TestCalculateScaleDirection:
 
     @pytest.mark.parametrize("new_target_capacity", [0, 50, 100])
     def test_exit_null_target_capacity(self, new_target_capacity):
-        """When target capacity goes null -> non-null, scale down must start."""
+        """When target capacity goes null -> non-null, scale up must start."""
 
         curr_config = ServeDeploySchema(
             target_capacity=None,
@@ -237,7 +237,7 @@ class TestCalculateScaleDirection:
                 new_config,
                 None,
             )
-            == TargetCapacityScaleDirection.DOWN
+            == TargetCapacityScaleDirection.UP
         )
 
     def test_scale_up_first_config(self):

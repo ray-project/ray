@@ -368,6 +368,7 @@ class TestInitialReplicasHandling:
     ):
         deployment_name = "start_at_ten"
         min_replicas = 0
+        initial_replicas = 10
 
         config = ServeDeploySchema(
             applications=[
@@ -376,7 +377,7 @@ class TestInitialReplicasHandling:
                     args={
                         "name": deployment_name,
                         "min_replicas": 0,
-                        "initial_replicas": 10,
+                        "initial_replicas": initial_replicas,
                         "max_replicas": 20,
                     },
                 ),
@@ -387,7 +388,20 @@ class TestInitialReplicasHandling:
         wait_for_condition(lambda: len(serve.status().applications) == 1)
         assert serve.status().target_capacity is None
 
-        test_target_capacities = [100, 60, 20, 0]
+        # Set a target capacity
+        config.target_capacity = 100
+        client.deploy_apps(config)
+        wait_for_condition(lambda: serve.status().target_capacity == 100)
+        # Initial replicas should be respected since setting a target_capacity
+        # indicates that a new roll forward has started, and the cluster
+        # should start scaling up.
+        wait_for_condition(
+            check_expected_num_replicas,
+            deployment_to_num_replicas={deployment_name: initial_replicas},
+        )
+
+        # Kick off downscaling pattern.
+        test_target_capacities = [90, 60, 20, 0]
         expected_num_replicas = [min_replicas] * len(test_target_capacities)
 
         for target_capacity, num_replicas in zip(
