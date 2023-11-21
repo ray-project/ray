@@ -125,20 +125,32 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   void ExportViewData(
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                   opencensus::stats::ViewData>> &data) override;
-  void SendData(rpc::ReportOCMetricsRequest &request);
+  void SendData(const rpc::ReportOCMetricsRequest &request);
 
-  /// Adds data from the provided ViewDescriptor into target proto payload to be sent to an
-  /// agent aggregating metrics on this node
+  /// Processes data from the provided ViewData container by
+  ///   - Adding it into corresponding proto request payload
+  ///   - Submitting request payload to agent client (when it's reached target batch size or
+  ///     payload size limits)
+  ///
+  /// Upon returning of this method all of the time-series from the provided ViewData container will
+  /// either be a) contained inside provide proto request payload or b) already submitted to the client
   ///
   /// \param view_descriptor, descriptor of the metric
   /// \param view_data, data container aggregating time-series for this metric (across different set of tags)
   /// \param request_proto, target proto payload to embed metric values into
-  /// \return number of time-series added to proto payload
-  size_t AddMetricsData(const opencensus::stats::ViewDescriptor &view_descriptor,
-                        const opencensus::stats::ViewData &view_data,
-                        rpc::ReportOCMetricsRequest &request_proto);
+  /// \param cur_batch_size current size of the batch (in terms of number of time-series already added)
+  void ProcessMetricsData(const opencensus::stats::ViewDescriptor &view_descriptor,
+                          const opencensus::stats::ViewData &view_data,
+                          rpc::ReportOCMetricsRequest &request_proto,
+                          size_t &cur_batch_size);
+
 
  protected:
+  rpc::ReportOCMetricsRequest createRequestProtoPayload();
+
+  bool handleBatchOverflows(const rpc::ReportOCMetricsRequest &request_proto,
+                            size_t cur_batch_size);
+
   void addGlobalTagsToGrpcMetric(opencensus::proto::metrics::v1::Metric &metric);
 
  private:
@@ -150,9 +162,10 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   WorkerID worker_id_;
   /// The maximum batch size to be included in a single gRPC metrics report request.
   size_t report_batch_size_;
-  /// Max gRPC payload size being sent to an agent, allowing us to make sure
-  /// that batches stays w/in the threshold of the gRPC max message size set by an agent
-  size_t max_grpc_payload_size_;
+  /// Proto request payload size threshold upon reaching which request have to be flushed immediately,
+  /// so that we can make sure that batches stay w/in the threshold of the gRPC max message size
+  /// set by an agent (usually calculated as 95% of agent's gRPC max-message size)
+  size_t proto_payload_size_threshold_;
 };
 
 }  // namespace stats
