@@ -399,6 +399,7 @@ ray_cc_library(
     linkopts = PLASMA_LINKOPTS,
     deps = [
         ":plasma_client",
+        "//src/ray/common:network",
         ":stats_lib",
     ],
 )

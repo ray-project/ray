@@ -57,7 +57,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --skip-ray-installation
         --only-tags use_all_core
-    depends_on: data12build
+    depends_on: data14build
     job_env: forge
 
   - label: ":ray: core: doc tests"
@@ -84,9 +84,9 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- 
         python/ray/util/dask/... python/ray/tests/modin/... core
-        --build-name data12build
+        --build-name data14build
         --parallelism-per-worker 2
-    depends_on: data12build
+    depends_on: data14build
     job_env: forge
 
   - label: ":ray: core: dashboard tests"
