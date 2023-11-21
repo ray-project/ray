@@ -35,8 +35,10 @@ HEAD_TYPE_MAX_WORKER_NODES_WARN_TEMPLATE = (
     "Note that `max_workers: 0` was the default value prior to Ray 1.3.0."
     " Your current version is Ray {version}.\n"
     "See the docs for more information:\n"
-    "https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html\n"
-    "https://docs.ray.io/en/latest/cluster/vms/user-guides/configuring-autoscaling.html"
+    "https://docs.ray.io/en/latest/cluster/vms/references/"
+    "ray-cluster-configuration.html\n"
+    "https://docs.ray.io/en/latest/cluster/vms/user-guides/"
+    "configuring-autoscaling.html"
 )
 
 ResourceBundle = Dict[str, Union[int, float]]
