@@ -44,11 +44,13 @@ class ClusterConfig:
     # The node type configs.
     node_type_configs: Dict[NodeType, NodeTypeConfig] = field(default_factory=dict)
     # The max number of worker nodes to be launched for the entire cluster.
-    max_num_worker_nodes: Optional[int]
+    max_num_worker_nodes: Optional[int] = None
 
 
 @dataclass
 class SchedulingRequest:
+    # The config for the cluster.
+    cluster_config: ClusterConfig
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
     resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
@@ -62,12 +64,18 @@ class SchedulingRequest:
     current_nodes: List[NodeState] = field(default_factory=list)
     # The current list of instances.
     current_instances: List[Instance] = field(default_factory=list)
-    # The config for the cluster.
-    cluster_config: ClusterConfig
 
 
 @dataclass
 class SchedulingReply:
+    # The target cluster shape, given the current resource demands and instances.
+    # Key is the node type name, value is the number of nodes.
+    # This is needed to prevent autoscaler terminating nodes needed for cluster
+    # constraints.
+    # Note this might be "smaller" than the current cluster shape, since there
+    # could be cluster constraints enforced, e.g. a newly updated max_workers value
+    # would result in a target count smaller than the current count of the node type.
+    target_cluster_shape: Dict[NodeType, int]
     # The infeasible resource bundles.
     infeasible_resource_requests: List[ResourceRequestByCount] = field(
         default_factory=list
@@ -80,14 +88,6 @@ class SchedulingReply:
     infeasible_cluster_resource_constraints: List[ClusterResourceConstraint] = field(
         default_factory=list
     )
-    # The target cluster shape, given the current resource demands and instances.
-    # Key is the node type name, value is the number of nodes.
-    # This is needed to prevent autoscaler terminating nodes needed for cluster
-    # constraints.
-    # Note this might be "smaller" than the current cluster shape, since there
-    # could be cluster constraints enforced, e.g. a newly updated max_workers value
-    # would result in a target count smaller than the current count of the node type.
-    target_cluster_shape: Dict[NodeType, int]
 
 
 class IResourceScheduler(ABC):

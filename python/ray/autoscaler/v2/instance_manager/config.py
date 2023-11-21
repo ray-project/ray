@@ -18,11 +18,11 @@ class Provider(Enum):
 
 
 class ConfigReader(ABC):
-    """An interface for reading instance configs."""
+    """An interface for reading cluster config."""
 
     @abstractmethod
     def get_cluster_config(self) -> ClusterConfig:
-        """Returns the instance configs."""
+        """Returns the cluster config."""
         pass
 
 

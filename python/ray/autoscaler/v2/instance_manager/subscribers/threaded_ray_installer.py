@@ -6,10 +6,9 @@ from typing import List
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
     InstanceUpdatedSubscriber,
-    InstanceUpdateEvent,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstaller
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 logger = logging.getLogger(__name__)
 
@@ -38,17 +37,13 @@ class ThreadedRayInstaller(InstanceUpdatedSubscriber):
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         for event in events:
-            if (
-                event.new_status == Instance.ALLOCATED
-                and event.new_ray_status == Instance.RAY_STATUS_UNKNOWN
-            ):
+            if event.new_instance_status == Instance.ALLOCATED:
                 self._install_ray_on_new_nodes(event.instance_id)
 
     def _install_ray_on_new_nodes(self, instance_id: str) -> None:
         allocated_instance, _ = self._instance_storage.get_instances(
             instance_ids={instance_id},
             status_filter={Instance.ALLOCATED},
-            ray_status_filter={Instance.RAY_STATUS_UNKNOWN},
         )
         for instance in allocated_instance.values():
             self._ray_installation_executor.submit(
@@ -57,8 +52,6 @@ class ThreadedRayInstaller(InstanceUpdatedSubscriber):
 
     def _install_ray_on_single_node(self, instance: Instance) -> None:
         assert instance.status == Instance.ALLOCATED
-        assert instance.ray_status == Instance.RAY_STATUS_UNKNOWN
-        instance.ray_status = Instance.RAY_INSTALLING
         success, version = self._instance_storage.upsert_instance(
             instance, expected_instance_version=instance.version
         )
@@ -82,13 +75,13 @@ class ThreadedRayInstaller(InstanceUpdatedSubscriber):
             backoff_factor *= 2
 
         if not installed:
-            instance.ray_status = Instance.RAY_INSTALL_FAILED
+            instance.status = Instance.RAY_INSTALL_FAILED
             success, version = self._instance_storage.upsert_instance(
                 instance,
                 expected_instance_version=version,
             )
         else:
-            instance.ray_status = Instance.RAY_RUNNING
+            instance.status = Instance.RAY_RUNNING
             success, version = self._instance_storage.upsert_instance(
                 instance,
                 expected_instance_version=version,

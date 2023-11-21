@@ -1,22 +1,12 @@
 import copy
 import logging
 from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray.autoscaler.v2.instance_manager.storage import Storage, StoreStatus
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class InstanceUpdateEvent:
-    """Notifies the status change of an instance."""
-
-    instance_id: str
-    new_status: int
-    new_ray_status: int = Instance.RAY_STATUS_UNKNOWN
 
 
 class InstanceUpdatedSubscriber(metaclass=ABCMeta):
@@ -93,8 +83,7 @@ class InstanceStorage:
                     [
                         InstanceUpdateEvent(
                             instance_id=instance.instance_id,
-                            new_status=instance.status,
-                            new_ray_status=instance.ray_status,
+                            new_instance_status=instance.status,
                         )
                         for instance in updates
                     ],
@@ -145,8 +134,7 @@ class InstanceStorage:
                     [
                         InstanceUpdateEvent(
                             instance_id=instance.instance_id,
-                            new_status=instance.status,
-                            new_ray_status=instance.ray_status,
+                            new_instance_status=instance.status,
                         )
                     ],
                 )
@@ -157,7 +145,6 @@ class InstanceStorage:
         self,
         instance_ids: List[str] = None,
         status_filter: Set[int] = None,
-        ray_status_filter: Set[int] = None,
     ) -> Tuple[Dict[str, Instance], int]:
         """Get instances from the storage.
 
@@ -165,8 +152,6 @@ class InstanceStorage:
             instance_ids: A list of instance ids to be retrieved. If empty, all
                 instances will be retrieved.
             status_filter: Only instances with the specified status will be returned.
-            ray_status_filter: Only instances with the specified ray status will
-                be returned.
 
         Returns:
             Tuple[Dict[str, Instance], int]: A tuple of (instances, version).
@@ -181,8 +166,6 @@ class InstanceStorage:
             instance.ParseFromString(instance_data)
             instance.version = entry_version
             if status_filter and instance.status not in status_filter:
-                continue
-            if ray_status_filter and instance.ray_status not in ray_status_filter:
                 continue
             instances[instance_id] = instance
         return instances, version
@@ -215,8 +198,7 @@ class InstanceStorage:
                     [
                         InstanceUpdateEvent(
                             instance_id=instance_id,
-                            new_status=Instance.GARBAGE_COLLECTED,
-                            new_ray_status=Instance.RAY_STATUS_UNKNOWN,
+                            new_instance_status=Instance.GARBAGE_COLLECTED,
                         )
                         for instance_id in instance_ids
                     ],
