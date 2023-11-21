@@ -5,7 +5,7 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 
 import math
 import time
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Tuple, Union
 
@@ -359,17 +359,23 @@ def process_completed_tasks(
             fetch_local=False,
             timeout=0.1,
         )
+        ready_tasks_by_op = defaultdict(list)
         for ref in ready:
-            state, task = active_tasks.pop(ref)
-            if isinstance(task, DataOpTask):
-                num_blocks_read = task.on_data_ready(
-                    max_blocks_to_read_per_op.get(state, None)
-                )
-                if state in max_blocks_to_read_per_op:
-                    max_blocks_to_read_per_op[state] -= num_blocks_read
-            else:
-                assert isinstance(task, MetadataOpTask)
-                task.on_task_finished()
+            state, task = active_tasks[ref]
+            ready_tasks_by_op[state].append(task)
+
+        for state, ready_tasks in ready_tasks_by_op.items():
+            ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
+            for task in ready_tasks:
+                if isinstance(task, DataOpTask):
+                    num_blocks_read = task.on_data_ready(
+                        max_blocks_to_read_per_op.get(state, None)
+                    )
+                    if state in max_blocks_to_read_per_op:
+                        max_blocks_to_read_per_op[state] -= num_blocks_read
+                else:
+                    assert isinstance(task, MetadataOpTask)
+                    task.on_task_finished()
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
