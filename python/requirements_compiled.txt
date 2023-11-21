@@ -600,7 +600,7 @@ google-api-python-client==2.65.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 google-apitools==0.5.32
     # via gsutil
-google-auth==2.23.3
+google-auth==2.23.4
     # via
     #   google-api-core
     #   google-api-python-client
@@ -615,7 +615,7 @@ google-auth-httplib2==0.1.1
     # via google-api-python-client
 google-auth-oauthlib==0.4.6
     # via tensorboard
-google-cloud-bigquery==3.12.0
+google-cloud-bigquery==3.13.0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 google-cloud-bigquery-storage==2.22.0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
@@ -663,7 +663,7 @@ graphviz==0.20.1
     # via catboost
 greenlet==3.0.0
     # via sqlalchemy
-grpcio==1.59.0 ; sys_platform != "darwin"
+grpcio==1.59.2 ; sys_platform != "darwin"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   aim
@@ -1018,7 +1018,7 @@ lz4==4.3.2
     # via -r /ray/ci/../python/requirements.txt
 mako==1.2.4
     # via alembic
-markdown==3.5
+markdown==3.5.1
     # via
     #   mlflow
     #   tensorboard
@@ -1846,6 +1846,7 @@ pyzmq==24.0.1
 querystring-parser==1.2.4
     # via mlflow
     # via
+    #   -r /ray/ci/../doc/requirements-doc.txt
     #   raydp
     #   tune-sklearn
     #   xgboost-ray
@@ -2027,7 +2028,7 @@ send2trash==1.8.2
     #   notebook
 sentencepiece==0.1.96
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
-sentry-sdk==1.32.0
+sentry-sdk==1.33.1
     # via
     #   comet-ml
     #   wandb
@@ -2389,10 +2390,7 @@ transformers==4.19.1
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 trustme==0.9.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-tune-sklearn @ git+https://github.com/ray-project/tune-sklearn@master
-    # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
-    #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 typeguard==2.13.3
     # via ax-platform
 typer==0.9.0
@@ -2505,7 +2503,7 @@ watchfiles==0.19.0
     #   uvicorn
 wcmatch==8.5
     # via semgrep
-wcwidth==0.2.8
+wcwidth==0.2.9
     # via
     #   blessed
     #   prompt-toolkit
