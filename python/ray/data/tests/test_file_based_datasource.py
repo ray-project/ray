@@ -23,6 +23,18 @@ class MockFileBasedDatasource(FileBasedDatasource):
         yield builder.build()
 
 
+def test_include_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test.txt")
+    with open(path, "w"):
+        pass
+
+    datasource = MockFileBasedDatasource(path, include_paths=True)
+    ds = ray.data.read_datasource(datasource)
+
+    paths = [row["path"] for row in ds.take_all()]
+    assert paths == [path]
+
+
 def test_file_extensions(ray_start_regular_shared, tmp_path):
     csv_path = os.path.join(tmp_path, "file.csv")
     with open(csv_path, "w") as file:
