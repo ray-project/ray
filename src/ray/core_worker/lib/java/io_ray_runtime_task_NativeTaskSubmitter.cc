@@ -435,16 +435,31 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
     jint functionDescriptorHash,
     jobject args,
     jint numReturns,
-    jobject callOptions) {
+    jobject callOptions,
+    jint maxRetries,
+    jboolean retryExceptions,
+    jstring serializedRetryExceptionAllowlist) {
+  RAY_CHECK_JAVA_EXCEPTION(env);
+
   auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   const auto &ray_function =
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);
   auto task_args = ToTaskArgs(env, args);
   RAY_CHECK(callOptions != nullptr);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
+  std::string serialized_retry_exception_allowlist =
+      JavaStringToNativeString(env, serializedRetryExceptionAllowlist);
+
   std::vector<rpc::ObjectReference> return_refs;
   auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
-      actor_id, ray_function, task_args, task_options, return_refs);
+      actor_id,
+      ray_function,
+      task_args,
+      task_options,
+      maxRetries,
+      retryExceptions,
+      serialized_retry_exception_allowlist,
+      return_refs);
   if (!status.ok()) {
     std::stringstream ss;
     ss << "The task " << ray_function.GetFunctionDescriptor()->ToString()

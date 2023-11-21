@@ -80,6 +80,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       int numReturns,
       CallOptions options) {
     Preconditions.checkState(actor instanceof NativeActorHandle);
+    // TODO: Ray Java does not have retries for actor tasks.
     List<byte[]> returnIds =
         nativeSubmitActorTask(
             actor.getId().getBytes(),
@@ -87,7 +88,10 @@ public class NativeTaskSubmitter implements TaskSubmitter {
             functionDescriptor.hashCode(),
             args,
             numReturns,
-            options);
+            options,
+            /*maxRetries=*/ 0,
+            /*retryExceptions=*/ false,
+            /*serializedRetryExceptionAllowlist=*/ null);
     if (returnIds == null) {
       return ImmutableList.of();
     }
@@ -140,7 +144,10 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       int functionDescriptorHash,
       List<FunctionArg> args,
       int numReturns,
-      CallOptions callOptions);
+      CallOptions callOptions,
+      int maxRetries,
+      boolean retryExceptions,
+      String serializedRetryExceptionAllowlist);
 
   private static native byte[] nativeCreatePlacementGroup(
       PlacementGroupCreationOptions creationOptions);
