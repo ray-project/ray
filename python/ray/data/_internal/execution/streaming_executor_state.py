@@ -385,16 +385,21 @@ def process_completed_tasks(
                     if state in max_blocks_to_read_per_op:
                         max_blocks_to_read_per_op[state] -= num_blocks_read
                 except Exception as e:
-                    error_message = (
-                        f'An exception occurred in a task of operator "{state.op.name}".'
+                    num_errored_blocks += 1
+                    should_ignore = (
+                        max_errored_blocks < 0
+                        or max_errored_blocks >= num_errored_blocks
                     )
-                    if max_errored_blocks != 0:
-                        num_errored_blocks += 1
-                        if max_errored_blocks > 0:
-                            max_errored_blocks -= 1
+                    error_message = f'An exception was raised from a task of operator "{state.op.name}".'
+                    if should_ignore:
+                        remaining = (
+                            max_errored_blocks - num_errored_blocks
+                            if max_errored_blocks >= 0
+                            else "unlimited"
+                        )
                         error_message += (
                             " Ignoring this exception with remaining"
-                            f" max_errored_blocks={max_errored_blocks}."
+                            f" max_errored_blocks={remaining}."
                         )
                         logger.get_logger().warning(error_message, exc_info=e)
                     else:
