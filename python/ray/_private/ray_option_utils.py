@@ -169,9 +169,13 @@ _task_only_options = {
         (int, str, type(None)),
         lambda x: None
         if (x is None or x == "dynamic" or x == "streaming" or x >= 0)
-        else "Default None. The keyword 'num_returns' only accepts None, "
-        "a non-negative integer, or "
-        '"dynamic" (for generators). "dynamic" is deprecated from Ray 2.7.',
+        else "Default None. None means it uses the default value. "
+        "The default value is 1 for a normal task or actor task, and "
+        '"streaming" for generator tasks and actor tasks. '
+        "The keyword 'num_returns' only accepts None, "
+        "a non-negative integer, "
+        '"streaming" (for generators), or "dynamic". "dynamic" option '
+        'will be deprecated, and it is recommended to use "streaming" instead.',
         default_value=None,
     ),
     "object_store_memory": Option(  # override "_common_options"

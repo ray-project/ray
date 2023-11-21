@@ -494,7 +494,7 @@ class StreamingObjectRefGenerator:
             self._generator_ref)
         # TODO(swang): Avoid fetching the value.
         ready, unready = await asyncio.wait(
-            [asyncio.create_task(self.suppress_exceptions(ref))],
+            [asyncio.create_task(self._suppress_exceptions(ref))],
             timeout=timeout_s
         )
         if len(unready) > 0:

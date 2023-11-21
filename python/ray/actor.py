@@ -1,7 +1,7 @@
 import inspect
 import logging
 import weakref
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -115,7 +115,9 @@ class ActorMethod:
         _method_name: The name of the actor method.
         _num_returns: The default number of return values that the method
             invocation should return. If None is given, it uses
-            DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS.
+            DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
+            and "streaming" for a generator task (when `is_generator` is True).
+        _is_generator: True if a given method is a Python generator.
         _generator_backpressure_num_objects: Generator-only config.
             If a number of unconsumed objects reach this threshold,
             a actor task stop pausing.
@@ -132,7 +134,7 @@ class ActorMethod:
         self,
         actor,
         method_name,
-        num_returns: Optional[int],
+        num_returns: Optional[Union[int, str]],
         is_generator: bool,
         generator_backpressure_num_objects: int,
         decorator=None,
@@ -141,7 +143,9 @@ class ActorMethod:
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
         self._num_returns = num_returns
+        self._is_generator = is_generator
 
+        # Default case.
         if self._num_returns is None:
             if is_generator:
                 self._num_returns = "streaming"
@@ -239,6 +243,8 @@ class ActorMethod:
             "method_name": self._method_name,
             "num_returns": self._num_returns,
             "decorator": self._decorator,
+            "is_generator": self._is_generator,
+            "generator_backpressure_num_objects": self._generator_backpressure_num_objects,  # noqa
         }
 
     def __setstate__(self, state):
@@ -246,6 +252,8 @@ class ActorMethod:
             state["actor"],
             state["method_name"],
             state["num_returns"],
+            state["is_generator"],
+            state["generator_backpressure_num_objects"],
             state["decorator"],
             hardref=True,
         )
