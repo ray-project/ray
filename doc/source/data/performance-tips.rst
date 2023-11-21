@@ -231,6 +231,18 @@ Setting a lower batch size produces lower peak heap memory usage:
     # * Output size bytes: 40000160 min, 160000640 max, 142857714 mean, 1000004000 total
     # ...
 
+Improving heap memory usage in Ray Data is an active area of development.
+Here are the current known cases in which heap memory usage may be very high:
+
+1. Reading large (1GiB or more) binary files.
+2. Transforming a Dataset where individual rows are large (100MiB or more).
+
+In these cases, the last resort is to reduce the number of concurrent execution slots.
+This can be done via custom resources.
+For example, use :meth:`ds.map_batches(fn, num_cpus=2) <ray.data.Dataset.map_batches>` to halve the number of execution slots for the ``map_batches`` tasks.
+
+If these strategies are still insufficient, please `file a Ray Data issue on GitHub`_!
+
 
 Avoiding object spilling
 ~~~~~~~~~~~~~~~~~~~~~~~~
