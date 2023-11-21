@@ -2399,9 +2399,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(8, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert autoscaler.pending_launches.value == 0
         events = autoscaler.event_summarizer.summary()
-        assert (
-            "Removing 1 node of type m4.large (max_worker_nodes_per_type)." in events
-        )
+        assert "Removing 1 node of type m4.large (max_worker_nodes_per_type)." in events
         assert (
             "Removing 2 nodes of type p2.8xlarge (max_worker_nodes_per_type)." in events
         )
