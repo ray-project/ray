@@ -20,11 +20,10 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.learner.learner import LearnerHyperparameters
-from ray.rllib.core.learner.learner_group_config import LearnerGroupConfig, ModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
-from ray.rllib.core.learner.learner import TorchCompileWhatToCompile
+from ray.rllib.core.learner.learner_group import LearnerGroup
+from ray.rllib.core.learner.torch.torch_learner import TorchCompileWhatToCompile
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
@@ -64,6 +63,7 @@ from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
     LearningRateOrSchedule,
+    ModuleSpec,
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
@@ -245,6 +245,9 @@ class AlgorithmConfig(_Config):
         # Define the default RLlib Algorithm class that this AlgorithmConfig will be
         # applied to.
         self.algo_class = algo_class
+
+        # Module ID specific config overrides
+        self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
 
         # `self.python_environment()`
         self.extra_python_environs_for_driver = {}
@@ -820,6 +823,19 @@ class AlgorithmConfig(_Config):
         ):
             raise ValueError("torch.compile is only supported from torch 2.0.0")
 
+        # Make sure the Learner's torch-what-to-compile setting is supported.
+        if self.torch_compile_learner:
+            if self.torch_compile_learner_what_to_compile not in [
+                TorchCompileWhatToCompile.FORWARD_TRAIN,
+                TorchCompileWhatToCompile.COMPLETE_UPDATE,
+            ]:
+                raise ValueError(
+                    f"`config.torch_compile_learner_what_to_compile` must be one of ["
+                    f"TorchCompileWhatToCompile.forward_train, "
+                    f"TorchCompileWhatToCompile.complete_update] but is"
+                    f" {self.torch_compile_learner_what_to_compile}"
+                )
+
         self._check_if_correct_nn_framework_installed(_tf1, _tf, _torch)
         self._resolve_tf_settings(_tf1, _tfv)
 
@@ -1137,6 +1153,78 @@ class AlgorithmConfig(_Config):
             config=self if not use_copy else copy.deepcopy(self),
             logger_creator=self.logger_creator,
         )
+
+    def build_learner_group(
+        self,
+        *,
+        env: Optional[EnvType],
+        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]],
+    ) -> LearnerGroup:
+        rl_module_spec = None
+        if env is not None or spaces is not None:
+            rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
+
+        learner_spec = LearnerSpec(
+            learner_class=get_learner_class(framework),
+            module_spec=get_module_spec(
+                framework=framework, env=env, is_multi_agent=is_multi_agent
+            ),
+            learner_group_scaling_config=scaling_config,
+            learner_hyperparameters=BaseTestingLearnerHyperparameters(),
+            framework_hyperparameters=framework_hps,
+        )
+        lg = LearnerGroup(config=self)
+
+        return lg
+
+    def build_learner(
+        self,
+        *,
+        env: Optional[EnvType] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
+    ) -> "Learner":
+        rl_module_spec = None
+        if env is not None or spaces is not None:
+            rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
+        learner = self.learner_class(config=self, module_spec=rl_module_spec)
+        learner.build()
+        return learner
+
+    def get_config_for_module(self, module_id: ModuleID) -> "AlgorithmConfig":
+        """Returns an AlgorithmConfig object, specific to the given module ID.
+
+        In a multi-agent setup, individual modules might override one or more
+        AlgorithmConfig properties (e.g. `train_batch_size`, `lr`) using the
+        `overrides()` method.
+
+        In order to retrieve a full AlgorithmConfig instance (with all these overrides
+        already translated and built-in), users can call this method with the respective
+        module ID.
+
+        Args:
+            module_id: The module ID for which to get the final AlgorithmConfig object.
+
+        Returns:
+            A new AlgorithmConfig object for the specific module ID.
+        """
+        # ModuleID found in our overrides dict. Return module specific config.
+        if (
+            self._per_module_overrides is not None
+            and module_id in self._per_module_overrides
+        ):
+            # In case, the per-module sub-config object is still a dict, convert
+            # it to a fully qualified AlgorithmConfig object here first.
+            if isinstance(self._per_module_overrides[module_id], dict):
+                self._per_module_overrides[module_id] = (
+                    self.copy().update_from_dict(self._per_module_overrides[module_id])
+                )
+            # Return the module specific version of self.
+            return self._per_module_overrides[module_id]
+
+        # ModuleID not found in overrides or the overrides dict is None
+        # -> return self.
+        else:
+            return self
 
     def python_environment(
         self,
@@ -2726,7 +2814,7 @@ class AlgorithmConfig(_Config):
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
-    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+    def getrollout_fragment_length(self, worker_index: int = 0) -> int:
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
         Uses the simple formula:
@@ -3137,18 +3225,6 @@ class AlgorithmConfig(_Config):
                     f"{suggested_rollout_fragment_length}."
                 )
 
-    def get_torch_compile_learner_config(self):
-        """Returns the TorchCompileConfig to use on learners."""
-
-        from ray.rllib.core.rl_module.torch.torch_compile_config import (
-            TorchCompileConfig,
-        )
-
-        return TorchCompileConfig(
-            torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
-            torch_dynamo_mode=self.torch_compile_learner_dynamo_mode,
-        )
-
     def get_torch_compile_worker_config(self):
         """Returns the TorchCompileConfig to use on workers."""
 
@@ -3188,8 +3264,10 @@ class AlgorithmConfig(_Config):
     def get_marl_module_spec(
         self,
         *,
-        policy_dict: Dict[str, PolicySpec],
+        policy_dict: Optional[Dict[str, PolicySpec]] = None,
         single_agent_rl_module_spec: Optional[SingleAgentRLModuleSpec] = None,
+        env: Optional[EnvType] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
     ) -> MultiAgentRLModuleSpec:
         """Returns the MultiAgentRLModule spec based on the given policy spec dict.
 
@@ -3207,12 +3285,25 @@ class AlgorithmConfig(_Config):
                 constructing a MultiAgentRLModuleSpec. If None, the already
                 configured spec (`self._rl_module_spec`) or the default ModuleSpec for
                 this algorithm (`self.get_default_rl_module_spec()`) will be used.
+            env: An optional env instance, from which to infer the different spaces for
+                the different SingleAgentRLModules. If not provided, will try to infer
+                from `spaces`. Otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be infered, will
+                raise an error.
+            spaces: Optional dict mapping policy IDs to tuples of 1) observation space
+                and 2) action space that should be used for the respective policy.
+                These spaces were usually provided by an already instantiated remote
+                EnvRunner. If not provided, will try to infer from `env`. Otherwise
+                from `self.observation_space` and `self.action_space`. If no
+                information on spaces can be inferred, will raise an error.
         """
         # TODO (Kourosh): When we replace policy entirely there will be no need for
         #  this function to map policy_dict to marl_module_specs anymore. The module
         #  spec will be directly given by the user or inferred from env and spaces.
+        if policy_dict is None:
+            policy_dict, _ = self.get_multi_agent_setup(env=env, spaces=spaces)
 
-        # TODO (Kourosh): Raise an error if the config is not frozen (validated)
+        # TODO (Kourosh): Raise an error if the config is not frozen
         # If the module is single-agent convert it to multi-agent spec
 
         # The default ModuleSpec (might be multi-agent or single-agent).
@@ -3399,84 +3490,43 @@ class AlgorithmConfig(_Config):
 
         return marl_module_spec
 
-    def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
-        if not self._is_frozen:
-            raise ValueError(
-                "Cannot call `get_learner_group_config()` on an unfrozen "
-                "AlgorithmConfig! Please call `AlgorithmConfig.freeze()` first."
-            )
+    #TODO: Deprecate as well
+    #def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
+    #    if not self._is_frozen:
+    #        raise ValueError(
+    #            "Cannot call `get_learner_group_config()` on an unfrozen "
+    #            "AlgorithmConfig! Please call `AlgorithmConfig.freeze()` first."
+    #        )
 
-        config = (
-            LearnerGroupConfig()
-            .module(module_spec)
-            .learner(
-                learner_class=self.learner_class,
-                learner_hyperparameters=self.get_learner_hyperparameters(),
-            )
-            .resources(
-                num_learner_workers=self.num_learner_workers,
-                num_cpus_per_learner_worker=(
-                    self.num_cpus_per_learner_worker
-                    if not self.num_gpus_per_learner_worker
-                    else 0
-                ),
-                num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
-                local_gpu_idx=self.local_gpu_idx,
-            )
-        )
+    #    config = (
+    #        LearnerGroupConfig()
+    #        .module(module_spec)
+    #        .learner(
+    #            learner_class=self.learner_class,
+    #            #learner_hyperparameters=self.get_learner_hyperparameters(),
+    #        )
+    #        .resources(
+    #            num_learner_workers=self.num_learner_workers,
+    #            num_cpus_per_learner_worker=(
+    #                self.num_cpus_per_learner_worker
+    #                if not self.num_gpus_per_learner_worker
+    #                else 0
+    #            ),
+    #            num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
+    #            local_gpu_idx=self.local_gpu_idx,
+    #        )
+    #    )
 
-        if self.framework_str == "torch":
-            config.framework(
-                torch_compile=self.torch_compile_learner,
-                torch_compile_cfg=self.get_torch_compile_learner_config(),
-                torch_compile_what_to_compile=self.torch_compile_learner_what_to_compile,  # noqa: E501
-            )
-        elif self.framework_str == "tf2":
-            config.framework(eager_tracing=self.eager_tracing)
+    #    if self.framework_str == "torch":
+    #        config.framework(
+    #            torch_compile=self.torch_compile_learner,
+    #            torch_compile_cfg=self.get_torch_compile_learner_config(),
+    #            torch_compile_what_to_compile=self.torch_compile_learner_what_to_compile,  # noqa: E501
+    #        )
+    #    elif self.framework_str == "tf2":
+    #        config.framework(eager_tracing=self.eager_tracing)
 
-        return config
-
-    def get_learner_hyperparameters(self) -> LearnerHyperparameters:
-        """Returns a new LearnerHyperparameters instance for the respective Learner.
-
-        The LearnerHyperparameters is a dataclass containing only those config settings
-        from AlgorithmConfig that are used by the algorithm's specific Learner
-        sub-class. They allow distributing only those settings relevant for learning
-        across a set of learner workers (instead of having to distribute the entire
-        AlgorithmConfig object).
-
-        Note that LearnerHyperparameters should always be derived directly from a
-        AlgorithmConfig object's own settings and considered frozen/read-only.
-
-        Returns:
-             A LearnerHyperparameters instance for the respective Learner.
-        """
-        # Compile the per-module learner hyperparameter instances (if applicable).
-        per_module_learner_hp_overrides = {}
-        if self.algorithm_config_overrides_per_module:
-            for (
-                module_id,
-                overrides,
-            ) in self.algorithm_config_overrides_per_module.items():
-                # Copy this AlgorithmConfig object (unfreeze copy), update copy from
-                # the provided override dict for this module_id, then
-                # create a new LearnerHyperparameter object from this altered
-                # AlgorithmConfig.
-                config_for_module = self.copy(copy_frozen=False).update_from_dict(
-                    overrides
-                )
-                config_for_module.algorithm_config_overrides_per_module = None
-                per_module_learner_hp_overrides[
-                    module_id
-                ] = config_for_module.get_learner_hyperparameters()
-
-        return LearnerHyperparameters(
-            learning_rate=self.lr,
-            grad_clip=self.grad_clip,
-            grad_clip_by=self.grad_clip_by,
-            _per_module_overrides=per_module_learner_hp_overrides,
-            seed=self.seed,
-        )
+    #    return config
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
@@ -3755,3 +3805,32 @@ class AlgorithmConfig(_Config):
     @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
     def num_workers(self):
         pass
+
+    @Deprecated(error=True)#TODO: switch back to False
+    def get_learner_hyperparameters(self):
+        # Compile the per-module learner hyperparameter instances (if applicable).
+        per_module_learner_hp_overrides = {}
+        if self.algorithm_config_overrides_per_module:
+            for (
+                module_id,
+                overrides,
+            ) in self.algorithm_config_overrides_per_module.items():
+                # Copy this AlgorithmConfig object (unfreeze copy), update copy from
+                # the provided override dict for this module_id, then
+                # create a new LearnerHyperparameter object from this altered
+                # AlgorithmConfig.
+                config_for_module = self.copy(copy_frozen=False).update_from_dict(
+                    overrides
+                )
+                config_for_module.algorithm_config_overrides_per_module = None
+                per_module_learner_hp_overrides[
+                    module_id
+                ] = config_for_module.get_learner_hyperparameters()
+
+        return LearnerHyperparameters(
+            learning_rate=self.lr,
+            grad_clip=self.grad_clip,
+            grad_clip_by=self.grad_clip_by,
+            _per_module_overrides=per_module_learner_hp_overrides,
+            seed=self.seed,
+        )

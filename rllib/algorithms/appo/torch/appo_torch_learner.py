@@ -3,7 +3,6 @@ from typing import Any, Dict, Mapping
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.appo_learner import (
     AppoLearner,
-    AppoLearnerHyperparameters,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
     OLD_ACTION_DIST_LOGITS_KEY,
@@ -38,7 +37,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: AppoLearnerHyperparameters,
+        config: AlgorithmConfig,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
@@ -209,7 +208,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
 
     @override(AppoLearner)
     def _update_module_target_networks(
-        self, module_id: ModuleID, hps: AppoLearnerHyperparameters
+        self, module_id: ModuleID, config: AlgorithmConfig
     ) -> None:
         module = self.module[module_id]
 
@@ -217,24 +216,24 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         for target_network, current_network in target_current_network_pairs:
             current_state_dict = current_network.state_dict()
             new_state_dict = {
-                k: hps.tau * current_state_dict[k] + (1 - hps.tau) * v
+                k: config.tau * current_state_dict[k] + (1 - config.tau) * v
                 for k, v in target_network.state_dict().items()
             }
             target_network.load_state_dict(new_state_dict)
 
     @override(AppoLearner)
     def _update_module_kl_coeff(
-        self, module_id: ModuleID, hps: AppoLearnerHyperparameters, sampled_kl: float
+        self, module_id: ModuleID, config: AlgorithmConfig, sampled_kl: float
     ) -> Dict[str, Any]:
         # Update the current KL value based on the recently measured value.
         # Increase.
         kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
 
-        if sampled_kl > 2.0 * hps.kl_target:
+        if sampled_kl > 2.0 * config.kl_target:
             # TODO (Kourosh) why not *2.0?
             kl_coeff_var.data *= 1.5
         # Decrease.
-        elif sampled_kl < 0.5 * hps.kl_target:
+        elif sampled_kl < 0.5 * config.kl_target:
             kl_coeff_var.data *= 0.5
 
         return {LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.item()}

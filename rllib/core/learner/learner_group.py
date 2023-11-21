@@ -21,11 +21,10 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
     RLMODULE_STATE_DIR_NAME,
 )
-from ray.rllib.core.learner.learner import LearnerSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import ModuleSpec, ResultDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
@@ -72,15 +71,20 @@ class LearnerGroup:
 
     def __init__(
         self,
-        learner_spec: LearnerSpec,
+        *,
+        config: "AlgorithmConfig",
+        rl_module_spec: Optional[ModuleSpec] = None,
         max_queue_len: int = 20,
+        #learner_spec: LearnerSpec,
     ):
-        scaling_config = learner_spec.learner_group_scaling_config
-        learner_class = learner_spec.learner_class
+        #scaling_config = learner_spec.learner_group_scaling_config
+        self.config = config
+        learner_class = self.config.learner_class
+        rl_module_spec = rl_module_spec or self.config.get_marl_module_spec()
 
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
         #  explicit.
-        self._is_local = scaling_config.num_workers == 0
+        self._is_local = self.config.num_learner_workers == 0
         self._learner = None
         self._workers = None
         # If a user calls self.shutdown() on their own then this flag is set to true.
@@ -95,7 +99,8 @@ class LearnerGroup:
         self._in_queue_ts_dropped = 0
 
         if self._is_local:
-            self._learner = learner_class(**learner_spec.get_params_dict())
+            self._learner = learner_class(config=config, rl_module_spec=rl_module_spec)
+            #** learner_spec.get_params_dict()
             self._learner.build()
             self._worker_manager = None
             self._in_queue = []
@@ -103,9 +108,9 @@ class LearnerGroup:
             backend_config = _get_backend_config(learner_class)
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
-                num_workers=scaling_config.num_workers,
-                num_cpus_per_worker=scaling_config.num_cpus_per_worker,
-                num_gpus_per_worker=scaling_config.num_gpus_per_worker,
+                num_workers=self.config.num_learner_workers,
+                num_cpus_per_worker=self.config.num_cpus_per_learner_worker,
+                num_gpus_per_worker=self.config.num_gpus_per_learner_worker,
                 max_retries=0,
             )
             backend_executor.start(

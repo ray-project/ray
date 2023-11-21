@@ -1,10 +1,7 @@
 import logging
 from typing import Mapping
 
-from ray.rllib.core.learner.learner import (
-    POLICY_LOSS_KEY,
-    LearnerHyperparameters,
-)
+from ray.rllib.core.learner.learner import POLICY_LOSS_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -28,7 +25,7 @@ class BCTfLearner(TfLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: LearnerHyperparameters,
+        config: AlgorithmConfig,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType]
     ) -> TensorType:

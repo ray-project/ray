@@ -18,6 +18,8 @@ import gymnasium as gym
 from ray.rllib.utils.annotations import ExperimentalAPI
 
 if TYPE_CHECKING:
+    from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
     from ray.rllib.env.env_context import EnvContext
     from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -47,6 +49,9 @@ TensorShape = Union[Tuple[int], List[int]]
 
 # A neural network
 NetworkType = Union["torch.nn.Module", "tf.keras.Module"]
+
+# An RLModule spec (single-agent or multi-agent).
+ModuleSpec = Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"]
 
 # Represents a fully filled out config of a Algorithm class.
 # Note: Policy config dicts are usually the same as AlgorithmConfigDict, but

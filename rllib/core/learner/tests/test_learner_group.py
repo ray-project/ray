@@ -6,47 +6,49 @@ import tempfile
 import unittest
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
 from ray.rllib.core.learner.learner import FrameworkHyperparameters
+from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.testing.utils import (
+    add_module_to_learner_or_learner_group,
+    get_learner_group,
+    get_learner,
+    get_module_spec,
+)
+from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     SampleBatch,
     MultiAgentBatch,
 )
-from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.testing.utils import (
-    get_learner_group,
-    get_learner,
-    get_module_spec,
-    add_module_to_learner_or_learner_group,
-)
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.util.timer import _Timer
 
 
-REMOTE_SCALING_CONFIGS = {
-    "remote-cpu": LearnerGroupScalingConfig(num_workers=1),
-    "remote-gpu": LearnerGroupScalingConfig(num_workers=1, num_gpus_per_worker=1),
-    "multi-gpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_gpus_per_worker=1),
-    "multi-cpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_cpus_per_worker=2),
+REMOTE_CONFIGS = {
+    "remote-cpu": AlgorithmConfig.overrides(num_learner_workers=1),
+    "remote-gpu": AlgorithmConfig.overrides(num_learner_workers=1, num_gpus_per_learner_worker=1),
+    "multi-gpu-ddp": AlgorithmConfig.overrides(num_learner_workers=2, num_gpus_per_learner_worker=1),
+    "multi-cpu-ddp": AlgorithmConfig.overrides(num_learner_workers=2, num_cpus_per_learner_worker=2),
     # "multi-gpu-ddp-pipeline": LearnerGroupScalingConfig(
     #     num_workers=2, num_gpus_per_worker=2
     # ),
 }
 
 
-LOCAL_SCALING_CONFIGS = {
-    "local-cpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0),
-    "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=1),
+LOCAL_CONFIGS = {
+    "local-cpu": AlgorithmConfig.overrides(num_learner_workers=0, num_gpus_per_learner_worker=0),
+    "local-gpu": AlgorithmConfig.overrides(num_learner_workers=0, num_gpus_per_learner_worker=1),
 }
 
 
 # TODO(avnishn) Make this a ray task later. Currently thats not possible because the
-# task is not dying after the test is done. This is a bug with ray core.
+#  task is not dying after the test is done. This is a bug with ray core.
 @ray.remote(num_gpus=1)
 class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
@@ -62,11 +64,14 @@ class RemoteTrainingHelper:
             tf.compat.v1.enable_eager_execution()
             tf.random.set_seed(0)
         env = gym.make("CartPole-v1")
-        scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
-        learner_group = get_learner_group(fw, env, scaling_config)
-        framework_hps = FrameworkHyperparameters(eager_tracing=True)
-        local_learner = get_learner(framework=fw, framework_hps=framework_hps, env=env)
-        local_learner.build()
+        config_overrides = LOCAL_CONFIGS[scaling_mode]
+        config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
+        #scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
+        #learner_group = get_learner_group(fw, env, scaling_config)
+        learner_group = config.build_learner_group()
+        #local_learner = get_learner(framework=fw, framework_hps=framework_hps, env=env)
+        local_learner = config.build_learner()
+        #local_learner.build()
 
         # make the state of the learner and the local learner_group identical
         local_learner.set_state(learner_group.get_state())
@@ -137,7 +142,8 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
-            scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
+            config_overrides = REMOTE_CONFIGS[scaling_mode]
+            config = TestingConfig
             learner_group = get_learner_group(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=1024)
 
@@ -261,12 +267,15 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
             # env will have agent ids 0 and 1
             env = MultiAgentCartPole({"num_agents": 2})
 
-            scaling_config = REMOTE_SCALING_CONFIGS.get(
-                scaling_mode
-            ) or LOCAL_SCALING_CONFIGS.get(scaling_mode)
-            learner_group = get_learner_group(
-                fw, env, scaling_config, is_multi_agent=True
+            config_overrides = (
+                REMOTE_CONFIGS.get(scaling_mode)
+                or LOCAL_CONFIGS.get(scaling_mode)
             )
+            config = TestingConfig().update_from_dict(config_overrides)
+            #get_learner_group(
+                #fw, env, scaling_config, is_multi_agent=True
+            #)
+            learner_group = config.build_learner_group()
             spec = get_module_spec(framework=fw, env=env)
             learner_group.add_module(module_id="0", module_spec=spec)
             learner_group.add_module(module_id="1", module_spec=spec)

@@ -3,7 +3,6 @@ import json
 import logging
 import pathlib
 from collections import defaultdict
-from enum import Enum
 from dataclasses import dataclass, field
 from typing import (
     Any,
@@ -40,6 +39,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -66,6 +66,7 @@ from ray.rllib.utils.typing import (
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 
 torch, _ = try_import_torch()
@@ -84,147 +85,41 @@ ENTROPY_KEY = "entropy"
 LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
 
 
-class TorchCompileWhatToCompile(str, Enum):
-    """Enumerates schemes of what parts of the TorchLearner can be compiled.
+#@dataclass
+#class FrameworkHyperparameters:
+#    """The framework specific hyper-parameters.
 
-    This can be either the entire update step of the learner or only the forward
-    methods (and therein the forward_train method) of the RLModule.
+#    Args:
+#        eager_tracing: Whether to trace the model in eager mode. This enables tf
+#            tracing mode by wrapping the loss function computation in a tf.function.
+#            This is useful for speeding up the training loop. However, it is not
+#            compatible with all tf operations. For example, tf.print is not supported
+#            in tf.function.
+#        torch_compile: Whether to use torch.compile() within the context of a given
+#            learner.
+#        what_to_compile: What to compile when using torch.compile(). Can be one of
+#            [TorchCompileWhatToCompile.complete_update,
+#            TorchCompileWhatToCompile.forward_train].
+#            If `complete_update`, the update step of the learner will be compiled. This
+#            includes the forward pass of the RLModule, the loss computation, and the
+#            optimizer step.
+#            If `forward_train`, only the forward methods (and therein the
+#            forward_train method) of the RLModule will be compiled.
+#            Either of the two may lead to different performance gains in different
+#            settings.
+#            `complete_update` promises the highest performance gains, but may not work
+#            in some settings. By compiling only forward_train, you may already get
+#            some speedups and avoid issues that arise from compiling the entire update.
+#        troch_compile_config: The TorchCompileConfig to use for compiling the RL
+#            Module in Torch.
+#    """
 
-    .. note::
-        - torch.compiled code can become slow on graph breaks or even raise
-            errors on unsupported operations. Empirically, compiling
-            `forward_train` should introduce little graph breaks, raise no
-            errors but result in a speedup comparable to compiling the
-            complete update.
-        - Using `complete_update` is experimental and may result in errors.
-    """
+#    eager_tracing: bool = True
+#    torch_compile: bool = False
+#    what_to_compile: str = TorchCompileWhatToCompile.FORWARD_TRAIN
+#    torch_compile_cfg: Optional["TorchCompileConfig"] = None
 
-    # Compile the entire update step of the learner.
-    # This includes the forward pass of the RLModule, the loss computation, and the
-    # optimizer step.
-    COMPLETE_UPDATE = "complete_update"
-    # Only compile the forward methods (and therein the forward_train method) of the
-    # RLModule.
-    FORWARD_TRAIN = "forward_train"
-
-
-@dataclass
-class FrameworkHyperparameters:
-    """The framework specific hyper-parameters.
-
-    Args:
-        eager_tracing: Whether to trace the model in eager mode. This enables tf
-            tracing mode by wrapping the loss function computation in a tf.function.
-            This is useful for speeding up the training loop. However, it is not
-            compatible with all tf operations. For example, tf.print is not supported
-            in tf.function.
-        torch_compile: Whether to use torch.compile() within the context of a given
-            learner.
-        what_to_compile: What to compile when using torch.compile(). Can be one of
-            [TorchCompileWhatToCompile.complete_update,
-            TorchCompileWhatToCompile.forward_train].
-            If `complete_update`, the update step of the learner will be compiled. This
-            includes the forward pass of the RLModule, the loss computation, and the
-            optimizer step.
-            If `forward_train`, only the forward methods (and therein the
-            forward_train method) of the RLModule will be compiled.
-            Either of the two may lead to different performance gains in different
-            settings.
-            `complete_update` promises the highest performance gains, but may not work
-            in some settings. By compiling only forward_train, you may already get
-            some speedups and avoid issues that arise from compiling the entire update.
-        troch_compile_config: The TorchCompileConfig to use for compiling the RL
-            Module in Torch.
-    """
-
-    eager_tracing: bool = True
-    torch_compile: bool = False
-    what_to_compile: str = TorchCompileWhatToCompile.FORWARD_TRAIN
-    torch_compile_cfg: Optional["TorchCompileConfig"] = None
-
-    def validate(self):
-        if self.torch_compile:
-            if self.what_to_compile not in [
-                TorchCompileWhatToCompile.FORWARD_TRAIN,
-                TorchCompileWhatToCompile.COMPLETE_UPDATE,
-            ]:
-                raise ValueError(
-                    f"what_to_compile must be one of ["
-                    f"TorchCompileWhatToCompile.forward_train, "
-                    f"TorchCompileWhatToCompile.complete_update] but is"
-                    f" {self.what_to_compile}"
-                )
-            if self.torch_compile_cfg is None:
-                raise ValueError(
-                    "torch_compile_cfg must be set when torch_compile is True."
-                )
-
-
-@dataclass
-class LearnerHyperparameters:
-    """Hyperparameters for a Learner, derived from a subset of AlgorithmConfig values.
-
-    Instances of this class should only be created via calling
-    `get_learner_hyperparameters()` on a frozen AlgorithmConfig object and should always
-    considered read-only.
-
-    When creating a new Learner, you should also define a new sub-class of this class
-    and make sure the respective AlgorithmConfig sub-class has a proper implementation
-    of the `get_learner_hyperparameters` method.
-
-    Validation of the values of these hyperparameters should be done by the
-    respective AlgorithmConfig class.
-
-    For configuring different learning behaviors for different (single-agent) RLModules
-    within the Learner, RLlib uses the `_per_module_overrides` property (dict), mapping
-    ModuleID to a overridden version of self, in which the module-specific override
-    settings are applied.
-    """
-
-    # Parameters used for gradient postprocessing (clipping) and gradient application.
-    learning_rate: LearningRateOrSchedule = None
-    grad_clip: float = None
-    grad_clip_by: str = None
-    seed: int = None
-
-    # Maps ModuleIDs to LearnerHyperparameters that are to be used for that particular
-    # module.
-    # You can access the module-specific `LearnerHyperparameters` object for a given
-    # module_id by using the `get_hps_for_module(module_id=..)` API.
-    _per_module_overrides: Optional[Dict[ModuleID, "LearnerHyperparameters"]] = None
-
-    def get_hps_for_module(self, module_id: ModuleID) -> "LearnerHyperparameters":
-        """Returns a LearnerHyperparameter instance, given a `module_id`.
-
-        This is useful for passing these module-specific HPs to a Learner's
-        `..._for_module(module_id=.., hps=..)` methods. Individual modules within
-        a MultiAgentRLModule can then override certain AlgorithmConfig settings
-        of the main config, e.g. the learning rate.
-
-        Args:
-            module_id: The module ID for which to return a specific
-                LearnerHyperparameter instance.
-
-        Returns:
-            The module specific LearnerHyperparameter instance.
-        """
-        # ModuleID found in our overrides dict. Return module specific HPs.
-        if (
-            self._per_module_overrides is not None
-            and module_id in self._per_module_overrides
-        ):
-            # In case, the per-module sub-HPs object is still a dict, convert
-            # it to a fully qualified LearnerHyperparameter object here first.
-            if isinstance(self._per_module_overrides[module_id], dict):
-                self._per_module_overrides[module_id] = type(self)(
-                    **self._per_module_overrides[module_id]
-                )
-            # Return the module specific version of self.
-            return self._per_module_overrides[module_id]
-        # ModuleID not found in overrides or the overrides dict is None
-        # -> return self.
-        else:
-            return self
+#    def validate(self):
 
 
 @PublicAPI(stability="alpha")
@@ -352,43 +247,34 @@ class Learner:
     def __init__(
         self,
         *,
+        config: "AlgorithmConfig",
         module_spec: Optional[
             Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
         ] = None,
         module: Optional[RLModule] = None,
-        learner_group_scaling_config: Optional[LearnerGroupScalingConfig] = None,
-        learner_hyperparameters: Optional[LearnerHyperparameters] = None,
-        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
+        # Deprecated args.
+        learner_group_scaling_config=None,
+        learner_hyperparameters=None,
+        framework_hyperparameters=None,
     ):
-        # We first set seeds
-        if learner_hyperparameters and learner_hyperparameters.seed is not None:
-            update_global_seed_if_necessary(
-                self.framework, learner_hyperparameters.seed
-            )
+        #if (module_spec is None) is (module is None):
+        #    raise ValueError(
+        #        "Exactly one of `module_spec` or `module` must be provided to Learner!"
+        #    )
 
-        if (module_spec is None) is (module is None):
-            raise ValueError(
-                "Exactly one of `module_spec` or `module` must be provided to Learner!"
-            )
-
+        self.config = config
         self._module_spec = module_spec
         self._module_obj = module
-        self._hps = learner_hyperparameters or LearnerHyperparameters()
         self._device = None
 
-        # pick the configs that we need for the learner from scaling config
-        self._learner_group_scaling_config = (
-            learner_group_scaling_config or LearnerGroupScalingConfig()
-        )
-        self._distributed = self._learner_group_scaling_config.num_workers > 1
-        self._use_gpu = self._learner_group_scaling_config.num_gpus_per_worker > 0
-        # if we are using gpu but we are not distributed, use this gpu for training
-        self._local_gpu_idx = self._learner_group_scaling_config.local_gpu_idx
+        # Set a seed, if necessary.
+        if self.config.seed is not None:
+            update_global_seed_if_necessary(self.framework, self.config.seed)
 
-        self._framework_hyperparameters = (
-            framework_hyperparameters or FrameworkHyperparameters()
-        )
-        self._framework_hyperparameters.validate()
+        self._distributed = self.config.num_learner_workers > 1
+        self._use_gpu = self.config.num_gpus_per_learner_worker > 0
+        # If we are using gpu but we are not distributed, use this gpu for training.
+        self._local_gpu_idx = self.config.local_gpu_idx
 
         # whether self.build has already been called
         self._is_built = False
@@ -424,11 +310,6 @@ class Learner:
     def module(self) -> MultiAgentRLModule:
         """The multi-agent RLModule that is being trained."""
         return self._module
-
-    @property
-    def hps(self) -> LearnerHyperparameters:
-        """The hyper-parameters for the learner."""
-        return self._hps
 
     def register_optimizer(
         self,
@@ -529,13 +410,13 @@ class Learner:
         # on each RLModule within `self.module`.
         for module_id in self.module.keys():
             if self._is_module_compatible_with_learner(self.module[module_id]):
-                hps = self.hps.get_hps_for_module(module_id)
-                self.configure_optimizers_for_module(module_id=module_id, hps=hps)
+                config = self.config.get_config_for_module(module_id)
+                self.configure_optimizers_for_module(module_id=module_id, config=config)
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, hps: LearnerHyperparameters
+        self, module_id: ModuleID, config
     ) -> None:
         """Configures an optimizer for the given module_id.
 
@@ -549,7 +430,7 @@ class Learner:
 
         Args:
             module_id: The module_id of the RLModule that is being configured.
-            hps: The LearnerHyperparameters specific to the given `module_id`.
+            config: The AlgorithmConfig specific to the given `module_id`.
         """
 
     @OverrideToImplementCustomLogic
@@ -612,7 +493,7 @@ class Learner:
 
             module_grads_dict = self.postprocess_gradients_for_module(
                 module_id=module_id,
-                hps=self.hps.get_hps_for_module(module_id),
+                config=self.config.get_config_for_module(module_id),
                 module_gradients_dict=module_grads_dict,
             )
             assert isinstance(module_grads_dict, dict)
@@ -627,7 +508,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        hps: LearnerHyperparameters,
+        config: "AlgorithmConfig",
         module_gradients_dict: ParamDict,
     ) -> ParamDict:
         """Applies postprocessing operations on the gradients of the given module.
@@ -637,7 +518,7 @@ class Learner:
                 Note that `module_gradients_dict` already only carries those gradient
                 tensors that belong to this `module_id`. Other `module_id`'s gradients
                 are not available in this call.
-            hps: The LearnerHyperparameters specific to the given `module_id`.
+            config: The AlgorithmConfig specific to the given `module_id`.
             module_gradients_dict: A dictionary of gradients in the same (flat) format
                 as self._params, mapping gradient refs to gradient tensors, which are to
                 be postprocessed. You may alter these tensors in place or create new
@@ -649,7 +530,7 @@ class Learner:
         """
         postprocessed_grads = {}
 
-        if hps.grad_clip is None:
+        if config.grad_clip is None:
             postprocessed_grads.update(module_gradients_dict)
             return postprocessed_grads
 
@@ -661,10 +542,10 @@ class Learner:
             # Perform gradient clipping, if configured.
             global_norm = self._get_clip_function()(
                 grad_dict_to_clip,
-                grad_clip=hps.grad_clip,
-                grad_clip_by=hps.grad_clip_by,
+                grad_clip=config.grad_clip,
+                grad_clip_by=config.grad_clip_by,
             )
-            if hps.grad_clip_by == "global_norm":
+            if config.grad_clip_by == "global_norm":
                 self.register_metric(
                     module_id,
                     f"gradients_{optimizer_name}_global_norm",
@@ -934,7 +815,7 @@ class Learner:
         # Allow the user to configure one or more optimizers for this new module.
         self.configure_optimizers_for_module(
             module_id=module_id,
-            hps=self.hps.get_hps_for_module(module_id),
+            config=self.config.get_config_for_module(module_id),
         )
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1022,7 +903,7 @@ class Learner:
 
             loss = self.compute_loss_for_module(
                 module_id=module_id,
-                hps=self.hps.get_hps_for_module(module_id),
+                config=self.config.get_config_for_module(module_id),
                 batch=module_batch,
                 fwd_out=module_fwd_out,
             )
@@ -1043,7 +924,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        hps: LearnerHyperparameters,
+        config: "AlgorithmConfig",
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
@@ -1055,7 +936,7 @@ class Learner:
 
         Args:
             module_id: The id of the module.
-            hps: The LearnerHyperparameters specific to the given `module_id`.
+            config: The AlgorithmConfig specific to the given `module_id`.
             batch: The sample batch for this particular module.
             fwd_out: The output of the forward pass for this particular module.
 
@@ -1087,6 +968,7 @@ class Learner:
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
+            from ray.rllib.algorithms.ppo import PPOConfig
             from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
             from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import (
                 PPOTorchLearner
@@ -1094,11 +976,10 @@ class Learner:
             from ray.rllib.algorithms.ppo.ppo_learner import (
                 LEARNER_RESULTS_CURR_KL_COEFF_KEY
             )
-            from ray.rllib.algorithms.ppo.ppo_learner import PPOLearnerHyperparameters
             import gymnasium as gym
 
             env = gym.make("CartPole-v1")
-            hps = PPOLearnerHyperparameters(
+            config = PPOConfig(
                 use_kl_loss=True,
                 kl_coeff=0.2,
                 kl_target=0.01,
@@ -1124,12 +1005,12 @@ class Learner:
 
             class CustomPPOLearner(PPOTorchLearner):
                 def additional_update_for_module(
-                    self, *, module_id, hps, timestep, sampled_kl_values
+                    self, *, module_id, config, timestep, sampled_kl_values
                 ):
 
                     results = super().additional_update_for_module(
                         module_id=module_id,
-                        hps=hps,
+                        config=config,
                         timestep=timestep,
                         sampled_kl_values=sampled_kl_values,
                     )
@@ -1137,9 +1018,9 @@ class Learner:
                     # Try something else than the PPO paper here.
                     sampled_kl = sampled_kl_values[module_id]
                     curr_var = self.curr_kl_coeffs_per_module[module_id]
-                    if sampled_kl > 1.2 * self.hps.kl_target:
+                    if sampled_kl > 1.2 * self.config.kl_target:
                         curr_var.data *= 1.2
-                    elif sampled_kl < 0.8 * self.hps.kl_target:
+                    elif sampled_kl < 0.8 * self.config.kl_target:
                         curr_var.data *= 0.4
                     results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
 
@@ -1176,7 +1057,7 @@ class Learner:
         for module_id in module_ids:
             module_results = self.additional_update_for_module(
                 module_id=module_id,
-                hps=self.hps.get_hps_for_module(module_id),
+                config=self.config.get_config_for_module(module_id),
                 timestep=timestep,
                 **kwargs,
             )
@@ -1189,7 +1070,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        hps: LearnerHyperparameters,
+        config: "AlgorithmConfig",
         timestep: int,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -1199,7 +1080,7 @@ class Learner:
 
         Args:
             module_id: The id of the module to update.
-            hps: The LearnerHyperparameters specific to the given `module_id`.
+            config: The AlgorithmConfig specific to the given `module_id`.
             timestep: The current global timestep (to be used with schedulers).
             **kwargs: Keyword arguments to use for the additional update.
 
@@ -1557,12 +1438,21 @@ class Learner:
         Returns:
             A constructed MultiAgentRLModule.
         """
+        # Module was provided directly through constructor -> Use as-is.
         if self._module_obj is not None:
             module = self._module_obj
-        else:
+        # ModuleSpec was provided directly through constructor -> Use it to build the
+        # RLModule.
+        elif self._module_spec is not None:
             module = self._module_spec.build()
+        # Try using our config object. Note that this would only work if the config
+        # object has all the necessary space information already in it.
+        else:
+            module = self.config.get_multi_agent_module_spec().build()
+
         # If not already, convert to MultiAgentRLModule.
         module = module.as_multi_agent()
+
         return module
 
     def _check_registered_optimizer(
@@ -1681,46 +1571,46 @@ class Learner:
         """Returns the gradient clipping function to use, given the framework."""
 
 
-@dataclass
-class LearnerSpec:
-    """The spec for constructing Learner actors.
+#@dataclass
+#class LearnerSpec:
+#    """The spec for constructing Learner actors.
 
-    Args:
-        learner_class: The Learner class to use.
-        module_spec: The underlying (MA)RLModule spec to completely define the module.
-        module: Alternatively the RLModule instance can be passed in directly. This
-            only works if the Learner is not an actor.
-        backend_config: The backend config for properly distributing the RLModule.
-        learner_hyperparameters: The extra config for the loss/additional update. This
-            should be a subclass of LearnerHyperparameters. This is useful for passing
-            in algorithm configs that contains the hyper-parameters for loss
-            computation, change of training behaviors, etc. e.g lr, entropy_coeff.
+#    Args:
+#        learner_class: The Learner class to use.
+#        module_spec: The underlying (MA)RLModule spec to completely define the module.
+#        module: Alternatively the RLModule instance can be passed in directly. This
+#            only works if the Learner is not an actor.
+#        backend_config: The backend config for properly distributing the RLModule.
+#        learner_hyperparameters: The extra config for the loss/additional update. This
+#            should be a subclass of LearnerHyperparameters. This is useful for passing
+#            in algorithm configs that contains the hyper-parameters for loss
+#            computation, change of training behaviors, etc. e.g lr, entropy_coeff.
 
-    """
+#    """
 
-    learner_class: Type["Learner"]
-    module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
-    module: Optional["RLModule"] = None
-    learner_group_scaling_config: LearnerGroupScalingConfig = field(
-        default_factory=LearnerGroupScalingConfig
-    )
-    learner_hyperparameters: LearnerHyperparameters = field(
-        default_factory=LearnerHyperparameters
-    )
-    framework_hyperparameters: FrameworkHyperparameters = field(
-        default_factory=FrameworkHyperparameters
-    )
+#    learner_class: Type["Learner"]
+#    module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
+#    module: Optional["RLModule"] = None
+#    learner_group_scaling_config: LearnerGroupScalingConfig = field(
+#        default_factory=LearnerGroupScalingConfig
+#    )
+#    learner_hyperparameters: LearnerHyperparameters = field(
+#        default_factory=LearnerHyperparameters
+#    )
+#    framework_hyperparameters: FrameworkHyperparameters = field(
+#        default_factory=FrameworkHyperparameters
+#    )
 
-    def get_params_dict(self) -> Dict[str, Any]:
-        """Returns the parameters than be passed to the Learner constructor."""
-        return {
-            "module": self.module,
-            "module_spec": self.module_spec,
-            "learner_group_scaling_config": self.learner_group_scaling_config,
-            "learner_hyperparameters": self.learner_hyperparameters,
-            "framework_hyperparameters": self.framework_hyperparameters,
-        }
+#    def get_params_dict(self) -> Dict[str, Any]:
+#        """Returns the parameters than be passed to the Learner constructor."""
+#        return {
+#            "module": self.module,
+#            "module_spec": self.module_spec,
+#            "learner_group_scaling_config": self.learner_group_scaling_config,
+#            "learner_hyperparameters": self.learner_hyperparameters,
+#            "framework_hyperparameters": self.framework_hyperparameters,
+#        }
 
-    def build(self) -> "Learner":
-        """Builds the Learner instance."""
-        return self.learner_class(**self.get_params_dict())
+#    def build(self) -> "Learner":
+#        """Builds the Learner instance."""
+#        return self.learner_class(**self.get_params_dict())

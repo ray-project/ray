@@ -19,10 +19,7 @@ import tree
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.ppo_learner import (
-    PPOLearnerHyperparameters,
-    LEARNER_RESULTS_KL_KEY,
-)
+from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_KL_KEY
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -189,22 +186,6 @@ class PPOConfig(AlgorithmConfig):
                 f"The framework {self.framework_str} is not supported. "
                 "Use either 'torch' or 'tf2'."
             )
-
-    @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> PPOLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        return PPOLearnerHyperparameters(
-            use_critic=self.use_critic,
-            use_kl_loss=self.use_kl_loss,
-            kl_coeff=self.kl_coeff,
-            kl_target=self.kl_target,
-            vf_loss_coeff=self.vf_loss_coeff,
-            entropy_coeff=self.entropy_coeff,
-            entropy_coeff_schedule=self.entropy_coeff_schedule,
-            clip_param=self.clip_param,
-            vf_clip_param=self.vf_clip_param,
-            **dataclasses.asdict(base_hps),
-        )
 
     @override(AlgorithmConfig)
     def training(

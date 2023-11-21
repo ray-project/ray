@@ -1,3 +1,4 @@
+from enum import Enum
 import logging
 import pathlib
 from typing import (
@@ -9,22 +10,19 @@ from typing import (
     Sequence,
     Union,
     Tuple,
+    TYPE_CHECKING,
 )
 
-from ray.rllib.core.learner.learner import (
-    FrameworkHyperparameters,
-    Learner,
-    LearnerHyperparameters,
-    TorchCompileWhatToCompile,
-)
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import (
+    TorchCompileConfig,
+    TorchDDPRLModule,
     TorchRLModule,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -41,6 +39,9 @@ from ray.rllib.utils.torch_utils import (
 )
 from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 torch, nn = try_import_torch()
 
 if torch:
@@ -50,21 +51,35 @@ if torch:
 logger = logging.getLogger(__name__)
 
 
+class TorchCompileWhatToCompile(str, Enum):
+    """Enumerates schemes of what parts of the TorchLearner can be compiled.
+
+    This can be either the entire update step of the learner or only the forward
+    methods (and therein the forward_train method) of the RLModule.
+
+    .. note::
+        - torch.compiled code can become slow on graph breaks or even raise
+            errors on unsupported operations. Empirically, compiling
+            `forward_train` should introduce little graph breaks, raise no
+            errors but result in a speedup comparable to compiling the
+            complete update.
+        - Using `complete_update` is experimental and may result in errors.
+    """
+
+    # Compile the entire update step of the learner.
+    # This includes the forward pass of the RLModule, the loss computation, and the
+    # optimizer step.
+    COMPLETE_UPDATE = "complete_update"
+    # Only compile the forward methods (and therein the forward_train method) of the
+    # RLModule.
+    FORWARD_TRAIN = "forward_train"
+
+
 class TorchLearner(Learner):
     framework: str = "torch"
 
-    def __init__(
-        self,
-        *,
-        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
-        **kwargs,
-    ):
-        super().__init__(
-            framework_hyperparameters=(
-                framework_hyperparameters or FrameworkHyperparameters()
-            ),
-            **kwargs,
-        )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
         # Will be set during build.
         self._device = None
@@ -75,6 +90,7 @@ class TorchLearner(Learner):
         # This is assumed to not happen, since other forwrad methods are not expected
         # to be used during training.
         self._torch_compile_forward_train = False
+        self._torch_compile_cfg = None
         # Whether to compile the `_uncompiled_update` method of this learner. This
         # implies that everything within `_uncompiled_update` will be compiled,
         # not only the forward_train method of the RL Module.
@@ -82,9 +98,9 @@ class TorchLearner(Learner):
         # Note that this requires recompiling the forward methods once we add/remove
         # RL Modules.
         self._torch_compile_complete_update = False
-        if self._framework_hyperparameters.torch_compile:
+        if self.config.torch_compile_learner:
             if (
-                self._framework_hyperparameters.what_to_compile
+                self.config.torch_compile_learner_what_to_compile
                 == TorchCompileWhatToCompile.COMPLETE_UPDATE
             ):
                 self._torch_compile_complete_update = True
@@ -92,15 +108,20 @@ class TorchLearner(Learner):
             else:
                 self._torch_compile_forward_train = True
 
+            self._torch_compile_cfg = TorchCompileConfig(
+                torch_dynamo_backend=self.config.torch_compile_learner_dynamo_backend,
+                torch_dynamo_mode=self.config.torch_compile_learner_dynamo_mode,
+            )
+
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, hps: LearnerHyperparameters
+        self, module_id: ModuleID, config: "AlgorithmConfig"
     ) -> None:
         module = self._module[module_id]
 
         # For this default implementation, the learning rate is handled by the
-        # attached lr Scheduler (controlled by self.hps.learning_rate, which can be a
+        # attached lr Scheduler (controlled by self.config.lr, which can be a
         # fixed value of a schedule setting).
         optimizer = torch.optim.Adam(self.get_parameters(module))
         params = self.get_parameters(module)
@@ -110,7 +131,7 @@ class TorchLearner(Learner):
             module_id=module_id,
             optimizer=optimizer,
             params=params,
-            lr_or_lr_schedule=hps.learning_rate,
+            lr_or_lr_schedule=config.lr,
         )
 
     def _uncompiled_update(
@@ -231,18 +252,17 @@ class TorchLearner(Learner):
         module = self._module[module_id]
 
         if self._torch_compile_forward_train:
-            module.compile(self._framework_hyperparameters.torch_compile_cfg)
+            module.compile(self._torch_compile_cfg)
         elif self._torch_compile_complete_update:
             # When compiling the update, we need to reset and recompile
             # _uncompiled_update every time we add/remove a module anew.
             torch._dynamo.reset()
             self._compiled_update_initialized = False
-            torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
-                backend=torch_compile_cfg.torch_dynamo_backend,
-                mode=torch_compile_cfg.torch_dynamo_mode,
-                **torch_compile_cfg.kwargs,
+                backend=self._torch_compile_cfg.torch_dynamo_backend,
+                mode=self._torch_compile_cfg.torch_dynamo_mode,
+                **self._torch_compile_cfg.kwargs,
             )
 
         if isinstance(module, TorchRLModule):
@@ -270,12 +290,11 @@ class TorchLearner(Learner):
             # _uncompiled_update every time we add/remove a module anew.
             torch._dynamo.reset()
             self._compiled_update_initialized = False
-            torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
-                backend=torch_compile_cfg.torch_dynamo_backend,
-                mode=torch_compile_cfg.torch_dynamo_mode,
-                **torch_compile_cfg.kwargs,
+                backend=self._torch_compile_cfg.torch_dynamo_backend,
+                mode=self._torch_compile_cfg.torch_dynamo_mode,
+                **self._torch_compile_cfg.kwargs,
             )
 
     @override(Learner)
@@ -316,27 +335,22 @@ class TorchLearner(Learner):
         if self._torch_compile_complete_update:
             torch._dynamo.reset()
             self._compiled_update_initialized = False
-            torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
-                backend=torch_compile_cfg.torch_dynamo_backend,
-                mode=torch_compile_cfg.torch_dynamo_mode,
-                **torch_compile_cfg.kwargs,
+                backend=self._torch_compile_cfg.torch_dynamo_backend,
+                mode=self._torch_compile_cfg.torch_dynamo_mode,
+                **self._torch_compile_cfg.kwargs,
             )
         else:
             if self._torch_compile_forward_train:
                 if isinstance(self._module, TorchRLModule):
-                    self._module.compile(
-                        self._framework_hyperparameters.torch_compile_cfg
-                    )
+                    self._module.compile(self._torch_compile_cfg)
                 elif isinstance(self._module, MultiAgentRLModule):
                     for module in self._module._rl_modules.values():
                         # Compile only TorchRLModules, e.g. we don't want to compile
                         # a RandomRLModule.
                         if isinstance(self._module, TorchRLModule):
-                            module.compile(
-                                self._framework_hyperparameters.torch_compile_cfg
-                            )
+                            module.compile(self._torch_compile_cfg)
                 else:
                     raise ValueError(
                         "Torch compile is only supported for TorchRLModule and "

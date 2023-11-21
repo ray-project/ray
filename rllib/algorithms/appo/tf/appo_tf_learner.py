@@ -3,7 +3,6 @@ from typing import Any, Dict, Mapping
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.appo_learner import (
     AppoLearner,
-    AppoLearnerHyperparameters,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
     OLD_ACTION_DIST_LOGITS_KEY,
@@ -28,7 +27,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: AppoLearnerHyperparameters,
+        config: AlgorithmConfig,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
@@ -48,33 +47,33 @@ class APPOTfLearner(AppoLearner, TfLearner):
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         old_actions_logp_time_major = make_time_major(
             old_target_policy_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         bootstrap_values_time_major = make_time_major(
             batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         bootstrap_value = bootstrap_values_time_major[-1]
 
@@ -85,12 +84,12 @@ class APPOTfLearner(AppoLearner, TfLearner):
             - tf.cast(
                 make_time_major(
                     batch[SampleBatch.TERMINATEDS],
-                    trajectory_len=hps.rollout_frag_or_episode_len,
-                    recurrent_seq_len=hps.recurrent_seq_len,
+                    trajectory_len=config.rollout_frag_or_episode_len,
+                    recurrent_seq_len=config.recurrent_seq_len,
                 ),
                 dtype=tf.float32,
             )
-        ) * hps.discount_factor
+        ) * config.discount_factor
 
         # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
@@ -100,8 +99,8 @@ class APPOTfLearner(AppoLearner, TfLearner):
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=hps.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=hps.vtrace_clip_rho_threshold,
+            clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )
 
         # The policy gradients loss.
@@ -120,11 +119,15 @@ class APPOTfLearner(AppoLearner, TfLearner):
             pg_advantages * logp_ratio,
             (
                 pg_advantages
-                * tf.clip_by_value(logp_ratio, 1 - hps.clip_param, 1 + hps.clip_param)
+                * tf.clip_by_value(
+                    logp_ratio,
+                    1 - config.clip_param,
+                    1 + config.clip_param,
+                )
             ),
         )
 
-        if hps.use_kl_loss:
+        if config.use_kl_loss:
             action_kl = old_target_policy_dist.kl(target_policy_dist)
             mean_kl_loss = tf.math.reduce_mean(action_kl)
         else:
@@ -141,7 +144,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
         # The summed weighted loss.
         total_loss = (
             mean_pi_loss
-            + (mean_vf_loss * hps.vf_loss_coeff)
+            + (mean_vf_loss * config.vf_loss_coeff)
             + (
                 mean_entropy_loss
                 * self.entropy_coeff_schedulers_per_module[
@@ -171,7 +174,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
     def _update_module_target_networks(
         self,
         module_id: ModuleID,
-        hps: AppoLearnerHyperparameters,
+        config: AlgorithmConfig,
     ) -> None:
         module = self.module[module_id]
 
@@ -180,22 +183,22 @@ class APPOTfLearner(AppoLearner, TfLearner):
             for old_var, current_var in zip(
                 target_network.variables, current_network.variables
             ):
-                updated_var = hps.tau * current_var + (1.0 - hps.tau) * old_var
+                updated_var = config.tau * current_var + (1.0 - config.tau) * old_var
                 old_var.assign(updated_var)
 
     @override(AppoLearner)
     def _update_module_kl_coeff(
-        self, module_id: ModuleID, hps: AppoLearnerHyperparameters, sampled_kl: float
+        self, module_id: ModuleID, config: AlgorithmConfig, sampled_kl: float
     ) -> Dict[str, Any]:
         # Update the current KL value based on the recently measured value.
         # Increase.
         kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
 
-        if sampled_kl > 2.0 * hps.kl_target:
+        if sampled_kl > 2.0 * config.kl_target:
             # TODO (Kourosh) why not *2.0?
             kl_coeff_var.assign(kl_coeff_var * 1.5)
         # Decrease.
-        elif sampled_kl < 0.5 * hps.kl_target:
+        elif sampled_kl < 0.5 * config.kl_target:
             kl_coeff_var.assign(kl_coeff_var * 0.5)
 
         return {LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.numpy()}

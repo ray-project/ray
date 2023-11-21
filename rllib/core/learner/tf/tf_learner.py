@@ -9,14 +9,11 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    TYPE_CHECKING,
     Union,
 )
 
-from ray.rllib.core.learner.learner import (
-    FrameworkHyperparameters,
-    Learner,
-    LearnerHyperparameters,
-)
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
@@ -35,6 +32,8 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
 from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 tf1, tf, tfv = try_import_tf()
 
@@ -45,13 +44,7 @@ class TfLearner(Learner):
 
     framework: str = "tf2"
 
-    def __init__(
-        self,
-        *,
-        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
-        **kwargs,
-    ):
-
+    def __init__(self, **kwargs):
         # by default in rllib we disable tf2 behavior
         # This call re-enables it as it is needed for using
         # this class.
@@ -62,14 +55,9 @@ class TfLearner(Learner):
             # enable_v2_behavior after variables have already been created.
             pass
 
-        super().__init__(
-            framework_hyperparameters=(
-                framework_hyperparameters or FrameworkHyperparameters()
-            ),
-            **kwargs,
-        )
+        super().__init__(**kwargs)
 
-        self._enable_tf_function = self._framework_hyperparameters.eager_tracing
+        self._enable_tf_function = self.config.eager_tracing
 
         # This is a placeholder which will be filled by
         # `_make_distributed_strategy_if_necessary`.
@@ -78,12 +66,12 @@ class TfLearner(Learner):
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, hps: LearnerHyperparameters
+        self, module_id: ModuleID, config: "AlgorithmConfig"
     ) -> None:
         module = self._module[module_id]
 
         # For this default implementation, the learning rate is handled by the
-        # attached lr Scheduler (controlled by self.hps.learning_rate, which can be a
+        # attached lr Scheduler (controlled by self.config.lr, which can be a
         # fixed value of a schedule setting).
         optimizer = tf.keras.optimizers.Adam()
         params = self.get_parameters(module)
@@ -98,7 +86,7 @@ class TfLearner(Learner):
             module_id=module_id,
             optimizer=optimizer,
             params=params,
-            lr_or_lr_schedule=hps.learning_rate,
+            lr_or_lr_schedule=config.lr,
         )
 
     @override(Learner)

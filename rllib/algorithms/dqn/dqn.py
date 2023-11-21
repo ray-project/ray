@@ -309,7 +309,6 @@ class DQNConfig(SimpleQConfig):
                     " used at the same time!"
                 )
 
-    @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
             return self.n_step

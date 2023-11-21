@@ -764,8 +764,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 module_spec = local_worker.marl_module_spec
             else:
                 module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
-            learner_group_config = self.config.get_learner_group_config(module_spec)
-            self.learner_group = learner_group_config.build()
+            #learner_group_config = self.config.get_learner_group_config(module_spec)
+            #self.learner_group = learner_group_config.build()
+            self.learner_group = self.config.build_learner_group()
 
             # check if there are modules to load from the module_spec
             rl_module_ckpt_dirs = {}

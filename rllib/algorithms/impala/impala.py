@@ -15,10 +15,7 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaLearnerHyperparameters,
-    _reduce_impala_results,
-)
+from ray.rllib.algorithms.impala.impala_learner import _reduce_impala_results
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
@@ -432,29 +429,29 @@ class ImpalaConfig(AlgorithmConfig):
                     f"than or equal to `train_batch_size` ({self.train_batch_size})!"
                 )
 
-    @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> ImpalaLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        learner_hps = ImpalaLearnerHyperparameters(
-            rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
-            discount_factor=self.gamma,
-            entropy_coeff=self.entropy_coeff,
-            vf_loss_coeff=self.vf_loss_coeff,
-            vtrace_clip_rho_threshold=self.vtrace_clip_rho_threshold,
-            vtrace_clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
-            **dataclasses.asdict(base_hps),
-        )
-        # TODO: We currently do not use the `recurrent_seq_len` property anyways.
-        #  We should re-think the handling of RNN/SEQ_LENs/etc.. once we start
-        #  supporting them in RLModules and then revisit this check here.
-        #  Also, such a check should be moved into `IMPALAConfig.validate()`.
-        assert (learner_hps.rollout_frag_or_episode_len is None) != (
-            learner_hps.recurrent_seq_len is None
-        ), (
-            "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
-            "None in ImpalaLearnerHyperparameters!"
-        )
-        return learner_hps
+    #@override(AlgorithmConfig)
+    #def get_learner_hyperparameters(self) -> ImpalaLearnerHyperparameters:
+    #    base_hps = super().get_learner_hyperparameters()
+    #    learner_hps = ImpalaLearnerHyperparameters(
+    #        rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
+    #        discount_factor=self.gamma,
+    #        entropy_coeff=self.entropy_coeff,
+    #        vf_loss_coeff=self.vf_loss_coeff,
+    #        vtrace_clip_rho_threshold=self.vtrace_clip_rho_threshold,
+    #        vtrace_clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
+    #        **dataclasses.asdict(base_hps),
+    #    )
+    #    # TODO: We currently do not use the `recurrent_seq_len` property anyways.
+    #    #  We should re-think the handling of RNN/SEQ_LENs/etc.. once we start
+    #    #  supporting them in RLModules and then revisit this check here.
+    #    #  Also, such a check should be moved into `IMPALAConfig.validate()`.
+    #    assert (learner_hps.rollout_frag_or_episode_len is None) != (
+    #        learner_hps.recurrent_seq_len is None
+    #    ), (
+    #        "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
+    #        "None in ImpalaLearnerHyperparameters!"
+    #    )
+    #    return learner_hps
 
     # TODO (sven): Make these get_... methods all read-only @properties instead.
     def get_replay_ratio(self) -> float:

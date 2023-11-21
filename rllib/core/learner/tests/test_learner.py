@@ -5,9 +5,8 @@ import unittest
 
 import ray
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.testing.testing_learner import BaseTestingLearnerHyperparameters
-from ray.rllib.core.testing.utils import get_learner, get_module_spec
-from ray.rllib.core.learner.learner import FrameworkHyperparameters
+from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
+#from ray.rllib.core.testing.utils import get_learner, get_module_spec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -36,8 +35,10 @@ class TestLearner(unittest.TestCase):
 
     def test_end_to_end_update(self):
 
-        for fw in framework_iterator(frameworks=("torch", "tf2")):
-            learner = get_learner(framework=fw, env=self.ENV)
+        config = BaseTestingAlgorithmConfig()
+
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+            learner = config.build_learner(env=self.ENV)
             reader = get_cartpole_dataset_reader(batch_size=512)
 
             min_loss = float("inf")
@@ -191,7 +192,7 @@ class TestLearner(unittest.TestCase):
             expected = [
                 (
                     convert_to_numpy(param)
-                    - n_steps * learner.hps.learning_rate * np.ones(param.shape)
+                    - n_steps * learner.config.lr * np.ones(param.shape)
                 )
                 for param in params
             ]
@@ -239,7 +240,7 @@ class TestLearner(unittest.TestCase):
             n_steps = 100
             expected = [
                 convert_to_numpy(param)
-                - n_steps * learner.hps.learning_rate * np.ones(param.shape)
+                - n_steps * learner.config.lr * np.ones(param.shape)
                 for param in params
             ]
             for _ in range(n_steps):

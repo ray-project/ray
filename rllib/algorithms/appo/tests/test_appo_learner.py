@@ -80,7 +80,6 @@ class TestAPPOTfLearner(unittest.TestCase):
 
         for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             algo = config.build()
-            policy = algo.get_policy()
 
             if fw == "tf2":
                 train_batch = SampleBatch(
@@ -95,17 +94,7 @@ class TestAPPOTfLearner(unittest.TestCase):
             algo_config.validate()
             algo_config.freeze()
 
-            learner_group_config = algo_config.get_learner_group_config(
-                SingleAgentRLModuleSpec(
-                    module_class=algo_config.rl_module_spec.module_class,
-                    observation_space=policy.observation_space,
-                    action_space=policy.action_space,
-                    model_config_dict=policy.config["model"],
-                    catalog_class=algo_config.rl_module_spec.catalog_class,
-                )
-            )
-            learner_group_config.num_learner_workers = 0
-            learner_group = learner_group_config.build()
+            learner_group = algo_config.build_learner_group()
             learner_group.set_weights(algo.get_weights())
             learner_group.update(train_batch.as_multi_agent())
 

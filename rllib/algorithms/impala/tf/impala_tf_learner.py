@@ -1,9 +1,6 @@
 from typing import Mapping
 
-from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaLearner,
-    ImpalaLearnerHyperparameters,
-)
+from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
@@ -25,7 +22,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: ImpalaLearnerHyperparameters,
+        config: ImpalaConfig,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
@@ -40,28 +37,28 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         bootstrap_values_time_major = make_time_major(
             batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=config.rollout_frag_or_episode_len,
+            recurrent_seq_len=config.recurrent_seq_len,
         )
         bootstrap_value = bootstrap_values_time_major[-1]
 
@@ -72,12 +69,12 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             - tf.cast(
                 make_time_major(
                     batch[SampleBatch.TERMINATEDS],
-                    trajectory_len=hps.rollout_frag_or_episode_len,
-                    recurrent_seq_len=hps.recurrent_seq_len,
+                    trajectory_len=config.rollout_frag_or_episode_len,
+                    recurrent_seq_len=config.recurrent_seq_len,
                 ),
                 dtype=tf.float32,
             )
-        ) * hps.discount_factor
+        ) * config.gamma
 
         # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
@@ -87,8 +84,8 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=hps.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=hps.vtrace_clip_rho_threshold,
+            clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )
 
         # Sample size is T x B, where T is the trajectory length and B is the batch size
@@ -109,7 +106,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         # The summed weighted loss.
         total_loss = (
             pi_loss
-            + vf_loss * hps.vf_loss_coeff
+            + vf_loss * config.vf_loss_coeff
             + (
                 mean_entropy_loss
                 * self.entropy_coeff_schedulers_per_module[

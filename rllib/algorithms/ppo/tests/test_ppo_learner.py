@@ -96,16 +96,7 @@ class TestPPO(unittest.TestCase):
             algo_config.validate()
             algo_config.freeze()
 
-            learner_group_config = algo_config.get_learner_group_config(
-                SingleAgentRLModuleSpec(
-                    module_class=algo_config.rl_module_spec.module_class,
-                    observation_space=policy.observation_space,
-                    action_space=policy.action_space,
-                    model_config_dict=policy.config["model"],
-                    catalog_class=PPOCatalog,
-                )
-            )
-            learner_group = learner_group_config.build()
+            learner_group = algo_config.build_learner_group()
 
             # Load the algo weights onto the learner_group.
             learner_group.set_weights(algo.get_weights())
@@ -132,23 +123,13 @@ class TestPPO(unittest.TestCase):
             )
         )
         algo = config.build()
-        policy = algo.get_policy()
 
         for _ in framework_iterator(config, ("tf2", "torch")):
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()
-            learner_group_config = algo_config.get_learner_group_config(
-                SingleAgentRLModuleSpec(
-                    module_class=algo_config.rl_module_spec.module_class,
-                    observation_space=policy.observation_space,
-                    action_space=policy.action_space,
-                    model_config_dict=policy.config["model"],
-                    catalog_class=PPOCatalog,
-                )
-            )
-            learner_group1 = learner_group_config.build()
-            learner_group2 = learner_group_config.build()
+            learner_group1 = algo_config.build_learner_group()
+            learner_group2 = algo_config.build_learner_group()
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner_group1.save_state(tmpdir)
                 learner_group2.load_state(tmpdir)

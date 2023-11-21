@@ -14,10 +14,7 @@ from typing import Optional, Type
 import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.appo.appo_learner import (
-    AppoLearnerHyperparameters,
-    LEARNER_RESULTS_KL_KEY,
-)
+from ray.rllib.algorithms.appo.appo_learner import LEARNER_RESULTS_KL_KEY
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -255,21 +252,6 @@ class APPOConfig(ImpalaConfig):
         from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
 
         return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
-
-    @override(ImpalaConfig)
-    def get_learner_hyperparameters(self) -> AppoLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        return AppoLearnerHyperparameters(
-            use_kl_loss=self.use_kl_loss,
-            kl_target=self.kl_target,
-            kl_coeff=self.kl_coeff,
-            clip_param=self.clip_param,
-            tau=self.tau,
-            target_update_frequency_ts=(
-                self.train_batch_size * self.num_sgd_iter * self.target_update_frequency
-            ),
-            **dataclasses.asdict(base_hps),
-        )
 
 
 # Still used by one of the old checkpoints in tests.
