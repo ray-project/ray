@@ -11,8 +11,6 @@ from ray.serve._private.common import (
     ReplicaName,
     RunningReplicaInfo,
     StatusOverview,
-    TargetCapacityInfo,
-    TargetCapacityScaleDirection,
 )
 from ray.serve._private.utils import get_random_letters
 from ray.serve.generated.serve_pb2 import (
@@ -255,44 +253,6 @@ def test_running_replica_info():
     )
     assert replica1._hash == replica2._hash
     assert replica3._hash != replica1._hash
-
-
-class TestTargetCapacityInfo:
-    @pytest.mark.parametrize("target_capacity", [None, 0, 20, 50, 75.5, 100])
-    @pytest.mark.parametrize(
-        "scale_direction",
-        [None, TargetCapacityScaleDirection.UP, TargetCapacityScaleDirection.DOWN],
-    )
-    def test_target_capacity_info_valid_settings(
-        self, target_capacity: float, scale_direction: TargetCapacityScaleDirection
-    ):
-        """Check that a TargetCapacityInfo with valid settings can be made."""
-
-        info = TargetCapacityInfo(
-            target_capacity=target_capacity, scale_direction=scale_direction
-        )
-        assert info.target_capacity == target_capacity
-        assert info.scale_direction == scale_direction
-
-    def test_target_capacity_info_defaults(self):
-        default_target_capacity = TargetCapacityInfo()
-        assert default_target_capacity.target_capacity is None
-        assert default_target_capacity.scale_direction is None
-
-    @pytest.mark.parametrize("target_capacity", [-1, 101])
-    @pytest.mark.parametrize(
-        "scale_direction",
-        [None, TargetCapacityScaleDirection.UP, TargetCapacityScaleDirection.DOWN],
-    )
-    def test_target_capacity_info_invalid_settings(
-        self, target_capacity: float, scale_direction: TargetCapacityScaleDirection
-    ):
-        """Check that a TargetCapacityInfo with invalid settings errors."""
-
-        with pytest.raises(ValueError):
-            TargetCapacityInfo(
-                target_capacity=target_capacity, scale_direction=scale_direction
-            )
 
 
 if __name__ == "__main__":
