@@ -211,7 +211,10 @@ def test_tpu_docker_run_init():
     }
     cmd_runner = TPUCommandRunner(**args)
 
-    # Test for run_init
+    # Taken from tests/test_command_runner.py
+    # This mocks the response of 'docker inspect' command to return an empty JSON array.
+    # This simulates the scenario where the Docker image has no set environment
+    # variables, allowing us to test the subsequent code for handling this case.
     process_runner.respond_to_call("json .Config.Env", 2 * ["[]"])
     cmd_runner.run_init(as_head=True, file_mounts={}, sync_run_yet=True)
     process_runner.assert_has_call("1.2.3.4", pattern="docker")
