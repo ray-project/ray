@@ -590,9 +590,11 @@ class CoreExecutionMetrics:
             "AutoscalingRequester:AutoscalingRequester.__init__": lambda count: count
             <= 1,
             "_StatsActor.clear_metrics": lambda count: count < 100,
+            "_StatsActor.clear_execution_metrics": lambda count: count < 100,
+            "_StatsActor.clear_iteration_metrics": lambda count: count < 100,
             "_StatsActor.update_metrics": lambda count: count < 100,
-            "_StatsActor.clear_iter_metrics": lambda count: count < 100,
-            "_StatsActor.update_iter_metrics": lambda count: count < 100,
+            "_StatsActor.update_execution_metrics": lambda count: count < 100,
+            "_StatsActor.update_iteration_metrics": lambda count: count < 100,
             "_StatsActor.get": lambda count: True,
             "_StatsActor.record_start": lambda count: True,
             "_StatsActor.record_task": lambda count: True,
@@ -625,9 +627,9 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
     plasma shared memory.
     """
 
-    def __init__(self, cursor=None):
-        self.task_metrics = ray.util.state.list_tasks(detail=True)
-        self.cursor = cursor
+    def __init__(self, last_snapshot=None):
+        self.task_metrics = ray.util.state.list_tasks(detail=True, limit=10_000)
+        self.last_snapshot = last_snapshot
 
         memory_info = get_memory_info_reply(
             get_state_from_address(ray.get_runtime_context().gcs_address)
@@ -643,7 +645,7 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
             ),
         }
 
-        self.actor_metrics = ray.util.state.list_actors()
+        self.actor_metrics = ray.util.state.list_actors(limit=10_000)
 
     def clear_task_count(self):
         self.task_metrics = []
@@ -663,8 +665,8 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
             task_count[task.name] += 1
 
         # Filter out previous and dummy tasks.
-        if self.cursor is not None:
-            prev_task_count = self.cursor.get_task_count()
+        if self.last_snapshot is not None:
+            prev_task_count = self.last_snapshot.get_task_count()
             if prev_task_count is not None:
                 for name, count in prev_task_count.items():
                     task_count[name] -= count
@@ -676,8 +678,8 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
         actor_count = defaultdict(int)
         for actor in self.actor_metrics:
             actor_count[actor.class_name] += 1
-        if self.cursor is not None:
-            prev_actor_count = self.cursor.get_actor_count()
+        if self.last_snapshot is not None:
+            prev_actor_count = self.last_snapshot.get_actor_count()
             if prev_actor_count is not None:
                 for name, count in prev_actor_count.items():
                     actor_count[name] -= count
@@ -687,8 +689,8 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
 
     def get_object_store_stats(self):
         object_store_stats = self.object_store_stats.copy()
-        if self.cursor is not None:
-            prev_object_store_stats = self.cursor.get_object_store_stats()
+        if self.last_snapshot is not None:
+            prev_object_store_stats = self.last_snapshot.get_object_store_stats()
             if prev_object_store_stats is not None:
                 for key, val in prev_object_store_stats.items():
                     object_store_stats[key] -= val
@@ -698,6 +700,7 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
 # Dummy task used to make sure that we wait until (most) stats are available.
 @ray.remote
 def barrier():
+    time.sleep(1)
     return
 
 
@@ -707,60 +710,57 @@ def warmup():
     return np.zeros(1024 * 1024, dtype=np.uint8)
 
 
-def get_initial_core_execution_metrics_cursor():
+def task_metrics_flushed(refs):
+    task_ids = [t.task_id for t in ray.util.state.list_tasks(limit=10_000)]
+    # All tasks appear in the metrics.
+    return all(ref.task_id().hex() in task_ids for ref in refs)
+
+
+def get_initial_core_execution_metrics_snapshot():
     # Warmup plasma store and workers.
-    refs = [warmup.remote() for _ in range(10)]
+    refs = [warmup.remote() for _ in range(int(ray.cluster_resources()["CPU"]))]
     ray.get(refs)
+    wait_for_condition(lambda: task_metrics_flushed(refs))
 
-    for ref in refs:
-        wait_for_condition(
-            lambda: any(
-                ref.hex().startswith(t.task_id) for t in ray.util.state.list_tasks()
-            )
-        )
-
-    cursor = assert_core_execution_metrics_equals(
+    last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={"warmup": lambda count: True}, object_store_stats={}
         ),
-        cursor=None,
+        last_snapshot=None,
     )
-    return cursor
+    return last_snapshot
 
 
 def assert_core_execution_metrics_equals(
-    expected_metrics: CoreExecutionMetrics, cursor=None
+    expected_metrics: CoreExecutionMetrics, last_snapshot=None
 ):
-    # Wait for a task to finish to prevent a race condition where not all of
-    # the task metrics have been collected yet.
+    # Wait for one task per CPU to finish to prevent a race condition where not
+    # all of the task metrics have been collected yet.
     if expected_metrics.get_task_count() is not None:
-        ref = barrier.remote()
-        wait_for_condition(
-            lambda: any(
-                ref.hex().startswith(t.task_id) for t in ray.util.state.list_tasks()
-            )
-        )
+        refs = [barrier.remote() for _ in range(int(ray.cluster_resources()["CPU"]))]
+        ray.get(refs)
+        wait_for_condition(lambda: task_metrics_flushed(refs))
 
-    metrics = PhysicalCoreExecutionMetrics(cursor)
+    metrics = PhysicalCoreExecutionMetrics(last_snapshot)
     metrics.assert_task_metrics(expected_metrics)
     metrics.assert_object_store_metrics(expected_metrics)
     metrics.assert_actor_metrics(expected_metrics)
 
-    # Return a cursor to the current snapshot of metrics to make subsequent
-    # queries easier. Don't return a cursor for metrics that weren't asserted.
-    cursor = PhysicalCoreExecutionMetrics()
+    # Return a last_snapshot to the current snapshot of metrics to make subsequent
+    # queries easier. Don't return a last_snapshot for metrics that weren't asserted.
+    last_snapshot = PhysicalCoreExecutionMetrics()
     if expected_metrics.get_task_count() is None:
-        cursor.clear_task_count()
+        last_snapshot.clear_task_count()
     elif expected_metrics.get_object_store_stats() is None:
-        cursor.clear_object_store_stats()
+        last_snapshot.clear_object_store_stats()
     elif expected_metrics.get_actor_count() is None:
-        cursor.clear_actor_count()
+        last_snapshot.clear_actor_count()
 
-    return cursor
+    return last_snapshot
 
 
 def assert_blocks_expected_in_plasma(
-    cursor,
+    last_snapshot,
     num_blocks_expected,
     block_size_expected=None,
     total_bytes_expected=None,
@@ -778,7 +778,7 @@ def assert_blocks_expected_in_plasma(
 
     print(f"Expecting {total_bytes_expected} bytes, {num_blocks_expected} blocks")
 
-    def _assert(cursor):
+    def _assert(last_snapshot):
         assert_core_execution_metrics_equals(
             CoreExecutionMetrics(
                 object_store_stats={
@@ -794,21 +794,21 @@ def assert_blocks_expected_in_plasma(
                     ),
                 },
             ),
-            cursor,
+            last_snapshot,
         )
         return True
 
-    wait_for_condition(lambda: _assert(cursor))
+    wait_for_condition(lambda: _assert(last_snapshot))
 
-    # Get the latest cursor.
-    cursor = assert_core_execution_metrics_equals(
+    # Get the latest last_snapshot.
+    last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             object_store_stats={
                 "cumulative_created_plasma_objects": lambda count: True,
                 "cumulative_created_plasma_bytes": lambda count: True,
             }
         ),
-        cursor,
+        last_snapshot,
     )
 
-    return cursor
+    return last_snapshot

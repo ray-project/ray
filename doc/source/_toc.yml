@@ -212,7 +212,6 @@ parts:
               - file: serve/advanced-guides/inplace-updates
               - file: serve/advanced-guides/dev-workflow
               - file: serve/advanced-guides/grpc-guide
-              - file: serve/advanced-guides/deployment-graphs
               - file: serve/advanced-guides/managing-java-deployments
               - file: serve/advanced-guides/deploy-vm
           - file: serve/architecture

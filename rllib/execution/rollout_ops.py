@@ -2,9 +2,6 @@ import logging
 from typing import List, Optional, Union
 
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import (
-    _check_sample_batch_type,
-)
 from ray.rllib.policy.sample_batch import (
     SampleBatch,
     DEFAULT_POLICY_ID,
@@ -113,7 +110,6 @@ def synchronous_parallel_sample(
 
 def standardize_fields(samples: SampleBatchType, fields: List[str]) -> SampleBatchType:
     """Standardize fields of the given SampleBatch"""
-    _check_sample_batch_type(samples)
     wrapped = False
 
     if isinstance(samples, SampleBatch):

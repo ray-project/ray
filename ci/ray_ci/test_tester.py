@@ -8,6 +8,7 @@ import pytest
 
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.tester import (
+    _add_default_except_tags,
     _get_container,
     _get_all_test_query,
     _get_test_targets,
@@ -82,6 +83,16 @@ def test_get_test_targets() -> None:
             ) == [
                 "//python/ray/tests:flaky_test_01",
             ]
+
+
+def test_add_default_except_tags() -> None:
+    assert set(_add_default_except_tags("tag1,tag2").split(",")) == {
+        "tag1",
+        "tag2",
+        "manual",
+    }
+    assert _add_default_except_tags("") == "manual"
+    assert _add_default_except_tags("manual") == "manual"
 
 
 def test_get_all_test_query() -> None:

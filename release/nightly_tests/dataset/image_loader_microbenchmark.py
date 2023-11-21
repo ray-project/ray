@@ -1,6 +1,7 @@
 import ray
 import torch
 import torchvision
+from torchvision.transforms.functional import pil_to_tensor
 import os
 import tensorflow as tf
 import numpy as np
@@ -173,6 +174,11 @@ def get_transform(to_torch_tensor):
             torchvision.transforms.RandomHorizontalFlip(),
         ]
         + ([torchvision.transforms.ToTensor()] if to_torch_tensor else [])
+        + [
+            torchvision.transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            )
+        ]
     )
     return transform
 
@@ -183,7 +189,34 @@ transform = get_transform(False)
 
 def crop_and_flip_image(row):
     # Make sure to use torch.tensor here to avoid a copy from numpy.
-    row["image"] = transform(torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))))
+    row["image"] = transform(
+        torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))) / 255.0
+    )
+    return row
+
+
+def center_crop_image(row):
+    # Used to generate the validation set. The main difference between
+    # `crop_and_flip_image` and this method is that the validation set
+    # should avoid random cropping from the full image, but instead
+    # should resize and take the center crop to generate more consistent
+    # outputs.
+    val_transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.Resize(256),
+            torchvision.transforms.CenterCrop(224),
+            torchvision.transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            ),
+        ]
+    )
+    # Make sure to use torch.tensor here to avoid a copy from numpy.
+    row["image"] = val_transform(
+        torch.tensor(
+            np.transpose(row["image"], axes=(2, 0, 1)),
+        )
+        / 255.0
+    )
     return row
 
 
@@ -191,7 +224,7 @@ def crop_and_flip_image_batch(image_batch):
     image_batch["image"] = transform(
         # Make sure to use torch.tensor here to avoid a copy from numpy.
         # Original dims are (batch_size, channels, height, width).
-        torch.tensor(np.transpose(image_batch["image"], axes=(0, 3, 1, 2)))
+        torch.tensor(np.transpose(image_batch["image"], axes=(0, 3, 1, 2)) / 255.0)
     )
     return image_batch
 
@@ -199,14 +232,14 @@ def crop_and_flip_image_batch(image_batch):
 def decode_image_crop_and_flip(row):
     row["image"] = Image.frombytes("RGB", (row["height"], row["width"]), row["image"])
     # Convert back np to avoid storing a np.object array.
-    return {"image": np.array(transform(row["image"]))}
+    return {"image": np.array(transform(pil_to_tensor(row["image"]) / 255.0))}
 
 
 class MdsDatasource(ray.data.datasource.FileBasedDatasource):
-    _FILE_EXTENSION = "mds"
+    _FILE_EXTENSIONS = ["mds"]
 
     def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
+        self, f: "pyarrow.NativeFile", path: str
     ) -> Iterator[ray.data.block.Block]:
         file_info = streaming.base.format.base.reader.FileInfo(
             basename=os.path.basename(path), bytes=os.stat(path).st_size, hashes={}
@@ -333,8 +366,8 @@ def get_mosaic_dataloader(
 
 
 def get_ray_mosaic_dataset(mosaic_data_root):
-    mds_source = MdsDatasource()
-    return ray.data.read_datasource(mds_source, paths=mosaic_data_root)
+    mds_source = MdsDatasource(mosaic_data_root)
+    return ray.data.read_datasource(mds_source)
 
 
 def get_ray_parquet_dataset(parquet_data_root, parallelism=None):
@@ -539,10 +572,8 @@ if __name__ == "__main__":
         # ray.data.
         use_s3 = args.mosaic_data_root.startswith("s3://")
         if not use_s3:
-            mds_source = MdsDatasource()
-            ray_dataset = ray.data.read_datasource(
-                mds_source, paths=args.mosaic_data_root
-            )
+            mds_source = MdsDatasource(args.mosaic_data_root)
+            ray_dataset = ray.data.read_datasource(mds_source)
             ray_dataset = ray_dataset.map(crop_and_flip_image)
             for i in range(args.num_epochs):
                 benchmark.run_iterate_ds(

@@ -10,6 +10,10 @@ from typing import Dict, List, Optional
 NODE_DEATH_CAUSE_RAYLET_DIED = "NodeTerminated"
 
 
+# e.g., cpu_4_ondemand.
+NodeType = str
+
+
 @dataclass
 class ResourceUsage:
     # Resource name.

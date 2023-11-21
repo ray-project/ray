@@ -354,6 +354,7 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_with_inherited_members.rst
 
    schema.ServeInstanceDetails
    schema.ApplicationDetails

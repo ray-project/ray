@@ -19,7 +19,7 @@ from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_blocks_expected_in_plasma,
     assert_core_execution_metrics_equals,
-    get_initial_core_execution_metrics_cursor,
+    get_initial_core_execution_metrics_snapshot,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -106,8 +106,8 @@ class RandomBytesReader(Reader):
 
 
 class SlowCSVDatasource(CSVDatasource):
-    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
-        for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+    def _read_stream(self, f: "pa.NativeFile", path: str):
+        for block in super()._read_stream(f, path):
             time.sleep(3)
             yield block
 
@@ -127,9 +127,7 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     if not block_split:
         # Setting infinite block size effectively disables block splitting.
         ctx.target_max_block_size = float("inf")
-    ds = ray.data.read_datasource(
-        SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
-    )
+    ds = ray.data.read_datasource(SlowCSVDatasource(str(tmp_path)), parallelism=8)
 
     start = time.time()
     ds.map(lambda x: x)
@@ -172,7 +170,7 @@ def test_dataset(
     def warmup():
         return np.zeros(ctx.target_max_block_size, dtype=np.uint8)
 
-    cursor = get_initial_core_execution_metrics_cursor()
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
         parallelism=num_tasks,
@@ -187,7 +185,7 @@ def test_dataset(
         ds.size_bytes()
         >= 0.7 * ctx.target_max_block_size * num_blocks_per_task * num_tasks
     )
-    cursor = assert_core_execution_metrics_equals(
+    last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
                 "_get_datasource_or_legacy_reader": 1,
@@ -198,7 +196,7 @@ def test_dataset(
                 "cumulative_created_plasma_objects": lambda count: True,
             },
         ),
-        cursor,
+        last_snapshot,
     )
 
     # Too-large blocks will get split to respect target max block size.
@@ -216,10 +214,12 @@ def test_dataset(
                 "ReadRandomBytes->MapBatches(<lambda>)": num_tasks,
             },
         ),
-        cursor,
+        last_snapshot,
     )
     assert_blocks_expected_in_plasma(
-        cursor, num_blocks_expected, block_size_expected=ctx.target_max_block_size
+        last_snapshot,
+        num_blocks_expected,
+        block_size_expected=ctx.target_max_block_size,
     )
 
     # Blocks smaller than requested batch size will get coalesced.
