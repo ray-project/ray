@@ -36,7 +36,7 @@ class DataOpTask(OpTask):
         self,
         streaming_gen: StreamingObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[Optional[Exception], None],
+        task_done_callback: Callable[[Optional[Exception]], None],
     ):
         """
         Args:

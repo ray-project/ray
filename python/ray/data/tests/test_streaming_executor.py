@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -732,6 +732,25 @@ def test_max_errored_blocks(
         assert res == list(range(num_errored_blocks, num_tasks))
         stats = ds._get_stats_summary()
         assert stats.extra_metrics["num_tasks_failed"] == num_errored_blocks
+
+
+def test_exception_concise_stacktrace(ray_start_regular_shared):
+    driver_script = """
+import ray
+
+def map(_):
+    raise ValueError("foo")
+
+ray.data.range(1).map(map).take_all()
+    """
+    proc = run_string_as_driver_nonblocking(driver_script)
+    out_str = proc.stdout.read().decode("utf-8") + proc.stderr.read().decode("utf-8")
+    # Test that the stack trace only contains the UDF exception, but not any other
+    # exceptions raised when the executor is handling the UDF exception.
+    assert (
+        "During handling of the above exception, another exception occurred"
+        not in out_str
+    ), out_str
 
 
 if __name__ == "__main__":
