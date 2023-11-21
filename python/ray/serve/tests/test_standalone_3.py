@@ -649,10 +649,10 @@ def test_serve_shut_down_without_duplicated_logs(
 
 
 def test_serve_passing_task_id_kargs(shutdown_ray, call_ray_stop_only):  # noqa: F811
-    """Test Serve shut down without duplicated logs.
+    """Test Serve handle called with predefined keyword argument.
 
-    When Serve shutdown is called and executing the shutdown process, the controller
-    log should not be spamming controller shutdown and deleting app messages.
+    When Serve handle is called with predefined keyword argument such as task_id, the
+    call should not fail and should continue to accept the request.
     """
     cluster = Cluster()
     cluster.add_node()
