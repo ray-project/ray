@@ -850,8 +850,12 @@ class DataIterator(abc.ABC):
         )
 
     def __del__(self):
-        # Clear metrics on deletion in case the iterator was not fully consumed.
-        StatsManager.clear_iteration_metrics(self._get_dataset_tag())
+        try:
+            # Clear metrics on deletion in case the iterator was not fully consumed.
+            StatsManager.clear_iteration_metrics(self._get_dataset_tag())
+        except Exception:
+            # This may be run after the cluster is shutdown.
+            pass
 
 
 # Backwards compatibility alias.

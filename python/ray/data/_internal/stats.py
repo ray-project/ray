@@ -344,6 +344,11 @@ class _StatsActor:
         return tags
 
 
+# Creating/getting an actor from multiple threads is not safe.
+# https://github.com/ray-project/ray/issues/41324
+_stats_actor_lock: threading.Lock = threading.Lock()
+
+
 def _get_or_create_stats_actor():
     ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
@@ -354,13 +359,14 @@ def _get_or_create_stats_actor():
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-    return _StatsActor.options(
-        name=STATS_ACTOR_NAME,
-        namespace=STATS_ACTOR_NAMESPACE,
-        get_if_exists=True,
-        lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
-    ).remote()
+    with _stats_actor_lock:
+        return _StatsActor.options(
+            name=STATS_ACTOR_NAME,
+            namespace=STATS_ACTOR_NAMESPACE,
+            get_if_exists=True,
+            lifetime="detached",
+            scheduling_strategy=scheduling_strategy,
+        ).remote()
 
 
 class _StatsManager:
