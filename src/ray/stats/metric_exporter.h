@@ -139,17 +139,19 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   /// \param view_data, data container aggregating time-series for this metric (across different set of tags)
   /// \param request_proto, target proto payload to embed metric values into
   /// \param cur_batch_size current size of the batch (in terms of number of time-series already added)
+  /// \param next_payload_size_check_at next batch size when payload (binary) size have to be checked
   void ProcessMetricsData(const opencensus::stats::ViewDescriptor &view_descriptor,
                           const opencensus::stats::ViewData &view_data,
                           rpc::ReportOCMetricsRequest &request_proto,
-                          size_t &cur_batch_size);
-
+                          size_t &cur_batch_size,
+                          size_t &next_payload_size_check_at);
 
  protected:
   rpc::ReportOCMetricsRequest createRequestProtoPayload();
-
+  size_t nextPayloadSizeCheckAt(size_t cur_batch_size);
   bool handleBatchOverflows(const rpc::ReportOCMetricsRequest &request_proto,
-                            size_t cur_batch_size);
+                            size_t cur_batch_size,
+                            size_t &next_batch_size_check_at);
 
   void addGlobalTagsToGrpcMetric(opencensus::proto::metrics::v1::Metric &metric);
 

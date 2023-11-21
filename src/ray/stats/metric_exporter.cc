@@ -168,6 +168,11 @@ void OpenCensusProtoExporter::addGlobalTagsToGrpcMetric(
   }
 }
 
+size_t OpenCensusProtoExporter::nextPayloadSizeCheckAt(size_t cur_batch_size) {
+  size_t remaining = report_batch_size_ - cur_batch_size;
+  return cur_batch_size + remaining / 2;
+}
+
 void OpenCensusProtoExporter::ExportViewData(
     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                 opencensus::stats::ViewData>> &data) {
@@ -177,8 +182,11 @@ void OpenCensusProtoExporter::ExportViewData(
   rpc::ReportOCMetricsRequest request_proto = createRequestProtoPayload();
 
   size_t cur_batch_size = 0;
+  // NOTE: Because each payload size check is linear in the number of fields w/in the payload
+  //       we intentionally sample it to happen only log(batch_size) times
+  size_t next_size_check_at = nextPayloadSizeCheckAt(cur_batch_size);
   for (const auto & [descriptor, datum] : data) {
-    ProcessMetricsData(descriptor, datum, request_proto, cur_batch_size);
+    ProcessMetricsData(descriptor, datum, request_proto, cur_batch_size, next_size_check_at);
   }
 
   if (cur_batch_size > 0) {
@@ -227,15 +235,20 @@ opencensus::proto::metrics::v1::Metric &createMetricProtoPayload(const opencensu
 }
 
 bool OpenCensusProtoExporter::handleBatchOverflows(const rpc::ReportOCMetricsRequest &request_proto,
-                                                   size_t cur_batch_size) {
-  // NOTE: Because each payload size check is linear in the number of fields w/in the payload
-  //       we intentionally sample it to happen only every 1000 series produced to avoid affecting performance
-  bool should_check_payload_size = (cur_batch_size + 1) % 1000 == 0;
+                                                   size_t cur_batch_size,
+                                                   size_t &next_payload_size_check_at) {
+  bool should_check_payload_size = cur_batch_size == next_payload_size_check_at;
   /// If it exceeds the batch size, send data.
-  if (cur_batch_size >= report_batch_size_ ||
-      (should_check_payload_size && request_proto.ByteSizeLong() >= proto_payload_size_threshold_)) {
+  if (cur_batch_size >= report_batch_size_) {
     SendData(request_proto);
     return true;
+  } else if (should_check_payload_size) {
+    if (request_proto.ByteSizeLong() >= proto_payload_size_threshold_) {
+      SendData(request_proto);
+      return true;
+    }
+
+    next_payload_size_check_at = nextPayloadSizeCheckAt(cur_batch_size);
   }
 
   return false;
@@ -244,7 +257,8 @@ bool OpenCensusProtoExporter::handleBatchOverflows(const rpc::ReportOCMetricsReq
 void OpenCensusProtoExporter::ProcessMetricsData(const opencensus::stats::ViewDescriptor &view_descriptor,
                                                  const opencensus::stats::ViewData &view_data,
                                                  rpc::ReportOCMetricsRequest &request_proto,
-                                                 size_t &cur_batch_size) {
+                                                 size_t &cur_batch_size,
+                                                 size_t &next_payload_size_check_at) {
   // Unpack the fields we need for in memory data structure.
   auto &metric_proto = createMetricProtoPayload(view_descriptor, request_proto);
 
@@ -252,19 +266,29 @@ void OpenCensusProtoExporter::ProcessMetricsData(const opencensus::stats::ViewDe
   auto start_time = absl::ToUnixSeconds(view_data.start_time());
   auto end_time = absl::ToUnixSeconds(view_data.end_time());
   auto make_new_data_point_proto =
-    [this, &request_proto, &metric_proto, &cur_batch_size, view_descriptor, start_time, end_time](
+    [
+      this,
+      &request_proto,
+      &metric_proto,
+      &cur_batch_size,
+      &next_payload_size_check_at,
+      view_descriptor,
+      start_time,
+      end_time
+    ](
       const std::vector<std::string> &tag_values
     ) {
       cur_batch_size++;
       // Prior to adding time-series to the batch, first validate whether batch still
       // has capacity or should be flushed
-      bool flushed = handleBatchOverflows(request_proto, cur_batch_size);
+      bool flushed = handleBatchOverflows(request_proto, cur_batch_size, next_payload_size_check_at);
       if (flushed) {
         request_proto = createRequestProtoPayload();
         // NOTE: We have to also overwrite current metric_proto payload since we're gonna
         //       be writing into new payload now
         metric_proto = createMetricProtoPayload(view_descriptor, request_proto);
         cur_batch_size = 0;
+        next_payload_size_check_at = nextPayloadSizeCheckAt(cur_batch_size);
       }
 
       // Add new time-series to a proto payload
