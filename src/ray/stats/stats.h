@@ -61,7 +61,9 @@ static inline void Init(const TagsType &global_tags,
                         const WorkerID &worker_id,
                         std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
                         int64_t metrics_report_batch_size =
-                            RayConfig::instance().metrics_report_batch_size()) {
+                            RayConfig::instance().metrics_report_batch_size(),
+                        int64_t max_grpc_payload_size =
+                            RayConfig::instance().agent_max_grpc_message_size()) {
   absl::MutexLock lock(&stats_mutex);
   if (StatsConfig::instance().IsInitialized()) {
     RAY_CHECK(metrics_io_service_pool != nullptr);
@@ -109,8 +111,10 @@ static inline void Init(const TagsType &global_tags,
       (*metrics_io_service),
       "127.0.0.1",
       worker_id,
-      RayConfig::instance().metrics_report_batch_size(),
-      RayConfig::instance().agent_max_grpc_message_size());
+      metrics_report_batch_size,
+      max_grpc_payload_size
+  );
+
   StatsConfig::instance().SetGlobalTags(global_tags);
   for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();
