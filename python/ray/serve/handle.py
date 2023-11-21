@@ -168,9 +168,7 @@ class _DeploymentHandleBase:
             return f"{deployment_name}#{handle_id}"
 
     @classmethod
-    def _create_request_counter(
-        cls, app_name, deployment_name, handle_id=get_random_letters()
-    ):
+    def _create_request_counter(cls, app_name, deployment_name):
         return metrics.Counter(
             "serve_handle_request_counter",
             description=(
@@ -181,7 +179,9 @@ class _DeploymentHandleBase:
         ).set_default_tags(
             # TODO(zcin): Separate deployment_id into deployment and application tags
             {
-                "handle": cls._gen_handle_tag(app_name, deployment_name, handle_id),
+                "handle": cls._gen_handle_tag(
+                    app_name, deployment_name, handle_id=get_random_letters()
+                ),
                 "deployment": deployment_name,
                 "application": app_name,
             }
