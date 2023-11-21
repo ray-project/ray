@@ -39,8 +39,8 @@ namespace rpc {
       method_timeout_ms))
 
 // Define a void RPC client method declaration
-#define VOID_RPC_CLIENT_VIRTUAL_METHOD_DECL(SERVICE, METHOD)        \
-  virtual void METHOD(const METHOD##Request &request,               \
+#define VOID_RPC_CLIENT_VIRTUAL_METHOD_DECL(SERVICE, METHOD) \
+  virtual void METHOD(const METHOD##Request &request,        \
                       const ClientCallback<METHOD##Reply> &callback) = 0;
 
 // Define a void RPC client method.
