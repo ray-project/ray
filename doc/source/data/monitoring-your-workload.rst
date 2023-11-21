@@ -3,11 +3,11 @@
 Monitoring Your Workload
 ========================
 
-This section helps you debug and monitor the execution of your Ray Data :class:`~ray.data.Dataset` by viewing the:
+This section helps you debug and monitor the execution of your :class:`~ray.data.Dataset` by viewing the:
 
-* Ray dashboard job detail page
-* Ray dashboard metrics
-* Ray Data logs
+* Ray Data overview :ref:`Ray Data Overview`
+* Ray dashboard metrics :ref:`Ray Dashboard Metrics`
+* Ray Data logs :ref:`Ray Data Logs`
 
 Ray Data Dashboard
 ------------------
@@ -17,15 +17,17 @@ Ray Data emits Prometheus metrics in real-time while a Dataset is executing. The
 .. note::
    Most metrics are only available for physical operators that use the map operation.
 
-Ray dashboard job detail page
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _Ray Data Overview:
 
-For an overview of all datasets that have been running on your cluster, see the Ray Data Overview in the :ref:`job detail page <dash-jobs-view>`. This table appears once the first dataset starts executing on the cluster, and shows dataset details such as:
+Ray Data overview
+~~~~~~~~~~~~~~~~~
+
+For an overview of all datasets that have been running on your cluster, see the Ray Data Overview in the :ref:`jobs view <dash-jobs-view>`. This table appears once the first dataset starts executing on the cluster, and shows dataset details such as:
 
 * execution progress (measured in blocks)
 * execution state (running, failed, or finished)
-* dataset runtime
-* certain dataset-level metrics
+* dataset start/end time
+* dataset-level metrics (total bytes spilled for a dataset, total CPUs/GPUs used by a dataset, ...)
 
 .. image:: images/data-overview-table.png
    :align: center
@@ -35,10 +37,12 @@ For a more fine-grained overview, each dataset row in the table can also be expa
 .. image:: images/data-overview-table-expanded.png
    :align: center
 
+.. _Ray Dashboard Metrics:
+
 Ray dashboard metrics
 ~~~~~~~~~~~~~~~~~~~~~
 
-For a time-series view of these metrics, see the Ray Data section in the :ref:`Metrics tab <dash-metrics-view>`. This section contains time-series graphs of all metrics emitted by Ray Data. Execution metrics are grouped by dataset and operator, and iteration metrics are grouped by dataset.
+For a time-series view of these metrics, see the Ray Data section in the :ref:`Metrics view <dash-metrics-view>`. This section contains time-series graphs of all metrics emitted by Ray Data. Execution metrics are grouped by dataset and operator, and iteration metrics are grouped by dataset.
 
 The metrics recorded are:
 
@@ -59,11 +63,13 @@ The metrics recorded are:
 
 To learn more about the Ray dashboard, including detailed setup instructions, see :ref:`Ray Dashboard <observability-getting-started>`.
 
+.. _Ray Data Logs
+
 Ray Data logs
 -------------
 During execution, Ray Data periodically logs updates to `ray-data.log`.
 
-Every 5 seconds, Ray Data logs the execution progress of every operator in the dataset. For more frequent updates, set `RAY_DATA_TRACE_SCHEDULING=1` so that the progress is logged after each task is dispatched.
+Every five seconds, Ray Data logs the execution progress of every operator in the dataset. For more frequent updates, set `RAY_DATA_TRACE_SCHEDULING=1` so that the progress is logged after each task is dispatched.
 
 .. code-block:: text
 

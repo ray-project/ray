@@ -53,7 +53,6 @@ parts:
           - file: data/examples/index
           - file: data/api/api
           - file: data/data-internals
-          - file: data/monitoring-your-workload
 
       - file: train/train
         title: Ray Train
