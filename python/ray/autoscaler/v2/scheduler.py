@@ -262,7 +262,7 @@ class ResourceDemandScheduler(IResourceScheduler):
     @dataclass
     class ScheduleContext:
         """
-        Encapsulates the context for processing one scheduling requests.
+        Encapsulates the context for processing one scheduling request.
 
         This exposes functions to read and write the scheduling nodes, to prevent
         accidental modification of the internal state.
