@@ -6646,6 +6646,22 @@
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
 
+- name: gcp_cluster_launcher_gpu_docker
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: weekly
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 1200
+    script: python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
 - name: autoscaler_aws
   group: autoscaler-test
