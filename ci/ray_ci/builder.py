@@ -52,6 +52,12 @@ from ci.ray_ci.utils import logger, docker_login
     help=("Platform to build the docker with"),
 )
 @click.option(
+    "--canonical-tag",
+    default=None,
+    type=str,
+    help=("Tag to use for the docker image"),
+)
+@click.option(
     "--upload",
     is_flag=True,
     show_default=True,
@@ -65,6 +71,7 @@ def main(
     python_version: str,
     platform: List[str],
     architecture: str,
+    canonical_tag: str,
     upload: bool,
 ) -> None:
     """
@@ -79,7 +86,13 @@ def main(
     if artifact_type == "docker":
         logger.info(f"Building {image_type} docker for {python_version} on {platform}")
         build_docker(
-            image_type, python_version, build_type, platform, architecture, upload
+            image_type,
+            python_version,
+            build_type,
+            platform,
+            architecture,
+            canonical_tag,
+            upload,
         )
         return
 
@@ -88,7 +101,13 @@ def main(
             f"Building {image_type} anyscale for {python_version} on {platform}"
         )
         build_anyscale(
-            image_type, python_version, build_type, platform, architecture, upload
+            image_type,
+            python_version,
+            build_type,
+            platform,
+            architecture,
+            canonical_tag,
+            upload,
         )
         return
 
@@ -114,6 +133,7 @@ def build_docker(
     build_type: str,
     platform: List[str],
     architecture: str,
+    canonical_tag: str,
     upload: bool,
 ) -> None:
     """
@@ -121,7 +141,9 @@ def build_docker(
     """
     BuilderContainer(python_version, build_type, architecture).run()
     for p in platform:
-        RayDockerContainer(python_version, p, image_type, architecture, upload).run()
+        RayDockerContainer(
+            python_version, p, image_type, architecture, canonical_tag, upload
+        ).run()
 
 
 def build_anyscale(
@@ -130,6 +152,7 @@ def build_anyscale(
     build_type: str,
     platform: List[str],
     architecture: str,
+    canonical_tag: str,
     upload: bool,
 ) -> None:
     """
@@ -138,10 +161,10 @@ def build_anyscale(
     BuilderContainer(python_version, build_type, architecture).run()
     for p in platform:
         RayDockerContainer(
-            python_version, p, image_type, architecture, upload=False
+            python_version, p, image_type, architecture, canonical_tag, upload=False
         ).run()
         AnyscaleDockerContainer(
-            python_version, p, image_type, architecture, upload
+            python_version, p, image_type, architecture, canonical_tag, upload
         ).run()
 
 
