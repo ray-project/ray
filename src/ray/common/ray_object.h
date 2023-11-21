@@ -42,8 +42,9 @@ class RayObject {
   RayObject(const std::shared_ptr<Buffer> &data,
             const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
+            uint64_t size = 0,
             bool copy_data = false) {
-    Init(data, metadata, nested_refs, copy_data);
+    Init(data, metadata, nested_refs, size, copy_data);
   }
 
   /// This constructor creates a ray object instance whose data will be generated
@@ -97,6 +98,10 @@ class RayObject {
   const std::vector<rpc::ObjectReference> &GetNestedRefs() const { return nested_refs_; }
 
   uint64_t GetSize() const {
+    if (size_) {
+      return size_;
+    }
+
     uint64_t size = 0;
     size += (data_ != nullptr) ? data_->Size() : 0;
     size += (metadata_ != nullptr) ? metadata_->Size() : 0;
@@ -129,12 +134,14 @@ class RayObject {
   void Init(const std::shared_ptr<Buffer> &data,
             const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
+            uint64_t size,
             bool copy_data = false) {
     data_ = data;
     metadata_ = metadata;
     nested_refs_ = nested_refs;
     has_data_copy_ = copy_data;
     creation_time_nanos_ = absl::GetCurrentTimeNanos();
+    size_ = size;
 
     if (has_data_copy_) {
       // If this object is required to hold a copy of the data,
@@ -166,6 +173,7 @@ class RayObject {
   bool accessed_ = false;
   /// The timestamp at which this object was created locally.
   int64_t creation_time_nanos_;
+  uint64_t size_;
 };
 
 }  // namespace ray

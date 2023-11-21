@@ -92,12 +92,12 @@ namespace ray {
 
 RayObject::RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_error_info) {
   if (ray_error_info == nullptr) {
-    Init(nullptr, MakeErrorMetadataBuffer(error_type), {});
+    Init(nullptr, MakeErrorMetadataBuffer(error_type), {}, static_cast<uint64_t>(0));
     return;
   }
 
   const auto error_buffer = MakeSerializedErrorBuffer<rpc::RayErrorInfo>(*ray_error_info);
-  Init(std::move(error_buffer), MakeErrorMetadataBuffer(error_type), {});
+  Init(std::move(error_buffer), MakeErrorMetadataBuffer(error_type), {}, static_cast<uint64_t>(0));
   return;
 }
 
