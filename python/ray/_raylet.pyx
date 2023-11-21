@@ -846,19 +846,17 @@ cdef raise_if_dependency_failed(arg):
     if isinstance(arg, RayError):
         raise arg
 
-
-
 def serialize_retry_exception_allowlist(retry_exception_allowlist, func_name):
-        try:
-            return ray_pickle.dumps(retry_exception_allowlist)
-        except TypeError as e:
-            msg = (
-                "Could not serialize the retry exception allowlist"
-                f"{retry_exception_allowlist} for task {func_name}. "
-                "Check "
-                "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
-                "for more information.")
-            raise TypeError(msg) from e
+    try:
+        return ray_pickle.dumps(retry_exception_allowlist)
+    except TypeError as e:
+        msg = (
+            "Could not serialize the retry exception allowlist"
+            f"{retry_exception_allowlist} for task {func_name}. "
+            "Check "
+            "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+            "for more information.")
+        raise TypeError(msg) from e
 
 cdef c_bool determine_if_retryable(
     Exception e,
@@ -3627,7 +3625,9 @@ cdef class CoreWorker:
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
 
-        serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(retry_exception_allowlist, function_descriptor.repr)
+        serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
+            retry_exception_allowlist,
+            function_descriptor.repr)
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -3845,7 +3845,9 @@ cdef class CoreWorker:
             TaskID current_task = self.get_current_task_id()
             c_string serialized_retry_exception_allowlist
 
-        serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(retry_exception_allowlist, function_descriptor.repr)
+        serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
+            retry_exception_allowlist,
+            function_descriptor.repr)
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:

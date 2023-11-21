@@ -131,9 +131,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options,
-                int max_retries,
+            int max_retries,
             c_bool retry_exceptions,
-            c_string serialized_retry_exception_allowlist,       
+            c_string serialized_retry_exception_allowlist,
             c_vector[CObjectReference] &task_returns,
             const CTaskID current_task_id)
         CRayStatus KillActor(
