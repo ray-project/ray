@@ -34,6 +34,7 @@ steps:
     tags:
       - python_dependencies
       - docker
+      - tune
     wanda: ci/docker/ray.cpu.base.wanda.yaml
     matrix:
       - "3.8"
