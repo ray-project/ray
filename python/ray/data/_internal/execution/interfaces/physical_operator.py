@@ -36,7 +36,7 @@ class DataOpTask(OpTask):
         self,
         streaming_gen: StreamingObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[], None],
+        task_done_callback: Callable[[Optional[Exception]], None],
     ):
         """
         Args:
@@ -73,7 +73,7 @@ class DataOpTask(OpTask):
                     # And it's not stopped yet.
                     break
             except StopIteration:
-                self._task_done_callback()
+                self._task_done_callback(None)
                 break
 
             try:
@@ -89,7 +89,7 @@ class DataOpTask(OpTask):
                     ray.get(block_ref)
                     assert False, "Should not reach here."
                 except Exception as ex:
-                    self._task_done_callback()
+                    self._task_done_callback(ex)
                     raise ex from None
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
