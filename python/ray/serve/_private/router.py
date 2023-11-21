@@ -241,8 +241,7 @@ class ActorReplicaWrapper:
             )
         else:
             method = self._actor_handle.handle_request
-
-        return method.remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
+        return method.remote(pickle.dumps(query))
 
     def send_query(
         self, query: Query
