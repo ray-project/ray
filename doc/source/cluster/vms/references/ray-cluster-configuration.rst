@@ -1420,7 +1420,7 @@ Deprecated since Ray 2.9 in favor of :ref:`min_worker_nodes <cluster-configurati
 
 The maximum number of worker nodes to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-worker-nodes>`. By default, the number of worker nodes of a node type is unbounded, constrained only by the cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-worker-nodes>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
 
-Note, for the nodes of type ``head_node_type`` the default number of max workers is 0.
+Note, for the nodes of type ``head_node_type`` the default number of max worker nodes is 0.
 
 * **Required:** No
 * **Importance:** High
