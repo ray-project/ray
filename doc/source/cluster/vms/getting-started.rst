@@ -32,7 +32,7 @@ Before we start, you will need to install some Python dependencies as follows:
 .. tab-set::
 
    .. tab-item:: Ray Team Supported
-        :sync: Ray Team Supported
+      :sync: Ray Team Supported
 
       .. tab-set::
 
@@ -51,7 +51,7 @@ Before we start, you will need to install some Python dependencies as follows:
                 $ pip install -U "ray[default]" google-api-python-client
 
    .. tab-item:: Community Supported
-        :sync: Community Supported
+      :sync: Community Supported
 
       .. tab-set::
 
@@ -86,7 +86,7 @@ Next, if you're not set up to use your cloud provider from the command line, you
 .. tab-set::
 
    .. tab-item:: Ray Team Supported
-        :sync: Ray Team Supported
+      :sync: Ray Team Supported
 
       .. tab-set::
 
@@ -101,7 +101,7 @@ Next, if you're not set up to use your cloud provider from the command line, you
             Set the ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable as described in `the GCP docs <https://cloud.google.com/docs/authentication/getting-started>`_.
 
    .. tab-item:: Community Supported
-        :sync: Community Supported
+      :sync: Community Supported
 
       .. tab-set::
 
@@ -222,7 +222,7 @@ A minimal sample cluster configuration file looks as follows:
 .. tab-set::
 
    .. tab-item:: Ray Team Supported
-        :sync: Ray Team Supported
+      :sync: Ray Team Supported
 
       .. tab-set::
 
@@ -246,7 +246,7 @@ A minimal sample cluster configuration file looks as follows:
                     region: us-west1
 
    .. tab-item:: Community Supported
-        :sync: Community Supported
+      :sync: Community Supported
 
       .. tab-set::
 
