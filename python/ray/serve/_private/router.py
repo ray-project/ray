@@ -141,6 +141,29 @@ class Query:
             # Make the scanner GC-able to avoid memory leaks.
             scanner.clear()
 
+    async def merge_request_kwargs(self, kwargs: Dict[Any, Any]) -> Dict[Any, Any]:
+        """Returns a copy of this query with the given kwargs merged in."""
+        request_kwargs = {**kwargs, **self.kwargs}
+        return request_kwargs
+
+    def __post_init__(self):
+        """Resolve any `ray.ObjectRef` arguments in `args` and `kwargs`."""
+        args = []
+        for arg in self.args:
+            if isinstance(arg, ray.ObjectRef):
+                args.append(ray.get(arg))
+            else:
+                args.append(arg)
+        self.args = args
+
+        kwargs = {}
+        for k, v in self.kwargs.items():
+            if isinstance(v, ray.ObjectRef):
+                kwargs[k] = ray.get(v)
+            else:
+                kwargs[k] = v
+        self.kwargs = kwargs
+
 
 class ReplicaWrapper(ABC):
     """Defines the interface for a scheduler to talk to a replica.
