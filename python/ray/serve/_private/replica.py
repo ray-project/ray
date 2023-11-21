@@ -7,6 +7,7 @@ import time
 import traceback
 from contextlib import asynccontextmanager
 from importlib import import_module
+from itertools import zip_longest
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple
 
 import aiorwlock
@@ -238,8 +239,7 @@ def create_replica_wrapper(actor_class_name: str):
         ) -> Tuple[bytes, Any]:
             query = pickle.loads(pickled_query)
             request_metadata = query.metadata
-            request_args = list(request_args) + query.args
-            request_kwargs.update(query.kwargs)
+            request_kwargs = {**query.kwargs, **request_kwargs}
 
             if request_metadata.is_grpc_request:
                 # Ensure the request args are a single gRPCRequest object.
@@ -339,8 +339,7 @@ def create_replica_wrapper(actor_class_name: str):
             """Generator that is the entrypoint for all `stream=True` handle calls."""
             query = pickle.loads(pickled_query)
             request_metadata = query.metadata
-            request_args = list(request_args) + query.args
-            request_kwargs.update(query.kwargs)
+            request_kwargs = {**query.kwargs, **request_kwargs}
 
             if request_metadata.is_grpc_request:
                 # Ensure the request args are a single gRPCRequest object.
