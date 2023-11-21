@@ -71,10 +71,10 @@ def test_get_put_simple(call_ray_start_with_webui_addr):  # noqa: F811
     webui = call_ray_start_with_webui_addr
     client = Client2(webui, "test_get_put_simple")
     my_data = 42
-    ref = client.put(my_data)
+    ref = ray.put(my_data)
     print(f"put {my_data} as ref: {ref}")
     # but within a task/method, it's all in the worker, ofc
-    got = client.get(ref)
+    got = ray.get(ref)
     print(f"got {got} as ref: {ref}")
     assert type(got) == type(my_data)
     assert got == 42
@@ -84,12 +84,12 @@ def test_get_multiple(call_ray_start_with_webui_addr):  # noqa: F811
     webui = call_ray_start_with_webui_addr
     client = Client2(webui, "test_get_multiple")
     my_data1 = 42
-    ref1 = client.put(my_data1)
+    ref1 = ray.put(my_data1)
 
     my_data2 = "something extra"
-    ref2 = client.put(my_data2)
+    ref2 = ray.put(my_data2)
 
-    got1, got2 = client.get([ref1, ref2])
+    got1, got2 = ray.get([ref1, ref2])
     assert got1 == 42
     assert got2 == "something extra"
 
@@ -114,10 +114,10 @@ def test_get_put_custom_type(call_ray_start_with_webui_addr):  # noqa: F811
         runtime_env={"working_dir": os.path.dirname(__file__)},
     )
     my_data = MyDataType(42, "some serializable python object")
-    ref = client.put(my_data)
+    ref = ray.put(my_data)
     print(f"put {my_data.pprint()} as ref: {ref}")
     # but within a task/method, it's all in the worker, ofc
-    got = client.get(ref)
+    got = ray.get(ref)
     print(f"got {got.pprint()} as ref: {ref}")
     assert type(got) == type(my_data)
     assert got.i == my_data.i
@@ -127,7 +127,7 @@ def test_get_put_custom_type(call_ray_start_with_webui_addr):  # noqa: F811
 def test_task_remote(call_ray_start_with_webui_addr):
     webui = call_ray_start_with_webui_addr
     client = Client2(webui, "test_task_remote")
-    remote_task_call = client.task(fib).remote(5)
+    remote_task_call = fib.remote(5)
     got = client.get(remote_task_call)
     assert got == 8
 
@@ -166,7 +166,7 @@ def test_task_remote_custom_type_with_ref(call_ray_start_with_webui_addr):  # no
         "test_task_remote_custom_type_with_ref",
         runtime_env={"working_dir": os.path.dirname(__file__)},
     )
-    result_ref = client.task(fib_with_ref).remote(5)
+    result_ref = fib_with_ref.remote(5)
     fib_result = client.get(result_ref)
     assert fib_result.input == 5
     assert client.get(fib_result.obj_ref) == 8
@@ -200,7 +200,7 @@ def test_task_remote_dynamic(call_ray_start_with_webui_addr):
     """
     webui = call_ray_start_with_webui_addr
     client = Client2(webui, "test_task_remote")
-    remote_task_call = client.task(primes_dynamic).remote(100)
+    remote_task_call = primes_dynamic.remote(100)
     gen = client.get(remote_task_call)
     rets = []
     for ref in gen:
@@ -217,8 +217,8 @@ def test_task_remote_dynamic(call_ray_start_with_webui_addr):
 def test_actor_remote(call_ray_start_with_webui_addr):
     webui = call_ray_start_with_webui_addr
     client = Client2(webui, "test_actor_remote")
-    actor = client.actor(Counter).remote(5)
-    got_ref = client.method(actor.increment).remote(3)
+    actor = Counter.remote(5)
+    got_ref = actor.increment.remote(3)
     got = client.get(got_ref)
     assert got == 8
 
@@ -226,8 +226,8 @@ def test_actor_remote(call_ray_start_with_webui_addr):
 def test_actor_remote_options(call_ray_start_with_webui_addr):
     webui = call_ray_start_with_webui_addr
     client = Client2(webui, "test_actor_remote")
-    actor = client.actor(Counter).options(num_cpus=1).remote(5)
-    got_ref = client.method(actor.iota).options(num_returns=3).remote(3)
+    actor = Counter.options(num_cpus=1).remote(5)
+    got_ref = actor.iota.options(num_returns=3).remote(3)
     assert client.get(got_ref) == [0, 1, 2]
 
 
@@ -243,7 +243,7 @@ def test_actor_wrapped(call_ray_start_with_webui_addr):
 
     webui = call_ray_start_with_webui_addr
     client = Client2(webui, "test_actor_wrapped")
-    contains_actor_ref = client.task(returnsCounter).remote(5)
+    contains_actor_ref = returnsCounter.remote(5)
     contains_actor = client.get(contains_actor_ref)
     got_ref = client.method(contains_actor.actor.increment).remote(3)
     got = client.get(got_ref)
@@ -282,7 +282,7 @@ def test_no_reconnection_after_ttl(call_ray_start_with_webui_addr):
     _ = client.put(42)
     client.disconnect()
 
-    time.sleep(20)
+    time.sleep(30)
     from datetime import datetime
 
     print(

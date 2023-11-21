@@ -43,63 +43,11 @@ class Client:
 
     User can use these methods to talk to Ray Cluster:
 
-    - client.get(o: ObjectRef) -> Any
-    - client.put(any: Any) -> ObjectRef
-    - client.task(f).remote(*args, **kwargs) -> ObjectRef
-    - client.actor(actor_cls).remote(*args, **kwargs) -> ActorHandle
-    - client.method(actor.method).remote(*args, **kwargs) -> ObjectRef
-
-    Besides, we provide these EXPERIMENTAL conveinence helper:
-
-    - client.run(o: ObjectRef).f(*args, **kwargs) -> ObjectRef
-        Invokes `obj.f(*args, **wkargs)` remotely.
-    - client(task).remote(args)
-    - client(Actor).remote(args)
-    - client(actor.method).remote(args)
-
-    # Find your execution context: `client`, `ray` and local
-
-    The goal of this API is to make it dead clear where your code is gonna run. It's
-    simple as this:
-
-    - If you don't see anything `ray` or `client`, it's executed in local.
-    - `client` means a request is made from local, executed in remote.
-    - `ray` means a request is made from remote, executed in remote.
-
-    For example, consider this code:
-
-    @ray.remote
-    def fib(i: int):
-        if i < 2:
-            return 1
-        return sum(ray.get([fib.remote(i-1), fib.remote(i-2)]))
-    object_ref = client.task(fib).remote(5)
-    result = client.get(object_ref)
-
-    ```
-    +---------------------------------+ +--------------------------------------+
-    | LOCAL                           | | RAY CLUSTER                          |
-    |                                 | |                                      |
-    |  fib and 5 are serialized       | |                      +-------------+ |
-    |  and transmitted to the cluster | |                    +>|fib.remote(4)| |
-    | +----------------------------+  | |    +-------------+ | +-------------+ |
-    | |"client.task(fib).remote(5)"+--+-+--->|fib.remote(5)+-+                 |
-    | +----------------------------+  | |    +------+------+ | +-------------+ |
-    |                                 | |           |        +>|fib.remote(3)| |
-    |                                 | |           |          +-------------+ |
-    |                                 | |           |        In-cluster calls  |
-    | +------------+                  | |           |        use good old Ray  |
-    | |object_ref  |<-----------------+-+-----------+        APIs (ray.get)    |
-    | +-----+------+                  | |           |                          |
-    |       |                         | |           |                          |
-    |       v "client.get(object_ref)"| |           v                          |
-    | +------------+                  | |    +------------+                    |
-    | | result     |<-----------------+-+----+ result     |                    |
-    | +------------+                  | |    +------------+                    |
-    |                                 | |     result is serialized and         |
-    |                                 | |     transmitted to local             |
-    +---------------------------------+ +--------------------------------------+
-    ```
+    - ray.get
+    - ray.put
+    - f.remote()
+    - Actor.remote()
+    - actor.method.remote()
 
     # Connection
 
@@ -133,13 +81,9 @@ class Client:
     - exceptions on client.get are not properly forwarded (can only see a HTTP 500)
     - on user interrupt in jupyter, client_head should cancel the task.
     - Same `channel_name` can only be created once, even if the driver had died.
-    - `client.get(client.task(f).remote(2))` is still kinda verbose.
-        - `c.get(c.task(f).remote(2))` can be better?
     - One still have to pip install and import a lib to easily use them, even though the usage is mostly wrapped in a remote function.
         - for example, if you define a `class NeuralNetwork(nn.Module)` you need to first `from torch import nn`, even though the invocations are in remote.
     - Not showing good exception info on driver init failure (e.g. invalid rt env)
-
-
     """
 
     # static variables
@@ -448,22 +392,26 @@ class Client:
         Client.active_client = self
         Client.watchdog_thread = self.start_watchdog_thread()
 
-        ray.get = self.warning_dont_use("ray.get(obj_ref)", "client.get(obj_ref)")
-        ray.put = self.warning_dont_use("ray.put(obj)", "client.put(obj)")
+        ray.get = self.get
+        ray.put = self.put
         ray.init = self.warning_dont_use(
             "ray.init()", "client = Client(addr, channel_name)"
         )
-        ray.remote_function.RemoteFunction._remote = self.warning_dont_use(
-            "my_task.remote(params)", "client.task(my_task).remote(params)"
-        )
-        ray.actor.ActorClass._remote = self.warning_dont_use(
-            "MyActor.remote(params)", "client.actor(MyActor).remote(params)"
-        )
-        ray.actor.ActorMethod._remote = self.warning_dont_use(
-            "my_actor.my_method.remote(params)",
-            "client.method(my_actor.my_method).remote(params)",
-        )
-        # TODO: also mock out RemoteFunction.options and actor
+
+        def task_remote(self_func, args, kwargs, **task_options):
+            return self.task_remote(self_func, args, kwargs, task_options)
+
+        ray.remote_function.RemoteFunction._remote = task_remote
+
+        def actor_remote(self_actor, args, kwargs, **actor_options):
+            return self.actor_remote(self_actor, args, kwargs, actor_options)
+
+        ray.actor.ActorClass._remote = actor_remote
+
+        def method_remote(self_method, args, kwargs, **actor_options):
+            return self.method_remote(self_method, args, kwargs, actor_options)
+
+        ray.actor.ActorMethod._remote = method_remote
 
     def kill_actor(self):
         resp = requests.delete(f"{self.server_addr}/api/clients/{self.actor_name}")
