@@ -335,7 +335,7 @@ class NodeResources {
   std::string DictString() const;
   // Returns adjusted ResourceSet after converting resource relative to others.
   // For example: gpu_memory => num_gpus = gpu_memory / total.gpu_memory.
-  const ResourceSet ConvertRelativeResource(const ResourceSet &resource) const;
+  const ResourceSet ConvertRelativeResources(const ResourceSet &resource) const;
 };
 
 /// Total and available capacities of each resource instance.
@@ -357,7 +357,7 @@ class NodeResourceInstances {
 
   // Returns adjusted ResourceSet after converting resource relative to others.
   // For example: gpu_memory => num_gpus = gpu_memory / total.gpu_memory.
-  const ResourceSet ConvertRelativeResource(const ResourceSet &resource) const;
+  const ResourceSet ConvertRelativeResources(const ResourceSet &resource) const;
 };
 
 struct Node {

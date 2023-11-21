@@ -93,7 +93,6 @@ bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) c
 std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
 NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> allocations;
-  // update this to TryAllocateBundle
   for (const auto &[resource_id, demand] : resource_demands.Resources()) {
     auto allocation = TryAllocate(resource_id, demand);
     if (allocation) {
@@ -135,8 +134,6 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
       return std::nullopt;
     }
   }
-  // need to update this to support instance > 1
-  // still unit tho, might need to create different TryAllocate function
 
   // If resources has multiple instances, each instance has total capacity of 1.
   //

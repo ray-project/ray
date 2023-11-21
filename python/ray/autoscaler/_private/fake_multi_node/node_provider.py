@@ -316,6 +316,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 num_cpus=resources.pop("CPU", 0),
                 num_gpus=resources.pop("GPU", 0),
                 object_store_memory=resources.pop("object_store_memory", None),
+                _gpu_memory=resources.pop("gpu_memory", 0),
                 resources=resources,
                 labels=labels,
                 redis_address="{}:6379".format(

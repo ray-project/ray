@@ -81,7 +81,7 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
   const ResourceSet adjusted_resource_request =
-      local_resources_.ConvertRelativeResource(resource_request.GetResourceSet());
+      local_resources_.ConvertRelativeResources(resource_request.GetResourceSet());
   if (resource_request.GetResourceSet().Has(ResourceID::GPU_Memory()) &&
       adjusted_resource_request.Get(ResourceID::GPU()) > 1) {
     return false;

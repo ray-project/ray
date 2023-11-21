@@ -188,7 +188,7 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
 
   NodeResources *resources = it->second.GetMutableLocalView();
   const ResourceSet adjusted_resource_request =
-      resources->ConvertRelativeResource(resource_request.GetResourceSet());
+      resources->ConvertRelativeResources(resource_request.GetResourceSet());
 
   resources->available -= adjusted_resource_request;
   resources->available.RemoveNegative();
@@ -217,7 +217,7 @@ bool ClusterResourceManager::HasSufficientResource(
   }
 
   const ResourceSet adjusted_resource_request =
-      resources.ConvertRelativeResource(resource_request.GetResourceSet());
+      resources.ConvertRelativeResources(resource_request.GetResourceSet());
 
   return resources.available >= adjusted_resource_request;
 }
