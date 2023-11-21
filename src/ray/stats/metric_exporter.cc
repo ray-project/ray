@@ -170,7 +170,7 @@ void OpenCensusProtoExporter::addGlobalTagsToGrpcMetric(
 
 size_t OpenCensusProtoExporter::nextPayloadSizeCheckAt(size_t cur_batch_size) {
   size_t remaining = report_batch_size_ - cur_batch_size;
-  return cur_batch_size + remaining / 2;
+  return cur_batch_size + (remaining - 1) / 2;
 }
 
 void OpenCensusProtoExporter::ExportViewData(
@@ -195,7 +195,7 @@ void OpenCensusProtoExporter::ExportViewData(
 }
 
 void OpenCensusProtoExporter::SendData(const rpc::ReportOCMetricsRequest &request) {
-  RAY_LOG(DEBUG) << "Exporting metrics. request_proto numbers: " << request.metrics_size() << ", request_proto size bytes: " << request.ByteSizeLong();
+  RAY_LOG(DEBUG) << "Exporting metrics, metrics: " << request.metrics_size() << ", payload size: " << request.ByteSizeLong();
   absl::MutexLock l(&mu_);
   client_->ReportOCMetrics(
       request, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
@@ -243,12 +243,16 @@ bool OpenCensusProtoExporter::handleBatchOverflows(const rpc::ReportOCMetricsReq
     SendData(request_proto);
     return true;
   } else if (should_check_payload_size) {
-    if (request_proto.ByteSizeLong() >= proto_payload_size_threshold_) {
+    size_t cur_payload_size = request_proto.ByteSizeLong();
+    if (cur_payload_size >= proto_payload_size_threshold_) {
       SendData(request_proto);
       return true;
     }
 
     next_payload_size_check_at = nextPayloadSizeCheckAt(cur_batch_size);
+
+    RAY_LOG(DEBUG) << "Current payload size: " << cur_payload_size
+                  << " (next payload size check will be at " << next_payload_size_check_at << ")";
   }
 
   return false;
@@ -278,7 +282,6 @@ void OpenCensusProtoExporter::ProcessMetricsData(const opencensus::stats::ViewDe
     ](
       const std::vector<std::string> &tag_values
     ) {
-      cur_batch_size++;
       // Prior to adding time-series to the batch, first validate whether batch still
       // has capacity or should be flushed
       bool flushed = handleBatchOverflows(request_proto, cur_batch_size, next_payload_size_check_at);
@@ -290,6 +293,8 @@ void OpenCensusProtoExporter::ProcessMetricsData(const opencensus::stats::ViewDe
         cur_batch_size = 0;
         next_payload_size_check_at = nextPayloadSizeCheckAt(cur_batch_size);
       }
+      // Increment batch size
+      cur_batch_size++;
 
       // Add new time-series to a proto payload
       auto metric_timeseries_proto = metric_proto.add_timeseries();
