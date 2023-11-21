@@ -337,7 +337,7 @@ def build_streaming_topology(
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
-    max_allowed_task_failures: int,
+    max_errored_blocks: int,
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -345,10 +345,9 @@ def process_completed_tasks(
     Args:
         topology: The toplogy of operators.
         backpressure_policies: The backpressure policies to use.
-        max_allowed_task_failures: The maximum number of task failures allowed.
-            Unlimited if negative.
+        max_errored_blocks: Max number of errored blocks to allow, unlimited if negative.
     Returns:
-        The number of task failures.
+        The number of errored blocks.
     """
 
     # All active tasks, keyed by their waitables.
@@ -368,7 +367,7 @@ def process_completed_tasks(
             )
 
     # Process completed Ray tasks and notify operators.
-    num_failures = 0
+    num_errored_blocks = 0
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
@@ -389,20 +388,20 @@ def process_completed_tasks(
                     error_message = (
                         f'An exception occurred in a task of operator "{state.op.name}".'
                     )
-                    if max_allowed_task_failures != 0:
-                        num_failures += 1
-                        if max_allowed_task_failures > 0:
-                            max_allowed_task_failures -= 1
+                    if max_errored_blocks != 0:
+                        num_errored_blocks += 1
+                        if max_errored_blocks > 0:
+                            max_errored_blocks -= 1
                         error_message += (
                             " Ignoring this exception with remaining"
-                            f" max_allowed_task_failures={max_allowed_task_failures}."
+                            f" max_errored_blocks={max_errored_blocks}."
                         )
                         logger.get_logger().warning(error_message, exc_info=e)
                     else:
                         error_message += (
                             " Dataset execution will now abort."
                             " To ignore this exception and continue, set"
-                            " DataContext.max_allowed_task_failures to a larger number."
+                            " DataContext.max_errored_blocks."
                         )
                         logger.get_logger().error(error_message)
                         raise e from None
@@ -415,7 +414,7 @@ def process_completed_tasks(
         while op.has_next():
             op_state.add_output(op.get_next())
 
-    return num_failures
+    return num_errored_blocks
 
 
 def update_operator_states(topology: Topology) -> None:
