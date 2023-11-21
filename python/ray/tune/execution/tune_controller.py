@@ -1052,6 +1052,7 @@ class TuneController:
                 f"Invalid trainable: {trial.trainable_name}. If you passed "
                 f"a string, make sure the trainable was registered before."
             )
+            trial.handle_error(exception)
             self._schedule_trial_stop(trial, exception=exception)
             return
 
@@ -1388,7 +1389,9 @@ class TuneController:
             self._process_trial_failure(trial, exception=exception)
 
     def _process_trial_failure(
-        self, trial: Trial, exception: Optional[Union[TuneError, RayTaskError]] = None
+        self,
+        trial: Trial,
+        exception: Optional[Union[TuneError, RayTaskError, RayActorError]] = None,
     ):
         """Handle trial failure.
 
@@ -1399,6 +1402,7 @@ class TuneController:
             exception: Exception prior to invoking this method.
         """
         self._has_errored = True
+        trial.handle_error(exception)
         if trial.status == Trial.RUNNING and trial.should_recover():
             self._try_recover(trial, exc=exception)
             self._callbacks.on_trial_recover(
@@ -1431,9 +1435,6 @@ class TuneController:
 
         self._set_trial_status(trial, Trial.ERROR if exception else Trial.TERMINATED)
         trial.set_location(_Location())
-
-        if exception:
-            trial.handle_error(exc=exception)
 
         if trial not in self._trial_to_actor:
             logger.debug(f"Will not STOP trial actor as it is not live: {trial}")
@@ -1883,7 +1884,9 @@ class TuneController:
         self._schedule_trial_train(trial)
         self._live_trials.add(trial)
 
-    def _try_recover(self, trial: Trial, exc: Union[TuneError, RayTaskError]):
+    def _try_recover(
+        self, trial: Trial, exc: Union[TuneError, RayTaskError, RayActorError]
+    ):
         """Tries to recover trial.
 
         Notifies SearchAlgorithm and Scheduler if failure to recover.
@@ -1993,6 +1996,7 @@ class TuneController:
 
             exception = _AbortTrialExecution(info)
 
+            trial.handle_error(exception)
             self._schedule_trial_stop(trial, exception=exception)
             return
 
