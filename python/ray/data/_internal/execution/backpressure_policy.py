@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 # Default enabled backpressure policies and its config key.
 # Use `DataContext.set_config` to config it.
 # TODO(hchen): Enable ConcurrencyCapBackpressurePolicy by default.
-ENABLED_BACKPRESSURE_POLICIES = []
+ENABLED_BACKPRESSURE_POLICIES = [
+    StreamingOutputBackpressurePolicy,
+]
 ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY = "backpressure_policies.enabled"
 
 
