@@ -23,8 +23,8 @@ The :class:`Dataset <ray.data.Dataset>` is the user-facing Python object
 (usually held in the driver), while materialized blocks are stored as objects in Ray's
 shared-memory :ref:`object store <objects-in-ray>`.
 
-Generally speaking, the number of concurrently executing tasks on a node will determine CPU utilization (or GPU utilization if using GPU transforms), while this value multiplied by the block size will determine total heap memory usage per node.
-The total number of materialized blocks that in scope will determine Ray's object store usage; if this exceeds Ray's object store capacity, then Ray will automatically spill blocks to disk.
+Generally speaking, the number of concurrently executing tasks will determine CPU utilization (or GPU utilization if using GPU transforms), while this value multiplied by the block size will determine total heap memory usage.
+The total number of materialized blocks in scope will determine Ray's object store usage; if this exceeds Ray's object store capacity, then Ray will automatically spill blocks to disk.
 Ray Data uses :ref:`streaming execution <streaming_execution>` to minimize the total number of materialized blocks in scope and therefore avoid spilling.
 
 .. image:: images/dataset-arch.svg
