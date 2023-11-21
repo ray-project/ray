@@ -1437,11 +1437,11 @@ class DeploymentState:
 
         # Determine if the updated target state simply scales the current state.
         if new_target_state.is_scaled_copy_of(self._target_state):
-            not_updating = (self._curr_status_info.status != DeploymentStatus.UPDATING)
+            not_updating = self._curr_status_info.status != DeploymentStatus.UPDATING
 
             curr_num_replicas = self._target_state.num_replicas
             new_num_replicas = new_target_state.num_replicas
-            num_replicas_changed = (curr_num_replicas != new_num_replicas)
+            num_replicas_changed = curr_num_replicas != new_num_replicas
 
             if not_updating and num_replicas_changed:
                 scaling_direction = (
@@ -1453,7 +1453,8 @@ class DeploymentState:
                     status=scaling_direction,
                     status_trigger=status_trigger,
                     message=(
-                        f"{scaling_direction.capitalize()} from {curr_num_replicas} to {new_num_replicas} replicas."
+                        f"{scaling_direction.capitalize()} from "
+                        f"{curr_num_replicas} to {new_num_replicas} replicas."
                     ),
                 )
         else:
@@ -1639,7 +1640,9 @@ class DeploymentState:
         new_info.set_autoscaled_num_replicas(clipped_decision_num_replicas)
         new_info.version = self._target_state.version.code_version
         self._set_target_state(
-            new_info, status_trigger=DeploymentStatusTrigger.AUTOSCALING, adjust_capacity=False,
+            new_info,
+            status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+            adjust_capacity=False,
         )
 
     def delete(self) -> None:

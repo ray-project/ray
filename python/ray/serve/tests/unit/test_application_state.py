@@ -16,8 +16,8 @@ from ray.serve._private.common import (
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
-    TargetCapacityScaleDirection,
     DeploymentStatusTrigger,
+    TargetCapacityScaleDirection,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
