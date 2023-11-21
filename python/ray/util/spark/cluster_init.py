@@ -1160,15 +1160,15 @@ def setup_ray_cluster(
                 f"Current value is {num_gpus_head_node}."
             )
 
-    if num_cpus_head_node == 0 and num_gpus_head_node == 0:
+    if (
+        num_cpus_head_node == 0
+        and num_gpus_head_node == 0
+        and object_store_memory_head_node is None
+    ):
         # Because tasks that require CPU or GPU resources are not scheduled to Ray
-        # head node, limit the heap memory and object store memory allocation to the
-        # head node.
-        if object_store_memory_head_node is not None:
-            raise ValueError(
-                "If you want to set 'object_store_memory_head_node', you should also "
-                "set num_cpus_head_node to >=1."
-            )
+        # head node, and user does not set `object_store_memory_head_node` explicitly,
+        # limit the heap memory and object store memory allocation to the
+        # head node, in order to save spark driver memory.
         heap_memory_head_node = 128 * 1024 * 1024
         object_store_memory_head_node = 128 * 1024 * 1024
     else:
