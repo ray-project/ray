@@ -1293,13 +1293,13 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   return_object->set_data(data->Data(), data->Size());
   manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
 
-  ObjectID obj_id;
   // Verify PeekObjectRefStream is idempotent and doesn't consume indexes.
   for (auto i = 0; i < 10; i++) {
-    obj_id = manager_.PeekObjectRefStream(generator_id);
+    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
     ASSERT_EQ(obj_id, dynamic_return_ids[0]);
   }
 
+  ObjectID obj_id;
   for (auto i = 0; i < last_idx; i++) {
     // READ * 2
     auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
@@ -1311,6 +1311,40 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
   // DELETE
   manager_.DelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestPeekObjectReady) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  // WRITE
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+
+  {
+    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
+    ASSERT_FALSE(ready);
+  }
+  
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+
+  {
+    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
+    ASSERT_TRUE(ready);
+  }
+
+  CompletePendingStreamingTask(spec, caller_address, 1);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {

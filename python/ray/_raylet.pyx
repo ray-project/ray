@@ -339,7 +339,7 @@ class StreamingObjectRefGenerator:
             self._generator_ref)
 
         if not is_ready:
-            ready, unready = ray.wait(
+            _, unready = ray.wait(
                 [expected_ref], timeout=timeout_s, fetch_local=False)
             if len(unready) > 0:
                 return ObjectRef.nil()

@@ -1,4 +1,3 @@
-import time
 import asyncio
 import logging
 from typing import Tuple
@@ -25,6 +24,7 @@ class Downstream:
 
     def __call__(self, *args):
         return StreamingResponse(self.stream())
+
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
 class Intermediate:
