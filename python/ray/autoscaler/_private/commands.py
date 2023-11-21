@@ -57,6 +57,7 @@ from ray.autoscaler._private.util import (
     hash_runtime_conf,
     prepare_config,
     validate_config,
+    rewrite_deprecated_workers_fields
 )
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
@@ -218,44 +219,6 @@ def request_resources(
         request_cluster_resources(gcs_address, to_request)
 
 
-def _rewrite_deprecated_workers_fields(config: Dict[str, Any]) -> Dict[str, Any]:
-    """Rewrite deprecated min/max_workers fields to the new field min/max_worker_nodes.
-
-    This function moves the deprecated min_workers and max_workers
-    fields to min_worker_nodes and max_worker_nodes, and deletes the old fields. If both
-    the deprecated and new fields are present, the new fields take precedence.
-    """
-    # Rewrite min_workers (deprecated) to min_worker_nodes.
-    if "min_workers" in config:
-        cli_logger.warning(
-            "`min_workers` is deprecated. Please use `min_worker_nodes` instead."
-        )
-        if "min_worker_nodes" in config:
-            cli_logger.warning(
-                "Both `min_workers` and `min_worker_nodes` are provided. "
-                "Using `min_worker_nodes`."
-            )
-        else:
-            config["min_worker_nodes"] = config["min_workers"]
-        del config["min_workers"]
-
-    # Rewrite max_workers (deprecated) to max_worker_nodes.
-    if "max_workers" in config:
-        cli_logger.warning(
-            "`max_workers` is deprecated. Please use `max_worker_nodes` instead."
-        )
-        if "max_worker_nodes" in config:
-            cli_logger.warning(
-                "Both `max_workers` and `max_worker_nodes` are provided. "
-                "Using `max_worker_nodes`."
-            )
-        else:
-            config["max_worker_nodes"] = config["max_workers"]
-        del config["max_workers"]
-
-    return config
-
-
 def create_or_update_cluster(
     config_file: str,
     override_min_worker_nodes: Optional[int],
@@ -308,7 +271,7 @@ def create_or_update_cluster(
         CreateClusterEvent.up_started, {"cluster_config": config}
     )
 
-    config = _rewrite_deprecated_workers_fields(config)
+    config = rewrite_deprecated_workers_fields(config)
     # todo: validate file_mounts, ssh keys, etc.
 
     importer = _NODE_PROVIDERS.get(config["provider"]["type"])
@@ -476,7 +439,7 @@ def teardown_cluster(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _rewrite_deprecated_workers_fields(config)
+    config = rewrite_deprecated_workers_fields(config)
     config = _bootstrap_config(config)
 
     cli_logger.confirm(yes, "Destroying cluster.", _abort=True)
@@ -610,7 +573,7 @@ def kill_node(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _rewrite_deprecated_workers_fields(config)
+    config = rewrite_deprecated_workers_fields(config)
     config = _bootstrap_config(config)
 
     cli_logger.confirm(yes, "A random node will be killed.")
@@ -1140,7 +1103,7 @@ def exec_cluster(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _rewrite_deprecated_workers_fields(config)
+    config = rewrite_deprecated_workers_fields(config)
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     head_node = _get_running_head_node(
@@ -1299,7 +1262,7 @@ def rsync(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _rewrite_deprecated_workers_fields(config)
+    config = rewrite_deprecated_workers_fields(config)
     if should_bootstrap:
         config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
@@ -1371,7 +1334,7 @@ def get_head_node_ip(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _rewrite_deprecated_workers_fields(config)
+    config = rewrite_deprecated_workers_fields(config)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     head_node = _get_running_head_node(config, config_file, override_cluster_name)
@@ -1391,7 +1354,7 @@ def get_worker_node_ips(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _rewrite_deprecated_workers_fields(config)
+    config = rewrite_deprecated_workers_fields(config)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     nodes = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
