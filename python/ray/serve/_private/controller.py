@@ -1080,9 +1080,11 @@ def calculate_scale_direction(
 
         if curr_target_capacity == next_target_capacity:
             next_scale_direction = curr_scale_direction
-        elif curr_target_capacity is None and next_target_capacity is not None:
-            next_scale_direction = TargetCapacityScaleDirection.DOWN
-        elif curr_target_capacity is not None and next_target_capacity is None:
+        elif curr_target_capacity is None:
+            # The current config has finished rolling out. The next config
+            # is now starting to roll out, so we set the scale direction to up.
+            next_scale_direction = TargetCapacityScaleDirection.UP
+        elif next_target_capacity is None:
             next_scale_direction = None
         elif curr_target_capacity < next_target_capacity:
             next_scale_direction = TargetCapacityScaleDirection.UP
