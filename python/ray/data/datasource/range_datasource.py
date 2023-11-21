@@ -47,8 +47,12 @@ class RangeDatasource(Datasource):
         # context if it was overridden. Set target max block size during
         # optimizer stage to fix this.
         ctx = DataContext.get_current()
-        row_size_bytes = self.estimate_inmemory_data_size() // self._n
-        target_rows_per_block = max(1, ctx.target_max_block_size // row_size_bytes)
+        if self._n == 0:
+            target_rows_per_block = 0
+        else:
+            row_size_bytes = self.estimate_inmemory_data_size() // self._n
+            row_size_bytes = max(row_size_bytes, 1)
+            target_rows_per_block = max(1, ctx.target_max_block_size // row_size_bytes)
 
         # Example of a read task. In a real datasource, this would pull data
         # from an external system instead of generating dummy data.
