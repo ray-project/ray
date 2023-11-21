@@ -41,7 +41,6 @@ class ImageDatasource(FileBasedDatasource):
         paths: Union[str, List[str]],
         size: Optional[Tuple[int, int]] = None,
         mode: Optional[str] = None,
-        include_paths: bool = False,
         **file_based_datasource_kwargs,
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
@@ -61,7 +60,6 @@ class ImageDatasource(FileBasedDatasource):
 
         self.size = size
         self.mode = mode
-        self.include_paths = include_paths
 
         meta_provider = file_based_datasource_kwargs.get("meta_provider", None)
         if isinstance(meta_provider, _ImageFileMetadataProvider):
@@ -92,10 +90,7 @@ class ImageDatasource(FileBasedDatasource):
 
         builder = DelegatingBlockBuilder()
         array = np.array(image)
-        if self.include_paths:
-            item = {"image": array, "path": path}
-        else:
-            item = {"image": array}
+        item = {"image": array}
         builder.add(item)
         block = builder.build()
 
