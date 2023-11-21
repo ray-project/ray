@@ -215,7 +215,7 @@ rpc::ReportOCMetricsRequest OpenCensusProtoExporter::createRequestProtoPayload()
   return request_proto;
 }
 
-opencensus::proto::metrics::v1::Metric &createMetricProtoPayload(const opencensus::stats::ViewDescriptor &view_descriptor,
+opencensus::proto::metrics::v1::Metric *addMetricProtoPayload(const opencensus::stats::ViewDescriptor &view_descriptor,
                                                                  rpc::ReportOCMetricsRequest &request_proto) {
   // Add metric proto object (to hold corresponding metric definition and time-series).
   auto metric_proto = request_proto.add_metrics();
@@ -264,7 +264,7 @@ void OpenCensusProtoExporter::ProcessMetricsData(const opencensus::stats::ViewDe
                                                  size_t &cur_batch_size,
                                                  size_t &next_payload_size_check_at) {
   // Unpack the fields we need for in memory data structure.
-  auto &metric_proto = createMetricProtoPayload(view_descriptor, request_proto);
+  auto metric_proto_ptr = addMetricProtoPayload(view_descriptor, request_proto);
 
   // Helpers for writing the actual `TimeSeries`.
   auto start_time = absl::ToUnixSeconds(view_data.start_time());
@@ -273,7 +273,7 @@ void OpenCensusProtoExporter::ProcessMetricsData(const opencensus::stats::ViewDe
     [
       this,
       &request_proto,
-      &metric_proto,
+      &metric_proto_ptr,
       &cur_batch_size,
       &next_payload_size_check_at,
       view_descriptor,
@@ -287,9 +287,9 @@ void OpenCensusProtoExporter::ProcessMetricsData(const opencensus::stats::ViewDe
       bool flushed = handleBatchOverflows(request_proto, cur_batch_size, next_payload_size_check_at);
       if (flushed) {
         request_proto = createRequestProtoPayload();
-        // NOTE: We have to also overwrite current metric_proto payload since we're gonna
-        //       be writing into new payload now
-        metric_proto = createMetricProtoPayload(view_descriptor, request_proto);
+        // NOTE: We have to also overwrite current metric_proto_ptr to point to a new Metric proto
+        //       payload inside new proto request payload
+        metric_proto_ptr = addMetricProtoPayload(view_descriptor, request_proto);
         cur_batch_size = 0;
         next_payload_size_check_at = nextPayloadSizeCheckAt(cur_batch_size);
       }
