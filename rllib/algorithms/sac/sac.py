@@ -332,6 +332,7 @@ class SACConfig(AlgorithmConfig):
             )
             try_import_tfp(error=True)
 
+    @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
             return self.n_step

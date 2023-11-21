@@ -8,15 +8,13 @@ import unittest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
-from ray.rllib.core.learner.learner import FrameworkHyperparameters
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
+from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.utils import (
     add_module_to_learner_or_learner_group,
-    get_learner_group,
-    get_learner,
-    get_module_spec,
 )
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -32,9 +30,15 @@ from ray.util.timer import _Timer
 
 REMOTE_CONFIGS = {
     "remote-cpu": AlgorithmConfig.overrides(num_learner_workers=1),
-    "remote-gpu": AlgorithmConfig.overrides(num_learner_workers=1, num_gpus_per_learner_worker=1),
-    "multi-gpu-ddp": AlgorithmConfig.overrides(num_learner_workers=2, num_gpus_per_learner_worker=1),
-    "multi-cpu-ddp": AlgorithmConfig.overrides(num_learner_workers=2, num_cpus_per_learner_worker=2),
+    "remote-gpu": AlgorithmConfig.overrides(
+        num_learner_workers=1, num_gpus_per_learner_worker=1
+    ),
+    "multi-gpu-ddp": AlgorithmConfig.overrides(
+        num_learner_workers=2, num_gpus_per_learner_worker=1
+    ),
+    "multi-cpu-ddp": AlgorithmConfig.overrides(
+        num_learner_workers=2, num_cpus_per_learner_worker=2
+    ),
     # "multi-gpu-ddp-pipeline": LearnerGroupScalingConfig(
     #     num_workers=2, num_gpus_per_worker=2
     # ),
@@ -42,8 +46,12 @@ REMOTE_CONFIGS = {
 
 
 LOCAL_CONFIGS = {
-    "local-cpu": AlgorithmConfig.overrides(num_learner_workers=0, num_gpus_per_learner_worker=0),
-    "local-gpu": AlgorithmConfig.overrides(num_learner_workers=0, num_gpus_per_learner_worker=1),
+    "local-cpu": AlgorithmConfig.overrides(
+        num_learner_workers=0, num_gpus_per_learner_worker=0
+    ),
+    "local-gpu": AlgorithmConfig.overrides(
+        num_learner_workers=0, num_gpus_per_learner_worker=1
+    ),
 }
 
 
@@ -66,12 +74,8 @@ class RemoteTrainingHelper:
         env = gym.make("CartPole-v1")
         config_overrides = LOCAL_CONFIGS[scaling_mode]
         config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-        #scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
-        #learner_group = get_learner_group(fw, env, scaling_config)
         learner_group = config.build_learner_group()
-        #local_learner = get_learner(framework=fw, framework_hps=framework_hps, env=env)
         local_learner = config.build_learner()
-        #local_learner.build()
 
         # make the state of the learner and the local learner_group identical
         local_learner.set_state(learner_group.get_state())
@@ -120,16 +124,40 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
     def tearDown(self) -> None:
         ray.shutdown()
 
+    def test_learner_group_build_from_algorithm_config(self):
+        """Tests whether we can build a learner_groupobject from algorithm_config."""
+
+        env = gym.make("CartPole-v1")
+
+        # Config that has its own learner class and RLModule spec.
+        config = BaseTestingAlgorithmConfig()
+        learner_group = config.build_learner_group(env=env)
+        print(learner_group)
+        learner_group.shutdown()
+
+        # Config for which user defines custom learner class and RLModule spec.
+        config = (
+            BaseTestingAlgorithmConfig()
+            .training(learner_class=BCTfLearner)
+            .rl_module(rl_module_spec=SingleAgentRLModuleSpec(
+                module_class=DiscreteBCTFModule,
+                model_config_dict={"fcnet_hiddens": [32]},
+            ))
+        )
+        learner_group = config.build_learner_group(env=env)
+        print(learner_group)
+        learner_group.shutdown()
+
     def test_learner_group_local(self):
         fws = ["torch", "tf2"]
 
-        test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
+        test_iterator = itertools.product(fws, LOCAL_CONFIGS)
 
         # run the logic of this test inside of a ray actor because we want tensorflow
         # resources to be gracefully released. Tensorflow blocks the gpu resources
         # otherwise between test cases, causing a gpu oom error.
         for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
+            print(f"Testing framework: {fw}, scaling_mode: {scaling_mode}")
             training_helper = RemoteTrainingHelper.remote()
             ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
 
@@ -143,8 +171,8 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             env = gym.make("CartPole-v1")
 
             config_overrides = REMOTE_CONFIGS[scaling_mode]
-            config = TestingConfig
-            learner_group = get_learner_group(fw, env, scaling_config)
+            config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
+            learner_group = config.build_learner_group(env=env)
             reader = get_cartpole_dataset_reader(batch_size=1024)
 
             min_loss = float("inf")
@@ -193,8 +221,9 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
-            scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            learner_group = get_learner_group(fw, env, scaling_config)
+            config_overrides = REMOTE_CONFIGS[scaling_mode]
+            config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
+            learner_group = config.build_learner_group(env=env)
             reader = get_cartpole_dataset_reader(batch_size=512)
             batch = reader.next()
 
@@ -271,11 +300,11 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                 REMOTE_CONFIGS.get(scaling_mode)
                 or LOCAL_CONFIGS.get(scaling_mode)
             )
-            config = TestingConfig().update_from_dict(config_overrides)
+            config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             #get_learner_group(
                 #fw, env, scaling_config, is_multi_agent=True
             #)
-            learner_group = config.build_learner_group()
+            learner_group = config.build_learner_group(env=env)
             spec = get_module_spec(framework=fw, env=env)
             learner_group.add_module(module_id="0", module_spec=spec)
             learner_group.add_module(module_id="1", module_spec=spec)
@@ -347,17 +376,19 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
         # env will have agent ids 0 and 1
         env = MultiAgentCartPole({"num_agents": 2})
 
-        scaling_config = LOCAL_SCALING_CONFIGS["local-cpu"]
-        learner_group = get_learner_group(
-            "torch", env, scaling_config, is_multi_agent=True
-        )
-        spec = get_module_spec(framework="torch", env=env)
-        learner_group.add_module(module_id="0", module_spec=spec)
-        learner_group.add_module(module_id="1", module_spec=spec)
+        config_overrides = LOCAL_CONFIGS["local-cpu"]
+        config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
+        learner_group = config.build_learner_group(env=env)
+        rl_module_spec = config.get_default_rl_module_spec()
+        rl_module_spec.observation_space = env.observation_space
+        rl_module_spec.action_space = env.action_space
+
+        learner_group.add_module(module_id="0", module_spec=rl_module_spec)
+        learner_group.add_module(module_id="1", module_spec=rl_module_spec)
         learner_group.remove_module(DEFAULT_POLICY_ID)
 
-        module_0 = spec.build()
-        module_1 = spec.build()
+        module_0 = rl_module_spec.build()
+        module_1 = rl_module_spec.build()
         marl_module = MultiAgentRLModule()
         marl_module.add_module(module_id="0", module=module_0)
         marl_module.add_module(module_id="1", module=module_1)
@@ -365,13 +396,13 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             module_0.save_to_checkpoint(tmpdir)
             with tempfile.TemporaryDirectory() as tmpdir:
-                module_0 = spec.build()
+                module_0 = rl_module_spec.build()
                 marl_module = MultiAgentRLModule()
                 marl_module.add_module(module_id="0", module=module_0)
-                marl_module.add_module(module_id="1", module=spec.build())
+                marl_module.add_module(module_id="1", module=rl_module_spec.build())
                 marl_module.save_to_checkpoint(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
-                    module_1 = spec.build()
+                    module_1 = rl_module_spec.build()
                     module_1.save_to_checkpoint(tmpdir2)
                     with self.assertRaisesRegex(
                         (ValueError,),
@@ -408,10 +439,11 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
-            scaling_config = REMOTE_SCALING_CONFIGS.get(
-                scaling_mode
-            ) or LOCAL_SCALING_CONFIGS.get(scaling_mode)
-            initial_learner_group = get_learner_group(fw, env, scaling_config)
+            config_overrides = (
+                    REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(scaling_mode)
+            )
+            config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
+            initial_learner_group = config.build_learner_group(env=env)
 
             # checkpoint the initial learner state for later comparison
             initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
@@ -429,7 +461,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             # learner into the new one
             initial_learner_group.shutdown()
             del initial_learner_group
-            new_learner_group = get_learner_group(fw, env, scaling_config)
+            new_learner_group = config.build_learner_group(env=env)
             new_learner_group.load_state(learner_after_1_update_checkpoint_dir)
 
             # do another update
@@ -441,7 +473,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             del new_learner_group
 
             # construct a new learner group and load the initial state of the learner
-            learner_group = get_learner_group(fw, env, scaling_config)
+            learner_group = config.build_learner_group(env=env)
             learner_group.load_state(initial_learner_checkpoint_dir)
             check(learner_group.get_weights(), initial_learner_group_weights)
             learner_group.update(batch.as_multi_agent(), reduce_fn=None)
@@ -477,8 +509,9 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
-            scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            learner_group = get_learner_group(fw, env, scaling_config)
+            config_overrides = REMOTE_CONFIGS[scaling_mode]
+            config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
+            learner_group = config.build_learner_group(env=env)
             reader = get_cartpole_dataset_reader(batch_size=512)
             min_loss = float("inf")
             batch = reader.next()

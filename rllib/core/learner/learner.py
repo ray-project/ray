@@ -85,43 +85,6 @@ ENTROPY_KEY = "entropy"
 LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
 
 
-#@dataclass
-#class FrameworkHyperparameters:
-#    """The framework specific hyper-parameters.
-
-#    Args:
-#        eager_tracing: Whether to trace the model in eager mode. This enables tf
-#            tracing mode by wrapping the loss function computation in a tf.function.
-#            This is useful for speeding up the training loop. However, it is not
-#            compatible with all tf operations. For example, tf.print is not supported
-#            in tf.function.
-#        torch_compile: Whether to use torch.compile() within the context of a given
-#            learner.
-#        what_to_compile: What to compile when using torch.compile(). Can be one of
-#            [TorchCompileWhatToCompile.complete_update,
-#            TorchCompileWhatToCompile.forward_train].
-#            If `complete_update`, the update step of the learner will be compiled. This
-#            includes the forward pass of the RLModule, the loss computation, and the
-#            optimizer step.
-#            If `forward_train`, only the forward methods (and therein the
-#            forward_train method) of the RLModule will be compiled.
-#            Either of the two may lead to different performance gains in different
-#            settings.
-#            `complete_update` promises the highest performance gains, but may not work
-#            in some settings. By compiling only forward_train, you may already get
-#            some speedups and avoid issues that arise from compiling the entire update.
-#        troch_compile_config: The TorchCompileConfig to use for compiling the RL
-#            Module in Torch.
-#    """
-
-#    eager_tracing: bool = True
-#    torch_compile: bool = False
-#    what_to_compile: str = TorchCompileWhatToCompile.FORWARD_TRAIN
-#    torch_compile_cfg: Optional["TorchCompileConfig"] = None
-
-#    def validate(self):
-
-
 @PublicAPI(stability="alpha")
 class Learner:
     """Base class for Learners.
@@ -138,6 +101,8 @@ class Learner:
     logic.
 
     Args:
+        config: The AlgorithmConfig object from which to derive most of the settings
+            needed to build the Learner.
         module_spec: The module specification for the RLModule that is being trained.
             If the module is a single agent module, after building the module it will
             be converted to a multi-agent module with a default key. Can be none if the
@@ -146,19 +111,6 @@ class Learner:
             or ray.rllib.core.rl_module.MultiAgentRLModuleSpec for more info.
         module: If learner is being used stand-alone, the RLModule can be optionally
             passed in directly instead of the through the `module_spec`.
-        scaling_config: Configuration for scaling the learner actors.
-            Refer to ray.rllib.core.learner.scaling_config.LearnerGroupScalingConfig
-            for more info.
-        learner_hyperparameters: The hyper-parameters for the Learner.
-            Algorithm specific learner hyper-parameters will passed in via this
-            argument. For example in PPO the `vf_loss_coeff` hyper-parameter will be
-            passed in via this argument. Refer to
-            ray.rllib.core.learner.learner.LearnerHyperparameters for more info.
-        framework_hps: The framework specific hyper-parameters. This will be used to
-            pass in any framework specific hyper-parameter that will impact the module
-            creation. For example `eager_tracing` in TF or `torch.compile()` in Torch.
-            Refer to ray.rllib.core.learner.learner.FrameworkHyperparameters for
-            more info.
 
     Note: We use PPO and torch as an example here because many of the showcased
     components need implementations to come together. However, the same
@@ -169,39 +121,35 @@ class Learner:
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
-            from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-            from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+            from ray.rllib.algorithms.ppo.ppo import PPOConfig
             import gymnasium as gym
 
             env = gym.make("CartPole-v1")
 
-            # Create a single agent RL module spec.
-            module_spec = SingleAgentRLModuleSpec(
-                module_class=PPOTorchRLModule,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
-                model_config_dict = {"hidden": [128, 128]},
-                catalog_class = PPOCatalog,
+            # Create a PPO config object first.
+            config = (
+                PPOConfig()
+                .framework("torch")
+                .training(model={"fcnet_hiddens": [128, 128]})
             )
 
-            # Create a learner instance that will train the module
-            learner = TorchLearner(module_spec=module_spec)
-
-            # Note: the learner should be built before it can be used.
-            learner.build()
+            # Create a learner instance directly from our config. All we need as
+            # extra information here is the env to be able to extract space information
+            # (needed to construct the RLModule inside the Learner).
+            learner = config.build_learner(env=env)
 
             # Take one gradient update on the module and report the results
             # results = learner.update(...)
 
-            # Add a new module, perhaps for league based training
+            # Add a new module, perhaps for league based training.
             learner.add_module(
                 module_id="new_player",
                 module_spec=SingleAgentRLModuleSpec(
                     module_class=PPOTorchRLModule,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict = {"hidden": [128, 128]},
-                    catalog_class = PPOCatalog,
+                    model_config_dict={"fcnet_hiddens": [64, 64]},
+                    catalog_class=PPOCatalog,
                 )
             )
 
@@ -1569,48 +1517,3 @@ class Learner:
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
-
-
-#@dataclass
-#class LearnerSpec:
-#    """The spec for constructing Learner actors.
-
-#    Args:
-#        learner_class: The Learner class to use.
-#        module_spec: The underlying (MA)RLModule spec to completely define the module.
-#        module: Alternatively the RLModule instance can be passed in directly. This
-#            only works if the Learner is not an actor.
-#        backend_config: The backend config for properly distributing the RLModule.
-#        learner_hyperparameters: The extra config for the loss/additional update. This
-#            should be a subclass of LearnerHyperparameters. This is useful for passing
-#            in algorithm configs that contains the hyper-parameters for loss
-#            computation, change of training behaviors, etc. e.g lr, entropy_coeff.
-
-#    """
-
-#    learner_class: Type["Learner"]
-#    module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
-#    module: Optional["RLModule"] = None
-#    learner_group_scaling_config: LearnerGroupScalingConfig = field(
-#        default_factory=LearnerGroupScalingConfig
-#    )
-#    learner_hyperparameters: LearnerHyperparameters = field(
-#        default_factory=LearnerHyperparameters
-#    )
-#    framework_hyperparameters: FrameworkHyperparameters = field(
-#        default_factory=FrameworkHyperparameters
-#    )
-
-#    def get_params_dict(self) -> Dict[str, Any]:
-#        """Returns the parameters than be passed to the Learner constructor."""
-#        return {
-#            "module": self.module,
-#            "module_spec": self.module_spec,
-#            "learner_group_scaling_config": self.learner_group_scaling_config,
-#            "learner_hyperparameters": self.learner_hyperparameters,
-#            "framework_hyperparameters": self.framework_hyperparameters,
-#        }
-
-#    def build(self) -> "Learner":
-#        """Builds the Learner instance."""
-#        return self.learner_class(**self.get_params_dict())

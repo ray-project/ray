@@ -201,9 +201,12 @@ class TestLearner(unittest.TestCase):
 
         for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             learner = config.build_learner(env=self.ENV)
+            rl_module_spec = config.get_default_rl_module_spec()
+            rl_module_spec.observation_space = self.ENV.observation_space
+            rl_module_spec.action_space = self.ENV.action_space
             learner.add_module(
                 module_id="test",
-                module_spec=config.get_default_rl_module_spec(),
+                module_spec=rl_module_spec,
             )
             learner.remove_module(DEFAULT_POLICY_ID)
 
@@ -238,27 +241,26 @@ class TestLearner(unittest.TestCase):
 
     def test_save_load_state(self):
         """Tests, whether a Learner's state is properly saved and restored."""
-        for fw in framework_iterator(frameworks=("torch", "tf2")):
+        config = BaseTestingAlgorithmConfig()
+
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             # Get a Learner instance for the framework and env.
-            framework_hps = FrameworkHyperparameters(eager_tracing=True)
-            learner1 = get_learner(
-                framework=fw, framework_hps=framework_hps, env=self.ENV
-            )
+            learner1 = config.build_learner(env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner1.save_state(tmpdir)
 
-                framework_hps = FrameworkHyperparameters(eager_tracing=True)
-                learner2 = get_learner(
-                    framework=fw, framework_hps=framework_hps, env=self.ENV
-                )
+                learner2 = config.build_learner(env=self.ENV)
                 learner2.load_state(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
             # Add a module then save/load and check states.
             with tempfile.TemporaryDirectory() as tmpdir:
+                rl_module_spec = config.get_default_rl_module_spec()
+                rl_module_spec.observation_space = self.ENV.observation_space
+                rl_module_spec.action_space = self.ENV.action_space
                 learner1.add_module(
                     module_id="test",
-                    module_spec=get_module_spec(framework=fw, env=self.ENV),
+                    module_spec=rl_module_spec,
                 )
                 learner1.save_state(tmpdir)
                 learner2.load_state(tmpdir)

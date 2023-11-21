@@ -1157,25 +1157,17 @@ class AlgorithmConfig(_Config):
     def build_learner_group(
         self,
         *,
-        env: Optional[EnvType],
-        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]],
+        env: Optional[EnvType] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
     ) -> LearnerGroup:
+
         rl_module_spec = None
         if env is not None or spaces is not None:
             rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
 
-        learner_spec = LearnerSpec(
-            learner_class=get_learner_class(framework),
-            module_spec=get_module_spec(
-                framework=framework, env=env, is_multi_agent=is_multi_agent
-            ),
-            learner_group_scaling_config=scaling_config,
-            learner_hyperparameters=BaseTestingLearnerHyperparameters(),
-            framework_hyperparameters=framework_hps,
-        )
-        lg = LearnerGroup(config=self)
+        learner_group = LearnerGroup(config=self, module_spec=rl_module_spec)
 
-        return lg
+        return learner_group
 
     def build_learner(
         self,
@@ -2814,7 +2806,7 @@ class AlgorithmConfig(_Config):
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
-    def getrollout_fragment_length(self, worker_index: int = 0) -> int:
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
         Uses the simple formula:

@@ -59,28 +59,6 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
 
 
 class BaseTestingLearner(Learner):
-    @override(Learner)
-    def __init__(
-        self,
-        *,
-        config=None,
-        module_spec=None,
-        module=None,
-        learner_group_scaling_config=None,
-        #learner_hyperparameters=None,
-        #framework_hyperparameters=None,
-    ):
-        #learner_hyperparameters = (
-        #    learner_hyperparameters or BaseTestingLearnerHyperparameters()
-        #)
-        super().__init__(
-            config=config,
-            module_spec=module_spec,
-            module=module,
-            learner_group_scaling_config=learner_group_scaling_config,
-            #learner_hyperparameters=learner_hyperparameters,
-            #framework_hyperparameters=framework_hyperparameters,
-        )
 
     @override(Learner)
     def compile_results(

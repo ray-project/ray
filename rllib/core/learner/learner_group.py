@@ -73,14 +73,14 @@ class LearnerGroup:
         self,
         *,
         config: "AlgorithmConfig",
-        rl_module_spec: Optional[ModuleSpec] = None,
+        module_spec: Optional[ModuleSpec] = None,
         max_queue_len: int = 20,
         #learner_spec: LearnerSpec,
     ):
         #scaling_config = learner_spec.learner_group_scaling_config
         self.config = config
         learner_class = self.config.learner_class
-        rl_module_spec = rl_module_spec or self.config.get_marl_module_spec()
+        module_spec = module_spec or self.config.get_marl_module_spec()
 
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
         #  explicit.
@@ -99,8 +99,7 @@ class LearnerGroup:
         self._in_queue_ts_dropped = 0
 
         if self._is_local:
-            self._learner = learner_class(config=config, rl_module_spec=rl_module_spec)
-            #** learner_spec.get_params_dict()
+            self._learner = learner_class(config=config, module_spec=module_spec)
             self._learner.build()
             self._worker_manager = None
             self._in_queue = []
@@ -115,7 +114,10 @@ class LearnerGroup:
             )
             backend_executor.start(
                 train_cls=learner_class,
-                train_cls_kwargs=learner_spec.get_params_dict(),
+                train_cls_kwargs={
+                    "config": config,
+                    "module_spec": module_spec,
+                }
             )
             self._backend_executor = backend_executor
 
