@@ -20,7 +20,7 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     EndpointInfo,
     EndpointTag,
-    TargetCapacityScaleDirection,
+    TargetCapacityInfo,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -283,8 +283,7 @@ class ApplicationState:
         self,
         deployment_name: str,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+        target_capacity_info: TargetCapacityInfo,
     ) -> None:
         """Deploys a deployment in the application."""
         route_prefix = deployment_info.route_prefix
@@ -298,8 +297,7 @@ class ApplicationState:
         self._deployment_state_manager.deploy(
             deployment_id,
             deployment_info,
-            target_capacity=target_capacity,
-            target_capacity_scale_direction=target_capacity_scale_direction,
+            target_capacity_info=target_capacity_info,
         )
 
         if deployment_info.route_prefix is not None:
@@ -608,8 +606,7 @@ class ApplicationState:
 
     def _reconcile_target_deployments(
         self,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+        target_capacity_info: TargetCapacityInfo,
     ) -> None:
         """Reconcile target deployments in application target state.
 
@@ -633,8 +630,7 @@ class ApplicationState:
             self.apply_deployment_info(
                 deployment_name,
                 deploy_info,
-                target_capacity=target_capacity,
-                target_capacity_scale_direction=target_capacity_scale_direction,
+                target_capacity_info=target_capacity_info,
             )
 
         # Delete outdated deployments
@@ -642,11 +638,7 @@ class ApplicationState:
             if deployment_name not in self.target_deployments:
                 self._delete_deployment(deployment_name)
 
-    def update(
-        self,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
-    ) -> bool:
+    def update(self, target_capacity_info: TargetCapacityInfo) -> bool:
         """Attempts to reconcile this application to match its target state.
 
         Updates the application status and status message based on the
@@ -672,8 +664,7 @@ class ApplicationState:
         # perform reconciliation or check on deployment statuses
         if self._target_state.deployment_infos is not None:
             self._reconcile_target_deployments(
-                target_capacity=target_capacity,
-                target_capacity_scale_direction=target_capacity_scale_direction,
+                target_capacity_info=target_capacity_info,
             )
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
@@ -889,17 +880,12 @@ class ApplicationStateManager:
             return {}
         return self._application_states[name].list_deployment_details()
 
-    def update(
-        self,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
-    ):
+    def update(self, target_capacity_info: TargetCapacityInfo):
         """Update each application state"""
         apps_to_be_deleted = []
         for name, app in self._application_states.items():
             ready_to_be_deleted = app.update(
-                target_capacity=target_capacity,
-                target_capacity_scale_direction=target_capacity_scale_direction,
+                target_capacity_info=target_capacity_info,
             )
             if ready_to_be_deleted:
                 apps_to_be_deleted.append(name)

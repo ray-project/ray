@@ -32,6 +32,7 @@ from ray.serve._private.common import (
     ReplicaState,
     ReplicaTag,
     RunningReplicaInfo,
+    TargetCapacityInfo,
     TargetCapacityScaleDirection,
 )
 from ray.serve._private.config import DeploymentConfig
@@ -1493,8 +1494,7 @@ class DeploymentState:
     def deploy(
         self,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+        target_capacity_info: TargetCapacityInfo,
     ) -> bool:
         """Deploy the deployment.
 
@@ -1526,8 +1526,9 @@ class DeploymentState:
         if autoscaling_config is not None:
             adjust_capacity = False
             if autoscaling_config.initial_replicas is not None and (
-                target_capacity_scale_direction is None
-                or target_capacity_scale_direction == TargetCapacityScaleDirection.UP
+                target_capacity_info.scale_direction is None
+                or target_capacity_info.scale_direction
+                == TargetCapacityScaleDirection.UP
             ):
                 autoscaled_num_replicas = autoscaling_config.initial_replicas
             else:
@@ -1536,7 +1537,7 @@ class DeploymentState:
                 else:
                     autoscaled_num_replicas = autoscaling_config.min_replicas
             autoscaled_num_replicas = self.get_capacity_adjusted_num_replicas(
-                autoscaled_num_replicas, target_capacity
+                autoscaled_num_replicas, target_capacity_info.target_capacity
             )
             deployment_info.set_autoscaled_num_replicas(autoscaled_num_replicas)
         else:
@@ -1578,9 +1579,7 @@ class DeploymentState:
     def autoscale(
         self,
         current_handle_queued_queries: int,
-        *,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+        target_capacity_info: TargetCapacityInfo,
     ) -> int:
         """
         Autoscale the deployment based on metrics
@@ -1589,6 +1588,8 @@ class DeploymentState:
             current_handle_queued_queries: The number of handle queued queries,
                 if there are multiple handles, the max number of queries at
                 a single handle should be passed in
+            target_capacity_info: Information about the current target capacity
+                and its scaling direction.
         """
         if self._target_state.deleting:
             return
@@ -1605,18 +1606,20 @@ class DeploymentState:
         # TODO (shrekris-anyscale): this should logic should be pushed into the
         # autoscaling_policy. Need to discuss what the right API would look like.
         upper_bound = self.get_capacity_adjusted_num_replicas(
-            autoscaling_policy.config.max_replicas, target_capacity
+            autoscaling_policy.config.max_replicas, target_capacity_info.target_capacity
         )
         if (
-            target_capacity_scale_direction == TargetCapacityScaleDirection.UP
+            target_capacity_info.scale_direction == TargetCapacityScaleDirection.UP
             and autoscaling_policy.config.initial_replicas is not None
         ):
             lower_bound = self.get_capacity_adjusted_num_replicas(
-                autoscaling_policy.config.initial_replicas, target_capacity
+                autoscaling_policy.config.initial_replicas,
+                target_capacity_info.target_capacity,
             )
         else:
             lower_bound = self.get_capacity_adjusted_num_replicas(
-                autoscaling_policy.config.min_replicas, target_capacity
+                autoscaling_policy.config.min_replicas,
+                target_capacity_info.target_capacity,
             )
 
         clipped_decision_num_replicas = max(
@@ -2578,8 +2581,7 @@ class DeploymentStateManager:
         self,
         deployment_id: DeploymentID,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+        target_capacity_info: TargetCapacityInfo,
     ) -> bool:
         """Deploy the deployment.
 
@@ -2597,8 +2599,7 @@ class DeploymentStateManager:
 
         return self._deployment_states[deployment_id].deploy(
             deployment_info,
-            target_capacity=target_capacity,
-            target_capacity_scale_direction=target_capacity_scale_direction,
+            target_capacity_info,
         )
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
@@ -2638,26 +2639,11 @@ class DeploymentStateManager:
             current_handle_queued_queries = 0
         return current_handle_queued_queries
 
-    def update(
-        self,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
-    ) -> bool:
+    def update(self, target_capacity_info: TargetCapacityInfo) -> bool:
         """Updates the state of all deployments to match their goal state.
-
-        `target_capacity` represents the target capacity percentage for all deployments
-        across the cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for
-        each deployment will be scaled by this percentage.
 
         Returns True if any of the deployments have replicas in the RECOVERING state.
         """
-        if target_capacity is not None and (
-            target_capacity < 0 or target_capacity > 100
-        ):
-            raise ValueError(
-                f"Got invalid `target_capacity`: {target_capacity}. "
-                "`target_capacity` must be between 0 and 100."
-            )
 
         deleted_ids = []
         any_recovering = False
@@ -2672,12 +2658,11 @@ class DeploymentStateManager:
                 )
                 deployment_state.autoscale(
                     current_handle_queued_queries,
-                    target_capacity=target_capacity,
-                    target_capacity_scale_direction=target_capacity_scale_direction,
+                    target_capacity_info,
                 )
 
             deployment_state_update_result = deployment_state.update(
-                target_capacity=target_capacity
+                target_capacity=target_capacity_info.target_capacity
             )
             if deployment_state_update_result.upscale:
                 upscales[deployment_id] = deployment_state_update_result.upscale

@@ -522,3 +522,16 @@ class TargetCapacityScaleDirection(str, Enum):
 
     UP = "UP"
     DOWN = "DOWN"
+
+
+@dataclass
+class TargetCapacityInfo:
+    target_capacity: Optional[float] = None
+    scale_direction: Optional[TargetCapacityScaleDirection] = None
+
+    def __post_init__(self):
+        if self.target_capacity is not None and not 0 <= self.target_capacity <= 100:
+            raise ValueError(
+                f"Got invalid `target_capacity`: {self.target_capacity}. "
+                "`target_capacity` must be between 0 and 100."
+            )
