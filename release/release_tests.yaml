@@ -2604,7 +2604,7 @@
         run:
           timeout: 3600
       cluster:
-        cluster_compute: tpl_cpu_1_gce.yaml
+        cluster_compute: tpl_cpu_1_large_gce.yaml
 
 - name: long_running_serve_failure
   group: Long running tests
