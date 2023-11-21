@@ -4672,9 +4672,10 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
                         c_generator_id))
 
-        return ObjectRef(
-            c_object_ref_and_is_ready_pair.first.object_id(),
-            c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), c_object_ref_and_is_ready_pair.second
+        return (ObjectRef(
+                    c_object_ref_and_is_ready_pair.first.object_id(),
+                    c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
+                c_object_ref_and_is_ready_pair.second)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

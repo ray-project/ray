@@ -90,8 +90,8 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   return Status::OK();
 }
 
-std::pair<ObjectID, bool> ObjectRefStream::PeekNextItem() { 
-  const auto &object_id = GetObjectRefAtIndex(next_index_); 
+std::pair<ObjectID, bool> ObjectRefStream::PeekNextItem() {
+  const auto &object_id = GetObjectRefAtIndex(next_index_);
   if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
     return {object_id, false};
   } else {
@@ -542,7 +542,8 @@ std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &gener
 
   // Temporarily own the ref since the corresponding reference is probably
   // not reported yet.
-  TemporarilyOwnGeneratorReturnRefIfNeededInternal(result.first /*=object_id*/, generator_id);
+  TemporarilyOwnGeneratorReturnRefIfNeededInternal(result.first /*=object_id*/,
+                                                   generator_id);
   return result;
 }
 

@@ -415,7 +415,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// generator task.
   /// \return A object reference of the next index.
   /// It should not be nil.
-  std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id) ABSL_LOCKS_EXCLUDED(mu_);
+  std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Returns true if task can be retried.
   ///

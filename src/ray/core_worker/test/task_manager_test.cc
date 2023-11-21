@@ -1335,7 +1335,6 @@ TEST_F(TaskManagerTest, TestPeekObjectReady) {
     auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
     ASSERT_FALSE(ready);
   }
-  
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req, /*execution_signal_callback*/ [](Status, int64_t) {}));
 
@@ -1343,7 +1342,6 @@ TEST_F(TaskManagerTest, TestPeekObjectReady) {
     auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
     ASSERT_TRUE(ready);
   }
-
   CompletePendingStreamingTask(spec, caller_address, 1);
 }
 
