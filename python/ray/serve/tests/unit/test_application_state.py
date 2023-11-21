@@ -1,5 +1,5 @@
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from unittest.mock import Mock, PropertyMock, patch
 
 import pytest
@@ -17,6 +17,7 @@ from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
+    TargetCapacityScaleDirection,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
@@ -55,7 +56,13 @@ class MockDeploymentStateManager:
                 self.deployment_statuses[name] = DeploymentStatus.UPDATING
                 self.deleting[name] = deleting
 
-    def deploy(self, deployment_id: DeploymentID, deployment_info: DeploymentInfo):
+    def deploy(
+        self,
+        deployment_id: DeploymentID,
+        deployment_info: DeploymentInfo,
+        target_capacity: Optional[float] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+    ):
         existing_info = self.deployment_infos.get(deployment_id)
         self.deleting[deployment_id] = False
         self.deployment_infos[deployment_id] = deployment_info
