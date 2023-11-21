@@ -141,7 +141,7 @@ class Query:
             # Make the scanner GC-able to avoid memory leaks.
             scanner.clear()
 
-    async def merge_request_kwargs(self, kwargs: Dict[Any, Any]) -> Dict[Any, Any]:
+    def merge_request_kwargs(self, kwargs: Dict[Any, Any]) -> Dict[Any, Any]:
         """Returns a copy of this query with the given kwargs merged in."""
         request_kwargs = {**kwargs, **self.kwargs}
         return request_kwargs
