@@ -172,11 +172,13 @@ def get_transform(to_torch_tensor):
                 ratio=(0.75, 1.33),
             ),
             torchvision.transforms.RandomHorizontalFlip(),
-            torchvision.transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-            ),
         ]
         + ([torchvision.transforms.ToTensor()] if to_torch_tensor else [])
+        + [
+            torchvision.transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            )
+        ]
     )
     return transform
 
@@ -222,7 +224,7 @@ def crop_and_flip_image_batch(image_batch):
     image_batch["image"] = transform(
         # Make sure to use torch.tensor here to avoid a copy from numpy.
         # Original dims are (batch_size, channels, height, width).
-        torch.tensor(np.transpose(image_batch["image"], axes=(0, 3, 1, 2)))
+        torch.tensor(np.transpose(image_batch["image"], axes=(0, 3, 1, 2)) / 255.0)
     )
     return image_batch
 
