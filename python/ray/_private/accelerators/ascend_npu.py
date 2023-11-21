@@ -66,11 +66,11 @@ class AscendNPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
-        '''Get the type of the Ascend NPU on the current node.
+        """Get the type of the Ascend NPU on the current node.
 
         Returns:
             A string of the type, such as "Ascend910A", "Ascend910B", "Ascend310P1".
-        '''
+        """
         try:
             import acl
 
@@ -85,7 +85,7 @@ class AscendNPUAcceleratorManager(AcceleratorManager):
     ) -> Tuple[bool, Optional[str]]:
         if quantity > 1:
             logger.warning(
-                f"The task is requesting multiple Ascend NPUs. "
+                "The task is requesting multiple Ascend NPUs. "
                 "If you need to build an HCCL network for NPU interconnection, "
                 "please refer to the HCCL User Manual."
             )
