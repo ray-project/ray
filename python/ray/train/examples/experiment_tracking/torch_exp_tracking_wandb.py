@@ -1,14 +1,14 @@
 # flake8: noqa
 # fmt: off
+# isort: off
 
+# __start__
+from filelock import FileLock
 import os
 
 import torch
 import wandb
 
-# __start__
-# Run the following script with the WANDB_API_KEY env var set.
-from filelock import FileLock
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from torchvision.models import resnet18
@@ -17,6 +17,7 @@ import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
+# Run the following script with the WANDB_API_KEY env var set.
 assert os.environ.get("WANDB_API_KEY", None), "Please set WANDB_API_KEY env var."
 
 # This makes sure that all workers have this env var set.
