@@ -345,7 +345,8 @@ def process_completed_tasks(
     Args:
         topology: The toplogy of operators.
         backpressure_policies: The backpressure policies to use.
-        max_errored_blocks: Max number of errored blocks to allow, unlimited if negative.
+        max_errored_blocks: Max number of errored blocks to allow,
+            unlimited if negative.
     Returns:
         The number of errored blocks.
     """
@@ -390,7 +391,10 @@ def process_completed_tasks(
                         max_errored_blocks < 0
                         or max_errored_blocks >= num_errored_blocks
                     )
-                    error_message = f'An exception was raised from a task of operator "{state.op.name}".'
+                    error_message = (
+                        "An exception was raised from a task of "
+                        f'operator "{state.op.name}".'
+                    )
                     if should_ignore:
                         remaining = (
                             max_errored_blocks - num_errored_blocks
