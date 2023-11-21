@@ -685,6 +685,16 @@ py_test(
 )
 
 py_test(
+    name = "test_memory_leak_ppo_new_stack",
+    tags = ["team:rllib", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/ppo/memory-leak-test-ppo-new-stack.py"],
+    args = ["--dir=tuned_examples/ppo", "--to-check=rollout_worker"]
+)
+
+py_test(
     name = "test_memory_leak_sac",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
