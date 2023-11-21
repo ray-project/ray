@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
     # TODO (sven): This gives a tricky circular import that goes
-    # deep into the library. We have to see, where to dissolve it.
+    #  deep into the library. We have to see, where to dissolve it.
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 _, tf, _ = try_import_tf()
@@ -40,6 +40,8 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
+
+        # Create the vectorized gymnasium env.
 
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
@@ -59,7 +61,6 @@ class SingleAgentEnvRunner(EnvRunner):
             )
         gym.register("rllib-single-agent-env-runner-v0", entry_point=entry_point)
 
-        # Create the vectorized gymnasium env.
         # Wrap into `VectorListInfo`` wrapper to get infos as lists.
         self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
             gym.vector.make(
@@ -68,31 +69,19 @@ class SingleAgentEnvRunner(EnvRunner):
                 asynchronous=self.config.remote_worker_envs,
             )
         )
-
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
-        # Create our own instance of the single-agent `RLModule` (which
+        # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
-        # TODO (sven, simon): We need to get rid here of the policy_dict,
-        # but the 'RLModule' takes the 'policy_spec.observation_space'
-        # from it.
-        # Below is the non nice solution.
-        # policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
         module_spec: SingleAgentRLModuleSpec = self.config.get_default_rl_module_spec()
         module_spec.observation_space = self.env.envs[0].observation_space
         # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
-        # actually hold the spaces for a single env, but for boxes the
-        # shape is (1, 1) which brings a problem with the action dists.
-        # shape=(1,) is expected.
+        #  actually hold the spaces for a single env, but for boxes the
+        #  shape is (1, 1) which brings a problem with the action dists.
+        #  shape=(1,) is expected.
         module_spec.action_space = self.env.envs[0].action_space
         module_spec.model_config_dict = self.config.model
-
-        # TODO (sven): By time the `AlgorithmConfig` will get rid of `PolicyDict`
-        # as well. Then we have to change this function parameter.
-        # module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-        #     policy_dict=module_dict
-        # )
         self.module: RLModule = module_spec.build()
 
         # This should be the default.

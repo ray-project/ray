@@ -9,7 +9,7 @@ import ray
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 # TODO (simon): Add to the tests `info` and `extra_model_outputs`
-# as soon as #39732 is merged.
+#  as soon as #39732 is merged.
 
 
 class TestEnv(gym.Env):

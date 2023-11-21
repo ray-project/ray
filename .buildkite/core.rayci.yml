@@ -57,7 +57,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --skip-ray-installation
         --only-tags use_all_core
-    depends_on: data12build
+    depends_on: data14build
     job_env: forge
 
   - label: ":ray: core: doc tests"
@@ -84,9 +84,9 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- 
         python/ray/util/dask/... python/ray/tests/modin/... core
-        --build-name data12build
+        --build-name data14build
         --parallelism-per-worker 2
-    depends_on: data12build
+    depends_on: data14build
     job_env: forge
 
   - label: ":ray: core: dashboard tests"
@@ -141,6 +141,21 @@ steps:
       - manylinux
       - corebuild
     job_env: forge
+
+  - label: ":ray: core: wheel-aarch64 tests"
+    tags: linux_wheels
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core 
+        --build-type wheel-aarch64
+        --build-name oss-ci-base_build-aarch64
+        --parallelism-per-worker 3
+        --only-tags post_wheel_build
+        --test-env=RAY_CI_POST_WHEEL_TESTS=True
+    depends_on: 
+      - manylinux-aarch64
+      - oss-ci-base_build-aarch64
+    job_env: forge-aarch64
 
   - label: ":ray: core: minimal tests {{matrix}}"
     tags: python
@@ -238,7 +253,7 @@ steps:
     job_env: forge
 
   - label: ":ray: core: flaky tests"
-    tags: 
+    tags:
       - python
       - skip-on-premerge
     instance_type: large
@@ -256,3 +271,20 @@ steps:
         --skip-ray-installation
     depends_on: corebuild
     job_env: forge
+
+  - label: ":windows: python tests"
+    tags:
+      - python
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash /c/workdir/.buildkite/windows_ci.sh test_python
+    parallelism: 10
+
+  - label: ":windows: core tests"
+    tags:
+      - core_cpp
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash /c/workdir/.buildkite/windows_ci.sh test_core

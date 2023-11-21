@@ -11,6 +11,7 @@ from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
+from ray.data._internal.util import create_dataset_tag
 from ray.data.block import Block, BlockMetadata
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
@@ -110,6 +111,13 @@ class StreamSplitDataIterator(DataIterator):
     def world_size(self) -> int:
         """Returns the number of splits total."""
         return self._world_size
+
+    def _get_dataset_tag(self):
+        return create_dataset_tag(
+            self._base_dataset._plan._dataset_name,
+            self._base_dataset._uuid,
+            self._output_split_idx,
+        )
 
 
 @ray.remote(num_cpus=0)
