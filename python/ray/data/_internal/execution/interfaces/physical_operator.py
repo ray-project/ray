@@ -36,7 +36,7 @@ class DataOpTask(OpTask):
         self,
         streaming_gen: StreamingObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[Optional[Exception]], None],
+        task_done_callback: Callable[[Optional[Exception], None],
     ):
         """
         Args:
@@ -87,7 +87,7 @@ class DataOpTask(OpTask):
                 # detecting and obtaining the exception.
                 try:
                     ray.get(block_ref)
-                    assert False, "Should not reach here."
+                    assert False, "Above ray.get should raise an exception."
                 except Exception as ex:
                     self._task_done_callback(ex)
                     raise ex from None

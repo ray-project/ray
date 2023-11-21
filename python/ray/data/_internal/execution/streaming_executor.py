@@ -120,8 +120,6 @@ class StreamingExecutor(Executor, threading.Thread):
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
         self._backpressure_policies = get_backpressure_policies(self._topology)
-        self._max_errored_blocks = DataContext.get_current().max_errored_blocks
-        self._num_errored_blocks = 0
 
         self._has_op_completed = {op: False for op in self._topology}
 
