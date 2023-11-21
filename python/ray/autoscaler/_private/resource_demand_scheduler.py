@@ -645,7 +645,7 @@ def _add_min_worker_nodes(
         node_resources: Resources of exisiting nodes already launched/pending.
         node_type_counts: Counts of existing nodes already launched/pending.
         node_types: Node types config.
-        max_worker_nodes: global max_worker_nodes constaint.
+        max_worker_nodes: global max_worker_nodes constraint.
         ensure_min_cluster_size: resource demands from request_resources().
         utilization_scorer: A function that, given a node
             type, its resources, and resource demands, returns what its
