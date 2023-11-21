@@ -10,7 +10,7 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve import Application
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus
+from ray.serve._private.common import ApplicationStatus, TargetCapacityScaleDirection
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
@@ -194,14 +194,22 @@ def test_controller_recover_target_capacity(
     shutdown_ray_and_serve, client: ServeControllerClient
 ):
     config = ServeDeploySchema(
+        target_capacity=100,
         applications=[
             ServeApplicationSchema(
                 import_path="ray.serve.tests.test_target_capacity:test_app"
             )
-        ]
+        ],
     )
 
-    # Deploy with target_capacity 50, both deployments should be at half scale.
+    client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 100.0)
+    assert (
+        ray.get(client._controller._get_scale_direction.remote())
+        == TargetCapacityScaleDirection.UP
+    )
+
+    # Scale down to target_capacity 50, both deployments should be at half scale.
     config.target_capacity = 50.0
     client.deploy_apps(config)
     wait_for_condition(lambda: serve.status().target_capacity == 50.0)
@@ -211,6 +219,10 @@ def test_controller_recover_target_capacity(
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
+    )
+    assert (
+        ray.get(client._controller._get_scale_direction.remote())
+        == TargetCapacityScaleDirection.DOWN
     )
 
     ray.kill(client._controller, no_restart=False)
@@ -223,6 +235,10 @@ def test_controller_recover_target_capacity(
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
+    )
+    assert (
+        ray.get(client._controller._get_scale_direction.remote())
+        == TargetCapacityScaleDirection.DOWN
     )
 
 

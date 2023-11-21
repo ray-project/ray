@@ -211,7 +211,7 @@ class ServeController:
         # The target capacity percentage for all deployments across the cluster.
         self._target_capacity: Optional[float] = None
         self._scale_direction: Optional[TargetCapacityScaleDirection] = None
-        self._recover_config_from_checkpoint()
+        self._recover_state_from_checkpoint()
 
         # Nodes where proxy actors should run.
         self._proxy_nodes = set()
@@ -482,40 +482,59 @@ class ServeController:
             {"actor_id": ray.get_runtime_context().get_actor_id()}
         )
 
-    def _recover_config_from_checkpoint(self):
-        serve_config, deployment_time = self._get_curr_serve_config()
+    def _recover_state_from_checkpoint(self):
+        deployment_time, serve_config, scale_direction = self._read_config_checkpoint()
+        self._scale_direction = scale_direction
         if serve_config is not None:
             logger.info(
                 "Recovered config from checkpoint.", extra={"log_to_stderr": False}
             )
             self.deploy_config(serve_config, deployment_time=deployment_time)
 
-    def _get_curr_serve_config(self) -> Tuple[Optional[ServeDeploySchema], float]:
-        """Gets the current active Serve config.
+    def _read_config_checkpoint(
+        self,
+    ) -> Tuple[
+        float, Optional[ServeDeploySchema], Optional[TargetCapacityScaleDirection]
+    ]:
+        """Reads the current Serve config checkpoint.
 
-        Returns: Tuple containing:
-            1. A Serve config, if the GCS contains a config checkpoint. None
-               otherwise
-            2. A deployment timestamp, if the GCS contains a config checkpoint.
-               0 otherwise.
+        The Serve config checkpoint stores active application configs and
+        other metadata.
+
+        Returns:
+
+        If the GCS contains a checkpoint, tuple of:
+            1. A deployment timestamp.
+            2. A Serve config. This Serve config is reconstructed from the
+                active application states. It may not exactly match the
+                submitted config (e.g. the top-level http options may be
+                different).
+            3. The scaling direction calculated after the Serve config was
+               submitted.
+
+        If the GCS doesn't contain a checkpoint, returns (0, None, None).
         """
 
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
 
-            deployment_time, target_capacity, config_checkpoints_dict = pickle.loads(
-                checkpoint
-            )
+            (
+                deployment_time,
+                target_capacity,
+                scale_direction,
+                config_checkpoints_dict,
+            ) = pickle.loads(checkpoint)
 
             return (
+                deployment_time,
                 ServeDeploySchema(
                     applications=list(config_checkpoints_dict.values()),
                     target_capacity=target_capacity,
                 ),
-                deployment_time,
+                scale_direction,
             )
         else:
-            return (None, 0.0)
+            return (0.0, None, None)
 
     def _all_running_replicas(self) -> Dict[DeploymentID, List[RunningReplicaInfo]]:
         """Used for testing.
@@ -729,7 +748,7 @@ class ServeController:
 
         new_config_checkpoint = {}
 
-        curr_config, _ = self._get_curr_serve_config()
+        _, curr_config, _ = self._read_config_checkpoint()
 
         self._scale_direction = calculate_scale_direction(
             curr_config=curr_config,
@@ -763,7 +782,12 @@ class ServeController:
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
             pickle.dumps(
-                (deployment_time, config.target_capacity, new_config_checkpoint)
+                (
+                    deployment_time,
+                    config.target_capacity,
+                    self._scale_direction,
+                    new_config_checkpoint,
+                )
             ),
         )
 
@@ -958,7 +982,7 @@ class ServeController:
     def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+            _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
             if name in config_checkpoints_dict:
                 config = config_checkpoints_dict[name]
                 return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
@@ -1062,6 +1086,11 @@ class ServeController:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
         return self.system_logging_config, log_file_path
+
+    def _get_scale_direction(self) -> Optional[TargetCapacityScaleDirection]:
+        """Gets the controller's scale direction (for testing purposes)."""
+
+        return self._scale_direction
 
 
 def calculate_scale_direction(
