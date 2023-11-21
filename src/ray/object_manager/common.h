@@ -45,20 +45,20 @@ struct PlasmaObjectHeader {
   // because there can be multiple readers and:
   // - we should not write again until all readers are done.
   // - we should not read again until a write is done.
-  pthread_mutex_t mut;
-  pthread_cond_t cond;
-  int64_t version = 0;
+//  pthread_mutex_t mut;
+//  pthread_cond_t cond;
+  volatile int64_t version = 0;
   // Max number of reads allowed before the writer can write
   // again. This value should be set by the writer before
   // posting to can_read. reader_mut must be held when
   // reading.
-  int64_t max_readers = 0;
+  volatile int64_t max_readers = 0;
   // Readers increment once they are done reading. Once this value reaches
   // max_readers, the last reader should signal to the writer.
-  int64_t num_reads_remaining = 0;
+  volatile int64_t num_reads_remaining = 0;
   // Number of readers currently reading. Not necessary for synchronization,
   // but useful for debugging.
-  int64_t num_readers_acquired = 0;
+  volatile int64_t num_readers_acquired = 0;
 
   void Init();
   void Destroy();

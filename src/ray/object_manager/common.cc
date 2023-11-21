@@ -12,32 +12,32 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
 }
 
 void PlasmaObjectHeader::Init() {
-  // mut is shared between writer and readers.
-	pthread_mutexattr_t mutex_attr;
-	pthread_mutexattr_init(&mutex_attr);
-	pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
-  pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_ERRORCHECK);
-	pthread_mutex_init(&mut, &mutex_attr);
-
-  // Condition is shared between writer and readers.
-  pthread_condattr_t cond_attr;
-  pthread_condattr_init(&cond_attr);
-  pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
-  pthread_cond_init(&cond, &cond_attr);
+//  // mut is shared between writer and readers.
+//	pthread_mutexattr_t mutex_attr;
+//	pthread_mutexattr_init(&mutex_attr);
+//	pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
+//  pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_ERRORCHECK);
+//	pthread_mutex_init(&mut, &mutex_attr);
+//
+//  // Condition is shared between writer and readers.
+//  pthread_condattr_t cond_attr;
+//  pthread_condattr_init(&cond_attr);
+//  pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
+//  pthread_cond_init(&cond, &cond_attr);
 }
 
 void PlasmaObjectHeader::Destroy() {
-  RAY_CHECK(pthread_mutex_destroy(&mut) == 0);
-  RAY_CHECK(pthread_cond_destroy(&cond) == 0);
+//  RAY_CHECK(pthread_mutex_destroy(&mut) == 0);
+//  RAY_CHECK(pthread_cond_destroy(&cond) == 0);
 }
 
 void PlasmaObjectHeader::WriteAcquire(int64_t write_version) {
-  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
+//  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   RAY_LOG(DEBUG) << "WriteAcquire " << write_version;
   PrintPlasmaObjectHeader(this);
 
   while (num_reads_remaining > 0) {
-    RAY_CHECK(pthread_cond_wait(&cond, &mut) == 0);
+//    RAY_CHECK(pthread_cond_wait(&cond, &mut) == 0);
   }
   PrintPlasmaObjectHeader(this);
 
@@ -50,11 +50,11 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version) {
 
   RAY_LOG(DEBUG) << "WriteAcquire done";
   PrintPlasmaObjectHeader(this);
-  RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
+//  RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
 }
 
 void PlasmaObjectHeader::WriteRelease(int64_t write_version, int64_t write_max_readers) {
-  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
+//  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   RAY_LOG(DEBUG) << "WriteRelease " << write_version << " max readers: " << write_max_readers;
   PrintPlasmaObjectHeader(this);
 
@@ -68,18 +68,18 @@ void PlasmaObjectHeader::WriteRelease(int64_t write_version, int64_t write_max_r
 
   RAY_LOG(DEBUG) << "WriteRelease done";
   PrintPlasmaObjectHeader(this);
-  RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
+//  RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
   // Signal to all readers.
-  RAY_CHECK(pthread_cond_broadcast(&cond) == 0);
+//  RAY_CHECK(pthread_cond_broadcast(&cond) == 0);
 }
 
 int64_t PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
-  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
+//  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   RAY_LOG(DEBUG) << "ReadAcquire " << read_version;
   PrintPlasmaObjectHeader(this);
 
   while (version < read_version || max_readers == 0) {
-    RAY_CHECK(pthread_cond_wait(&cond, &mut) == 0);
+//    RAY_CHECK(pthread_cond_wait(&cond, &mut) == 0);
   }
 
   if (version > read_version) {
@@ -102,14 +102,14 @@ int64_t PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
   RAY_LOG(DEBUG) << "ReadAcquire done";
   PrintPlasmaObjectHeader(this);
 
-  RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
+//  RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
   return read_version;
 }
 
 void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
   RAY_LOG(DEBUG) << "ReadRelease " << read_version;
-  bool all_readers_done = false;
-  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
+//  bool all_readers_done = false;
+//  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   PrintPlasmaObjectHeader(this);
 
   RAY_LOG(DEBUG) << "ReadRelease " << read_version << " version is currently " << version;
@@ -119,7 +119,7 @@ void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
     num_reads_remaining--;
     RAY_CHECK(num_reads_remaining >= 0);
     if (num_reads_remaining == 0) {
-      all_readers_done = true;
+//      all_readers_done = true;
       // Block other readers from reading until we reset this to nonzero.
       max_readers = 0;
     }
@@ -127,10 +127,10 @@ void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
 
   PrintPlasmaObjectHeader(this);
   RAY_LOG(DEBUG) << "ReadRelease done";
-  RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
-  if (all_readers_done) {
-    RAY_CHECK(pthread_cond_signal(&cond) == 0);
-  }
+//  RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
+//  if (all_readers_done) {
+//    RAY_CHECK(pthread_cond_signal(&cond) == 0);
+//  }
 }
 
 }  // namespace ray

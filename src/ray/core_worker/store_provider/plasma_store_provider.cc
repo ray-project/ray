@@ -256,17 +256,18 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
 
 Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
                        const WorkerContext &ctx) {
-  if (ctx.CurrentTaskIsDirectCall()) {
-    // NOTE: for direct call actors, we still need to issue an unblock IPC to release
-    // get subscriptions, even if the worker isn't blocked.
-    if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
-      return client->NotifyDirectCallTaskUnblocked();
-    } else {
-      return Status::OK();  // We don't need to release resources.
-    }
-  } else {
-    return client->NotifyUnblocked(ctx.GetCurrentTaskID());
-  }
+  return Status::OK();  // XXX fix inefficiency for compiled tasks
+//  if (ctx.CurrentTaskIsDirectCall()) {
+//    // NOTE: for direct call actors, we still need to issue an unblock IPC to release
+//    // get subscriptions, even if the worker isn't blocked.
+//    if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
+//      return client->NotifyDirectCallTaskUnblocked();
+//    } else {
+//      return Status::OK();  // We don't need to release resources.
+//    }
+//  } else {
+//    return client->NotifyUnblocked(ctx.GetCurrentTaskID());
+//  }
 }
 
 Status CoreWorkerPlasmaStoreProvider::Get(
