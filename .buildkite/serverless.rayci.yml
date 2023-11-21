@@ -42,6 +42,21 @@ steps:
     depends_on: mlbuild
     job_env: forge
 
+  - label: ":serverless: serverless: chaos test"
+    instance_type: medium
+    commands:
+      - echo "--- Preparing chaos testing environment"
+      - ./python/ray/tests/chaos/prepare_env.sh
+      # First run: no faults
+      - echo "--- Running the workload without faults"
+      - "./python/ray/tests/chaos/chaos_network_delay.sh"
+      # Second run: with faults
+      - kubectl apply -f python/ray/tests/chaos/chaos_network_delay.yaml
+      - echo "--- Running the script test_potato_passer with injected fault chaos_network_delay"
+      - "./python/ray/tests/chaos/test_potato_passer.sh"
+    depends_on: oss-ci-base_build
+    job_env: oss-ci-base_build
+
   - label: ":serverless: serverless: flaky tests"
     tags: python
     instance_type: medium

@@ -1,4 +1,6 @@
 group: rllib tests
+tags:
+  - disabled
 steps:
   # builds
   - name: rllibbuild

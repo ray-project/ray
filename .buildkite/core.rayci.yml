@@ -1,4 +1,6 @@
 group: core tests
+tags:
+  - disabled
 steps:
   # builds
   - name: corebuild

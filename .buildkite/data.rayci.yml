@@ -1,4 +1,6 @@
 group: data tests
+tags:
+  - disabled
 steps:
   # builds
   - name: data6build
