@@ -703,7 +703,7 @@ def test_max_allowed_task_failures(restore_data_context):
             id = row["id"]
             if id < num_failed_tasks:
                 # Fail the first num_failed_tasks tasks.
-                raise Exception(f"Task failed: {id}")
+                raise RuntimeError(f"Task failed: {id}")
             return row
 
         ds = ray.data.range(num_tasks, parallelism=num_tasks).map(map_func)

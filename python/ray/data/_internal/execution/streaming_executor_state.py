@@ -136,6 +136,9 @@ class OpState:
         self.input_done_called = [False] * len(op.input_dependencies)
         self.dependents_completed_called = False
 
+    def __repr__(self):
+        return f"OpState({self.op.name})"
+
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
 
@@ -384,7 +387,7 @@ def process_completed_tasks(
                         max_blocks_to_read_per_op[state] -= num_blocks_read
                 except Exception as e:
                     error_message = (
-                        f'An exception occurred in a task of operator "{state.op}".'
+                        f'An exception occurred in a task of operator "{state.op.name}".'
                     )
                     if max_allowed_task_failures != 0:
                         num_failures += 1
@@ -394,14 +397,15 @@ def process_completed_tasks(
                             " Ignoring this exception with remaining"
                             f" max_allowed_task_failures={max_allowed_task_failures}."
                         )
-                        logger.get_logger().error(error_message, e)
+                        logger.get_logger().warning(error_message, exc_info=e)
                     else:
                         error_message += (
                             " Dataset execution will now abort."
                             " To ignore this exception and continue, set"
                             " DataContext.max_allowed_task_failures to a larger number."
                         )
-                        raise RuntimeError(error_message) from e
+                        logger.get_logger().error(error_message)
+                        raise e from None
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()

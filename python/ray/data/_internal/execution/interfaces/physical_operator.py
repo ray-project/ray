@@ -85,9 +85,12 @@ class DataOpTask(OpTask):
                 # And in this case, the block_ref is the exception object.
                 # TODO(hchen): Ray Core should have a better interface for
                 # detecting and obtaining the exception.
-                ex = ray.get(block_ref)
-                self._task_done_callback()
-                raise ex
+                try:
+                    ray.get(block_ref)
+                    assert False, "Should not reach here."
+                except Exception as ex:
+                    self._task_done_callback()
+                    raise ex from None
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
