@@ -32,12 +32,11 @@ HEAD_TYPE_MAX_WORKER_NODES_WARN_TEMPLATE = (
     " `{node_type}` to the global `max_worker_nodes` value of {max_worker_nodes}. To"
     " avoid spawning worker nodes of type `{node_type}`, explicitly set"
     " `max_worker_nodes: 0` for `{node_type}`.\n"
-    "Note that `max_worker_nodes: 0` was the default value prior to Ray 1.3.0."
+    "Note that `max_workers: 0` was the default value prior to Ray 1.3.0."
     " Your current version is Ray {version}.\n"
     "See the docs for more information:\n"
-    "https://docs.ray.io/en/master/cluster/config.html"
-    "#cluster-configuration-node-max-worker-nodes\n"
-    "https://docs.ray.io/en/master/cluster/config.html#full-configuration"
+    "https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html\n"
+    "https://docs.ray.io/en/latest/cluster/vms/user-guides/configuring-autoscaling.html"
 )
 
 ResourceBundle = Dict[str, Union[int, float]]
