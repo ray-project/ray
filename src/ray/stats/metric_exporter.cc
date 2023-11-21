@@ -148,7 +148,7 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(
       // To make sure we're not overflowing Agent's set gRPC max message size, we will be
       // tracking target payload binary size and make sure it stays w/in 95% of the
       // threshold
-      proto_payload_size_threshold_((size_t)(max_grpc_payload_size * .95f)) {
+      proto_payload_size_threshold_bytes_((size_t)(max_grpc_payload_size * .95f)) {
   absl::MutexLock l(&mu_);
   client_ = std::move(agent_client);
 };
@@ -249,7 +249,7 @@ bool OpenCensusProtoExporter::handleBatchOverflows(
     return true;
   } else if (should_check_payload_size) {
     size_t cur_payload_size = request_proto.ByteSizeLong();
-    if (cur_payload_size >= proto_payload_size_threshold_) {
+    if (cur_payload_size >= proto_payload_size_threshold_bytes_) {
       SendData(request_proto);
       return true;
     }

@@ -178,7 +178,7 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   /// immediately, so that we can make sure that batches stay w/in the threshold of the
   /// gRPC max message size set by an agent (usually calculated as 95% of agent's gRPC
   /// max-message size)
-  size_t proto_payload_size_threshold_;
+  size_t proto_payload_size_threshold_bytes_;
 };
 
 }  // namespace stats
