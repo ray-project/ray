@@ -2579,7 +2579,7 @@
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_1_large.yaml
 
   run:
     timeout: 86400
@@ -2604,7 +2604,7 @@
         run:
           timeout: 3600
       cluster:
-        cluster_compute: tpl_cpu_1_large_gce.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve_failure
   group: Long running tests
