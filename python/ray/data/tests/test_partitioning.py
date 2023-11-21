@@ -25,10 +25,17 @@ from ray.tests.conftest import *  # noqa
 
 
 class CSVDatasource(FileBasedDatasource):
-    def __init__(self, block_type: Union[pd.DataFrame, pa.Table]):
+    def __init__(
+        self,
+        paths,
+        block_type: Union[pd.DataFrame, pa.Table],
+        **file_based_datasource_kwargs,
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
         self._block_type = block_type
 
-    def _read_file(self, f: pa.NativeFile, path: str, **kwargs) -> Block:
+    def _read_file(self, f: pa.NativeFile, path: str) -> Block:
         assert self._block_type in {pd.DataFrame, pa.Table}
 
         if self._block_type is pa.Table:
@@ -52,8 +59,8 @@ def read_csv(
     partitioning: Partitioning,
     block_type: Union[pd.DataFrame, pa.Table],
 ) -> Dataset:
-    datasource = CSVDatasource(block_type=block_type)
-    return ray.data.read_datasource(datasource, paths=paths, partitioning=partitioning)
+    datasource = CSVDatasource(paths, block_type=block_type, partitioning=partitioning)
+    return ray.data.read_datasource(datasource)
 
 
 class PathPartitionEncoder:

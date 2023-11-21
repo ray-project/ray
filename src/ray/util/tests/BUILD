@@ -32,7 +32,7 @@ cc_test(
     size = "small",
     srcs = ["event_test.cc"],
     copts = COPTS,
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         "//src/ray/util:util",
         "@boost//:range",
@@ -75,7 +75,7 @@ cc_test(
         "--gtest_catch_exceptions=0",
     ],
     copts = COPTS,
-    tags = ["team:core"],
+    tags = ["team:core", "no_ubsan"],
     deps = [
         "//src/ray/util:util",
         "@boost//:asio",

@@ -1,12 +1,6 @@
-- label: ":java: Java"
-  conditions: ["RAY_CI_JAVA_AFFECTED"]
-  instance_size: medium
-  commands:
-    - ./java/test.sh
-
 # the bulk of serve tests are now run on civ2 infra, and defined in
-# pipeline.build_serve.yml
-- label: ":serverless: Serve HA Tests"
+# serve.rayci.yaml
+- label: "serve civ1 tests"
   conditions:
     [
         "RAY_CI_SERVE_AFFECTED",
@@ -29,7 +23,7 @@
       --test_tag_filters=-post_wheel_build,-gpu,xcommit
       python/ray/serve/tests/...
 
-- label: ":python: civ1 tests"
+- label: "core civ1 tests"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
@@ -44,22 +38,6 @@
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
       -- python/ray/tests/...
-
-- label: ":book: Doctest (CPU)"
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    # Todo (krfricke): Move mosaicml to train-test-requirements.txt
-    - pip install "mosaicml==0.12.1"
-    - DOC_TESTING=1 ./ci/env/install-dependencies.sh
-    # TODO(scottjlee): Move datasets to train/data-test-requirements.txt
-    # (see https://github.com/ray-project/ray/pull/38432/)
-    - pip install "datasets==2.14.0"
-    - ./ci/env/install-horovod.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=doctest,-gpu,-team:core
-      python/ray/... doc/...
 
 - label: ":kubernetes: operator"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]

@@ -114,7 +114,14 @@ class ActorPoolMapOperator(MapOperator):
         logger.get_logger().info(
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
-        ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
+        try:
+            ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
+        except ray.exceptions.GetTimeoutError:
+            raise ray.exceptions.GetTimeoutError(
+                "Timed out while starting actors. "
+                "This may mean that the cluster does not have "
+                "enough resources for the requested actor pool."
+            )
 
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
@@ -345,7 +352,7 @@ class ActorPoolMapOperator(MapOperator):
             "max_task_retries" not in ray_remote_args
             and ray_remote_args.get("max_restarts") != 0
         ):
-            ray_remote_args["max_task_retries"] = 5
+            ray_remote_args["max_task_retries"] = -1
         return ray_remote_args
 
 

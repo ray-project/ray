@@ -530,7 +530,7 @@ Learn more about Ray Core
 
 ## Ray Cluster Quickstart
 
-Deploy your applications on Ray clusters on AWS, GCP, Azure and more, often with minimal code changes to your existing code.
+Deploy your applications on Ray clusters on AWS, GCP, Azure, and more, often with minimal code changes to your existing code.
 
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on AWS
@@ -545,7 +545,7 @@ To run this example install the following:
 pip install -U "ray[default]" boto3
 ```
 
-If you haven't already, you’ll need to configure your credentials as described in the https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#guide-credentials[documentation for boto3].
+If you haven't already, configure your credentials as described in the https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#guide-credentials[documentation for boto3].
 :::
 
 Take this simple example that waits for individual nodes to join the cluster.
@@ -557,10 +557,10 @@ Take this simple example that waits for individual nodes to join the cluster.
 :language: python
 ```
 ````
-You can also download this example from our [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/yarn/example.py).
-Go ahead and store it locally in a file called `example.py`.
+You can also download this example from the [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/yarn/example.py).
+Store it locally in a file called `example.py`.
 
-To execute this script in the cloud, just download [this configuration file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-minimal.yaml),
+To execute this script in the cloud, download [this configuration file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-minimal.yaml),
 or copy it here:
 
 ````{dropdown} cluster.yaml
@@ -582,7 +582,7 @@ ray submit cluster.yaml example.py --start
 :outline:
 :expand:
 
-Learn more about launching Ray Clusters on AWS, GCP, Azure and more
+Learn more about launching Ray Clusters on AWS, GCP, Azure, and more
 ```
 
 `````

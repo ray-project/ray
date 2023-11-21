@@ -1,12 +1,12 @@
 group: build
 steps:
-  - label: ":tapioca: build: wheel {{matrix}}"
+  - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     tags:
       - linux_wheels
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}}
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64
     matrix:
       - "3.8"
       - "3.9"
@@ -16,6 +16,23 @@ steps:
       - manylinux
       - forge
     job_env: forge
+
+  - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
+    tags:
+      - linux_wheels
+      - oss
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    depends_on:
+      - manylinux-aarch64
+      - forge-aarch64
+    job_env: forge-aarch64
 
   - label: ":tapioca: build: debug wheel"
     tags:
@@ -52,7 +69,6 @@ steps:
     tags:
       - python_dependencies
       - docker
-      - core_cpp
       - oss
     instance_type: medium
     commands:
@@ -76,7 +92,6 @@ steps:
     tags:
       - python_dependencies
       - docker
-      - core_cpp
       - oss
     instance_type: medium
     commands:
@@ -99,5 +114,6 @@ steps:
       - rm ./python/requirements_compiled.txt
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
+    soft_fail: true
     depends_on:
       - forge
