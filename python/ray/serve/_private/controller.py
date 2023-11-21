@@ -515,7 +515,7 @@ class ServeController:
                 deployment_time,
             )
         else:
-            return (None, 0)
+            return (None, 0.0)
 
     def _all_running_replicas(self) -> Dict[DeploymentID, List[RunningReplicaInfo]]:
         """Used for testing.
