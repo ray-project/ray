@@ -264,13 +264,7 @@ Execution Memory
 During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
 Ray caps object store memory usage by spilling to disk, but excessive worker heap memory usage can cause out-of-memory situations.
 
-Ray Data attempts to bound its heap memory usage to ``num_execution_slots * max_block_size``. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified.
-The maximum block size is set by the configuration parameter :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` and is set to 128MiB by default.
-If the Dataset includes an all-to-all shuffle operation (such as :func:`~ray.data.Dataset.random_shuffle`), then the default maximum block size is controlled by :class:`DataContext.target_shuffle_max_block_size <ray.data.context.DataContext>`, set to 1GiB by default to avoid creating too many tiny blocks.
-When a task's output is larger than the maximum block size, the worker automatically splits the output into multiple smaller blocks to avoid running out of heap memory.
-
-However, too-large blocks are still possible, and they can lead to out-of-memory situations.
-To avoid these issues, make sure no single item in your Ray Data is too large, and always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with a batch size small enough such that the output batch can comfortably fit into heap memory.
+For more information on tuning memory usage and preventing out-of-memory errors, see the :ref:`performance guide <data_out_of_memory>`.
 
 Object Store Memory
 -------------------
