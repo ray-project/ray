@@ -467,6 +467,8 @@ class Worker:
         # different drivers that connect to the same Serve instance.
         # See https://github.com/ray-project/ray/pull/35070.
         self._filter_logs_by_job = True
+        # TODO(ekl) aren't job ids unique per worker now so we can cache it?
+        self._cached_job_id = None
 
     @property
     def connected(self):
@@ -485,9 +487,12 @@ class Worker:
 
     @property
     def current_job_id(self):
-        if hasattr(self, "core_worker"):
-            return self.core_worker.get_current_job_id()
-        return JobID.nil()
+        if self._cached_job_id is None:
+            if hasattr(self, "core_worker"):
+                self._cached_job_id = self.core_worker.get_current_job_id()
+            else:
+                return JobID.nil()
+        return self._cached_job_id
 
     @property
     def actor_id(self):
