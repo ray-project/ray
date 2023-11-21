@@ -1603,7 +1603,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the scale-down event is generated.
         events = autoscaler.event_summarizer.summary()
         assert (
-            "Removing 1 nodes of type worker " "(max_worker_nodes_per_type)." in events
+            "Removing 1 node of type worker " "(max_worker_nodes_per_type)." in events
         )
         assert mock_metrics.stopped_nodes.inc.call_count == 1
 
@@ -2400,7 +2400,7 @@ class AutoscalingTest(unittest.TestCase):
         assert autoscaler.pending_launches.value == 0
         events = autoscaler.event_summarizer.summary()
         assert (
-            "Removing 1 nodes of type m4.large (max_worker_nodes_per_type)." in events
+            "Removing 1 node of type m4.large (max_worker_nodes_per_type)." in events
         )
         assert (
             "Removing 2 nodes of type p2.8xlarge (max_worker_nodes_per_type)." in events
