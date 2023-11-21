@@ -10,6 +10,7 @@ from ray.autoscaler._private.util import (
     rewrite_deprecated_workers_fields,
 )
 
+
 # #CVGA-start
 class TestRewriteAndWarn:
     def test_deprecated_key_replacement(self, capsys):
