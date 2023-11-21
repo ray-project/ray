@@ -515,3 +515,10 @@ class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
     GRPC = "gRPC"
+
+
+class TargetCapacityScaleDirection(str, Enum):
+    """Determines what direction the target capacity is scaling."""
+
+    UP = "UP"
+    DOWN = "DOWN"
