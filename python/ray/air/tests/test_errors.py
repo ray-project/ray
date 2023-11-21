@@ -218,6 +218,15 @@ class FailingDataParallelTrainer(DataParallelTrainer):
 
 
 def test_preemption_error(tmp_path):
+    """This test simulates preemption actor errors at different levels of execution
+    and checks that the error counting is correct:
+    - Round 0: Actor error in the training worker. (shouldn't be counted)
+    - Round 1: User error in the training worker.
+    - Round 2: Actor error in the coordinator actor. (shouldn't be counted)
+    - Round 3: No error.
+    This run should pass with `max_failures=1`.
+    """
+
     def train_fn(config):
         checkpoint = train.get_checkpoint()
         round = 0
@@ -239,7 +248,6 @@ def test_preemption_error(tmp_path):
                 "mock a Train coordinator actor failure (2b)\n"
             )
         elif round == 3:
-            # No error the last time.
             print("\n[Round 3] No error on the last round.\n")
         else:
             raise RuntimeError("Should stop after round=3...")
@@ -250,7 +258,7 @@ def test_preemption_error(tmp_path):
         run_config=RunConfig(
             storage_path=str(tmp_path),
             name="test_preemption_error",
-            failure_config=train.FailureConfig(fail_fast="raise", max_failures=3),
+            failure_config=train.FailureConfig(fail_fast=False, max_failures=1),
         ),
     )
     result = trainer.fit()
