@@ -560,6 +560,7 @@ def read_parquet(
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
     **arrow_parquet_args,
 ) -> Dataset:
@@ -673,6 +674,8 @@ def read_parquet(
             set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
 
     Returns:
@@ -700,6 +703,7 @@ def read_parquet(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -866,6 +870,7 @@ def read_parquet_bulk(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
     file_extensions: Optional[List[str]] = ParquetBaseDatasource._FILE_EXTENSIONS,
     **arrow_parquet_args,
 ) -> Dataset:
@@ -941,6 +946,8 @@ def read_parquet_bulk(
             set of arguments, see
             the `PyArrow API <https://arrow.apache.org/docs/python/generated/\
                 pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
 
     Returns:
@@ -961,8 +968,8 @@ def read_parquet_bulk(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
-        **arrow_parquet_args,
     )
     return read_datasource(
         datasource,
@@ -982,6 +989,7 @@ def read_json(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
     file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
@@ -1083,6 +1091,8 @@ def read_json(
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
                 hive-style-partitioning/>`_.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
@@ -1108,6 +1118,7 @@ def read_json(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1126,6 +1137,7 @@ def read_csv(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
     file_extensions: Optional[List[str]] = None,
@@ -1236,6 +1248,8 @@ def read_csv(
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
                 hive-style-partitioning/>`_.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
@@ -1262,6 +1276,7 @@ def read_csv(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1284,6 +1299,7 @@ def read_text(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
     file_extensions: Optional[List[str]] = None,
@@ -1340,6 +1356,8 @@ def read_text(
             dataset. By default, no files are filtered.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
@@ -1364,6 +1382,7 @@ def read_text(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1381,6 +1400,7 @@ def read_numpy(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
     file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
@@ -1421,6 +1441,8 @@ def read_numpy(
             match "*.npy*".
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
@@ -1443,6 +1465,7 @@ def read_numpy(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1460,6 +1483,7 @@ def read_tfrecords(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
     shuffle: Union[Literal["files"], None] = None,
@@ -1529,6 +1553,8 @@ def read_tfrecords(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths:  If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
@@ -1557,6 +1583,7 @@ def read_tfrecords(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(datasource, parallelism=parallelism)
@@ -1577,6 +1604,7 @@ def read_webdataset(
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
@@ -1605,6 +1633,8 @@ def read_webdataset(
         verbose_open: Whether to print the file names as they are opened.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
 
     Returns:
@@ -1632,6 +1662,7 @@ def read_webdataset(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(datasource, parallelism=parallelism)

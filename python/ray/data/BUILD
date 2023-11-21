@@ -105,6 +105,14 @@ py_test(
 )
 
 py_test(
+    name = "test_arrow_block",
+    size = "small",
+    srcs = ["tests/test_arrow_block.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_auto_parallelism",
     size = "medium",
     srcs = ["tests/test_auto_parallelism.py"],
@@ -260,6 +268,14 @@ py_test(
     name = "test_pandas",
     size = "small",
     srcs = ["tests/test_pandas.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_pandas_block",
+    size = "small",
+    srcs = ["tests/test_pandas_block.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

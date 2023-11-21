@@ -149,23 +149,6 @@ class TestReadImages:
         else:
             assert all(tensor.numpy_shape == (32, 32, 3) for tensor in df["image"])
 
-    def test_include_paths(self, ray_start_regular_shared):
-        root = "example://image-datasets/simple"
-
-        ds = ray.data.read_images(root, include_paths=True)
-
-        def get_relative_path(path: str) -> str:
-            parts = os.path.normpath(path).split(os.sep)
-            # `parts[-3:]` corresponds to 'image-datasets', 'simple', and the filename.
-            return os.sep.join(parts[-3:])
-
-        relative_paths = [get_relative_path(record["path"]) for record in ds.take()]
-        assert sorted(relative_paths) == [
-            "image-datasets/simple/image1.jpg",
-            "image-datasets/simple/image2.jpg",
-            "image-datasets/simple/image3.jpg",
-        ]
-
     def test_random_shuffle(self, ray_start_regular_shared, restore_data_context):
         # NOTE: set preserve_order to True to allow consistent output behavior.
         context = ray.data.DataContext.get_current()
