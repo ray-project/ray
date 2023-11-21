@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.util import _is_local_scheme, _retry
+from ray.data._internal.util import _is_local_scheme, retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.datasink import Datasink
@@ -138,7 +138,7 @@ class RowBasedFileDatasink(_FileDatasink):
     def _write_row_to_file_with_retry(
         self, row: Dict[str, Any], file: "pyarrow.NativeFile", path: str
     ):
-        _retry(
+        retry(
             lambda: self.write_row_to_file(row, file),
             match=WRITE_FILE_RETRY_ON_ERRORS,
             description=f"write '{path}'",
@@ -178,7 +178,7 @@ class BlockBasedFileDatasink(_FileDatasink):
     def _write_block_to_file_with_retry(
         self, block: BlockAccessor, file: "pyarrow.NativeFile", path: str
     ):
-        _retry(
+        retry(
             lambda: self.write_block_to_file(block, file),
             match=WRITE_FILE_RETRY_ON_ERRORS,
             description=f"write '{path}'",
