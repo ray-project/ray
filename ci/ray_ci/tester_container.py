@@ -33,8 +33,8 @@ class TesterContainer(Container):
             docker_tag,
             envs=test_envs,
             volumes=[
-                f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
-                "/var/run/docker.sock:/var/run/docker.sock",
+                #                f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
+                #                "/var/run/docker.sock:/var/run/docker.sock",
             ],
         )
         self.shard_count = shard_count
@@ -121,4 +121,6 @@ class TesterContainer(Container):
             test_cmd += f"--test_arg {test_arg} "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
-        return subprocess.Popen(self._get_run_command(commands, gpu_ids))
+        return subprocess.Popen(
+            ["bash", "-c", " ".join(self._get_run_command(commands, gpu_ids))]
+        )

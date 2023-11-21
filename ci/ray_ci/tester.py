@@ -130,6 +130,8 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             "tsan-clang",
             # java build types
             "java",
+            # window build types
+            "windows",
         ]
     ),
     default="optimized",
@@ -154,7 +156,8 @@ def main(
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
-    docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    if build_type != "windows":
+        docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
@@ -276,18 +279,14 @@ def _get_test_targets(
     Get test targets that are owned by a particular team
     """
     query = _get_all_test_query(targets, team, except_tags, only_tags)
-    test_targets = set(
-        container.run_script_with_output(
-            [
-                f'bazel query "{query}"',
-            ]
-        )
+    test_targets = (
+        container.run_script_with_output([f'bazel query "{query}"'])
         .decode("utf-8")
-        # CUDA image comes with a license header that we need to remove
         .replace(CUDA_COPYRIGHT, "")
         .strip()
         .split("\n")
     )
+    test_targets = set([t.rstrip() for t in test_targets])
     flaky_tests = set(_get_flaky_test_targets(team, yaml_dir))
 
     if get_flaky_tests:

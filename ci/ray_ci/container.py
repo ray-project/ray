@@ -63,21 +63,24 @@ class Container:
     def install_ray(self, build_type: Optional[str] = None) -> None:
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
+        tests_dockerfile = "tests.env.Dockerfile"
+        if build_type == "windows":
+            tests_dockerfile = "tests.windows.env.Dockerfile"
+        build_script = [
+            "docker",
+            "build",
+            "--build-arg",
+            f"BASE_IMAGE={self._get_docker_image()}",
+            "--build-arg",
+            f"BUILD_TYPE={build_type or ''}",
+            "-t",
+            self._get_docker_image(),
+            "-f",
+            f"ci/ray_ci/{tests_dockerfile}",
+            ".",
+        ]
         subprocess.check_call(
-            [
-                "docker",
-                "build",
-                "--pull",
-                "--build-arg",
-                f"BASE_IMAGE={self._get_docker_image()}",
-                "--build-arg",
-                f"BUILD_TYPE={build_type or ''}",
-                "-t",
-                self._get_docker_image(),
-                "-f",
-                "/ray/ci/ray_ci/tests.env.Dockerfile",
-                "/ray",
-            ],
+            ["bash", "-c", " ".join(build_script)],
             env=env,
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -93,12 +96,12 @@ class Container:
             "run",
             "-i",
             "--rm",
-            "--env",
-            "NVIDIA_DISABLE_REQUIRE=1",
-            "--volume",
-            "/tmp/artifacts:/artifact-mount",
-            "--add-host",
-            "rayci.localhost:host-gateway",
+            #            "--env",
+            #            "NVIDIA_DISABLE_REQUIRE=1",
+            #            "--volume",
+            #            "/tmp/artifacts:/artifact-mount",
+            #            "--add-host",
+            #            "rayci.localhost:host-gateway",
         ]
         for volume in self.volumes:
             command += ["--volume", volume]
@@ -109,14 +112,10 @@ class Container:
         if gpu_ids:
             command += ["--gpus", f'"device={",".join(map(str, gpu_ids))}"']
         command += [
-            "--workdir",
-            "/rayci",
             "--shm-size=2.5gb",
             self._get_docker_image(),
-            "/bin/bash",
-            "-iecuo",
-            "pipefail",
-            "--",
+            "bash",
+            "-c",
             "\n".join(script),
         ]
 
