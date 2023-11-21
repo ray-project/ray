@@ -648,5 +648,31 @@ def test_serve_shut_down_without_duplicated_logs(
     assert all_serve_logs.count("Deleting application 'default'") == 1
 
 
+def test_serve_passing_task_id_kargs(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test Serve shut down without duplicated logs.
+
+    When Serve shutdown is called and executing the shutdown process, the controller
+    log should not be spamming controller shutdown and deleting app messages.
+    """
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @serve.deployment
+    class HelloModel:
+        def dummy(self, task_id):
+            return f"hello: {task_id}"
+
+    model = HelloModel.bind()
+    handle = serve.run(target=model)
+
+    assert handle.dummy.remote(task_id="1").result() == "hello: 1"
+
+    serve.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

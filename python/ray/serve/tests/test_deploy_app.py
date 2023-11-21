@@ -816,7 +816,7 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
     client.deploy_apps(ServeDeploySchema(**config_template))
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "0 pizzas please!"
     )
 
