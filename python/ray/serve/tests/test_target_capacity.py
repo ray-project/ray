@@ -7,7 +7,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve import Application
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus, TargetCapacityScaleDirection
@@ -336,6 +336,75 @@ def test_autoscaling_scale_to_zero(
             SCALE_TO_ZERO_DEPLOYMENT_NAME: 0,
         },
     )
+
+
+signal = SignalActor.remote()
+
+
+@serve.deployment(
+    ray_actor_options={"num_cpus": 0},
+)
+class ControlledLifecycleDeployment:
+    def __init__(self):
+        ray.get(signal.wait.remote())
+
+    def __call__(self) -> str:
+        return "Hello world!"
+
+    def __del__(self):
+        ray.get(signal.wait.remote())
+
+
+controlled_lifecycle_app = ControlledLifecycleDeployment.bind()
+
+
+def test_target_capacity_update_status(
+    shutdown_ray_and_serve, client: ServeControllerClient
+):
+    """Check how Serve's status updates when target_capacity changes."""
+    app_name = "controlled_app"
+
+    config = ServeDeploySchema(
+        applications=[
+            ServeApplicationSchema(
+                name=app_name,
+                import_path=(
+                    "ray.serve.tests.test_target_capacity:controlled_lifecycle_app"
+                ),
+            )
+        ]
+    )
+
+    def apply_config_and_check_status(target_capacity: float):
+        """Applies config with specified target_capacity."""
+
+        config.target_capacity = target_capacity
+        client.deploy_apps(config)
+        wait_for_condition(lambda: serve.status().target_capacity == target_capacity)
+        wait_for_condition(
+            lambda: serve.status().applications[app_name].status
+            == ApplicationStatus.DEPLOYING
+        )
+
+    def start_replicas_and_check_status():
+        ray.get(signal.send.remote())
+        wait_for_condition(
+            lambda: serve.status().applications[app_name].status
+            == ApplicationStatus.RUNNING
+        )
+        ray.get(signal.send.remote(clear=True))
+
+    # Initially deploy at target_capacity 0, and check status.
+    apply_config_and_check_status(target_capacity=0.0)
+    start_replicas_and_check_status()
+
+    # Increase the target_capacity, and check again.
+    apply_config_and_check_status(target_capacity=20.0)
+    start_replicas_and_check_status()
+
+    # Decrease the target_capacity, and check again.
+    apply_config_and_check_status(target_capacity=20.0)
+    start_replicas_and_check_status()
 
 
 @serve.deployment(
