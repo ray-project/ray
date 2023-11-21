@@ -1,3 +1,6 @@
+from typing import Optional
+
+from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
 
 
@@ -7,18 +10,21 @@ class InheritTargetMaxBlockSizeRule(Rule):
     target max block size."""
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
-        target_max_block_size = None
-        dag = plan.dag
-        while True:
-            if dag.target_max_block_size is not None:
-                # Set the target block size to inherit for
-                # upstream ops.
-                target_max_block_size = dag.target_max_block_size
-            elif target_max_block_size is not None:
-                # Inherit from downstream op.
-                dag.target_max_block_size = target_max_block_size
-
-            if len(dag.input_dependencies) != 1:
-                break
-            dag = dag.input_dependencies[0]
+        self._propagate_target_max_block_size_to_upstream_ops(plan.dag)
         return plan
+
+    def _propagate_target_max_block_size_to_upstream_ops(
+        self, dag: PhysicalOperator, target_max_block_size: Optional[int] = None
+    ):
+        if dag.target_max_block_size is not None:
+            # Set the target block size to inherit for
+            # upstream ops.
+            target_max_block_size = dag.target_max_block_size
+        elif target_max_block_size is not None:
+            # Inherit from downstream op.
+            dag.target_max_block_size = target_max_block_size
+
+        for upstream_op in dag.input_dependencies:
+            self._propagate_target_max_block_size_to_upstream_ops(
+                upstream_op, target_max_block_size
+            )

@@ -146,15 +146,6 @@ def _autodetect_parallelism(
     if mem_size is not None and not np.isnan(mem_size):
         min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
         max_reasonable_parallelism = max(1, int(mem_size / ctx.target_min_block_size))
-    # if target_max_block_size > 100_000:
-    #    assert False
-    print(
-        "MEMORY SIZE",
-        mem_size,
-        "min safe:",
-        min_safe_parallelism,
-        target_max_block_size,
-    )
 
     reason = ""
     if parallelism < 0:

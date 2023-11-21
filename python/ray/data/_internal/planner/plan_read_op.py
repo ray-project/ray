@@ -48,8 +48,10 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     """
 
     def get_input_data(target_max_block_size) -> List[RefBundle]:
-        assert hasattr(op, "_detected_parallelism")
-        parallelism = op._detected_parallelism
+        parallelism = op.get_detected_parallelism()
+        assert (
+            parallelism is not None
+        ), "Read parallelism must be set by the optimizer before execution"
         read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 

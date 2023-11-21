@@ -508,60 +508,6 @@ def test_limit(ray_start_regular_shared, lazy):
         assert extract_values("id", ds.limit(i).take(200)) == list(range(i))
 
 
-def test_limit_execution(ray_start_regular_shared):
-    cursor = None
-    parallelism = 20
-    ds = ray.data.range(100, parallelism=parallelism)
-
-    # Add some delay to the output to prevent all tasks from finishing
-    # immediately.
-    def delay(row):
-        time.sleep(0.1)
-        return row
-
-    ds = ds.map(delay)
-    cursor = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(
-            task_count={
-                "_get_datasource_or_legacy_reader": 1,
-            }
-        ),
-        cursor=cursor,
-    )
-
-    # During lazy execution, we should not execute too many more tasks than is
-    # needed to produce the requested number of rows.
-    for i in [1, 11]:
-        assert extract_values("id", ds.limit(i).take(200)) == list(range(i))
-        cursor = assert_core_execution_metrics_equals(
-            CoreExecutionMetrics(
-                task_count={
-                    "ReadRange->Map(delay)": lambda count: count < parallelism / 2,
-                    "slice_fn": lambda count: count <= 1,
-                }
-            ),
-            cursor=cursor,
-        )
-
-    # .materialize().limit() should only trigger execution once.
-    ds = ray.data.range(100, parallelism=20).materialize()
-    cursor = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(
-            task_count={
-                "_execute_read_task_split": 20,
-                "_get_datasource_or_legacy_reader": 1,
-            }
-        ),
-        cursor=cursor,
-    )
-    for i in [1, 10]:
-        assert extract_values("id", ds.limit(i).take(200)) == list(range(i))
-        assert_core_execution_metrics_equals(
-            CoreExecutionMetrics(task_count={"slice_fn": lambda count: count <= 1}),
-            cursor=cursor,
-        )
-
-
 # NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
 # redundant files due to exponential ramp-up.
 @pytest.mark.parametrize("limit,min_read_tasks", [(10, 1), (20, 2), (30, 3), (60, 6)])

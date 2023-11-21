@@ -124,12 +124,12 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     ctx.target_shuffle_max_block_size = 10_000 * 8
     num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
     block_size_expected = ctx.target_shuffle_max_block_size
-    cursor = get_initial_core_execution_metrics_cursor()
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     ds = shuffle_fn(ray.data.range(100_000), **kwargs).materialize()
     assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected * 1.5
-    cursor = assert_blocks_expected_in_plasma(
-        cursor,
+    last_snapshot = assert_blocks_expected_in_plasma(
+        last_snapshot,
         # Dataset.sort produces some empty intermediate blocks because the
         # input range is already partially sorted.
         num_blocks_expected**2,
@@ -151,8 +151,8 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
 
     ds = shuffle_fn(ray.data.range(100_000), **kwargs).materialize()
     assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected * 1.5
-    cursor = assert_blocks_expected_in_plasma(
-        cursor,
+    last_snapshot = assert_blocks_expected_in_plasma(
+        last_snapshot,
         num_blocks_expected**2,
         total_bytes_expected=mem_size * 2 + (0 if fusion_supported else mem_size),
     )
@@ -162,8 +162,8 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         num_blocks_expected *= 2
         block_size_expected //= 2
     assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected * 1.5
-    cursor = assert_blocks_expected_in_plasma(
-        cursor,
+    last_snapshot = assert_blocks_expected_in_plasma(
+        last_snapshot,
         num_blocks_expected**2,
         total_bytes_expected=mem_size * 2 + (0 if fusion_supported else mem_size),
     )
@@ -178,8 +178,8 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         block_size_expected //= 2
     ds = shuffle_fn(ray.data.range(100_000).map(lambda x: x), **kwargs).materialize()
     assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected * 1.5
-    cursor = assert_blocks_expected_in_plasma(
-        cursor,
+    last_snapshot = assert_blocks_expected_in_plasma(
+        last_snapshot,
         num_blocks_expected**2,
         total_bytes_expected=mem_size * 2 + (0 if fusion_supported else mem_size),
     )
