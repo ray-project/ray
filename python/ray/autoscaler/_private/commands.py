@@ -56,8 +56,8 @@ from ray.autoscaler._private.util import (
     hash_launch_conf,
     hash_runtime_conf,
     prepare_config,
+    rewrite_deprecated_workers_fields,
     validate_config,
-    rewrite_deprecated_workers_fields
 )
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (

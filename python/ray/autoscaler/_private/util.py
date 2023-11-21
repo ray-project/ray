@@ -947,6 +947,7 @@ def format_no_node_type_string(node_type: dict):
 
     return "\n  ".join(output_lines)
 
+
 def rewrite_deprecated_workers_fields(config: Dict[str, Any]) -> Dict[str, Any]:
     """Rewrite deprecated min/max_workers fields to the new field min/max_worker_nodes.
 
@@ -957,15 +958,13 @@ def rewrite_deprecated_workers_fields(config: Dict[str, Any]) -> Dict[str, Any]:
     Args:
         config (Dict[str, Any]): The cluster config to rewrite.
     """
+
     def rewrite_and_warn(old, new, config_dict):
         if old in config_dict:
-            cli_logger.warning(
-                f"`{old}` is deprecated. Please use `{new}` instead."
-            )
+            cli_logger.warning(f"`{old}` is deprecated. Please use `{new}` instead.")
             if new in config_dict:
                 cli_logger.warning(
-                    f"Both `{old}` and `{new}` are provided. "
-                    f"Using `{new}`."
+                    f"Both `{old}` and `{new}` are provided. " f"Using `{new}`."
                 )
             else:
                 config_dict[new] = config_dict[old]
