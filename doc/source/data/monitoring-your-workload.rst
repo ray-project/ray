@@ -63,7 +63,7 @@ The metrics recorded are:
 
 To learn more about the Ray dashboard, including detailed setup instructions, see :ref:`Ray Dashboard <observability-getting-started>`.
 
-.. _Ray Data Logs
+.. _Ray Data Logs:
 
 Ray Data logs
 -------------
