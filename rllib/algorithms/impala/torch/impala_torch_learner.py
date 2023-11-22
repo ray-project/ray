@@ -40,35 +40,36 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
 
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+        recurrent_seq_len = None
 
         # TODO(Artur): In the old impala code, actions were unsqueezed if they were
         #  multi_discrete. Find out why and if we need to do the same here.
         #  actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
-
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=config.rollout_frag_or_episode_len,
-            recurrent_seq_len=config.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=config.rollout_frag_or_episode_len,
-            recurrent_seq_len=config.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
-            trajectory_len=config.rollout_frag_or_episode_len,
-            recurrent_seq_len=config.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=config.rollout_frag_or_episode_len,
-            recurrent_seq_len=config.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         bootstrap_values_time_major = make_time_major(
             batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=config.rollout_frag_or_episode_len,
-            recurrent_seq_len=config.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         bootstrap_value = bootstrap_values_time_major[-1]
 
@@ -78,10 +79,10 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             1.0
             - make_time_major(
                 batch[SampleBatch.TERMINATEDS],
-                trajectory_len=config.rollout_frag_or_episode_len,
-                recurrent_seq_len=config.recurrent_seq_len,
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
             ).type(dtype=torch.float32)
-        ) * config.discount_factor
+        ) * config.gamma
 
         # TODO(Artur) Why was there `TorchCategorical if is_multidiscrete else
         #  dist_class` in the old code torch impala policy?

@@ -34,33 +34,36 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
 
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+        recurrent_seq_len = None
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=config.rollout_frag_or_episode_len,
-            recurrent_seq_len=config.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=config.rollout_frag_or_episode_len,
-            recurrent_seq_len=config.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
-            trajectory_len=config.rollout_frag_or_episode_len,
-            recurrent_seq_len=config.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=config.rollout_frag_or_episode_len,
-            recurrent_seq_len=config.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         bootstrap_values_time_major = make_time_major(
             batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=config.rollout_frag_or_episode_len,
-            recurrent_seq_len=config.recurrent_seq_len,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
         )
         bootstrap_value = bootstrap_values_time_major[-1]
+        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
 
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -69,8 +72,8 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             - tf.cast(
                 make_time_major(
                     batch[SampleBatch.TERMINATEDS],
-                    trajectory_len=config.rollout_frag_or_episode_len,
-                    recurrent_seq_len=config.recurrent_seq_len,
+                    trajectory_len=rollout_frag_or_episode_len,
+                    recurrent_seq_len=recurrent_seq_len,
                 ),
                 dtype=tf.float32,
             )

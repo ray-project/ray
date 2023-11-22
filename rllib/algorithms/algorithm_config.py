@@ -772,14 +772,6 @@ class AlgorithmConfig(_Config):
                 "`config.evaluation(enable_async_evaluation=True) on your config "
                 "object to fix this problem."
             )
-        if not (
-            (
-                isinstance(self.rollout_fragment_length, int)
-                and self.rollout_fragment_length > 0
-            )
-            or self.rollout_fragment_length == "auto"
-        ):
-            raise ValueError("`rollout_fragment_length` must be int >0 or 'auto'!")
         if self.batch_mode not in ["truncate_episodes", "complete_episodes"]:
             raise ValueError(
                 "`config.batch_mode` must be one of [truncate_episodes|"
@@ -1615,8 +1607,8 @@ class AlgorithmConfig(_Config):
                 order to disable the usage of evaluation trajectories for synching
                 the central filter (used for training).
             rollout_fragment_length: Divide episodes into fragments of this many steps
-                each during rollouts. Trajectories of this size are collected from
-                rollout workers and combined into a larger batch of `train_batch_size`
+                each during sampling. Trajectories of this size are collected from
+                EnvRunners and combined into a larger batch of `train_batch_size`
                 for learning.
                 For example, given rollout_fragment_length=100 and
                 train_batch_size=1000:
@@ -1625,11 +1617,11 @@ class AlgorithmConfig(_Config):
                 When using multiple envs per worker, the fragment size is multiplied by
                 `num_envs_per_worker`. This is since we are collecting steps from
                 multiple envs in parallel. For example, if num_envs_per_worker=5, then
-                rollout workers will return experiences in chunks of 5*100 = 500 steps.
+                EnvRunners will return experiences in chunks of 5*100 = 500 steps.
                 The dataflow here can vary per algorithm. For example, PPO further
                 divides the train batch into minibatches for multi-epoch SGD.
-                Set to "auto" to have RLlib compute an exact `rollout_fragment_length`
-                to match the given batch size.
+                Set `rollout_fragment_length` to "auto" to have RLlib compute an exact
+                value to match the given batch size.
             batch_mode: How to build individual batches with the EnvRunner(s). Batches
                 coming from distributed EnvRunners are usually concat'd to form the
                 train batch. Note that "steps" below can mean different things (either
@@ -1700,6 +1692,14 @@ class AlgorithmConfig(_Config):
         if update_worker_filter_stats is not NotProvided:
             self.update_worker_filter_stats = update_worker_filter_stats
         if rollout_fragment_length is not NotProvided:
+            if not (
+                (
+                    isinstance(rollout_fragment_length, int)
+                    and rollout_fragment_length > 0
+                )
+                or rollout_fragment_length == "auto"
+            ):
+                raise ValueError("`rollout_fragment_length` must be int >0 or 'auto'!")
             self.rollout_fragment_length = rollout_fragment_length
         if batch_mode is not NotProvided:
             self.batch_mode = batch_mode
@@ -2804,8 +2804,6 @@ class AlgorithmConfig(_Config):
 
         return self._is_atari
 
-    # TODO: Make rollout_fragment_length as read-only property and replace the current
-    #  self.rollout_fragment_length a private variable.
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
@@ -2813,13 +2811,14 @@ class AlgorithmConfig(_Config):
         `rollout_fragment_length` = `train_batch_size` /
         (`num_envs_per_worker` * `num_rollout_workers`)
 
-        If result is not a fraction AND `worker_index` is provided, will make
-        those workers add another timestep, such that the overall batch size (across
+        If result is a fraction AND `worker_index` is provided, will make
+        those workers add additional timesteps, such that the overall batch size (across
         the workers) will add up to exactly the `train_batch_size`.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
-            value is "auto").
+            provided value is "auto"), making sure `train_batch_size` is reached
+            exactly in each iteration.
         """
         if self.rollout_fragment_length == "auto":
             # Example:
@@ -3797,32 +3796,3 @@ class AlgorithmConfig(_Config):
     @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
     def num_workers(self):
         pass
-
-    @Deprecated(error=True)#TODO: switch back to False
-    def get_learner_hyperparameters(self):
-        # Compile the per-module learner hyperparameter instances (if applicable).
-        per_module_learner_hp_overrides = {}
-        if self.algorithm_config_overrides_per_module:
-            for (
-                module_id,
-                overrides,
-            ) in self.algorithm_config_overrides_per_module.items():
-                # Copy this AlgorithmConfig object (unfreeze copy), update copy from
-                # the provided override dict for this module_id, then
-                # create a new LearnerHyperparameter object from this altered
-                # AlgorithmConfig.
-                config_for_module = self.copy(copy_frozen=False).update_from_dict(
-                    overrides
-                )
-                config_for_module.algorithm_config_overrides_per_module = None
-                per_module_learner_hp_overrides[
-                    module_id
-                ] = config_for_module.get_learner_hyperparameters()
-
-        return LearnerHyperparameters(
-            learning_rate=self.lr,
-            grad_clip=self.grad_clip,
-            grad_clip_by=self.grad_clip_by,
-            _per_module_overrides=per_module_learner_hp_overrides,
-            seed=self.seed,
-        )
