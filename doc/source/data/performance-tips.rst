@@ -45,7 +45,7 @@ For example, the following code will batch multiple files into the same read tas
     ray.init(num_cpus=2)
 
     # Repeat the iris.csv file 16 times.
-    ds = ray.data.read_images(["example://iris.csv"] * 16)
+    ds = ray.data.read_csv(["example://iris.csv"] * 16)
     print(ds.materialize())
     # 2023-11-20 14:28:47,597 INFO plan.py:760 -- Using autodetected parallelism=4 for stage ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
     # MaterializedDataset(
