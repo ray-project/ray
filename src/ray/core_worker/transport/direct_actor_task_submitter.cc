@@ -514,7 +514,9 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // reply for a previously completed task. We are not calling CompletePendingTask
     // because the tasks are pushed directly to the actor, not placed on any queues
     // in task_finisher_.
-  } else if (status.ok()) {
+  } else if (status.ok() && !reply.is_retryable_error()) {
+    // status.ok() means the worker completed the reply, either succeeded or with a
+    // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_finisher_.CompletePendingTask(
         task_id, reply, addr, reply.is_application_error());
   } else if (status.IsSchedulingCancelled()) {
