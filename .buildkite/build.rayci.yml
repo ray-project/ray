@@ -15,7 +15,6 @@ steps:
     depends_on:
       - manylinux
       - forge
-    job_env: forge
 
   - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
     tags:
@@ -44,7 +43,6 @@ steps:
     depends_on:
       - manylinux
       - forge
-    job_env: forge
 
   - label: ":windows: wheel {{matrix}}"
     # we have linux/mac wheels tag, but do not have a windows wheels tag..
@@ -80,8 +78,9 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- doc
-    depends_on: docbuild
-    job_env: forge
+    depends_on:
+      - docbuild
+      - forge
 
   - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
     tags:
@@ -100,7 +99,6 @@ steps:
       - forge
       - raycudabase
       - raycpubase
-    job_env: forge
     matrix:
       - "3.8"
       - "3.9"
@@ -148,7 +146,6 @@ steps:
       - forge
       - ray-mlcudabase
       - ray-mlcpubase
-    job_env: forge
     matrix:
       - "3.8"
       - "3.9"
