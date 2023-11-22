@@ -53,6 +53,10 @@ def make_map_transformer(block_fn):
     return create_map_transformer_from_block_fn(map_fn)
 
 
+def make_ref_bundle(x):
+    return make_ref_bundles([[x]])[0]
+
+
 @pytest.mark.parametrize(
     "verbose_progress",
     [True, False],
@@ -166,21 +170,21 @@ def test_select_operator_to_run():
     )
 
     # Test backpressure based on queue length between operators.
-    topo[o1].outqueue.append("dummy1")
+    topo[o1].outqueue.append(make_ref_bundle("dummy1"))
     assert (
         select_operator_to_run(
             topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
-    topo[o1].outqueue.append("dummy2")
+    topo[o1].outqueue.append(make_ref_bundle("dummy2"))
     assert (
         select_operator_to_run(
             topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
-    topo[o2].outqueue.append("dummy3")
+    topo[o2].outqueue.append(make_ref_bundle("dummy3"))
     assert (
         select_operator_to_run(
             topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
@@ -243,16 +247,18 @@ def test_dispatch_next_task():
     op_state = OpState(o2, [o1_state.outqueue])
 
     # TODO: test multiple inqueues with the union operator.
-    op_state.inqueues[0].append("dummy1")
-    op_state.inqueues[0].append("dummy2")
+    ref1 = make_ref_bundle("dummy1")
+    ref2 = make_ref_bundle("dummy2")
+    op_state.inqueues[0].append(ref1)
+    op_state.inqueues[0].append(ref1)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    assert o2.add_input.called_once_with("dummy1")
+    assert o2.add_input.called_once_with(ref1)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    assert o2.add_input.called_once_with("dummy2")
+    assert o2.add_input.called_once_with(ref2)
 
 
 def test_debug_dump_topology():
@@ -401,8 +407,8 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         )
         topo = build_streaming_topology(o4, opt)[0]
         # Make sure only two operator's inqueues has data.
-        topo[o2].inqueues[0].append("dummy")
-        topo[o4].inqueues[0].append("dummy")
+        topo[o2].inqueues[0].append(make_ref_bundle("dummy"))
+        topo[o4].inqueues[0].append(make_ref_bundle("dummy"))
         selected_op = select_operator_to_run(
             topo,
             TopologyResourceUsage(
@@ -513,7 +519,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
         o2,
     )
     topo, _ = build_streaming_topology(o3, opt)
-    topo[o2].outqueue.append("dummy1")
+    topo[o2].outqueue.append(make_ref_bundle("dummy1"))
     o1.num_active_tasks = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
