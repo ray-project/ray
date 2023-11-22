@@ -54,15 +54,26 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
 
             # Test when there's no new ref, it returns a nil.
             new_ref = ray.ObjectRef.from_random()
-            c.peek_object_ref_stream.return_value = new_ref
+            c.peek_object_ref_stream.return_value = (new_ref, False)
             mocked_ray_wait.return_value = [], [new_ref]
             ref = generator._next_sync(timeout_s=0)
             assert ref.is_nil()
 
             # When the new ref is available, next should return it.
+            # When peek_object_ref_stream returns is_ready = True,
+            # it shouldn't call ray.wait.
+            new_ref = ray.ObjectRef.from_random()
+            c.peek_object_ref_stream.return_value = (new_ref, True)
+            c.try_read_next_object_ref_stream.return_value = new_ref
+            ref = generator._next_sync(timeout_s=0)
+            assert new_ref == ref
+
+            # When the new ref is available, next should return it.
+            # When peek_object_ref_stream returns is_ready = False,
+            # it should wait until ray.wait returns.
             for _ in range(3):
                 new_ref = ray.ObjectRef.from_random()
-                c.peek_object_ref_stream.return_value = new_ref
+                c.peek_object_ref_stream.return_value = (new_ref, False)
                 mocked_ray_wait.return_value = [new_ref], []
                 c.try_read_next_object_ref_stream.return_value = new_ref
                 ref = generator._next_sync(timeout_s=0)
@@ -71,8 +82,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             # When try_read_next_object_ref_stream raises a
             # ObjectRefStreamEndOfStreamError, it should raise a stop iteration.
             new_ref = ray.ObjectRef.from_random()
-            c.peek_object_ref_stream.return_value = new_ref
-            mocked_ray_wait.return_value = [new_ref], []
+            c.peek_object_ref_stream.return_value = (new_ref, True)
             c.try_read_next_object_ref_stream.side_effect = (
                 ObjectRefStreamEndOfStreamError("")
             )  # noqa
@@ -100,7 +110,7 @@ def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
 
             # Simulate the worker failure happens.
             next_ref = ray.ObjectRef.from_random()
-            c.peek_object_ref_stream.return_value = next_ref
+            c.peek_object_ref_stream.return_value = (next_ref, False)
             mocked_ray_wait.return_value = [next_ref], []
             mocked_ray_get.side_effect = WorkerCrashedError()
 

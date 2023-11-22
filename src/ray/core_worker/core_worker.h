@@ -391,9 +391,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// consuming an index.
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  /// \return A object reference of the next index.
+  /// \return A object reference of the next index and if the object is already ready
+  /// (meaning if the object's value if retrievable).
   /// It should not be nil.
-  rpc::ObjectReference PeekObjectRefStream(const ObjectID &generator_id);
+  std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
 
   /// Delete the ObjectRefStream that was
   /// created upon the initial task

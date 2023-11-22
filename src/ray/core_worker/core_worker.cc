@@ -2854,12 +2854,13 @@ bool CoreWorker::IsFinished(const ObjectID &generator_id) const {
   return task_manager_->IsFinished(generator_id);
 }
 
-rpc::ObjectReference CoreWorker::PeekObjectRefStream(const ObjectID &generator_id) {
-  auto object_id = task_manager_->PeekObjectRefStream(generator_id);
+std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
+    const ObjectID &generator_id) {
+  auto [object_id, ready] = task_manager_->PeekObjectRefStream(generator_id);
   rpc::ObjectReference object_ref;
   object_ref.set_object_id(object_id.Binary());
   object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
-  return object_ref;
+  return {object_ref, ready};
 }
 
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,

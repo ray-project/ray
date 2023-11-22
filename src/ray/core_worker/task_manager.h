@@ -113,7 +113,7 @@ class ObjectRefStream {
   /// Return True if there's no more object to read. False otherwise.
   bool IsFinished() const;
 
-  ObjectID PeekNextItem();
+  std::pair<ObjectID, bool> PeekNextItem();
 
   /// Return True if the item_index is already consumed.
   bool IsObjectConsumed(int64_t item_index);
@@ -419,9 +419,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  /// \return A object reference of the next index.
+  /// \return A object reference of the next index and if the object is already ready
+  /// (meaning if the object's value if retrievable).
   /// It should not be nil.
-  ObjectID PeekObjectRefStream(const ObjectID &generator_id) ABSL_LOCKS_EXCLUDED(mu_);
+  std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Returns true if task can be retried.
   ///
