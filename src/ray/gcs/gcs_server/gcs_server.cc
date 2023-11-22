@@ -227,9 +227,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init GCS task manager.
   InitGcsTaskManager();
 
-  // Init Monitor service.
-  InitMonitorServer();
-
   // Install event listeners.
   InstallEventListeners();
 
@@ -316,7 +313,7 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_node_manager_);
   auto node_death_callback = [this](const NodeID &node_id) {
     main_service_.post(
-        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); },
+        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id, nullptr); },
         "GcsServer.NodeDeathCallback");
   };
 
@@ -696,17 +693,6 @@ void GcsServer::InitGcsTaskManager() {
   task_info_service_.reset(new rpc::TaskInfoGrpcService(gcs_task_manager_->GetIoContext(),
                                                         *gcs_task_manager_));
   rpc_server_.RegisterService(*task_info_service_);
-}
-
-void GcsServer::InitMonitorServer() {
-  monitor_server_ = std::make_unique<GcsMonitorServer>(
-      *gcs_node_manager_,
-      cluster_resource_scheduler_->GetClusterResourceManager(),
-      gcs_resource_manager_,
-      gcs_placement_group_manager_);
-  monitor_grpc_service_.reset(
-      new rpc::MonitorGrpcService(main_service_, *monitor_server_));
-  rpc_server_.RegisterService(*monitor_grpc_service_);
 }
 
 void GcsServer::InstallEventListeners() {

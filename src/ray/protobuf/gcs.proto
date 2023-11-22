@@ -247,6 +247,8 @@ message TaskStateUpdate {
   optional string actor_repr_name = 11;
   // Worker Pid.
   optional int32 worker_pid = 12;
+  // Is task paused by debugger.
+  optional bool is_debugger_paused = 13;
 }
 
 // Represents events and state changes from a single task run.
@@ -285,11 +287,6 @@ message TaskEventData {
   int32 num_profile_events_dropped = 3;
   // Current job the worker is reporting data for.
   bytes job_id = 4;
-}
-
-message ResourceTableData {
-  // The total capacity of this resource type.
-  double resource_capacity = 1;
 }
 
 message AvailableResources {
@@ -496,10 +493,6 @@ message WorkerDeltaData {
   bytes worker_id = 2;
 }
 
-message ResourceMap {
-  map<string, ResourceTableData> items = 1;
-}
-
 message StoredConfig {
   string config = 1;
 }
@@ -568,7 +561,7 @@ message ResourceLoad {
 }
 
 message ResourcesData {
-  reserved 3, 8;
+  reserved 3, 8, 17;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
@@ -599,8 +592,6 @@ message ResourcesData {
   int64 idle_duration_ms = 15;
   // Whether the node is being drained.
   bool is_draining = 16;
-  // Why the node is not idle.
-  repeated string node_activity = 17;
 }
 
 message ResourceUsageBatchData {

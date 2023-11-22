@@ -1,13 +1,13 @@
 import io
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
-from ray.data.block import BlockMetadata
+from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
 from ray.util.annotations import DeveloperAPI
@@ -32,7 +32,7 @@ class ImageDatasource(FileBasedDatasource):
     """A datasource that lets you read images."""
 
     _WRITE_FILE_PER_ROW = True
-    _FILE_EXTENSION = ["png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"]
+    _FILE_EXTENSIONS = ["png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"]
     # Use 8 threads per task to read image files.
     _NUM_THREADS_PER_TASK = 8
 
@@ -41,7 +41,6 @@ class ImageDatasource(FileBasedDatasource):
         paths: Union[str, List[str]],
         size: Optional[Tuple[int, int]] = None,
         mode: Optional[str] = None,
-        include_paths: bool = False,
         **file_based_datasource_kwargs,
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
@@ -61,7 +60,6 @@ class ImageDatasource(FileBasedDatasource):
 
         self.size = size
         self.mode = mode
-        self.include_paths = include_paths
 
         meta_provider = file_based_datasource_kwargs.get("meta_provider", None)
         if isinstance(meta_provider, _ImageFileMetadataProvider):
@@ -70,11 +68,11 @@ class ImageDatasource(FileBasedDatasource):
         else:
             self._encoding_ratio = IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
 
-    def _read_file(
+    def _read_stream(
         self,
         f: "pyarrow.NativeFile",
         path: str,
-    ) -> "pyarrow.Table":
+    ) -> Iterator[Block]:
         from PIL import Image, UnidentifiedImageError
 
         data = f.readall()
@@ -92,39 +90,18 @@ class ImageDatasource(FileBasedDatasource):
 
         builder = DelegatingBlockBuilder()
         array = np.array(image)
-        if self.include_paths:
-            item = {"image": array, "path": path}
-        else:
-            item = {"image": array}
+        item = {"image": array}
         builder.add(item)
         block = builder.build()
 
-        return block
+        yield block
 
     def _rows_per_file(self):
         return 1
 
-    def _write_row(
-        self,
-        f: "pyarrow.NativeFile",
-        row,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        column: str = None,
-        file_format: str = None,
-        **writer_args,
-    ):
-        import io
-
-        from PIL import Image
-
-        image = Image.fromarray(row[column])
-        buffer = io.BytesIO()
-        image.save(buffer, format=file_format)
-        f.write(buffer.getvalue())
-
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
-        for file_size in self._file_sizes:
+        for file_size in self._file_sizes():
             # NOTE: check if file size is not None, because some metadata provider
             # such as FastFileMetadataProvider does not provide file size information.
             if file_size is not None:
@@ -136,7 +113,7 @@ class ImageDatasource(FileBasedDatasource):
         start_time = time.perf_counter()
         # Filter out empty file to avoid noise.
         non_empty_path_and_size = list(
-            filter(lambda p: p[1] > 0, zip(self._paths, self._file_sizes))
+            filter(lambda p: p[1] > 0, zip(self._paths(), self._file_sizes()))
         )
         num_files = len(non_empty_path_and_size)
         if num_files == 0:

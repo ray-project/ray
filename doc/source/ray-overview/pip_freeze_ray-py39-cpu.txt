@@ -108,7 +108,7 @@ pyasn1==0.5.0
 pyasn1-modules==0.3.0
 pycosat @ file:///croot/pycosat_1696536503704/work
 pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
-pydantic==1.10.12
+pydantic==2.5.0
 Pygments==2.13.0
 PyJWT==2.8.0
 PyNaCl==1.5.0

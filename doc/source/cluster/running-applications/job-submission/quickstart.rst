@@ -111,11 +111,18 @@ Make sure to specify the path to the working directory in the ``--working-dir`` 
     # Job 'raysubmit_inB2ViQuE29aZRJ5' succeeded
     # ------------------------------------------
 
-This command will run the script on the Ray Cluster and wait until the job has finished. Note that it also streams the stdout of the job back to the client (``hello world`` in this case). Ray will also make the contents of the directory passed as `--working-dir` available to the Ray job by downloading the directory to all nodes in your cluster.
+This command will run the entrypoint script on the Ray Cluster's head node and wait until the job has finished. Note that it also streams the `stdout` and `stderr` of the entrypoint script back to the client (``hello world`` in this case). Ray will also make the contents of the directory passed as `--working-dir` available to the Ray job by downloading the directory to all nodes in your cluster.
 
 .. note::
 
     The double dash (`--`) separates the arguments for the entrypoint command (e.g. `python script.py --arg1=val1`) from the arguments to `ray job submit`.
+
+.. note::
+
+    By default the entrypoint script is run on the head node. To override this, specify any of the arguments 
+    `--entrypoint-num-cpus`, `--entrypoint-num-gpus`, `--entrypoint-resources`, or 
+    `--entrypoint-memory` to the `ray job submit` command. 
+    See :ref:`Specifying CPU and GPU resources <ray-job-cpu-gpu-resources>` for more details.
 
 Interacting with Long-running Jobs
 ----------------------------------

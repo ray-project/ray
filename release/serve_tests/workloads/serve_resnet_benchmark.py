@@ -22,13 +22,11 @@ import time
 import aiohttp
 import click
 import numpy as np
-import starlette
+import starlette.requests
 import torch
 from torchvision import models
 
 from ray import serve
-from ray.dag.input_node import InputNode
-from ray.serve.drivers import DAGDriver
 from ray.serve.handle import DeploymentHandle
 
 from serve_test_utils import save_test_results
@@ -69,6 +67,10 @@ class ImageObjectioner:
         res = self.model(data).to("cpu")
         end = time.time()
         return {"result": res, "model_inference_latency": end - start}
+
+    async def __call__(self, request: starlette.requests.Request):
+        uris = await request.json()
+        return await self.predict(uris)
 
 
 @serve.deployment(num_replicas=5)
@@ -150,10 +152,6 @@ async def trial(measure_func, data_size: int = 8, num_clients: int = 1):
     return throughput_mean, inference_latency_mean
 
 
-async def json_resolver(request: starlette.requests.Request):
-    return await request.json()
-
-
 @click.command()
 @click.option(
     "--gpu-env",
@@ -176,10 +174,8 @@ def main(gpu_env: Optional[bool], smoke_run: Optional[bool]):
     # batch size
     batch_sizes = [16, 32, 64]
 
-    with InputNode() as user_input:
-        io = ImageObjectioner.bind(DataDownloader.bind(), device=device)
-        dag = DAGDriver.bind(io.predict.bind(user_input), http_adapter=json_resolver)
-        handle = serve.run(dag)
+    io = ImageObjectioner.bind(DataDownloader.bind(), device=device)
+    handle = serve.run(io)
 
     if smoke_run:
         res = handle.predict.remote(input_uris)

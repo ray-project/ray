@@ -1,4 +1,5 @@
 import itertools
+import json
 import sys
 from typing import Iterable, Optional, Tuple, List, Sequence, Union
 
@@ -53,7 +54,7 @@ def _arrow_extension_scalars_are_subclassable():
 
 
 @PublicAPI(stability="beta")
-class ArrowTensorType(pa.PyExtensionType):
+class ArrowTensorType(pa.ExtensionType):
     """
     Arrow ExtensionType for an array of fixed-shaped, homogeneous-typed
     tensors.
@@ -73,7 +74,7 @@ class ArrowTensorType(pa.PyExtensionType):
             dtype: pyarrow dtype of tensor elements.
         """
         self._shape = shape
-        super().__init__(pa.list_(dtype))
+        super().__init__(pa.list_(dtype), "ray.data.arrow_tensor")
 
     @property
     def shape(self):
@@ -99,7 +100,18 @@ class ArrowTensorType(pa.PyExtensionType):
         return TensorDtype(self._shape, self.storage_type.value_type.to_pandas_dtype())
 
     def __reduce__(self):
-        return ArrowTensorType, (self._shape, self.storage_type.value_type)
+        return self.__arrow_ext_deserialize__, (
+            self.storage_type,
+            self.__arrow_ext_serialize__(),
+        )
+
+    def __arrow_ext_serialize__(self):
+        return json.dumps(self._shape).encode()
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        shape = tuple(json.loads(serialized))
+        return cls(shape, storage_type.value_type)
 
     def __arrow_ext_class__(self):
         """
@@ -526,7 +538,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
 
 @PublicAPI(stability="alpha")
-class ArrowVariableShapedTensorType(pa.PyExtensionType):
+class ArrowVariableShapedTensorType(pa.ExtensionType):
     """
     Arrow ExtensionType for an array of heterogeneous-shaped, homogeneous-typed
     tensors.
@@ -550,7 +562,8 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
         """
         self._ndim = ndim
         super().__init__(
-            pa.struct([("data", pa.list_(dtype)), ("shape", pa.list_(pa.int64()))])
+            pa.struct([("data", pa.list_(dtype)), ("shape", pa.list_(pa.int64()))]),
+            "ray.data.arrow_variable_shaped_tensor",
         )
 
     def to_pandas_dtype(self):
@@ -579,10 +592,19 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
         return self.storage_type[data_field_index].type.value_type
 
     def __reduce__(self):
-        return (
-            ArrowVariableShapedTensorType,
-            (self.storage_type["data"].type.value_type, self._ndim),
+        return self.__arrow_ext_deserialize__, (
+            self.storage_type,
+            self.__arrow_ext_serialize__(),
         )
+
+    def __arrow_ext_serialize__(self):
+        return json.dumps(self._ndim).encode()
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        ndim = json.loads(serialized)
+        dtype = storage_type["data"].type.value_type
+        return cls(dtype, ndim)
 
     def __arrow_ext_class__(self):
         """
@@ -890,3 +912,13 @@ def _to_ndarray_helper(shape, value_type, offset, data_buffer):
     if pa.types.is_fixed_size_binary(value_type):
         ext_dtype = np.dtype(f"<U{value_type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}")
     return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset)
+
+
+try:
+    # Registration needs an extension type instance, but then works for any instance of
+    # the same subclass regardless of parametrization of the type.
+    pa.register_extension_type(ArrowTensorType((0,), pa.int64()))
+    pa.register_extension_type(ArrowVariableShapedTensorType(pa.int64(), 0))
+except pa.ArrowKeyError:
+    # Extension types are already registered.
+    pass
