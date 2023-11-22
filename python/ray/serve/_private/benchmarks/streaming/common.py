@@ -4,7 +4,6 @@ import enum
 import logging
 from typing import Tuple, Union
 
-import ray
 from ray.actor import ActorHandle
 from ray.serve._private.benchmarks.common import Blackhole, run_throughput_benchmark
 from ray.serve.handle import DeploymentHandle
@@ -53,7 +52,6 @@ class Caller(Blackhole):
         logging.getLogger("ray").setLevel(logging.WARNING)
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
-
     def _get_remote_method(self):
         if self._mode == IOMode.SYNC:
             return self._h.stream
@@ -78,4 +76,3 @@ class Caller(Blackhole):
             num_trials=self._num_trials,
             trial_runtime=self._trial_runtime,
         )
-
