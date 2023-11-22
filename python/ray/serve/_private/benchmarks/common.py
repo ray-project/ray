@@ -7,6 +7,11 @@ import pandas as pd
 from tqdm import tqdm
 
 
+class Blackhole:
+    def sink(self, o):
+        pass
+
+
 async def run_latency_benchmark(
     f: Callable, num_requests: int, *, num_warmup_requests: int = 100
 ) -> pd.Series:
