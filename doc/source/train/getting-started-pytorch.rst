@@ -1,7 +1,7 @@
 .. _train-pytorch:
 
-Get Started with PyTorch
-========================
+Get Started with Distributed Training using PyTorch
+===================================================
 
 This tutorial walks through the process of converting an existing PyTorch script to use Ray Train.
 

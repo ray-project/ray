@@ -1,7 +1,7 @@
 .. _train-pytorch-transformers:
 
-Get Started with Hugging Face Transformers
-==========================================
+Get Started with Distributed Training using Hugging Face Transformers
+=====================================================================
 
 This tutorial walks through the process of converting an existing Hugging Face Transformers script to use Ray Train.
 
