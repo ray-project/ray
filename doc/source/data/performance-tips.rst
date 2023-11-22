@@ -47,12 +47,16 @@ For example, the following code will batch multiple files into the same read tas
     # Repeat the iris.csv file 16 times.
     ds = ray.data.read_csv(["example://iris.csv"] * 16)
     print(ds.materialize())
-    # 2023-11-20 14:28:47,597 INFO plan.py:760 -- Using autodetected parallelism=4 for stage ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
-    # MaterializedDataset(
-    #    num_blocks=4,
-    #    num_rows=2400,
-    #    ...
-    # )
+
+.. testoutput::
+    :options: +MOCK
+
+    2023-11-20 14:28:47,597 INFO plan.py:760 -- Using autodetected parallelism=4 for stage ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
+    MaterializedDataset(
+       num_blocks=4,
+       num_rows=2400,
+       ...
+    )
 
 But suppose that you knew that you wanted to read all 16 files in parallel.
 This could, for example, because you know that additional CPUs should get added to the cluster by the autoscaler or because you want the downstream stage to transform each file's contents in parallel.
