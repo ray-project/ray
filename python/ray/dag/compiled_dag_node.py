@@ -1,7 +1,18 @@
+import time
 from typing import List
 from collections import defaultdict
 
 import ray
+
+
+def allocate_shared_output_buffer(buffer_size_bytes: int = 1024 * 1024):
+    ref = ray.put(b"0" * buffer_size_bytes, max_readers=1)
+    # TODO(swang): Sleep to make sure that the object store sees the Seal. Should
+    # replace this with a better call to put reusable objects, and have the object
+    # store ReadRelease.
+    time.sleep(1)
+    ray.release(ref)
+    return ref
 
 
 class CompiledTask:
@@ -64,7 +75,7 @@ class CompiledDAG:
                 self.output_task_idx = idx
 
     def compile(self):
-        from ray.dag import DAGNode, InputNode, OutputNode
+        from ray.dag import DAGNode, InputNode, OutputNode, ClassMethodNode
 
         if self.dag_input_ref is not None and self.dag_output_refs is not None:
             # Driver should ray.put on input, ray.get/release on output
@@ -85,12 +96,17 @@ class CompiledDAG:
             task = self.idx_to_task[cur_idx]
             dependent_node_idxs = task.dependent_node_idxs
 
-            # TODO: Create an output buffer on cur_idx actor with max_readers =
-            # len(dependent_node_idxs).
+            # Create an output buffer on the actor.
             assert task.output_ref is None
-            task.output_ref = ray.put(1)
+            if isinstance(task.dag_node, ClassMethodNode):
+                fn = task.dag_node._get_remote_method("_allocate_shared_output_buffer")
+                task.output_ref = ray.get(fn.remote())
+            elif isinstance(task.dag_node, InputNode):
+                task.output_ref = allocate_shared_output_buffer()
+            else:
+                assert isinstance(task.dag_node, OutputNode)
 
-            for idx in dependent_node_idxs:
+            for idx in task.dependent_node_idxs:
                 queue.append(idx)
 
         output_node = self.idx_to_task[self.output_task_idx].dag_node
@@ -103,18 +119,27 @@ class CompiledDAG:
                 # We don't need to assign an actual task for the input node.
                 continue
 
+            if node_idx == self.output_task_idx:
+                # We don't need to assign an actual task for the input node.
+                continue
+
             resolved_args = []
             for arg in task.args:
-                if isinstance(arg, DAGNode):
-                    arg_idx = self.dag_node_to_idx[arg]
-                    arg_buffer = self.idx_to_task[arg_idx].output_ref
-                    assert arg_buffer is not None
-                    resolved_args.append(arg_buffer)
-                else:
-                    resolved_args.append(arg)
+                # TODO(swang): Support non-ObjectRef args.
+                assert isinstance(arg, DAGNode)
+                arg_idx = self.dag_node_to_idx[arg]
+                arg_buffer = self.idx_to_task[arg_idx].output_ref
+                assert arg_buffer is not None
+                resolved_args.append(arg_buffer)
+
                 print("exec", node_idx, "args:", resolved_args)
 
             # TODO: Assign the task with the correct input and output buffers.
+            exec_fn = task.dag_node._get_remote_method("_exec_compiled_task")
+            exec_fn.remote(
+                    resolved_args,
+                    task.dag_node.get_method_name(),
+                    task.max_readers)
 
         self.dag_input_ref = self.idx_to_task[self.input_task_idx].output_ref
         self.dag_input_max_readers = self.idx_to_task[self.input_task_idx].max_readers
@@ -145,21 +170,27 @@ def build_compiled_dag(dag: "DAGNode"):
     compiled_dag.preprocess()
     return compiled_dag
 
-class RayCompiledExecutor:
-    def __init__(self):
-        pass
 
-    def _exec_compiled_task(self, task: "CompiledTask"):
-        input_refs = [inp.get_object_ref() for inp in task.inputs]
-        outputs = [(out.get_object_ref(), out.get_max_readers()) for out in task.outputs]
-        method = getattr(self, task.actor_method_name)
+class RayCompiledExecutor:
+    def _allocate_shared_output_buffer(
+            self,
+            buffer_size_bytes: int = 1024 * 1024):
+        self._output_ref = allocate_shared_output_buffer(buffer_size_bytes)
+        return self._output_ref
+
+    def _exec_compiled_task(self,
+            input_refs: List[ray.ObjectRef],
+            actor_method_name: str,
+            output_max_readers: int,
+            ):
+        method = getattr(self, actor_method_name)
         while True:
             inputs = ray.get(input_refs)
-            output_vals = method(*inputs)
-            for output_val, output in zip(output_vals, outputs):
-                output_ref, max_readers = output
-                ray.worker.global_worker.put_object(
-                    output_val, object_ref=output_ref, max_readers=max_readers
-                )
+            output_val = method(*inputs)
+            ray.worker.global_worker.put_object(
+                output_val,
+                object_ref=self._output_ref,
+                max_readers=output_max_readers,
+            )
             for input_ref in input_refs:
                 ray.release(input_ref)

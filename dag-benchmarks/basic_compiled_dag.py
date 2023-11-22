@@ -4,9 +4,11 @@ import time
 import ray
 
 from ray.dag import InputNode, OutputNode
+from ray.dag.compiled_dag_node import RayCompiledExecutor
+
 
 @ray.remote
-class Actor:
+class Actor(RayCompiledExecutor):
     def __init__(self, init_value):
         print("__init__ PID", os.getpid())
         self.i = init_value
