@@ -902,3 +902,10 @@ def call_with_retry(
                 time.sleep(backoff)
             else:
                 raise e from None
+
+                
+def create_dataset_tag(dataset_name: Optional[str], *args):
+    tag = dataset_name or "dataset"
+    for arg in args:
+        tag += f"_{arg}"
+    return tag

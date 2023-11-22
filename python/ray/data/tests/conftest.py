@@ -2,6 +2,7 @@ import copy
 import os
 import posixpath
 import time
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,8 @@ import pyarrow as pa
 import pytest
 
 import ray
+import ray.util.state
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
@@ -19,7 +22,7 @@ from ray.data.tests.mock_server import *  # noqa
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
-from ray.tests.conftest import _ray_start
+from ray.tests.conftest import _ray_start, wait_for_condition
 
 
 @pytest.fixture(scope="module")
@@ -480,3 +483,332 @@ def stage_two_block():
             )
         )
     return block_params, block_meta_list
+
+
+def equals_or_true(count, expected_count):
+    if isinstance(expected_count, int):
+        if count != expected_count:
+            return False
+    else:
+        if not expected_count(count):
+            return False
+    return True
+
+
+class CoreExecutionMetrics:
+    def __init__(self, task_count=None, object_store_stats=None, actor_count=None):
+        self.task_count = task_count
+        self.object_store_stats = object_store_stats
+        self.actor_count = actor_count
+
+    def get_task_count(self):
+        return self.task_count
+
+    def get_object_store_stats(self):
+        return self.object_store_stats
+
+    def get_actor_count(self):
+        return self.actor_count
+
+    def _assert_count_equals(self, actual_count, expected_count):
+        diff = {}
+        # Check that all tasks in expected tasks match those in actual task
+        # count.
+        for name, count in expected_count.items():
+            if not equals_or_true(actual_count[name], count):
+                diff[name] = (actual_count[name], count)
+        # Check that the actual task count does not have any additional tasks.
+        for name, count in actual_count.items():
+            if name not in expected_count and count != 0:
+                diff[name] = (count, 0)
+
+        assert len(diff) == 0, "\nTask diff:\n" + "\n".join(
+            f" - {key}: expected {val[1]}, got {val[0]}" for key, val in diff.items()
+        )
+
+    def assert_task_metrics(self, expected_metrics):
+        """
+        Assert equality to the given { <task name>: <task count> }.
+        A lambda that takes in the count and returns a bool to assert can also
+        be given instead of an integer task count.
+
+        An empty dict means that we expected no tasks to run. Pass None to skip
+        the check.
+
+        Default values in get_default_task_count() are also asserted.
+        """
+        if expected_metrics.get_task_count() is None:
+            return
+
+        expected_task_count = CoreExecutionMetrics.get_default_task_count()
+        for name, count in expected_metrics.get_task_count().items():
+            expected_task_count[name] = count
+
+        actual_task_count = self.get_task_count()
+        self._assert_count_equals(actual_task_count, expected_task_count)
+
+    def assert_object_store_metrics(self, expected_metrics):
+        """
+        By default this checks that no objects were spilled or restored.
+        Collected stats only apply to plasma store objects and exclude inlined
+        or in-memory objects.
+
+        Caller can also override the following fields with a value or lambda to assert.
+        - spilled_bytes_total
+        - restored_bytes_total
+        - cumulative_created_plasma_bytes
+        - cumulative_created_plasma_objects
+        """
+        expected_object_store_stats = (
+            CoreExecutionMetrics.get_default_object_store_stats()
+        )
+        if expected_metrics.get_object_store_stats() is not None:
+            for key, val in expected_metrics.get_object_store_stats().items():
+                expected_object_store_stats[key] = val
+
+        actual_object_store_stats = self.get_object_store_stats()
+        for key, val in expected_object_store_stats.items():
+            assert equals_or_true(
+                actual_object_store_stats[key], val
+            ), f"{key}: expected {val} got {actual_object_store_stats[key]}"
+
+    def assert_actor_metrics(self, expected_metrics):
+        if expected_metrics.get_actor_count() is None:
+            return
+
+        expected_actor_count = CoreExecutionMetrics.get_default_actor_count()
+        for key, val in expected_metrics.get_actor_count().items():
+            expected_actor_count[key] = val
+
+        actual_actor_count = self.get_actor_count()
+        self._assert_count_equals(actual_actor_count, expected_actor_count)
+
+    @staticmethod
+    def get_default_task_count():
+        return {
+            "AutoscalingRequester.request_resources": lambda count: count < 100,
+            "AutoscalingRequester:AutoscalingRequester.__init__": lambda count: count
+            <= 1,
+            "_StatsActor.clear_metrics": lambda count: count < 100,
+            "_StatsActor.clear_execution_metrics": lambda count: count < 100,
+            "_StatsActor.clear_iteration_metrics": lambda count: count < 100,
+            "_StatsActor.update_metrics": lambda count: count < 100,
+            "_StatsActor.update_execution_metrics": lambda count: count < 100,
+            "_StatsActor.update_iteration_metrics": lambda count: count < 100,
+            "_StatsActor.get": lambda count: True,
+            "_StatsActor.record_start": lambda count: True,
+            "_StatsActor.record_task": lambda count: True,
+            "_StatsActor.get_dataset_id": lambda count: True,
+            "_StatsActor.update_dataset": lambda count: True,
+            "_StatsActor.register_dataset": lambda count: True,
+            "datasets_stats_actor:_StatsActor.__init__": lambda count: count <= 1,
+        }
+
+    @staticmethod
+    def get_default_object_store_stats():
+        return {
+            "spilled_bytes_total": 0,
+            "restored_bytes_total": 0,
+        }
+
+    @staticmethod
+    def get_default_actor_count():
+        return {
+            "_StatsActor": lambda count: count <= 1,
+            "AutoscalingRequester": lambda count: count <= 1,
+        }
+
+
+class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
+    """Generated from a snapshot of the metrics collected by Ray Core during
+    the physical execution.
+
+    NOTE(swang): Currently object store stats only include objects stored in
+    plasma shared memory.
+    """
+
+    def __init__(self, last_snapshot=None):
+        self.task_metrics = ray.util.state.list_tasks(detail=True, limit=10_000)
+        self.last_snapshot = last_snapshot
+
+        memory_info = get_memory_info_reply(
+            get_state_from_address(ray.get_runtime_context().gcs_address)
+        )
+        self.object_store_stats = {
+            "spilled_bytes_total": memory_info.store_stats.spilled_bytes_total,
+            "restored_bytes_total": memory_info.store_stats.restored_bytes_total,
+            "cumulative_created_plasma_bytes": (
+                memory_info.store_stats.cumulative_created_bytes
+            ),
+            "cumulative_created_plasma_objects": (
+                memory_info.store_stats.cumulative_created_objects
+            ),
+        }
+
+        self.actor_metrics = ray.util.state.list_actors(limit=10_000)
+
+    def clear_task_count(self):
+        self.task_metrics = []
+
+    def clear_object_store_stats(self):
+        self.object_store_stats = {}
+
+    def clear_actor_count(self):
+        self.actor_metrics = []
+
+    def get_task_count(self):
+        task_count = defaultdict(int)
+        tasks = self.task_metrics
+        tasks = [t for t in tasks if t.name != "barrier"]
+
+        for task in tasks:
+            task_count[task.name] += 1
+
+        # Filter out previous and dummy tasks.
+        if self.last_snapshot is not None:
+            prev_task_count = self.last_snapshot.get_task_count()
+            if prev_task_count is not None:
+                for name, count in prev_task_count.items():
+                    task_count[name] -= count
+                    if task_count[name] < 0:
+                        task_count[name] = 0
+        return task_count
+
+    def get_actor_count(self):
+        actor_count = defaultdict(int)
+        for actor in self.actor_metrics:
+            actor_count[actor.class_name] += 1
+        if self.last_snapshot is not None:
+            prev_actor_count = self.last_snapshot.get_actor_count()
+            if prev_actor_count is not None:
+                for name, count in prev_actor_count.items():
+                    actor_count[name] -= count
+                    if actor_count[name] < 0:
+                        actor_count[name] = 0
+        return actor_count
+
+    def get_object_store_stats(self):
+        object_store_stats = self.object_store_stats.copy()
+        if self.last_snapshot is not None:
+            prev_object_store_stats = self.last_snapshot.get_object_store_stats()
+            if prev_object_store_stats is not None:
+                for key, val in prev_object_store_stats.items():
+                    object_store_stats[key] -= val
+        return object_store_stats
+
+
+# Dummy task used to make sure that we wait until (most) stats are available.
+@ray.remote
+def barrier():
+    time.sleep(1)
+    return
+
+
+@ray.remote
+def warmup():
+    time.sleep(1)
+    return np.zeros(1024 * 1024, dtype=np.uint8)
+
+
+def task_metrics_flushed(refs):
+    task_ids = [t.task_id for t in ray.util.state.list_tasks(limit=10_000)]
+    # All tasks appear in the metrics.
+    return all(ref.task_id().hex() in task_ids for ref in refs)
+
+
+def get_initial_core_execution_metrics_snapshot():
+    # Warmup plasma store and workers.
+    refs = [warmup.remote() for _ in range(int(ray.cluster_resources()["CPU"]))]
+    ray.get(refs)
+    wait_for_condition(lambda: task_metrics_flushed(refs))
+
+    last_snapshot = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={"warmup": lambda count: True}, object_store_stats={}
+        ),
+        last_snapshot=None,
+    )
+    return last_snapshot
+
+
+def assert_core_execution_metrics_equals(
+    expected_metrics: CoreExecutionMetrics, last_snapshot=None
+):
+    # Wait for one task per CPU to finish to prevent a race condition where not
+    # all of the task metrics have been collected yet.
+    if expected_metrics.get_task_count() is not None:
+        refs = [barrier.remote() for _ in range(int(ray.cluster_resources()["CPU"]))]
+        ray.get(refs)
+        wait_for_condition(lambda: task_metrics_flushed(refs))
+
+    metrics = PhysicalCoreExecutionMetrics(last_snapshot)
+    metrics.assert_task_metrics(expected_metrics)
+    metrics.assert_object_store_metrics(expected_metrics)
+    metrics.assert_actor_metrics(expected_metrics)
+
+    # Return a last_snapshot to the current snapshot of metrics to make subsequent
+    # queries easier. Don't return a last_snapshot for metrics that weren't asserted.
+    last_snapshot = PhysicalCoreExecutionMetrics()
+    if expected_metrics.get_task_count() is None:
+        last_snapshot.clear_task_count()
+    elif expected_metrics.get_object_store_stats() is None:
+        last_snapshot.clear_object_store_stats()
+    elif expected_metrics.get_actor_count() is None:
+        last_snapshot.clear_actor_count()
+
+    return last_snapshot
+
+
+def assert_blocks_expected_in_plasma(
+    last_snapshot,
+    num_blocks_expected,
+    block_size_expected=None,
+    total_bytes_expected=None,
+):
+    assert not (
+        block_size_expected is not None and total_bytes_expected is not None
+    ), "only specify one of block_size_expected, total_bytes_expected"
+
+    if total_bytes_expected is None:
+        if block_size_expected is None:
+            block_size_expected = (
+                ray.data.context.DataContext.get_current().target_max_block_size
+            )
+        total_bytes_expected = num_blocks_expected * block_size_expected
+
+    print(f"Expecting {total_bytes_expected} bytes, {num_blocks_expected} blocks")
+
+    def _assert(last_snapshot):
+        assert_core_execution_metrics_equals(
+            CoreExecutionMetrics(
+                object_store_stats={
+                    "cumulative_created_plasma_objects": (
+                        lambda count: num_blocks_expected * 0.5
+                        <= count
+                        <= 1.5 * num_blocks_expected
+                    ),
+                    "cumulative_created_plasma_bytes": (
+                        lambda count: total_bytes_expected * 0.5
+                        <= count
+                        <= 1.5 * total_bytes_expected
+                    ),
+                },
+            ),
+            last_snapshot,
+        )
+        return True
+
+    wait_for_condition(lambda: _assert(last_snapshot))
+
+    # Get the latest last_snapshot.
+    last_snapshot = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            object_store_stats={
+                "cumulative_created_plasma_objects": lambda count: True,
+                "cumulative_created_plasma_bytes": lambda count: True,
+            }
+        ),
+        last_snapshot,
+    )
+
+    return last_snapshot

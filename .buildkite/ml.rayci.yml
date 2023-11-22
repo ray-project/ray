@@ -174,6 +174,27 @@ steps:
         --only-tags minimal
     depends_on: minbuild-ml
     job_env: forge
+
+  - label: ":train: ml: tune multinode tests"
+    tags: tune
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8
+        --platform cpu --image-type ray --canonical-tag multinode-py38
+      - python ./ci/build/build-multinode-image.py rayproject/ray:multinode-py38 rayproject/ray:multinode-py38
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+        --only-tags multinode
+        --test-env=RAY_HAS_SSH=1
+        --test-env=RAY_DOCKER_IMAGE=rayproject/ray:multinode-py38
+        --test-env=RAY_TEMPDIR="/ray-mount"
+        --test-env=RAY_HOSTDIR="$${RAYCI_CHECKOUT_DIR}"
+        --test-env=RAY_TESTHOST="rayci.localhost"
+    depends_on: 
+      - manylinux
+      - forge
+      - raycpubase
+      - mlbuild
+    job_env: forge
   
   - label: ":train: ml: doc tests"
     tags: 
@@ -210,6 +231,7 @@ steps:
   - label: ":train: ml: flaky tests"
     tags: 
       - train
+      - skip-on-premerge
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
@@ -239,6 +261,7 @@ steps:
   - label: ":train: ml: train gpu flaky tests"
     tags: 
       - train
+      - skip-on-premerge
       - gpu
     instance_type: gpu-large
     commands:
