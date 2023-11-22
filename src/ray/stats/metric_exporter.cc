@@ -235,7 +235,7 @@ opencensus::proto::metrics::v1::Metric *addMetricProtoPayload(
     metric_descriptor_proto->add_label_keys()->set_key(tag_key.name());
   };
 
-  return *metric_proto;
+  return metric_proto;
 }
 
 bool OpenCensusProtoExporter::handleBatchOverflows(
@@ -302,7 +302,7 @@ void OpenCensusProtoExporter::ProcessMetricsData(
     cur_batch_size++;
 
     // Add new time-series to a proto payload
-    auto metric_timeseries_proto = metric_proto.add_timeseries();
+    auto metric_timeseries_proto = metric_proto_ptr->add_timeseries();
 
     metric_timeseries_proto->mutable_start_timestamp()->set_seconds(start_time);
 
@@ -359,7 +359,7 @@ void OpenCensusProtoExporter::ProcessMetricsData(
   }
   // NOTE: We add global tags at the end to make sure these are not overridden by
   //       the emitter
-  addGlobalTagsToGrpcMetric(metric_proto);
+  addGlobalTagsToGrpcMetric(*metric_proto_ptr);
 }
 
 }  // namespace stats
