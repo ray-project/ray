@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import pytest
 
-from ray.serve._private.common import TargetCapacityScaleDirection
+from ray.serve._private.autoscaling_policy import TargetCapacityScaleDirection
 from ray.serve._private.controller import applications_match, calculate_scale_direction
 from ray.serve.schema import (
     HTTPOptionsSchema,

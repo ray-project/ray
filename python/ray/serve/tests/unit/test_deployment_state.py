@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ray.serve._private.autoscaling_policy import get_capacity_adjusted_num_replicas
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
@@ -3310,9 +3311,7 @@ class TestTargetCapacity:
     def test_get_capacity_adjusted_num_replicas(
         self, num_replicas: int, target_capacity: Optional[float], expected_output: int
     ):
-        result = DeploymentState.get_capacity_adjusted_num_replicas(
-            num_replicas, target_capacity
-        )
+        result = get_capacity_adjusted_num_replicas(num_replicas, target_capacity)
         assert isinstance(result, int)
         assert result == expected_output
 
