@@ -147,8 +147,7 @@ namespace gcs {
 
 class MockGcsTableStorage : public GcsTableStorage {
  public:
-  MockGcsTableStorage()
-      : GcsTableStorage(nullptr) {}
+  MockGcsTableStorage() : GcsTableStorage(nullptr) {}
 };
 
 }  // namespace gcs

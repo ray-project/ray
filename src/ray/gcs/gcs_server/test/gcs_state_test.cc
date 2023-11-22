@@ -93,9 +93,7 @@ class GcsStateTest : public ::testing::Test {
     function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
     MockGcsActorTable gcs_actor_table;
     gcs_actor_scheduler_ = std::make_shared<MockGcsActorScheduler>(
-      io_service_,
-      gcs_actor_table,
-      *gcs_node_manager_);
+        io_service_, gcs_actor_table, *gcs_node_manager_);
     gcs_actor_manager_ = std::make_shared<GcsActorManager>(
         gcs_actor_scheduler_,
         gcs_table_storage_,
@@ -171,8 +169,7 @@ TEST_F(GcsStateTest, TestDrainNode) {
 
   // Simulate raylet failure
   gcs_node_manager_->OnNodeFailure(node_id);
-  ON_CALL(*gcs_publisher_, PublishError)
-      .WillByDefault(Return(Status::OK()));
+  ON_CALL(*gcs_publisher_, PublishError).WillByDefault(Return(Status::OK()));
 
   // Expect gcs_table_storage_.Put(actor_id, mutable_actor_table_data, *)
   // mutable_actor_table_data.death_cause = (preempted)

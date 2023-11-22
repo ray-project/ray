@@ -91,9 +91,8 @@ class CoreWorkerDirectActorTaskSubmitter
   }
 
   void SetPreempted(const ActorID &actor_id) {
-    if (auto iter = client_queues_.find(actor_id);
-        iter != client_queues_.end()) {
-          iter->second.preempted = true;
+    if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
+      iter->second.preempted = true;
     }
   }
 
@@ -242,7 +241,8 @@ class CoreWorkerDirectActorTaskSubmitter
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
  private:
-  typedef std::vector<std::pair<std::pair<TaskSpecification, Status>, std::optional<std::pair<ActorID, bool>>>>
+  typedef std::vector<std::pair<std::pair<TaskSpecification, Status>,
+                                std::optional<std::pair<ActorID, bool>>>>
       TaskInfoList;
 
   /// A helper function to get task finisher without holding mu_
@@ -331,12 +331,11 @@ class CoreWorkerDirectActorTaskSubmitter
     }
   };
 
-  /// Check the death reason is because of drain. 
-  void FailTaskWithError(
-    const ray::ActorID &actor_id,
-    const ray::TaskID &task_id,
-    const Status status,
-    const bool preempted);
+  /// Check the death reason is because of drain.
+  void FailTaskWithError(const ray::ActorID &actor_id,
+                         const ray::TaskID &task_id,
+                         const Status status,
+                         const bool preempted);
 
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while

@@ -1935,8 +1935,8 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
   switch (request.reason()) {
   case DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION:
     if (bool is_idle =
-        cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
-      is_idle) {
+            cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
+        is_idle) {
       cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
           request.reason());
       reply->set_is_accepted(true);

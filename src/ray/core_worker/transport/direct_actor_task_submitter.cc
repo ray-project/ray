@@ -342,12 +342,10 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   FailInflightTasks(inflight_task_callbacks);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
-  const ray::ActorID &actor_id,
-  const ray::TaskID &task_id,
-  const Status status,
-  const bool preempted) {
-    
+void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(const ray::ActorID &actor_id,
+                                                           const ray::TaskID &task_id,
+                                                           const Status status,
+                                                           const bool preempted) {
   rpc::ActorDeathCause actor_death_cause;
   actor_death_cause.mutable_actor_died_error_context()->set_actor_id(actor_id.Binary());
   actor_death_cause.mutable_actor_died_error_context()->set_preempted(preempted);
@@ -356,10 +354,8 @@ void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
   error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
   error_info.set_error_message("Actor died.");
 
-  GetTaskFinisherWithoutMu().FailPendingTask(task_id,
-                                             rpc::ErrorType::ACTOR_DIED,
-                                             &status,
-                                             &error_info);
+  GetTaskFinisherWithoutMu().FailPendingTask(
+      task_id, rpc::ErrorType::ACTOR_DIED, &status, &error_info);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
@@ -378,7 +374,10 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
         auto &task_spec_status_pair = deque_itr->second;
-        task_info_list->push_back(std::make_pair(task_spec_status_pair, first? std::optional(std::make_pair(queue_pair.first, queue.preempted)) : std::nullopt));
+        task_info_list->push_back(std::make_pair(
+            task_spec_status_pair,
+            first ? std::optional(std::make_pair(queue_pair.first, queue.preempted))
+                  : std::nullopt));
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
         first = false;
       }
@@ -391,19 +390,19 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
 
   RAY_CHECK(task_info_list->begin()->second.has_value());
 
-  auto& actor_id = task_info_list->begin()->second.value().first;
-  auto& preempted = task_info_list->begin()->second.value().second;
+  auto &actor_id = task_info_list->begin()->second.value().first;
+  auto &preempted = task_info_list->begin()->second.value().second;
 
   // Do not hold mu_, because FailPendingTask may call python from cpp,
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
   for (auto &task_info : *task_info_list) {
-  if(task_info_list->begin()->second.has_value()) {
-  actor_id = task_info_list->begin()->second.value().first;
-  preempted = task_info_list->begin()->second.value().second;
+    if (task_info_list->begin()->second.has_value()) {
+      actor_id = task_info_list->begin()->second.value().first;
+      preempted = task_info_list->begin()->second.value().second;
+    }
 
-  }
-
-    FailTaskWithError(actor_id, task_info.first.first.TaskId(), task_info.first.second, preempted);
+    FailTaskWithError(
+        actor_id, task_info.first.first.TaskId(), task_info.first.second, preempted);
   }
 }
 

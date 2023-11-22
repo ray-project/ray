@@ -14,8 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 
-#include <utility>
 #include <optional>
+#include <utility>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
@@ -80,9 +80,10 @@ bool GcsNodeManager::IsNodePreempted(const std::string &raylet_addr) {
     return false;
   }
 
-  auto& death_info = maybe_node.value()->death_info();
+  auto &death_info = maybe_node.value()->death_info();
   return death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN &&
-  death_info.drain_reason() == rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION;
+         death_info.drain_reason() ==
+             rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION;
 }
 
 void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
@@ -325,12 +326,10 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 
 std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetDeadNode(
     const ray::NodeID &node_id) const {
-  if (auto iter = dead_nodes_.find(node_id);
-      iter != dead_nodes_.end()) {
+  if (auto iter = dead_nodes_.find(node_id); iter != dead_nodes_.end()) {
     return iter->second;
   }
-  if (auto iter = alive_nodes_.find(node_id);
-      iter != alive_nodes_.end()) {
+  if (auto iter = alive_nodes_.find(node_id); iter != alive_nodes_.end()) {
     return std::nullopt;
   }
 

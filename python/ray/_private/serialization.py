@@ -34,6 +34,7 @@ from ray.exceptions import (
     OwnerDiedError,
     PlasmaObjectNotAvailable,
     RayActorError,
+    RayPreemptionError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -250,8 +251,11 @@ class SerializationContext:
             return RayActorError()
         ray_error_info = self._deserialize_error_info(data, metadata_fields)
         assert ray_error_info.HasField("actor_died_error")
-        # if ray_error_info.actor_died_error.
-        if ray_error_info.actor_died_error.HasField("creation_task_failure_context"):
+        if ray_error_info.actor_died_error.actor_died_error_context.preempted:
+            return RayPreemptionError(
+                ray_error_info.actor_died_error.actor_died_error_context
+            )
+        elif ray_error_info.actor_died_error.HasField("creation_task_failure_context"):
             return RayError.from_ray_exception(
                 ray_error_info.actor_died_error.creation_task_failure_context
             )

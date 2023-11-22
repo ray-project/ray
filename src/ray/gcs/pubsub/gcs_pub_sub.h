@@ -69,8 +69,8 @@ class GcsPublisher {
                     const StatusCallback &done);
 
   virtual Status PublishNodeInfo(const NodeID &id,
-                         const rpc::GcsNodeInfo &message,
-                         const StatusCallback &done);
+                                 const rpc::GcsNodeInfo &message,
+                                 const StatusCallback &done);
 
   /// Actually rpc::WorkerDeltaData is not a delta message.
   Status PublishWorkerFailure(const WorkerID &id,

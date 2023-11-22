@@ -280,6 +280,8 @@ class RayActorError(RayError):
         self._actor_init_failed = False
         # -- The base actor error message. --
         self.base_error_msg = "The actor died unexpectedly before finishing this task."
+        # Whether the node was preempted
+        self.preempted = False
 
         if not cause:
             self.error_msg = self.base_error_msg
@@ -311,6 +313,9 @@ class RayActorError(RayError):
                 error_msg_lines.append(
                     "The actor never ran - it was cancelled before it started running."
                 )
+            if cause.preempted:
+                self.preempted = True
+                error_msg_lines.append("\tThe actor's node was preempted.")
             self.error_msg = "\n".join(error_msg_lines)
             self.actor_id = ActorID(cause.actor_id).hex()
 
@@ -324,6 +329,12 @@ class RayActorError(RayError):
     @staticmethod
     def from_task_error(task_error: RayTaskError):
         return RayActorError(task_error)
+
+
+class RayPreemptionError(RayActorError):
+    def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
+        super().__init__(cause)
+        assert self.preempted
 
 
 @PublicAPI

@@ -10,7 +10,6 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-from ray.util.state import list_nodes
 
 
 def test_idle_termination(ray_start_cluster):
@@ -281,10 +280,12 @@ def test_draining_reason(ray_start_cluster):
     assert is_accepted
 
     cluster.remove_node(n, True)
-    time.sleep(10)
-    print("doing ray.get now")
-
-    ray.get(actor.ping.remote())
+    time.sleep(2)
+    try:
+        ray.get(actor.ping.remote())
+        raise
+    except ray.exceptions.RayPreemptionError as e:
+        assert e.preempted
 
 
 if __name__ == "__main__":

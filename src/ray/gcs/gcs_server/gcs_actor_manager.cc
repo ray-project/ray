@@ -1123,13 +1123,11 @@ void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
     const auto &actor_id = id_iter.second;
     const auto &actor_table_data = actor_iter->second->GetActorTableData();
 
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
-      actor_id,
-      actor_table_data,
-      [this, actor_id, actor_table_data](Status status) {
-        RAY_CHECK_OK(gcs_publisher_->PublishActor(
-            actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
-      }));
+    RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
+        actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
+          RAY_CHECK_OK(gcs_publisher_->PublishActor(
+              actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
+        }));
   }
 }
 
