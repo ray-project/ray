@@ -31,7 +31,7 @@ Ray Examples
     :class-container: gallery-container container pb-3
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data-processing gen-ai huggingface llm monitoring pytorch serving tracking training tuning
+        :class-item: gallery-item data-processing gen-ai huggingface inference llm monitoring pytorch serving tracking training tuning
         :link: https://madewithml.com/#course
 
         Self-paced course on taking your ML applications to production
