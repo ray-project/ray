@@ -16,6 +16,8 @@ from typing import (
 import uuid
 import asyncio
 
+from ray.dag.compiled_dag_node import build_compiled_dag
+
 T = TypeVar("T")
 
 
@@ -58,6 +60,8 @@ class DAGNode(DAGNodeBase):
         self._stable_uuid = uuid.uuid4().hex
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
+
+        self._compiled_dag = None
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
@@ -103,11 +107,18 @@ class DAGNode(DAGNodeBase):
     def clear_cache(self):
         self.cache_from_last_execute = {}
 
+    def compile(self) -> Tuple[ray.ObjectRef]:
+        if self._compiled_dag is None:
+            self._compiled_dag = build_compiled_dag(self)
+
+        return self._compiled_dag.compile()
+
     def execute(
         self,
         *args,
         _ray_cache_refs: bool = False,
         _ray_cache_actors: bool = True,
+        compiled: bool = False,
         **kwargs,
     ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this DAG using the Ray default executor _execute_impl().
@@ -119,6 +130,14 @@ class DAGNode(DAGNodeBase):
                 - Serve handles for class nodes
                 - resolved values representing user input at runtime
         """
+        if compiled:
+            assert len(args) == 1, "Compiled DAGs support exactly one InputNode arg"
+            input_ref, input_max_readers, output_ref = self.compile()
+            ray.worker.global_worker.put_object(
+                args[0], object_ref=input_ref, max_readers=input_max_readers
+            )
+            return output_ref
+
 
         def executor(node):
             return node._execute_impl(*args, **kwargs)

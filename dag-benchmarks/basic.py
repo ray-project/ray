@@ -29,13 +29,13 @@ def run_benchmark(num_actors, num_trials):
 
     # Warmup.
     for i in range(3):
-        ref = dag.execute(1)
+        ref = dag.execute(1, compiled=True)
         print(ray.get(ref))
 
     print("Starting...")
     start = time.time()
     for _ in range(num_trials):
-        ray.get(dag.execute(1))
+        ray.get(dag.execute(1, compiled=True))
     end = time.time()
     print(f"{num_trials} executed in {end - start}s.")
     print(f"Throughput: {num_trials / (end - start)} rounds/s.")
