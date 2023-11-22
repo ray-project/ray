@@ -499,12 +499,15 @@ def _setup_ray_cluster(
     include_dashboard = head_node_options.pop("include_dashboard", None)
     ray_dashboard_port = head_node_options.pop("dashboard_port", None)
 
-    ray_client_server_port = get_random_unused_port(
-        ray_head_ip,
-        min_port=9000,
-        max_port=10000,
-        exclude_list=port_exclude_list,
-    )
+    if os.environ.get("RAY_ON_SPARK_GLOBAL_MODE", "0") == "1":
+        ray_client_server_port = 10001
+    else:
+        ray_client_server_port = get_random_unused_port(
+            ray_head_ip,
+            min_port=9000,
+            max_port=10000,
+            exclude_list=port_exclude_list,
+        )
     port_exclude_list.append(ray_client_server_port)
 
     if autoscale:
@@ -1006,7 +1009,8 @@ def setup_ray_cluster(
             For global mode, the ``ray_temp_root_dir`` argument is not supported. Global
             model Ray cluster always use the default Ray temporary directory path.
     Returns:
-        A tuple of (address, remote_connection_address)
+        If ``is_global`` argument is False,
+        returns a tuple of (address, remote_connection_address)
         "address" is in format of "<ray_head_node_ip>:<port>"
         "remote_connection_address" is in format of
         "ray://<ray_head_node_ip>:<ray-client-server-port>",
@@ -1014,6 +1018,7 @@ def setup_ray_cluster(
         you can connect to the Ray cluster via ``ray.init(address)``,
         otherwise you can connect to the Ray cluster via
         ``ray.init(remote_connection_address)``.
+        If ``is_global`` argument is True, returns None.
     """
     global _active_ray_cluster
 
@@ -1263,10 +1268,8 @@ def setup_ray_cluster(
             object_store_memory_head_node
         )
 
-    with (
-        _active_ray_cluster_rwlock,
-        modified_environ(RAY_ON_SPARK_GLOBAL_MODE=str(int(is_global)))
-    ):
+    with _active_ray_cluster_rwlock, \
+            modified_environ(RAY_ON_SPARK_GLOBAL_MODE=str(int(is_global))):
         cluster = _setup_ray_cluster(
             num_worker_nodes=num_worker_nodes,
             num_cpus_worker_node=num_cpus_worker_node,
@@ -1363,8 +1366,9 @@ def _start_ray_worker_nodes(
             worker_port_range_end,
         ) = _prepare_for_ray_worker_node_startup()
 
+        # 10001 is used as ray client server port of global mode ray cluster.
         ray_worker_node_dashboard_agent_port = get_random_unused_port(
-            ray_head_ip, min_port=10000, max_port=20000
+            ray_head_ip, min_port=10002, max_port=20000
         )
         ray_worker_node_cmd = [
             sys.executable,
