@@ -70,7 +70,7 @@ Notice how the number of output blocks is equal to ``parallelism`` in the follow
     ray.init(num_cpus=2)
 
     # Repeat the iris.csv file 16 times.
-    ds = ray.data.read_images(["example://iris.csv"] * 16, parallelism=16)
+    ds = ray.data.read_csv(["example://iris.csv"] * 16, parallelism=16)
     print(ds.materialize())
     # MaterializedDataset(
     #    num_blocks=16,
