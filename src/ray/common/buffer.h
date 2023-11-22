@@ -42,8 +42,6 @@ class Buffer {
 
   virtual ~Buffer(){};
 
-  virtual std::shared_ptr<Buffer> SliceBuffer(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size) = 0;
-
   bool operator==(const Buffer &rhs) const {
     if (this->Size() != rhs.Size()) {
       return false;
@@ -97,11 +95,6 @@ class LocalMemoryBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return false; }
 
-  std::shared_ptr<Buffer> SliceBuffer(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size) override {
-    RAY_CHECK(false);
-    return std::make_shared<LocalMemoryBuffer>(size);
-  }
-
   ~LocalMemoryBuffer() {
     size_ = 0;
     if (buffer_ != NULL) {
@@ -152,10 +145,6 @@ class SharedMemoryBuffer : public Buffer {
   static std::shared_ptr<SharedMemoryBuffer> Slice(const std::shared_ptr<Buffer> &buffer,
                                                    int64_t offset,
                                                    int64_t size) {
-    return std::make_shared<SharedMemoryBuffer>(buffer, offset, size);
-  }
-
-  std::shared_ptr<Buffer> SliceBuffer(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size) override {
     return std::make_shared<SharedMemoryBuffer>(buffer, offset, size);
   }
 

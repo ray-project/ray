@@ -60,9 +60,8 @@ class TrackedBuffer : public Buffer {
  public:
   TrackedBuffer(std::shared_ptr<Buffer> buffer,
                 const std::shared_ptr<BufferTracker> &tracker,
-                const ObjectID &object_id,
-                bool release_on_destruction)
-      : buffer_(buffer), tracker_(tracker), object_id_(object_id), release_on_destruction_(release_on_destruction) {}
+                const ObjectID &object_id)
+      : buffer_(buffer), tracker_(tracker), object_id_(object_id) {}
 
   uint8_t *Data() const override { return buffer_->Data(); }
 
@@ -71,11 +70,6 @@ class TrackedBuffer : public Buffer {
   bool OwnsData() const override { return true; }
 
   bool IsPlasmaBuffer() const override { return true; }
-
-  std::shared_ptr<Buffer> SliceBuffer(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size) override {
-    /// Sliced buffers are not tracked.
-    return std::make_shared<TrackedBuffer>(buffer_->SliceBuffer(buffer_, offset, size), tracker_, object_id_, /*release_on_destruction*/false);
-  }
 
   ~TrackedBuffer() { tracker_->Release(object_id_, this); }
 
@@ -87,9 +81,6 @@ class TrackedBuffer : public Buffer {
   std::shared_ptr<Buffer> buffer_;
   std::shared_ptr<BufferTracker> tracker_;
   ObjectID object_id_;
-  /// If true, destructor will release the buffer.
-  /// sliced buffer shouldn't be tracked, so this must be set false
-  bool release_on_destruction_;
 };
 
 /// The class provides implementations for accessing plasma store, which includes both

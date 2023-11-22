@@ -479,9 +479,6 @@ cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
 
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
-    cdef:
-        shared_ptr[CBuffer] c_data
-
     data_metadata_pairs = []
     for i in range(objects.size()):
         # core_worker will return a nullptr for objects that couldn't be
@@ -492,12 +489,7 @@ cdef RayObjectsToDataMetadataPairs(
             data = None
             metadata = None
             if objects[i].get().HasData():
-                c_data = objects[i].get().GetData()
-                # Slice the data based on the size if needed.
-                #if c_data.get().IsPlasmaBuffer():
-                    # LocalMemoryBuffer doesn't support slice.
-                    #c_data = c_data.get().SliceBuffer(c_data, 0, objects[i].get().GetSize())
-                data = Buffer.make(c_data)
+                data = Buffer.make(objects[i].get().GetData())
             if objects[i].get().HasMetadata():
                 metadata = Buffer.make(
                     objects[i].get().GetMetadata()).to_pybytes()

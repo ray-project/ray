@@ -196,7 +196,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
         data = std::make_shared<TrackedBuffer>(
-            plasma_results[i].data, buffer_tracker_, object_id, /*release_on_destruction*/true);
+            plasma_results[i].data, buffer_tracker_, object_id);
         buffer_tracker_->Record(object_id, data.get(), get_current_call_site_());
       }
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
@@ -240,7 +240,7 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
         data = std::make_shared<TrackedBuffer>(
-            plasma_results[i].data, buffer_tracker_, object_id, /*release_on_destruction*/true);
+            plasma_results[i].data, buffer_tracker_, object_id);
         buffer_tracker_->Record(object_id, data.get(), get_current_call_site_());
       }
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {

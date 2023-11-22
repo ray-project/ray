@@ -274,7 +274,6 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
         uint8_t *Data() const
         size_t Size() const
         c_bool IsPlasmaBuffer() const
-        shared_ptr[CBuffer] SliceBuffer(const shared_ptr[CBuffer] &buffer, int64_t offset, int64_t size)
 
     cdef cppclass LocalMemoryBuffer(CBuffer):
         LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)
