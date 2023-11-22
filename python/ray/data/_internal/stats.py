@@ -346,7 +346,7 @@ class _StatsActor:
 
 # Creating/getting an actor from multiple threads is not safe.
 # https://github.com/ray-project/ray/issues/41324
-_stats_actor_lock: threading.Lock = threading.Lock()
+_stats_actor_lock: threading.RLock = threading.RLock()
 
 
 def _get_or_create_stats_actor():
