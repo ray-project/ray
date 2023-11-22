@@ -494,9 +494,9 @@ cdef RayObjectsToDataMetadataPairs(
             if objects[i].get().HasData():
                 c_data = objects[i].get().GetData()
                 # Slice the data based on the size if needed.
-                if c_data.get().IsPlasmaBuffer():
+                #if c_data.get().IsPlasmaBuffer():
                     # LocalMemoryBuffer doesn't support slice.
-                    c_data = c_data.get().SliceBuffer(c_data, 0, objects[i].get().GetSize())
+                    #c_data = c_data.get().SliceBuffer(c_data, 0, objects[i].get().GetSize())
                 data = Buffer.make(c_data)
             if objects[i].get().HasMetadata():
                 metadata = Buffer.make(

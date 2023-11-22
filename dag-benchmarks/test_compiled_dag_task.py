@@ -9,7 +9,6 @@ fused_worker_tasks = os.environ.get("FUSED_WORKER_TASKS", "0") == "1"
 # Do the work in a remote task so we can use flame-graphs in the dashboard on the main.
 @ray.remote
 def work():
-
     @ray.remote
     class A:
         def __init__(self, input_ref):
@@ -42,11 +41,10 @@ def work():
         def foo(self):
             print("FOO")
 
-
     in_ref = ray.put(b"000000000", max_readers=1)
-# TODO(swang): Sleep to make sure that the object store sees the Seal. Should
-# replace this with a better call to put reusable objects, and have the object
-# store ReadRelease.
+    # TODO(swang): Sleep to make sure that the object store sees the Seal. Should
+    # replace this with a better call to put reusable objects, and have the object
+    # store ReadRelease.
     time.sleep(1)
     ray.release(in_ref)
     print("in ref:", in_ref)
@@ -66,7 +64,9 @@ def work():
         for i in range(n):
             if verbose:
                 print("driver iteration", i, "start")
-            ray.worker.global_worker.put_object(b"hello", object_ref=in_ref, max_readers=1)
+            ray.worker.global_worker.put_object(
+                b"hello", object_ref=in_ref, max_readers=1
+            )
 
             x = ray.get(out_ref)
             if verbose:
@@ -74,8 +74,9 @@ def work():
             ray.release(out_ref)  # todo crashes
         print(n / (time.time() - start), "iterations per second")
 
-## TODO: Test actor can also execute other tasks.
-# a.foo.remote()
+    ## TODO: Test actor can also execute other tasks.
+    # a.foo.remote()
     time.sleep(5)
+
 
 ray.get(work.remote())

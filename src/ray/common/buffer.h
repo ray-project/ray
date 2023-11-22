@@ -146,7 +146,7 @@ class SharedMemoryBuffer : public Buffer {
   SharedMemoryBuffer(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size)
       : size_(size), parent_(buffer) {
     data_ = buffer->Data() + offset;
-    RAY_CHECK(size_ <= parent_->Size());
+    RAY_CHECK(size_ <= parent_->Size()) << "size: " << size_ << " parent size: " << parent_->Size();
   }
 
   static std::shared_ptr<SharedMemoryBuffer> Slice(const std::shared_ptr<Buffer> &buffer,

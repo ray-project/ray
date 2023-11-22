@@ -59,6 +59,12 @@ struct PlasmaObjectHeader {
   // Number of readers currently reading. Not necessary for synchronization,
   // but useful for debugging.
   volatile int64_t num_readers_acquired = 0;
+  // The valid data size of the Ray object.
+  // Normally, Plasma object is immutable, and it is equivalent to the
+  // data buffer size. However, this can be overwritten when the plasma object
+  // is mutable (E.g., when accerlated DAG is used).
+  // This should not be modified or accessed directly.
+  volatile uint64_t data_size = 0;
 
   void Init();
   void Destroy();
@@ -73,6 +79,14 @@ struct PlasmaObjectHeader {
   // writer. This is not necessary to call for objects that have
   // max_readers=-1.
   void ReadRelease(int64_t read_version);
+  // Update the data size of the plasma object.
+  // This has to be called only when writer lock is acquired
+  // via WriteAcquire.
+  void UpdateDataSize(uint64_t size);
+  // Get the data size of the plasma object.
+  // This has to be called only when reader lock is acquired
+  // via ReadAcquire.
+  uint64_t GetDataSize() const;
 };
 
 /// A struct that includes info about the object.

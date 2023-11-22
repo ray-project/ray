@@ -31,6 +31,18 @@ void PlasmaObjectHeader::Destroy() {
 //  RAY_CHECK(pthread_cond_destroy(&cond) == 0);
 }
 
+void PlasmaObjectHeader::UpdateDataSize(uint64_t size) {
+  RAY_CHECK_EQ(num_readers_acquired, 0) << "WriteAcquire has to be called before calling this method.";
+  data_size = size;
+}
+// Get the data size of the plasma object.
+// This has to be called only when reader lock is acquired
+// via ReadAcquire.
+uint64_t PlasmaObjectHeader::GetDataSize() const {
+  RAY_CHECK_GE(num_readers_acquired, 0) << "ReadAcquire has to be called before calling this method.";
+  return data_size;
+}
+
 void PlasmaObjectHeader::WriteAcquire(int64_t write_version) {
 //  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   RAY_LOG(DEBUG) << "WriteAcquire " << write_version;

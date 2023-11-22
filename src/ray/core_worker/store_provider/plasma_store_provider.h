@@ -73,7 +73,8 @@ class TrackedBuffer : public Buffer {
   bool IsPlasmaBuffer() const override { return true; }
 
   std::shared_ptr<Buffer> SliceBuffer(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size) override {
-    return std::make_shared<TrackedBuffer>(buffer_.SliceBuffer(buffer_, offset, size), tracker_, object_id_, /*release_on_destruction*/false);
+    /// Sliced buffers are not tracked.
+    return std::make_shared<TrackedBuffer>(buffer_->SliceBuffer(buffer_, offset, size), tracker_, object_id_, /*release_on_destruction*/false);
   }
 
   ~TrackedBuffer() { tracker_->Release(object_id_, this); }
