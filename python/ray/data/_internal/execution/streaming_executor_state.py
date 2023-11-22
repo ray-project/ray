@@ -361,6 +361,13 @@ def process_completed_tasks(
             fetch_local=False,
             timeout=0.1,
         )
+
+        # Organize tasks by the operator they belong to, and sort them by task index.
+        # So that we'll process them in a deterministic order.
+        # This is because some backpressure policies (e.g.,
+        # StreamingOutputBackpressurePolicy) may limit the number of blocks to read
+        # per operator. In this case, we want to have fewer tasks finish quickly and
+        # yield resources, instead of having all tasks output blocks together.
         ready_tasks_by_op = defaultdict(list)
         for ref in ready:
             state, task = active_tasks[ref]
