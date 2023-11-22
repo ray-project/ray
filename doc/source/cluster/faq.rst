@@ -21,7 +21,7 @@ Some Ray features are still missing for multi-tenancy in production:
 
 * Ray doesn't support priorities: All jobs, tasks and actors have the same priority so there is no way to prioritize important jobs under load.
 
-* Ray doesn't support access control: jobs have full access to a Ray cluster and all of the resources within it.
+* Ray doesn't support access control: Jobs have full access to a Ray cluster and all of the resources within it.
 
 On the other hand, you can run the same job multiple times using the same cluster to save the cluster startup time.
 
