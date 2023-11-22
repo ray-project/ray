@@ -28,6 +28,8 @@ class DockerContainer(Container):
         platform: str,
         image_type: str,
         architecture: str = DEFAULT_ARCHITECTURE,
+        canonical_tag: str = None,
+        upload: bool = False,
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
@@ -35,6 +37,8 @@ class DockerContainer(Container):
         self.platform = platform
         self.image_type = image_type
         self.architecture = architecture
+        self.canonical_tag = canonical_tag
+        self.upload = upload
 
         super().__init__(
             "forge" if architecture == "x86_64" else "forge-aarch64",
@@ -66,7 +70,7 @@ class DockerContainer(Container):
         #
         # The canonical tag is the most complete tag with no abbreviation,
         # e.g. sha-pyversion-platform
-        return self._get_image_tags()[0]
+        return self.canonical_tag if self.canonical_tag else self._get_image_tags()[0]
 
     def get_python_version_tag(self) -> str:
         return f"-py{self.python_version.replace('.', '')}"  # 3.8 -> py38

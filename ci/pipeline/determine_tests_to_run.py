@@ -160,7 +160,7 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/data.build.Dockerfile"
                 or changed_file == "ci/docker/datan.build.wanda.yaml"
                 or changed_file == "ci/docker/data6.build.wanda.yaml"
-                or changed_file == "ci/docker/data12.build.wanda.yaml"
+                or changed_file == "ci/docker/data14.build.wanda.yaml"
             ):
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_ML_AFFECTED = 1
@@ -309,6 +309,7 @@ if __name__ == "__main__":
                 RAY_CI_TOOLS_AFFECTED = 1
             elif (
                 changed_file.startswith("ci/pipeline")
+                or changed_file.startswith("ci/build")
                 or changed_file.startswith("ci/ray_ci")
                 or changed_file == ".buildkite/_forge.rayci.yml"
                 or changed_file == ".buildkite/_forge.aarch64.rayci.yml"

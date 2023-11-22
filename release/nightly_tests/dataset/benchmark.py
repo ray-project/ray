@@ -17,6 +17,7 @@ import pandas as pd
 class BenchmarkMetric(Enum):
     RUNTIME = "time"
     THROUGHPUT = "tput"
+    ACCURACY = "accuracy"
 
 
 class Benchmark:
