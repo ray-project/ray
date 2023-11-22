@@ -2,6 +2,7 @@ import logging
 import math
 from abc import ABCMeta, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
+from enum import Enum
 from typing import List, Optional
 
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
@@ -140,7 +141,8 @@ class AutoscalingContext:
 
     def prometheus_metrics(self, metrics_name: str) -> float:
         """Return the current metrics from Prometheus given the metrics name."""
-        # TODO (genesu): Implement this. Look into how is the metrics logged for remote server
+        # TODO (genesu): Implement this. Look into how is the metrics logged for remote
+        #  server
         return 12.3
 
 
@@ -315,7 +317,7 @@ class AutoscalingPolicyFactory:
         """Creates an autoscaling policy based on the given config.
 
         Args:
-            config (AutoscalingConfig): The config to use for the policy.
+            config: The config to use for the policy.
 
         Returns:
             AutoscalingPolicy: The autoscaling policy.
