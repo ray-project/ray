@@ -435,10 +435,6 @@ class ResourceDemandScheduler(IResourceScheduler):
     def _enforce_min_workers(self) -> None:
         """
         Enforce the minimal count of nodes for each worker node type.
-
-        Args:
-            config: The cluster config.
-
         """
 
         # Count the existing nodes by type
