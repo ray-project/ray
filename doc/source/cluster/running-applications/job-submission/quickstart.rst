@@ -111,7 +111,7 @@ Make sure to specify the path to the working directory in the ``--working-dir`` 
     # Job 'raysubmit_inB2ViQuE29aZRJ5' succeeded
     # ------------------------------------------
 
-This command will run the entrypoint script on the Ray Cluster's head node and wait until the job has finished. Note that it also streams the stdout of the job back to the client (``hello world`` in this case). Ray will also make the contents of the directory passed as `--working-dir` available to the Ray job by downloading the directory to all nodes in your cluster.
+This command will run the entrypoint script on the Ray Cluster's head node and wait until the job has finished. Note that it also streams the output of the entrypoint script back to the client (``hello world`` in this case). Ray will also make the contents of the directory passed as `--working-dir` available to the Ray job by downloading the directory to all nodes in your cluster.
 
 .. note::
 
