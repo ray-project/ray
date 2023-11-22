@@ -108,6 +108,9 @@ print("Current namespace:", ray.get_runtime_context().namespace)
     subprocess.check_output("ray stop --force", shell=True)
 
 
+@pytest.mark.skipif(
+    skip_flaky_test(), reason="https://github.com/ray-project/ray/issues/38224"
+)
 def test_connect_to_cluster(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50055")
     with ray.client("localhost:50055").connect() as client_context:
