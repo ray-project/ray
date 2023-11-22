@@ -16,6 +16,7 @@ import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.autoscaling_policy import (
+    AutoscalingContext,
     BasicAutoscalingPolicy,
     calculate_desired_num_replicas,
 )
@@ -170,22 +171,19 @@ class TestGetDecisionNumReplicas:
             smoothing_factor=10,
         )
         policy = BasicAutoscalingPolicy(config)
-        new_num_replicas = policy.get_decision_num_replicas(
+        context = AutoscalingContext(
             current_num_ongoing_requests=[],
             curr_target_num_replicas=0,
             current_handle_queued_queries=1,
         )
+        new_num_replicas = policy.get_decision_num_replicas(context)
 
         # 1 * 10
         assert new_num_replicas == 10
 
         config.smoothing_factor = 0.5
         policy = BasicAutoscalingPolicy(config)
-        new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=[],
-            curr_target_num_replicas=0,
-            current_handle_queued_queries=1,
-        )
+        new_num_replicas = policy.get_decision_num_replicas(context)
 
         # math.ceil(1 * 0.5)
         assert new_num_replicas == 1
@@ -203,11 +201,12 @@ class TestGetDecisionNumReplicas:
             downscale_delay_s=0,
         )
         policy = BasicAutoscalingPolicy(config)
-        new_num_replicas = policy.get_decision_num_replicas(
+        context = AutoscalingContext(
             current_num_ongoing_requests=[0, 0, 0, 0, 0],
             curr_target_num_replicas=5,
             current_handle_queued_queries=0,
         )
+        new_num_replicas = policy.get_decision_num_replicas(context)
 
         assert new_num_replicas == 0
 
@@ -218,11 +217,12 @@ class TestGetDecisionNumReplicas:
         policy = BasicAutoscalingPolicy(config)
         num_replicas = 5
         for _ in range(5):
-            num_replicas = policy.get_decision_num_replicas(
+            context = AutoscalingContext(
                 current_num_ongoing_requests=[0] * num_replicas,
                 curr_target_num_replicas=num_replicas,
                 current_handle_queued_queries=0,
             )
+            num_replicas = policy.get_decision_num_replicas(context)
 
         assert num_replicas == 0
 
@@ -248,111 +248,104 @@ class TestGetDecisionNumReplicas:
         overload_requests = [100]
 
         # Scale up when there are 0 replicas and current_handle_queued_queries > 0
-        new_num_replicas = policy.get_decision_num_replicas(
+        context = AutoscalingContext(
             current_num_ongoing_requests=[],
             curr_target_num_replicas=0,
             current_handle_queued_queries=1,
         )
+        new_num_replicas = policy.get_decision_num_replicas(context)
         assert new_num_replicas == 1
 
         # We should scale up only after enough consecutive scale-up decisions.
-        for i in range(upscale_wait_periods):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=overload_requests,
-                curr_target_num_replicas=1,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 1, i
-
-        new_num_replicas = policy.get_decision_num_replicas(
+        context = AutoscalingContext(
             current_num_ongoing_requests=overload_requests,
             curr_target_num_replicas=1,
             current_handle_queued_queries=0,
         )
+        for i in range(upscale_wait_periods):
+            new_num_replicas = policy.get_decision_num_replicas(context)
+            assert new_num_replicas == 1, i
+
+        new_num_replicas = policy.get_decision_num_replicas(context)
         assert new_num_replicas == 2
 
         no_requests = [0, 0]
 
         # We should scale down only after enough consecutive scale-down decisions.
-        for i in range(downscale_wait_periods):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=no_requests,
-                curr_target_num_replicas=2,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 2, i
-
-        new_num_replicas = policy.get_decision_num_replicas(
+        context = AutoscalingContext(
             current_num_ongoing_requests=no_requests,
             curr_target_num_replicas=2,
             current_handle_queued_queries=0,
         )
+        for i in range(downscale_wait_periods):
+            new_num_replicas = policy.get_decision_num_replicas(context)
+            assert new_num_replicas == 2, i
+
+        new_num_replicas = policy.get_decision_num_replicas(context)
         assert new_num_replicas == 0
 
         # Get some scale-up decisions, but not enough to trigger a scale up.
-        for i in range(int(upscale_wait_periods / 2)):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=overload_requests,
-                curr_target_num_replicas=1,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 1, i
-
-        # Interrupt with a scale-down decision.
-        policy.get_decision_num_replicas(
-            current_num_ongoing_requests=[0],
-            curr_target_num_replicas=1,
-            current_handle_queued_queries=0,
-        )
-
-        # The counter should be reset, so it should require `upscale_wait_periods`
-        # more periods before we actually scale up.
-        for i in range(upscale_wait_periods):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=overload_requests,
-                curr_target_num_replicas=1,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 1, i
-
-        new_num_replicas = policy.get_decision_num_replicas(
+        context = AutoscalingContext(
             current_num_ongoing_requests=overload_requests,
             curr_target_num_replicas=1,
             current_handle_queued_queries=0,
         )
+        for i in range(int(upscale_wait_periods / 2)):
+            new_num_replicas = policy.get_decision_num_replicas(context)
+            assert new_num_replicas == 1, i
+
+        # Interrupt with a scale-down decision.
+        context = AutoscalingContext(
+            current_num_ongoing_requests=[0],
+            curr_target_num_replicas=1,
+            current_handle_queued_queries=0,
+        )
+        policy.get_decision_num_replicas(context)
+
+        # The counter should be reset, so it should require `upscale_wait_periods`
+        # more periods before we actually scale up.
+        context = AutoscalingContext(
+            current_num_ongoing_requests=overload_requests,
+            curr_target_num_replicas=1,
+            current_handle_queued_queries=0,
+        )
+        for i in range(upscale_wait_periods):
+            new_num_replicas = policy.get_decision_num_replicas(context)
+            assert new_num_replicas == 1, i
+
+        new_num_replicas = policy.get_decision_num_replicas(context)
         assert new_num_replicas == 2
 
         # Get some scale-down decisions, but not enough to trigger a scale down.
-        for i in range(int(downscale_wait_periods / 2)):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=no_requests,
-                curr_target_num_replicas=2,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 2, i
-
-        # Interrupt with a scale-up decision.
-        policy.get_decision_num_replicas(
-            current_num_ongoing_requests=[100, 100],
-            curr_target_num_replicas=2,
-            current_handle_queued_queries=0,
-        )
-
-        # The counter should be reset so it should require `downscale_wait_periods`
-        # more periods before we actually scale down.
-        for i in range(downscale_wait_periods):
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=no_requests,
-                curr_target_num_replicas=2,
-                current_handle_queued_queries=0,
-            )
-            assert new_num_replicas == 2, i
-
-        new_num_replicas = policy.get_decision_num_replicas(
+        context = AutoscalingContext(
             current_num_ongoing_requests=no_requests,
             curr_target_num_replicas=2,
             current_handle_queued_queries=0,
         )
+        for i in range(int(downscale_wait_periods / 2)):
+            new_num_replicas = policy.get_decision_num_replicas(context)
+            assert new_num_replicas == 2, i
+
+        # Interrupt with a scale-up decision.
+        context = AutoscalingContext(
+            current_num_ongoing_requests=[100, 100],
+            curr_target_num_replicas=2,
+            current_handle_queued_queries=0,
+        )
+        policy.get_decision_num_replicas(context)
+
+        # The counter should be reset so it should require `downscale_wait_periods`
+        # more periods before we actually scale down.
+        context = AutoscalingContext(
+            current_num_ongoing_requests=no_requests,
+            curr_target_num_replicas=2,
+            current_handle_queued_queries=0,
+        )
+        for i in range(downscale_wait_periods):
+            new_num_replicas = policy.get_decision_num_replicas(context)
+            assert new_num_replicas == 2, i
+
+        new_num_replicas = policy.get_decision_num_replicas(context)
         assert new_num_replicas == 0
 
     def test_replicas_delayed_startup(self):
@@ -367,21 +360,41 @@ class TestGetDecisionNumReplicas:
 
         policy = BasicAutoscalingPolicy(config)
 
-        new_num_replicas = policy.get_decision_num_replicas(1, [100], 0)
+        context = AutoscalingContext(
+            curr_target_num_replicas=1,
+            current_num_ongoing_requests=[100],
+            current_handle_queued_queries=0,
+        )
+        new_num_replicas = policy.get_decision_num_replicas(context)
         assert new_num_replicas == 100
 
         # New target is 100, but no new replicas finished spinning up during this
         # timestep.
-        new_num_replicas = policy.get_decision_num_replicas(100, [100], 0)
+        context = AutoscalingContext(
+            curr_target_num_replicas=100,
+            current_num_ongoing_requests=[100],
+            current_handle_queued_queries=0,
+        )
+        new_num_replicas = policy.get_decision_num_replicas(context)
         assert new_num_replicas == 100
 
         # Two new replicas spun up during this timestep.
-        new_num_replicas = policy.get_decision_num_replicas(100, [100, 20, 3], 0)
+        context = AutoscalingContext(
+            curr_target_num_replicas=100,
+            current_num_ongoing_requests=[100, 20, 3],
+            current_handle_queued_queries=0,
+        )
+        new_num_replicas = policy.get_decision_num_replicas(context)
         assert new_num_replicas == 123
 
         # A lot of queries got drained and a lot of replicas started up, but
         # new_num_replicas should not decrease, because of the downscale delay.
-        new_num_replicas = policy.get_decision_num_replicas(123, [6, 2, 1, 1], 0)
+        context = AutoscalingContext(
+            curr_target_num_replicas=123,
+            current_num_ongoing_requests=[6, 2, 1, 1],
+            current_handle_queued_queries=0,
+        )
+        new_num_replicas = policy.get_decision_num_replicas(context)
         assert new_num_replicas == 123
 
     @pytest.mark.parametrize("delay_s", [30.0, 0.0])
@@ -408,24 +421,25 @@ class TestGetDecisionNumReplicas:
         underload_requests, overload_requests = [20, 20], [100]
         trials = 1000
 
-        new_num_replicas = None
         for trial in range(trials):
             if trial % 2 == 0:
-                new_num_replicas = policy.get_decision_num_replicas(
+                context = AutoscalingContext(
                     current_num_ongoing_requests=overload_requests,
                     curr_target_num_replicas=1,
                     current_handle_queued_queries=0,
                 )
+                new_num_replicas = policy.get_decision_num_replicas(context)
                 if delay_s > 0:
                     assert new_num_replicas == 1, trial
                 else:
                     assert new_num_replicas == 2, trial
             else:
-                new_num_replicas = policy.get_decision_num_replicas(
+                context = AutoscalingContext(
                     current_num_ongoing_requests=underload_requests,
                     curr_target_num_replicas=2,
                     current_handle_queued_queries=0,
                 )
+                new_num_replicas = policy.get_decision_num_replicas(context)
                 if delay_s > 0:
                     assert new_num_replicas == 2, trial
                 else:
@@ -444,26 +458,23 @@ class TestGetDecisionNumReplicas:
         )
 
         policy = BasicAutoscalingPolicy(config)
+        context = AutoscalingContext(
+            current_num_ongoing_requests=ongoing_requests,
+            curr_target_num_replicas=4,
+            current_handle_queued_queries=0,
+        )
 
         # Check that as long as the average number of ongoing requests equals
         # the target_num_ongoing_requests_per_replica, the number of replicas
         # stays the same
         if np.mean(ongoing_requests) == config.target_num_ongoing_requests_per_replica:
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=ongoing_requests,
-                curr_target_num_replicas=4,
-                current_handle_queued_queries=0,
-            )
+            new_num_replicas = policy.get_decision_num_replicas(context)
             assert new_num_replicas == 4
 
         # Check downscaling behavior when average number of requests
         # is lower than target_num_ongoing_requests_per_replica
         elif np.mean(ongoing_requests) < config.target_num_ongoing_requests_per_replica:
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=ongoing_requests,
-                curr_target_num_replicas=4,
-                current_handle_queued_queries=0,
-            )
+            new_num_replicas = policy.get_decision_num_replicas(context)
 
             if (
                 config.target_num_ongoing_requests_per_replica
@@ -479,11 +490,7 @@ class TestGetDecisionNumReplicas:
         # Check upscaling behavior when average number of requests
         # is higher than target_num_ongoing_requests_per_replica
         else:
-            new_num_replicas = policy.get_decision_num_replicas(
-                current_num_ongoing_requests=ongoing_requests,
-                curr_target_num_replicas=4,
-                current_handle_queued_queries=0,
-            )
+            new_num_replicas = policy.get_decision_num_replicas(context)
             assert new_num_replicas == 5
 
     @pytest.mark.parametrize(
@@ -501,12 +508,13 @@ class TestGetDecisionNumReplicas:
         )
 
         policy = BasicAutoscalingPolicy(config)
-
-        new_num_replicas = policy.get_decision_num_replicas(
+        context = AutoscalingContext(
             current_num_ongoing_requests=ongoing_requests,
             curr_target_num_replicas=4,
             current_handle_queued_queries=0,
         )
+
+        new_num_replicas = policy.get_decision_num_replicas(context)
         assert new_num_replicas == sum(ongoing_requests) / target_requests
 
 

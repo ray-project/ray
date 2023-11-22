@@ -162,7 +162,9 @@ class AutoscalingPolicy:
         self.config = config
 
     @abstractmethod
-    def get_decision_num_replicas(self, autoscaling_context: AutoscalingContext) -> int:
+    def get_decision_num_replicas(
+        self, autoscaling_context: AutoscalingContext
+    ) -> Optional[int]:
         """Make a decision to scale replicas.
 
         Returns:
@@ -205,7 +207,9 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         # scale_up_periods or scale_down_periods.
         self.decision_counter = 0
 
-    def _calculate_base_desired_replica_numbers(self, context: AutoscalingContext):
+    def _calculate_base_desired_replica_numbers(
+        self, context: AutoscalingContext
+    ) -> int:
         if len(context.current_num_ongoing_requests) == 0:
             # When 0 replicas and queries are queued, scale up the replicas
             if context.current_handle_queued_queries > 0:
@@ -259,7 +263,13 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         self,
         context: AutoscalingContext,
         decision_num_replicas: int,
-    ):
+    ) -> Optional[int]:
+        if (
+            getattr(context, "target_capacity", None) is None
+            or getattr(context, "target_capacity_scale_direction", None) is None
+        ):
+            return decision_num_replicas
+
         # Clip the replica count by capacity-adjusted bounds.
         # TODO (shrekris-anyscale): this should logic should be pushed into the
         # autoscaling_policy. Need to discuss what the right API would look like.
@@ -290,7 +300,9 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
         return clipped_decision_num_replicas
 
-    def get_decision_num_replicas(self, autoscaling_context: AutoscalingContext) -> int:
+    def get_decision_num_replicas(
+        self, autoscaling_context: AutoscalingContext
+    ) -> Optional[int]:
         base_desired_replica_numbers = self._calculate_base_desired_replica_numbers(
             context=autoscaling_context,
         )
