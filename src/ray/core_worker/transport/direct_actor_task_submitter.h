@@ -17,6 +17,7 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
+#include <optional>
 #include <queue>
 #include <set>
 #include <utility>
@@ -241,7 +242,7 @@ class CoreWorkerDirectActorTaskSubmitter
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
  private:
-  typedef std::vector<std::pair<std::pair<TaskSpecification, Status>, bool>>
+  typedef std::vector<std::pair<std::pair<TaskSpecification, Status>, std::optional<std::pair<ActorID, bool>>>>
       TaskInfoList;
 
   /// A helper function to get task finisher without holding mu_
@@ -332,6 +333,7 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Check the death reason is because of drain. 
   void FailTaskWithError(
+    const ray::ActorID &actor_id,
     const ray::TaskID &task_id,
     const Status status,
     const bool preempted);
