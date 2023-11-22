@@ -18,14 +18,6 @@ class TestLookbackBuffer(unittest.TestCase):
         ])
     })
 
-    #@classmethod
-    #def setUpClass(cls) -> None:
-    #    ray.init()
-
-    #@classmethod
-    #def tearDownClass(cls) -> None:
-    #    ray.shutdown()
-
     def test_adding(self):
         buffer = LookbackBuffer(data=[0, 1, 2, 3])
         self.assertTrue(len(buffer), 4)
@@ -87,15 +79,12 @@ class TestLookbackBuffer(unittest.TestCase):
         # List of positive indices (do NOT include lookback buffer).
         check(buffer.get([1, 0, 2]), [3, 2, 4])
         # Slices.
-        # Type: [(None|0):...]
+        # Type: [None:...]
         check(buffer.get(slice(None, None)), [2, 3, 4])
         check(buffer.get(slice(None, 2)), [2, 3])
-        check(buffer.get(slice(0, 2)), [2, 3])
         check(buffer.get(slice(3)), [2, 3, 4])
         check(buffer.get(slice(None, -1)), [2, 3])
-        check(buffer.get(slice(0, -1)), [2, 3])
         check(buffer.get(slice(None, -2)), [2])
-        check(buffer.get(slice(0, -2)), [2])
         # Type: [...:None]
         check(buffer.get(slice(2, None)), [4])
         check(buffer.get(slice(2, 5)), [4])
@@ -112,11 +101,34 @@ class TestLookbackBuffer(unittest.TestCase):
         check(buffer.get(slice(-4, -1)), [1, 2, 3])
         check(buffer.get(slice(-5, -1)), [0, 1, 2, 3])
         check(buffer.get(slice(-6, -2)), [0, 1, 2])
+        # Type: [+n:+m]
+        check(buffer.get(slice(0, 1)), [2])
+        check(buffer.get(slice(0, 2)), [2, 3])
+        check(buffer.get(slice(0, 3)), [2, 3, 4])
+        check(buffer.get(slice(1, 2)), [3])
+        check(buffer.get(slice(1, 3)), [3, 4])
+        check(buffer.get(slice(2, 3)), [4])
+        # Type: [+n:-m]
+        check(buffer.get(slice(0, -1)), [2, 3])
+        check(buffer.get(slice(0, -2)), [2])
+        check(buffer.get(slice(1, -1)), [3])
 
         buffer.finalize()
         data = buffer.get([1, 0, 2])
         self.assertTrue(isinstance(data, np.ndarray))
         check(data, [3, 2, 4])
+
+    def test_get_with_lookback_and_fill(self):
+        buffer = LookbackBuffer(
+            data=[0, 1, 2, 3, 4, 5],
+            lookback=3,
+            space=gym.spaces.Discrete(6),
+        )
+        self.assertTrue(len(buffer), 3)
+        # With `fill` argument.
+        check(buffer.get(slice(-8, None), fill=0), [10, 10, 0, 1, 2, 3, 4, 5])
+
+
 
 
 if __name__ == "__main__":

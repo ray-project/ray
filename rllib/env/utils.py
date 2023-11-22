@@ -213,7 +213,7 @@ class LookbackBuffer:
             return data
         else:
             assert isinstance(idx, int)
-            return self._get_int_index(idx)
+            return self._get_int_index(idx, fill=fill)
 
     def __len__(self):
         return len(self.data) - self.lookback
@@ -274,7 +274,7 @@ class LookbackBuffer:
                     )
         return data_slice
 
-    def _get_int_index(self, idx: int):
+    def _get_int_index(self, idx: int, fill=None):
         # If index >= 0 -> Ignore lookback buffer.
         # Otherwise, include lookback buffer.
         if idx >= 0:
