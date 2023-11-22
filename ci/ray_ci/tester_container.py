@@ -30,7 +30,15 @@ class TesterContainer(Container):
         used to run tests in a distributed fashion.
         :param shard_ids: The list of shard ids to run. If none, run no shards.
         """
-        super().__init__(docker_tag, envs=test_envs, privileged=privileged)
+        super().__init__(
+            docker_tag,
+            envs=test_envs,
+            volumes=[
+                f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
+                "/var/run/docker.sock:/var/run/docker.sock",
+            ],
+            privileged=privileged,
+        )
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
         self.test_envs = test_envs or []

@@ -122,6 +122,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             "debug",
             "asan",
             "wheel",
+            "wheel-aarch64",
             # cpp build types
             "clang",
             "asan-clang",
@@ -163,11 +164,10 @@ def main(
     os.chdir(bazel_workspace_dir)
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
-    if build_type == "wheel":
+    if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
-        BuilderContainer(
-            DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, DEFAULT_ARCHITECTURE
-        ).run()
+        architecture = DEFAULT_ARCHITECTURE if build_type == "wheel" else "aarch64"
+        BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, architecture).run()
     container = _get_container(
         team,
         workers,
@@ -191,7 +191,7 @@ def main(
         get_flaky_tests=run_flaky_tests,
     )
     success = container.run_tests(test_targets, test_arg)
-    sys.exit(0 if success else 1)
+    sys.exit(0 if success else 42)
 
 
 def _add_default_except_tags(except_tags: str) -> str:

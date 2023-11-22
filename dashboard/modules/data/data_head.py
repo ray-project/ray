@@ -31,9 +31,11 @@ class PrometheusQuery(Enum):
 
 
 DATASET_METRICS = {
-    "ray_data_output_bytes": (PrometheusQuery.MAX,),
+    "ray_data_output_rows": (PrometheusQuery.MAX,),
     "ray_data_spilled_bytes": (PrometheusQuery.MAX,),
     "ray_data_current_bytes": (PrometheusQuery.VALUE, PrometheusQuery.MAX),
+    "ray_data_cpu_usage_cores": (PrometheusQuery.VALUE, PrometheusQuery.MAX),
+    "ray_data_gpu_usage_cores": (PrometheusQuery.VALUE, PrometheusQuery.MAX),
 }
 
 

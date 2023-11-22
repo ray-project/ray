@@ -1072,17 +1072,5 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
   return false;
 }
 
-const absl::btree_multimap<
-    int64_t,
-    std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-    &GcsPlacementGroupManager::GetPendingPlacementGroups() const {
-  return pending_placement_groups_;
-}
-
-const std::deque<std::shared_ptr<GcsPlacementGroup>>
-    &GcsPlacementGroupManager::GetInfeasiblePlacementGroups() const {
-  return infeasible_placement_groups_;
-}
-
 }  // namespace gcs
 }  // namespace ray

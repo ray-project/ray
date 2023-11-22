@@ -91,4 +91,15 @@ reported:
   starting ray to verify that the allocations are as expected. For more
   detailed information see :ref:`ray-slurm-deploy`.
 
-.. _`known OpenBLAS limitation`: https://github.com/xianyi/OpenBLAS/wiki/faq#how-can-i-use-openblas-in-multi-threaded-applications  
+.. _`known OpenBLAS limitation`: https://github.com/xianyi/OpenBLAS/wiki/faq#how-can-i-use-openblas-in-multi-threaded-applications
+
+Where does my Ray Job entrypoint script run? On the head node or worker nodes?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, jobs submitted using the :ref:`Ray Job API <jobs-quickstart>` run
+their `entrypoint` script on the head node. You can change this by specifying
+any of the options `--entrypoint-num-cpus`, `--entrypoint-num-gpus`,
+`--entrypoint-resources` or `--entrypoint-memory` to `ray job submit`, or the
+corresponding arguments if using the Python SDK. If these are specified, the
+job entrypoint will be scheduled on a node that has the requested resources
+available.
