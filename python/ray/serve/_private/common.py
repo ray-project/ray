@@ -5,7 +5,7 @@ from typing import Any, Dict, List, NamedTuple, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray.serve._private.autoscaling_policy import AutoscalingPolicyFactory
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
@@ -271,8 +271,8 @@ class DeploymentInfo:
         self.docs_path = docs_path
         self.ingress = ingress
         if deployment_config.autoscaling_config is not None:
-            self.autoscaling_policy = BasicAutoscalingPolicy(
-                deployment_config.autoscaling_config
+            self.autoscaling_policy = AutoscalingPolicyFactory.create_policy(
+                config=deployment_config.autoscaling_config,
             )
         else:
             self.autoscaling_policy = None
@@ -515,10 +515,3 @@ class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
     GRPC = "gRPC"
-
-
-class TargetCapacityScaleDirection(str, Enum):
-    """Determines what direction the target capacity is scaling."""
-
-    UP = "UP"
-    DOWN = "DOWN"

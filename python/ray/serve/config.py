@@ -60,8 +60,15 @@ class AutoscalingConfig(BaseModel):
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
 
+    # Custom autoscaling config
+    custom_scaling: Optional[str] = None
+
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
+        # Ignore this validation if custom scaling is enabled.
+        if values.get("custom_scaling"):
+            return max_replicas
+
         min_replicas = values.get("min_replicas")
         initial_replicas = values.get("initial_replicas")
         if min_replicas is not None and max_replicas < min_replicas:

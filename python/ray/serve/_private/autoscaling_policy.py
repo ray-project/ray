@@ -1,12 +1,20 @@
 import logging
 import math
 from abc import ABCMeta, abstractmethod
-from typing import List
+from decimal import ROUND_HALF_UP, Decimal
+from typing import List, Optional
 
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+class TargetCapacityScaleDirection(str, Enum):
+    """Determines what direction the target capacity is scaling."""
+
+    UP = "UP"
+    DOWN = "DOWN"
 
 
 def calculate_desired_num_replicas(
@@ -75,6 +83,67 @@ def calculate_desired_num_replicas(
     return desired_num_replicas
 
 
+def get_capacity_adjusted_num_replicas(
+    num_replicas: int, target_capacity: Optional[float]
+) -> int:
+    """Return the target state `num_replicas` adjusted by the `target_capacity`.
+
+    The output will only ever be 0 if the passed `num_replicas` is 0. This is to
+    support autoscaling deployments using scale-to-zero (we assume that any other
+    deployment should always have at least 1 replica).
+
+    Rather than using the default `round` behavior in Python, which rounds half to
+    even, uses the `decimal` module to round half up (standard rounding behavior).
+    """
+    if target_capacity is None or target_capacity == 100:
+        return num_replicas
+
+    if num_replicas == 0:
+        return 0
+
+    adjusted_num_replicas = Decimal(num_replicas * target_capacity) / Decimal(100.0)
+    rounded_adjusted_num_replicas = adjusted_num_replicas.to_integral_value(
+        rounding=ROUND_HALF_UP
+    )
+    return max(1, int(rounded_adjusted_num_replicas))
+
+
+class AutoscalingContext:
+    """Contains the context for an autoscaling policy.
+
+    This context includes the current number of replicas, the current number
+    of ongoing requests, and the current number of queued queries.
+    """
+
+    def __init__(
+        self,
+        current_num_replicas: int,
+        current_num_ongoing_requests: List[float],
+        current_handle_queued_queries: float,
+        **kwargs,
+    ):
+        """
+        Arguments:
+            current_num_ongoing_requests: List[float]: List of number of
+                ongoing requests for each replica.
+            curr_target_num_replicas: The number of replicas that the
+                deployment is currently trying to scale to.
+            current_handle_queued_queries : The number of handle queued queries,
+                if there are multiple handles, the max number of queries at
+                a single handle should be passed in
+
+        """
+        self.current_num_replicas = current_num_replicas
+        self.current_num_ongoing_requests = current_num_ongoing_requests
+        self.current_handle_queued_queries = current_handle_queued_queries
+        self.__dict__.update(kwargs)
+
+    def prometheus_metrics(self, metrics_name: str) -> float:
+        """Return the current metrics from Prometheus given the metrics name."""
+        # TODO (genesu): Implement this. Look into how is the metrics logged for remote server
+        return 12.3
+
+
 class AutoscalingPolicy:
     """Defines the interface for an autoscaling policy.
 
@@ -91,27 +160,13 @@ class AutoscalingPolicy:
         self.config = config
 
     @abstractmethod
-    def get_decision_num_replicas(
-        self,
-        curr_target_num_replicas: int,
-        current_num_ongoing_requests: List[float],
-        current_handle_queued_queries: float,
-    ) -> int:
+    def get_decision_num_replicas(self, autoscaling_context: AutoscalingContext) -> int:
         """Make a decision to scale replicas.
-
-        Arguments:
-            current_num_ongoing_requests: List[float]: List of number of
-                ongoing requests for each replica.
-            curr_target_num_replicas: The number of replicas that the
-                deployment is currently trying to scale to.
-            current_handle_queued_queries : The number of handle queued queries,
-                if there are multiple handles, the max number of queries at
-                a single handle should be passed in
 
         Returns:
             int: The new number of replicas to scale to.
         """
-        return curr_target_num_replicas
+        return autoscaling_context.curr_target_num_replicas
 
 
 class BasicAutoscalingPolicy(AutoscalingPolicy):
@@ -148,28 +203,23 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         # scale_up_periods or scale_down_periods.
         self.decision_counter = 0
 
-    def get_decision_num_replicas(
-        self,
-        curr_target_num_replicas: int,
-        current_num_ongoing_requests: List[float],
-        current_handle_queued_queries: float,
-    ) -> int:
-        if len(current_num_ongoing_requests) == 0:
+    def _calculate_base_desired_replica_numbers(self, context: AutoscalingContext):
+        if len(context.current_num_ongoing_requests) == 0:
             # When 0 replicas and queries are queued, scale up the replicas
-            if current_handle_queued_queries > 0:
+            if context.current_handle_queued_queries > 0:
                 return max(
                     math.ceil(1 * self.config.get_upscale_smoothing_factor()),
-                    curr_target_num_replicas,
+                    context.curr_target_num_replicas,
                 )
-            return curr_target_num_replicas
+            return context.curr_target_num_replicas
 
-        decision_num_replicas = curr_target_num_replicas
+        decision_num_replicas = context.curr_target_num_replicas
 
         desired_num_replicas = calculate_desired_num_replicas(
-            self.config, current_num_ongoing_requests
+            self.config, context.current_num_ongoing_requests
         )
         # Scale up.
-        if desired_num_replicas > curr_target_num_replicas:
+        if desired_num_replicas > context.curr_target_num_replicas:
             # If the previous decision was to scale down (the counter was
             # negative), we reset it and then increment it (set to 1).
             # Otherwise, just increment.
@@ -184,7 +234,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
                 decision_num_replicas = desired_num_replicas
 
         # Scale down.
-        elif desired_num_replicas < curr_target_num_replicas:
+        elif desired_num_replicas < context.curr_target_num_replicas:
             # If the previous decision was to scale up (the counter was
             # positive), reset it to zero before decrementing.
             if self.decision_counter > 0:
@@ -202,3 +252,75 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             self.decision_counter = 0
 
         return decision_num_replicas
+
+    def _clip_desired_replica_numbers(
+        self,
+        context: AutoscalingContext,
+        decision_num_replicas: int,
+    ):
+        # Clip the replica count by capacity-adjusted bounds.
+        # TODO (shrekris-anyscale): this should logic should be pushed into the
+        # autoscaling_policy. Need to discuss what the right API would look like.
+        upper_bound = get_capacity_adjusted_num_replicas(
+            self.config.max_replicas, context.target_capacity
+        )
+        if (
+            context.target_capacity_scale_direction == TargetCapacityScaleDirection.UP
+            and self.config.initial_replicas is not None
+        ):
+            lower_bound = get_capacity_adjusted_num_replicas(
+                self.config.initial_replicas, context.target_capacity
+            )
+        else:
+            lower_bound = get_capacity_adjusted_num_replicas(
+                self.config.min_replicas, context.target_capacity
+            )
+
+        clipped_decision_num_replicas = max(
+            lower_bound, min(decision_num_replicas, upper_bound)
+        )
+
+        if (
+            clipped_decision_num_replicas == context.curr_target_num_replicas
+            and context.adjust_capacity is False
+        ):
+            return
+
+        return clipped_decision_num_replicas
+
+    def get_decision_num_replicas(self, autoscaling_context: AutoscalingContext) -> int:
+        base_desired_replica_numbers = self._calculate_base_desired_replica_numbers(
+            context=autoscaling_context,
+        )
+        decision_num_replicas = self._clip_desired_replica_numbers(
+            context=autoscaling_context,
+            decision_num_replicas=base_desired_replica_numbers,
+        )
+
+        return decision_num_replicas
+
+
+class CustomScalingPolicy(AutoscalingPolicy):
+    """A custom autoscaling policy that can be specified by the user."""
+
+    def __init__(self, config: AutoscalingConfig):
+        self.config = config
+
+
+class AutoscalingPolicyFactory:
+    """Factory for creating autoscaling policies."""
+
+    @staticmethod
+    def create_policy(config: AutoscalingConfig) -> AutoscalingPolicy:
+        """Creates an autoscaling policy based on the given config.
+
+        Args:
+            config (AutoscalingConfig): The config to use for the policy.
+
+        Returns:
+            AutoscalingPolicy: The autoscaling policy.
+        """
+        if config.custom_scaling:
+            return CustomScalingPolicy(config)
+        else:
+            return BasicAutoscalingPolicy(config)

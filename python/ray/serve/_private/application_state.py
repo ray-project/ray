@@ -10,6 +10,7 @@ import ray
 from ray import cloudpickle
 from ray._private.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
+from ray.serve._private.autoscaling_policy import TargetCapacityScaleDirection
 from ray.serve._private.common import (
     ApplicationStatus,
     ApplicationStatusInfo,
@@ -20,7 +21,6 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     EndpointInfo,
     EndpointTag,
-    TargetCapacityScaleDirection,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME

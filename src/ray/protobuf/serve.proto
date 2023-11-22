@@ -60,6 +60,9 @@ message AutoscalingConfig {
 
   // The multiplicative "gain" factor to limit downscale.
   optional double downscale_smoothing_factor = 11;
+
+  // The import path for custom scaling.
+  optional string custom_scaling = 12;
 }
 
 //[Begin] LOGGING CONFIG

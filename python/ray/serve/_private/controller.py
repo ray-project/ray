@@ -12,6 +12,7 @@ from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.autoscaling_policy import TargetCapacityScaleDirection
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
@@ -21,7 +22,6 @@ from ray.serve._private.common import (
     NodeId,
     RunningReplicaInfo,
     StatusOverview,
-    TargetCapacityScaleDirection,
 )
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,

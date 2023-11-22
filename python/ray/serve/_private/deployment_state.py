@@ -8,7 +8,6 @@ import traceback
 from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -19,6 +18,11 @@ from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetu
 from ray.serve import metrics
 from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve._private.autoscaling_policy import (
+    AutoscalingContext,
+    TargetCapacityScaleDirection,
+    get_capacity_adjusted_num_replicas,
+)
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     DeploymentID,
@@ -32,7 +36,6 @@ from ray.serve._private.common import (
     ReplicaState,
     ReplicaTag,
     RunningReplicaInfo,
-    TargetCapacityScaleDirection,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -1465,31 +1468,6 @@ class DeploymentState:
 
         self._target_state = new_target_state
 
-    @staticmethod
-    def get_capacity_adjusted_num_replicas(
-        num_replicas: int, target_capacity: Optional[float]
-    ) -> int:
-        """Return the target state `num_replicas` adjusted by the `target_capacity`.
-
-        The output will only ever be 0 if the passed `num_replicas` is 0. This is to
-        support autoscaling deployments using scale-to-zero (we assume that any other
-        deployment should always have at least 1 replica).
-
-        Rather than using the default `round` behavior in Python, which rounds half to
-        even, uses the `decimal` module to round half up (standard rounding behavior).
-        """
-        if target_capacity is None or target_capacity == 100:
-            return num_replicas
-
-        if num_replicas == 0:
-            return 0
-
-        adjusted_num_replicas = Decimal(num_replicas * target_capacity) / Decimal(100.0)
-        rounded_adjusted_num_replicas = adjusted_num_replicas.to_integral_value(
-            rounding=ROUND_HALF_UP
-        )
-        return max(1, int(rounded_adjusted_num_replicas))
-
     def deploy(
         self,
         deployment_info: DeploymentInfo,
@@ -1535,7 +1513,7 @@ class DeploymentState:
                     autoscaled_num_replicas = self._target_state.num_replicas
                 else:
                     autoscaled_num_replicas = autoscaling_config.min_replicas
-            autoscaled_num_replicas = self.get_capacity_adjusted_num_replicas(
+            autoscaled_num_replicas = get_capacity_adjusted_num_replicas(
                 autoscaled_num_replicas, target_capacity
             )
             deployment_info.set_autoscaled_num_replicas(autoscaled_num_replicas)
@@ -1595,49 +1573,30 @@ class DeploymentState:
 
         current_num_ongoing_requests = self.get_replica_current_ongoing_requests()
         autoscaling_policy = self._target_state.info.autoscaling_policy
-        decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
+        autoscaling_context = AutoscalingContext(
             curr_target_num_replicas=self._target_state.num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
+            target_capacity=target_capacity,
+            target_capacity_scale_direction=target_capacity_scale_direction,
+            adjust_capacity=self._target_state.adjust_capacity,
+        )
+        decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
+            autoscaling_context=autoscaling_context,
         )
 
-        # Clip the replica count by capacity-adjusted bounds.
-        # TODO (shrekris-anyscale): this should logic should be pushed into the
-        # autoscaling_policy. Need to discuss what the right API would look like.
-        upper_bound = self.get_capacity_adjusted_num_replicas(
-            autoscaling_policy.config.max_replicas, target_capacity
-        )
-        if (
-            target_capacity_scale_direction == TargetCapacityScaleDirection.UP
-            and autoscaling_policy.config.initial_replicas is not None
-        ):
-            lower_bound = self.get_capacity_adjusted_num_replicas(
-                autoscaling_policy.config.initial_replicas, target_capacity
-            )
-        else:
-            lower_bound = self.get_capacity_adjusted_num_replicas(
-                autoscaling_policy.config.min_replicas, target_capacity
-            )
-
-        clipped_decision_num_replicas = max(
-            lower_bound, min(decision_num_replicas, upper_bound)
-        )
-
-        if (
-            clipped_decision_num_replicas == self._target_state.num_replicas
-            and self._target_state.adjust_capacity is False
-        ):
+        if decision_num_replicas is None:
             return
 
         logger.info(
             f"Autoscaling replicas for deployment {self.deployment_name} in "
-            f"application {self.app_name} to {clipped_decision_num_replicas}. "
+            f"application {self.app_name} to {decision_num_replicas}. "
             f"current_num_ongoing_requests: {current_num_ongoing_requests}, "
             f"current handle queued queries: {current_handle_queued_queries}."
         )
 
         new_info = copy(self._target_state.info)
-        new_info.set_autoscaled_num_replicas(clipped_decision_num_replicas)
+        new_info.set_autoscaled_num_replicas(decision_num_replicas)
         new_info.version = self._target_state.version.code_version
         self._set_target_state(
             new_info,
@@ -2212,7 +2171,7 @@ class DeploymentState:
         if self._target_state.deleting:
             adjusted_target_num_replicas = 0
         elif self._target_state.adjust_capacity:
-            adjusted_target_num_replicas = self.get_capacity_adjusted_num_replicas(
+            adjusted_target_num_replicas = get_capacity_adjusted_num_replicas(
                 self._target_state.num_replicas, target_capacity
             )
         else:
