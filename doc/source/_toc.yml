@@ -157,8 +157,6 @@ parts:
                 sections:
                   - file: tune/examples/ax_example
                     title: "Ax Example"
-                  - file: tune/examples/dragonfly_example
-                    title: "Dragonfly Example"
                   - file: tune/examples/hyperopt_example
                     title: "HyperOpt Example"
                   - file: tune/examples/bayesopt_example

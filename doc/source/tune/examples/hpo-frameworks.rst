@@ -18,14 +18,6 @@ on each of our integrations:
             How To Use Tune With Ax
 
     .. grid-item-card::
-        :img-top: ../images/dragonfly.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: dragonfly_example
-
-            How To Use Tune With Dragonfly
-
-    .. grid-item-card::
         :img-top: ../images/hyperopt.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 

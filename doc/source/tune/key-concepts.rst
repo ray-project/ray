@@ -212,10 +212,6 @@ Here's an overview of all available search algorithms in Tune:
      - Cost-Frugal hyperparameter Optimization
      - [`Cfo <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
      - :doc:`/tune/examples/includes/cfo_example`
-   * - :ref:`DragonflySearch <Dragonfly>`
-     - Scalable Bayesian Optimization
-     - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
-     - :doc:`/tune/examples/includes/dragonfly_example`
    * - :ref:`HyperOptSearch <tune-hyperopt>`
      - Tree-Parzen Estimators
      - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]

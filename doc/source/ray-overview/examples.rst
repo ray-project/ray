@@ -335,13 +335,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
-        :link: /tune/examples/dragonfly_example
-        :link-type: doc
-
-        How To Use Tune With Dragonfly
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
         :link: /tune/examples/hyperopt_example
         :link-type: doc
 
