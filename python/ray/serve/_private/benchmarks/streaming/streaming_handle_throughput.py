@@ -1,13 +1,7 @@
-import asyncio
-import logging
-from typing import Tuple
-
 import click
 
 from ray import serve
-from ray.serve._private.benchmarks.common import run_throughput_benchmark
 from ray.serve._private.benchmarks.streaming.common import Endpoint, Caller, IOMode
-from ray.serve.handle import DeploymentHandle, RayServeHandle
 
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
@@ -19,7 +13,10 @@ class EndpointDeployment(Endpoint):
 class CallerDeployment(Caller):
 
     async def _consume_single_stream(self):
-        async for r in self._h.stream.remote():
+        async for r in self._h.options(
+            use_new_handle_api=True,
+            stream=True,
+        ).stream.remote():
             # Blackhole the response
             self.sink(r)
 
