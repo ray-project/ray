@@ -13,13 +13,13 @@ from ray.data._internal.execution.backpressure_policy import (
     ConcurrencyCapBackpressurePolicy,
     StreamingOutputBackpressurePolicy,
 )
+from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_core_execution_metrics_equals,
     get_initial_core_execution_metrics_snapshot,
-    restore_data_context,
 )
-from ray.tests.conftest import shutdown_only
+from ray.tests.conftest import shutdown_only  # noqa: F401
 
 
 class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
@@ -298,7 +298,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         )
 
 
-def test_large_e2e_backpressure(shutdown_only, restore_data_context):
+def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F811
     """Test backpressure on a synthetic large-scale workload."""
     # The cluster has 16 CPUs and 2GB object store memory.
     # The dataset will have 2GB * 25% = 512MB memory budget.
