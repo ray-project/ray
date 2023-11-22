@@ -39,8 +39,8 @@ REMOTE_CONFIGS = {
     "multi-cpu-ddp": AlgorithmConfig.overrides(
         num_learner_workers=2, num_cpus_per_learner_worker=2
     ),
-    # "multi-gpu-ddp-pipeline": LearnerGroupScalingConfig(
-    #     num_workers=2, num_gpus_per_worker=2
+    # "multi-gpu-ddp-pipeline": AlgorithmConfig.overrides(
+    #     num_learner_workers=2, num_gpus_per_learner_worker=2
     # ),
 }
 

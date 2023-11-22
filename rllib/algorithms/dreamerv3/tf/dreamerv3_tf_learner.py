@@ -11,12 +11,14 @@ from typing import Any, Dict, Mapping, Tuple
 
 import gymnasium as gym
 
+from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import DreamerV3Learner
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.core.learner.learner import ParamDict
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.tf_utils import symlog, two_hot, clip_gradients
 from ray.rllib.utils.typing import TensorType
@@ -38,7 +40,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
     @override(TfLearner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: DreamerV3Config
+        self, module_id: ModuleID, config: DreamerV3Config=None, hps=None
     ):
         """Create the 3 optimizers for Dreamer learning: world_model, actor, critic.
 
@@ -46,6 +48,12 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         - albeit probably not that important - are used by the author's own
         implementation.
         """
+        if hps is not None:
+            deprecation_warning(
+                old="Learner.configure_optimizers_for_module(.., hps=..)",
+                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
+                error=True,
+            )
 
         dreamerv3_module = self._module[module_id]
 

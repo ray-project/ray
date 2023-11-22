@@ -6,7 +6,6 @@ from typing import (
     Callable,
     Hashable,
     Mapping,
-    Optional,
     Sequence,
     Tuple,
     TYPE_CHECKING,
@@ -26,6 +25,7 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
@@ -66,8 +66,14 @@ class TfLearner(Learner):
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: "AlgorithmConfig"
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
     ) -> None:
+        if hps is not None:
+            deprecation_warning(
+                old="Learner.configure_optimizers_for_module(.., hps=..)",
+                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
+                error=True,
+            )
         module = self._module[module_id]
 
         # For this default implementation, the learning rate is handled by the

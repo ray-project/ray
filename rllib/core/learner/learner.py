@@ -3,7 +3,6 @@ import json
 import logging
 import pathlib
 from collections import defaultdict
-from dataclasses import dataclass, field
 from typing import (
     Any,
     Callable,
@@ -23,7 +22,6 @@ from typing import (
 
 import ray
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
@@ -39,7 +37,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -205,11 +203,24 @@ class Learner:
         learner_hyperparameters=None,
         framework_hyperparameters=None,
     ):
-        #if (module_spec is None) is (module is None):
-        #    raise ValueError(
-        #        "Exactly one of `module_spec` or `module` must be provided to Learner!"
-        #    )
-
+        if learner_group_scaling_config is not None:
+            deprecation_warning(
+                old="Learner(.., learner_group_scaling_config=..)",
+                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
+                error=True,
+            )
+        if learner_hyperparameters is not None:
+            deprecation_warning(
+                old="Learner(.., learner_hyperparameters=..)",
+                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
+                error=True,
+            )
+        if framework_hyperparameters is not None:
+            deprecation_warning(
+                old="Learner(.., framework_hyperparameters=..)",
+                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
+                error=True,
+            )
         self.config = config
         self._module_spec = module_spec
         self._module_obj = module
@@ -364,7 +375,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
     ) -> None:
         """Configures an optimizer for the given module_id.
 
@@ -456,8 +467,9 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: "AlgorithmConfig",
+        config: "AlgorithmConfig" = None,
         module_gradients_dict: ParamDict,
+        hps=None,
     ) -> ParamDict:
         """Applies postprocessing operations on the gradients of the given module.
 
@@ -476,6 +488,13 @@ class Learner:
             A dictionary with the updated gradients and the exact same (flat) structure
             as the incoming `module_gradients_dict` arg.
         """
+        if hps is not None:
+            deprecation_warning(
+                old="Learner.postprocess_gradients_for_module(.., hps=..)",
+                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
+                error=True,
+            )
+
         postprocessed_grads = {}
 
         if config.grad_clip is None:
@@ -872,9 +891,10 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: "AlgorithmConfig",
+        config: "AlgorithmConfig" = None,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
+        hps=None,
     ) -> TensorType:
         """Computes the loss for a single module.
 
@@ -1018,8 +1038,9 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: "AlgorithmConfig",
+        config: "AlgorithmConfig" = None,
         timestep: int,
+        hps=None,
         **kwargs,
     ) -> Dict[str, Any]:
         """Apply additional non-gradient based updates for a single module.
@@ -1035,6 +1056,13 @@ class Learner:
         Returns:
             A dictionary of results from the update
         """
+        if hps is not None:
+            deprecation_warning(
+                old="Learner.additional_update_for_module(.., hps=..)",
+                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
+                error=True,
+            )
+
         results = {}
 
         # Only cover the optimizer mapped to this particular module.
@@ -1517,3 +1545,12 @@ class Learner:
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
+
+    @Deprecated(
+        help="Use `config` (AlgorithmConfig) everywhere where you would have used "
+             "Learner.hps instead.",
+        error=True,
+    )
+    @property
+    def hps(self):
+        pass
