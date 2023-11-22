@@ -1,7 +1,7 @@
 import click
 
 from ray import serve
-from ray.serve._private.benchmarks.streaming.common import Endpoint, Caller, IOMode
+from ray.serve._private.benchmarks.streaming.common import Caller, Endpoint, IOMode
 
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
@@ -11,7 +11,6 @@ class EndpointDeployment(Endpoint):
 
 @serve.deployment
 class CallerDeployment(Caller):
-
     async def _consume_single_stream(self):
         async for r in self._h.options(
             use_new_handle_api=True,

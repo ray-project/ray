@@ -1,7 +1,7 @@
 import click
 
 import ray
-from ray.serve._private.benchmarks.streaming.common import Endpoint, Caller, IOMode
+from ray.serve._private.benchmarks.streaming.common import Caller, Endpoint, IOMode
 
 
 @ray.remote
@@ -11,7 +11,6 @@ class EndpointActor(Endpoint):
 
 @ray.remote
 class CallerActor(Caller):
-
     async def _consume_single_stream(self):
         method = self._get_remote_method()
         async for ref in method.options(num_returns="streaming").remote():
