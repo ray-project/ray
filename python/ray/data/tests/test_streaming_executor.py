@@ -704,7 +704,6 @@ def test_execution_allowed_nothrottle():
     ],
 )
 def test_max_errored_blocks(
-    ray_start_regular_shared,
     restore_data_context,
     max_errored_blocks,
     num_errored_blocks,
@@ -734,7 +733,7 @@ def test_max_errored_blocks(
         assert stats.extra_metrics["num_tasks_failed"] == num_errored_blocks
 
 
-def test_exception_concise_stacktrace(ray_start_regular_shared):
+def test_exception_concise_stacktrace():
     driver_script = """
 import ray
 
