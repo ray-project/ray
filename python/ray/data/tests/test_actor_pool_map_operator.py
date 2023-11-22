@@ -639,7 +639,13 @@ class TestAutoscalingPolicy:
         original_timeout = actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC
         actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 1
 
-        with pytest.raises(GetTimeoutError, match="Get timed out"):
+        with pytest.raises(
+            GetTimeoutError,
+            match=(
+                "Timed out while starting actors. This may mean that the cluster "
+                "does not have enough resources for the requested actor pool."
+            ),
+        ):
             # Specify an unachievable resource requirement to ensure
             # we timeout while waiting for actors.
             ray.data.range(10).map_batches(

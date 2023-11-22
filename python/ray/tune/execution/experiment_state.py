@@ -9,10 +9,9 @@ import os
 import time
 import warnings
 
-from ray.air._internal.remote_storage import list_at_uri
-from ray.air._internal.uri_utils import _join_path_or_uri
 from ray.train._internal.storage import (
     StorageContext,
+    get_fs_and_path,
     _download_from_fs_path,
     _list_at_fs_path,
 )
@@ -91,19 +90,12 @@ def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
         str: The local or remote path to the latest experiment checkpoint file
             based on timestamp. None if no experiment checkpoints were found.
     """
+    from ray.tune.analysis import ExperimentAnalysis
 
-    def construct(file: str) -> str:
-        return _join_path_or_uri(experiment_dir, file)
-
-    candidate_paths = [
-        construct(file)
-        for file in list_at_uri(experiment_dir)
-        if file.startswith("experiment_state") and file.endswith(".json")
-    ]
-    if not candidate_paths:
-        return None
-
-    return max(candidate_paths)
+    fs, path = get_fs_and_path(experiment_dir)
+    return ExperimentAnalysis._find_newest_experiment_checkpoint(
+        fs=fs, experiment_fs_path=path
+    )
 
 
 class _ExperimentCheckpointManager:

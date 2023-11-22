@@ -21,7 +21,6 @@ from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     ParquetDatasource,
     _deserialize_fragments_with_retry,
-    _ParquetDatasourceReader,
     _SerializedFragment,
 )
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -724,19 +723,17 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             data_size >= 7_000_000 and data_size <= 10_000_000
         ), "actual data size is out of expected bound"
 
-        reader = _ParquetDatasourceReader(tensor_output_path)
+        datasource = ParquetDatasource(tensor_output_path)
         assert (
-            reader._encoding_ratio >= 300 and reader._encoding_ratio <= 600
+            datasource._encoding_ratio >= 300 and datasource._encoding_ratio <= 600
         ), "encoding ratio is out of expected bound"
-        data_size = reader.estimate_inmemory_data_size()
+        data_size = datasource.estimate_inmemory_data_size()
         assert (
             data_size >= 6_000_000 and data_size <= 10_000_000
         ), "estimated data size is either out of expected bound"
         assert (
             data_size
-            == _ParquetDatasourceReader(
-                tensor_output_path
-            ).estimate_inmemory_data_size()
+            == ParquetDatasource(tensor_output_path).estimate_inmemory_data_size()
         ), "estimated data size is not deterministic in multiple calls."
 
         text_output_path = os.path.join(tmp_path, "text")
@@ -754,17 +751,17 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             data_size >= 1_000_000 and data_size <= 2_000_000
         ), "actual data size is out of expected bound"
 
-        reader = _ParquetDatasourceReader(text_output_path)
+        datasource = ParquetDatasource(text_output_path)
         assert (
-            reader._encoding_ratio >= 150 and reader._encoding_ratio <= 300
+            datasource._encoding_ratio >= 150 and datasource._encoding_ratio <= 300
         ), "encoding ratio is out of expected bound"
-        data_size = reader.estimate_inmemory_data_size()
+        data_size = datasource.estimate_inmemory_data_size()
         assert (
             data_size >= 1_000_000 and data_size <= 2_000_000
         ), "estimated data size is out of expected bound"
         assert (
             data_size
-            == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
+            == ParquetDatasource(text_output_path).estimate_inmemory_data_size()
         ), "estimated data size is not deterministic in multiple calls."
     finally:
         ctx.decoding_size_estimation = old_decoding_size_estimation
@@ -1049,9 +1046,13 @@ def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
     assert ds.count() == 1000
 
 
-def test_parquet_datasource_names(ray_start_regular_shared):
-    assert ParquetBaseDatasource().get_name() == "ParquetBulk"
-    assert ParquetDatasource().get_name() == "Parquet"
+def test_parquet_datasource_names(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({"spam": [1, 2, 3]})
+    path = os.path.join(tmp_path, "data.parquet")
+    df.to_parquet(path)
+
+    assert ParquetBaseDatasource(path).get_name() == "ParquetBulk"
+    assert ParquetDatasource(path).get_name() == "Parquet"
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
