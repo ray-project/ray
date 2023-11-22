@@ -308,13 +308,9 @@ class DAGNode(DAGNodeBase):
 
         return replaced_inputs
 
-<<<<<<< HEAD
-    def _execute_impl(self, *args, **kwargs) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
-=======
     def _execute_impl(
         self, *args, **kwargs
     ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
->>>>>>> 8f6f8d276ae3eb8532c9dfa17f1afd6b9d7838a4
         """Execute this node, assuming args have been transformed already."""
         raise NotImplementedError
 

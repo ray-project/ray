@@ -3993,6 +3993,7 @@ cdef class CoreWorker:
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_returns,
+                                         method_meta.is_compiled_dag_task,
                                          method_meta.generator_backpressure_num_objects, # noqa
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
