@@ -450,7 +450,7 @@ control over their native Lightning code.
 
             config_builder = LightningConfigBuilder()
             # [1] Collect model configs
-            config_builder.module(cls=MNISTClassifier, lr=1e-3, feature_dim=128)
+            config_builder.module(cls=MyLightningModule, lr=1e-3, feature_dim=128)
 
             # [2] Collect checkpointing configs
             config_builder.checkpointing(monitor="val_accuracy", mode="max", save_top_k=3)
@@ -464,7 +464,7 @@ control over their native Lightning code.
             )
 
             # [4] Build datasets on the head node
-            datamodule = MNISTDataModule(batch_size=32)
+            datamodule = MyLightningDataModule(batch_size=32)
             config_builder.fit_params(datamodule=datamodule)
 
             # [5] Execute the internal training function in a black box
@@ -479,8 +479,11 @@ control over their native Lightning code.
                     ),
                 )
             )
-            ray_trainer.fit()
+            result = ray_trainer.fit()
 
+            # [6] Load the trained model from an opaque Lightning-specific checkpoint.
+            lightning_checkpoint = result.checkpoint
+            model = lightning_checkpoint.get_model(MyLightningModule)
 
 
     .. group-tab:: (New API) TorchTrainer
@@ -490,8 +493,11 @@ control over their native Lightning code.
         .. testcode::
             :skipif: True
 
+            import os
+
             import lightning.pytorch as pl
-            from ray.air import CheckpointConfig, RunConfig
+
+            import ray.train
             from ray.train.torch import TorchTrainer
             from ray.train.lightning import (
                 RayDDPStrategy,
@@ -502,14 +508,12 @@ control over their native Lightning code.
 
             def train_func(config):
                 # [1] Create a Lightning model
-                model = MNISTClassifier(lr=1e-3, feature_dim=128)
+                model = MyLightningModule(lr=1e-3, feature_dim=128)
 
                 # [2] Report Checkpoint with callback
                 ckpt_report_callback = RayTrainReportCallback()
 
                 # [3] Create a Lighting Trainer
-                datamodule = MNISTDataModule(batch_size=32)
-
                 trainer = pl.Trainer(
                     max_epochs=10,
                     log_every_n_steps=100,
@@ -526,19 +530,26 @@ control over their native Lightning code.
                 trainer = prepare_trainer(trainer)
 
                 # [4] Build your datasets on each worker
-                datamodule = MNISTDataModule(batch_size=32)
+                datamodule = MyLightningDataModule(batch_size=32)
                 trainer.fit(model, datamodule=datamodule)
 
             # [5] Explicitly define and run the training function
             ray_trainer = TorchTrainer(
                 train_func,
-                scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
-                run_config=RunConfig(
-                    checkpoint_config=CheckpointConfig(
+                scaling_config=ray.train.ScalingConfig(num_workers=4, use_gpu=True),
+                run_config=ray.train.RunConfig(
+                    checkpoint_config=ray.train.CheckpointConfig(
                         num_to_keep=3,
                         checkpoint_score_attribute="val_accuracy",
                         checkpoint_score_order="max",
                     ),
                 )
             )
-            ray_trainer.fit()
+            result = ray_trainer.fit()
+
+            # [6] Load the trained model from a simplified checkpoint interface.
+            checkpoint: ray.train.Checkpoint = result.checkpoint
+            with checkpoint.as_directory() as checkpoint_dir:
+                print("Checkpoint contents:", os.listdir(checkpoint_dir))
+                checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.ckpt")
+                model = MyLightningModule.load_from_checkpoint(checkpoint_path)
