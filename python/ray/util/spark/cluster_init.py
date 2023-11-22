@@ -11,7 +11,7 @@ import uuid
 import warnings
 import requests
 from packaging.version import Version
-from typing import Optional, Dict, Type
+from typing import Optional, Dict, Tuple, Type
 
 import ray
 import ray._private.services
@@ -834,7 +834,7 @@ def setup_ray_cluster(
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
     **kwargs,
-) -> str:
+) -> Tuple[str, str]:
     """
     Set up a ray cluster on the spark cluster by starting a ray head node in the
     spark application's driver side node.
