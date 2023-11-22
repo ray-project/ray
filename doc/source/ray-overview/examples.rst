@@ -30,8 +30,14 @@ Ray Examples
     :gutter: 1
     :class-container: gallery-container container pb-3
 
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item data-processing gen-ai huggingface llm monitoring pytorch serving tracking training tuning
+        :link: https://madewithml.com/#course
+
+        Self-paced course on taking your ML applications to production
+
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item llm gen-ai
+        :class-item: gallery-item llm gen-ai 
         :link: https://www.anyscale.com/blog/ray-common-production-challenges-for-generative-ai-infrastructure
 
         How Ray solves common production challenges for generative AI infrastructure
