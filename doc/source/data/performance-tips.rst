@@ -249,7 +249,7 @@ Avoiding object spilling
 
 A Dataset's intermediate and output blocks are stored in Ray's object store.
 Although Ray Data attempts to minimize object store usage via :ref:`streaming execution <streaming_execution>`, it is still possible that the working set exceeds the object store capacity.
-In this case, Ray begins spilling blocks to disk, which can slow down execution significantly.
+In this case, Ray begins spilling blocks to disk, which can slow down execution significantly or even cause out-of-disk errors.
 
 There are some cases where spilling is expected. In particular, if the total Dataset's size is larger than object store capacity, and one of the following is true:
 
