@@ -118,23 +118,23 @@ class AutoscalingContext:
 
     def __init__(
         self,
-        current_num_replicas: int,
+        curr_target_num_replicas: int,
         current_num_ongoing_requests: List[float],
         current_handle_queued_queries: float,
         **kwargs,
     ):
         """
         Arguments:
-            current_num_ongoing_requests: List[float]: List of number of
-                ongoing requests for each replica.
             curr_target_num_replicas: The number of replicas that the
                 deployment is currently trying to scale to.
+            current_num_ongoing_requests: List[float]: List of number of
+                ongoing requests for each replica.
             current_handle_queued_queries : The number of handle queued queries,
                 if there are multiple handles, the max number of queries at
                 a single handle should be passed in
 
         """
-        self.current_num_replicas = current_num_replicas
+        self.curr_target_num_replicas = curr_target_num_replicas
         self.current_num_ongoing_requests = current_num_ongoing_requests
         self.current_handle_queued_queries = current_handle_queued_queries
         self.__dict__.update(kwargs)
