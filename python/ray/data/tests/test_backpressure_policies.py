@@ -312,7 +312,7 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):
     # the executor will still schedule 16 produce tasks, but only the first task is
     # allowed to output all blocks. The total size of pending blocks will be
     # (10 + 15 * 1 + 1) * 0.1GB = 2.6GB,
-    # where,
+    # where
     # - 10 is the number of blocks in the first task.
     # - 15 * 1 is the number of blocks pending at the streaming generator level of
     #   the other 15 tasks.
