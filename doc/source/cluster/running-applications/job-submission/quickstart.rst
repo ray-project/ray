@@ -251,7 +251,7 @@ The Ray Jobs API provides an option to specify the runtime environment when subm
     ray.init()
     print("requests version:", ray.get(get_requests_version.remote()))
 
-Ssubmit this job using the default environment. This environment is the environment you started the Ray Cluster in.
+Submit this job using the default environment. This environment is the environment you started the Ray Cluster in.
 
 .. code-block:: bash
 
