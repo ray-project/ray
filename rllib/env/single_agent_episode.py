@@ -510,21 +510,37 @@ class SingleAgentEpisode:
         return SampleBatch(self.get_data_dict())
 
     def get_observations(
-        self, indices: Optional[Union[int, List[int], slice]] = None
+        self,
+        indices: Optional[Union[int, List[int], slice]] = None,
+        *,
+        fill: Optional[float] = None,
     ) -> Any:
-        """Returns individual indices or ranges of observation data from this episode.
+        """Returns individual observations or batched ranges thereof from this episode.
+
+
 
         Args:
             indices: A single int is interpreted as an index, from which to return the
                 individual observation stored at this index. A list of
                 ints is interpreted as a list of indices from which to gather individual
                 observations.
+            fill:
+
+        Returns:
+
         """
+        # Nothing provided -> Return all observations as-is by default.
+        # Note that this does NOT include the lookback buffer contents.
         if indices is None:
             slice_ = slice(self._len_lookback_buffer, -1)
+        # A list of indices AND we are still in list-mode (not finalized numpy'ized yet)
+        # -> Return list of individual observations at given indices.
         elif isinstance(indices, list) and not self.is_numpy:
             return [self.observations[i] for i in indices]
+        # Individual int OR a slice object -> Use as-is for picking individual
+        # or slices of observations.
         else:
+            assert isinstance(indices, (int, slice))
             slice_ = indices
 
         if self.is_numpy:
@@ -534,12 +550,13 @@ class SingleAgentEpisode:
 
     def get_infos(self, indices: Optional[Union[int, List[int], slice]] = None) -> Any:
         # Nothing provided -> Return all infos as-is by default.
+        # Note that this does NOT include the lookback buffer contents.
         if indices is None:
-            return self.infos(slice(self._len_lookback_buffer, -1))
-        # Individual int -> Return individual INFO at this index.
+            return self.infos[self._len_lookback_buffer:-1]
+        # Individual int -> Return individual INFO at given index.
         elif isinstance(indices, int):
             return self.infos[indices]
-        # List of ints -> Return list of individual info dicts at these given indices.
+        # List of ints -> Return list of individual INFO dicts at given indices.
         elif isinstance(indices, list):
             return [self.infos[i] for i in indices]
         # Slice object -> Return a slice of our infos list.

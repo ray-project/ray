@@ -1,7 +1,8 @@
 import logging
-from typing import Type, Union
+from typing import List, Optional, Type, Union
 
 import gymnasium as gym
+import tree  # pip install dm_tree
 
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -14,6 +15,7 @@ from ray.rllib.utils.error import (
     EnvError,
 )
 from ray.rllib.utils.gym import check_old_gym_env
+from ray.rllib.utils.spaces.space_utils import batch, get_dummy_batch_for_space
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
@@ -169,3 +171,116 @@ def _gym_env_creator(
         raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))
 
     return env
+
+
+class LookbackBuffer:
+    def __init__(
+        self,
+        data: Optional[List] = None,
+        lookback: int = 0,
+        space: Optional[gym.Space] = None,
+    ):
+        self.data = data or []
+        self.lookback = lookback
+        self.finalized = False
+        self.space = space
+
+    def add(self, item):
+        if self.finalized:
+            raise RuntimeError("Cannot add to a finalized LookbackBuffer.")
+        self.data.append(item)
+
+    def finalize(self):
+        if not self.finalized:
+            self.data = batch(self.data)
+            self.finalized = True
+
+    def get(self, idx: Optional[Union[int, slice, List[int]]] = None, fill=None):
+        if fill is not None and self.space is None:
+            raise ValueError(
+                "Cannot use `fill` argument in `LookbackBuffer.get()` if a "
+                "gym.Space was NOT provided during construction!"
+            )
+
+        if idx is None:
+            return self._get_all_data()
+        elif isinstance(idx, slice):
+            return self._get_slice(idx, fill)
+        elif isinstance(idx, list):
+            data = [self._get_int_index(i) for i in idx]
+            if self.finalized:
+                data = batch(data)
+            return data
+        else:
+            assert isinstance(idx, int)
+            return self._get_int_index(idx)
+
+    def __len__(self):
+        return len(self.data) - self.lookback
+
+    def _get_all_data(self):
+        return self._get_slice(slice(None, None))
+
+    def _get_slice(self, slice_, fill=None):
+        # Do NOT include lookback buffer, if
+        # - start or stop zero or positive, e.g. [1:-2], [3, 5], [:4], [0:3], [0:-10]
+        # - start is None, e.g. [:-3] [:3], [:]
+        if (
+            slice_.start is None
+            or slice_.start >= 0
+            or (isinstance(slice_.stop, int) and slice_.stop >= 0)
+        ):
+            slice_ = slice(
+                self.lookback + (slice_.start or 0) if slice_.start is None or slice_.start >= 0 else (len(self) + slice_.start),
+                self.lookback + ((len(self) + (slice_.stop or 0)) if slice_.stop is None or slice_.stop < 0 else slice_.stop),
+            )
+        # Include lookback buffer.
+        else:
+            slice_ = slice(slice_.start or 0, slice_.stop or len(self.data))
+
+        if self.finalized:
+            data_slice = tree.map_structure(lambda s: s[slice_], self.data)
+        else:
+            data_slice = self.data[slice_]
+
+        # Data is shorter than the range requested -> Fill the rest with `fill` data.
+        if fill is not None:
+            len_ = (
+                len(tree.flatten(data_slice)[0]) if self.finalized else len(data_slice)
+            )
+            if len_ < (slice_.stop - slice_.start):
+                fill_count = (slice_.stop - slice_.start) - len_
+                if self.finalized:
+                    fill_batch = get_dummy_batch_for_space(
+                        self.space,
+                        fill_value=fill,
+                        batch_size=fill_count,
+                    )
+                    data_slice = tree.map_structure(
+                        lambda s0, s: np.concatenate([s0, s]),
+                        fill_batch,
+                        data_slice,
+                    )
+                else:
+                    data_slice = (
+                        [
+                            get_dummy_batch_for_space(
+                                self.space,
+                                fill_value=fill,
+                                batch_size=0,
+                            )
+                        ] * fill_count
+                        + data_slice
+                    )
+        return data_slice
+
+    def _get_int_index(self, idx: int):
+        # If index >= 0 -> Ignore lookback buffer.
+        # Otherwise, include lookback buffer.
+        if idx >= 0:
+            idx = self.lookback + idx
+
+        if self.finalized:
+            return tree.map_structure(lambda s: s[idx], self.data)
+        else:
+            return self.data[idx]
