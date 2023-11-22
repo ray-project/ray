@@ -49,6 +49,9 @@ class TestRayDockerContainer(RayCITestBase):
             )
 
     def test_canonical_tag(self) -> None:
+        container = RayDockerContainer("3.8", "cpu", "ray", canonical_tag="abc")
+        assert container._get_canonical_tag() == "abc"
+
         container = RayDockerContainer("3.8", "cpu", "ray")
         assert container._get_canonical_tag() == "123456-py38-cpu"
 
