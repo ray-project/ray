@@ -59,8 +59,6 @@ from ray._raylet import (
     StreamingObjectRefGenerator,
     raise_sys_exit_with_custom_error_message,
 )
-from ray.types import ObjectRef as ObjectRefType
-from ray.types import StreamingObjectRefGenerator as StreamingObjectRefGeneratorType
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -131,7 +129,7 @@ class RemoteFunctionNoArgs(Generic[R]):
 
     def remote(
         self,
-    ) -> "ObjectRefType[R]":
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -146,8 +144,8 @@ class RemoteFunction0(Generic[R, T0]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-    ) -> "ObjectRefType[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -163,9 +161,9 @@ class RemoteFunction1(Generic[R, T0, T1]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-        __arg1: "Union[T1, ObjectRefType[T1]]",
-    ) -> "ObjectRefType[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -182,10 +180,10 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-        __arg1: "Union[T1, ObjectRefType[T1]]",
-        __arg2: "Union[T2, ObjectRefType[T2]]",
-    ) -> "ObjectRefType[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -203,11 +201,11 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-        __arg1: "Union[T1, ObjectRefType[T1]]",
-        __arg2: "Union[T2, ObjectRefType[T2]]",
-        __arg3: "Union[T3, ObjectRefType[T3]]",
-    ) -> "ObjectRefType[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -226,12 +224,12 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-        __arg1: "Union[T1, ObjectRefType[T1]]",
-        __arg2: "Union[T2, ObjectRefType[T2]]",
-        __arg3: "Union[T3, ObjectRefType[T3]]",
-        __arg4: "Union[T4, ObjectRefType[T4]]",
-    ) -> "ObjectRefType[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -251,13 +249,13 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-        __arg1: "Union[T1, ObjectRefType[T1]]",
-        __arg2: "Union[T2, ObjectRefType[T2]]",
-        __arg3: "Union[T3, ObjectRefType[T3]]",
-        __arg4: "Union[T4, ObjectRefType[T4]]",
-        __arg5: "Union[T5, ObjectRefType[T5]]",
-    ) -> "ObjectRefType[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -278,14 +276,14 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-        __arg1: "Union[T1, ObjectRefType[T1]]",
-        __arg2: "Union[T2, ObjectRefType[T2]]",
-        __arg3: "Union[T3, ObjectRefType[T3]]",
-        __arg4: "Union[T4, ObjectRefType[T4]]",
-        __arg5: "Union[T5, ObjectRefType[T5]]",
-        __arg6: "Union[T6, ObjectRefType[T6]]",
-    ) -> "ObjectRefType[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -307,15 +305,15 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-        __arg1: "Union[T1, ObjectRefType[T1]]",
-        __arg2: "Union[T2, ObjectRefType[T2]]",
-        __arg3: "Union[T3, ObjectRefType[T3]]",
-        __arg4: "Union[T4, ObjectRefType[T4]]",
-        __arg5: "Union[T5, ObjectRefType[T5]]",
-        __arg6: "Union[T6, ObjectRefType[T6]]",
-        __arg7: "Union[T7, ObjectRefType[T7]]",
-    ) -> "ObjectRefType[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -340,16 +338,16 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-        __arg1: "Union[T1, ObjectRefType[T1]]",
-        __arg2: "Union[T2, ObjectRefType[T2]]",
-        __arg3: "Union[T3, ObjectRefType[T3]]",
-        __arg4: "Union[T4, ObjectRefType[T4]]",
-        __arg5: "Union[T5, ObjectRefType[T5]]",
-        __arg6: "Union[T6, ObjectRefType[T6]]",
-        __arg7: "Union[T7, ObjectRefType[T7]]",
-        __arg8: "Union[T8, ObjectRefType[T8]]",
-    ) -> "ObjectRefType[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg8: "Union[T8, ObjectRef[T8]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -375,17 +373,17 @@ class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRefType[T0]]",
-        __arg1: "Union[T1, ObjectRefType[T1]]",
-        __arg2: "Union[T2, ObjectRefType[T2]]",
-        __arg3: "Union[T3, ObjectRefType[T3]]",
-        __arg4: "Union[T4, ObjectRefType[T4]]",
-        __arg5: "Union[T5, ObjectRefType[T5]]",
-        __arg6: "Union[T6, ObjectRefType[T6]]",
-        __arg7: "Union[T7, ObjectRefType[T7]]",
-        __arg8: "Union[T8, ObjectRefType[T8]]",
-        __arg9: "Union[T9, ObjectRefType[T9]]",
-    ) -> "ObjectRefType[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg8: "Union[T8, ObjectRef[T8]]",
+        __arg9: "Union[T9, ObjectRef[T9]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -2493,27 +2491,27 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRefType[Any]]", *, timeout: Optional[float] = None
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
 ) -> List[Any]:
     ...
 
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRefType[R]]", *, timeout: Optional[float] = None
+    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
 ) -> List[R]:
     ...
 
 
 @overload
-def get(object_refs: "ObjectRefType[R]", *, timeout: Optional[float] = None) -> R:
+def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
 
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRefType[Any]", Sequence["ObjectRefType[Any]"]],
+    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"]],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2688,14 +2686,14 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"],
+    ray_waitables: Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
 ) -> Tuple[
-    List[Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"]],
-    List[Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"]],
+    List[Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"]],
+    List[Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"]],
 ]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
@@ -2900,7 +2898,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 @PublicAPI
 @client_mode_hook
 def cancel(
-    ray_waitable: Union["ObjectRefType[R]", "StreamingObjectRefGeneratorType[R]"],
+    ray_waitable: Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"],
     *,
     force: bool = False,
     recursive: bool = True,
@@ -3305,7 +3303,7 @@ def remote(
             invocation. The default value is 1.
             Pass "dynamic" to allow the task to decide how many
             return values to return during execution, and the caller will
-            receive an ObjectRefType[ObjectRefGenerator].
+            receive an ObjectRef[ObjectRefGenerator].
             See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU resources to reserve
             for this task or for the lifetime of the actor.

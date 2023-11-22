@@ -102,7 +102,6 @@ std::pair<ObjectID, bool> ObjectRefStream::PeekNextItem() {
     return {object_id, true};
   }
 }
->>>>>>> master
 
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
   // Write to a stream if the object ID is not consumed yet.

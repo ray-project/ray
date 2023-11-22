@@ -12,20 +12,3 @@ T = TypeVar("T")
 @PublicAPI
 class ObjectRef(Generic[T]):
     pass
-
-
-@PublicAPI(stability="beta")
-class StreamingObjectRefGenerator(Generic[T]):
-    def __next__(self) -> ObjectRef[T]:
-        pass
-
-    # TODO(sang): Support typing for anext
-
-    def completed(self) -> ObjectRef:
-        pass
-
-    def next_ready(self) -> bool:
-        pass
-
-    def is_finished(self) -> bool:
-        pass

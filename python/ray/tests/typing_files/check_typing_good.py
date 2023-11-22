@@ -1,6 +1,6 @@
 import ray
-from ray.types import ObjectRef
 from typing import Generator
+from ray import ObjectRef
 
 ray.init()
 
@@ -25,7 +25,7 @@ def h(a: str, b: int) -> str:
     return a
 
 
-def func(a: ObjectRef[str]):
+def func(a: "ObjectRef[str]"):
     pass
 
 
