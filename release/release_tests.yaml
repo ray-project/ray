@@ -3168,7 +3168,6 @@
     script: python workloads/serve_handle_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
 
   alert: default
-  stable: False
 
   variations:
     - __suffix__: aws
