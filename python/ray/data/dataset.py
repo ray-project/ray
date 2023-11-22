@@ -83,11 +83,7 @@ from ray.data._internal.stage_impl import (
     SortStage,
     ZipStage,
 )
-from ray.data._internal.stats import (
-    DatasetStats,
-    DatasetStatsSummary,
-    get_dataset_id_from_stats_actor,
-)
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
@@ -110,20 +106,22 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import (
-    BigQueryDatasource,
     BlockWritePathProvider,
     Connection,
-    CSVDatasource,
     Datasink,
     Datasource,
     FilenameProvider,
-    ImageDatasource,
-    JSONDatasource,
-    NumpyDatasource,
-    ParquetDatasource,
     ReadTask,
-    SQLDatasource,
-    TFRecordDatasource,
+    _BigQueryDatasink,
+    _CSVDatasink,
+    _ImageDatasink,
+    _JSONDatasink,
+    _MongoDatasink,
+    _NumpyDatasink,
+    _ParquetDatasink,
+    _SQLDatasink,
+    _TFRecordDatasink,
+    _WebDatasetDatasink,
 )
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -254,7 +252,7 @@ class Dataset:
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
 
-        self._set_uuid(get_dataset_id_from_stats_actor())
+        self._set_uuid(StatsManager.get_dataset_id_from_stats_actor())
 
     @staticmethod
     def copy(
@@ -1066,12 +1064,18 @@ class Dataset:
         Args:
             seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
-            num_blocks: The number of output blocks after the shuffle, or ``None``
-                to retain the number of blocks.
 
         Returns:
             The shuffled :class:`Dataset`.
         """  # noqa: E501
+
+        if num_blocks is not None:
+            warnings.warn(
+                "`num_blocks` parameter is deprecated in Ray 2.9. random_shuffle() "
+                "does not support to change the number of output blocks. Use "
+                "repartition() instead.",  # noqa: E501
+                DeprecationWarning,
+            )
 
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
@@ -1082,7 +1086,6 @@ class Dataset:
             op = RandomShuffle(
                 logical_plan.dag,
                 seed=seed,
-                num_outputs=num_blocks,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
@@ -1114,7 +1117,7 @@ class Dataset:
 
         Returns:
             The block-shuffled :class:`Dataset`.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
 
@@ -2741,20 +2744,19 @@ class Dataset:
                     /generated/pyarrow.parquet.write_table.html\
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
-        """
-        self.write_datasource(
-            ParquetDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        """  # noqa: E501
+        datasink = _ParquetDatasink(
+            path,
+            arrow_parquet_args_fn=arrow_parquet_args_fn,
+            arrow_parquet_args=arrow_parquet_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=arrow_parquet_args_fn,
-            **arrow_parquet_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_json(
@@ -2839,19 +2841,18 @@ class Dataset:
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
         """
-        self.write_datasource(
-            JSONDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _JSONDatasink(
+            path,
+            pandas_json_args_fn=pandas_json_args_fn,
+            pandas_json_args=pandas_json_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=pandas_json_args_fn,
-            **pandas_json_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -2901,18 +2902,17 @@ class Dataset:
                 opening the file to write to.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            ImageDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _ImageDatasink(
+            path,
+            column,
+            file_format,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
-            column=column,
-            file_format=file_format,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_csv(
@@ -2994,19 +2994,18 @@ class Dataset:
                     #pyarrow.csv.write_csv>`_
                 when writing each block to a file.
         """
-        self.write_datasource(
-            CSVDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _CSVDatasink(
+            path,
+            arrow_csv_args_fn=arrow_csv_args_fn,
+            arrow_csv_args=arrow_csv_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=arrow_csv_args_fn,
-            **arrow_csv_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_tfrecords(
@@ -3079,19 +3078,17 @@ class Dataset:
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
-
-        self.write_datasource(
-            TFRecordDatasource(),
-            ray_remote_args=ray_remote_args,
+        datasink = _TFRecordDatasink(
             path=path,
-            dataset_uuid=self._uuid,
+            tf_schema=tf_schema,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            tf_schema=tf_schema,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3152,21 +3149,17 @@ class Dataset:
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
 
         """
-
-        from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
-
-        self.write_datasource(
-            WebDatasetDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _WebDatasetDatasink(
+            path,
+            encoder=encoder,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            encoder=encoder,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_numpy(
@@ -3230,18 +3223,17 @@ class Dataset:
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
 
-        self.write_datasource(
-            NumpyDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
-            column=column,
+        datasink = _NumpyDatasink(
+            path,
+            column,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_sql(
@@ -3299,11 +3291,8 @@ class Dataset:
             ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
                 write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            SQLDatasource(connection_factory),
-            ray_remote_args=ray_remote_args,
-            sql=sql,
-        )
+        datasink = _SQLDatasink(sql=sql, connection_factory=connection_factory)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3364,21 +3353,19 @@ class Dataset:
             ValueError: if ``database`` doesn't exist.
             ValueError: if ``collection`` doesn't exist.
         """
-        from ray.data.datasource import MongoDatasource
-
-        self.write_datasource(
-            MongoDatasource(),
-            ray_remote_args=ray_remote_args,
+        datasink = _MongoDatasink(
             uri=uri,
             database=database,
             collection=collection,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_bigquery(
         self,
         project_id: str,
         dataset: str,
+        max_retry_cnt: int = 10,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -3396,7 +3383,6 @@ class Dataset:
                 docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_bigquery(
-                    BigQueryDatasource(),
                     project_id="my_project_id",
                     dataset="my_dataset_table",
                 )
@@ -3404,19 +3390,31 @@ class Dataset:
         Args:
             project_id: The name of the associated Google Cloud Project that hosts
                 the dataset to read. For more information, see details in
-                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`.
             dataset: The name of the dataset in the format of ``dataset_id.table_id``.
                 The dataset is created if it doesn't already exist. The table_id is
                 overwritten if it exists.
+            max_retry_cnt: The maximum number of retries that an individual block write
+                is retried due to BigQuery rate limiting errors. This isn't
+                related to Ray fault tolerance retries. The default number of retries
+                is 10.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-        """
+        """  # noqa: E501
+        if ray_remote_args is None:
+            ray_remote_args = {}
 
-        self.write_datasource(
-            BigQueryDatasource(),
-            ray_remote_args=ray_remote_args,
-            dataset=dataset,
-            project_id=project_id,
-        )
+        # Each write task will launch individual remote tasks to write each block
+        # To avoid duplicate block writes, the write task should not be retried
+        if ray_remote_args.get("max_retries", 0) != 0:
+            warnings.warn(
+                "The max_retries of a BigQuery Write Task should be set to 0"
+                " to avoid duplicate writes."
+            )
+        else:
+            ray_remote_args["max_retries"] = 0
+
+        datasink = _BigQueryDatasink(project_id, dataset, max_retry_cnt=max_retry_cnt)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")
@@ -4742,7 +4740,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4825,7 +4823,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource import Datasource, Reader, ReadTask
+from ray.data.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 logger = DatasetLogger(__name__)
@@ -60,21 +60,14 @@ class HuggingFaceDatasource(Datasource):
     directly for faster performance.
     """  # noqa: E501
 
-    def create_reader(
-        self,
-        dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
-    ) -> "_HuggingFaceDatasourceReader":
-        if TRANSFORMERS_IMPORT_ERROR is not None:
-            raise TRANSFORMERS_IMPORT_ERROR
-        return _HuggingFaceDatasourceReader(dataset)
-
-
-class _HuggingFaceDatasourceReader(Reader):
     def __init__(
         self,
         dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
         batch_size: int = 4096,
     ):
+        if TRANSFORMERS_IMPORT_ERROR is not None:
+            raise TRANSFORMERS_IMPORT_ERROR
+
         self._dataset = dataset
         self._batch_size = batch_size
 

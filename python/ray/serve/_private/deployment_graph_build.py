@@ -5,7 +5,6 @@ from typing import List
 from ray import cloudpickle
 from ray.dag import PARENT_CLASS_NODE_KEY, ClassMethodNode, ClassNode, DAGNode
 from ray.dag.function_node import FunctionNode
-from ray.dag.input_node import InputNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.experimental.gradio_utils import type_to_string
 from ray.serve._private.constants import (
@@ -173,9 +172,9 @@ def transform_ray_dag_to_serve_dag(
                 node, DeploymentFunctionNode
             ):
                 if RAY_SERVE_ENABLE_NEW_HANDLE_API:
-                    return DeploymentHandle(node._deployment.name, app_name)
+                    return DeploymentHandle(node._deployment.name, app_name, sync=False)
                 else:
-                    return RayServeHandle(node._deployment.name, app_name)
+                    return RayServeHandle(node._deployment.name, app_name, sync=False)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 
@@ -411,33 +410,6 @@ def generate_executor_dag_driver_deployment(
         _init_kwargs=replaced_deployment_init_kwargs,
         _internal=True,
     )
-
-
-def get_pipeline_input_node(serve_dag_root_node: DAGNode):
-    """Return the InputNode singleton node from serve dag, and throw
-    exceptions if we didn't find any, or found more than one.
-
-    Args:
-        ray_dag_root_node: DAGNode acting as root of a Ray authored DAG. It
-            should be executable via `ray_dag_root_node.execute(user_input)`
-            and should have `InputNode` in it.
-    Returns
-        pipeline_input_node: Singleton input node for the serve pipeline.
-    """
-
-    input_nodes = []
-
-    def extractor(dag_node):
-        if isinstance(dag_node, InputNode):
-            input_nodes.append(dag_node)
-
-    serve_dag_root_node.apply_recursive(extractor)
-    assert len(input_nodes) == 1, (
-        "There should be one and only one InputNode in the DAG. "
-        f"Found {len(input_nodes)} InputNode(s) instead."
-    )
-
-    return input_nodes[0]
 
 
 def process_ingress_deployment_in_serve_dag(

@@ -23,9 +23,9 @@ set -euo pipefail
 
 # TODO (can): Move mosaicml to train-test-requirements.txt
 pip install "mosaicml==0.12.1"
-DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 \
+DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
+  INSTALL_HOROVOD=1 INSTALL_TIMESERIES_LIBS=1 INSTALL_HDFS=1 \
   ./ci/env/install-dependencies.sh
-INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
 
 if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then
   pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt

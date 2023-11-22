@@ -244,6 +244,8 @@ message TaskStateUpdate {
   optional string actor_repr_name = 11;
   // Worker Pid.
   optional int32 worker_pid = 12;
+  // Is task paused by debugger.
+  optional bool is_debugger_paused = 13;
 }
 
 // Represents events and state changes from a single task run.
@@ -282,11 +284,6 @@ message TaskEventData {
   int32 num_profile_events_dropped = 3;
   // Current job the worker is reporting data for.
   bytes job_id = 4;
-}
-
-message ResourceTableData {
-  // The total capacity of this resource type.
-  double resource_capacity = 1;
 }
 
 message AvailableResources {
@@ -466,16 +463,14 @@ message WorkerTableData {
   // by a raylet. (I.e., driver worker won't have this value).
   // If the value doesn't present, it is -1.
   uint64 worker_launched_time_ms = 26;
+  // The debugger port on the worker process.
+  optional uint32 debugger_port = 27;
 }
 
 // Fields to publish when worker fails.
 message WorkerDeltaData {
   bytes raylet_id = 1;
   bytes worker_id = 2;
-}
-
-message ResourceMap {
-  map<string, ResourceTableData> items = 1;
 }
 
 message StoredConfig {
@@ -546,7 +541,7 @@ message ResourceLoad {
 }
 
 message ResourcesData {
-  reserved 3;
+  reserved 3, 8, 17;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
@@ -555,13 +550,8 @@ message ResourcesData {
   map<string, double> resources_total = 4;
   // Aggregate outstanding resource load on this node manager.
   map<string, double> resource_load = 5;
-  // Indicates whether resource load is changed. Only used when
-  // light heartbeat enabled.
-  bool resource_load_changed = 6;
   // The resource load on this node, sorted by resource shape.
   ResourceLoad resource_load_by_shape = 7;
-  // Whether this node manager is requesting global GC.
-  bool should_global_gc = 8;
   // IP address of the node.
   string node_manager_address = 9;
   // Whether this node has object pulls queued. This can happen if
@@ -582,8 +572,6 @@ message ResourcesData {
   int64 idle_duration_ms = 15;
   // Whether the node is being drained.
   bool is_draining = 16;
-  // Why the node is not idle.
-  repeated string node_activity = 17;
 }
 
 message ResourceUsageBatchData {

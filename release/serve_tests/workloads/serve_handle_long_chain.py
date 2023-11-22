@@ -17,7 +17,6 @@ import click
 
 from typing import Optional
 
-import ray
 from ray import serve
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
@@ -46,8 +45,6 @@ class Node:
         time.sleep(init_delay_secs)
         self.id = id
         self.prev_node = prev_node
-        if self.prev_node:
-            self.prev_node = self.prev_node.options(use_new_handle_api=True)
         self.compute_delay_secs = compute_delay_secs
 
     async def predict(self, input_data: int):
@@ -104,11 +101,11 @@ def main(
         init_delay_secs=init_delay_secs,
         compute_delay_secs=compute_delay_secs,
     )
-    assert ray.get(handle.predict.remote(0)) == chain_length
+    assert handle.predict.remote(0).result() == chain_length
 
     throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(
-            handle,
+            handle.predict.remote,
             chain_length,
             duration_secs=throughput_trial_duration_secs,
             num_clients=num_clients,
@@ -116,7 +113,7 @@ def main(
     )
     latency_mean_ms, latency_std_ms = asyncio.run(
         benchmark_latency_ms(
-            handle,
+            handle.predict.remote,
             chain_length,
             num_requests=num_requests_per_client,
             num_clients=num_clients,

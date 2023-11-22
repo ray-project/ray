@@ -268,6 +268,8 @@ Datasink API
 
    Dataset.write_datasink
    Datasink
+   RowBasedFileDatasink
+   BlockBasedFileDatasink
 
 Partitioning API
 ----------------
@@ -280,7 +282,6 @@ Partitioning API
    datasource.PartitionStyle
    datasource.PathPartitionParser
    datasource.PathPartitionFilter
-   datasource.FileExtensionFilter
 
 .. _metadata_provider:
 

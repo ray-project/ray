@@ -112,10 +112,3 @@ class SplitReadOutputBlocksRule(Rule):
             op.set_additional_split_factor(k)
 
         logger.get_logger().debug(f"Estimated num output blocks {estimated_num_blocks}")
-
-        # Set the number of expected output blocks in the read input, so that
-        # we can set the progress bar.
-        assert len(op.input_dependencies) == 1
-        up_op = op.input_dependencies[0]
-        assert isinstance(up_op, InputDataBuffer)
-        up_op._set_num_output_blocks(estimated_num_blocks)
