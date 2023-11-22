@@ -239,6 +239,8 @@ class RayTrainReportCallback(pl.callbacks.Callback):
     guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
     """
 
+    CHECKPOINT_NAME = "checkpoint.ckpt"
+
     def __init__(self) -> None:
         super().__init__()
         self.trial_name = train.get_context().get_trial_name()
@@ -263,7 +265,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         metrics["step"] = trainer.global_step
 
         # Save checkpoint to local
-        ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
+        ckpt_path = os.path.join(tmpdir, RayTrainReportCallback.CHECKPOINT_NAME)
         trainer.save_checkpoint(ckpt_path, weights_only=False)
 
         # Report to train session
