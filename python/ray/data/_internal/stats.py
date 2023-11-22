@@ -497,9 +497,13 @@ class _StatsManager:
             if dataset_tag in self._last_execution_stats:
                 del self._last_execution_stats[dataset_tag]
 
-        self._stats_actor(create_if_not_exists=False).clear_execution_metrics.remote(
-            dataset_tag, operator_tags
-        )
+        try:
+            self._stats_actor(
+                create_if_not_exists=False
+            ).clear_execution_metrics.remote(dataset_tag, operator_tags)
+        except Exception:
+            # Cluster may be shut down.
+            pass
 
     # Iteration methods
 
@@ -513,9 +517,13 @@ class _StatsManager:
             if dataset_tag in self._last_iteration_stats:
                 del self._last_iteration_stats[dataset_tag]
 
-        self._stats_actor(create_if_not_exists=False).clear_iteration_metrics.remote(
-            dataset_tag
-        )
+        try:
+            self._stats_actor(
+                create_if_not_exists=False
+            ).clear_iteration_metrics.remote(dataset_tag)
+        except Exception:
+            # Cluster may be shut down.
+            pass
 
     # Other methods
 
