@@ -5,7 +5,9 @@ from collections import defaultdict
 import ray
 
 
-def allocate_shared_output_buffer(buffer_size_bytes: int = 1024 * 1024):
+MAX_BUFFER_SIZE = 100
+
+def allocate_shared_output_buffer(buffer_size_bytes: int = MAX_BUFFER_SIZE):
     ref = ray.put(b"0" * buffer_size_bytes, max_readers=1)
     # TODO(swang): Sleep to make sure that the object store sees the Seal. Should
     # replace this with a better call to put reusable objects, and have the object
@@ -132,8 +134,6 @@ class CompiledDAG:
                 assert arg_buffer is not None
                 resolved_args.append(arg_buffer)
 
-                print("exec", node_idx, "args:", resolved_args)
-
             # TODO: Assign the task with the correct input and output buffers.
             exec_fn = task.dag_node._get_remote_method("_exec_compiled_task")
             exec_fn.remote(
@@ -174,7 +174,7 @@ def build_compiled_dag(dag: "DAGNode"):
 class RayCompiledExecutor:
     def _allocate_shared_output_buffer(
             self,
-            buffer_size_bytes: int = 1024 * 1024):
+            buffer_size_bytes: int = MAX_BUFFER_SIZE):
         self._output_ref = allocate_shared_output_buffer(buffer_size_bytes)
         return self._output_ref
 
@@ -185,6 +185,7 @@ class RayCompiledExecutor:
             ):
         method = getattr(self, actor_method_name)
         while True:
+            print("GET", input_refs)
             inputs = ray.get(input_refs)
             output_val = method(*inputs)
             ray.worker.global_worker.put_object(

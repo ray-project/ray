@@ -14,8 +14,8 @@ class Actor(RayCompiledExecutor):
         self.i = init_value
 
     def inc(self, x):
-        self.i += x
-        return self.i
+        print(x)
+        return x
 
     def get(self):
         return self.i
@@ -31,13 +31,18 @@ def run_benchmark(num_actors, num_trials):
 
     # Warmup.
     for i in range(3):
-        ref = dag.execute(1, compiled=True)
-        print(ray.get(ref))
+        refs = dag.execute(b"hello", compiled=True)
+        print(ray.get(refs))
+        for ref in refs:
+            ray.release(ref)
 
     print("Starting...")
     start = time.time()
     for _ in range(num_trials):
-        ray.get(dag.execute(1, compiled=True))
+        refs = dag.execute(b"hello", compiled=True)
+        ray.get(refs)
+        for ref in refs:
+            ray.release(ref)
     end = time.time()
     print(f"{num_trials} executed in {end - start}s.")
     print(f"Throughput: {num_trials / (end - start)} rounds/s.")

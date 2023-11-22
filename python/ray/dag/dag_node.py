@@ -133,8 +133,11 @@ class DAGNode(DAGNodeBase):
         if compiled:
             assert len(args) == 1, "Compiled DAGs support exactly one InputNode arg"
             input_ref, input_max_readers, output_ref = self.compile()
+            print("PUT", input_max_readers)
             ray.worker.global_worker.put_object(
-                args[0], object_ref=input_ref, max_readers=input_max_readers
+                args[0],
+                object_ref=input_ref,
+                max_readers=input_max_readers
             )
             return output_ref
 
