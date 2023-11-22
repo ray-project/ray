@@ -26,7 +26,7 @@ Tuning read parallelism
 By default, Ray Data automatically selects the read ``parallelism`` according to the following procedure:
 
 The ``parallelism`` parameter passed to Ray Data's :ref:`read APIs <input-output>` specifies the number of read tasks to create.
-Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``parallelism`` also determines the parallelism used during map.
+Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``parallelism`` also determines the number of map tasks.
 
 The default value for ``parallelism`` is decided based on the following heuristics, applied in order:
 
