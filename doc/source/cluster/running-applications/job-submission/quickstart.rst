@@ -208,7 +208,7 @@ Using a remote cluster
 
 The preceding example is for a local Ray cluster. When connecting to a `remote` cluster, you need to access the dashboard port of the cluster over HTTP.
 
-One way to do access the port is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node. If you started your remote cluster with the :ref:`Ray Cluster Launcher <cluster-index>`, then you can set up automatic port forwarding using the ``ray dashboard`` command. See :ref:`monitor-cluster` for details.
+One way to access the port is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node. If you started your remote cluster with the :ref:`Ray Cluster Launcher <cluster-index>`, then you can set up automatic port forwarding using the ``ray dashboard`` command. See :ref:`monitor-cluster` for details.
 
 Run the following command on your local machine, where ``cluster.yaml`` is the configuration file you used to launch your cluster:
 
