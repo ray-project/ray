@@ -161,8 +161,6 @@ parts:
                     title: "HyperOpt Example"
                   - file: tune/examples/bayesopt_example
                     title: "Bayesopt Example"
-                  - file: tune/examples/flaml_example
-                    title: "FLAML Example"
                   - file: tune/examples/bohb_example
                     title: "BOHB Example"
                   - file: tune/examples/nevergrad_example

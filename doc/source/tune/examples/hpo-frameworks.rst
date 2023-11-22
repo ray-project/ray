@@ -34,14 +34,6 @@ on each of our integrations:
             How To Use Tune With BayesOpt
 
     .. grid-item-card::
-        :img-top: ../images/flaml.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: flaml_example
-
-            How To Use Tune With BlendSearch and CFO
-
-    .. grid-item-card::
         :img-top: ../images/bohb.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 

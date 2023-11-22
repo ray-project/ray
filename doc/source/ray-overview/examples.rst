@@ -349,13 +349,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
-        :link: /tune/examples/flaml_example
-        :link-type: doc
-
-        How To Use Tune With BlendSearch and CFO
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
         :link: /tune/examples/bohb_example
         :link-type: doc
 
