@@ -387,7 +387,7 @@ After you have converted your PyTorch Lightning training script to use Ray Train
 Version Compatibility
 ---------------------
 
-Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.0.4`. For full compatibility, use ``pytorch_lightning>=1.6.5`` . 
+Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.1.2`. For full compatibility, use ``pytorch_lightning>=1.6.5`` . 
 Earlier versions aren't prohibited but may result in unexpected issues. If you run into any compatibility issues, consider upgrading your PyTorch Lightning version or 
 `file an issue <https://github.com/ray-project/ray/issues>`_. 
 
