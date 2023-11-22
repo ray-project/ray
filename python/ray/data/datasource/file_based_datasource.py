@@ -43,8 +43,11 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.data.datasource.path_util import (
+    _has_file_extension,
+    _resolve_paths_and_filesystem,
+)
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -70,6 +73,7 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 OPEN_FILE_MAX_ATTEMPTS = 10
 
 
+@Deprecated
 @PublicAPI(stability="beta")
 class FileExtensionFilter(PathPartitionFilter):
     """A file-extension-based path filter that filters files that don't end
@@ -87,6 +91,12 @@ class FileExtensionFilter(PathPartitionFilter):
         file_extensions: Union[str, List[str]],
         allow_if_no_extension: bool = False,
     ):
+        warnings.warn(
+            "`FileExtensionFilter` is deprecated. Instead, set the `file_extensions` "
+            "parameter of `read_xxx()` APIs.",
+            DeprecationWarning,
+        )
+
         if isinstance(file_extensions, str):
             file_extensions = [file_extensions]
 
@@ -119,16 +129,13 @@ class FileBasedDatasource(Datasource):
     This class should not be used directly, and should instead be subclassed
     and tailored to particular file formats. Classes deriving from this class
     must implement _read_file().
-
-    If the _FILE_EXTENSION is defined, per default only files with this extension
-    will be read. If None, no default filter is used.
     """
 
     # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
     # each row to a file. Otherwise, this datasource calls `_write_block` and writes
     # each block to a file.
     _WRITE_FILE_PER_ROW = False
-    _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
+    _FILE_EXTENSIONS: Optional[Union[str, List[str]]] = None
     # Number of threads for concurrent reading within each read task.
     # If zero or negative, reading will be performed in the main thread.
     _NUM_THREADS_PER_TASK = 0
@@ -136,6 +143,7 @@ class FileBasedDatasource(Datasource):
     def __init__(
         self,
         paths: Union[str, List[str]],
+        *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -144,6 +152,8 @@ class FileBasedDatasource(Datasource):
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
         shuffle: Union[Literal["files"], None] = None,
+        include_paths: bool = False,
+        file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
         self._schema = schema
@@ -152,8 +162,9 @@ class FileBasedDatasource(Datasource):
         self._partition_filter = partition_filter
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
+        self._include_paths = include_paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        self._paths, self._file_sizes = map(
+        paths, file_sizes = map(
             list,
             zip(
                 *meta_provider.expand_paths(
@@ -165,7 +176,7 @@ class FileBasedDatasource(Datasource):
             ),
         )
 
-        if ignore_missing_paths and len(self._paths) == 0:
+        if ignore_missing_paths and len(paths) == 0:
             raise ValueError(
                 "None of the provided paths exist. "
                 "The 'ignore_missing_paths' field is set to True."
@@ -181,21 +192,44 @@ class FileBasedDatasource(Datasource):
 
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
-            path_to_size = dict(zip(self._paths, self._file_sizes))
-            self._paths = self._partition_filter(self._paths)
-            self._file_sizes = [path_to_size[p] for p in self._paths]
-            if len(self._paths) == 0:
+            path_to_size = dict(zip(paths, file_sizes))
+            paths = self._partition_filter(paths)
+            file_sizes = [path_to_size[p] for p in paths]
+            if len(paths) == 0:
                 raise ValueError(
                     "No input files found to read. Please double check that "
                     "'partition_filter' field is set properly."
                 )
+
+        if file_extensions is not None:
+            path_to_size = dict(zip(paths, file_sizes))
+            paths = [p for p in paths if _has_file_extension(p, file_extensions)]
+            file_sizes = [path_to_size[p] for p in paths]
+            if len(paths) == 0:
+                raise ValueError(
+                    "No input files found to read. Please double check that "
+                    "'file_extensions' field is set properly."
+                )
+
         self._file_metadata_shuffler = None
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 
+        # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
+        # can be large. To avoid slow serialization speeds, we store a reference to
+        # the paths rather than the paths themselves.
+        self._paths_ref = ray.put(paths)
+        self._file_sizes_ref = ray.put(file_sizes)
+
+    def _paths(self) -> List[str]:
+        return ray.get(self._paths_ref)
+
+    def _file_sizes(self) -> List[float]:
+        return ray.get(self._file_sizes_ref)
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
-        for sz in self._file_sizes:
+        for sz in self._file_sizes():
             if sz is not None:
                 total_size += sz
         return total_size
@@ -207,15 +241,16 @@ class FileBasedDatasource(Datasource):
         open_stream_args = self._open_stream_args
         partitioning = self._partitioning
 
+        paths = self._paths()
+        file_sizes = self._file_sizes()
+
         if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(self._paths, self._file_sizes))
+            files_metadata = list(zip(paths, file_sizes))
             shuffled_files_metadata = [
                 files_metadata[i]
                 for i in self._file_metadata_shuffler.permutation(len(files_metadata))
             ]
             paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
-        else:
-            paths, file_sizes = self._paths, self._file_sizes
 
         read_stream = self._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
@@ -242,10 +277,15 @@ class FileBasedDatasource(Datasource):
                     read_path,
                     lambda: open_input_source(fs, read_path, **open_stream_args),
                 ) as f:
-                    for data in read_stream(f, read_path):
+                    for block in read_stream(f, read_path):
                         if partitions:
-                            data = _add_partitions(data, partitions)
-                        yield data
+                            block = _add_partitions(block, partitions)
+                        if self._include_paths:
+                            block_accessor = BlockAccessor.for_block(block)
+                            block = block_accessor.append_column(
+                                "path", [read_path] * block_accessor.num_rows()
+                            )
+                        yield block
 
         def create_read_task_fn(read_paths, num_threads):
             def read_task_fn():
@@ -364,19 +404,12 @@ class FileBasedDatasource(Datasource):
         return None
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
-        """Streaming read a single file, passing all kwargs to the reader.
-
-        By default, delegates to self._read_file().
-        """
-        yield self._read_file(f, path)
-
-    def _read_file(self, f: "pyarrow.NativeFile", path: str) -> Block:
-        """Reads a single file, passing all kwargs to the reader.
+        """Streaming read a single file.
 
         This method should be implemented by subclasses.
         """
         raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _read_file()."
+            "Subclasses of FileBasedDatasource must implement _read_stream()."
         )
 
     def on_write_start(
@@ -422,11 +455,11 @@ class FileBasedDatasource(Datasource):
         **write_args,
     ) -> WriteResult:
         """Write blocks for a file-based datasource."""
-        # `FileBasedDatasource` subclasses expose a `_FILE_EXTENSION` attribute. It
+        # `FileBasedDatasource` subclasses expose a `_FILE_EXTENSIONS` attribute. It
         # represents a list of supported file extensions. If the user doesn't specify
         # a file format, we default to the first extension in the list.
         if file_format is None:
-            file_format = self._FILE_EXTENSION
+            file_format = self._FILE_EXTENSIONS
             if isinstance(file_format, list):
                 file_format = file_format[0]
 
@@ -574,12 +607,6 @@ class FileBasedDatasource(Datasource):
         of `_write_block()`.
         """
         raise NotImplementedError
-
-    @classmethod
-    def file_extension_filter(cls) -> Optional[PathPartitionFilter]:
-        if cls._FILE_EXTENSION is None:
-            return None
-        return FileExtensionFilter(cls._FILE_EXTENSION)
 
     @property
     def supports_distributed_reads(self) -> bool:

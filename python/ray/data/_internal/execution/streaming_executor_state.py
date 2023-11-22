@@ -77,7 +77,7 @@ class TopologyResourceUsage:
         downstream_usage = {}
         cur_usage = ExecutionResources(0, 0, 0)
         # Iterate from last to first operator.
-        for op, state in list(topology.items())[::-1]:
+        for op, state in reversed(topology.items()):
             cur_usage = cur_usage.add(op.current_resource_usage())
             # Don't count input refs towards dynamic memory usage, as they have been
             # pre-created already outside this execution.

@@ -21,6 +21,7 @@ from ray.serve._private.common import (
     NodeId,
     RunningReplicaInfo,
     StatusOverview,
+    TargetCapacityScaleDirection,
 )
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
@@ -42,7 +43,7 @@ from ray.serve._private.logging_utils import (
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
-from ray.serve._private.long_poll import LongPollHost
+from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -64,6 +65,7 @@ from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
     ApplicationDetails,
     HTTPOptionsSchema,
+    LoggingConfig,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -79,6 +81,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
+LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 
 
 @ray.remote(num_cpus=0)
@@ -112,6 +115,7 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
+        system_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -119,9 +123,24 @@ class ServeController:
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
 
-        configure_component_logger(
-            component_name="controller", component_id=str(os.getpid())
-        )
+        self.ray_worker_namespace = ray.get_runtime_context().namespace
+        self.controller_name = controller_name
+        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
+        self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+
+        self.long_poll_host = LongPollHost()
+        self.done_recovering_event = asyncio.Event()
+
+        # Try to read config from checkpoint
+        # logging config from checkpoint take precedence over the one passed in
+        # the constructor.
+        self.system_logging_config = None
+        log_config_checkpoint = self.kv_store.get(LOGGING_CONFIG_CHECKPOINT_KEY)
+        if log_config_checkpoint is not None:
+            system_logging_config = pickle.loads(log_config_checkpoint)
+        self.reconfigure_system_logging_config(system_logging_config)
+
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
@@ -136,22 +155,15 @@ class ServeController:
             call_function_from_import_path(RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH)
 
         # Used to read/write checkpoints.
-        self.ray_worker_namespace = ray.get_runtime_context().namespace
-        self.controller_name = controller_name
-        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
-
-        self.long_poll_host = LongPollHost()
-        self.done_recovering_event = asyncio.Event()
 
         self.proxy_state_manager = ProxyStateManager(
             controller_name,
             http_config,
             self._controller_node_id,
             self.cluster_node_info_cache,
+            self.system_logging_config,
             grpc_options,
         )
 
@@ -198,7 +210,8 @@ class ServeController:
 
         # The target capacity percentage for all deployments across the cluster.
         self._target_capacity: Optional[float] = None
-        self._recover_config_from_checkpoint()
+        self._scale_direction: Optional[TargetCapacityScaleDirection] = None
+        self._recover_state_from_checkpoint()
 
         # Nodes where proxy actors should run.
         self._proxy_nodes = set()
@@ -209,6 +222,31 @@ class ServeController:
             "serve_controller_num_starts",
             description="The number of times that controller has started.",
         ).inc()
+
+    def reconfigure_system_logging_config(self, system_logging_config: LoggingConfig):
+        if (
+            self.system_logging_config
+            and self.system_logging_config == system_logging_config
+        ):
+            return
+        self.kv_store.put(
+            LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(system_logging_config)
+        )
+        self.system_logging_config = system_logging_config
+
+        self.long_poll_host.notify_changed(
+            LongPollNamespace.SYSTEM_LOGGING_CONFIG,
+            system_logging_config,
+        )
+        configure_component_logger(
+            component_name="controller",
+            component_id=str(os.getpid()),
+            logging_config=system_logging_config,
+        )
+        logger.debug(
+            "Configure the serve controller logger "
+            f"with logging config: {self.system_logging_config}"
+        )
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -342,7 +380,8 @@ class ServeController:
             try:
                 dsm_update_start_time = time.time()
                 any_recovering = self.deployment_state_manager.update(
-                    target_capacity=self._target_capacity
+                    target_capacity=self._target_capacity,
+                    target_capacity_scale_direction=self._scale_direction,
                 )
                 self.dsm_update_duration_gauge_s.set(
                     time.time() - dsm_update_start_time
@@ -359,7 +398,10 @@ class ServeController:
 
             try:
                 asm_update_start_time = time.time()
-                self.application_state_manager.update()
+                self.application_state_manager.update(
+                    target_capacity=self._target_capacity,
+                    target_capacity_scale_direction=self._scale_direction,
+                )
                 self.asm_update_duration_gauge_s.set(
                     time.time() - asm_update_start_time
                 )
@@ -440,22 +482,59 @@ class ServeController:
             {"actor_id": ray.get_runtime_context().get_actor_id()}
         )
 
-    def _recover_config_from_checkpoint(self):
+    def _recover_state_from_checkpoint(self):
+        deployment_time, serve_config, scale_direction = self._read_config_checkpoint()
+        self._scale_direction = scale_direction
+        if serve_config is not None:
+            logger.info(
+                "Recovered config from checkpoint.", extra={"log_to_stderr": False}
+            )
+            self.deploy_config(serve_config, deployment_time=deployment_time)
+
+    def _read_config_checkpoint(
+        self,
+    ) -> Tuple[
+        float, Optional[ServeDeploySchema], Optional[TargetCapacityScaleDirection]
+    ]:
+        """Reads the current Serve config checkpoint.
+
+        The Serve config checkpoint stores active application configs and
+        other metadata.
+
+        Returns:
+
+        If the GCS contains a checkpoint, tuple of:
+            1. A deployment timestamp.
+            2. A Serve config. This Serve config is reconstructed from the
+                active application states. It may not exactly match the
+                submitted config (e.g. the top-level http options may be
+                different).
+            3. The scaling direction calculated after the Serve config was
+               submitted.
+
+        If the GCS doesn't contain a checkpoint, returns (0, None, None).
+        """
+
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            logger.info(
-                "Recovering config from checkpoint.", extra={"log_to_stderr": False}
-            )
-            deployment_time, target_capacity, config_checkpoints_dict = pickle.loads(
-                checkpoint
-            )
-            self.deploy_config(
+
+            (
+                deployment_time,
+                target_capacity,
+                scale_direction,
+                config_checkpoints_dict,
+            ) = pickle.loads(checkpoint)
+
+            return (
+                deployment_time,
                 ServeDeploySchema(
                     applications=list(config_checkpoints_dict.values()),
                     target_capacity=target_capacity,
                 ),
-                deployment_time=deployment_time,
+                scale_direction,
             )
+        else:
+            return (0.0, None, None)
 
     def _all_running_replicas(self) -> Dict[DeploymentID, List[RunningReplicaInfo]]:
         """Used for testing.
@@ -513,9 +592,10 @@ class ServeController:
 
         if self._shutdown_start_time is None:
             self._shutdown_start_time = time.time()
+            logger.info("Controller shutdown started.", extra={"log_to_stderr": False})
 
-        logger.info("Controller shutdown started!", extra={"log_to_stderr": False})
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
+        self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
@@ -668,6 +748,14 @@ class ServeController:
 
         new_config_checkpoint = {}
 
+        _, curr_config, _ = self._read_config_checkpoint()
+
+        self._scale_direction = calculate_scale_direction(
+            curr_config=curr_config,
+            new_config=config,
+            curr_scale_direction=self._scale_direction,
+        )
+
         for app_config in config.applications:
             for deployments in app_config.deployments:
                 if deployments.route_prefix != DEFAULT.VALUE:
@@ -676,6 +764,11 @@ class ServeController:
                         "Please specify route prefix at an application level in the "
                         "Serve config instead."
                     )
+
+            # If the application logging config is not set, use the global logging
+            # config.
+            if app_config.logging_config is None and config.logging_config:
+                app_config.logging_config = config.logging_config
 
             app_config_dict = app_config.dict(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
@@ -689,7 +782,12 @@ class ServeController:
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
             pickle.dumps(
-                (deployment_time, config.target_capacity, new_config_checkpoint)
+                (
+                    deployment_time,
+                    config.target_capacity,
+                    self._scale_direction,
+                    new_config_checkpoint,
+                )
             ),
         )
 
@@ -884,7 +982,7 @@ class ServeController:
     def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+            _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
             if name in config_checkpoints_dict:
                 config = config_checkpoints_dict[name]
                 return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
@@ -981,6 +1079,77 @@ class ServeController:
                 "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
             )
 
+    def _get_logging_config(self) -> Tuple:
+        """Get the logging configuration (for testing purposes)."""
+        log_file_path = None
+        for handler in logger.handlers:
+            if isinstance(handler, logging.handlers.RotatingFileHandler):
+                log_file_path = handler.baseFilename
+        return self.system_logging_config, log_file_path
+
+    def _get_scale_direction(self) -> Optional[TargetCapacityScaleDirection]:
+        """Gets the controller's scale direction (for testing purposes)."""
+
+        return self._scale_direction
+
+
+def calculate_scale_direction(
+    curr_config: Optional[ServeDeploySchema],
+    new_config: ServeDeploySchema,
+    curr_scale_direction: Optional[float],
+) -> Optional[TargetCapacityScaleDirection]:
+    """Compares two Serve configs to calculate the next scaling direction."""
+
+    curr_target_capacity = None
+    next_scale_direction = None
+
+    if curr_config is not None and applications_match(curr_config, new_config):
+        curr_target_capacity = curr_config.target_capacity
+        next_target_capacity = new_config.target_capacity
+
+        if curr_target_capacity == next_target_capacity:
+            next_scale_direction = curr_scale_direction
+        elif curr_target_capacity is None:
+            # The current config has finished rolling out. The next config
+            # is now starting to roll out, so we set the scale direction to up.
+            next_scale_direction = TargetCapacityScaleDirection.UP
+        elif next_target_capacity is None:
+            next_scale_direction = None
+        elif curr_target_capacity < next_target_capacity:
+            next_scale_direction = TargetCapacityScaleDirection.UP
+        else:
+            next_scale_direction = TargetCapacityScaleDirection.DOWN
+    elif new_config.target_capacity is not None:
+        # A config with different apps has been applied, and it contains a
+        # target_capacity. Serve must start scaling this config up.
+        next_scale_direction = TargetCapacityScaleDirection.UP
+    else:
+        next_scale_direction = None
+
+    if next_scale_direction != curr_scale_direction:
+        if isinstance(next_scale_direction, TargetCapacityScaleDirection):
+            logger.info(
+                f"Target capacity scaling {next_scale_direction.value.lower()} "
+                f"from {curr_target_capacity} to {new_config.target_capacity}."
+            )
+        else:
+            assert next_scale_direction is None
+            logger.info("Target capacity entering 100% at steady state.")
+
+    return next_scale_direction
+
+
+def applications_match(config1: ServeDeploySchema, config2: ServeDeploySchema) -> bool:
+    """Checks whether the applications in config1 and config2 match.
+
+    Two applications match if they have the same name.
+    """
+
+    config1_app_names = {app.name for app in config1.applications}
+    config2_app_names = {app.name for app in config2.applications}
+
+    return config1_app_names == config2_app_names
+
 
 @ray.remote(num_cpus=0)
 class ServeControllerAvatar:
@@ -1006,6 +1175,7 @@ class ServeControllerAvatar:
             self._controller = None
         if self._controller is None:
             http_config = HTTPOptions()
+            logging_config = LoggingConfig()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
                 num_cpus=0,
@@ -1019,6 +1189,7 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
+                system_logging_config=logging_config,
             )
 
     def check_alive(self) -> None:

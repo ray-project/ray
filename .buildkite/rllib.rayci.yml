@@ -222,6 +222,7 @@ steps:
   - label: ":brain: rllib: flaky multi-gpu tests"
     tags: 
       - rllib
+      - skip-on-premerge
       - gpu
     instance_type: gpu-large
     commands:
@@ -235,7 +236,9 @@ steps:
     job_env: forge
 
   - label: ":brain: rllib: flaky tests (learning tests)"
-    tags: rllib
+    tags: 
+      - rllib
+      - skip-on-premerge
     instance_type: large
     commands:
       # torch
@@ -262,7 +265,9 @@ steps:
     job_env: forge
 
   - label: ":brain: rllib: flaky tests (examples/rlmodule/models/tests_dir)"
-    tags: rllib
+    tags: 
+      - rllib
+      - skip-on-premerge
     instance_type: large
     commands:
       # examples
@@ -295,7 +300,9 @@ steps:
     job_env: forge
 
   - label: ":brain: rllib: flaky tests (memory leak)"
-    tags: rllib
+    tags: 
+      - rllib
+      - skip-on-premerge
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
