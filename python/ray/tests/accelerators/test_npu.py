@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import patch
 
 import ray
-from ray._private.accelerators import AscendNPUAcceleratorManager as Accelerator
+from ray._private.accelerators import NPUAcceleratorManager as Accelerator
 
 
 @patch("glob.glob")
@@ -41,6 +41,7 @@ def test_visible_ascend_npu_type(shutdown_only):
         assert manager.get_current_node_accelerator_type() == "Ascend910B"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
 def test_visible_ascend_npu_ids(shutdown_only):
     old_acl = sys.modules["acl"] if "acl" in sys.modules else None
     sys.modules["acl"] = __import__("mock_acl")
@@ -51,13 +52,14 @@ def test_visible_ascend_npu_ids(shutdown_only):
         ray.init()
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("NPU")
         assert manager.get_current_node_num_accelerators() == 4
-        assert manager.__name__ == "AscendNPUAcceleratorManager"
+        assert manager.__name__ == "NPUAcceleratorManager"
         assert ray.available_resources()["NPU"] == 3
         del os.environ["ASCEND_VISIBLE_DEVICES"]
 
     sys.modules["acl"] = old_acl
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
 def test_acl_api_function(shutdown_only):
     old_acl = sys.modules["acl"] if "acl" in sys.modules else None
     sys.modules["acl"] = __import__("mock_acl")
@@ -65,7 +67,7 @@ def test_acl_api_function(shutdown_only):
     ray.init()
     manager = ray._private.accelerators.get_accelerator_manager_for_resource("NPU")
     assert manager.get_current_node_num_accelerators() == 4
-    assert manager.__name__ == "AscendNPUAcceleratorManager"
+    assert manager.__name__ == "NPUAcceleratorManager"
     assert manager.get_current_node_accelerator_type() == "Ascend910B"
     assert ray.available_resources()["NPU"] == 4
 
@@ -101,6 +103,7 @@ def test_set_current_process_visible_accelerator_ids():
     del os.environ["ASCEND_VISIBLE_DEVICES"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
 def test_auto_detected_more_than_visible(shutdown_only):
     old_acl = sys.modules["acl"] if "acl" in sys.modules else None
     sys.modules["acl"] = __import__("mock_acl")

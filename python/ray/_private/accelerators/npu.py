@@ -11,7 +11,7 @@ ASCEND_VISIBLE_DEVICES_ENV_VAR = "ASCEND_VISIBLE_DEVICES"
 NOSET_ASCEND_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ASCEND_VISIBLE_DEVICES"
 
 
-class AscendNPUAcceleratorManager(AcceleratorManager):
+class NPUAcceleratorManager(AcceleratorManager):
     """Ascend NPU accelerators."""
 
     @staticmethod
@@ -25,7 +25,7 @@ class AscendNPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
         ascend_visible_devices = os.environ.get(
-            AscendNPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
+            NPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
         )
 
         if ascend_visible_devices is None:
@@ -99,5 +99,5 @@ class AscendNPUAcceleratorManager(AcceleratorManager):
             return
 
         os.environ[
-            AscendNPUAcceleratorManager.get_visible_accelerator_ids_env_var()
+            NPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join([str(i) for i in visible_ascend_devices])
