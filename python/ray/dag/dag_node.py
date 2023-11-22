@@ -109,7 +109,7 @@ class DAGNode(DAGNodeBase):
         _ray_cache_refs: bool = False,
         _ray_cache_actors: bool = True,
         **kwargs,
-    ) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this DAG using the Ray default executor _execute_impl().
 
         Args:
@@ -308,7 +308,9 @@ class DAGNode(DAGNodeBase):
 
         return replaced_inputs
 
-    def _execute_impl(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    def _execute_impl(
+        self, *args, **kwargs
+    ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this node, assuming args have been transformed already."""
         raise NotImplementedError
 

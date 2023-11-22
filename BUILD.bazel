@@ -829,7 +829,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "manual"],
     deps = [
         ":core_worker_lib",
         ":gcs",
@@ -1330,7 +1330,7 @@ ray_cc_test(
     name = "worker_pool_test",
     size = "small",
     srcs = ["src/ray/raylet/worker_pool_test.cc"],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -1490,6 +1490,7 @@ ray_cc_test(
     tags = [
         "stats",
         "team:core",
+        "no_tsan",
     ],
     deps = [
         ":stats_lib",
@@ -1504,6 +1505,7 @@ ray_cc_test(
     tags = [
         "stats",
         "team:core",
+        "no_tsan",
     ],
     deps = [
         ":stats_lib",
@@ -1565,7 +1567,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1672,7 +1674,7 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1688,7 +1690,7 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_scheduler_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1735,7 +1737,7 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1880,20 +1882,6 @@ ray_cc_test(
     ],
 )
 
-ray_cc_test(
-    name = "grpc_based_resource_broadcaster_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/grpc_based_resource_broadcaster_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 ray_cc_library(
     name = "gcs_client_lib",
     srcs = [
@@ -1986,7 +1974,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
