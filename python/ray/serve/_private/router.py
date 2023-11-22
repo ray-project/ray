@@ -179,9 +179,6 @@ class ActorReplicaWrapper:
         else:
             self._actor_handle = replica_info.actor_handle
 
-        self._latest_queue_len = -1
-        self._queue_len_refreshing_task: Optional[asyncio.Task] = None
-
     @property
     def replica_id(self) -> str:
         return self._replica_info.replica_tag
@@ -198,28 +195,18 @@ class ActorReplicaWrapper:
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
-    async def _refresh_queue_state(self):
-        # TODO cancel upon termination
-        while True:
-            # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
-            # the Python and Java replica implementations. If you change it, you need to
-            # change both (or introduce a branch here).
-            obj_ref = self._actor_handle.get_num_ongoing_requests.remote()
-            self._latest_queue_len = await obj_ref
-
-            # logger.warning(f"[DBG] Refreshed queue length: {self._latest_queue_len}")
-
-            # Sleep for 1000ms
-            await asyncio.sleep(1)
-
     async def get_queue_state(self) -> Tuple[int, bool]:
-        if not self._queue_len_refreshing_task:
-            self._queue_len_refreshing_task = asyncio.create_task(self._refresh_queue_state())
-
-        # logger.warning(f"[DBG] Current queue length: {self._latest_queue_len}")
-
-        accepted = self._latest_queue_len < self._replica_info.max_concurrent_queries
-        return self._latest_queue_len, accepted
+        # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
+        # the Python and Java replica implementations. If you change it, you need to
+        # change both (or introduce a branch here).
+        obj_ref = self._actor_handle.get_num_ongoing_requests.remote()
+        try:
+            queue_len = await obj_ref
+            accepted = queue_len < self._replica_info.max_concurrent_queries
+            return queue_len, accepted
+        except asyncio.CancelledError:
+            ray.cancel(obj_ref)
+            raise
 
     def _send_query_java(self, query: Query) -> ray.ObjectRef:
         """Send the query to a Java replica.
