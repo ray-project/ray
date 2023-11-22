@@ -17,7 +17,6 @@ from ray.util.spark import (
     setup_ray_cluster,
     shutdown_ray_cluster,
     MAX_NUM_WORKER_NODES,
-    serve_global_ray_cluster,
 )
 from ray.util.spark.utils import (
     is_port_in_use,
@@ -368,8 +367,8 @@ class TestSparkLocalCluster:
                         "ray.util.spark.cluster_init.get_spark_session",
                         return_value=self.spark,
                     ):
-                        serve_global_ray_cluster(
-                            num_worker_nodes=1, autoscale=autoscale
+                        setup_ray_cluster(
+                            num_worker_nodes=1, autoscale=autoscale, is_global=True,
                         )
                 except BaseException:
                     # For debugging testing failure.
@@ -405,7 +404,7 @@ class TestSparkLocalCluster:
                     "Ray on spark cluster"
                 ),
             ):
-                serve_global_ray_cluster(num_worker_nodes=1, autoscale=autoscale)
+                setup_ray_cluster(num_worker_nodes=1, autoscale=autoscale, is_global=True)
 
         # shut down the cluster
         ray.util.spark.cluster_init._global_ray_cluster_cancel_event.set()
