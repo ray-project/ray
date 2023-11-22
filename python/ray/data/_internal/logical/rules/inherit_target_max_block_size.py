@@ -22,7 +22,7 @@ class InheritTargetMaxBlockSizeRule(Rule):
             target_max_block_size = dag.target_max_block_size
         elif target_max_block_size is not None:
             # Inherit from downstream op.
-            dag.target_max_block_size = target_max_block_size
+            dag.set_target_max_block_size(target_max_block_size)
 
         for upstream_op in dag.input_dependencies:
             self._propagate_target_max_block_size_to_upstream_ops(
