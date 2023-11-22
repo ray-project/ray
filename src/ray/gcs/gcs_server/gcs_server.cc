@@ -679,6 +679,7 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
   gcs_autoscaler_state_manager_ =
       std::make_unique<GcsAutoscalerStateManager>(config_.session_name,
                                                   *gcs_node_manager_,
+                                                  *gcs_actor_manager_,
                                                   *gcs_placement_group_manager_,
                                                   raylet_client_pool_);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);

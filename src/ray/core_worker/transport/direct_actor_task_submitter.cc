@@ -348,7 +348,7 @@ void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
   const bool preempted) {
     
   rpc::ActorDeathCause actor_death_cause;
-  actor_death_cause.mutable_actor_died_error_context();
+  actor_death_cause.mutable_actor_died_error_context()->set_preempted(preempted);
   rpc::RayErrorInfo error_info;
   error_info.mutable_actor_died_error()->CopyFrom(actor_death_cause);
   error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
@@ -358,69 +358,33 @@ void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
                                              rpc::ErrorType::ACTOR_DIED,
                                              &status,
                                              &error_info);
-
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
   // The bool here indicates whether the task is the first for the raylet address.
   auto task_info_list = std::make_shared<TaskInfoList>();
-  rpc::CheckAliveRequest request;
   {
     absl::MutexLock lock(&mu_);
-  RAY_LOG(INFO) << "vct bbb";
     for (auto &queue_pair : client_queues_) {
       auto &queue = queue_pair.second;
       if (!queue.rpc_client) {
         RAY_LOG(INFO) << "No address found for raylet.";
         continue;
       }
-      const rpc::Address &addr = queue.rpc_client->Addr();
-      bool is_first = true;
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
-  RAY_LOG(INFO) << "vct ff";
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
         auto &task_spec_status_pair = deque_itr->second;
-        if (is_first) {
-          RAY_LOG(INFO) << "vct cc";
-          // Cannot add outside the loop in case there are no tasks to add.
-          request.add_raylet_address(addr.ip_address() + ":" + std::to_string(addr.port()));
-        }
-          RAY_LOG(INFO) << "vct dd";
-        task_info_list->push_back(std::make_pair(task_spec_status_pair, is_first));
+        task_info_list->push_back(std::make_pair(task_spec_status_pair, queue.preempted));
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
-        is_first = false;
       }
     }
   }
 
   // Do not hold mu_, because FailPendingTask may call python from cpp,
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
-
-  if (RayConfig::instance().enable_reap_actor_death()) {
-  // Check GCS for preemption info here before failing.
-  RAY_LOG(INFO) << "vct aaa";
-  gcs_client_.GetGcsRpcClient().CheckAlive(request,
-  [this, task_info_list = std::move(task_info_list)](const Status &status, const rpc::CheckAliveReply &reply) {
-    RAY_LOG(INFO) << "vct zzz";
-    auto iter = reply.raylet_preempted().begin();
-    bool firstAddr = true;
-    for (auto &task_info : *task_info_list) {
-      FailTaskWithError(task_info.first.first.TaskId(), task_info.first.second, *iter);
-      if (task_info.second && !firstAddr) {
-        iter++;
-      }
-      firstAddr = false;
-    }
-  },
-  -1 /* timeout */); 
-  } else {
-    for (auto &task_info : *task_info_list) {
-  GetTaskFinisherWithoutMu().FailPendingTask(task_info.first.first.TaskId(),
-                                             rpc::ErrorType::ACTOR_DIED,
-                                             &task_info.first.second /* status */);
-    }
-    
+  for (auto &task_info : *task_info_list) {
+    FailTaskWithError(task_info.first.first.TaskId(), task_info.first.second, task_info.second);
   }
 }
 
@@ -644,6 +608,11 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
             << ", wait_queue_size=" << queue.wait_for_death_info_tasks.size();
       } else {
         // TODO(vitsai): if we don't need death info, just fail the request.
+        {
+          absl::MutexLock lock(&mu_);
+          auto queue_pair = client_queues_.find(actor_id);
+          RAY_CHECK(queue_pair != client_queues_.end());
+        }
         GetTaskFinisherWithoutMu().FailPendingTask(
             task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, &status);
       }

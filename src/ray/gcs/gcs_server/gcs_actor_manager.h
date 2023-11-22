@@ -337,6 +337,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   Status RegisterActor(const rpc::RegisterActorRequest &request,
                        RegisterActorCallback success_callback);
 
+  /// Set actors on the node as preempted and publish the actor information.
+  void SetPreemptedAndPublish(const NodeID &node_id);
+
   /// Create actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
@@ -555,6 +558,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_start_time(actor.start_time());
     actor_delta->set_end_time(actor.end_time());
     actor_delta->set_repr_name(actor.repr_name());
+    actor_delta->set_preempted(actor.preempted());
     // Acotr's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
       actor_delta->set_ray_namespace(actor.ray_namespace());
