@@ -186,16 +186,21 @@ def test_handle_option_chaining(serve_instance):
             return "__call__"
 
     handle1 = serve.run(MultiMethod.bind())
-    metrics = handle1.request_counter
+    counter = handle1.request_counter
+    counter_info = counter.info
     assert handle1.remote().result() == "__call__"
 
     handle2 = handle1.options(method_name="method_a")
+
     assert handle2.remote().result() == "method_a"
-    assert handle2.request_counter == metrics
+    assert handle2.request_counter == counter
+    assert handle2.request_counter.info == counter_info
 
     handle3 = handle1.options(method_name="method_b")
+
     assert handle3.remote().result() == "method_b"
-    assert handle3.request_counter == metrics
+    assert handle3.request_counter == counter
+    assert handle2.request_counter.info == counter_info
 
 
 def test_repeated_get_handle_cached(serve_instance):

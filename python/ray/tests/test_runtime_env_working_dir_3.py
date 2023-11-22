@@ -348,6 +348,10 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
+    @pytest.mark.skipif(
+        skip_flaky_test(),
+        reason="https://github.com/ray-project/ray/issues/40781",
+    )
     def test_hit_cache_size_limit(
         self, start_cluster, URI_cache_10_MB, disable_temporary_uri_pinning
     ):
