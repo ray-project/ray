@@ -20,6 +20,7 @@ class Endpoint:
         self._tokens_per_request = tokens_per_request
         # Switch off logging to minimize its impact
         logging.getLogger("ray").setLevel(logging.WARNING)
+        logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
     def stream(self):
         for i in range(self._tokens_per_request):
@@ -48,6 +49,10 @@ class Caller(Blackhole):
         self._batch_size = batch_size
         self._num_trials = num_trials
         self._trial_runtime = trial_runtime
+        # Switch off logging to minimize its impact
+        logging.getLogger("ray").setLevel(logging.WARNING)
+        logging.getLogger("ray.serve").setLevel(logging.WARNING)
+
 
     def _get_remote_method(self):
         if self._mode == IOMode.SYNC:
