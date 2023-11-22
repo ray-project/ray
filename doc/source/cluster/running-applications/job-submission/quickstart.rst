@@ -309,5 +309,5 @@ Now submit the job with a runtime environment that pins the version of the ``req
     See :ref:`runtime environments <runtime-environments-job-conflict>` for more details.
 
 - See :ref:`Ray Jobs CLI <ray-job-submission-cli-ref>` for a full API reference of the CLI. 
-- See :ref:`Ray Jobs SDK <ray-job-submission-sdk-ref>`for a full API reference of the SDK.
+- See :ref:`Ray Jobs SDK <ray-job-submission-sdk-ref>` for a full API reference of the SDK.
 - For more information, see :ref:`Programmatic job submission <ray-job-sdk>` and :ref:`Job submission using REST <ray-job-rest-api>`.
