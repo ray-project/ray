@@ -1,22 +1,17 @@
 import argparse
 import os
 
-import numpy as np
-import tree  # pip install dm_tree
-
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
-from ray.rllib.connectors.env_to_module import
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.env_to_module.prev_action_prev_reward import (
+    PrevRewardPrevActionConnector
+)
 from ray.rllib.connectors.connector_pipeline_v2 import (
     ConnectorPipelineV2,
     EnvToModulePipeline,
     ModuleToEnvPipeline,
 )
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 

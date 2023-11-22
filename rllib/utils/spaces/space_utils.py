@@ -1,9 +1,12 @@
+from typing import Any, List, Optional, Union
+
 import gymnasium as gym
 from gymnasium.spaces import Tuple, Dict
 import numpy as np
-from ray.rllib.utils.annotations import DeveloperAPI
 import tree  # pip install dm_tree
-from typing import Any, List, Optional, Union
+
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.numpy import one_hot
 
 
 @DeveloperAPI
@@ -97,9 +100,11 @@ def get_base_struct_from_space(space):
 def get_dummy_batch_for_space(
     space: gym.Space,
     batch_size: int = 32,
+    *,
     fill_value: Union[float, int, str] = 0.0,
     time_size: Optional[int] = None,
     time_major: bool = False,
+    one_hot_discrete: bool = False,
 ) -> np.ndarray:
     """Returns batched dummy data (using `batch_size`) for the given `space`.
 
@@ -118,6 +123,8 @@ def get_dummy_batch_for_space(
         time_major: If True AND `time_size` is not None, return batch
             as shape [T x B x ...], otherwise as [B x T x ...]. If `time_size`
             if None, ignore this setting and return [B x ...].
+        one_hot_discrete: Whether to one-hot discrete- or multi-discrete space
+            components.
 
     Returns:
         The dummy batch of size `bqtch_size` matching the given space.
@@ -125,18 +132,40 @@ def get_dummy_batch_for_space(
     # Complex spaces. Perform recursive calls of this function.
     if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
         return tree.map_structure(
-            lambda s: get_dummy_batch_for_space(s, batch_size, fill_value),
+            lambda s: get_dummy_batch_for_space(s, batch_size, fill_value=fill_value),
             get_base_struct_from_space(space),
         )
-    # Primivite spaces: Box, Discrete, MultiDiscrete.
+
     # Random values: Use gym's sample() method.
-    elif fill_value == "random":
+    if fill_value == "random":
+        # Determine, which function to use for sampling.
+        if (
+                one_hot_discrete
+                and isinstance(space, gym.spaces.Discrete)
+        ):
+            def sample_fn():
+                return one_hot(space.sample(), depth=space.n)
+
+        elif (
+                one_hot_discrete
+                and isinstance(space, gym.spaces.MultiDiscrete)
+        ):
+            def sample_fn():
+                return np.concatenate(
+                    [
+                        one_hot(s, depth=n) for s, n in zip(space.sample(), space.n_vec)
+                    ]
+                )
+        else:
+            sample_fn = space.sample
+
+        # Perform the sampling into the correct final shape.
         if time_size is not None:
             assert batch_size > 0 and time_size > 0
             if time_major:
                 return np.array(
                     [
-                        [space.sample() for _ in range(batch_size)]
+                        [sample_fn() for _ in range(batch_size)]
                         for t in range(time_size)
                     ],
                     dtype=space.dtype,
@@ -144,20 +173,21 @@ def get_dummy_batch_for_space(
             else:
                 return np.array(
                     [
-                        [space.sample() for t in range(time_size)]
+                        [sample_fn() for t in range(time_size)]
                         for _ in range(batch_size)
                     ],
                     dtype=space.dtype,
                 )
         else:
             return np.array(
-                [space.sample() for _ in range(batch_size)]
+                [sample_fn() for _ in range(batch_size)]
                 if batch_size > 0
-                else space.sample(),
+                else sample_fn(),
                 dtype=space.dtype,
             )
     # Fill value given: Use np.full.
     else:
+        # Determine the output shape depending on batch and time dimensions.
         if time_size is not None:
             assert batch_size > 0 and time_size > 0
             if time_major:
@@ -166,8 +196,17 @@ def get_dummy_batch_for_space(
                 shape = [batch_size, time_size]
         else:
             shape = [batch_size] if batch_size > 0 else []
+
+        # For one-hot and discrete spaces, need to flatten the last dim.
+        if one_hot_discrete and isinstance(space, gym.spaces.Discrete):
+            space_shape = (space.n,)
+        elif one_hot_discrete and isinstance(space, gym.spaces.MultiDiscrete):
+            space_shape = (sum(space.n_vec),)
+        else:
+            space_shape = space.shape
+
         return np.full(
-            shape + list(space.shape), fill_value=fill_value, dtype=space.dtype
+            shape + list(space_shape), fill_value=fill_value, dtype=space.dtype
         )
 
 

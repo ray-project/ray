@@ -560,7 +560,9 @@ class SingleAgentEpisode:
         return self.actions[slice_]
 
     def get_rewards(
-        self, indices: Optional[Union[int, List[int], slice]] = None
+        self,
+        indices: Optional[Union[int, List[int], slice]] = None,
+        fill: Optional[float] = None,
     ) -> Any:
         if indices is None:
             slice_ = slice(self._len_lookback_buffer, None)
