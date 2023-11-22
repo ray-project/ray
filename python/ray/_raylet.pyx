@@ -4101,6 +4101,7 @@ cdef class CoreWorker:
                                          worker.current_session_and_job)
         else:
             return ray.actor.ActorHandle(language, actor_id,
+                                         {},  # method is_generator
                                          {},  # method decorators
                                          {},  # method signatures
                                          {},  # method num_returns

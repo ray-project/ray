@@ -1100,6 +1100,8 @@ class ActorHandle:
     Attributes:
         _ray_actor_language: The actor language.
         _ray_actor_id: Actor ID.
+        _ray_method_is_generator: Map of method name -> if it is a generator
+            method.
         _ray_method_decorators: Optional decorators for the function
             invocation. This can be used to change the behavior on the
             invocation side, whereas a regular decorator can be used to change
@@ -1123,7 +1125,7 @@ class ActorHandle:
         self,
         language,
         actor_id,
-        method_is_generator,
+        method_is_generator: Dict[str, bool],
         method_decorators,
         method_signatures,
         method_num_returns: Dict[str, int],
