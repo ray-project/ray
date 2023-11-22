@@ -33,7 +33,7 @@ The default value for ``parallelism`` is decided based on the following heuristi
 1. Start with the default parallelism of 200. You can overwrite this by setting :class:`DataContext.min_parallelism <ray.data.context.DataContext>`.
 2. Min block size (default=1 MiB). If the parallelism would make blocks smaller than this threshold, the parallelism is reduced to avoid the overhead of tiny blocks. This can be overridden by setting :class:`DataContext.target_min_block_size <ray.data.context.DataContext>` (bytes).
 3. Max block size (default=128 MiB). If the parallelism would make blocks larger than this threshold, the parallelism is increased to avoid OOMs during processing. This can be overridden by setting :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` (bytes).
-4. Available CPUs. If the parallelism cannot make use of all the available CPUs in the cluster, the parallelism is increased until it can. Ray Data chooses read tasks be at least 2x the number of available CPUs.
+4. Available CPUs. If the parallelism cannot make use of all the available CPUs in the cluster, the parallelism is increased until it can. Ray Data chooses read tasks to be at least 2x the number of available CPUs.
 
 Occasionally, it's advantageous to manually tune the parallelism to optimize the application.
 For example, the following code will batch multiple files into the same read task to avoid creating blocks that are too large.
@@ -103,7 +103,7 @@ Here's an example where we manually specify ``parallelism=1``, but the one task 
 Currently, Ray Data can assign at most one read task per input file.
 Thus, if the number of input files is smaller than ``parallelism``, the number of read tasks is capped to the number of input files.
 To ensure that downstream transforms can still execute with the desired parallelism, Ray Data will split the read tasks' outputs into a total of ``parallelism`` blocks and disable fusing with the downstream transform.
-In other words, the read tasks' output blocks are materialized to Ray's object store before any map stage executes.
+In other words, each read task's output blocks are materialized to Ray's object store before the consuming map task executes.
 For example, in the following code, we will execute :func:`~ray.data.read_csv` with only one task, but its output will get split into 4 blocks before executing the :func:`~ray.data.Dataset.map`:
 
 .. testcode::
