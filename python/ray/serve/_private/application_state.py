@@ -83,6 +83,7 @@ class ApplicationTargetState:
       - None if a config was deployed but the app hasn't finished
         building yet
       - An empty dict if the app is deleting
+    target_capacity: The target_capacity to apply to the application.
     code_version: Code version of all deployments in target state. None
         if application was deployed through serve.run
     config: application config deployed by user. None if application was
@@ -91,6 +92,7 @@ class ApplicationTargetState:
     """
 
     deployment_infos: Optional[Dict[str, DeploymentInfo]]
+    target_capacity: Optional[float]
     code_version: Optional[str]
     config: Optional[ServeApplicationSchema]
     deleting: bool
@@ -135,6 +137,7 @@ class ApplicationState:
         # target deployments are, so set deployment_infos=None
         self._target_state: ApplicationTargetState = ApplicationTargetState(
             deployment_infos=None,
+            target_capacity=None,
             code_version=None,
             config=None,
             deleting=False,
@@ -187,6 +190,7 @@ class ApplicationState:
         )
         self._set_target_state(
             checkpoint_data.deployment_infos,
+            checkpoint_data.target_capacity,
             checkpoint_data.code_version,
             checkpoint_data.config,
             checkpoint_data.deleting,
@@ -195,6 +199,7 @@ class ApplicationState:
     def _set_target_state(
         self,
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
+        target_capacity: Optional[float],
         code_version: str,
         target_config: Optional[ServeApplicationSchema],
         deleting: bool = False,
@@ -222,7 +227,7 @@ class ApplicationState:
                     self._ingress_deployment_name = name
 
         target_state = ApplicationTargetState(
-            deployment_infos, code_version, target_config, deleting
+            deployment_infos, target_capacity, code_version, target_config, deleting
         )
 
         # Checkpoint ahead, so that if the controller crashes before we
@@ -238,6 +243,7 @@ class ApplicationState:
         """Updates only the target deployment infos."""
         self._set_target_state(
             deployment_infos=deployment_infos,
+            target_capacity=self._target_state.target_capacity,
             code_version=self._target_state.code_version,
             target_config=self._target_state.config,
         )
@@ -246,6 +252,7 @@ class ApplicationState:
         """Updates only the target config."""
         self._set_target_state(
             deployment_infos=self._target_state.deployment_infos,
+            target_capacity=self._target_state.target_capacity,
             code_version=self._target_state.code_version,
             target_config=target_config,
         )
@@ -255,7 +262,7 @@ class ApplicationState:
 
         Wipes the target deployment infos, code version, and config.
         """
-        self._set_target_state(dict(), None, None, True)
+        self._set_target_state(dict(), None, None, None, True)
 
     def _delete_deployment(self, name):
         id = EndpointTag(name, self._name)
@@ -329,6 +336,7 @@ class ApplicationState:
 
         self._set_target_state(
             deployment_infos=deployment_infos,
+            target_capacity=None,
             code_version=None,
             target_config=None,
         )
@@ -360,6 +368,7 @@ class ApplicationState:
             except (TypeError, ValueError, RayServeException):
                 self._set_target_state(
                     deployment_infos=None,
+                    target_capacity=self._target_state.target_capacity,
                     code_version=None,
                     target_config=self._target_state.config,
                 )
@@ -369,6 +378,7 @@ class ApplicationState:
             except Exception:
                 self._set_target_state(
                     deployment_infos=None,
+                    target_capacity=self._target_state.target_capacity,
                     code_version=None,
                     target_config=self._target_state.config,
                 )
@@ -391,6 +401,7 @@ class ApplicationState:
             # Halt reconciliation of target deployments
             self._set_target_state(
                 deployment_infos=None,
+                target_capacity=self._target_state.target_capacity,
                 code_version=None,
                 target_config=self._target_state.config,
             )
@@ -487,19 +498,20 @@ class ApplicationState:
             )
             return ApplicationStatus.RUNNING, ""
 
-    def _reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:
+    def _reconcile_build_app_task(self) -> Tuple[Optional[Dict[str, DeploymentInfo]], Optional[float], BuildAppStatus, str]:
         """If necessary, reconcile the in-progress build task.
 
         Returns:
-            Deploy arguments (Dict[str, DeploymentInfo]):
+            Deploy arguments:
                 The deploy arguments returned from the build app task
                 and their code version.
-            Status (BuildAppStatus):
+            Target capacity: The target_capacity to apply to the application.
+            Status:
                 NO_TASK_IN_PROGRESS: There is no build task to reconcile.
                 SUCCEEDED: Task finished successfully.
                 FAILED: An error occurred during execution of build app task
                 IN_PROGRESS: Task hasn't finished yet.
-            Error message (str):
+            Error message:
                 Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
         """
         if (
@@ -507,20 +519,21 @@ class ApplicationState:
             or self._build_app_task_info is None
             or self._build_app_task_info.finished
         ):
-            return None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
+            return None, None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
 
         if not check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
-            return None, BuildAppStatus.IN_PROGRESS, ""
+            return None, None, BuildAppStatus.IN_PROGRESS, ""
 
         # Retrieve build app task result
         self._build_app_task_info.finished = True
         try:
-            args, err = ray.get(self._build_app_task_info.obj_ref)
+            args, target_capacity, err = ray.get(self._build_app_task_info.obj_ref)
             if err is None:
                 logger.info(f"Built application '{self._name}' successfully.")
             else:
                 return (
                     None,
+                    target_capacity,
                     BuildAppStatus.FAILED,
                     (f"Deploying app '{self._name}' failed with " f"exception:\n{err}"),
                 )
@@ -529,13 +542,13 @@ class ApplicationState:
                 f"Runtime env setup for app '{self._name}' failed:\n"
                 + traceback.format_exc()
             )
-            return None, BuildAppStatus.FAILED, error_msg
+            return None, target_capacity, BuildAppStatus.FAILED, error_msg
         except Exception:
             error_msg = (
                 f"Unexpected error occured while deploying application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return None, BuildAppStatus.FAILED, error_msg
+            return None, target_capacity, BuildAppStatus.FAILED, error_msg
 
         # Convert serialized deployment args (returned by build app task)
         # to deployment infos and apply option overrides from config
@@ -550,15 +563,15 @@ class ApplicationState:
                 self._name, deployment_infos, self._target_state.config
             )
             self._route_prefix, self._docs_path = self._check_routes(overrided_infos)
-            return overrided_infos, BuildAppStatus.SUCCEEDED, ""
+            return overrided_infos, target_capacity, BuildAppStatus.SUCCEEDED, ""
         except (TypeError, ValueError, RayServeException):
-            return None, BuildAppStatus.FAILED, traceback.format_exc()
+            return None, target_capacity, BuildAppStatus.FAILED, traceback.format_exc()
         except Exception:
             error_msg = (
                 f"Unexpected error occured while applying config for application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return None, BuildAppStatus.FAILED, error_msg
+            return None, target_capacity, BuildAppStatus.FAILED, error_msg
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
@@ -657,10 +670,11 @@ class ApplicationState:
             deleted.
         """
 
-        infos, task_status, msg = self._reconcile_build_app_task()
+        infos, target_capacity, task_status, msg = self._reconcile_build_app_task()
         if task_status == BuildAppStatus.SUCCEEDED:
             self._set_target_state(
                 deployment_infos=infos,
+                target_capacity=target_capacity,
                 code_version=self._build_app_task_info.code_version,
                 target_config=self._target_state.config,
             )
@@ -948,11 +962,11 @@ class ApplicationStateManager:
 @ray.remote(num_cpus=0, max_calls=1)
 def build_serve_application(
     import_path: str,
-    config_deployments: List[str],
     code_version: str,
     name: str,
     args: Dict,
-) -> Tuple[List[Dict], Optional[str]]:
+    target_capacity: Optional[float],
+) -> Tuple[List[Dict], Optional[float], Optional[str]]:
     """Import and build a Serve application.
 
     Args:
@@ -965,12 +979,12 @@ def build_serve_application(
         name: application name. If specified, application will be deployed
             without removing existing applications.
         args: Arguments to be passed to the application builder.
-        logging_config: The application logging config, if deployment logging
-            config is not set, application logging config will be applied to the
-            deployment logging config.
+        target_capacity: The target capacity to apply to this Serve
+            application.
     Returns:
         Deploy arguments: a list of deployment arguments if application
             was built successfully, otherwise None.
+        Target capacity: the same target_capacity that was passed in.
         Error message: a string if an error was raised, otherwise None.
     """
     try:
@@ -999,18 +1013,17 @@ def build_serve_application(
                     docs_path=deployment._docs_path,
                 )
             )
-        return deploy_args_list, None
+        return deploy_args_list, target_capacity, None
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
         logger.info("Existing config deployment request terminated.")
-        return None, None
+        return None, target_capacity, None
     except Exception:
-        return None, traceback.format_exc()
+        return None, target_capacity, traceback.format_exc()
 
 
 def override_deployment_info(
-    app_name: str,
     deployment_infos: Dict[str, DeploymentInfo],
     override_config: Optional[ServeApplicationSchema],
 ) -> Dict[str, DeploymentInfo]:
