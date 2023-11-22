@@ -513,7 +513,9 @@ class SingleAgentEpisode:
         self,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
+        index_0: Optional[int] = None,
         fill: Optional[float] = None,
+
     ) -> Any:
         """Returns individual observations or batched ranges thereof from this episode.
 

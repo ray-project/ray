@@ -18,13 +18,13 @@ class TestLookbackBuffer(unittest.TestCase):
         ])
     })
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init()
+    #@classmethod
+    #def setUpClass(cls) -> None:
+    #    ray.init()
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        ray.shutdown()
+    #@classmethod
+    #def tearDownClass(cls) -> None:
+    #    ray.shutdown()
 
     def test_adding(self):
         buffer = LookbackBuffer(data=[0, 1, 2, 3])
@@ -87,7 +87,7 @@ class TestLookbackBuffer(unittest.TestCase):
         # List of positive indices (do NOT include lookback buffer).
         check(buffer.get([1, 0, 2]), [3, 2, 4])
         # Slices.
-        # Type: [None|0:...]
+        # Type: [(None|0):...]
         check(buffer.get(slice(None, None)), [2, 3, 4])
         check(buffer.get(slice(None, 2)), [2, 3])
         check(buffer.get(slice(0, 2)), [2, 3])

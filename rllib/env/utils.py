@@ -231,7 +231,7 @@ class LookbackBuffer:
             or (isinstance(slice_.stop, int) and slice_.stop >= 0)
         ):
             slice_ = slice(
-                self.lookback + (slice_.start or 0) if slice_.start is None or slice_.start >= 0 else (len(self) + slice_.start),
+                self.lookback + ((slice_.start or 0) if slice_.start is None or slice_.start >= 0 else (len(self) + slice_.start)),
                 self.lookback + ((len(self) + (slice_.stop or 0)) if slice_.stop is None or slice_.stop < 0 else slice_.stop),
             )
         # Include lookback buffer.
