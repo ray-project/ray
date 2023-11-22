@@ -59,7 +59,7 @@ For example, the following code will batch multiple files into the same read tas
     )
 
 But suppose that you knew that you wanted to read all 16 files in parallel.
-This could, for example, because you know that additional CPUs should get added to the cluster by the autoscaler or because you want the downstream stage to transform each file's contents in parallel.
+This could be, for example, because you know that additional CPUs should get added to the cluster by the autoscaler or because you want the downstream stage to transform each file's contents in parallel.
 You can get this behavior by setting the ``parallelism`` parameter.
 Notice how the number of output blocks is equal to ``parallelism`` in the following code:
 
