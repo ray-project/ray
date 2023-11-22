@@ -19,7 +19,7 @@ to :term:`blocks <Block>`. Each block contains a disjoint subset of rows, and Ra
 loads and transforms these blocks in parallel.
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
-The :class:`Dataset <ray.data.Dataset>` is the user-facing Python object
+The :class:`~ray.data.Dataset` is the user-facing Python object
 (usually held in the driver), while materialized blocks are stored as objects in Ray's
 shared-memory :ref:`object store <objects-in-ray>`.
 
