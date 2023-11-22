@@ -244,7 +244,10 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
 
                 # Call user-defined destructor if defined.
                 if hasattr(cls, "__del__"):
-                    cls.__del__(self)
+                    if inspect.iscoroutinefunction(cls.__del__):
+                        await cls.__del__(self)
+                    else:
+                        cls.__del__(self)
 
         ASGIIngressWrapper.__name__ = cls.__name__
         if hasattr(frozen_app, "docs_url"):
