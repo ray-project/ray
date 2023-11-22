@@ -460,7 +460,6 @@ control over their native Lightning code.
                 max_epochs=10,
                 accelerator="gpu",
                 log_every_n_steps=100,
-                logger=CSVLogger("./logs"),
             )
 
             # [4] Build datasets on the head node
@@ -517,7 +516,6 @@ control over their native Lightning code.
                 trainer = pl.Trainer(
                     max_epochs=10,
                     log_every_n_steps=100,
-                    logger=CSVLogger("./logs"),
                     # New configurations below
                     devices="auto",
                     accelerator="auto",
