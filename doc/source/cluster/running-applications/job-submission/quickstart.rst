@@ -12,7 +12,7 @@ To use the Jobs API programmatically with a Python SDK instead of a CLI, see :re
 Setup
 -----
 
-Ray Jobs is available in versions 1.9+ and requires a full installation of Ray. You can do install Ray by running:
+Ray Jobs is available in versions 1.9+ and requires a full installation of Ray. You can install Ray by running:
 
 .. code-block:: shell
 
