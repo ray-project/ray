@@ -23,5 +23,4 @@ pip install -e ".[development]"
 #cd ../a3c
 #pip install -r requirements.txt && pip install -e ".[development]"
 
-
 cd ../../../
