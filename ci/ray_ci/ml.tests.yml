@@ -10,4 +10,3 @@ flaky_tests:
   - //doc/source/train/examples/pytorch:convert_existing_pytorch_code_to_ray_train
   - //doc/source/tune/examples:tune-pytorch-cifar
   # gpu tests
-  - //python/ray/train:test_torch_lightning_train 
