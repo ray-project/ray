@@ -15,7 +15,12 @@ from ray.rllib.utils.error import (
     EnvError,
 )
 from ray.rllib.utils.gym import check_old_gym_env
-from ray.rllib.utils.spaces.space_utils import batch, get_dummy_batch_for_space
+from ray.rllib.utils.numpy import one_hot, one_hot_multidiscrete
+from ray.rllib.utils.spaces.space_utils import (
+    batch,
+    get_dummy_batch_for_space,
+    get_base_struct_from_space,
+)
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
@@ -173,7 +178,7 @@ def _gym_env_creator(
     return env
 
 
-class LookbackBuffer:
+class BufferWithLookback:
     def __init__(
         self,
         data: Optional[List] = None,
@@ -184,6 +189,7 @@ class LookbackBuffer:
         self.lookback = lookback
         self.finalized = False
         self.space = space
+        self.space_struct = get_base_struct_from_space(self.space)
 
     def add(self, item):
         if self.finalized:
@@ -195,25 +201,31 @@ class LookbackBuffer:
             self.data = batch(self.data)
             self.finalized = True
 
-    def get(self, idx: Optional[Union[int, slice, List[int]]] = None, fill=None):
+    def get(
+        self,
+        indices: Optional[Union[int, slice, List[int]]] = None,
+        neg_indices_left_of_zero: bool = False,
+        fill: Optional[float] = None,
+        one_hot_discrete: bool = False,
+    ):
         if fill is not None and self.space is None:
             raise ValueError(
                 "Cannot use `fill` argument in `LookbackBuffer.get()` if a "
                 "gym.Space was NOT provided during construction!"
             )
 
-        if idx is None:
+        if indices is None:
             return self._get_all_data()
-        elif isinstance(idx, slice):
-            return self._get_slice(idx, fill)
-        elif isinstance(idx, list):
-            data = [self._get_int_index(i) for i in idx]
+        elif isinstance(indices, slice):
+            return self._get_slice(indices, fill)
+        elif isinstance(indices, list):
+            data = [self._get_int_index(i) for i in indices]
             if self.finalized:
                 data = batch(data)
             return data
         else:
-            assert isinstance(idx, int)
-            return self._get_int_index(idx, fill=fill)
+            assert isinstance(indices, int)
+            return self._get_int_index(indices, fill=fill)
 
     def __len__(self):
         return len(self.data) - self.lookback
@@ -221,57 +233,130 @@ class LookbackBuffer:
     def _get_all_data(self):
         return self._get_slice(slice(None, None))
 
-    def _get_slice(self, slice_, fill=None):
-        # Do NOT include lookback buffer, if
-        # - start or stop zero or positive, e.g. [1:-2], [3, 5], [:4], [0:3], [0:-10]
-        # - start is None, e.g. [:-3] [:3], [:]
-        if (
-            slice_.start is None
-            or slice_.start >= 0
-            or (isinstance(slice_.stop, int) and slice_.stop >= 0)
-        ):
-            slice_ = slice(
-                self.lookback + ((slice_.start or 0) if slice_.start is None or slice_.start >= 0 else (len(self) + slice_.start)),
-                self.lookback + ((len(self) + (slice_.stop or 0)) if slice_.stop is None or slice_.stop < 0 else slice_.stop),
-            )
-        # Include lookback buffer.
-        else:
-            slice_ = slice(slice_.start or 0, slice_.stop or len(self.data))
+    def _get_slice(self, slice_, fill=None, neg_indices_left_of_zero=False, one_hot_discrete=False):
+        fill_left_count = fill_right_count = 0
 
+        # Re-interpret slice bounds as absolute positions (>=0) within our
+        # internal data.
+        start = slice_.start
+        stop = slice_.stop
+
+        # Start is None -> Exclude lookback buffer.
+        if start is None:
+            start = self.lookback
+        # Start is negative.
+        elif start < 0:
+            # `neg_indices_left_of_zero=True` -> User wants to index into the lookback
+            # range.
+            if neg_indices_left_of_zero:
+                start = self.lookback + start
+            # Interpret index as counting "from end".
+            else:
+                start = len(self.data) + start
+        # Start is 0 or positive -> timestep right after lookback is interpreted as 0.
+        else:
+            start = self.lookback + start
+
+        # Stop is None -> Set stop to very last index + 1 of our internal data.
+        if stop is None:
+            stop = len(self.data)
+        # Stop is negative.
+        elif stop < 0:
+            # `neg_indices_left_of_zero=True` -> User wants to index into the lookback
+            # range. Set to 0 (beginning of lookback buffer) if result is a negative
+            # index.
+            if neg_indices_left_of_zero:
+                stop = self.lookback + stop
+            # Interpret index as counting "from end". Set to 0 (beginning of actual
+            # episode) if result is a negative index.
+            else:
+                stop = len(self.data) + stop
+        # Stop is positive -> Add lookback range to it.
+        else:
+            stop = self.lookback + stop
+
+        # Both start and stop are on left side.
+        if start < 0 and stop < 0:
+            fill_left_count = abs(start - stop)
+            fill_right_count = 0
+            start = stop = 0
+        # Both start and stop are on right side.
+        elif start >= len(self.data) and stop >= len(self.data):
+            fill_right_count = abs(start - stop)
+            fill_left_count = 0
+            start = stop = len(self.data)
+        # Set to 0 (beginning of actual episode) if result is a negative index.
+        elif start < 0:
+            fill_left_count = - start
+            start = 0
+        elif stop >= len(self.data):
+            fill_right_count = stop - len(self.data)
+            stop = len(self.data)
+
+        assert start >= 0 and stop >= 0, (start, stop)
+        assert start <= len(self.data) and stop <= len(self.data), (start, stop)
+        slice_ = slice(start, stop, slice_.step)
+
+        # Perform the actual slice.
         if self.finalized:
             data_slice = tree.map_structure(lambda s: s[slice_], self.data)
         else:
             data_slice = self.data[slice_]
 
         # Data is shorter than the range requested -> Fill the rest with `fill` data.
-        if fill is not None:
-            len_ = (
-                len(tree.flatten(data_slice)[0]) if self.finalized else len(data_slice)
-            )
-            if len_ < (slice_.stop - slice_.start):
-                fill_count = (slice_.stop - slice_.start) - len_
-                if self.finalized:
+        if fill is not None and (fill_right_count > 0 or fill_left_count > 0):
+            if self.finalized:
+                if fill_left_count:
                     fill_batch = get_dummy_batch_for_space(
                         self.space,
                         fill_value=fill,
-                        batch_size=fill_count,
+                        batch_size=fill_left_count,
                     )
                     data_slice = tree.map_structure(
-                        lambda s0, s: np.concatenate([s0, s]),
-                        fill_batch,
-                        data_slice,
+                        lambda s0, s: np.concatenate([s0, s]), fill_batch, data_slice
                     )
-                else:
-                    data_slice = (
-                        [
-                            get_dummy_batch_for_space(
-                                self.space,
-                                fill_value=fill,
-                                batch_size=0,
-                            )
-                        ] * fill_count
-                        + data_slice
+                if fill_right_count:
+                    fill_batch = get_dummy_batch_for_space(
+                        self.space,
+                        fill_value=fill,
+                        batch_size=fill_right_count,
                     )
+                    data_slice = tree.map_structure(
+                        lambda s0, s: np.concatenate([s, s0]), fill_batch, data_slice
+                    )
+
+            else:
+                fill_batch = [
+                    get_dummy_batch_for_space(
+                        self.space,
+                        fill_value=fill,
+                        batch_size=0,
+                    )
+                ]
+                data_slice = (
+                    fill_batch * fill_left_count
+                    + data_slice
+                    + fill_batch * fill_right_count
+                )
+
+        # Convert discrete/multi-discrete components to one-hot vectors, if required.
+        if one_hot_discrete:
+
+            def _convert(data, space):
+                if isinstance(space, gym.spaces.Discrete):
+                    return one_hot(data, depth=space.n)
+                elif isinstance(space, gym.spaces.MultiDiscrete):
+                    return one_hot_multidiscrete(data, depths=space.nvec)
+                return data
+
+            if self.finalized:
+                data_slice = tree.map_structure(_convert, data_slice, self.space_struct)
+            else:
+                data_slice = [
+                    tree.map_structure(_convert, dslice, self.space_struct)
+                    for dslice in data_slice
+                ]
+
         return data_slice
 
     def _get_int_index(self, idx: int, fill=None):

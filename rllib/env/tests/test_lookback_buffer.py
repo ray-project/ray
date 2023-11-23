@@ -3,12 +3,11 @@ import unittest
 import gymnasium as gym
 import numpy as np
 
-import ray
-from ray.rllib.env.utils import LookbackBuffer
+from ray.rllib.env.utils import BufferWithLookback
 from ray.rllib.utils.test_utils import check
 
 
-class TestLookbackBuffer(unittest.TestCase):
+class TestBufferWithLookback(unittest.TestCase):
     space = gym.spaces.Dict({
         "a": gym.spaces.Discrete(4),
         "b": gym.spaces.Box(-1.0, 1.0, (2, 3)),
@@ -19,7 +18,7 @@ class TestLookbackBuffer(unittest.TestCase):
     })
 
     def test_adding(self):
-        buffer = LookbackBuffer(data=[0, 1, 2, 3])
+        buffer = BufferWithLookback(data=[0, 1, 2, 3])
         self.assertTrue(len(buffer), 4)
         buffer.add(4)
         self.assertTrue(len(buffer), 5)
@@ -27,7 +26,7 @@ class TestLookbackBuffer(unittest.TestCase):
         self.assertTrue(len(buffer), 6)
 
     def test_complex_structs(self):
-        buffer = LookbackBuffer(data=[
+        buffer = BufferWithLookback(data=[
             self.space.sample() for _ in range(4)
         ])
         self.assertTrue(len(buffer), 4)
@@ -45,7 +44,7 @@ class TestLookbackBuffer(unittest.TestCase):
         self.assertTrue(isinstance(buffer.data["c"][1], np.ndarray))
 
     def test_lookback(self):
-        buffer = LookbackBuffer(data=[0, 1, 2, 3], lookback=2)
+        buffer = BufferWithLookback(data=[0, 1, 2, 3], lookback=2)
         self.assertTrue(len(buffer), 2)
         data_no_lookback = buffer.get()
         check(data_no_lookback, [2, 3])
@@ -57,7 +56,7 @@ class TestLookbackBuffer(unittest.TestCase):
         check(data_no_lookback, [2, 3, 4, 5])
 
     def test_get_with_lookback_simple(self):
-        buffer = LookbackBuffer(data=[0, 1, 2, 3, 4], lookback=2)
+        buffer = BufferWithLookback(data=[0, 1, 2, 3, 4], lookback=2)
         self.assertTrue(len(buffer), 3)
 
         # No args: Expect all contents excluding lookback buffer.
@@ -119,14 +118,28 @@ class TestLookbackBuffer(unittest.TestCase):
         check(data, [3, 2, 4])
 
     def test_get_with_lookback_and_fill(self):
-        buffer = LookbackBuffer(
+        buffer = BufferWithLookback(
             data=[0, 1, 2, 3, 4, 5],
             lookback=3,
             space=gym.spaces.Discrete(6),
         )
         self.assertTrue(len(buffer), 3)
         # With `fill` argument.
-        check(buffer.get(slice(-8, None), fill=0), [10, 10, 0, 1, 2, 3, 4, 5])
+        # Left fill.
+        check(buffer.get(slice(-8, None), fill=10), [10, 10, 0, 1, 2, 3, 4, 5])
+        check(buffer.get(slice(-10, None), fill=11), [11, 11, 11, 11, 0, 1, 2, 3, 4, 5])
+        # Both start stop on left side.
+        check(buffer.get(slice(-10, -9), fill=0), [0])
+        check(buffer.get(slice(-20, -15), fill=0), [0, 0, 0, 0, 0])
+        check(buffer.get(slice(-1001, -1000), fill=6), [6])
+        # Both start stop on right side.
+        check(buffer.get(slice(10, 15), fill=0), [0, 0, 0, 0, 0])
+        check(buffer.get(slice(15, 17), fill=0), [0, 0])
+        check(buffer.get(slice(1000, 1001), fill=6), [6])
+        # Right fill.
+        check(buffer.get(slice(2, 8), fill=12), [5, 12, 12, 12, 12, 12])
+        check(buffer.get(slice(1, 7), fill=13), [4, 5, 13, 13, 13, 13])
+        check(buffer.get(slice(1, 5), fill=14), [4, 5, 14, 14])
 
 
 
