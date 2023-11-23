@@ -83,21 +83,20 @@ class NPUAcceleratorManager(AcceleratorManager):
     def validate_resource_request_quantity(
         quantity: float,
     ) -> Tuple[bool, Optional[str]]:
-        if quantity > 1:
-            logger.warning(
-                "The task is requesting multiple Ascend NPUs. "
-                "If you need to build an HCCL network for NPU interconnection, "
-                "please refer to the HCCL User Manual."
-            )
+        """Validate the resource request quantity of this accelerator resource.
+
+        If you request multiple Ascend NPUs. You need to build an HCCL network for
+        NPU interconnection, please refer to the HCCL User Manual.
+        """
         return (True, None)
 
     @staticmethod
     def set_current_process_visible_accelerator_ids(
-        visible_ascend_devices: List[str],
+        visible_npu_devices: List[str],
     ) -> None:
         if os.environ.get(NOSET_ASCEND_VISIBLE_DEVICES_ENV_VAR):
             return
 
         os.environ[
             NPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join([str(i) for i in visible_ascend_devices])
+        ] = ",".join([str(i) for i in visible_npu_devices])

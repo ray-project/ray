@@ -30,31 +30,29 @@ def test_ascend_npu_accelerator_manager_api():
     assert Accelerator.validate_resource_request_quantity(1) == (True, None)
 
 
-def test_visible_ascend_npu_type(shutdown_only):
+def test_visible_ascend_npu_type(monkeypatch, shutdown_only):
     with patch.object(
         Accelerator, "get_current_node_num_accelerators", return_value=4
     ), patch.object(
         Accelerator, "get_current_node_accelerator_type", return_value="Ascend910B"
     ):
-        os.environ["ASCEND_VISIBLE_DEVICES"] = "0,1,2"
+        monkeypatch.setenv("ASCEND_VISIBLE_DEVICES", "0,1,2")
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("NPU")
         assert manager.get_current_node_accelerator_type() == "Ascend910B"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
-def test_visible_ascend_npu_ids(shutdown_only):
+def test_visible_ascend_npu_ids(monkeypatch, shutdown_only):
     old_acl = sys.modules["acl"] if "acl" in sys.modules else None
     sys.modules["acl"] = __import__("mock_acl")
-
+    monkeypatch.setenv("ASCEND_VISIBLE_DEVICES", "0,1,2")
     with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=4):
 
-        os.environ["ASCEND_VISIBLE_DEVICES"] = "0,1,2"
         ray.init()
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("NPU")
         assert manager.get_current_node_num_accelerators() == 4
         assert manager.__name__ == "NPUAcceleratorManager"
         assert ray.available_resources()["NPU"] == 3
-        del os.environ["ASCEND_VISIBLE_DEVICES"]
 
     sys.modules["acl"] = old_acl
 
@@ -74,23 +72,21 @@ def test_acl_api_function(shutdown_only):
     sys.modules["acl"] = old_acl
 
 
-def test_get_current_process_visible_accelerator_ids():
-    os.environ["ASCEND_VISIBLE_DEVICES"] = "0,1,2"
+def test_get_current_process_visible_accelerator_ids(monkeypatch, shutdown_only):
+    monkeypatch.setenv("ASCEND_VISIBLE_DEVICES", "0,1,2")
     assert Accelerator.get_current_process_visible_accelerator_ids() == ["0", "1", "2"]
 
-    del os.environ["ASCEND_VISIBLE_DEVICES"]
+    monkeypatch.delenv("ASCEND_VISIBLE_DEVICES")
     assert Accelerator.get_current_process_visible_accelerator_ids() is None
 
-    os.environ["ASCEND_VISIBLE_DEVICES"] = ""
+    monkeypatch.setenv("ASCEND_VISIBLE_DEVICES", "")
     assert Accelerator.get_current_process_visible_accelerator_ids() == []
 
-    os.environ["ASCEND_VISIBLE_DEVICES"] = "NoDevFiles"
+    monkeypatch.setenv("ASCEND_VISIBLE_DEVICES", "NoDevFiles")
     assert Accelerator.get_current_process_visible_accelerator_ids() == []
 
-    del os.environ["ASCEND_VISIBLE_DEVICES"]
 
-
-def test_set_current_process_visible_accelerator_ids():
+def test_set_current_process_visible_accelerator_ids(shutdown_only):
     Accelerator.set_current_process_visible_accelerator_ids(["0"])
     assert os.environ["ASCEND_VISIBLE_DEVICES"] == "0"
 
@@ -100,17 +96,15 @@ def test_set_current_process_visible_accelerator_ids():
     Accelerator.set_current_process_visible_accelerator_ids(["0", "1", "2"])
     assert os.environ["ASCEND_VISIBLE_DEVICES"] == "0,1,2"
 
-    del os.environ["ASCEND_VISIBLE_DEVICES"]
-
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
-def test_auto_detected_more_than_visible(shutdown_only):
+def test_auto_detected_more_than_visible(monkeypatch, shutdown_only):
     old_acl = sys.modules["acl"] if "acl" in sys.modules else None
     sys.modules["acl"] = __import__("mock_acl")
 
     with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=4):
         # If more NPUs are detected than visible.
-        os.environ["ASCEND_VISIBLE_DEVICES"] = "0,1,2"
+        monkeypatch.setenv("ASCEND_VISIBLE_DEVICES", "0,1,2")
 
         ray.init()
         assert ray.available_resources()["NPU"] == 3
