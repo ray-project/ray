@@ -7,6 +7,7 @@ from ray.serve._private.common import (
     ApplicationStatusInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusTrigger,
     ReplicaName,
     RunningReplicaInfo,
     StatusOverview,
@@ -69,16 +70,28 @@ def test_is_replica_name():
 class TestDeploymentStatusInfo:
     def test_name_required(self):
         with pytest.raises(TypeError):
-            DeploymentStatusInfo(status=DeploymentStatus.HEALTHY)
+            DeploymentStatusInfo(
+                status=DeploymentStatus.HEALTHY,
+                status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            )
 
     def test_deployment_status_required(self):
         with pytest.raises(TypeError):
-            DeploymentStatusInfo(name="test_name")
+            DeploymentStatusInfo(
+                name="test_name",
+                status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            )
 
-    @pytest.mark.parametrize("status", list(DeploymentStatus))
-    def test_proto(self, status):
+    @pytest.mark.parametrize(
+        "status,status_trigger",
+        list(zip(list(DeploymentStatus), list(DeploymentStatusTrigger))),
+    )
+    def test_proto(self, status, status_trigger):
         deployment_status_info = DeploymentStatusInfo(
-            name="test_name", status=status, message="context about status"
+            name="test_name",
+            status=status,
+            status_trigger=status_trigger,
+            message="context about status",
         )
         serialized_proto = deployment_status_info.to_proto().SerializeToString()
         deserialized_proto = DeploymentStatusInfoProto.FromString(serialized_proto)
@@ -142,18 +155,42 @@ class TestStatusOverview:
         status_info_few_deployments = StatusOverview(
             app_status=self.get_valid_serve_application_status_info(),
             deployment_statuses=[
-                DeploymentStatusInfo(name="1", status=DeploymentStatus.HEALTHY),
-                DeploymentStatusInfo(name="2", status=DeploymentStatus.UNHEALTHY),
+                DeploymentStatusInfo(
+                    name="1",
+                    status=DeploymentStatus.HEALTHY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                ),
+                DeploymentStatusInfo(
+                    name="2",
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                ),
             ],
         )
 
         status_info_many_deployments = StatusOverview(
             app_status=self.get_valid_serve_application_status_info(),
             deployment_statuses=[
-                DeploymentStatusInfo(name="1", status=DeploymentStatus.HEALTHY),
-                DeploymentStatusInfo(name="2", status=DeploymentStatus.UNHEALTHY),
-                DeploymentStatusInfo(name="3", status=DeploymentStatus.UNHEALTHY),
-                DeploymentStatusInfo(name="4", status=DeploymentStatus.UPDATING),
+                DeploymentStatusInfo(
+                    name="1",
+                    status=DeploymentStatus.HEALTHY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                ),
+                DeploymentStatusInfo(
+                    name="2",
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                ),
+                DeploymentStatusInfo(
+                    name="3",
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                ),
+                DeploymentStatusInfo(
+                    name="4",
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                ),
             ],
         )
 
@@ -172,14 +209,19 @@ class TestStatusOverview:
                     name="name1",
                     status=DeploymentStatus.UPDATING,
                     message="deployment updating",
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
                 DeploymentStatusInfo(
-                    name="name2", status=DeploymentStatus.HEALTHY, message=""
+                    name="name2",
+                    status=DeploymentStatus.HEALTHY,
+                    message="",
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
                 DeploymentStatusInfo(
                     name="name3",
                     status=DeploymentStatus.UNHEALTHY,
                     message="this deployment is unhealthy",
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                 ),
             ],
         )

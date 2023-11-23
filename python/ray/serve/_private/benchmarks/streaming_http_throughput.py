@@ -18,7 +18,7 @@ class Downstream:
 
         self._tokens_per_request = tokens_per_request
 
-    def stream(self):
+    async def stream(self):
         for i in range(self._tokens_per_request):
             yield "hi"
 
