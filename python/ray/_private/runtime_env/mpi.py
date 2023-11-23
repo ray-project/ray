@@ -60,6 +60,9 @@ class MPIPlugin(RuntimeEnvPlugin):
 
     In the mpi worker with rank==0, it'll be the normal ray function or actor.
     For the worker with rank > 0, it'll just run `worker_func`.
+
+    ray.runtime_env.mpi_init must be called in the ray actors/tasks before any MPI
+    communication.
     """
 
     priority = 90
