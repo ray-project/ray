@@ -361,13 +361,6 @@ Ray Examples
 
         How To Use Tune With Optuna
 
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-        :link: /tune/examples/sigopt_example
-        :link-type: doc
-
-        How To Use Tune With SigOpt
-
     .. grid-item-card:: :bdg-warning:`Video`
         :class-item: gallery-item tuning serving
         :link: https://www.youtube.com/watch?v=UtH-CMpmxvI

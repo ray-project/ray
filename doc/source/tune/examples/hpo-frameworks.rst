@@ -48,11 +48,3 @@ on each of our integrations:
         .. button-ref:: optuna_example
 
             How To Use Tune With Optuna
-
-    .. grid-item-card::
-        :img-top: ../images/sigopt.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: sigopt_example
-
-            How To Use Tune With SigOpt

@@ -165,8 +165,6 @@ parts:
                     title: "BOHB Example"
                   - file: tune/examples/optuna_example
                     title: "Optuna Example"
-                  - file: tune/examples/sigopt_example
-                    title: "SigOpt Example"
               - file: tune/examples/other-examples
                 title: "Other Examples"
               - file: tune/examples/exercises

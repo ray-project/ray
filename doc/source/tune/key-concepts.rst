@@ -228,10 +228,6 @@ Here's an overview of all available search algorithms in Tune:
      - Optuna search algorithms
      - [`Optuna <https://optuna.org/>`__]
      - :doc:`/tune/examples/optuna_example`
-   * - :ref:`SigOptSearch <sigopt>`
-     - Closed source
-     - [`SigOpt <https://sigopt.com/>`__]
-     - :doc:`/tune/examples/includes/sigopt_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`,
     Tune Search Algorithms cannot affect or stop training processes.
