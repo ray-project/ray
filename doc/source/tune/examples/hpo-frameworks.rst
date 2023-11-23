@@ -42,14 +42,6 @@ on each of our integrations:
             How To Use Tune With TuneBOHB
 
     .. grid-item-card::
-        :img-top: ../images/nevergrad.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: nevergrad_example
-
-            How To Use Tune With Nevergrad
-
-    .. grid-item-card::
         :img-top: ../images/optuna.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 

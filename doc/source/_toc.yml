@@ -163,8 +163,6 @@ parts:
                     title: "Bayesopt Example"
                   - file: tune/examples/bohb_example
                     title: "BOHB Example"
-                  - file: tune/examples/nevergrad_example
-                    title: "Nevergrad Example"
                   - file: tune/examples/optuna_example
                     title: "Optuna Example"
                   - file: tune/examples/sigopt_example
