@@ -69,7 +69,7 @@ Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective 
         .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
 
 Learn more about the details of :ref:`Trainables here <trainable-docs>`
-and :ref:`have a look at our examples <tune-general-examples>`.
+and :doc:`have a look at our examples <examples/other-examples>`.
 Next, let's have a closer look at what the ``config`` dictionary is that you pass into your trainables.
 
 .. _tune-key-concepts-search-spaces:

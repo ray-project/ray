@@ -88,7 +88,6 @@ if os.getenv("FAST", False):
         "ray-core/scheduling/*",
         "ray-core/tasks/*",
         "ray-core/patterns/*",
-        "tune/examples/*",
     ]
 
 myst_enable_extensions = [

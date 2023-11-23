@@ -12,6 +12,23 @@ html {
 
   /* Transparent highlight color; default yellow is hard on the eyes */
   --pst-color-target: #FFFFFF00 !important;
+  --color-diff-delete-bg: rgba(212, 118, 22, 0.3);
+  --color-diff-insert-bg: rgba(56, 139, 253, 0.3);
+  --color-diff-nochange-bg: rgba(0, 0, 0, 0);
+}
+
+/* Pygments diff code cell line colors; match github colorblind theme */
+div.highlight > pre > span.gd {
+  background-color: var(--color-diff-delete-bg);
+  color: var(--pst-color-text-base) !important;
+}
+div.highlight > pre > span.gi {
+  background-color: var(--color-diff-insert-bg);
+  color: var(--pst-color-text-base) !important;
+}
+div.highlight > pre > span.w {
+  background-color: var(--color-diff-nochange-bg);
+  color: var(--pst-color-text-base) !important;
 }
 
 /* Hide the "Hide Search Matches" button (we aren't highlighting search terms anyway) */

@@ -220,7 +220,7 @@ See :ref:`data-ingest-torch`.
 
     .. testcode::
         :skipif: True
-        
+
         global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 
 
