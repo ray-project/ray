@@ -26,11 +26,12 @@ class Endpoint:
 
     def stream(self):
         for i in range(self._tokens_per_request):
+            # yield "OK".encode('utf-8')
             yield "OK"
 
     async def aio_stream(self):
         for i in range(self._tokens_per_request):
-            # await asyncio.sleep(0)
+            # yield "OK".encode('utf-8')
             yield "OK"
 
 
