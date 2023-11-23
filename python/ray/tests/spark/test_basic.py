@@ -368,7 +368,9 @@ class TestSparkLocalCluster:
                         return_value=self.spark,
                     ):
                         setup_ray_cluster(
-                            num_worker_nodes=1, autoscale=autoscale, is_global=True,
+                            num_worker_nodes=1,
+                            autoscale=autoscale,
+                            is_global=True,
                         )
                 except BaseException:
                     # For debugging testing failure.
@@ -404,7 +406,9 @@ class TestSparkLocalCluster:
                     "Ray on spark cluster"
                 ),
             ):
-                setup_ray_cluster(num_worker_nodes=1, autoscale=autoscale, is_global=True)
+                setup_ray_cluster(
+                    num_worker_nodes=1, autoscale=autoscale, is_global=True
+                )
 
         # shut down the cluster
         ray.util.spark.cluster_init._global_ray_cluster_cancel_event.set()

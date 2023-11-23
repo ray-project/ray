@@ -1274,8 +1274,9 @@ def setup_ray_cluster(
             object_store_memory_head_node
         )
 
-    with _active_ray_cluster_rwlock, \
-            modified_environ(RAY_ON_SPARK_GLOBAL_MODE=str(int(is_global))):
+    with _active_ray_cluster_rwlock, modified_environ(
+        RAY_ON_SPARK_GLOBAL_MODE=str(int(is_global))
+    ):
         cluster = _setup_ray_cluster(
             num_worker_nodes=num_worker_nodes,
             num_cpus_worker_node=num_cpus_worker_node,
