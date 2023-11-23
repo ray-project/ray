@@ -987,6 +987,9 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       last_log_time_ms_ = current_time_ms();
       if (status != nullptr) {
         RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
+        RAY_LOG(INFO) << "ryw Task failed: " << *status << ": " << spec.DebugString()
+                      << " proto " << spec.GetMessage().DebugString();
+
       } else {
         RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
       }
@@ -1018,6 +1021,10 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type) << " Fail immediately? "
                  << fail_immediately;
+  RAY_LOG(INFO) << "FailOrRetryPendingTask " << task_id << ", error " << error_type
+                << ", status " << *status << ", error info "
+                << (ray_error_info == nullptr ? "nullptr" : ray_error_info->DebugString())
+                << " fail_immediately " << fail_immediately;
   bool will_retry = false;
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(

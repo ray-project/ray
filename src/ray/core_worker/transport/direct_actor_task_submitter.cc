@@ -537,7 +537,12 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     bool fail_immediatedly = false;
     rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
-    {
+    if (status.ok()) {
+      // retryable user exception.
+      RAY_CHECK(reply.is_retryable_error());
+      error_type = rpc::ErrorType::TASK_EXECUTION_EXCEPTION;
+      error_info = gcs::GetRayErrorInfo(error_type, reply.task_execution_error());
+    } else {
       // push task failed due to network error. For example, actor is dead
       // and no process response for the push task.
       absl::MutexLock lock(&mu_);
@@ -568,11 +573,21 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         /*mark_task_object_failed*/ is_actor_dead,
         fail_immediatedly);
 
+    RAY_LOG(INFO) << "ryw HandlePushTaskReply " << error_type << error_info.DebugString()
+                  << status << is_actor_dead << reply.DebugString();
     if (!is_actor_dead && !will_retry) {
-      // No retry == actor is dead.
-      // If actor is not dead yet, wait for the grace period until we mark the
-      // return object as failed.
-      if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+      // Ran out of retries, last failure = either user exception or actor death.
+      if (status.ok()) {
+        // last failure = user exception, just complete it with failure.
+        RAY_CHECK(reply.is_retryable_error());
+        RAY_LOG(INFO) << "ryw out of retries User exception " << reply.DebugString();
+
+        GetTaskFinisherWithoutMu().CompletePendingTask(
+            task_id, reply, addr, reply.is_application_error());
+      }
+      // last failure = Actor death, but we still see the actor "alive" so we optionally
+      // wait for a grace period for the death info.
+      else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
         int64_t death_info_grace_period_ms =
             current_time_ms() +
             RayConfig::instance().timeout_ms_task_wait_for_death_info();

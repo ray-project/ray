@@ -259,6 +259,28 @@ class TaskCounter {
   int64_t num_tasks_running_ ABSL_GUARDED_BY(&mu_) = 0;
 };
 
+struct TaskToRetry {
+  /// Time when the task should be retried.
+  int64_t execution_time_ms;
+
+  /// The details of the task.
+  TaskSpecification task_spec;
+};
+
+/// Sorts TaskToRetry in descending order of the execution time.
+/// Priority queue naturally sorts elements in descending order,
+/// in order to have the tasks ordered by execution time in
+/// ascending order we use a comparator that sorts elements in
+/// descending order. Per docs "Priority queues are a type of container
+/// adaptors, specifically designed such that its first element is always
+/// the greatest of the elements it contains".
+class TaskToRetryDescComparator {
+ public:
+  bool operator()(const TaskToRetry &left, const TaskToRetry &right) {
+    return left.execution_time_ms > right.execution_time_ms;
+  }
+};
+
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
@@ -1431,10 +1453,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool *is_retryable_error,
       std::string *application_error);
 
-  /// Updates the task and submits it as a retry.
-  /// CHECK-fails if the submit fails.
-  void RetrySubmitTask(TaskSpecification task_spec);
-
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,
                                const ObjectID &object_id,
@@ -1753,6 +1771,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// The asio work to keep task_execution_service_ alive.
   boost::asio::io_service::work task_execution_service_work_;
+
+  // Queue of tasks to resubmit when the specified time passes.
+  std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
+      to_resubmit_ ABSL_GUARDED_BY(mutex_);
 
   /// Map of named actor registry. It doesn't need to hold a lock because
   /// local mode is single-threaded.
