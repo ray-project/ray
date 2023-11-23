@@ -27,7 +27,7 @@ For an overview of all datasets that have been running on your cluster, see the 
 * execution progress (measured in blocks)
 * execution state (running, failed, or finished)
 * dataset start/end time
-* dataset-level metrics (total bytes spilled for a dataset, total CPUs/GPUs used by a dataset, ...)
+* dataset-level metrics (e.g., sum of rows processed over all operators)
 
 .. image:: images/data-overview-table.png
    :align: center
@@ -36,6 +36,10 @@ For a more fine-grained overview, each dataset row in the table can also be expa
 
 .. image:: images/data-overview-table-expanded.png
    :align: center
+
+.. tip::
+
+   To evaluate a dataset-level metric where it is not appropriate to sum the values of all the individual operators, it may be more useful to look at the operator-level metrics of the last operator. For example, to calculate a dataset's thoroughput, use the "Rows Outputted" of the dataset's last operator, because the dataset-level metric will contain the sum of rows outputted over all operators.
 
 .. _Ray Dashboard Metrics:
 
