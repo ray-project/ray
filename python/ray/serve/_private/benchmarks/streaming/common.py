@@ -51,6 +51,8 @@ class Caller(Blackhole):
         self._batch_size = batch_size
         self._num_trials = num_trials
         self._trial_runtime = trial_runtime
+        self._durations = []
+
         # Switch off logging to minimize its impact
         logging.getLogger("ray").setLevel(logging.WARNING)
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
@@ -72,9 +74,7 @@ class Caller(Blackhole):
             *[self._execute(self._consume_single_stream) for _ in range(self._batch_size)]
         )
 
-        p50, p75, p99 = np.percentile(durations, [50, 75, 99])
-
-        print(f"Quantiles P50={p50}, P75={p75}, P99={p99}")
+        self._durations.extend(durations)
 
     async def _execute(self, fn):
         start = time.monotonic()
@@ -84,9 +84,15 @@ class Caller(Blackhole):
 
 
     async def run_benchmark(self) -> Tuple[float, float]:
-        return await run_throughput_benchmark(
+        total_runtime = await run_throughput_benchmark(
             fn=self._do_single_batch,
             multiplier=self._batch_size * self._tokens_per_request,
             num_trials=self._num_trials,
             trial_runtime=self._trial_runtime,
         )
+
+        p50, p75, p99 = np.percentile(self._durations, [50, 75, 99])
+
+        print(f"Individual request quantiles:\n\tP50={p50}\n\tP75={p75}\n\tP99={p99}")
+
+        return total_runtime
