@@ -5,7 +5,7 @@ from collections import defaultdict
 import ray
 
 
-MAX_BUFFER_SIZE = 100
+MAX_BUFFER_SIZE = 1 * 1e9
 
 def allocate_shared_output_buffer(buffer_size_bytes: int = MAX_BUFFER_SIZE):
     ref = ray.put(b"0" * buffer_size_bytes, max_readers=1)
