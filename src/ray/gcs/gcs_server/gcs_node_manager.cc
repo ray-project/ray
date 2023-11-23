@@ -145,7 +145,9 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
 
-  RAY_CHECK_EQ(node->death_info().reason(), rpc::NodeDeathInfo::AUTOSCALER_DRAIN);
+  // Ideally we don't want it to ever be unspecified, but currently that's not true.
+  RAY_CHECK(node->death_info().reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN ||
+            node->death_info().reason() == rpc::NodeDeathInfo::UNSPECIFIED);
 
   // Set the address.
   rpc::Address remote_address;
