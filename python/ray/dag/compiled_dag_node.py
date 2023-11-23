@@ -185,7 +185,6 @@ class RayCompiledExecutor:
             ):
         method = getattr(self, actor_method_name)
         while True:
-            print("GET", input_refs)
             inputs = ray.get(input_refs)
             output_val = method(*inputs)
             ray.worker.global_worker.put_object(

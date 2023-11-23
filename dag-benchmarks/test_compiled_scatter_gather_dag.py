@@ -14,7 +14,6 @@ class Actor(RayCompiledExecutor):
         self.i = init_value
 
     def inc(self, x):
-        print(x)
         return x
 
     def get(self):

@@ -19,6 +19,8 @@ void PlasmaObjectHeader::Init() {
   pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_ERRORCHECK);
 	pthread_mutex_init(&mut, &mutex_attr);
 
+  sem_init(&rw_semaphore, PTHREAD_PROCESS_SHARED, 1);
+
   // Condition is shared between writer and readers.
   pthread_condattr_t cond_attr;
   pthread_condattr_init(&cond_attr);
@@ -29,6 +31,7 @@ void PlasmaObjectHeader::Init() {
 void PlasmaObjectHeader::Destroy() {
   RAY_CHECK(pthread_mutex_destroy(&mut) == 0);
   RAY_CHECK(pthread_cond_destroy(&cond) == 0);
+  RAY_CHECK(sem_destroy(&rw_semaphore) == 0);
 }
 
 void PlasmaObjectHeader::UpdateDataSize(uint64_t size) {
@@ -44,13 +47,12 @@ uint64_t PlasmaObjectHeader::GetDataSize() const {
 }
 
 void PlasmaObjectHeader::WriteAcquire(int64_t write_version) {
+  sem_wait(&rw_semaphore);
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   RAY_LOG(DEBUG) << "WriteAcquire " << write_version;
   PrintPlasmaObjectHeader(this);
 
-  while (num_reads_remaining > 0) {
-    RAY_CHECK(pthread_cond_wait(&cond, &mut) == 0);
-  }
+  RAY_CHECK(num_reads_remaining == 0);
   PrintPlasmaObjectHeader(this);
 
   num_readers_acquired = 0;
@@ -115,12 +117,13 @@ int64_t PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
   PrintPlasmaObjectHeader(this);
 
   RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
+  RAY_CHECK(pthread_cond_signal(&cond) == 0);
   return read_version;
 }
 
 void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
-  RAY_LOG(DEBUG) << "ReadRelease " << read_version;
   bool all_readers_done = false;
+  RAY_LOG(DEBUG) << "ReadRelease " << read_version;
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   PrintPlasmaObjectHeader(this);
 
@@ -131,9 +134,9 @@ void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
     num_reads_remaining--;
     RAY_CHECK(num_reads_remaining >= 0);
     if (num_reads_remaining == 0) {
-      all_readers_done = true;
       // Block other readers from reading until we reset this to nonzero.
       max_readers = 0;
+      all_readers_done = true;
     }
   }
 
@@ -141,7 +144,7 @@ void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
   RAY_LOG(DEBUG) << "ReadRelease done";
   RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
   if (all_readers_done) {
-    RAY_CHECK(pthread_cond_signal(&cond) == 0);
+    sem_post(&rw_semaphore);
   }
 }
 

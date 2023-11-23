@@ -47,6 +47,7 @@ struct PlasmaObjectHeader {
   // - we should not read again until a write is done.
   pthread_mutex_t mut;
   pthread_cond_t cond;
+  sem_t rw_semaphore;
   int64_t version = 0;
   // Max number of reads allowed before the writer can write
   // again. This value should be set by the writer before
