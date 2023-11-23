@@ -833,6 +833,7 @@ def setup_ray_cluster(
     autoscale: bool = False,
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
+    autoscale_min_worker_nodes: Optional[int] = None,
     **kwargs,
 ) -> Tuple[str, str]:
     """
@@ -935,6 +936,9 @@ def setup_ray_cluster(
             or referenced objects (either in-memory or spilled to disk). This parameter
             does not affect the head node.
             Default value is 1.0, minimum value is 0
+        autoscale_min_worker_nodes: Set minimal number of worker nodes, this argument
+            is only available when ``autoscale`` is True. If not set, minimal number
+            of worker nodes is zero.
 
     Returns:
         A tuple of (address, remote_connection_address)
