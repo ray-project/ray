@@ -60,7 +60,7 @@ class NPUAcceleratorManager(AcceleratorManager):
         try:
             npu_files = glob.glob("/dev/davinci?")
             return len(npu_files)
-        except FileNotFoundError as e:
+        except Exception as e:
             logger.debug("Failed to detect number of NPUs: %s", e)
         return 0
 
@@ -83,11 +83,6 @@ class NPUAcceleratorManager(AcceleratorManager):
     def validate_resource_request_quantity(
         quantity: float,
     ) -> Tuple[bool, Optional[str]]:
-        """Validate the resource request quantity of this accelerator resource.
-
-        If you request multiple Ascend NPUs. You need to build an HCCL network for
-        NPU interconnection, please refer to the HCCL User Manual.
-        """
         return (True, None)
 
     @staticmethod
