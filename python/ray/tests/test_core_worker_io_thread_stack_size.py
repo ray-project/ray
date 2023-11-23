@@ -5,7 +5,7 @@ import ray
 
 
 @pytest.mark.asyncio
-async def test_pthread_stack_size(shutdown_only):
+async def test_core_worker_io_thread_stack_size(shutdown_only):
     # Test to make sure core worker io thread
     # has big enough stack size to run python code.
     # See https://github.com/ray-project/ray/issues/41094 for more details.
