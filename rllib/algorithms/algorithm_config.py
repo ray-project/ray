@@ -74,7 +74,6 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
-from ray.util import log_once
 
 gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
@@ -209,9 +208,9 @@ class AlgorithmConfig(_Config):
         .. testcode::
 
             from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-            from ray.rllib.algorithms.pg import PGConfig
+            from ray.rllib.algorithms.ppo import PPOConfig
             config = (
-                PGConfig()
+                PPOConfig()
                 .evaluation(
                     evaluation_num_workers=1,
                     evaluation_interval=1,
@@ -320,26 +319,37 @@ class AlgorithmConfig(_Config):
         # If not specified, we will try to auto-detect this.
         self._is_atari = None
 
+        # TODO (sven): Rename this method into `AlgorithmConfig.sampling()`
         # `self.rollouts()`
         self.env_runner_cls = None
+        # TODO (sven): Rename into `num_env_runner_workers`.
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
-        self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
-        self.sample_async = False
         self.enable_connectors = True
-        self.update_worker_filter_stats = True
-        self.use_worker_filter_stats = True
+        # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
+        #  and `sample_duration_unit` (replacing batch_mode), like we do it
+        #  in the evaluation config).
         self.rollout_fragment_length = 200
+        # TODO (sven): Rename into `sample_mode`.
         self.batch_mode = "truncate_episodes"
+        # TODO (sven): Rename into `validate_env_runner_workers_after_construction`.
+        self.validate_workers_after_construction = True
+        self.compress_observations = False
+        # TODO (sven): Rename into `env_runner_perf_stats_ema_coef`.
+        self.sampler_perf_stats_ema_coef = None
+
+        # TODO (sven): Deprecate together with old API stack.
+        self.sample_async = False
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
-        self.validate_workers_after_construction = True
+        self.enable_tf1_exec_eagerly = False
+        self.sample_collector = SimpleListCollector
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
-        self.compress_observations = False
-        self.enable_tf1_exec_eagerly = False
-        self.sampler_perf_stats_ema_coef = None
+        self.update_worker_filter_stats = True
+        self.use_worker_filter_stats = True
+        # TODO (sven): End: deprecate.
 
         # `self.training()`
         self.gamma = 0.99
@@ -491,6 +501,7 @@ class AlgorithmConfig(_Config):
         self.policy_map_cache = DEPRECATED_VALUE
         self.worker_cls = DEPRECATED_VALUE
         self.synchronize_filters = DEPRECATED_VALUE
+        self.sample_async = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -891,7 +902,7 @@ class AlgorithmConfig(_Config):
                 error=True,
             )
 
-        # RLModule API only works with connectors and with Learner API.
+        # New API stack (RLModule, Learner APIs) only works with connectors.
         if not self.enable_connectors and self._enable_new_api_stack:
             raise ValueError(
                 "The new API stack (RLModule and Learner APIs) only works with "
@@ -899,8 +910,8 @@ class AlgorithmConfig(_Config):
                 "`config.rollouts(enable_connectors=True)`."
             )
 
-        # Throw a warning if the user has used rl_module_spec but not enabled the
-        # new API stack.
+        # Throw a warning if the user has used `self.rl_module(rl_module_spec=...)` but
+        # has not enabled the new API stack at the same time.
         if self._rl_module_spec is not None and not self._enable_new_api_stack:
             logger.warning(
                 "You have setup a RLModuleSpec (via calling `config.rl_module(...)`), "
@@ -914,7 +925,8 @@ class AlgorithmConfig(_Config):
                 setting_name="lr",
                 description="learning rate",
             )
-
+        # Throw a warning if the user has used `self.training(learner_class=...)` but
+        # has not enabled the new API stack at the same time.
         if self._learner_class is not None and not self._enable_new_api_stack:
             logger.warning(
                 "You specified a custom Learner class (via "
@@ -938,6 +950,8 @@ class AlgorithmConfig(_Config):
                 "https://github.com/ray-project/ray/issues/35409 for more details."
             )
 
+        # TODO (sven): Remove this hack. We should not have env-var dependent logic
+        #  in the codebase.
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # Enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
@@ -1464,7 +1478,6 @@ class AlgorithmConfig(_Config):
         num_envs_per_worker: Optional[int] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
-        sample_async: Optional[bool] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
@@ -1485,6 +1498,7 @@ class AlgorithmConfig(_Config):
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
+        sample_async=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1507,9 +1521,6 @@ class AlgorithmConfig(_Config):
                 because it doesn't have to sample (done by remote_workers;
                 worker_indices > 0) nor evaluate (done by evaluation workers;
                 see below).
-            sample_async: Use a background thread for sampling (slightly off-policy,
-                usually not advisable to turn on unless your env specifically requires
-                it).
             enable_connectors: Use connector based environment runner, so that all
                 preprocessing of obs and postprocessing of actions are done in agent
                 and action connectors.
@@ -1598,8 +1609,6 @@ class AlgorithmConfig(_Config):
             self.sample_collector = sample_collector
         if create_env_on_local_worker is not NotProvided:
             self.create_env_on_local_worker = create_env_on_local_worker
-        if sample_async is not NotProvided:
-            self.sample_async = sample_async
         if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
         if use_worker_filter_stats is not NotProvided:
@@ -1632,6 +1641,12 @@ class AlgorithmConfig(_Config):
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         # Deprecated settings.
+        if sample_async is True:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(sample_async=True)",
+                help="AsyncSampler is not supported anymore.",
+                error=True,
+            )
         if synchronize_filter != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rollouts(synchronize_filter=..)",
@@ -1765,6 +1780,8 @@ class AlgorithmConfig(_Config):
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
+            learner_class: The `Learner` class to use for (distributed) updating of the
+                RLModule. Only used when `_enable_new_api_stack=True`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1780,14 +1797,6 @@ class AlgorithmConfig(_Config):
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
         if model is not NotProvided:
-            # Validate prev_a/r settings.
-            prev_a_r = model.get("lstm_use_prev_action_reward", DEPRECATED_VALUE)
-            if prev_a_r != DEPRECATED_VALUE:
-                deprecation_warning(
-                    "model.lstm_use_prev_action_reward",
-                    "model.lstm_use_prev_action and model.lstm_use_prev_reward",
-                    error=True,
-                )
             self.model.update(model)
             if (
                 model.get("_use_default_native_models", DEPRECATED_VALUE)
@@ -2661,11 +2670,12 @@ class AlgorithmConfig(_Config):
         default_rl_module_spec = self.get_default_rl_module_spec()
         _check_rl_module_spec(default_rl_module_spec)
 
+        # `self._rl_module_spec` has been user defined (via call to `self.rl_module()`).
         if self._rl_module_spec is not None:
             # Merge provided RL Module spec class with defaults
             _check_rl_module_spec(self._rl_module_spec)
             # We can only merge if we have SingleAgentRLModuleSpecs.
-            # TODO(Artur): Support merging for MultiAgentRLModuleSpecs.
+            # TODO (sven): Support merging for MultiAgentRLModuleSpecs.
             if isinstance(self._rl_module_spec, SingleAgentRLModuleSpec):
                 if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
                     default_rl_module_spec.update(self._rl_module_spec)
@@ -2675,6 +2685,7 @@ class AlgorithmConfig(_Config):
                         "Cannot merge MultiAgentRLModuleSpec with "
                         "SingleAgentRLModuleSpec!"
                     )
+        # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec
 
@@ -3481,6 +3492,11 @@ class AlgorithmConfig(_Config):
                     f"Cannot set attribute ({key}) of an already frozen "
                     "AlgorithmConfig!"
                 )
+        # Backward compatibility for checkpoints taken with wheels, in which
+        # `self.rl_module_spec` was still settable (now it's a property).
+        if key == "rl_module_spec":
+            key = "_rl_module_spec"
+
         super().__setattr__(key, value)
 
     def __getitem__(self, item):
@@ -3741,48 +3757,3 @@ class AlgorithmConfig(_Config):
     @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
     def num_workers(self):
         pass
-
-
-def rllib_contrib_warning(algo_class):
-    if (
-        algo_class is not None
-        and algo_class.__name__
-        in [
-            "A2C",
-            "A3C",
-            "AlphaStar",
-            "AlphaZero",
-            "ApexDDPG",
-            "ApexDQN",
-            "ARS",
-            "BanditLinTS",
-            "BanditLinUCB",
-            "CRR",
-            "DDPG",
-            "DDPPO",
-            "Dreamer" "DT",
-            "ES",
-            "LeelaChessZero",
-            "MADDPG",
-            "MAML",
-            "MBMPO",
-            "PG",
-            "QMIX",
-            "R2D2",
-            "SimpleQ",
-            "SlateQ",
-            "TD3",
-        ]
-        and log_once(f"{algo_class.__name__}_contrib")
-    ):
-        logger.warning(
-            "{} has been moved to `rllib_contrib` and will no longer be maintained"
-            " by the RLlib team. You can still use it normally inside RLlib util "
-            "Ray 2.8, but from Ray 2.9 on, all `rllib_contrib` algorithms will no "
-            "longer be part of the core repo, and will therefore have to be installed "
-            "separately with pinned dependencies for e.g. ray[rllib] and other "
-            "packages! See "
-            "https://github.com/ray-project/ray/tree/master/rllib_contrib#rllib-contrib"
-            " for more information on the RLlib contrib "
-            "effort.".format(algo_class.__name__)
-        )

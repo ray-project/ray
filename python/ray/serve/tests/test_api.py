@@ -16,9 +16,15 @@ from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.deployment import Application
-from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, RayServeHandle
+
+
+@pytest.fixture
+def serve_and_ray_shutdown():
+    yield
+    serve.shutdown()
+    ray.shutdown()
 
 
 @serve.deployment()
@@ -406,35 +412,20 @@ def test_deploy_application_basic(serve_instance):
             return "Hello, world!"
 
     # Test function deployment with app name
-    f_handle = serve.run(f.bind(), name="app_f").options(
-        use_new_handle_api=True,
-    )
+    f_handle = serve.run(f.bind(), name="app_f")
     assert f_handle.remote().result() == "got f"
     assert requests.get("http://127.0.0.1:8000/").text == "got f"
 
     # Test function deployment with app name and route_prefix
-    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g").options(
-        use_new_handle_api=True,
-    )
+    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
     assert g_handle.remote().result() == "got g"
     assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
 
     # Test function deployment with app name and route_prefix set in deployment
     # decorator
-    h_handle = serve.run(h.bind(), name="app_h").options(
-        use_new_handle_api=True,
-    )
+    h_handle = serve.run(h.bind(), name="app_h")
     assert h_handle.remote().result() == "got h"
     assert requests.get("http://127.0.0.1:8000/my_prefix").text == "got h"
-
-    # Test deployment graph
-    graph_handle = serve.run(
-        DAGDriver.bind(Model1.bind()), name="graph", route_prefix="/my_graph"
-    ).options(
-        use_new_handle_api=True,
-    )
-    assert graph_handle.predict.remote().result() == "got model1"
-    assert requests.get("http://127.0.0.1:8000/my_graph").text == '"got model1"'
 
     # Test FastAPI
     serve.run(MyFastAPIDeployment.bind(), name="FastAPI")

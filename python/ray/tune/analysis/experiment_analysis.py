@@ -97,12 +97,12 @@ class ExperimentAnalysis:
         else:
             self._experiment_fs_path = experiment_checkpoint_path
 
-            experiment_json_filename = (
+            experiment_json_fs_path = (
                 ExperimentAnalysis._find_newest_experiment_checkpoint(
                     self._fs, self._experiment_fs_path
                 )
             )
-            if experiment_json_filename is None:
+            if experiment_json_fs_path is None:
                 pattern = TuneController.CKPT_FILE_TMPL.format("*")
                 raise ValueError(
                     f"No experiment checkpoint file of form '{pattern}' was found at: "
@@ -112,9 +112,7 @@ class ExperimentAnalysis:
                     "specified in your run."
                 )
 
-            self._experiment_json_fs_path = os.path.join(
-                self._experiment_fs_path, experiment_json_filename
-            )
+            self._experiment_json_fs_path = experiment_json_fs_path
 
         self.trials = trials or self._load_trials()
         self._trial_dataframes = self._fetch_trial_dataframes()
@@ -224,7 +222,8 @@ class ExperimentAnalysis:
         matching = fnmatch.filter(filenames, pattern)
         if not matching:
             return None
-        return max(matching)
+        filename = max(matching)
+        return os.path.join(experiment_fs_path, filename)
 
     @property
     def experiment_path(self) -> str:

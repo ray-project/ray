@@ -231,6 +231,14 @@ GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
   return aggregate_load;
 };
 
+void GcsAutoscalerStateManager::Initialize(const GcsInitData &gcs_init_data) {
+  for (const auto &entry : gcs_init_data.Nodes()) {
+    if (entry.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      OnNodeAdd(entry.second);
+    }
+  }
+}
+
 void GcsAutoscalerStateManager::GetPendingResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   auto aggregate_load = GetAggregatedResourceLoad();
@@ -342,6 +350,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "HandleDrainNode Request:" << request.DebugString();
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
                 << ", reason: " << request.reason_message();

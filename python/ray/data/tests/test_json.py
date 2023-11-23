@@ -444,6 +444,7 @@ def test_json_read_partitioned_with_filter(
         ds = ray.data.read_json(
             base_dir,
             partition_filter=partition_path_filter,
+            file_extensions=None,
             filesystem=fs,
         )
         assert_base_partitioned_ds(ds)

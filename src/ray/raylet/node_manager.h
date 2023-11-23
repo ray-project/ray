@@ -285,9 +285,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
 
-  /// Fill out the normal task resource report.
-  void FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data);
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
 
@@ -297,10 +294,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Handler for a resource usage notification from the GCS.
   ///
-  /// \param id The ID of the node manager that sent the resources data.
-  /// \param data The resources data including load information.
+  /// \param id The ID of the node manager that sent the resource usage.
+  /// \param resource_view_sync_message The resource usage data.
   /// \return Whether the node resource usage is updated.
-  bool UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
+  bool UpdateResourceUsage(
+      const NodeID &id,
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
   /// Handle a worker finishing its assigned task.
   ///
