@@ -227,6 +227,7 @@ class MultiAgentEpisode:
             if not agent_eps.is_done:
                 agent_eps.concat_episode(episode_chunk.agent_episodes[agent_id])
                 # Update our timestep mapping.
+                # As with observations we need the global timestep mappings to overlap.
                 assert (
                     self.global_t_to_local_t[agent_id][-1]
                     == episode_chunk.global_t_to_local_t[agent_id][0]
@@ -234,9 +235,23 @@ class MultiAgentEpisode:
                 self.global_t_to_local_t[agent_id] += episode_chunk.global_t_to_local_t[
                     agent_id
                 ][1:]
-                self.global_actions_t[agent_id] += episode_chunk.global_actions_t[
-                    agent_id
-                ][1:]
+                # TODO (simon): Check, if this works always.
+                # We have to take care of cases where a successor took over full action
+                # buffers, b/c it then also took over the last timestep of the global
+                # action timestep mapping.
+                if (
+                    self.global_actions_t[agent_id][-1]
+                    == episode_chunk.global_actions_t[agent_id][0]
+                ):
+                    self.global_actions_t[agent_id] += episode_chunk.global_actions_t[
+                        agent_id
+                    ][1:]
+                # If the action buffer was empty before the successor was created, we
+                # can concatenate all values.
+                else:
+                    self.global_actions_t[agent_id] += episode_chunk.global_actions_t[
+                        agent_id
+                    ]
 
                 indices_for_partial_rewards = episode_chunk.partial_rewards_t[
                     agent_id
@@ -257,7 +272,7 @@ class MultiAgentEpisode:
                 )
 
         # Copy the agent buffers over.
-        self.agent_buffers = episode_chunk.agent_buffers.copy()
+        self._copy_buffer(episode_chunk)
 
         self.t = episode_chunk.t
         if episode_chunk.is_terminated:
@@ -1218,7 +1233,7 @@ class MultiAgentEpisode:
 
         # Copy the agent buffers to the successor. These remain the same as
         # no agent has stepped, yet.
-        successor.agent_buffers = self.agent_buffers.copy()
+        successor._copy_buffer(self)
 
         # Build the global action timestep mapping for buffered actions.
         # Note, this mapping tracks orhpane actions in the episode before and
@@ -1866,6 +1881,27 @@ class MultiAgentEpisode:
             return [
                 singleton[agent_id] for singleton in ma_data if agent_id in singleton
             ]
+
+    def _copy_buffer(self, episode: "MultiAgentEpisode") -> None:
+        """Writes values from one buffer to another."""
+
+        for agent_id, agent_buffer in episode.agent_buffers.items():
+            for buffer_name, buffer in agent_buffer.items():
+                # If the buffer is full write over the values.
+                if buffer.full():
+                    # Get the item from them buffer.
+                    item = buffer.get_nowait()
+                    # Flush the destination buffer, if it is full.
+                    if self.agent_buffers[agent_id][buffer_name].full():
+                        self.agent_buffers[agent_id][buffer_name].get_nowait()
+                    # Write it to the destination buffer.
+                    self.agent_buffers[agent_id][buffer_name].put_nowait(item)
+                    # The source buffer might still need the item.
+                    buffer.put_nowait(item)
+                # If the buffer is empty, empty the destination buffer.
+                else:
+                    if self.agent_buffers[agent_id][buffer_name].full():
+                        self.agent_buffers[agent_id][buffer_name].get_nowait()
 
     def __len__(self):
         """Returns the length of an `MultiAgentEpisode`.
