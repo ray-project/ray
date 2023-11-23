@@ -1,3 +1,4 @@
+
 import click
 
 from ray import serve
@@ -12,10 +13,12 @@ class EndpointDeployment(Endpoint):
 @serve.deployment
 class CallerDeployment(Caller):
     async def _consume_single_stream(self):
-        async for r in self._h.options(
+        method = self._get_remote_method().options(
             use_new_handle_api=True,
             stream=True,
-        ).stream.remote():
+        )
+
+        async for r in method.remote():
             # Blackhole the response
             self.sink(r)
 
