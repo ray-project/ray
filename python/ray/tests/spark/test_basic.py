@@ -381,19 +381,17 @@ class TestSparkLocalCluster:
 
             threading.Thread(target=serve, daemon=True).start()
 
-        def wait_cluster_ready():
-            wait_time = 120
-            while wait_time > 0:
-                time.sleep(1)
-                wait_time -= 1
-                if (
-                    ray.util.spark.cluster_init._global_ray_cluster_cancel_event
-                    is not None
-                ):
-                    return
-
         start_serve_thread()
-        wait_cluster_ready()
+
+        wait_for_condition(
+            (
+                lambda: ray.util.spark.cluster_init._global_ray_cluster_cancel_event
+                is not None
+            ),
+            timeout=120,
+            retry_interval_ms=10000,
+        )
+
         # assert it uses default temp directory
         assert os.path.exists("/tmp/ray")
 
@@ -412,9 +410,13 @@ class TestSparkLocalCluster:
 
         # shut down the cluster
         ray.util.spark.cluster_init._global_ray_cluster_cancel_event.set()
-        time.sleep(10)
+
         # assert temp directory is deleted
-        assert not os.path.exists("/tmp/ray")
+        wait_for_condition(
+            lambda: not os.path.exists("/tmp/ray"),
+            timeout=60,
+            retry_interval_ms=10000,
+        )
 
     def test_autoscaling_config_generation(self):
         from ray.util.spark.cluster_init import AutoscalingCluster

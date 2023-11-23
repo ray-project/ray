@@ -33,7 +33,6 @@ from .utils import (
     gen_cmd_exec_failure_msg,
     calc_mem_ray_head_node,
     _wait_service_up,
-    modified_environ,
 )
 from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
@@ -50,7 +49,6 @@ MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
 RAY_ON_SPARK_START_RAY_PARENT_PID = "RAY_ON_SPARK_START_RAY_PARENT_PID"
-RAY_ON_SPARK_GLOBAL_MODE = "RAY_ON_SPARK_GLOBAL_MODE"
 
 
 def _check_system_environment():
@@ -464,6 +462,7 @@ def _setup_ray_cluster(
     autoscale: bool,
     autoscale_upscaling_speed: float,
     autoscale_idle_timeout_minutes: float,
+    is_global: bool,
 ) -> Type[RayClusterOnSpark]:
     """
     The public API `ray.util.spark.setup_ray_cluster` does some argument
@@ -499,7 +498,7 @@ def _setup_ray_cluster(
     include_dashboard = head_node_options.pop("include_dashboard", None)
     ray_dashboard_port = head_node_options.pop("dashboard_port", None)
 
-    if os.environ.get("RAY_ON_SPARK_GLOBAL_MODE", "0") == "1":
+    if is_global:
         ray_client_server_port = 10001
     else:
         ray_client_server_port = get_random_unused_port(
@@ -561,7 +560,7 @@ def _setup_ray_cluster(
 
     cluster_unique_id = uuid.uuid4().hex[:8]
 
-    if os.environ.get("RAY_ON_SPARK_GLOBAL_MODE", "0") == "1":
+    if is_global:
         # global mode enabled
         # for global mode, Ray always uses default temp dir
         # so that local Ray client can discover it without specifying
@@ -1002,8 +1001,8 @@ def setup_ray_cluster(
                user.
              - It is up persistently without automatic shutdown.
              - On databricks notebook, you can connect to the global cluster by calling
-               ``ray.init()`` without specifying its address, it will discover the global
-               cluster automatically if it is up.
+               ``ray.init()`` without specifying its address, it will discover the
+               global cluster automatically if it is up.
 
             If global mode is enabled, calling `setup_ray_cluster` will be blocking,
             once the call is interrupted, the global Ray on spark cluster is shut down.
@@ -1274,9 +1273,7 @@ def setup_ray_cluster(
             object_store_memory_head_node
         )
 
-    with _active_ray_cluster_rwlock, modified_environ(
-        RAY_ON_SPARK_GLOBAL_MODE=str(int(is_global))
-    ):
+    with _active_ray_cluster_rwlock:
         cluster = _setup_ray_cluster(
             num_worker_nodes=num_worker_nodes,
             num_cpus_worker_node=num_cpus_worker_node,
@@ -1295,6 +1292,7 @@ def setup_ray_cluster(
             autoscale=autoscale,
             autoscale_upscaling_speed=autoscale_upscaling_speed,
             autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
+            is_global=is_global,
         )
 
         cluster.wait_until_ready()  # NB: this line might raise error.
