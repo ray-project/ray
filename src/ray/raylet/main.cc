@@ -367,7 +367,6 @@ int main(int argc, char *argv[]) {
     }
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
     *shutted_down = true;
-    // TODO vitsai report drain reason
     raylet->Stop();
     gcs_client->Disconnect();
     ray::stats::Shutdown();

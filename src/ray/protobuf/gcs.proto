@@ -320,17 +320,18 @@ message NodeSnapshot {
 }
 
 message NodeDeathInfo {
-enum Reason {
-  UNSPECIFIED = 0;
-  UNEXPECTED_TERMINATION = 1;
-  AUTOSCALER_DRAIN = 2;
-}
-  Reason reason = 1;
-
-// Detailed reason
-oneof Detail {
-  autoscaler.DrainNodeReason drain_reason = 2;
-}
+  enum Reason {
+    UNSPECIFIED = 0;
+    EXPECTED_TERMINATION = 1;
+    UNEXPECTED_TERMINATION = 2;
+    AUTOSCALER_DRAIN = 3;
+  }
+    Reason reason = 1;
+  
+  // Detailed reason
+  oneof Detail {
+    autoscaler.DrainNodeReason drain_reason = 2;
+  }
 }
 
 message GcsNodeInfo {

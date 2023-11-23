@@ -203,17 +203,15 @@ void GcsActor::SetGrantOrReject(bool grant_or_reject) {
 const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
     const ray::gcs::GcsActor *actor,
     const std::string ip_address,
-    const NodeID &node_id) {
-  RAY_LOG(INFO) << "vct @#$@#$@";
+    std::shared_ptr<rpc::GcsNodeInfo> node) {
   ray::rpc::ActorDeathCause death_cause;
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
-  actor_died_error_ctx->set_error_message(absl::StrCat(
-      "The actor is dead because its node has died. Node Id: ", node_id.Hex()));
-  auto maybe_node = gcs_node_manager_.GetDeadNode(node_id);
-  RAY_CHECK(maybe_node.has_value()) << "Dead node " << node_id << " was not found.";
+  actor_died_error_ctx->set_error_message(
+      absl::StrCat("The actor is dead because its node has died. Node Id: ",
+                   NodeID::FromBinary(node->node_id()).Hex()));
 
-  if (auto death_info = maybe_node.value()->death_info();
+  if (auto death_info = node->death_info();
       death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN &&
       death_info.drain_reason() == DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
     actor_died_error_ctx->set_preempted(true);
@@ -1046,8 +1044,9 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause);
 }
 
-void GcsActorManager::OnNodeDead(const NodeID &node_id,
+void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
                                  const std::string node_ip_address) {
+  const auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Node " << node_id << " failed, reconstructing actors.";
   // Kill all children of owner actors on a dead node.
   const auto it = owners_.find(node_id);
@@ -1074,7 +1073,7 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
   for (auto &actor_id : scheduling_actor_ids) {
     ReconstructActor(actor_id,
                      /*need_reschedule=*/true,
-                     GenNodeDiedCause(GetActor(actor_id), node_ip_address, node_id));
+                     GenNodeDiedCause(GetActor(actor_id), node_ip_address, node));
   }
 
   // Try reconstructing all workers created on the node.
@@ -1085,10 +1084,9 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
     created_actors_.erase(iter);
     for (auto &entry : created_actors) {
       // Reconstruct the removed actor.
-      ReconstructActor(
-          entry.second,
-          /*need_reschedule=*/true,
-          GenNodeDiedCause(GetActor(entry.second), node_ip_address, node_id));
+      ReconstructActor(entry.second,
+                       /*need_reschedule=*/true,
+                       GenNodeDiedCause(GetActor(entry.second), node_ip_address, node));
     }
   }
 

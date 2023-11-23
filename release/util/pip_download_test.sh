@@ -31,7 +31,7 @@ pip install --upgrade pip
 # This is required to use conda activate
 source "$(conda info --base)/etc/profile.d/conda.sh"
 
-PYTHON_VERSIONS=( "3.11" )
+PYTHON_VERSIONS=( "3.8" "3.9" "3.10" "3.11" )
 
 for PYTHON_VERSION in "${PYTHON_VERSIONS[@]}"
 do

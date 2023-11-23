@@ -369,17 +369,13 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
         RAY_LOG(INFO) << "No address found for raylet.";
         continue;
       }
-      bool first = true;
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
         auto &task_spec_status_pair = deque_itr->second;
         task_info_list->push_back(std::make_pair(
-            task_spec_status_pair,
-            first ? std::optional(std::make_pair(queue_pair.first, queue.preempted))
-                  : std::nullopt));
+            task_spec_status_pair, std::make_pair(queue_pair.first, queue.preempted)));
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
-        first = false;
       }
     }
   }
@@ -388,18 +384,11 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
     return;
   }
 
-  RAY_CHECK(task_info_list->begin()->second.has_value());
-
-  auto &actor_id = task_info_list->begin()->second.value().first;
-  auto &preempted = task_info_list->begin()->second.value().second;
-
   // Do not hold mu_, because FailPendingTask may call python from cpp,
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
   for (auto &task_info : *task_info_list) {
-    if (task_info_list->begin()->second.has_value()) {
-      actor_id = task_info_list->begin()->second.value().first;
-      preempted = task_info_list->begin()->second.value().second;
-    }
+    auto &actor_id = task_info_list->begin()->second.first;
+    bool preempted = task_info_list->begin()->second.second;
 
     FailTaskWithError(
         actor_id, task_info.first.first.TaskId(), task_info.first.second, preempted);

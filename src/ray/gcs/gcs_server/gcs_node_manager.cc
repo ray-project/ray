@@ -96,20 +96,8 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
-bool GcsNodeManager::IsNodePreempted(const std::string &raylet_addr) {
-  auto iter = node_map_.right.find(raylet_addr);
-  if (iter == node_map_.right.end()) {
-    return false;
-  }
-  auto maybe_node = GetDeadNode(iter->second);
-  if (!maybe_node.has_value() || maybe_node.value() == nullptr) {
-    return false;
-  }
-
-  auto &death_info = maybe_node.value()->death_info();
-  return death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN &&
-         death_info.drain_reason() ==
-             rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION;
+void GcsNodeManager::SetNodePreempted(const NodeID &node_id) {
+  // TODO vitsai
 }
 
 void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
@@ -119,8 +107,6 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
   for (const auto &addr : request.raylet_address()) {
     bool is_alive = node_map_.right.count(addr) != 0;
     reply->mutable_raylet_alive()->Add(is_alive);
-    bool is_preempted = !is_alive && IsNodePreempted(addr);
-    reply->mutable_raylet_preempted()->Add(is_preempted);
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -363,25 +349,9 @@ std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetDeadNode(
     return iter->second;
   }
   if (auto iter = alive_nodes_.find(node_id); iter != alive_nodes_.end()) {
-    return std::nullopt;
+    return iter->second;
   }
-
-  // In the event that we don't find the node in memory, we will have to fetch
-  // from storage.
-  std::promise<std::optional<std::shared_ptr<rpc::GcsNodeInfo>>> node_info;
-  auto fut = node_info.get_future();
-  gcs_table_storage_->NodeTable().Get(
-      node_id,
-      [&node_info](Status status, const boost::optional<GcsNodeInfo> &maybe_info) {
-        if (maybe_info.has_value()) {
-          node_info.set_value(std::make_shared<GcsNodeInfo>(maybe_info.value()));
-        } else {
-          node_info.set_value(std::nullopt);
-        }
-      });
-
-  fut.wait();
-  return fut.get();
+  return std::nullopt;
 }
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {

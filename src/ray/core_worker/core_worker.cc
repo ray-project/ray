@@ -450,7 +450,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              *memory_store_,
                                              *task_manager_,
                                              *actor_creator_,
-                                             *gcs_client_,
                                              on_excess_queueing,
                                              io_service_));
 

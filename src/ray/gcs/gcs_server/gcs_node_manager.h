@@ -163,8 +163,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   virtual void DrainNode(const NodeID &node_id);
 
  private:
-  /// Check whether node at a given address is preempted.
-  bool IsNodePreempted(const std::string &raylet_addr);
+  /// Set a node to be preempted.
+  void SetNodePreempted(const NodeID &node_id);
 
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.

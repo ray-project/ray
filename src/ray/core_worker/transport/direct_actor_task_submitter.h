@@ -77,13 +77,11 @@ class CoreWorkerDirectActorTaskSubmitter
       CoreWorkerMemoryStore &store,
       TaskFinisherInterface &task_finisher,
       ActorCreatorInterface &actor_creator,
-      gcs::GcsClient &gcs_client,
       std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
       instrumented_io_context &io_service)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher, actor_creator),
         task_finisher_(task_finisher),
-        gcs_client_(gcs_client),
         warn_excess_queueing_(warn_excess_queueing),
         io_service_(io_service) {
     next_queueing_warn_threshold_ =
@@ -91,6 +89,7 @@ class CoreWorkerDirectActorTaskSubmitter
   }
 
   void SetPreempted(const ActorID &actor_id) {
+    absl::MutexLock lock(&mu_);
     if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
       iter->second.preempted = true;
     }
@@ -241,8 +240,8 @@ class CoreWorkerDirectActorTaskSubmitter
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
  private:
-  typedef std::vector<std::pair<std::pair<TaskSpecification, Status>,
-                                std::optional<std::pair<ActorID, bool>>>>
+  typedef std::vector<
+      std::pair<std::pair<TaskSpecification, Status>, std::pair<ActorID, bool>>>
       TaskInfoList;
 
   /// A helper function to get task finisher without holding mu_
@@ -389,9 +388,6 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Used to complete tasks.
   TaskFinisherInterface &task_finisher_;
-
-  /// GCS client.
-  gcs::GcsClient &gcs_client_;
 
   /// Used to warn of excessive queueing.
   std::function<void(const ActorID &, uint64_t num_queued)> warn_excess_queueing_;
