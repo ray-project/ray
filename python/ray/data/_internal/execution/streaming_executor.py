@@ -141,22 +141,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     item = self._outer._output_node.get_output_blocking(
                         output_split_idx
                     )
-                    # Translate the special sentinel values for MaybeRefBundle into
-                    # exceptions.
-                    if item is None:
-                        if self._outer._shutdown:
-                            raise StopIteration(f"{self._outer} is shutdown.")
-                        else:
-                            raise StopIteration
-                    elif isinstance(item, Exception):
-                        raise item
-                    else:
-                        # Otherwise return a concrete RefBundle.
-                        if self._outer._global_info:
-                            self._outer._global_info.update(
-                                1, dag._estimated_output_blocks
-                            )
-                        return item
+                    if self._outer._global_info:
+                        self._outer._global_info.update(1, dag._estimated_output_blocks)
+                    return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
                 except BaseException as e:
@@ -222,10 +209,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 pass
         except Exception as e:
             # Propagate it to the result iterator.
-            self._output_node.outqueue.append(e)
+            self._output_node.mark_finished(e)
         finally:
             # Signal end of results.
-            self._output_node.outqueue.append(None)
+            self._output_node.mark_finished()
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
