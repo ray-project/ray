@@ -326,8 +326,8 @@ message NodeDeathInfo {
     UNEXPECTED_TERMINATION = 2;
     AUTOSCALER_DRAIN = 3;
   }
-    Reason reason = 1;
-  
+  Reason reason = 1;
+
   // Detailed reason
   oneof Detail {
     autoscaler.DrainNodeReason drain_reason = 2;

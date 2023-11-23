@@ -46,6 +46,8 @@ class GcsPublisher {
   /// TODO: remove this constructor and inject mock / fake from the other constructor.
   explicit GcsPublisher() {}
 
+  virtual ~GcsPublisher() = default;
+
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
   /// Returns nullptr when RayConfig::instance().gcs_grpc_based_pubsub() is false.
   pubsub::Publisher *GetPublisher() const { return publisher_.get(); }
