@@ -34,3 +34,14 @@ Limitation:
 
 Issues:
 - ray.get on reused plasma buffer works with numpy but not with bytes (and probably other objects)
+
+
+To port DAG code:
+- Actor class must subclass ray.dag.compiled\_dag\_node.RayCompiledExecutor
+- make sure to start and end DAG with an ray.dag.InputNode and ray.dag.OutputNode
+- pass compile=True to dag.execute
+- ray.release DAG refs after calling ray.get and shared-mem buffer is no longer needed
+
+Example usage:
+- Scatter-gather DAG: `python dag-benchmarks/test_compiled_scatter_gather_dag.py --num-actors 2`
+- Head-to-head comparison with fused worker tasks: VERBOSE=0 COMPILED\_DAG=1 python dag-benchmarks/test\_compiled\_dag\_task.py
