@@ -434,13 +434,6 @@ Ray Examples
         How To Tune PyTorch Lightning Models
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning serving tune serve
-        :link: /tune/examples/tune-serve-integration-mnist
-        :link-type: doc
-
-        Model Selection & Serving With Ray Serve
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl tuning serving tune serve
         :link: tune-rllib-example
         :link-type: ref
