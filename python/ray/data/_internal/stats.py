@@ -417,13 +417,13 @@ class _StatsManager:
             self._stats_actor_handle is None
             or self._stats_actor_cluster_id != current_cluster_id
         ):
-            self._stats_actor_cluster_id = current_cluster_id
             if create_if_not_exists:
                 self._stats_actor_handle = _get_or_create_stats_actor()
             else:
                 self._stat_actor_handle = ray.get_actor(
                     name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
                 )
+            self._stats_actor_cluster_id = current_cluster_id
         return self._stats_actor_handle
 
     def _start_thread_if_not_running(self):
