@@ -19,6 +19,9 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfoList as DeploymentStatusInfoListProto,
 )
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusTrigger as DeploymentStatusTriggerProto,
+)
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 
 
@@ -102,30 +105,64 @@ class DeploymentStatus(str, Enum):
     UPDATING = "UPDATING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    UPSCALING = "UPSCALING"
+    DOWNSCALING = "DOWNSCALING"
+
+
+class DeploymentStatusTrigger(str, Enum):
+    UNSPECIFIED = "UNSPECIFIED"
+    CONFIG_UPDATE_STARTED = "CONFIG_UPDATE_STARTED"
+    CONFIG_UPDATE_COMPLETED = "CONFIG_UPDATE_COMPLETED"
+    UPSCALE_COMPLETED = "UPSCALE_COMPLETED"
+    DOWNSCALE_COMPLETED = "DOWNSCALE_COMPLETED"
+    AUTOSCALING = "AUTOSCALING"
+    REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
+    HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+    DELETING = "DELETING"
 
 
 @dataclass(eq=True)
 class DeploymentStatusInfo:
     name: str
     status: DeploymentStatus
+    status_trigger: DeploymentStatusTrigger
     message: str = ""
 
     def debug_string(self):
         return json.dumps(asdict(self), indent=4)
 
+    def update(
+        self,
+        status: DeploymentStatus = None,
+        status_trigger: DeploymentStatusTrigger = None,
+        message: str = "",
+    ):
+        return DeploymentStatusInfo(
+            name=self.name,
+            status=status if status else self.status,
+            status_trigger=status_trigger if status_trigger else self.status_trigger,
+            message=message,
+        )
+
     def to_proto(self):
         return DeploymentStatusInfoProto(
             name=self.name,
             status=f"DEPLOYMENT_STATUS_{self.status.name}",
+            status_trigger=f"DEPLOYMENT_STATUS_TRIGGER_{self.status_trigger.name}",
             message=self.message,
         )
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
         status = DeploymentStatusProto.Name(proto.status)[len("DEPLOYMENT_STATUS_") :]
+        status_trigger = DeploymentStatusTriggerProto.Name(proto.status_trigger)[
+            len("DEPLOYMENT_STATUS_TRIGGER_") :
+        ]
         return cls(
             name=proto.name,
             status=DeploymentStatus(status),
+            status_trigger=DeploymentStatusTrigger(status_trigger),
             message=proto.message,
         )
 
@@ -478,3 +515,10 @@ class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
     GRPC = "gRPC"
+
+
+class TargetCapacityScaleDirection(str, Enum):
+    """Determines what direction the target capacity is scaling."""
+
+    UP = "UP"
+    DOWN = "DOWN"
