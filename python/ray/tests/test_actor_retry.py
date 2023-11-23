@@ -100,17 +100,64 @@ def test_options_takes_precedence_no_over_retry(shutdown_only):
     assert ray.get(counter.get_count.remote()) == 11
 
 
-def test_method_raise_and_exit(shutdown_only):
-    # TODO: not working right now, needs debugging. Symptom: actor retry eats 3 or 4 retries:
-    # [2023-11-22 15:56:48,108 I 64575 34262189] task_manager.cc:1024: FailOrRetryPendingTask c2668a65bda616c1b5f72568bd8651cd3bfb59ae01000000, error 1, status UnexpectedSystemExit: Worker exits with an exit code 1., error info error_message: "Death cause not recorded."
-    # [2023-11-22 15:56:48,109 I 64575 34262189] task_manager.cc:1024: FailOrRetryPendingTask c2668a65bda616c1b5f72568bd8651cd3bfb59ae01000000, error 1, status GrpcUnavailable: RPC Error message: Cancelling all calls; RPC Error details: , error info error_message: "Death cause not recorded."
-    # [2023-11-22 15:56:48,110 I 64575 34262189] task_manager.cc:1024: FailOrRetryPendingTask c2668a65bda616c1b5f72568bd8651cd3bfb59ae01000000, error 1, status IOError: Fail all inflight tasks due to actor state change., error info error_message: "Death cause not recorded."
-    # [2023-11-22 15:57:18,400 I 64575 34262189] task_manager.cc:1024: FailOrRetryPendingTask c2668a65bda616c1b5f72568bd8651cd3bfb59ae01000000, error 1, status Invalid: client cancelled stale rpc, error info error_message: "Death cause not recorded."
-    # TroubleMaker doesn't have a max_restarts so we need to add in options.
+@pytest.mark.parametrize(
+    "actions",
+    [
+        ["exit", "raise", "raise"],
+        ["raise", "exit", "raise"],
+        ["raise", "raise", "exit"],
+        ["raise", "raise", "raise"],
+    ],
+)
+def test_method_raise_and_exit(actions, shutdown_only):
+    """
+    Test we can endure a mix of raises and exits. Note the number of exits we can endure
+    is subject to max_restarts.
+    """
     counter = Counter.remote()
     trouble_maker = TroubleMaker.options(max_restarts=1).remote()
-    assert ray.get(trouble_maker.raise_or_exit.remote(counter, ["exit", "raise"])) == 2
-    assert ray.get(counter.get_count.remote()) == 3
+    assert (
+        ray.get(
+            trouble_maker.raise_or_exit.options(max_retries=4).remote(counter, actions)
+        )
+        == 3
+    )
+    assert ray.get(counter.get_count.remote()) == 4
+
+
+def test_method_exit_and_raise_no_over_retry(shutdown_only):
+    """
+    Test we can endure a mix of raises and exits. Note the number of exits we can endure
+    is subject to max_restarts.
+    """
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.options(max_restarts=1).remote()
+    with pytest.raises(MyError):
+        assert ray.get(
+            trouble_maker.raise_or_exit.options(max_retries=2).remote(
+                counter, ["exit", "raise", "raise"]
+            )
+        )
+    assert ray.get(counter.get_count.remote()) == 2
+
+
+def test_method_raise_and_exit_no_over_retry(shutdown_only):
+    """
+    Test we can endure a mix of raises and exits. Note the number of exits we can endure
+    is subject to max_restarts.
+
+    TODO: does not work
+    [2023-11-22 18:35:11,494 C 3253 34529770] task_manager.cc:1306:  Check failed: it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT
+    """
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.options(max_restarts=1).remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        assert ray.get(
+            trouble_maker.raise_or_exit.options(max_retries=2).remote(
+                counter, ["raise", "raise", "exit"]
+            )
+        )
+    assert ray.get(counter.get_count.remote()) == 2
 
 
 if __name__ == "__main__":

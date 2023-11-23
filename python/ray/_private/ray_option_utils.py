@@ -337,13 +337,6 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
             "Setting 'concurrency_groups' is not supported in '.options()'."
         )
 
-    if options.get("max_restarts", 0) == 0 and options.get("max_task_retries", 0) != 0:
-        warnings.warn(
-            "`max_task_retries` only works if the method is invoked with "
-            "`retry_exceptions` and does NOT work for actor crashes since "
-            "`max_restarts` is 0 or not set."
-        )
-
     if options.get("get_if_exists") and not options.get("name"):
         raise ValueError("The actor name must be specified to use `get_if_exists`.")
 

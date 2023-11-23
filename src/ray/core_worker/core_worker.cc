@@ -364,7 +364,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
       },
       /* retry_task_callback= */
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec,
+             bool object_recovery,
+             bool update_seqno,
+             uint32_t delay_ms) {
         spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
         if (!object_recovery) {
           // Retry after a delay to emulate the existing Raylet reconstruction
@@ -372,12 +375,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                         << "ms delay: " << spec.DebugString();
           absl::MutexLock lock(&mutex_);
-          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
+          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec, update_seqno};
           to_resubmit_.push(std::move(task_to_retry));
         } else {
           if (spec.IsActorTask()) {
-            auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-            actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            if (update_seqno) {
+              auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+              actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            }
             RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
           } else {
             RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
@@ -971,20 +976,23 @@ void CoreWorker::ExitIfParentRayletDies() {
 
 void CoreWorker::InternalHeartbeat() {
   // Retry tasks.
-  std::vector<TaskSpecification> tasks_to_resubmit;
+  std::vector<TaskToRetry> tasks_to_resubmit;
   {
     absl::MutexLock lock(&mutex_);
     while (!to_resubmit_.empty() &&
            current_time_ms() > to_resubmit_.top().execution_time_ms) {
-      tasks_to_resubmit.push_back(std::move(to_resubmit_.top().task_spec));
+      tasks_to_resubmit.push_back(std::move(to_resubmit_.top()));
       to_resubmit_.pop();
     }
   }
 
-  for (auto &spec : tasks_to_resubmit) {
+  for (auto &task_to_retry : tasks_to_resubmit) {
+    auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
-      auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-      actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+      if (task_to_retry.update_seqno) {
+        auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+        actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+      }
       RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
     } else {
       RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));

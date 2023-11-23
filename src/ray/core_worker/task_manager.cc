@@ -324,7 +324,10 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
                   << spec.AttemptNumber() << ": " << spec.DebugString();
-    retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
+    // We should actually detect if the actor for this task is dead, but let's just assume
+    // it's not for now.
+    retry_task_callback_(
+        spec, /*object_recovery*/ true, /*update_seqno=*/false, /*delay_ms*/ 0);
   }
 
   return true;
@@ -873,6 +876,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
+  bool actor_died = error_info.error_type() == rpc::ErrorType::ACTOR_DIED;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -925,7 +929,9 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
+    // If actor is not dead, we should update the seq no.
+    retry_task_callback_(
+        spec, /*object_recovery*/ false, /*update_seqno=*/!actor_died, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
