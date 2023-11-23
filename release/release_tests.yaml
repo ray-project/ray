@@ -211,7 +211,7 @@
 
   run:
     timeout: 1000
-    prepare: python setup_chaos.py --max-nodes-to-kill 2 --node-kill-delay 30
+    prepare: python setup_chaos.py --max-to-kill 2 --kill-delay 30
     script: python dataset/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
 
     wait_for_nodes:
@@ -5768,8 +5768,8 @@
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 3600
-    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image
+    timeout: 21600
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 3
 
   variations:
     - __suffix__: aws
@@ -5778,6 +5778,31 @@
       frequency: manual
       cluster:
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+
+- name: read_images_train_4_gpu_chaos
+  group: data-tests
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: dataset/multi_node_train_4_workers.yaml
+
+  run:
+    timeout: 3600
+    prepare: python setup_chaos.py --kill-workers --kill-interval 50 --max-to-kill 20 --task-names "ReadImage->Map(crop_and_flip_image)"
+    script: python dataset/multi_node_train_benchmark.py --num-workers 4 --file-type image
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
 
 - name: read_images_train_16_gpu
   group: data-tests
@@ -5792,8 +5817,8 @@
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 4800
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image
+    timeout: 21600
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --use-gpu
 
   variations:
     - __suffix__: aws
@@ -5816,8 +5841,8 @@
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 7200
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order
+    timeout: 21600
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order --use-gpu
 
   variations:
     - __suffix__: aws
@@ -5841,7 +5866,7 @@
 
   run:
     timeout: 3600
-    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet --target-worker-gb 50
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet --target-worker-gb 50 --use-gpu
 
   variations:
     - __suffix__: aws
@@ -5864,8 +5889,8 @@
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 4800
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet --target-worker-gb 50
+    timeout: 3600
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet --target-worker-gb 50 --use-gpu
 
   variations:
     - __suffix__: aws
@@ -6225,7 +6250,7 @@
     timeout: 7200
     wait_for_nodes:
       num_nodes: 21
-    prepare: python setup_chaos.py --node-kill-interval 100
+    prepare: python setup_chaos.py --kill-interval 100
     script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
       20 --error_rate 0  --data_save_path /tmp/ray
 
@@ -6255,7 +6280,7 @@
     timeout: 7200
     wait_for_nodes:
       num_nodes: 21
-    prepare: python setup_chaos.py --node-kill-interval 100
+    prepare: python setup_chaos.py --kill-interval 100
     script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
       70 --error_rate 0  --data_save_path /tmp/ray
 
@@ -6286,7 +6311,7 @@
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 1200 --max-nodes-to-kill 3'
+    prepare: ' python setup_chaos.py --kill-interval 1200 --max-to-kill 3'
     script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
@@ -6316,7 +6341,7 @@
 
   run:
     timeout: 7200
-    prepare: 'python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
+    prepare: 'python setup_chaos.py --kill-interval 900 --max-to-kill 3'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
@@ -6349,7 +6374,7 @@
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
+    prepare: ' python setup_chaos.py --kill-interval 600 --max-to-kill 2'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
@@ -6380,7 +6405,7 @@
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
+    prepare: ' python setup_chaos.py --kill-interval 600 --max-to-kill 2'
     script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
@@ -6621,6 +6646,22 @@
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
 
+- name: gcp_cluster_launcher_gpu_docker
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: weekly
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 1200
+    script: python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
 - name: autoscaler_aws
   group: autoscaler-test

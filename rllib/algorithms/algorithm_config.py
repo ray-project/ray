@@ -504,6 +504,7 @@ class AlgorithmConfig(_Config):
         self.policy_map_cache = DEPRECATED_VALUE
         self.worker_cls = DEPRECATED_VALUE
         self.synchronize_filters = DEPRECATED_VALUE
+        self.sample_async = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -1480,7 +1481,6 @@ class AlgorithmConfig(_Config):
         num_envs_per_worker: Optional[int] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
-        sample_async: Optional[bool] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
         sampling_connectors: Optional[
             Callable[
@@ -1508,6 +1508,7 @@ class AlgorithmConfig(_Config):
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
+        sample_async=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1530,9 +1531,6 @@ class AlgorithmConfig(_Config):
                 because it doesn't have to sample (done by remote_workers;
                 worker_indices > 0) nor evaluate (done by evaluation workers;
                 see below).
-            sample_async: Use a background thread for sampling (slightly off-policy,
-                usually not advisable to turn on unless your env specifically requires
-                it).
             enable_connectors: Use connector based environment runner, so that all
                 preprocessing of obs and postprocessing of actions are done in agent
                 and action connectors.
@@ -1632,8 +1630,6 @@ class AlgorithmConfig(_Config):
             self.sample_collector = sample_collector
         if create_env_on_local_worker is not NotProvided:
             self.create_env_on_local_worker = create_env_on_local_worker
-        if sample_async is not NotProvided:
-            self.sample_async = sample_async
         if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
         if sampling_connectors is not NotProvided:
@@ -1670,6 +1666,12 @@ class AlgorithmConfig(_Config):
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         # Deprecated settings.
+        if sample_async is True:
+            deprecation_warning(
+                old="AlgorithmConfig.rollouts(sample_async=True)",
+                help="AsyncSampler is not supported anymore.",
+                error=True,
+            )
         if synchronize_filter != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rollouts(synchronize_filter=..)",

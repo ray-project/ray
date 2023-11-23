@@ -160,7 +160,7 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/data.build.Dockerfile"
                 or changed_file == "ci/docker/datan.build.wanda.yaml"
                 or changed_file == "ci/docker/data6.build.wanda.yaml"
-                or changed_file == "ci/docker/data12.build.wanda.yaml"
+                or changed_file == "ci/docker/data14.build.wanda.yaml"
             ):
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_ML_AFFECTED = 1
@@ -241,8 +241,10 @@ if __name__ == "__main__":
                 # Python changes might impact cross language stack in Java.
                 # Java also depends on Python CLI to manage processes.
                 RAY_CI_JAVA_AFFECTED = 1
-                if changed_file.startswith("python/setup.py") or re.match(
-                    ".*requirements.*\.txt", changed_file
+                if (
+                    changed_file.startswith("python/setup.py")
+                    or re.match(".*requirements.*\.txt", changed_file)
+                    or changed_file == "python/requirements_compiled.txt"
                 ):
                     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 1
                 for compiled_extension in (".pxd", ".pyi", ".pyx", ".so"):
@@ -336,7 +338,7 @@ if __name__ == "__main__":
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_TOOLS_AFFECTED = 1
-            elif changed_file.startswith("ci/run"):
+            elif changed_file.startswith("ci/run") or changed_file == "ci/ci.sh":
                 RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.startswith("src/"):
                 RAY_CI_ML_AFFECTED = 1

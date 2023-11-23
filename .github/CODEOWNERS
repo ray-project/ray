@@ -21,7 +21,7 @@
 /src/ray/protobuf/gcs_service.proto @ericl @pcmoritz @raulchen @ray-project/ray-core
 
 # Autoscaler
-/python/ray/autoscaler/ @ericl @ray-project/ray-core @architkulkarni
+/python/ray/autoscaler/ @ericl @ray-project/ray-core @architkulkarni @hongchaodeng
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
