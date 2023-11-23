@@ -14,8 +14,10 @@ class CallerActor(Caller):
     async def _consume_single_stream(self):
         method = self._get_remote_method()
         async for ref in method.options(num_returns="streaming").remote():
-            bs = ray.get(ref)
-            self.sink(bs)
+            r = ray.get(ref)
+
+            self.sink(str(r, 'utf-8'))
+            # self.sink(r)
 
 
 @click.command(help="Benchmark streaming deployment handle throughput.")

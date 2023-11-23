@@ -2,7 +2,10 @@ import abc
 import asyncio
 import enum
 import logging
+import time
 from typing import Tuple, Union
+
+import numpy as np
 
 from ray.actor import ActorHandle
 from ray.serve._private.benchmarks.common import Blackhole, run_throughput_benchmark
@@ -65,9 +68,20 @@ class Caller(Blackhole):
         pass
 
     async def _do_single_batch(self):
-        await asyncio.gather(
-            *[self._consume_single_stream() for _ in range(self._batch_size)]
+        durations = await asyncio.gather(
+            *[self._execute(self._consume_single_stream) for _ in range(self._batch_size)]
         )
+
+        p50, p75, p99 = np.percentile(durations, [50, 75, 99])
+
+        print(f"Quantiles P50={p50}, P75={p75}, P99={p99}")
+
+    async def _execute(self, fn):
+        start = time.monotonic()
+        await fn()
+        dur_s = time.monotonic() - start
+        return dur_s * 1000  # ms
+
 
     async def run_benchmark(self) -> Tuple[float, float]:
         return await run_throughput_benchmark(
