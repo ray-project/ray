@@ -449,6 +449,7 @@ def _setup_ray_cluster(
     autoscale: bool,
     autoscale_upscaling_speed: float,
     autoscale_idle_timeout_minutes: float,
+    autoscale_min_worker_nodes: int,
 ) -> Type[RayClusterOnSpark]:
     """
     The public API `ray.util.spark.setup_ray_cluster` does some argument
@@ -579,7 +580,7 @@ def _setup_ray_cluster(
                         "object_store_memory": object_store_memory_worker_node,
                     },
                     "node_config": {},
-                    "min_workers": 0,
+                    "min_workers": autoscale_min_worker_nodes,
                     "max_workers": num_worker_nodes,
                 },
             },
@@ -1203,6 +1204,16 @@ def setup_ray_cluster(
             object_store_memory_head_node
         )
 
+    if autoscale:
+        if autoscale_min_worker_nodes is None:
+            autoscale_min_worker_nodes = 0
+        else:
+            if not (0 <= autoscale_min_worker_nodes <= num_worker_nodes):
+                raise ValueError(
+                    "If autoscaling enabled, 'autoscale_min_worker_nodes' value "
+                    "must be between 0 and 'num_worker_nodes'"
+                )
+
     with _active_ray_cluster_rwlock:
         cluster = _setup_ray_cluster(
             num_worker_nodes=num_worker_nodes,
@@ -1222,6 +1233,7 @@ def setup_ray_cluster(
             autoscale=autoscale,
             autoscale_upscaling_speed=autoscale_upscaling_speed,
             autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
+            autoscale_min_worker_nodes=autoscale_min_worker_nodes,
         )
 
         cluster.wait_until_ready()  # NB: this line might raise error.
