@@ -6,7 +6,6 @@ import threading
 import collections
 import logging
 import time
-import contextlib
 
 
 _logger = logging.getLogger("ray.util.spark.utils")
