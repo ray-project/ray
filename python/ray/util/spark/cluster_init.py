@@ -483,9 +483,9 @@ def _setup_ray_cluster(
     if RAY_ON_SPARK_START_HOOK in os.environ:
         start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
     elif is_in_databricks_runtime():
-        start_hook = DefaultDatabricksRayOnSparkStartHook()
+        start_hook = DefaultDatabricksRayOnSparkStartHook(is_global)
     else:
-        start_hook = RayOnSparkStartHook()
+        start_hook = RayOnSparkStartHook(is_global)
 
     spark = get_spark_session()
 
