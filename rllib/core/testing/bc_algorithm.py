@@ -12,6 +12,8 @@ from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import ResultDict
 
 
 class BCConfigTest(AlgorithmConfig):
@@ -41,6 +43,7 @@ class BCAlgorithmTest(Algorithm):
         else:
             raise ValueError("Unknown framework: {}".format(config.framework_str))
 
-    def training_step(self):
+    @override(Algorithm)
+    def training_step(self) -> ResultDict:
         # do nothing.
         return {}

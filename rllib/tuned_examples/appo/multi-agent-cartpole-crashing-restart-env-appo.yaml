@@ -30,7 +30,7 @@ multi-agent-cartpole-crashing-appo:
         # Switch on resiliency for failed sub environments (within a vectorized stack).
         restart_failed_sub_environments: true
 
-        # Switch on evaluation workers being managed by AsyncRequestsManager object.
+        # Switch on asynchronous handling of evaluation workers.
         enable_async_evaluation: true
 
         evaluation_num_workers: 5

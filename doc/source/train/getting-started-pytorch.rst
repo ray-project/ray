@@ -84,10 +84,11 @@ Compare a PyTorch training script with and without Ray Train.
     .. group-tab:: PyTorch + Ray Train
 
         .. code-block:: python
-            :emphasize-lines: 9, 10, 12, 17, 18, 26, 27, 41, 42, 44-49
+            :emphasize-lines: 3, 10, 11, 13, 18, 19, 27, 28, 42, 43, 45-50
 
             import tempfile
             import torch
+            import ray
             from torchvision.models import resnet18
             from torchvision.datasets import FashionMNIST
             from torchvision.transforms import ToTensor, Normalize, Compose
