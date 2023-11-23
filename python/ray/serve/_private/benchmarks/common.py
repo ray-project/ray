@@ -48,12 +48,12 @@ async def run_throughput_benchmark(
     # real run
     stats = []
     for _ in range(num_trials):
-        start = time.time()
+        start = time.monotonic()
         count = 0
-        while time.time() - start < trial_runtime:
+        while time.monotonic() - start < trial_runtime:
             await fn()
             count += 1
-        end = time.time()
+        end = time.monotonic()
         stats.append(multiplier * count / (end - start))
 
     return round(np.mean(stats), 2), round(np.std(stats), 2)
