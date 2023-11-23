@@ -13,19 +13,35 @@
 [x] VLLM + DAG
     - Implement OutputNode
     - Fix DAG API
-[ ] Serialization edge cases -> Sang
-    - Implement pinning for plasma client objects (so that we don't need the hack to pin in Python memory, which only works for zero-copy objects)
-    - Implement data size header to account for different-size objects
-[ ] Connect actors and driver -> Stephanie
+[x] Connect actors and driver -> Stephanie
     - Receiver CoreWorker actor selects between normal task queue and signals from shared-memory objects
         - Implement a DependencyWaiter that uses the alternative plasma client to get objects
+[x] Serialization edge cases -> Sang
+    - [x] Implement data size header to account for different-size objects
+
+
 [ ] Performance optimization -> Eric
-    - Specialize Get/Put path
-    - Specialize Execution
+    - [ ] Implement all optimization
+    - Specialize Get/Put path -> not working
+    - Specialize Execution -> not working
+[ ] Input should accept multi args -> Stephanie
+[ ] Make it work with multi-reader for tp > 1 -> Stephanie
+    - Add assertion when the data size is too big compared to max buffer size
+[ ] Verify vllm works with existing setup
+[ ] Exception / failure handling with VLLM and accelerated DAG
+    [ ] exception -> Stephanie
+    [ ] failure handling (maybe use ray.get on the task output) -> Sang
+
+
+Next week
+[ ] Handle different metadata size
+[ ] Make it work with Mac or do not build
 [ ] Harden shared-memory based Seal
     - [ ] edge case: object aborted/client dies while waiting for seal
     - [ ] fix plasma client ref counting
     - [ ] disable ref counting for real
+    - Implement pinning for plasma client objects (so that we don't need the hack to pin in Python memory, which only works for zero-copy objects)
+[ ] ray.release on a list causes segfault
 
 Limitation:
 - Not working well with regular actor tasks
