@@ -9,6 +9,10 @@ from math import ceil
 import ci.ray_ci.bazel_sharding as bazel_sharding
 
 
+POSTMERGE_PIPELINE = "0189e759-8c96-4302-b6b5-b4274406bf89"
+RAY_VERSION = "3.0.0.dev0"
+
+
 def chunk_into_n(list: List[str], n: int) -> List[List[str]]:
     """
     Chunk a list into n chunks
@@ -32,7 +36,6 @@ def docker_login(docker_ecr: str) -> None:
     """
     Login to docker with AWS credentials
     """
-    subprocess.run(["pip", "install", "awscli"])
     password = subprocess.check_output(
         ["aws", "ecr", "get-login-password", "--region", "us-west-2"],
         stderr=sys.stderr,

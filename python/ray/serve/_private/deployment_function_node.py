@@ -2,12 +2,11 @@ from typing import Any, Callable, Dict, List, Union
 
 from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str
-
-from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
+from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 from ray.serve.schema import DeploymentSchema
-from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
 
 
 class DeploymentFunctionNode(DAGNode):
@@ -51,9 +50,9 @@ class DeploymentFunctionNode(DAGNode):
             self._deployment = deployment_shell.options(
                 func_or_class=func_body,
                 name=self._deployment_name,
-                init_args=(),
-                init_kwargs={},
                 route_prefix=route_prefix,
+                _init_args=(),
+                _init_kwargs={},
                 _internal=True,
             )
         else:
@@ -72,11 +71,11 @@ class DeploymentFunctionNode(DAGNode):
 
         if RAY_SERVE_ENABLE_NEW_HANDLE_API:
             self._deployment_handle = DeploymentHandle(
-                self._deployment.name, self._app_name
+                self._deployment.name, self._app_name, sync=False
             )
         else:
             self._deployment_handle = RayServeHandle(
-                self._deployment.name, self._app_name
+                self._deployment.name, self._app_name, sync=False
             )
 
     def _copy_impl(

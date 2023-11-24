@@ -32,6 +32,7 @@ Base Policy classes
 -------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~policy.policy.Policy
@@ -49,6 +50,7 @@ Making models
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.Policy.make_rl_module
@@ -57,6 +59,7 @@ Base Policy
 Torch Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.torch_policy_v2.TorchPolicyV2.make_model
@@ -66,6 +69,7 @@ Torch Policy
 Tensorflow Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.make_model
@@ -78,6 +82,7 @@ Inference
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.policy.Policy.compute_actions
@@ -87,6 +92,7 @@ Base Policy
 Torch Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.torch_policy_v2.TorchPolicyV2.action_sampler_fn
@@ -96,6 +102,7 @@ Torch Policy
 Tensorflow Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.action_sampler_fn
@@ -110,6 +117,7 @@ Computing, processing, and applying gradients
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.Policy.compute_gradients
@@ -118,6 +126,7 @@ Base Policy
 Torch Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.torch_policy_v2.TorchPolicyV2.extra_compute_grad_fetches
@@ -127,6 +136,7 @@ Torch Policy
 Tensorflow Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.grad_stats_fn
@@ -145,6 +155,7 @@ Updating the Policy's model
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.Policy.learn_on_batch
@@ -162,6 +173,7 @@ Loss, Logging, optimizers, and trajectory processing
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.Policy.loss
@@ -174,6 +186,7 @@ Base Policy
 Torch Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.torch_policy_v2.TorchPolicyV2.optimizer
@@ -183,6 +196,7 @@ Torch Policy
 Tensorflow Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.optimizer
@@ -197,6 +211,7 @@ Saving and restoring
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.Policy.from_checkpoint
@@ -217,6 +232,7 @@ Connectors
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.Policy.reset_connectors
@@ -231,6 +247,7 @@ Recurrent Policies
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Policy.get_initial_state
@@ -246,6 +263,7 @@ Miscellaneous
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.Policy.apply
@@ -258,6 +276,7 @@ Base Policy
 Torch Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.torch_policy_v2.TorchPolicyV2.get_batch_divisibility_req
@@ -266,6 +285,7 @@ Torch Policy
 Tensorflow Policy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.variables

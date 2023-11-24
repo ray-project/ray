@@ -12,6 +12,9 @@ from ray.data._internal.logical.rules._user_provided_optimizer_rules import (
 )
 from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
 from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
+from ray.data._internal.logical.rules.split_read_output_blocks import (
+    SplitReadOutputBlocksRule,
+)
 from ray.data._internal.logical.rules.zero_copy_map_fusion import (
     EliminateBuildOutputBlocks,
 )
@@ -22,6 +25,7 @@ DEFAULT_LOGICAL_RULES = [
 ]
 
 DEFAULT_PHYSICAL_RULES = [
+    SplitReadOutputBlocksRule,
     OperatorFusionRule,
     EliminateBuildOutputBlocks,
 ]

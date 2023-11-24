@@ -2,6 +2,7 @@ import itertools
 import math
 import random
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,8 @@ from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import column_udf, named_values
 from ray.tests.conftest import *  # noqa
+
+RANDOM_SEED = 123
 
 
 def test_zip(ray_start_regular_shared):
@@ -228,7 +231,11 @@ def test_unique(ray_start_regular_shared):
         ]
     )
     assert set(ds.unique("a")) == {1}
-    assert set(ds.unique("b")) == {1, 2}
+
+    with patch("ray.data.aggregate.AggregateFn._validate") as mock_validate:
+        assert set(ds.unique("b")) == {1, 2}
+        # check that column 'a' was dropped before aggregation
+        assert mock_validate.call_args_list[0].args[0].names == ["b"]
 
 
 def test_grouped_dataset_repr(ray_start_regular_shared):
@@ -323,6 +330,34 @@ def test_groupby_tabular_count(
         {"A": 0, "count()": 34},
         {"A": 1, "count()": 33},
         {"A": 2, "count()": 33},
+    ]
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
+def test_groupby_multiple_keys_tabular_count(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
+    # Test built-in count aggregation
+    print(f"Seeding RNG for test_groupby_arrow_count with: {RANDOM_SEED}")
+    random.seed(RANDOM_SEED)
+    xs = list(range(100))
+    random.shuffle(xs)
+
+    ds = ray.data.from_items([{"A": (x % 2), "B": (x % 3)} for x in xs]).repartition(
+        num_parts
+    )
+    ds = ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
+
+    agg_ds = ds.groupby(["A", "B"]).count()
+    assert agg_ds.count() == 6
+    assert list(agg_ds.sort(["A", "B"]).iter_rows()) == [
+        {"A": 0, "B": 0, "count()": 17},
+        {"A": 0, "B": 1, "count()": 16},
+        {"A": 0, "B": 2, "count()": 17},
+        {"A": 1, "B": 0, "count()": 17},
+        {"A": 1, "B": 1, "count()": 17},
+        {"A": 1, "B": 2, "count()": 16},
     ]
 
 
@@ -1025,6 +1060,57 @@ def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
 
     ds = ds.groupby("group").map_groups(func)
     assert sorted([x["out"] for x in ds.take()]) == [1, 3]
+
+
+def test_groupby_map_groups_extra_args(ray_start_regular_shared):
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    def func(df, a, b, c):
+        df["value"] = df["value"] * a + b + c
+        return df
+
+    ds = ds.groupby("group").map_groups(
+        func,
+        fn_args=(2, 1),
+        fn_kwargs={"c": 3},
+    )
+    assert sorted([x["value"] for x in ds.take()]) == [6, 8, 10, 12]
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas", "numpy"])
+def test_groupby_map_groups_multicolumn(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
+    # Test built-in count aggregation
+    print(f"Seeding RNG for test_groupby_arrow_count with: {RANDOM_SEED}")
+    random.seed(RANDOM_SEED)
+    xs = list(range(100))
+    random.shuffle(xs)
+
+    ds = ray.data.from_items([{"A": (x % 2), "B": (x % 3)} for x in xs]).repartition(
+        num_parts
+    )
+
+    agg_ds = ds.groupby(["A", "B"]).map_groups(
+        lambda df: {"count": [len(df["A"])]}, batch_format=ds_format
+    )
+    assert agg_ds.count() == 6
+    assert agg_ds.take_all() == [
+        {"count": 17},
+        {"count": 16},
+        {"count": 17},
+        {"count": 17},
+        {"count": 17},
+        {"count": 16},
+    ]
 
 
 def test_random_block_order_schema(ray_start_regular_shared):

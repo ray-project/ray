@@ -1,41 +1,48 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass
 import threading
-from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
 import warnings
+from dataclasses import dataclass
+from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
-from ray.util import metrics
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray._private.utils import get_or_create_event_loop
-from ray._raylet import StreamingObjectRefGenerator, GcsClient
-
 from ray import serve
+from ray._raylet import GcsClient, StreamingObjectRefGenerator
 from ray.serve._private.common import DeploymentID, RequestProtocol
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
-)
 from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.router import RequestMetadata, Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
-    get_random_letters,
     DEFAULT,
+    get_current_actor_id,
+    get_random_letters,
+    is_running_in_asyncio_loop,
 )
-from ray.serve._private.router import Router, RequestMetadata
+from ray.util import metrics
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 _global_async_loop = None
+_global_async_loop_creation_lock = threading.Lock()
 
 
-def _create_or_get_async_loop_in_thread():
+def _create_or_get_global_asyncio_event_loop_in_thread():
+    """Provides a global singleton asyncio event loop running in a daemon thread.
+
+    Thread-safe.
+    """
     global _global_async_loop
     if _global_async_loop is None:
-        _global_async_loop = asyncio.new_event_loop()
-        thread = threading.Thread(
-            daemon=True,
-            target=_global_async_loop.run_forever,
-        )
-        thread.start()
+        with _global_async_loop_creation_lock:
+            if _global_async_loop is not None:
+                return _global_async_loop
+
+            _global_async_loop = asyncio.new_event_loop()
+            thread = threading.Thread(
+                daemon=True,
+                target=_global_async_loop.run_forever,
+            )
+            thread.start()
+
     return _global_async_loop
 
 
@@ -90,37 +97,19 @@ class _DeploymentHandleBase:
         deployment_name: str,
         app_name: str,
         *,
+        sync: bool,
         handle_options: Optional[_HandleOptions] = None,
         _router: Optional[Router] = None,
-        _is_for_sync_context: bool = False,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
         self.deployment_id = DeploymentID(deployment_name, app_name)
         self.handle_options = handle_options or _HandleOptions()
-        self._is_for_sync_context = _is_for_sync_context
         self._recorded_telemetry = _recorded_telemetry
+        self._sync = sync
 
-        self.request_counter = _request_counter or metrics.Counter(
-            "serve_handle_request_counter",
-            description=(
-                "The number of handle.remote() calls that have been "
-                "made on this handle."
-            ),
-            tag_keys=("handle", "deployment", "route", "application"),
-        )
-        if app_name:
-            handle_tag = f"{app_name}#{deployment_name}#{get_random_letters()}"
-        else:
-            handle_tag = f"{deployment_name}#{get_random_letters()}"
-
-        # TODO(zcin): Separate deployment_id into deployment and application tags
-        self.request_counter.set_default_tags(
-            {
-                "handle": handle_tag,
-                "deployment": self.deployment_id.name,
-                "application": self.deployment_id.app,
-            }
+        self.request_counter = _request_counter or self._create_request_counter(
+            app_name, deployment_name
         )
 
         self._router: Optional[Router] = _router
@@ -146,13 +135,8 @@ class _DeploymentHandleBase:
             _request_protocol=request_protocol
         )
 
-    def _get_or_create_router(self) -> Router:
+    def _get_or_create_router(self) -> Union[Router, asyncio.AbstractEventLoop]:
         if self._router is None:
-            if self._is_for_sync_context:
-                event_loop = _create_or_get_async_loop_in_thread()
-            else:
-                event_loop = get_or_create_event_loop()
-
             node_id = ray.get_runtime_context().get_node_id()
             try:
                 cluster_node_info_cache = create_cluster_node_info_cache(
@@ -167,14 +151,41 @@ class _DeploymentHandleBase:
                 serve.context._get_global_client()._controller,
                 self.deployment_id,
                 node_id,
+                get_current_actor_id(),
                 availability_zone,
-                event_loop=event_loop,
-                _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
+                event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
                 _prefer_local_node_routing=self.handle_options._prefer_local_routing,
                 _router_cls=self.handle_options._router_cls,
             )
 
-        return self._router
+        return self._router, self._router._event_loop
+
+    @staticmethod
+    def _gen_handle_tag(app_name: str, deployment_name: str, handle_id: str):
+        if app_name:
+            return f"{app_name}#{deployment_name}#{handle_id}"
+        else:
+            return f"{deployment_name}#{handle_id}"
+
+    @classmethod
+    def _create_request_counter(cls, app_name, deployment_name):
+        return metrics.Counter(
+            "serve_handle_request_counter",
+            description=(
+                "The number of handle.remote() calls that have been "
+                "made on this handle."
+            ),
+            tag_keys=("handle", "deployment", "route", "application"),
+        ).set_default_tags(
+            # TODO(zcin): Separate deployment_id into deployment and application tags
+            {
+                "handle": cls._gen_handle_tag(
+                    app_name, deployment_name, handle_id=get_random_letters()
+                ),
+                "deployment": deployment_name,
+                "application": app_name,
+            }
+        )
 
     @property
     def deployment_name(self) -> str:
@@ -183,17 +194,6 @@ class _DeploymentHandleBase:
     @property
     def app_name(self) -> str:
         return self.deployment_id.app
-
-    @property
-    def _is_same_loop(self) -> bool:
-        """Whether the caller's asyncio loop is the same loop for handle.
-
-        This is only useful for async handles.
-        """
-        if self._is_for_sync_context:
-            return True
-
-        return get_or_create_event_loop() == self._get_or_create_router()._event_loop
 
     def _options(
         self,
@@ -222,6 +222,11 @@ class _DeploymentHandleBase:
 
         if use_new_handle_api is True:
             cls = DeploymentHandle
+        elif use_new_handle_api is False:
+            if self._sync:
+                cls = RayServeSyncHandle
+            else:
+                cls = RayServeHandle
         else:
             cls = self.__class__
 
@@ -229,21 +234,22 @@ class _DeploymentHandleBase:
             self.deployment_name,
             self.app_name,
             handle_options=new_handle_options,
+            sync=self._sync,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _request_counter=self.request_counter,
-            _is_for_sync_context=self._is_for_sync_context,
             _recorded_telemetry=self._recorded_telemetry,
         )
 
-    def _remote(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> Coroutine:
+    def _remote(
+        self, args: Tuple[Any], kwargs: Dict[str, Any]
+    ) -> concurrent.futures.Future:
         if not self.__class__ == DeploymentHandle:
             warnings.warn(
-                "Ray 2.7 introduces a new `DeploymentHandle` API that will "
-                "replace the existing `RayServeHandle` and `RayServeSyncHandle` "
-                "APIs in a future release. You are encouraged to migrate to the "
-                "new API to avoid breakages in the future. To opt in, either use "
-                "`handle.options(use_new_handle_api=True)` or set the global "
-                "environment variable `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`. "
+                "`DeploymentHandle` is now the default handle API. You can continue "
+                "using the existing `RayServeHandle` and `RayServeSyncHandle` APIs "
+                "by calling `handle.options(use_new_handle_api=False)` or setting the "
+                "global environment variable `RAY_SERVE_ENABLE_NEW_HANDLE_API=0`, "
+                "but support for these will be removed in a future release. "
                 "See https://docs.ray.io/en/latest/serve/model_composition.html "
                 "for more details."
             )
@@ -266,8 +272,14 @@ class _DeploymentHandleBase:
                 "application": _request_context.app_name,
             }
         )
-        return self._get_or_create_router().assign_request(
-            request_metadata, *args, **kwargs
+        router, event_loop = self._get_or_create_router()
+
+        # Schedule the coroutine to run on the router loop. This is always a separate
+        # loop running in another thread to avoid user code blocking the router, so we
+        # use the `concurrent.futures.Future` thread safe API.
+        return asyncio.run_coroutine_threadsafe(
+            router.assign_request(request_metadata, *args, **kwargs),
+            loop=event_loop,
         )
 
     def __getattr__(self, name):
@@ -290,17 +302,13 @@ class _DeploymentHandleBase:
             "deployment_name": self.deployment_name,
             "app_name": self.app_name,
             "handle_options": self.handle_options,
-            "_is_for_sync_context": self._is_for_sync_context,
+            "sync": self._sync,
         }
         return self.__class__._deserialize, (serialized_constructor_args,)
 
 
 @Deprecated(
-    message=(
-        "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
-        "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
-        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
-    )
+    message="This API has been replaced by `ray.serve.handle.DeploymentHandle`."
 )
 class RayServeHandle(_DeploymentHandleBase):
     """A handle used to make requests from one deployment to another.
@@ -389,17 +397,24 @@ class RayServeHandle(_DeploymentHandleBase):
             result = await obj_ref
 
         """
-        loop = self._get_or_create_router()._event_loop
-        result_coro = self._remote(args, kwargs)
-        return asyncio.ensure_future(result_coro, loop=loop)
+        future = self._remote(args, kwargs)
+
+        async def await_future():
+            return await asyncio.wrap_future(future)
+
+        task = asyncio.ensure_future(await_future())
+        # NOTE(edoakes): this is a hack to enable the legacy behavior of passing
+        # `asyncio.Task` objects directly to downstream handle calls without `await`.
+        # Because the router now runs on a separate loop, the `asyncio.Task` created
+        # here can't directly be awaited by it. So we include a reference to the
+        # underlying (thread-safe) `concurrent.futures.Future`.
+        # This can be removed when `RayServeHandle` is fully deprecated.
+        task._ray_serve_object_ref_future = future
+        return task
 
 
 @Deprecated(
-    message=(
-        "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
-        "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
-        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
-    )
+    message="This API has been replaced by `ray.serve.handle.DeploymentHandle`."
 )
 class RayServeSyncHandle(_DeploymentHandleBase):
     """A handle used to make requests to the ingress deployment of an application.
@@ -469,10 +484,7 @@ class RayServeSyncHandle(_DeploymentHandleBase):
             result = ray.get(obj_ref)
 
         """
-        coro = self._remote(args, kwargs)
-        future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-            coro, self._get_or_create_router()._event_loop
-        )
+        future = self._remote(args, kwargs)
         return future.result()
 
 
@@ -486,23 +498,11 @@ class RayServeDeploymentHandle(RayServeHandle):
 
 
 class _DeploymentResponseBase:
-    def __init__(
-        self,
-        assign_request_coro: Coroutine,
-        loop: asyncio.AbstractEventLoop,
-        loop_is_in_another_thread: bool,
-    ):
-        self._assign_request_task = loop.create_task(assign_request_coro)
-
-        if loop_is_in_another_thread:
-            # For the "sync" case where the handle is likely used in a driver for
-            # testing, we need to call `run_coroutine_threadsafe` to eagerly execute
-            # the request.
-            self._object_ref_future = asyncio.run_coroutine_threadsafe(
-                self._to_object_ref_or_gen(_record_telemetry=False), loop
-            )
-        else:
-            self._object_ref_future = None
+    def __init__(self, object_ref_future: concurrent.futures.Future):
+        # The result of `object_ref_future` must be an ObjectRef or
+        # StreamingObjectRefGenerator.
+        self._object_ref_future = object_ref_future
+        self._cancelled = False
 
     async def _to_object_ref_or_gen(
         self,
@@ -514,13 +514,17 @@ class _DeploymentResponseBase:
         # this path as well as calls from the proxy.
         if _record_telemetry:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
-        return await self._assign_request_task
+
+        # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
+        # from any asyncio loop.
+        return await asyncio.wrap_future(self._object_ref_future)
 
     def _to_object_ref_or_gen_sync(
         self,
         _record_telemetry: bool = True,
+        _allow_running_in_asyncio_loop: bool = False,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
-        if self._object_ref_future is None:
+        if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
                 "loop. Use `await response` or `await response._to_object_ref()` "
@@ -552,10 +556,23 @@ class _DeploymentResponseBase:
             - If the request was cancelled after assignment, they'll raise
               `ray.exceptions.TaskCancelledError`.
         """
-        if not self._assign_request_task.done():
-            self._assign_request_task.cancel()
-        elif self._assign_request_task.exception() is None:
-            ray.cancel(self._assign_request_task.result())
+        if self._cancelled:
+            return
+
+        self._cancelled = True
+        if not self._object_ref_future.done():
+            self._object_ref_future.cancel()
+        elif self._object_ref_future.exception() is None:
+            ray.cancel(self._object_ref_future.result())
+
+    @DeveloperAPI
+    def cancelled(self) -> bool:
+        """Whether or not the request has been cancelled.
+
+        This is `True` if `.cancel()` is called, but the request may actually have run
+        to completion.
+        """
+        return self._cancelled
 
 
 @PublicAPI(stability="beta")
@@ -630,7 +647,7 @@ class DeploymentResponse(_DeploymentResponseBase):
 
     def __await__(self):
         """Yields the final result of the deployment handle call."""
-        obj_ref = yield from self._assign_request_task.__await__()
+        obj_ref = yield from asyncio.wrap_future(self._object_ref_future)
         result = yield from obj_ref.__await__()
         return result
 
@@ -661,7 +678,11 @@ class DeploymentResponse(_DeploymentResponseBase):
         return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
 
     @DeveloperAPI
-    def _to_object_ref_sync(self, _record_telemetry: bool = True) -> ray.ObjectRef:
+    def _to_object_ref_sync(
+        self,
+        _record_telemetry: bool = True,
+        _allow_running_in_asyncio_loop: bool = False,
+    ) -> ray.ObjectRef:
         """Advanced API to convert the response to a Ray `ObjectRef`.
 
         This is used to pass the output of a `DeploymentHandle` call to a Ray task or
@@ -674,7 +695,10 @@ class DeploymentResponse(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
+        return self._to_object_ref_or_gen_sync(
+            _record_telemetry=_record_telemetry,
+            _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
+        )
 
 
 @PublicAPI(stability="beta")
@@ -734,15 +758,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
     def __init__(
         self,
-        assign_request_coro: Coroutine,
-        loop: asyncio.AbstractEventLoop,
-        loop_is_in_another_thread: bool,
+        object_ref_future: concurrent.futures.Future,
     ):
-        super().__init__(
-            assign_request_coro,
-            loop=loop,
-            loop_is_in_another_thread=loop_is_in_another_thread,
-        )
+        super().__init__(object_ref_future)
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
     def __await__(self):
@@ -785,7 +803,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
     @DeveloperAPI
     def _to_object_ref_gen_sync(
-        self, _record_telemetry: bool = True
+        self,
+        _record_telemetry: bool = True,
+        _allow_running_in_asyncio_loop: bool = False,
     ) -> StreamingObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
 
@@ -796,7 +816,10 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref_gen` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
+        return self._to_object_ref_or_gen_sync(
+            _record_telemetry=_record_telemetry,
+            _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
+        )
 
 
 @PublicAPI(stability="beta")
@@ -897,15 +920,10 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-        loop = self._get_or_create_router()._event_loop
-        result_coro = self._remote(args, kwargs)
+        future = self._remote(args, kwargs)
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator
         else:
             response_cls = DeploymentResponse
 
-        return response_cls(
-            result_coro,
-            loop=loop,
-            loop_is_in_another_thread=self._is_for_sync_context,
-        )
+        return response_cls(future)

@@ -1,19 +1,20 @@
 import os
-import pytest
 import random
 import subprocess
 import tempfile
 
+import pytest
 import requests
 
 import ray
-from ray.tests.conftest import pytest_runtest_makereport, propagate_logs  # noqa
+from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray._private.usage import usage_lib
-
-from ray import serve
+from ray.cluster_utils import AutoscalingCluster, Cluster
+from ray.serve._private import api as _private_api
 from ray.serve.context import _get_global_client
-from ray.serve.tests.utils import check_ray_stopped, TELEMETRY_ROUTE_PREFIX
+from ray.serve.tests.common.utils import TELEMETRY_ROUTE_PREFIX, check_ray_stopped
+from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -28,6 +29,25 @@ def ray_shutdown():
     yield
     serve.shutdown()
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_cluster():
+    cluster = Cluster()
+    yield Cluster()
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
+
+
+@pytest.fixture
+def ray_autoscaling_cluster(request):
+    cluster = AutoscalingCluster(**request.param)
+    cluster.start()
+    yield
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.fixture
@@ -85,7 +105,7 @@ def serve_instance(_shared_serve_instance):
     # Clear all state for 2.x applications and deployments.
     _shared_serve_instance.delete_all_apps()
     # Clear all state for 1.x deployments.
-    _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
+    _shared_serve_instance.delete_deployments(_private_api.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.shutdown_cached_handles()
 

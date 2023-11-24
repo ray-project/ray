@@ -1,21 +1,21 @@
 import importlib
 import logging
 import os
+import sys
+
 import pytest
 import requests
 import starlette
 from starlette.middleware import Middleware
-import sys
-
 
 import ray
-from ray.exceptions import RayActorError
 from ray import serve
 from ray._private.test_utils import wait_for_condition
+from ray.exceptions import RayActorError
 from ray.serve._private.common import ProxyStatus
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import LoggingConfig, ServeInstanceDetails
 
 
 # ==== Callbacks used in this test ====
@@ -79,8 +79,8 @@ def ray_instance(request):
 
     os.environ.update(requested_env_vars)
     importlib.reload(ray.serve._private.constants)
-    importlib.reload(ray.serve.controller)
-    importlib.reload(ray.serve._private.http_proxy)
+    importlib.reload(ray.serve._private.controller)
+    importlib.reload(ray.serve._private.proxy)
 
     yield ray.init()
 
@@ -158,7 +158,7 @@ def test_callback_fail(ray_instance):
     Actor will fail to be started and further call will raise RayActorError.
     """
 
-    actor_def = ray.serve._private.http_proxy.HTTPProxyActor
+    actor_def = ray.serve._private.proxy.ProxyActor
     handle = actor_def.remote(
         host="http_proxy",
         port=123,
@@ -166,14 +166,17 @@ def test_callback_fail(ray_instance):
         controller_name="controller",
         node_ip_address="127.0.0.1",
         node_id="123",
+        logging_config=LoggingConfig(),
+        long_poll_client="fake_client",
     )
     with pytest.raises(RayActorError, match="this is from raise_error_callback"):
         ray.get(handle.ready.remote())
 
-    actor_def = ray.serve.controller.ServeController
+    actor_def = ray.serve._private.controller.ServeController
     handle = actor_def.remote(
         "controller",
         http_config={},
+        system_logging_config=LoggingConfig(),
     )
     with pytest.raises(RayActorError, match="cannot be imported"):
         ray.get(handle.check_alive.remote())
@@ -191,7 +194,7 @@ def test_callback_fail(ray_instance):
 def test_http_proxy_return_aribitary_objects(ray_instance):
     """Test invalid callback path in http proxy"""
 
-    actor_def = ray.serve._private.http_proxy.HTTPProxyActor
+    actor_def = ray.serve._private.proxy.ProxyActor
     handle = actor_def.remote(
         host="http_proxy",
         port=123,
@@ -199,6 +202,8 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
         controller_name="controller",
         node_ip_address="127.0.0.1",
         node_id="123",
+        logging_config=LoggingConfig(),
+        long_poll_client="fake_client",
     )
     with pytest.raises(
         RayActorError, match="must return a list of Starlette middlewares"
@@ -219,7 +224,7 @@ def test_http_proxy_calllback_failures(ray_instance, capsys):
     """Test http proxy keeps restarting when callback function fails"""
 
     try:
-        serve.start(detached=True)
+        serve.start()
     except RayActorError:
         # serve.start will fail because the http proxy is not started successfully
         # and client use proxy handle to check the proxy readiness, so it will raise

@@ -14,17 +14,15 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
-    FileExtensionFilter,
 )
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     ParquetDatasource,
     _deserialize_fragments_with_retry,
-    _ParquetDatasourceReader,
     _SerializedFragment,
 )
+from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -39,6 +37,17 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
         assert ds._plan.execute()._num_computed() == expected
     else:
         assert ds._plan.execute()._num_computed() == streaming_expected
+
+
+def test_include_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test.txt")
+    table = pa.Table.from_pydict({"animals": ["cat", "dog"]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_paths=True)
+
+    paths = [row["path"] for row in ds.take_all()]
+    assert paths == [path, path]
 
 
 @pytest.mark.parametrize(
@@ -261,6 +270,56 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
         ),
     ],
 )
+def test_parquet_read_random_shuffle(
+    ray_start_regular_shared, restore_data_context, fs, data_path
+):
+    # NOTE: set preserve_order to True to allow consistent output behavior.
+    context = ray.data.DataContext.get_current()
+    context.execution_options.preserve_order = True
+
+    input_list = list(range(10))
+    df1 = pd.DataFrame({"one": input_list[: len(input_list) // 2]})
+    table = pa.Table.from_pandas(df1)
+    setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": input_list[len(input_list) // 2 :]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle="files")
+
+    # Execute 10 times to get a set of output results.
+    output_results_list = []
+    for _ in range(10):
+        result = [row["one"] for row in ds.take_all()]
+        output_results_list.append(result)
+    all_rows_matched = [
+        input_list == output_list for output_list in output_results_list
+    ]
+
+    # Check when shuffle is enabled, output order has at least one different
+    # case.
+    assert not all(all_rows_matched)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),
+            lazy_fixture("s3_path_with_space"),
+        ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
+    ],
+)
 def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
@@ -280,7 +339,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     # Expect directory path expansion to fail with OS error if default format-based path
     # filtering is turned off.
     with pytest.raises(OSError):
-        ds = ray.data.read_parquet_bulk(data_path, filesystem=fs, partition_filter=None)
+        ds = ray.data.read_parquet_bulk(data_path, filesystem=fs, file_extensions=None)
         ds.schema()
 
     # Expect individual file paths to be processed successfully.
@@ -519,6 +578,107 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     assert ds.count() == 2
 
 
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
+    ],
+)
+def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, data_path):
+    data = {
+        "x": [0, 0, 1, 1, 2, 2],
+        "y": ["a", "b", "a", "b", "a", "b"],
+        "z": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+    }
+    table = pa.Table.from_pydict(data)
+
+    pq.write_to_dataset(
+        table,
+        root_path=_unwrap_protocol(data_path),
+        filesystem=fs,
+        use_legacy_dataset=False,
+        partition_cols=["x", "y"],
+    )
+
+    ds = ray.data.read_parquet(
+        _unwrap_protocol(data_path),
+        columns=["y", "z"],
+        filesystem=fs,
+    )
+    assert ds.columns() == ["y", "z"]
+    values = [[s["y"], s["z"]] for s in ds.take()]
+    check_num_computed(ds, 2, 0)
+    assert sorted(values) == [
+        ["a", 0.1],
+        ["a", 0.3],
+        ["a", 0.5],
+        ["b", 0.2],
+        ["b", 0.4],
+        ["b", 0.6],
+    ]
+
+
+# Skip this test if pyarrow is below version 7. As the old
+# pyarrow does not support single path with partitioning,
+# this issue cannot be resolved by Ray data itself.
+@pytest.mark.skipif(
+    tuple(pa.__version__.split(".")) < ("7",),
+    reason="Old pyarrow behavior cannot be fixed.",
+)
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
+    ],
+)
+def test_parquet_read_partitioned_with_partition_filter(
+    ray_start_regular_shared, fs, data_path
+):
+    # This test is to make sure when only one file remains
+    # after partition filtering, Ray data can still parse the
+    # partitions correctly.
+    data = {
+        "x": [0, 0, 1, 1, 2, 2],
+        "y": ["a", "b", "a", "b", "a", "b"],
+        "z": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+    }
+    table = pa.Table.from_pydict(data)
+
+    pq.write_to_dataset(
+        table,
+        root_path=_unwrap_protocol(data_path),
+        filesystem=fs,
+        use_legacy_dataset=False,
+        partition_cols=["x", "y"],
+    )
+
+    ds = ray.data.read_parquet(
+        _unwrap_protocol(data_path),
+        filesystem=fs,
+        columns=["x", "y", "z"],
+        partition_filter=ray.data.datasource.partitioning.PathPartitionFilter.of(
+            filter_fn=lambda x: (x["x"] == "0") and (x["y"] == "a"), style="hive"
+        ),
+    )
+
+    assert ds.columns() == ["x", "y", "z"]
+    values = [[s["x"], s["y"], s["z"]] for s in ds.take()]
+    check_num_computed(ds, 2, 0)
+    assert sorted(values) == [[0, "a", 0.1]]
+
+
 def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame(
         {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
@@ -674,19 +834,17 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             data_size >= 7_000_000 and data_size <= 10_000_000
         ), "actual data size is out of expected bound"
 
-        reader = _ParquetDatasourceReader(tensor_output_path)
+        datasource = ParquetDatasource(tensor_output_path)
         assert (
-            reader._encoding_ratio >= 300 and reader._encoding_ratio <= 600
+            datasource._encoding_ratio >= 300 and datasource._encoding_ratio <= 600
         ), "encoding ratio is out of expected bound"
-        data_size = reader.estimate_inmemory_data_size()
+        data_size = datasource.estimate_inmemory_data_size()
         assert (
             data_size >= 6_000_000 and data_size <= 10_000_000
         ), "estimated data size is either out of expected bound"
         assert (
             data_size
-            == _ParquetDatasourceReader(
-                tensor_output_path
-            ).estimate_inmemory_data_size()
+            == ParquetDatasource(tensor_output_path).estimate_inmemory_data_size()
         ), "estimated data size is not deterministic in multiple calls."
 
         text_output_path = os.path.join(tmp_path, "text")
@@ -704,17 +862,17 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             data_size >= 1_000_000 and data_size <= 2_000_000
         ), "actual data size is out of expected bound"
 
-        reader = _ParquetDatasourceReader(text_output_path)
+        datasource = ParquetDatasource(text_output_path)
         assert (
-            reader._encoding_ratio >= 150 and reader._encoding_ratio <= 300
+            datasource._encoding_ratio >= 150 and datasource._encoding_ratio <= 300
         ), "encoding ratio is out of expected bound"
-        data_size = reader.estimate_inmemory_data_size()
+        data_size = datasource.estimate_inmemory_data_size()
         assert (
             data_size >= 1_000_000 and data_size <= 2_000_000
         ), "estimated data size is out of expected bound"
         assert (
             data_size
-            == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
+            == ParquetDatasource(text_output_path).estimate_inmemory_data_size()
         ), "estimated data size is not deterministic in multiple calls."
     finally:
         ctx.decoding_size_estimation = old_decoding_size_estimation
@@ -759,16 +917,14 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(path))
 
 
-def test_parquet_partition_filter(ray_start_regular_shared, tmp_path):
+def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
     table = pa.table({"food": ["spam", "ham", "eggs"]})
     pq.write_table(table, tmp_path / "table.parquet")
     # `spam` should be filtered out.
     with open(tmp_path / "spam", "w"):
         pass
 
-    ds = ray.data.read_parquet(
-        tmp_path, partition_filter=FileExtensionFilter("parquet")
-    )
+    ds = ray.data.read_parquet(tmp_path, file_extensions=["parquet"])
 
     assert ds.count() == 3
 
@@ -900,30 +1056,6 @@ def test_parquet_write_create_dir(
     assert df.equals(dfds)
 
 
-def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
-    data_path = str(tmp_path)
-    one_data = list(range(6))
-    df1 = pd.DataFrame({"one": one_data[:3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": one_data[3:], "two": ["e", "f", "g"]})
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-
-    def _block_udf(block):
-        df = BlockAccessor.for_block(block).to_pandas().copy()
-        df["one"] += 1
-        return pa.Table.from_pandas(df)
-
-    # 2 write tasks
-    ds._set_uuid("data")
-    ds.write_parquet(data_path, _block_udf=_block_udf)
-    path1 = os.path.join(data_path, "data_000000_000000.parquet")
-    path2 = os.path.join(data_path, "data_000001_000000.parquet")
-    dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
-    expected_df = df
-    expected_df["one"] += 1
-    assert expected_df.equals(dfds)
-
-
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
@@ -1023,9 +1155,13 @@ def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
     assert ds.count() == 1000
 
 
-def test_parquet_datasource_names(ray_start_regular_shared):
-    assert ParquetBaseDatasource().get_name() == "ParquetBulk"
-    assert ParquetDatasource().get_name() == "Parquet"
+def test_parquet_datasource_names(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({"spam": [1, 2, 3]})
+    path = os.path.join(tmp_path, "data.parquet")
+    df.to_parquet(path)
+
+    assert ParquetBaseDatasource(path).get_name() == "ParquetBulk"
+    assert ParquetDatasource(path).get_name() == "Parquet"
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These

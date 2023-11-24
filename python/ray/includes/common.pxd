@@ -127,6 +127,8 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsRpcError()
         c_bool IsOutOfResource()
         c_bool IsObjectRefEndOfStream()
+        c_bool IsIntentionalSystemExit()
+        c_bool IsUnexpectedSystemExit()
 
         c_string ToString()
         c_string CodeAsString()
@@ -250,6 +252,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
     cdef CWorkerExitType WORKER_EXIT_TYPE_USER_ERROR "ray::rpc::WorkerExitType::USER_ERROR"  # noqa: E501
     cdef CWorkerExitType WORKER_EXIT_TYPE_SYSTEM_ERROR "ray::rpc::WorkerExitType::SYSTEM_ERROR"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR "ray::rpc::WorkerExitType::INTENDED_SYSTEM_EXIT"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -318,10 +321,12 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
-                     c_string concurrency_group_name)
+                     c_string concurrency_group_name,
+                     int64_t generator_backpressure_num_objects)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
+                     int64_t generator_backpressure_num_objects,
                      c_string serialized_runtime_env)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
@@ -359,6 +364,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         c_bool IsSpilled() const
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
+        const c_bool GetDidSpill() const
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
@@ -369,7 +375,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         UNIMPLEMENTED "grpc::StatusCode::UNIMPLEMENTED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
-        CGcsClientOptions(const c_string &gcs_address)
+        CGcsClientOptions(const c_string &gcs_address, int port)
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)

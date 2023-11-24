@@ -1,7 +1,7 @@
 import logging
 from typing import Type
 
-from ray.air import Checkpoint
+from ray.train import Checkpoint
 from ray.train.predictor import Predictor
 from ray.util.annotations import Deprecated
 

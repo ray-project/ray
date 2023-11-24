@@ -50,14 +50,6 @@ py_test(
 )
 
 py_test(
-    name = "test_checkpoint_manager",
-    size = "small",
-    srcs = ["tests/test_checkpoint_manager.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_configs",
     size = "small",
     srcs = ["tests/test_configs.py"],
@@ -70,14 +62,6 @@ py_test(
     size = "small",
     srcs = ["tests/test_data_batch_conversion.py"],
     tags = ["team:ml", "team:data", "exclusive", "ray_data"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_legacy_dataset_config",
-    size = "large",
-    srcs = ["tests/test_legacy_dataset_config.py"],
-    tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
@@ -136,14 +120,6 @@ py_test(
     name = "test_keras_callback",
     size = "small",
     srcs = ["tests/test_keras_callback.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_remote_storage",
-    size = "small",
-    srcs = ["tests/test_remote_storage.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -270,14 +246,6 @@ py_test(
     name = "test_tracked_actor_task",
     size = "small",
     srcs = ["tests/execution/test_tracked_actor_task.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_result",
-    size = "medium",
-    srcs = ["tests/test_result.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

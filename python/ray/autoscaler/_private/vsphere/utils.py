@@ -1,10 +1,6 @@
-import atexit
-import ssl
+import ipaddress
+import time
 from enum import Enum
-
-import requests
-from pyVim.connect import Disconnect, SmartConnect
-from vmware.vapi.vsphere.client import create_vsphere_client
 
 
 class Constants:
@@ -13,76 +9,43 @@ class Constants:
     RAY_HEAD_FROZEN_VM_TAG = "ray-frozen-vm"
     VSPHERE_NODE_STATUS = "vsphere-node-status"
     CREATING_TAG_TIMEOUT = 120
+    VM_FREEZE_TIMEOUT = 360
+    VM_FREEZE_SLEEP_TIME = 0.5
+    ENSURE_CONNECTION_PERIOD = 300
 
     class VsphereNodeStatus(Enum):
         # Enum for SDK clients
-
         CREATING = "creating"
         CREATED = "created"
 
-
-class VmwSdkClient:
-    class ClientType(Enum):
-        # Enum for SDK clients
-
-        PYVMOMI_SDK = "pyvmomi"
-        AUTOMATION_SDK = "automation_sdk"
-
     class SessionType(Enum):
-
         VERIFIED = "verified"
         UNVERIFIED = "unverified"
 
-    def __init__(
-        self, server, user, password, session_type: SessionType, client_type: ClientType
-    ):
-        self.server = server
-        self.user = user
-        self.password = password
-        self.session_type = session_type
-        self.client_type = client_type
 
-    def get_client(self):
+def is_ipv4(ip):
+    try:
+        ipaddress.IPv4Address(ip)
+        return True
+    except ipaddress.AddressValueError:
+        return False
 
-        if self.client_type == self.ClientType.PYVMOMI_SDK:
-            context_obj = None
-            if self.session_type == self.SessionType.UNVERIFIED:
-                context_obj = ssl._create_unverified_context()
 
-            smart_connect_obj = SmartConnect(
-                host=self.server,
-                user=self.user,
-                pwd=self.password,
-                sslContext=context_obj,
-            )
+def singleton_client(cls):
+    """
+    A singleton decorator helps us to make sure there is only one instance
+    """
+    instances = {}
 
-            atexit.register(Disconnect, smart_connect_obj)
-
-            return smart_connect_obj.content
+    def get_instance(*args, **kwargs):
+        if cls not in instances:
+            instances[cls] = (cls(*args, **kwargs), time.time())
         else:
-            session = None
-            if self.session_type == self.SessionType.UNVERIFIED:
-                session = self.get_unverified_session()
+            instance, last_checked_time = instances[cls]
+            current_time = time.time()
+            if current_time - last_checked_time > Constants.ENSURE_CONNECTION_PERIOD:
+                instance.ensure_connect()
+                instances[cls] = (instance, current_time)
+        return instances[cls][0]
 
-            return create_vsphere_client(
-                server=self.server,
-                username=self.user,
-                password=self.password,
-                session=session,
-            )
-
-    def get_unverified_session(self):
-        """
-        vCenter provisioned internally have SSH certificates
-        expired so we use unverified session. Find out what
-        could be done for production.
-
-        Get a requests session with cert verification disabled.
-        Also disable the insecure warnings message.
-        Note this is not recommended in production code.
-        @return: a requests session with verification disabled.
-        """
-        session = requests.session()
-        session.verify = False
-        requests.packages.urllib3.disable_warnings()
-        return session
+    return get_instance

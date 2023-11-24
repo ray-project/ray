@@ -66,6 +66,10 @@ export type StateApiLogInput = {
    * If filename is provided, suffix is not necessary
    */
   filename?: string | null;
+  /**
+   * -1 for all lines.
+   */
+  maxLines?: number;
 };
 
 export const getStateApiDownloadLogUrl = ({
@@ -74,6 +78,7 @@ export const getStateApiDownloadLogUrl = ({
   taskId,
   actorId,
   suffix,
+  maxLines = MAX_LINES_FOR_LOGS,
 }: StateApiLogInput) => {
   if (
     nodeId === null ||
@@ -94,7 +99,7 @@ export const getStateApiDownloadLogUrl = ({
       ? [`actor_id=${encodeURIComponent(actorId)}`]
       : []),
     ...(suffix !== undefined ? [`suffix=${encodeURIComponent(suffix)}`] : []),
-    `lines=${MAX_LINES_FOR_LOGS}`,
+    `lines=${maxLines}`,
   ];
 
   return `api/v0/logs/file?${variables.join("&")}`;

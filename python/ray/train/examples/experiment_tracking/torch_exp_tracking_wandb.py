@@ -1,18 +1,23 @@
 # flake8: noqa
 # fmt: off
+# isort: off
 
 # __start__
-# Run the following script with the WANDB_API_KEY env var set.
+from filelock import FileLock
 import os
+
+import torch
+import wandb
+
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+from torchvision.models import resnet18
+
 import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
-import torch
-from torchvision import datasets, transforms
-from torchvision.models import resnet18
-from torch.utils.data import DataLoader
-import wandb
 
+# Run the following script with the WANDB_API_KEY env var set.
 assert os.environ.get("WANDB_API_KEY", None), "Please set WANDB_API_KEY env var."
 
 # This makes sure that all workers have this env var set.
@@ -38,9 +43,10 @@ def train_func(config):
     transform = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
     )
-    train_data = datasets.FashionMNIST(
-        root="./data", train=True, download=True, transform=transform
-    )
+    with FileLock("./data.lock"):
+        train_data = datasets.FashionMNIST(
+            root="./data", train=True, download=True, transform=transform
+        )
     train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
 

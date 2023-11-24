@@ -4,7 +4,7 @@ import sys
 import asyncio
 from typing import List
 import urllib
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 from ray.util.state.state_cli import logs_state_cli_group
@@ -20,6 +20,7 @@ from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
+    skip_flaky_test,
 )
 
 from ray._private.ray_constants import (
@@ -51,14 +52,6 @@ from ray.util.state import get_log, list_logs, list_nodes, list_workers
 from ray.util.state.common import GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_manager import StateDataSourceClient
-
-if sys.version_info >= (3, 8, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
-
-
-ASYNCMOCK_MIN_PYTHON_VER = (3, 8)
 
 
 def generate_task_event(
@@ -422,10 +415,6 @@ async def test_log_agent_find_task_log_offsets(temp_file):
 
 @pytest.fixture
 def logs_manager():
-    if sys.version_info < ASYNCMOCK_MIN_PYTHON_VER:
-        raise Exception(f"Unsupported for this version of python {sys.version_info}")
-    from unittest.mock import AsyncMock
-
     client = AsyncMock(StateDataSourceClient)
     manager = LogsManager(client)
     yield manager
@@ -445,11 +434,6 @@ async def generate_logs_stream(num_chunks: int):
         yield StreamLogReply(data=data.encode())
 
 
-@pytest.mark.skipif(
-    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
-    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher",
-)
 @pytest.mark.asyncio
 async def test_logs_manager_list_logs(logs_manager):
     logs_client = logs_manager.data_source_client
@@ -483,11 +467,6 @@ async def test_logs_manager_list_logs(logs_manager):
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
-    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher",
-)
 @pytest.mark.asyncio
 async def test_logs_manager_resolve_file(logs_manager):
     node_id = NodeID(b"1" * 28)
@@ -708,11 +687,6 @@ async def test_logs_manager_resolve_file(logs_manager):
     assert log_file_name == f"worker-123-123-{pid}.err"
 
 
-@pytest.mark.skipif(
-    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
-    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher",
-)
 @pytest.mark.asyncio
 async def test_logs_manager_stream_log(logs_manager):
     NUM_LOG_CHUNKS = 10
@@ -777,11 +751,6 @@ async def test_logs_manager_stream_log(logs_manager):
     # It will be tested by the integration test.
 
 
-@pytest.mark.skipif(
-    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
-    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher",
-)
 @pytest.mark.asyncio
 async def test_logs_manager_keepalive_no_timeout(logs_manager):
     """Test when --follow is specified, there's no timeout.
@@ -1303,6 +1272,10 @@ def test_log_get(ray_start_cluster):
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Windows has logging race from tasks."
+)
+@pytest.mark.skipif(
+    skip_flaky_test(),
+    reason="https://github.com/ray-project/ray/issues/40959",
 )
 def test_log_task(shutdown_only):
     from ray.runtime_env import RuntimeEnv

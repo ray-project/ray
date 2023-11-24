@@ -20,6 +20,7 @@ Summary APIs
 ~~~~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ray.util.state.summarize_actors
@@ -30,6 +31,7 @@ List APIs
 ~~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ray.util.state.list_actors
@@ -45,6 +47,7 @@ Get APIs
 ~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ray.util.state.get_actor
@@ -58,6 +61,7 @@ Log APIs
 ~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ray.util.state.list_logs
@@ -69,6 +73,7 @@ State APIs Schema
 -----------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
    :template: autosummary/class_without_autosummary.rst
 
@@ -92,6 +97,7 @@ State APIs Exceptions
 ---------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ray.util.state.exception.RayStateApiException

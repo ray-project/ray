@@ -34,7 +34,7 @@ from ray.util.state.state_manager import (
 )
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 EMOJI_WARNING = "&#x26A0;&#xFE0F;"
 WARNING_FOR_MULTI_TASK_IN_A_WORKER = (
@@ -62,9 +62,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # will be hang when the ray.state is connected and the GCS is exit.
         # Please refer to: https://github.com/ray-project/ray/issues/16328
         assert dashboard_head.gcs_address or dashboard_head.redis_address
-        gcs_address = dashboard_head.gcs_address
+        self._gcs_address = dashboard_head.gcs_address
         temp_dir = dashboard_head.temp_dir
-        self.service_discovery = PrometheusServiceDiscoveryWriter(gcs_address, temp_dir)
+        self.service_discovery = PrometheusServiceDiscoveryWriter(
+            self._gcs_address, temp_dir
+        )
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
 
@@ -138,7 +140,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return dashboard_optional_utils.rest_response(
                 success=True,
                 message="Got formatted cluster status.",
-                cluster_status=debug_status(formatted_status_string, error),
+                cluster_status=debug_status(
+                    formatted_status_string, error, address=self._gcs_address
+                ),
             )
 
     async def get_task_ids_running_in_a_worker(self, worker_id: str) -> List[str]:

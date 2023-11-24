@@ -3,9 +3,7 @@ from enum import Enum
 import json
 import os
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
-import urllib.parse
 
-from ray.air._internal.remote_storage import _is_network_mount
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 if TYPE_CHECKING:
@@ -14,15 +12,11 @@ if TYPE_CHECKING:
     from ray.tune.schedulers import TrialScheduler
     from ray.tune.search import BasicVariantGenerator, Searcher
     from ray.tune import Callback
-    from ray.train import SyncConfig
 
 
 AIR_TRAINERS = {
-    "AccelerateTrainer",
     "HorovodTrainer",
-    "TransformersTrainer",
     "LightGBMTrainer",
-    "LightningTrainer",
     "MosaicTrainer",
     "SklearnTrainer",
     "TensorflowTrainer",
@@ -205,28 +199,6 @@ def tag_callbacks(callbacks: Optional[List["Callback"]]) -> bool:
         record_extra_usage_tag(TagKey.AIR_CALLBACKS, callback_counts_str)
 
 
-def _get_tag_for_remote_path(remote_path: str) -> str:
-    scheme = urllib.parse.urlparse(remote_path).scheme
-    if scheme == "file":
-        # NOTE: We treat a file:// storage_path as a "remote" path, so this case
-        # differs from the local path only case.
-        # In particular, default syncing to head node is not enabled here.
-        tag = "local_uri"
-    elif scheme == "memory":
-        # NOTE: This is used in tests and does not make sense to actually use.
-        # This condition filters the tag out of the `custom` catch-all.
-        tag = "memory"
-    elif scheme == "hdfs":
-        tag = "hdfs"
-    elif scheme in {"s3", "s3a"}:
-        tag = "s3"
-    elif scheme in {"gs", "gcs"}:
-        tag = "gs"
-    else:
-        tag = "custom_remote_storage"
-    return tag
-
-
 def tag_storage_type(storage: "StorageContext"):
     """Records the storage configuration of an experiment.
 
@@ -249,37 +221,6 @@ def tag_storage_type(storage: "StorageContext"):
         storage_config_tag = storage.storage_filesystem.type_name
     else:
         storage_config_tag = "other"
-
-    record_extra_usage_tag(TagKey.AIR_STORAGE_CONFIGURATION, storage_config_tag)
-
-
-def tag_ray_air_storage_config(
-    local_path: str, remote_path: Optional[str], sync_config: "SyncConfig"
-) -> None:
-    """Records the storage storage configuration of an experiment.
-
-    The storage configuration is set by `RunConfig(storage_path, sync_config)`.
-
-    The possible configurations are:
-    - 'driver' = Default syncing to Tune driver node if no remote path is specified.
-    - 'local' = No synchronization at all.
-    - 'nfs' = Using a mounted shared network filesystem.
-    - ('s3', 'gs', 'hdfs', 'custom_remote_storage'): Various remote storage schemes.
-    - ('local_uri', 'memory'): Mostly used by internal testing by setting `storage_path`
-        to `file://` or `memory://`.
-    """
-    if remote_path:
-        # HDFS or cloud storage
-        storage_config_tag = _get_tag_for_remote_path(remote_path)
-    elif _is_network_mount(local_path):
-        # NFS
-        storage_config_tag = "nfs"
-    elif sync_config.syncer is None:
-        # Syncing is disabled - results are only available on node-local storage
-        storage_config_tag = "local"
-    else:
-        # The driver node's local storage is the synchronization point.
-        storage_config_tag = "driver"
 
     record_extra_usage_tag(TagKey.AIR_STORAGE_CONFIGURATION, storage_config_tag)
 

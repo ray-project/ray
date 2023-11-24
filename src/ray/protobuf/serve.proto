@@ -62,6 +62,22 @@ message AutoscalingConfig {
   optional double downscale_smoothing_factor = 11;
 }
 
+//[Begin] LOGGING CONFIG
+// Encoding type
+enum EncodingType {
+  TEXT = 0;
+  JSON = 1;
+}
+
+message LoggingConfig {
+  EncodingType encoding = 1;
+  string log_level = 2;
+  string logs_dir = 3;
+  bool enable_access_log = 4;
+}
+
+//[End] Logging Config
+
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
   // The number of processes to start up that will handle requests to this deployment.
@@ -101,6 +117,8 @@ message DeploymentConfig {
   string version = 11;
 
   repeated string user_configured_option_names = 12;
+
+  LoggingConfig logging_config = 13;
 }
 
 // Deployment language.
@@ -117,6 +135,10 @@ message RequestMetadata {
   string call_method = 3;
 
   map<string, string> context = 4;
+
+  string multiplexed_model_id = 5;
+
+  string route = 6;
 }
 
 message RequestWrapper {
@@ -201,12 +223,28 @@ enum DeploymentStatus {
   DEPLOYMENT_STATUS_UPDATING = 0;
   DEPLOYMENT_STATUS_HEALTHY = 1;
   DEPLOYMENT_STATUS_UNHEALTHY = 2;
+  DEPLOYMENT_STATUS_UPSCALING = 3;
+  DEPLOYMENT_STATUS_DOWNSCALING = 4;
+}
+
+enum DeploymentStatusTrigger {
+  DEPLOYMENT_STATUS_TRIGGER_UNSPECIFIED = 0;
+  DEPLOYMENT_STATUS_TRIGGER_CONFIG_UPDATE_STARTED = 1;
+  DEPLOYMENT_STATUS_TRIGGER_CONFIG_UPDATE_COMPLETED = 2;
+  DEPLOYMENT_STATUS_TRIGGER_UPSCALE_COMPLETED = 3;
+  DEPLOYMENT_STATUS_TRIGGER_DOWNSCALE_COMPLETED = 4;
+  DEPLOYMENT_STATUS_TRIGGER_AUTOSCALING = 5;
+  DEPLOYMENT_STATUS_TRIGGER_REPLICA_STARTUP_FAILED = 6;
+  DEPLOYMENT_STATUS_TRIGGER_HEALTH_CHECK_FAILED = 7;
+  DEPLOYMENT_STATUS_TRIGGER_INTERNAL_ERROR = 8;
+  DEPLOYMENT_STATUS_TRIGGER_DELETING = 9;
 }
 
 message DeploymentStatusInfo {
   string name = 1;
   DeploymentStatus status = 2;
   string message = 3;
+  DeploymentStatusTrigger status_trigger = 4;
 }
 
 // Wrap a list for DeploymentStatusInfo.
@@ -235,19 +273,6 @@ message StatusOverview {
   ApplicationStatusInfo app_status = 1;
   DeploymentStatusInfoList deployment_statuses = 2;
   string name = 3;
-}
-
-// RPC Schema
-message PredictRequest {
-  map<string, bytes> input = 2;
-}
-
-message PredictResponse {
-  bytes prediction = 1;
-}
-
-service PredictAPIsService {
-  rpc Predict(PredictRequest) returns (PredictResponse);
 }
 
 // Used for gRPC proxy health check
@@ -318,4 +343,15 @@ message ModelOutput {
 
 service RayServeBenchmarkService {
   rpc grpc_call(RawData) returns (ModelOutput);
+}
+
+// The required deployment parameters when deploying an application.
+message DeploymentArgs {
+  string deployment_name = 1;
+  bytes deployment_config = 2;
+  bytes replica_config = 3;
+  string deployer_job_id = 4;
+  optional string route_prefix = 5;
+  bool ingress = 6;
+  optional string docs_path = 7;
 }

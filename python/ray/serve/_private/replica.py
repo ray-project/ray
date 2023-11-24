@@ -1,30 +1,30 @@
-import aiorwlock
 import asyncio
-from contextlib import asynccontextmanager
-from importlib import import_module
 import inspect
 import logging
 import os
 import pickle
 import time
-from typing import Any, AsyncGenerator, Callable, Optional, Tuple, Dict
 import traceback
+from contextlib import asynccontextmanager
+from importlib import import_module
+from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple
 
+import aiorwlock
 import starlette.responses
 from starlette.requests import Request
 from starlette.types import Message, Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
-from ray.actor import ActorClass, ActorHandle
-from ray.remote_function import RemoteFunction
 from ray._private.async_compat import sync_to_async
 from ray._private.utils import get_or_create_event_loop
-
+from ray.actor import ActorClass, ActorHandle
+from ray.remote_function import RemoteFunction
 from ray.serve import metrics
+from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
-    DeploymentID,
     CONTROL_PLANE_CONCURRENCY_GROUP,
+    DeploymentID,
     ReplicaTag,
     ServeComponentType,
     StreamingHTTPRequest,
@@ -32,43 +32,38 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    HEALTH_CHECK_METHOD,
-    RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
-    SERVE_LOGGER_NAME,
-    SERVE_NAMESPACE,
+    HEALTH_CHECK_METHOD,
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+    RECONFIGURE_METHOD,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
-from ray.serve.deployment import Deployment
-from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import (
-    make_buffered_asgi_receive,
     ASGIAppReplicaWrapper,
-    ASGIReceiveProxy,
     ASGIMessageQueue,
-    BufferedASGISender,
-    HTTPRequestWrapper,
-    RawASGIResponse,
+    ASGIReceiveProxy,
     Response,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
-    configure_component_logger,
     configure_component_cpu_profiler,
+    configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import (
+    MetricsPusher,
+    merge_dict,
     parse_import_path,
     wrap_to_ray_error,
-    merge_dict,
-    MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
-from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
-
+from ray.serve.deployment import Deployment
+from ray.serve.exceptions import RayServeException
+from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -92,14 +87,22 @@ def create_replica_wrapper(actor_class_name: str):
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
             controller_name: str,
-            detached: bool,
             app_name: str = None,
         ):
             self._replica_tag = replica_tag
+            deployment_config = DeploymentConfig.from_proto_bytes(
+                deployment_config_proto_bytes
+            )
+            if deployment_config.logging_config is None:
+                logging_config = LoggingConfig()
+            else:
+                logging_config = LoggingConfig(**deployment_config.logging_config)
+
             configure_component_logger(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
+                logging_config=logging_config,
             )
             configure_component_memory_profiler(
                 component_type=ServeComponentType.DEPLOYMENT,
@@ -136,10 +139,6 @@ def create_replica_wrapper(actor_class_name: str):
 
             init_args = cloudpickle.loads(serialized_init_args)
             init_kwargs = cloudpickle.loads(serialized_init_kwargs)
-
-            deployment_config = DeploymentConfig.from_proto_bytes(
-                deployment_config_proto_bytes
-            )
 
             if inspect.isfunction(deployment_def):
                 is_function = True
@@ -231,14 +230,12 @@ def create_replica_wrapper(actor_class_name: str):
             """
             return self.replica.get_num_pending_and_running_requests()
 
-        @ray.method(num_returns=2)
         async def handle_request(
             self,
             pickled_request_metadata: bytes,
             *request_args,
             **request_kwargs,
         ) -> Tuple[bytes, Any]:
-
             request_metadata = pickle.loads(pickled_request_metadata)
             if request_metadata.is_grpc_request:
                 # Ensure the request args are a single gRPCRequest object.
@@ -248,26 +245,12 @@ def create_replica_wrapper(actor_class_name: str):
                 result = await self.replica.call_user_method_grpc_unary(
                     request_metadata=request_metadata, request=request_args[0]
                 )
-                return b"", result
-            elif request_metadata.is_http_request:
-                # The sole argument passed from `http_proxy.py` is the ASGI scope.
-                assert len(request_args) == 1
-                request: HTTPRequestWrapper = pickle.loads(request_args[0])
+            else:
+                result = await self.replica.call_user_method(
+                    request_metadata, request_args, request_kwargs
+                )
 
-                scope = request.scope
-                buffered_send = BufferedASGISender()
-                buffered_receive = make_buffered_asgi_receive(request.body)
-                request_args = (scope, buffered_receive, buffered_send)
-
-            result = await self.replica.call_user_method(
-                request_metadata, request_args, request_kwargs
-            )
-
-            if request_metadata.is_http_request:
-                result = buffered_send.build_asgi_response()
-
-            # Returns a small object for router to track request status.
-            return b"", result
+            return result
 
         async def _handle_http_request_generator(
             self,
@@ -386,7 +369,11 @@ def create_replica_wrapper(actor_class_name: str):
 
             proto = RequestMetadataProto.FromString(proto_request_metadata)
             request_metadata: RequestMetadata = RequestMetadata(
-                proto.request_id, proto.endpoint, call_method=proto.call_method
+                proto.request_id,
+                proto.endpoint,
+                call_method=proto.call_method,
+                multiplexed_model_id=proto.multiplexed_model_id,
+                route=proto.route,
             )
             request_args = request_args[0]
             return await self.replica.call_user_method(
@@ -666,10 +653,10 @@ class RayServeReplica:
         is converted to a custom Response type that handles serialization for
         common Python objects.
         """
-        if not isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            await Response(result).send(scope, receive, send)
-        else:
+        if isinstance(result, starlette.responses.Response):
             await result(scope, receive, send)
+        else:
+            await Response(result).send(scope, receive, send)
 
     async def reconfigure(self, deployment_config: DeploymentConfig):
         old_user_config = self.deployment_config.user_config
@@ -677,6 +664,15 @@ class RayServeReplica:
         self.version = DeploymentVersion.from_deployment_version(
             self.version, self.deployment_config
         )
+
+        if deployment_config.logging_config:
+            logging_config = LoggingConfig(**deployment_config.logging_config)
+            configure_component_logger(
+                component_type=ServeComponentType.DEPLOYMENT,
+                component_name=self.deployment_id.name,
+                component_id=self.replica_tag,
+                logging_config=logging_config,
+            )
 
         if old_user_config != deployment_config.user_config:
             await self.update_user_config(deployment_config.user_config)
@@ -722,7 +718,7 @@ class RayServeReplica:
 
         logger.info(
             f"Started executing request {request_metadata.request_id}",
-            extra={"log_to_stderr": False},
+            extra={"log_to_stderr": False, "serve_access_log": True},
         )
         start_time = time.time()
         user_exception = None
@@ -751,7 +747,8 @@ class RayServeReplica:
                 method=request_metadata.call_method,
                 status=status_str,
                 latency_ms=latency_ms,
-            )
+            ),
+            extra={"serve_access_log": True},
         )
         if user_exception is None:
             self.request_counter.inc(tags={"route": request_metadata.route})

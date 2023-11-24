@@ -116,6 +116,8 @@ message WorkerObjectLocationsPubMessage {
   // there are no locations and this is set, the subscriber should wait for the
   // new location to appear.
   bool pending_creation = 8;
+  // Whether or not this object was spilled.
+  bool did_spill = 9;
 }
 
 /// Indicating the subscriber needs to handle failure callback.

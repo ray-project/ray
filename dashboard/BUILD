@@ -27,14 +27,13 @@ py_test_run_all_subdirectory(
         "modules/node/tests/test_node.py", 
         "tests/test_dashboard.py", 
         "tests/test_state_head.py",
-        "modules/serve/tests/test_serve_agent.py",
+        "modules/serve/tests/test_serve_dashboard.py",
     ],
     extra_srcs = [],
     data = [
         "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
         "modules/job/tests/backwards_compatibility_scripts/script.py",
         "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
-        "modules/snapshot/snapshot_schema.json",
         "modules/tests/test_config_files/basic_runtime_env.yaml",
     ] + glob([
         "modules/job/tests/subprocess_driver_scripts/*.py",
@@ -59,7 +58,6 @@ py_test(
         "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
         "modules/job/tests/backwards_compatibility_scripts/script.py",
         "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
-        "modules/snapshot/snapshot_schema.json",
         "modules/tests/test_config_files/basic_runtime_env.yaml",
     ] + glob([
         "modules/job/tests/subprocess_driver_scripts/*.py",
@@ -81,7 +79,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_dashboard.py"],
     deps = [":conftest"],
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "minimal"],
 )
 
 py_test(
@@ -92,8 +90,15 @@ py_test(
 )
 
 py_test(
-    name = "test_serve_agent",
+    name = "test_serve_dashboard",
     size = "large",
-    srcs = ["modules/serve/tests/test_serve_agent.py"],
+    srcs = ["modules/serve/tests/test_serve_dashboard.py"],
     tags = ["team:serve"],
+)
+
+py_test(
+    name = "test_data_head",
+    size = "small",
+    srcs = ["modules/data/tests/test_data_head.py"],
+    tags = ["team:data"],
 )

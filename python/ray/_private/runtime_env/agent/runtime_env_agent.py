@@ -27,6 +27,8 @@ from ray._private.utils import get_or_create_event_loop
 from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
+from ray._private.runtime_env.nsight import NsightPlugin
+from ray._private.runtime_env.mpi import MPIPlugin
 from ray.core.generated import (
     runtime_env_agent_pb2,
     agent_manager_pb2,
@@ -198,7 +200,11 @@ class RuntimeEnvAgent:
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
+        # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
+        # and unify with nsight and other profilers.
+        self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
         self._container_manager = ContainerManager(temp_dir)
+        self._mpi_plugin = MPIPlugin()
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
@@ -209,6 +215,8 @@ class RuntimeEnvAgent:
             self._conda_plugin,
             self._py_modules_plugin,
             self._java_jars_plugin,
+            self._nsight_plugin,
+            self._mpi_plugin,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
         for plugin in self._base_plugins:

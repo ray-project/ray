@@ -1,43 +1,28 @@
 import inspect
 import logging
-import os
 from types import FunctionType
 from typing import Any, Dict, Tuple, Union
 
-from pydantic.main import ModelMetaclass
-
 import ray
-from ray._private.usage import usage_lib
+from ray._private.pydantic_compat import BaseModel
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray.serve.deployment import Application, Deployment
-from ray.serve.exceptions import RayServeException
-from ray.serve.config import gRPCOptions, HTTPOptions
+from ray._private.usage import usage_lib
+from ray.actor import ActorHandle
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
-    SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.client import ServeControllerClient
-
-from ray.serve._private.utils import (
-    format_actor_name,
-    get_random_letters,
-)
-from ray.serve.controller import ServeController
-from ray.serve.context import (
-    _get_global_client,
-    _set_global_client,
-)
-from ray.actor import ActorHandle
-
+from ray.serve._private.controller import ServeController
+from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.context import _get_global_client, _set_global_client
+from ray.serve.deployment import Application, Deployment
+from ray.serve.exceptions import RayServeException
+from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(__file__)
-
-FLAG_DISABLE_HTTP_PROXY = (
-    os.environ.get(SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY, "0") == "1"
-)
 
 
 def get_deployment(name: str, app_name: str = ""):
@@ -124,10 +109,9 @@ def _check_http_options(
 
 
 def _start_controller(
-    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    system_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, str]:
     """Start Ray Serve controller.
@@ -145,15 +129,10 @@ def _start_controller(
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
-    if detached:
-        controller_name = SERVE_CONTROLLER_NAME
-    else:
-        controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
-
     controller_actor_options = {
-        "num_cpus": 1 if dedicated_cpu else 0,
-        "name": controller_name,
-        "lifetime": "detached" if detached else None,
+        "num_cpus": 0,
+        "name": SERVE_CONTROLLER_NAME,
+        "lifetime": "detached",
         "max_restarts": -1,
         "max_task_retries": -1,
         "resources": {HEAD_NODE_RESOURCE_NAME: 0.001},
@@ -161,57 +140,53 @@ def _start_controller(
         "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
     }
 
-    if FLAG_DISABLE_HTTP_PROXY:
-        controller = ServeController.options(**controller_actor_options).remote(
-            controller_name,
-            http_config=http_options,
-            detached=detached,
-            _disable_http_proxy=True,
-        )
-    else:
-        # Legacy http proxy actor check
-        http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
-        for key in http_deprecated_args:
-            if key in kwargs:
-                raise ValueError(
-                    f"{key} is deprecated, please use serve.start(http_options="
-                    f'{{"{key}": {kwargs[key]}}}) instead.'
-                )
+    # Legacy http proxy actor check
+    http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
+    for key in http_deprecated_args:
+        if key in kwargs:
+            raise ValueError(
+                f"{key} is deprecated, please use serve.start(http_options="
+                f'{{"{key}": {kwargs[key]}}}) instead.'
+            )
 
-        if isinstance(http_options, dict):
-            http_options = HTTPOptions.parse_obj(http_options)
-        if http_options is None:
-            http_options = HTTPOptions()
+    if isinstance(http_options, dict):
+        http_options = HTTPOptions.parse_obj(http_options)
+    if http_options is None:
+        http_options = HTTPOptions()
 
-        if isinstance(grpc_options, dict):
-            grpc_options = gRPCOptions(**grpc_options)
+    if isinstance(grpc_options, dict):
+        grpc_options = gRPCOptions(**grpc_options)
 
-        controller = ServeController.options(**controller_actor_options).remote(
-            controller_name,
-            http_config=http_options,
-            detached=detached,
-            grpc_options=grpc_options,
-        )
+    if system_logging_config is None:
+        system_logging_config = LoggingConfig()
+    elif isinstance(system_logging_config, dict):
+        system_logging_config = LoggingConfig(**system_logging_config)
 
-        proxy_handles = ray.get(controller.get_http_proxies.remote())
-        if len(proxy_handles) > 0:
-            try:
-                ray.get(
-                    [handle.ready.remote() for handle in proxy_handles.values()],
-                    timeout=HTTP_PROXY_TIMEOUT,
-                )
-            except ray.exceptions.GetTimeoutError:
-                raise TimeoutError(
-                    f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
-                )
-    return controller, controller_name
+    controller = ServeController.options(**controller_actor_options).remote(
+        SERVE_CONTROLLER_NAME,
+        http_config=http_options,
+        grpc_options=grpc_options,
+        system_logging_config=system_logging_config,
+    )
+
+    proxy_handles = ray.get(controller.get_proxies.remote())
+    if len(proxy_handles) > 0:
+        try:
+            ray.get(
+                [handle.ready.remote() for handle in proxy_handles.values()],
+                timeout=HTTP_PROXY_TIMEOUT,
+            )
+        except ray.exceptions.GetTimeoutError:
+            raise TimeoutError(
+                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
+            )
+    return controller, SERVE_CONTROLLER_NAME
 
 
 async def serve_start_async(
-    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    system_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -241,41 +216,32 @@ async def serve_start_async(
     controller, controller_name = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(detached, http_options, dedicated_cpu, grpc_options, **kwargs)
+        .remote(http_options, grpc_options, system_logging_config, **kwargs)
     )
 
     client = ServeControllerClient(
         controller,
         controller_name,
-        detached=detached,
     )
     _set_global_client(client)
-    logger.info(
-        f"Started{' detached ' if detached else ' '}Serve instance in "
-        f'namespace "{SERVE_NAMESPACE}".'
-    )
+    logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
 
 
 def serve_start(
-    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    system_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
 
     By default, the instance will be scoped to the lifetime of the returned
-    Client object (or when the script exits). If detached is set to True, the
-    instance will instead persist until serve.shutdown() is called. This is
+    Client object (or when the script exits). This is
     only relevant if connecting to a long-running Ray cluster (e.g., with
     ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
-        detached: Whether not the instance should be detached from this
-          script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
@@ -299,8 +265,6 @@ def serve_start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        dedicated_cpu: Whether to reserve a CPU core for the internal
-          Serve controller actor.  Defaults to False.
         grpc_options: [Experimental] Configuration options for gRPC proxy.
           You can pass in a gRPCOptions object with fields:
 
@@ -325,19 +289,15 @@ def serve_start(
         pass
 
     controller, controller_name = _start_controller(
-        detached, http_options, dedicated_cpu, grpc_options, **kwargs
+        http_options, grpc_options, system_logging_config, **kwargs
     )
 
     client = ServeControllerClient(
         controller,
         controller_name,
-        detached=detached,
     )
     _set_global_client(client)
-    logger.info(
-        f"Started{' detached ' if detached else ' '}Serve instance in "
-        f'namespace "{SERVE_NAMESPACE}".'
-    )
+    logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
 
 
@@ -380,7 +340,7 @@ def call_app_builder_with_args_if_necessary(
     # that model. This will perform standard pydantic validation (e.g., raise an
     # exception if required fields are missing).
     param = signature.parameters[list(signature.parameters.keys())[0]]
-    if issubclass(type(param.annotation), ModelMetaclass):
+    if inspect.isclass(param.annotation) and issubclass(param.annotation, BaseModel):
         args = param.annotation.parse_obj(args)
 
     app = builder(args)

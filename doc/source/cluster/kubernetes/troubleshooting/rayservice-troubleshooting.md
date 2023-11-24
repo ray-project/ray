@@ -63,11 +63,9 @@ kubectl exec -it $HEAD_POD -- ray summary actors
 #     CLASS_NAME                          STATE_COUNTS
 # 0   ServeController                     ALIVE: 1
 # 1   ServeReplica:fruit_app_OrangeStand  ALIVE: 1
-# 2   HTTPProxyActor                      ALIVE: 3
-# 3   ServeReplica:math_app_DAGDriver     ALIVE: 1
+# 2   ProxyActor                          ALIVE: 3
 # 4   ServeReplica:math_app_Multiplier    ALIVE: 1
 # 5   ServeReplica:math_app_create_order  ALIVE: 1
-# 6   ServeReplica:fruit_app_DAGDriver    ALIVE: 1
 # 7   ServeReplica:fruit_app_FruitMarket  ALIVE: 1
 # 8   ServeReplica:math_app_Adder         ALIVE: 1
 # 9   ServeReplica:math_app_Router        ALIVE: 1
@@ -124,7 +122,7 @@ Therefore, the YAML file includes `python-multipart` in the runtime environment.
 In the [MobileNet example](kuberay-mobilenet-rayservice-example), the [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py) consists of two functions: `__init__()` and `__call__()`.
 The function `__call__()` is only called when the Serve application receives a request.
 
-* Example 1: Remove `python-multipart` from the runtime environment in [the MobileNet YAML](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml).
+* Example 1: Remove `python-multipart` from the runtime environment in [the MobileNet YAML](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service.mobilenet.yaml).
   * The `python-multipart` library is only required for the `__call__` method. Therefore, we can only observe the dependency issue when we send a request to the application.
   * Example error message:
     ```bash
@@ -139,7 +137,7 @@ The function `__call__()` is only called when the Serve application receives a r
     AssertionError: The `python-multipart` library must be installed to use form parsing..
     ```
 
-* Example 2: Update the image from `rayproject/ray-ml:2.5.0` to `rayproject/ray:2.5.0` in [the MobileNet YAML](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml). The latter image does not include `tensorflow`.
+* Example 2: Update the image from `rayproject/ray-ml:2.5.0` to `rayproject/ray:2.5.0` in [the MobileNet YAML](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service.mobilenet.yaml). The latter image does not include `tensorflow`.
   * The `tensorflow` library is imported in the [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py).
   * Example error message:
     ```bash
@@ -162,7 +160,7 @@ The function `__call__()` is only called when the Serve application receives a r
 ### Issue 4: Incorrect `import_path`.
 
 You can refer to [the documentation](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ServeApplicationSchema.html#ray.serve.schema.ServeApplicationSchema.import_path) for more details about the format of `import_path`.
-Taking [the MobileNet YAML file](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml) as an example,
+Taking [the MobileNet YAML file](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service.mobilenet.yaml) as an example,
 the `import_path` is `mobilenet.mobilenet:app`. The first `mobilenet` is the name of the directory in the `working_dir`,
 the second `mobilenet` is the name of the Python file in the directory `mobilenet/`,
 and `app` is the name of the variable representing Ray Serve application within the Python file.
@@ -296,10 +294,10 @@ kubectl apply -f ray-service.insufficient-resources.yaml
 kubectl describe rayservices.ray.io rayservice-sample -n $YOUR_NAMESPACE
 
 # [Example output]
-# fruit_app_DAGDriver:
+# fruit_app_FruitMarket:
 #   Health Last Update Time:  2023-07-11T02:10:02Z
 #   Last Update Time:         2023-07-11T02:10:35Z
-#   Message:                  Deployment "fruit_app_DAGDriver" has 1 replicas that have taken more than 30s to be scheduled. This may be caused by waiting for the cluster to auto-scale, or waiting for a runtime environment to install. Resources required for each replica: {"CPU": 1.0}, resources available: {}.
+#   Message:                  Deployment "fruit_app_FruitMarket" has 1 replicas that have taken more than 30s to be scheduled. This may be caused by waiting for the cluster to auto-scale, or waiting for a runtime environment to install. Resources required for each replica: {"CPU": 1.0}, resources available: {}.
 #   Status:                   UPDATING
 
 # Step 5: A new RayCluster will be created after `serviceUnhealthySecondThreshold` (300s here) seconds.

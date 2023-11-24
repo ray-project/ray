@@ -1,13 +1,12 @@
 import pytest
 
 import ray
-from ray.job_config import JobConfig
-from ray.tests.conftest import shutdown_only, maybe_external_redis  # noqa: F401
-
 from ray import serve
+from ray.job_config import JobConfig
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata
+from ray.tests.conftest import maybe_external_redis, shutdown_only  # noqa: F401
 
 
 @pytest.mark.skip(reason="TIMEOUT, see https://github.com/ray-project/ray/issues/26513")
@@ -59,16 +58,16 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     )
     assert ray.get(out) == "my_prefix hello"
 
-    handle = serve.get_deployment("my_java").get_handle()
-    handle_out = handle.remote("hello handle")
-    assert ray.get(handle_out) == "my_prefix hello handle"
+    handle = serve.get_deployment_handle("my_java", app_name="")
+    assert handle.remote("hello handle").result() == "my_prefix hello handle"
 
     ray.get(controller.delete_deployment.remote(deployment_name))
     client._wait_for_deployment_deleted(deployment_name)
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

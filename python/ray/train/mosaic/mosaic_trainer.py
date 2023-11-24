@@ -1,13 +1,11 @@
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 import warnings
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
-from composer.trainer import Trainer
 from composer.loggers.logger_destination import LoggerDestination
+from composer.trainer import Trainer
 
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train import DataConfig
+from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
 from ray.train.mosaic._mosaic_utils import RayLogger
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
@@ -137,7 +135,7 @@ class MosaicTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        resume_from_checkpoint: A MosiacCheckpoint to resume training from.
+        resume_from_checkpoint: A ``ray.train.Checkpoint`` to resume training from.
     """
 
     def __init__(

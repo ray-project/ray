@@ -1,13 +1,17 @@
 .. _train-deepspeed:
 
-Training with DeepSpeed
-=======================
+Get Started with DeepSpeed
+==========================
 
 The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `DeepSpeed <https://www.deepspeed.ai/>`_  training across a distributed Ray cluster.
 
-All you need to do is run your existing training code with a TorchTrainer. You can expect the final code to look like this:
+Code example
+------------
 
-.. code-block:: python
+You only need to run your existing training code with a TorchTrainer. You can expect the final code to look like this:
+
+.. testcode::
+    :skipif: True
 
     import deepspeed
     from deepspeed.accelerator import get_accelerator
@@ -74,19 +78,19 @@ Below is a simple example of ZeRO-3 training with DeepSpeed only.
     keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything 
     for distributed training.
 
-Running DeepSpeed with other frameworks
--------------------------------------------
+Run DeepSpeed with other frameworks
+-----------------------------------
 
 Many deep learning frameworks have integrated with DeepSpeed, including Lightning, Transformers, Accelerate, and more. You can run all these combinations in Ray Train.
 
-Please check the below examples for more details:
+Check the below examples for more details:
 
 .. list-table::
    :header-rows: 1
 
    * - Framework
      - Example
-   * - Accelelate (:ref:`User Guide <train-hf-accelerate>`)
+   * - Accelerate (:ref:`User Guide <train-hf-accelerate>`)
      - `Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train. <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
    * - Transformers (:ref:`User Guide <train-pytorch-transformers>`)
      - :ref:`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <gptj_deepspeed_finetune>`

@@ -1,27 +1,27 @@
-import time
 import asyncio
-from functools import wraps
+import time
 from dataclasses import dataclass
-from inspect import iscoroutinefunction, isasyncgenfunction
+from functools import wraps
+from inspect import isasyncgenfunction, iscoroutinefunction
 from typing import (
     Any,
+    AsyncGenerator,
     Callable,
     Dict,
+    Iterable,
     List,
     Optional,
-    overload,
     Tuple,
     Type,
     TypeVar,
-    AsyncGenerator,
-    Iterable,
+    overload,
 )
 
-from ray.util.annotations import PublicAPI
-from ray.serve.exceptions import RayServeException
+from ray._private.signature import extract_signature, flatten_args, recover_args
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.utils import extract_self_if_method_call
-from ray._private.signature import extract_signature, flatten_args, recover_args
+from ray.serve.exceptions import RayServeException
+from ray.util.annotations import PublicAPI
 
 
 @dataclass
@@ -187,7 +187,10 @@ class _BatchQueue:
                         next_futures.append(FINISHED_TOKEN)
                     else:
                         next_future = get_or_create_event_loop().create_future()
-                        future.set_result(_GeneratorResult(result, next_future))
+                        # If the client has disconnected, the future is canceled.
+                        # We should only set result when the connection is still live.
+                        if not future.cancelled():
+                            future.set_result(_GeneratorResult(result, next_future))
                         next_futures.append(next_future)
                 futures = next_futures
 
@@ -225,7 +228,10 @@ class _BatchQueue:
                     results = await func_future
                     self._validate_results(results, len(batch))
                     for result, future in zip(results, futures):
-                        future.set_result(result)
+                        # If the client has disconnected, the future is canceled.
+                        # We should only set result when the connection is still live.
+                        if not future.cancelled():
+                            future.set_result(result)
                 except Exception as e:
                     for future in futures:
                         future.set_exception(e)

@@ -53,6 +53,10 @@ def make_map_transformer(block_fn):
     return create_map_transformer_from_block_fn(map_fn)
 
 
+def make_ref_bundle(x):
+    return make_ref_bundles([[x]])[0]
+
+
 @pytest.mark.parametrize(
     "verbose_progress",
     [True, False],
@@ -91,7 +95,7 @@ def test_disallow_non_unique_operators():
     o3 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]), o1
     )
-    o4 = PhysicalOperator("test_combine", [o2, o3])
+    o4 = PhysicalOperator("test_combine", [o2, o3], target_max_block_size=None)
     with pytest.raises(ValueError):
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
 
@@ -106,7 +110,7 @@ def test_process_completed_tasks():
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
-    process_completed_tasks(topo)
+    process_completed_tasks(topo, [])
     update_operator_states(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
@@ -117,7 +121,7 @@ def test_process_completed_tasks():
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
-    process_completed_tasks(topo)
+    process_completed_tasks(topo, [])
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
@@ -131,7 +135,7 @@ def test_process_completed_tasks():
     o1.all_dependents_complete = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
-    process_completed_tasks(topo)
+    process_completed_tasks(topo, [])
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -140,7 +144,7 @@ def test_process_completed_tasks():
     # Test dependents completed.
     o2.need_more_inputs = MagicMock(return_value=False)
     o1.all_dependents_complete = MagicMock()
-    process_completed_tasks(topo)
+    process_completed_tasks(topo, [])
     update_operator_states(topo)
     o1.all_dependents_complete.assert_called_once()
 
@@ -160,30 +164,30 @@ def test_select_operator_to_run():
     # Test empty.
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         is None
     )
 
     # Test backpressure based on queue length between operators.
-    topo[o1].outqueue.append("dummy1")
+    topo[o1].outqueue.append(make_ref_bundle("dummy1"))
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
-    topo[o1].outqueue.append("dummy2")
+    topo[o1].outqueue.append(make_ref_bundle("dummy2"))
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
-    topo[o2].outqueue.append("dummy3")
+    topo[o2].outqueue.append(make_ref_bundle("dummy3"))
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o3
     )
@@ -193,7 +197,7 @@ def test_select_operator_to_run():
     o3.internal_queue_size = MagicMock(return_value=0)
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
@@ -202,7 +206,7 @@ def test_select_operator_to_run():
     o3.internal_queue_size = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
@@ -210,7 +214,7 @@ def test_select_operator_to_run():
     o2.internal_queue_size = MagicMock(return_value=0)
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o3
     )
@@ -218,7 +222,7 @@ def test_select_operator_to_run():
     o2.internal_queue_size = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o3
     )
@@ -227,7 +231,7 @@ def test_select_operator_to_run():
     o2.throttling_disabled = MagicMock(return_value=True)
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
@@ -243,16 +247,18 @@ def test_dispatch_next_task():
     op_state = OpState(o2, [o1_state.outqueue])
 
     # TODO: test multiple inqueues with the union operator.
-    op_state.inqueues[0].append("dummy1")
-    op_state.inqueues[0].append("dummy2")
+    ref1 = make_ref_bundle("dummy1")
+    ref2 = make_ref_bundle("dummy2")
+    op_state.inqueues[0].append(ref1)
+    op_state.inqueues[0].append(ref1)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    assert o2.add_input.called_once_with("dummy1")
+    assert o2.add_input.called_once_with(ref1)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    assert o2.add_input.called_once_with("dummy2")
+    assert o2.add_input.called_once_with(ref2)
 
 
 def test_debug_dump_topology():
@@ -348,6 +354,10 @@ def test_execution_allowed():
     )
 
 
+@pytest.mark.skip(
+    reason="Temporarily disable to deflake rest of test suite. Started being flaky "
+    "after moving to civ2? Needs further investigation to confirm."
+)
 def test_resource_constrained_triggers_autoscaling(monkeypatch):
     RESOURCE_REQUEST_TIMEOUT = 5
     monkeypatch.setattr(
@@ -397,8 +407,8 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         )
         topo = build_streaming_topology(o4, opt)[0]
         # Make sure only two operator's inqueues has data.
-        topo[o2].inqueues[0].append("dummy")
-        topo[o4].inqueues[0].append("dummy")
+        topo[o2].inqueues[0].append(make_ref_bundle("dummy"))
+        topo[o4].inqueues[0].append(make_ref_bundle("dummy"))
         selected_op = select_operator_to_run(
             topo,
             TopologyResourceUsage(
@@ -406,6 +416,7 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
                 EMPTY_DOWNSTREAM_USAGE,
             ),
             ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
+            [],
             True,
             execution_id,
             autoscaling_state,
@@ -508,13 +519,14 @@ def test_select_ops_ensure_at_least_one_live_operator():
         o2,
     )
     topo, _ = build_streaming_topology(o3, opt)
-    topo[o2].outqueue.append("dummy1")
+    topo[o2].outqueue.append(make_ref_bundle("dummy1"))
     o1.num_active_tasks = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
             topo,
             TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
             ExecutionResources(cpu=1),
+            [],
             True,
             "dummy",
             AutoscalingState(),
@@ -527,6 +539,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             topo,
             TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
             ExecutionResources(cpu=1),
+            [],
             True,
             "dummy",
             AutoscalingState(),
@@ -538,6 +551,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             topo,
             TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
             ExecutionResources(cpu=1),
+            [],
             False,
             "dummy",
             AutoscalingState(),

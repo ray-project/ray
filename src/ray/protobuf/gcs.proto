@@ -244,6 +244,8 @@ message TaskStateUpdate {
   optional string actor_repr_name = 11;
   // Worker Pid.
   optional int32 worker_pid = 12;
+  // Is task paused by debugger.
+  optional bool is_debugger_paused = 13;
 }
 
 // Represents events and state changes from a single task run.
@@ -262,20 +264,26 @@ message TaskEvents {
   bytes job_id = 6;
 }
 
+message TaskAttempt {
+  // The task id of the task attempt.
+  bytes task_id = 1;
+  // The attempt number of the task attempt.
+  int32 attempt_number = 2;
+}
+
 // Represents a compact list of task state events by different tasks,
 // where each task has a list of state change events.
 message TaskEventData {
   // A batch of task state change events.
   repeated TaskEvents events_by_task = 1;
-  // Number of dropped profile task events due to buffer size limit on workers.
-  int32 num_profile_task_events_dropped = 3;
-  // Number of dropped status task events due to buffer size limit on workers.
-  int32 num_status_task_events_dropped = 4;
-}
-
-message ResourceTableData {
-  // The total capacity of this resource type.
-  double resource_capacity = 1;
+  // A list of task attempts that were dropped on the worker.
+  // We only drop task attempts if task state update is lost on the worker
+  // due to too many events being generated.
+  repeated TaskAttempt dropped_task_attempts = 2;
+  // Number of profile events dropped on the worker.
+  int32 num_profile_events_dropped = 3;
+  // Current job the worker is reporting data for.
+  bytes job_id = 4;
 }
 
 message AvailableResources {
@@ -283,6 +291,29 @@ message AvailableResources {
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
+}
+
+// A snapshot of the state of a node.
+message NodeSnapshot {
+  // The idle state of a node.
+  // May be extended to include dead.
+  enum State {
+    UNDEFINED = 0;
+    // Node is idle.
+    IDLE = 1;
+    // Node is not idle.
+    ACTIVE = 2;
+    // Node is draining.
+    DRAINING = 3;
+  }
+
+  // The idle state of the node.
+  State state = 1;
+  // How long the node has been idle.
+  int64 idle_duration_ms = 2;
+  // Observability strings describing why the node is not idle.
+  // Each string is a reason.
+  repeated string node_activity = 3;
 }
 
 message GcsNodeInfo {
@@ -347,6 +378,9 @@ message GcsNodeInfo {
   bool is_head_node = 25;
   // The key-value labels of this node.
   map<string, string> labels = 26;
+
+  // A snapshot of node state.
+  NodeSnapshot state_snapshot = 28;
 }
 
 // Please keep this in sync with the definition of JobInfo in
@@ -380,6 +414,11 @@ message JobsAPIInfo {
   // The node id that driver running on. It will be None only when the job status
   // is PENDING, and this field will not be deleted or modified even if the driver dies
   optional string driver_node_id = 13;
+  // The driver process exit code after the driver executed. Return None if driver
+  // doesn't finish executing
+  optional int32 driver_exit_code = 14;
+  // The amount of reservable memory resource in bytes for the entrypoint command.
+  optional uint64 entrypoint_memory = 15;
 }
 
 message WorkerTableData {
@@ -424,16 +463,14 @@ message WorkerTableData {
   // by a raylet. (I.e., driver worker won't have this value).
   // If the value doesn't present, it is -1.
   uint64 worker_launched_time_ms = 26;
+  // The debugger port on the worker process.
+  optional uint32 debugger_port = 27;
 }
 
 // Fields to publish when worker fails.
 message WorkerDeltaData {
   bytes raylet_id = 1;
   bytes worker_id = 2;
-}
-
-message ResourceMap {
-  map<string, ResourceTableData> items = 1;
 }
 
 message StoredConfig {
@@ -504,7 +541,7 @@ message ResourceLoad {
 }
 
 message ResourcesData {
-  reserved 3;
+  reserved 3, 8, 17;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
@@ -513,13 +550,8 @@ message ResourcesData {
   map<string, double> resources_total = 4;
   // Aggregate outstanding resource load on this node manager.
   map<string, double> resource_load = 5;
-  // Indicates whether resource load is changed. Only used when
-  // light heartbeat enabled.
-  bool resource_load_changed = 6;
   // The resource load on this node, sorted by resource shape.
   ResourceLoad resource_load_by_shape = 7;
-  // Whether this node manager is requesting global GC.
-  bool should_global_gc = 8;
   // IP address of the node.
   string node_manager_address = 9;
   // Whether this node has object pulls queued. This can happen if
@@ -540,7 +572,6 @@ message ResourcesData {
   int64 idle_duration_ms = 15;
   // Whether the node is being drained.
   bool is_draining = 16;
-  // Last unused = 17
 }
 
 message ResourceUsageBatchData {

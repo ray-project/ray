@@ -83,6 +83,7 @@ class WorkerLeaseInterface {
   virtual ray::Status ReturnWorker(int worker_port,
                                    const WorkerID &worker_id,
                                    bool disconnect_worker,
+                                   const std::string &disconnect_worker_error_detail,
                                    bool worker_exiting) = 0;
 
   /// Notify raylets to release unused workers.
@@ -163,10 +164,6 @@ class DependencyWaiterInterface {
 /// Inteface for getting resource reports.
 class ResourceTrackingInterface {
  public:
-  virtual void UpdateResourceUsage(
-      std::string &serialized_resource_usage_batch,
-      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) = 0;
-
   virtual void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
 
@@ -413,6 +410,7 @@ class RayletClient : public RayletClientInterface {
   ray::Status ReturnWorker(int worker_port,
                            const WorkerID &worker_id,
                            bool disconnect_worker,
+                           const std::string &disconnect_worker_error_detail,
                            bool worker_exiting) override;
 
   void GetTaskFailureCause(
@@ -476,10 +474,6 @@ class RayletClient : public RayletClientInterface {
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
-
-  void UpdateResourceUsage(
-      std::string &serialized_resource_usage_batch,
-      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override;
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;

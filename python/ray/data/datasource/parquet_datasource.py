@@ -1,25 +1,40 @@
 import logging
-from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Union,
+)
 
 import numpy as np
 
+import ray
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.util import _check_pyarrow_version, _is_local_scheme
 from ray.data.block import Block
 from ray.data.context import DataContext
+from ray.data.datasource import Datasource
 from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
 )
-from ray.data.datasource.datasource import Reader, ReadTask
-from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
+from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_meta_provider import (
     DefaultParquetMetadataProvider,
     ParquetMetadataProvider,
     _handle_read_os_error,
 )
-from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.data.datasource.partitioning import PathPartitionFilter
+from ray.data.datasource.path_util import (
+    _has_file_extension,
+    _resolve_paths_and_filesystem,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -34,7 +49,7 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
-PARQUET_READER_ROW_BATCH_SIZE = 100000
+PARQUET_READER_ROW_BATCH_SIZE = 10_000
 FILE_READING_RETRY = 8
 
 # The default size multiplier for reading Parquet data source in Arrow.
@@ -144,53 +159,46 @@ def _deserialize_fragments_with_retry(
 
 
 @PublicAPI
-class ParquetDatasource(ParquetBaseDatasource):
+class ParquetDatasource(Datasource):
     """Parquet datasource, for reading and writing Parquet files.
 
     The primary difference from ParquetBaseDatasource is that this uses
     PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
     automatic Arrow dataset schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import ParquetDatasource
-        >>> source = ParquetDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource( # doctest: +SKIP
-        ...     source, paths="/path/to/dir").take()
-        [{"a": 1, "b": "foo"}, ...]
     """
 
-    def get_name(self):
-        """Return a human-readable name for this datasource.
-        This will be used as the names of the read tasks.
-        Note: overrides the base `ParquetBaseDatasource` method.
-        """
-        return "Parquet"
-
-    def create_reader(self, **kwargs):
-        return _ParquetDatasourceReader(**kwargs)
-
-
-class _ParquetDatasourceReader(Reader):
     def __init__(
         self,
         paths: Union[str, List[str]],
-        local_uri: bool = False,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        *,
         columns: Optional[List[str]] = None,
+        dataset_kwargs: Optional[Dict[str, Any]] = None,
+        to_batch_kwargs: Optional[Dict[str, Any]] = None,
+        _block_udf: Optional[Callable[[Block], Block]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
-        _block_udf: Optional[Callable[[Block], Block]] = None,
-        **reader_args,
+        partition_filter: PathPartitionFilter = None,
+        shuffle: Union[Literal["files"], None] = None,
+        include_paths: bool = False,
+        file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
+
         import pyarrow as pa
         import pyarrow.parquet as pq
 
+        self._supports_distributed_reads = not _is_local_scheme(paths)
+        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the Ray "
+                "cluster can't access your local files. To fix this issue, store "
+                "files in cloud storage or a distributed filesystem like NFS."
+            )
+
         self._local_scheduling = None
-        if local_uri:
-            import ray
+        if not self._supports_distributed_reads:
             from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
             self._local_scheduling = NodeAffinitySchedulingStrategy(
@@ -201,23 +209,31 @@ class _ParquetDatasourceReader(Reader):
 
         # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
         # files. To avoid this, we expand the input paths with the default metadata
-        # provider and then apply the partition filter.
-        partition_filter = reader_args.pop("partition_filter", None)
-        if partition_filter is not None:
+        # provider and then apply the partition filter or file extensions.
+        if partition_filter is not None or file_extensions is not None:
             default_meta_provider = get_generic_metadata_provider(file_extensions=None)
             expanded_paths, _ = map(
                 list, zip(*default_meta_provider.expand_paths(paths, filesystem))
             )
-            paths = partition_filter(expanded_paths)
+
+            paths = list(expanded_paths)
+            if partition_filter is not None:
+                paths = partition_filter(paths)
+            if file_extensions is not None:
+                paths = [
+                    path for path in paths if _has_file_extension(path, file_extensions)
+                ]
 
             filtered_paths = set(expanded_paths) - set(paths)
             if filtered_paths:
-                logger.info(f"Filtered out the following paths: {filtered_paths}")
+                logger.info(f"Filtered out {len(filtered_paths)} paths")
+        else:
+            if len(paths) == 1:
+                paths = paths[0]
 
-        if len(paths) == 1:
-            paths = paths[0]
+        if dataset_kwargs is None:
+            dataset_kwargs = {}
 
-        dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
             pq_ds = pq.ParquetDataset(
                 paths,
@@ -263,6 +279,9 @@ class _ParquetDatasourceReader(Reader):
         except OSError as e:
             _handle_read_os_error(e, paths)
 
+        if to_batch_kwargs is None:
+            to_batch_kwargs = {}
+
         # NOTE: Store the custom serialized `ParquetFileFragment` to avoid unexpected
         # network calls when `_ParquetDatasourceReader` is serialized. See
         # `_SerializedFragment()` implementation for more details.
@@ -271,10 +290,14 @@ class _ParquetDatasourceReader(Reader):
         self._meta_provider = meta_provider
         self._inferred_schema = inferred_schema
         self._block_udf = _block_udf
-        self._reader_args = reader_args
+        self._to_batches_kwargs = to_batch_kwargs
         self._columns = columns
         self._schema = schema
         self._encoding_ratio = self._estimate_files_encoding_ratio()
+        self._file_metadata_shuffler = None
+        self._include_paths = include_paths
+        if shuffle == "files":
+            self._file_metadata_shuffler = np.random.default_rng()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -288,12 +311,34 @@ class _ParquetDatasourceReader(Reader):
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
-        # FileBasedDatasource's write side (do_write), however.
+        # FileBasedDatasource's write side, however.
+        pq_metadata = self._metadata
+        if len(pq_metadata) < len(self._pq_fragments):
+            # Pad `pq_metadata` to be same length of `self._pq_fragments`.
+            # This can happen when no file metadata being prefetched.
+            pq_metadata += [None] * (len(self._pq_fragments) - len(pq_metadata))
+
+        if self._file_metadata_shuffler is not None:
+            files_metadata = list(zip(self._pq_fragments, self._pq_paths, pq_metadata))
+            shuffled_files_metadata = [
+                files_metadata[i]
+                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
+            ]
+            pq_fragments, pq_paths, pq_metadata = list(
+                map(list, zip(*shuffled_files_metadata))
+            )
+        else:
+            pq_fragments, pq_paths, pq_metadata = (
+                self._pq_fragments,
+                self._pq_paths,
+                pq_metadata,
+            )
+
         read_tasks = []
         for fragments, paths, metadata in zip(
-            np.array_split(self._pq_fragments, parallelism),
-            np.array_split(self._pq_paths, parallelism),
-            np.array_split(self._metadata, parallelism),
+            np.array_split(pq_fragments, parallelism),
+            np.array_split(pq_paths, parallelism),
+            np.array_split(pq_metadata, parallelism),
         ):
             if len(fragments) <= 0:
                 continue
@@ -306,7 +351,7 @@ class _ParquetDatasourceReader(Reader):
             )
             # If there is a filter operation, reset the calculated row count,
             # since the resulting row count is unknown.
-            if self._reader_args.get("filter") is not None:
+            if self._to_batches_kwargs.get("filter") is not None:
                 meta.num_rows = None
 
             if meta.size_bytes is not None:
@@ -318,21 +363,21 @@ class _ParquetDatasourceReader(Reader):
                 row_size = meta.size_bytes / meta.num_rows
                 # Make sure the row batch size is small enough that block splitting
                 # is still effective.
-                max_parquet_reader_row_batch_size = (
+                max_parquet_reader_row_batch_size_bytes = (
                     DataContext.get_current().target_max_block_size // 10
                 )
-                default_read_batch_size = max(
+                default_read_batch_size_rows = max(
                     1,
                     min(
                         PARQUET_READER_ROW_BATCH_SIZE,
-                        max_parquet_reader_row_batch_size // row_size,
+                        max_parquet_reader_row_batch_size_bytes // row_size,
                     ),
                 )
             else:
-                default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, reader_args, columns, schema = (
+                default_read_batch_size_rows = PARQUET_READER_ROW_BATCH_SIZE
+            block_udf, to_batches_kwargs, columns, schema = (
                 self._block_udf,
-                self._reader_args,
+                self._to_batches_kwargs,
                 self._columns,
                 self._schema,
             )
@@ -340,11 +385,12 @@ class _ParquetDatasourceReader(Reader):
                 ReadTask(
                     lambda f=fragments: _read_fragments(
                         block_udf,
-                        reader_args,
-                        default_read_batch_size,
+                        to_batches_kwargs,
+                        default_read_batch_size_rows,
                         columns,
                         schema,
                         f,
+                        self._include_paths,
                     ),
                     meta,
                 )
@@ -390,7 +436,7 @@ class _ParquetDatasourceReader(Reader):
             # same machine to cause OOM issue, as sampling can be memory-intensive.
             futures.append(
                 sample_fragment.options(scheduling_strategy=scheduling).remote(
-                    self._reader_args,
+                    self._to_batches_kwargs,
                     self._columns,
                     self._schema,
                     sample,
@@ -403,14 +449,26 @@ class _ParquetDatasourceReader(Reader):
         logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
         return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
+    def get_name(self):
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `ParquetBaseDatasource` method.
+        """
+        return "Parquet"
+
+    @property
+    def supports_distributed_reads(self) -> bool:
+        return self._supports_distributed_reads
+
 
 def _read_fragments(
     block_udf,
-    reader_args,
-    default_read_batch_size,
+    to_batches_kwargs,
+    default_read_batch_size_rows,
     columns,
     schema,
     serialized_fragments: List[_SerializedFragment],
+    include_paths: bool,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -427,8 +485,8 @@ def _read_fragments(
     from pyarrow.dataset import _get_partition_keys
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
-    use_threads = reader_args.pop("use_threads", False)
-    batch_size = reader_args.pop("batch_size", default_read_batch_size)
+    use_threads = to_batches_kwargs.pop("use_threads", False)
+    batch_size = to_batches_kwargs.pop("batch_size", default_read_batch_size_rows)
     for fragment in fragments:
         part = _get_partition_keys(fragment.partition_expression)
         batches = fragment.to_batches(
@@ -436,17 +494,21 @@ def _read_fragments(
             columns=columns,
             schema=schema,
             batch_size=batch_size,
-            **reader_args,
+            **to_batches_kwargs,
         )
         for batch in batches:
             table = pa.Table.from_batches([batch], schema=schema)
             if part:
                 for col, value in part.items():
+                    if columns and col not in columns:
+                        continue
                     table = table.set_column(
                         table.schema.get_field_index(col),
                         col,
                         pa.array([value] * len(table)),
                     )
+            if include_paths:
+                table = table.append_column("path", [[fragment.path]] * len(table))
             # If the table is empty, drop it.
             if table.num_rows > 0:
                 if block_udf is not None:
@@ -478,7 +540,7 @@ def _fetch_metadata(
 
 
 def _sample_fragment(
-    reader_args,
+    to_batches_kwargs,
     columns,
     schema,
     file_fragment: _SerializedFragment,
@@ -494,12 +556,12 @@ def _sample_fragment(
     )
     # Use the batch_size calculated above, and ignore the one specified by user if set.
     # This is to avoid sampling too few or too many rows.
-    reader_args.pop("batch_size", None)
+    to_batches_kwargs.pop("batch_size", None)
     batches = fragment.to_batches(
         columns=columns,
         schema=schema,
         batch_size=batch_size,
-        **reader_args,
+        **to_batches_kwargs,
     )
     # Use first batch in-memory size as ratio estimation.
     try:

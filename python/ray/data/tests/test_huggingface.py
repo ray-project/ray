@@ -45,9 +45,15 @@ def test_huggingface(ray_start_regular_shared):
     datasets.Version(datasets.__version__) < datasets.Version("2.8.0"),
     reason="IterableDataset.iter() added in 2.8.0",
 )
-def test_from_huggingface_streaming(ray_start_regular_shared):
-    hfds = datasets.load_dataset("tweet_eval", "emotion", streaming=True, split="train")
-
+# Note, pandas is excluded here because IterableDatasets do not support pandas format.
+@pytest.mark.parametrize(
+    "batch_format",
+    [None, "numpy", "arrow", "torch", "tensorflow", "jax"],
+)
+def test_from_huggingface_streaming(batch_format, ray_start_regular_shared):
+    hfds = datasets.load_dataset(
+        "tweet_eval", "emotion", streaming=True, split="train"
+    ).with_format(batch_format)
     assert isinstance(hfds, datasets.IterableDataset)
     ds = ray.data.from_huggingface(hfds)
     assert ds.count() == 3257

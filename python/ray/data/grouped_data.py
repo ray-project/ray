@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from ._internal.table_block import TableBlockAccessor
 from ray.data._internal import sort
@@ -107,6 +107,28 @@ class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
     pass
 
 
+class _MultiColumnSortedKey:
+    """Represents a tuple of group keys with a ``__lt__`` method
+
+    This is a simple implementation to support multi-column groupby.
+    While a 1D array of tuples suffices to maintain the lexicographical
+    sorted order, a comparison method is also needed in ``np.searchsorted``
+    (for computing the group key boundaries).
+    """
+
+    __slots__ = ("data",)
+
+    def __init__(self, *args):
+        self.data = tuple(args)
+
+    def __lt__(self, obj: "_MultiColumnSortedKey") -> bool:
+        return self.data < obj.data
+
+    def __repr__(self) -> str:
+        """Print as T(1, 2)"""
+        return "T" + self.data.__repr__()
+
+
 @PublicAPI
 class GroupedData:
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
@@ -114,7 +136,7 @@ class GroupedData:
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, dataset: Dataset, key: str):
+    def __init__(self, dataset: Dataset, key: Union[str, List[str]]):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
@@ -198,8 +220,6 @@ class GroupedData:
             logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
-            self._dataset._epoch,
-            self._dataset._lazy,
             logical_plan,
         )
 
@@ -229,6 +249,8 @@ class GroupedData:
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
@@ -280,6 +302,8 @@ class GroupedData:
                 select ``pyarrow.Table``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
+            fn_args: Arguments to `fn`.
+            fn_kwargs: Keyword arguments to `fn`.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -295,13 +319,20 @@ class GroupedData:
         else:
             sorted_ds = self._dataset.repartition(1)
 
-        # Returns the group boundaries.
-        def get_key_boundaries(block_accessor: BlockAccessor):
+        def get_key_boundaries(block_accessor: BlockAccessor) -> List[int]:
+            """Compute block boundaries based on the key(s)"""
+
             import numpy as np
 
-            boundaries = []
             # Get the keys of the batch in numpy array format
             keys = block_accessor.to_numpy(self._key)
+
+            if isinstance(keys, dict):
+                # For multiple keys, we generate a separate tuple column
+                convert_to_multi_column_sorted_key = np.vectorize(_MultiColumnSortedKey)
+                keys: np.ndarray = convert_to_multi_column_sorted_key(*keys.values())
+
+            boundaries = []
             start = 0
             while start < keys.size:
                 end = start + np.searchsorted(keys[start:], keys[start], side="right")
@@ -311,7 +342,7 @@ class GroupedData:
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
-        def group_fn(batch):
+        def group_fn(batch, *args, **kwargs):
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
             if self._key:
@@ -327,7 +358,7 @@ class GroupedData:
                 # block format here can be different from batch format
                 # (e.g. block is Arrow format, and batch is NumPy format).
                 group_batch = group_block_accessor.to_batch_format(batch_format)
-                applied = fn(group_batch)
+                applied = fn(group_batch, *args, **kwargs)
                 builder.add_batch(applied)
                 start = end
             rs = builder.build()
@@ -340,6 +371,8 @@ class GroupedData:
             batch_size=None,
             compute=compute,
             batch_format=batch_format,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
             **ray_remote_args,
         )
 

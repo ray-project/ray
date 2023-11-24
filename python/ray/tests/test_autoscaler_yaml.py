@@ -175,7 +175,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             "CPU": 4,
             "memory": 12025908428,
             "neuron_cores": 2,
-            "accelerator_type:aws-neuron-core": 2,
+            "accelerator_type:aws-neuron-core": 1,
         }
         expected_available_node_types["cpu_16_spot"]["min_workers"] = 0
         expected_available_node_types["gpu_8_ondemand"]["min_workers"] = 0

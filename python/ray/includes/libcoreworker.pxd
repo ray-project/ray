@@ -86,6 +86,10 @@ cdef extern from "ray/core_worker/context.h" nogil:
         const c_string &GetCurrentSerializedRuntimeEnv()
         int CurrentActorMaxConcurrency()
 
+cdef extern from "ray/core_worker/generator_waiter.h" nogil:
+    cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
+        CGeneratorBackpressureWaiter(int64_t generator_backpressure_num_objects) # noqa
+
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::core::ActorHandle":
         CActorID GetActorID() const
@@ -158,7 +162,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
-        CObjectReference PeekObjectRefStream(
+        pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
             const CAddress &owner_address,
@@ -167,6 +171,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
+        void UpdateTaskIsDebuggerPaused(
+            const CTaskID &task_id,
+            const c_bool is_debugger_paused)
         int64_t GetCurrentTaskAttemptNumber()
         CNodeID GetCurrentNodeId()
         int64_t GetTaskDepth()
@@ -258,7 +265,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID &generator_id,
             const CAddress &caller_address,
             int64_t item_index,
-            uint64_t attempt_number)
+            uint64_t attempt_number,
+            shared_ptr[CGeneratorBackpressureWaiter] waiter)
         c_string MemoryUsageString()
         int GetMemoryStoreSize()
 
@@ -337,7 +345,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string name_of_concurrency_group_to_execute,
             c_bool is_reattempt,
             c_bool is_streaming_generator,
-            c_bool should_retry_exceptions) nogil) task_execution_callback
+            c_bool should_retry_exceptions,
+            int64_t generator_backpressure_num_objects
+        ) nogil) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect

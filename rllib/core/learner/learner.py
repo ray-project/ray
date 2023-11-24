@@ -63,6 +63,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TensorType,
 )
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
@@ -226,6 +227,7 @@ class LearnerHyperparameters:
             return self
 
 
+@PublicAPI(stability="alpha")
 class Learner:
     """Base class for Learners.
 
@@ -263,12 +265,9 @@ class Learner:
             Refer to ray.rllib.core.learner.learner.FrameworkHyperparameters for
             more info.
 
-
-    Usage pattern:
-
-        Note: We use PPO and torch as an example here because many of the showcased
-        components need implementations to come together. However, the same
-        pattern is generally applicable.
+    Note: We use PPO and torch as an example here because many of the showcased
+    components need implementations to come together. However, the same
+    pattern is generally applicable.
 
         .. testcode::
 

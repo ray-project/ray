@@ -12,7 +12,33 @@ from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_champagne_image,
     DATAPLANE_FILENAME,
+    _get_ray_commit,
 )
+
+
+def test_get_ray_commit() -> None:
+    assert (
+        _get_ray_commit(
+            {
+                "RAY_WANT_COMMIT_IN_IMAGE": "abc123",
+                "COMMIT_TO_TEST": "def456",
+                "BUILDKITE_COMMIT": "987789",
+            }
+        )
+        == "abc123"
+    )
+
+    assert (
+        _get_ray_commit(
+            {
+                "COMMIT_TO_TEST": "def456",
+                "BUILDKITE_COMMIT": "987789",
+            }
+        )
+        == "def456"
+    )
+    assert _get_ray_commit({"BUILDKITE_COMMIT": "987789"}) == "987789"
+    assert _get_ray_commit({"PATH": "/usr/bin"}) == ""
 
 
 def test_build_anyscale_champagne_image() -> None:
@@ -59,15 +85,10 @@ def test_build_anyscale_custom_byod_image() -> None:
     ) -> None:
         cmds.append(cmd)
 
-    with patch(
-        "ray_release.byod.build._byod_image_exist", return_value=False
-    ), patch.dict(
+    with patch("ray_release.byod.build._image_exist", return_value=False), patch.dict(
         "os.environ",
         {"BUILDKITE_COMMIT": "abc123", "BUILDKITE_BRANCH": "master"},
-    ), patch(
-        "subprocess.check_call",
-        side_effect=_mock_check_call,
-    ), patch(
+    ), patch("subprocess.check_call", side_effect=_mock_check_call,), patch(
         "subprocess.check_output",
         return_value=b"abc123",
     ):
@@ -88,7 +109,10 @@ def test_build_anyscale_base_byod_images() -> None:
     def _mock_validate_and_push(image: str) -> None:
         images.append(image)
 
-    with patch("ray_release.byod.build_ray.build_ray", return_value=None), patch(
+    def _mock_image_exist(image: str) -> bool:
+        return "rayproject/ray" in image
+
+    with patch(
         "ray_release.byod.build._download_dataplane_build_file", return_value=None
     ), patch(
         "os.environ",
@@ -96,9 +120,7 @@ def test_build_anyscale_base_byod_images() -> None:
     ), patch(
         "subprocess.check_call", return_value=None
     ), patch(
-        "ray_release.byod.build._byod_image_exist", return_value=False
-    ), patch(
-        "ray_release.byod.build._ray_image_exist", return_value=True
+        "ray_release.byod.build._image_exist", side_effect=_mock_image_exist
     ), patch(
         "ray_release.byod.build._validate_and_push", side_effect=_mock_validate_and_push
     ):

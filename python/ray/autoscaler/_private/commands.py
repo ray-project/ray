@@ -70,7 +70,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.experimental.internal_kv import _internal_kv_put
+from ray.experimental.internal_kv import _internal_kv_put, internal_kv_get_gcs_client
 from ray.util.debug import log_once
 
 try:  # py3
@@ -112,7 +112,9 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
         return reload_log_state(log_state)
 
 
-def debug_status(status, error, verbose: bool = False, address: str = None) -> str:
+def debug_status(
+    status, error, verbose: bool = False, address: Optional[str] = None
+) -> str:
     """
     Return a debug string for the autoscaler.
 
@@ -212,7 +214,8 @@ def request_resources(
     if is_autoscaler_v2():
         from ray.autoscaler.v2.sdk import request_cluster_resources
 
-        request_cluster_resources(to_request)
+        gcs_address = internal_kv_get_gcs_client().address
+        request_cluster_resources(gcs_address, to_request)
 
 
 def create_or_update_cluster(
@@ -1057,7 +1060,7 @@ def attach_cluster(
 def exec_cluster(
     config_file: str,
     *,
-    cmd: str = None,
+    cmd: Optional[str] = None,
     run_env: str = "auto",
     screen: bool = False,
     tmux: bool = False,

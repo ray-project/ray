@@ -21,13 +21,6 @@ rllib_dir = str(Path(__file__).parent.parent.absolute())
 
 def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
     extra_config = ""
-    if algo == "ARS":
-        extra_config = ',"train_batch_size": 10, "noise_size": 250000'
-    elif algo == "ES":
-        extra_config = (
-            ',"episodes_per_batch": 1,"train_batch_size": 10, ' '"noise_size": 250000'
-        )
-
     for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ', "framework": "{}"'.format(fw)
 
@@ -103,7 +96,7 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
         # call rllib train here to see if the RLModule API is enabled.
         algo_cls = get_trainable_cls(algo)
         config = algo_cls.get_default_config()
-        if config._enable_rl_module_api:
+        if config._enable_new_api_stack:
             eval_ = ', \\"evaluation_config\\": {}'
         else:
             eval_ = ', \\"evaluation_config\\": {\\"explore\\": false}'
@@ -260,22 +253,11 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
 
 
 class TestEvaluate1(unittest.TestCase):
-    def test_a3c(self):
-        evaluate_test("A3C")
-
-    def test_ddpg(self):
-        evaluate_test("DDPG", env="Pendulum-v1")
-
-
-class TestEvaluate2(unittest.TestCase):
     def test_dqn(self):
         evaluate_test("DQN")
 
-    def test_es(self):
-        evaluate_test("ES")
 
-
-class TestEvaluate3(unittest.TestCase):
+class TestEvaluate2(unittest.TestCase):
     def test_impala(self):
         evaluate_test("IMPALA", env="CartPole-v1")
 
@@ -283,7 +265,7 @@ class TestEvaluate3(unittest.TestCase):
         evaluate_test("PPO", env="CartPole-v1", test_episode_rollout=True)
 
 
-class TestEvaluate4(unittest.TestCase):
+class TestEvaluate3(unittest.TestCase):
     def test_sac(self):
         evaluate_test("SAC", env="Pendulum-v1")
 

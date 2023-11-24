@@ -51,8 +51,6 @@ document.addEventListener("DOMContentLoaded", function() {
         {"text": "KubeRay Ecosystem"},
         {"text": "KubeRay Benchmarks"},
         {"text": "KubeRay Troubleshooting"},
-        // Ray AIR
-        {"text": "Ray AIR API"},
         // Ray Data
         {"text": "Ray Data"},
         {"text": "Ray Data API"},

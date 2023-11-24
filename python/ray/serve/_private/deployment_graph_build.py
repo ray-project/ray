@@ -1,39 +1,30 @@
 import inspect
-from typing import List
 from collections import OrderedDict
+from typing import List
 
 from ray import cloudpickle
-
-from ray.serve.deployment import Deployment, schema_to_deployment
-from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.dag import PARENT_CLASS_NODE_KEY, ClassMethodNode, ClassNode, DAGNode
+from ray.dag.function_node import FunctionNode
+from ray.dag.utils import _DAGNodeNameGenerator
+from ray.experimental.gradio_utils import type_to_string
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_HANDLE_API,
     SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve._private.deployment_method_node import DeploymentMethodNode
-from ray.serve._private.deployment_node import DeploymentNode
-from ray.serve._private.deployment_function_node import DeploymentFunctionNode
 from ray.serve._private.deployment_executor_node import DeploymentExecutorNode
-from ray.serve._private.deployment_method_executor_node import (
-    DeploymentMethodExecutorNode,
-)
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
+from ray.serve._private.deployment_function_node import DeploymentFunctionNode
+from ray.serve._private.deployment_method_executor_node import (
+    DeploymentMethodExecutorNode,
+)
+from ray.serve._private.deployment_method_node import DeploymentMethodNode
+from ray.serve._private.deployment_node import DeploymentNode
+from ray.serve.deployment import Deployment, schema_to_deployment
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 from ray.serve.schema import DeploymentSchema
-
-
-from ray.dag import (
-    DAGNode,
-    ClassNode,
-    ClassMethodNode,
-    PARENT_CLASS_NODE_KEY,
-)
-from ray.dag.function_node import FunctionNode
-from ray.dag.input_node import InputNode
-from ray.dag.utils import _DAGNodeNameGenerator
-from ray.experimental.gradio_utils import type_to_string
 
 
 def build(
@@ -181,9 +172,9 @@ def transform_ray_dag_to_serve_dag(
                 node, DeploymentFunctionNode
             ):
                 if RAY_SERVE_ENABLE_NEW_HANDLE_API:
-                    return DeploymentHandle(node._deployment.name, app_name)
+                    return DeploymentHandle(node._deployment.name, app_name, sync=False)
                 else:
-                    return RayServeHandle(node._deployment.name, app_name)
+                    return RayServeHandle(node._deployment.name, app_name, sync=False)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 
@@ -237,10 +228,9 @@ def transform_ray_dag_to_serve_dag(
         deployment = deployment_shell.options(
             func_or_class=dag_node._body,
             name=deployment_name,
-            init_args=replaced_deployment_init_args,
-            init_kwargs=replaced_deployment_init_kwargs,
             route_prefix=route_prefix,
-            is_driver_deployment=deployment_shell._is_driver_deployment,
+            _init_args=replaced_deployment_init_args,
+            _init_kwargs=replaced_deployment_init_kwargs,
             _internal=True,
         )
 
@@ -416,38 +406,10 @@ def generate_executor_dag_driver_deployment(
     )
 
     return original_driver_deployment.options(
-        init_args=replaced_deployment_init_args,
-        init_kwargs=replaced_deployment_init_kwargs,
-        is_driver_deployment=original_driver_deployment._is_driver_deployment,
+        _init_args=replaced_deployment_init_args,
+        _init_kwargs=replaced_deployment_init_kwargs,
         _internal=True,
     )
-
-
-def get_pipeline_input_node(serve_dag_root_node: DAGNode):
-    """Return the InputNode singleton node from serve dag, and throw
-    exceptions if we didn't find any, or found more than one.
-
-    Args:
-        ray_dag_root_node: DAGNode acting as root of a Ray authored DAG. It
-            should be executable via `ray_dag_root_node.execute(user_input)`
-            and should have `InputNode` in it.
-    Returns
-        pipeline_input_node: Singleton input node for the serve pipeline.
-    """
-
-    input_nodes = []
-
-    def extractor(dag_node):
-        if isinstance(dag_node, InputNode):
-            input_nodes.append(dag_node)
-
-    serve_dag_root_node.apply_recursive(extractor)
-    assert len(input_nodes) == 1, (
-        "There should be one and only one InputNode in the DAG. "
-        f"Found {len(input_nodes)} InputNode(s) instead."
-    )
-
-    return input_nodes[0]
 
 
 def process_ingress_deployment_in_serve_dag(
@@ -467,7 +429,6 @@ def process_ingress_deployment_in_serve_dag(
         # didn't provide anything in particular.
         new_ingress_deployment = ingress_deployment.options(
             route_prefix="/",
-            is_driver_deployment=ingress_deployment._is_driver_deployment,
             _internal=True,
         )
         deployments[-1] = new_ingress_deployment

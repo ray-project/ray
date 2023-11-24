@@ -1,14 +1,14 @@
+import json
+import logging
 from abc import ABC
 from copy import deepcopy
-import json
-from typing import Any, Optional, Dict, List
+from typing import Any, Dict, List, Optional
 from zlib import crc32
 
+from ray._private.pydantic_compat import BaseModel
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.utils import get_random_letters, DeploymentOptionUpdateType
+from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_letters
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
-
-import logging
 
 logger = logging.getLogger("ray.serve")
 
@@ -26,10 +26,8 @@ class DeploymentVersion:
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
         if code_version is None:
-            self.unversioned = True
             self.code_version = get_random_letters()
         else:
-            self.unversioned = False
             self.code_version = code_version
 
         # Options for this field may be mutated over time, so any logic that uses this
@@ -177,6 +175,8 @@ class DeploymentVersion:
                 reconfigure_dict[option_name] = getattr(
                     self.deployment_config, option_name
                 )
+                if isinstance(reconfigure_dict[option_name], BaseModel):
+                    reconfigure_dict[option_name] = reconfigure_dict[option_name].dict()
 
         if (
             isinstance(self.deployment_config.user_config, bytes)

@@ -1,26 +1,29 @@
 import asyncio
+import logging
 import os
+import re
 import sys
 import time
-import pytest
 from collections import defaultdict
 
+import pytest
+import requests
+
 import ray
-from ray.exceptions import RayTaskError
-from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.util.state import list_actors
-
-
 from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
     SERVE_CONTROLLER_NAME,
-    SERVE_PROXY_NAME,
+    SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
 )
-from ray.serve.tests.test_failure import request_with_retries
 from ray.serve._private.utils import get_random_letters
+from ray.serve.schema import LoggingConfig
+from ray.serve.tests.test_failure import request_with_retries
+from ray.util.state import list_actors
 
 
 def test_recover_start_from_replica_actor_names(serve_instance):
@@ -395,6 +398,88 @@ def test_recover_deleting_application(serve_instance):
     # Make sure graceful shutdown ran successfully
     ray.get(graceful_shutdown_ref)
     print("Confirmed that graceful shutdown ran successfully.")
+
+
+def test_controller_crashes_with_logging_config(serve_instance):
+    """Controller persists logging config into kv store, and when controller recover
+    from crash, it will read logging config from kv store and apply to the
+    controller and proxy.
+    """
+
+    @serve.deployment
+    class Model:
+        def __init__(self):
+            self.logger = logging.getLogger("ray.serve")
+
+        def __call__(self):
+            self.logger.debug("this_is_debug_info")
+            return
+
+    serve.run(Model.bind())
+
+    client = serve_instance
+
+    # Update the logging config
+    client.update_system_logging_config(
+        LoggingConfig(encoding="JSON", log_level="DEBUG")
+    )
+
+    def check_log_file(log_file: str, expected_regex: list):
+        with open(log_file, "r") as f:
+            s = f.read()
+            for regex in expected_regex:
+                assert re.findall(regex, s) != []
+        return True
+
+    # Check the controller update
+    def check_log_state():
+        logging_config, _ = ray.get(client._controller._get_logging_config.remote())
+        assert logging_config.encoding == "JSON"
+        assert logging_config.log_level == "DEBUG"
+        return True
+
+    wait_for_condition(check_log_state, timeout=60)
+    _, log_file_path = ray.get(client._controller._get_logging_config.remote())
+    # DEBUG level check & JSON check
+    check_log_file(
+        log_file_path,
+        [".*Configure the serve controller logger.*", '.*"component_name":.*'],
+    )
+
+    ray.kill(client._controller, no_restart=False)
+
+    def check_controller_alive():
+        all_current_actors = list_actors(filters=[("state", "=", "ALIVE")])
+        for actor in all_current_actors:
+            if actor["class_name"] == "ServeController":
+                return True
+        return False
+
+    wait_for_condition(check_controller_alive)
+
+    # Check the controller log config
+    wait_for_condition(check_log_state)
+    _, new_log_file_path = ray.get(client._controller._get_logging_config.remote())
+    assert new_log_file_path != log_file_path
+    # Check again, make sure the logging config is recovered.
+    check_log_file(new_log_file_path, ['.*"component_name":.*'])
+
+    # Check proxy logging
+    def check_proxy_handle_in_controller():
+        proxy_handles = ray.get(client._controller.get_proxies.remote())
+        assert len(proxy_handles) == 1
+        return True
+
+    wait_for_condition(check_proxy_handle_in_controller)
+    proxy_handles = ray.get(client._controller.get_proxies.remote())
+    proxy_handle = list(proxy_handles.values())[0]
+    file_path = ray.get(proxy_handle._get_logging_config.remote())
+    # Send request, we should see json logging and debug log message in proxy log.
+    resp = requests.get("http://127.0.0.1:8000")
+    assert resp.status_code == 200
+    wait_for_condition(
+        check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET 200.*']
+    )
 
 
 if __name__ == "__main__":

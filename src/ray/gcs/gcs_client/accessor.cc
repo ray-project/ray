@@ -172,9 +172,9 @@ Status ActorInfoAccessor::AsyncGetAllByFilter(
     request.mutable_filters()->set_job_id(job_id.value().Binary());
   }
   if (actor_state_name) {
-    rpc::ActorTableData::ActorState actora_sate =
+    rpc::ActorTableData::ActorState actor_state =
         StringToActorState(actor_state_name.value());
-    request.mutable_filters()->set_state(actora_sate);
+    request.mutable_filters()->set_state(actor_state);
   }
 
   client_impl_->GetGcsRpcClient().GetAllActorInfo(
@@ -683,26 +683,6 @@ Status NodeInfoAccessor::AsyncGetInternalConfig(
 NodeResourceInfoAccessor::NodeResourceInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status NodeResourceInfoAccessor::AsyncGetResources(
-    const NodeID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
-  RAY_LOG(DEBUG) << "Getting node resources, node id = " << node_id;
-  rpc::GetResourcesRequest request;
-  request.set_node_id(node_id.Binary());
-  client_impl_->GetGcsRpcClient().GetResources(
-      request,
-      [node_id, callback](const Status &status, const rpc::GetResourcesReply &reply) {
-        ResourceMap resource_map;
-        for (const auto &resource : reply.resources()) {
-          resource_map[resource.first] =
-              std::make_shared<rpc::ResourceTableData>(resource.second);
-        }
-        callback(status, resource_map);
-        RAY_LOG(DEBUG) << "Finished getting node resources, status = " << status
-                       << ", node id = " << node_id;
-      });
-  return Status::OK();
-}
-
 Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
     const MultiItemCallback<rpc::AvailableResources> &callback) {
   rpc::GetAllAvailableResourcesRequest request;
@@ -729,48 +709,6 @@ Status NodeResourceInfoAccessor::AsyncGetDrainingNodes(
         callback(draining_nodes);
       });
   return Status::OK();
-}
-
-Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
-    const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
-  absl::MutexLock lock(&mutex_);
-  last_resource_usage_ = std::make_shared<NodeResources>(
-      ResourceMapToNodeResources(MapFromProtobuf(data_ptr->resources_total()),
-                                 MapFromProtobuf(data_ptr->resources_available())));
-  cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportResourceUsage(
-      cached_resource_usage_,
-      [callback](const Status &status, const rpc::ReportResourceUsageReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-      });
-  return Status::OK();
-}
-
-void NodeResourceInfoAccessor::FillResourceUsageRequest(
-    rpc::ReportResourceUsageRequest &resources) {
-  NodeResources cached_resources = *GetLastResourceUsage();
-
-  auto resources_data = resources.mutable_resources();
-  resources_data->clear_resources_total();
-  for (const auto &resource_pair : cached_resources.total.GetResourceMap()) {
-    (*resources_data->mutable_resources_total())[resource_pair.first] =
-        resource_pair.second;
-  }
-
-  resources_data->clear_resources_available();
-  for (const auto &resource_pair : cached_resources.available.GetResourceMap()) {
-    (*resources_data->mutable_resources_available())[resource_pair.first] =
-        resource_pair.second;
-  }
-
-  resources_data->clear_resource_load();
-  resources_data->set_resource_load_changed(true);
-  for (const auto &resource_pair : cached_resources.load.GetResourceMap()) {
-    (*resources_data->mutable_resource_load())[resource_pair.first] =
-        resource_pair.second;
-  }
 }
 
 void NodeResourceInfoAccessor::AsyncResubscribe() {
@@ -924,6 +862,24 @@ Status WorkerInfoAccessor::AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> 
   request.mutable_worker_data()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().AddWorkerInfo(
       request, [callback](const Status &status, const rpc::AddWorkerInfoReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
+Status WorkerInfoAccessor::AsyncUpdateDebuggerPort(const WorkerID &worker_id,
+                                                   uint32_t debugger_port,
+                                                   const StatusCallback &callback) {
+  rpc::UpdateWorkerDebuggerPortRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.set_debugger_port(debugger_port);
+  RAY_LOG(DEBUG) << "Updating the worker debugger port, worker id = " << worker_id
+                 << ", port = " << debugger_port << ".";
+  client_impl_->GetGcsRpcClient().UpdateWorkerDebuggerPort(
+      request,
+      [callback](const Status &status, const rpc::UpdateWorkerDebuggerPortReply &reply) {
         if (callback) {
           callback(status);
         }

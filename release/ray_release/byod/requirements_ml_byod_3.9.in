@@ -1,10 +1,11 @@
 # Python requirements to run release tests from anyscale byod (gpu type, python 3.9)
+
 accelerate
 bitsandbytes
 dataset
 datasets
 decord
-deepspeed
+deepspeed>=0.12.3
 diffusers
 evaluate
 fairscale
@@ -15,6 +16,7 @@ matplotlib
 numpy
 openai-whisper
 protobuf
+pydantic>=2.5.0
 pytorch-lightning
 sentencepiece
 statsforecast
@@ -25,4 +27,5 @@ torchmetrics
 torchtext
 torchvision
 transformers>=4.31.0
+typepy>=1.3.2
 wandb

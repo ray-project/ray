@@ -22,13 +22,15 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-    _resolve_paths_and_filesystem,
-    _unwrap_protocol,
 )
 from ray.data.datasource.file_meta_provider import (
     _get_file_infos_common_path_prefix,
     _get_file_infos_parallel,
     _get_file_infos_serial,
+)
+from ray.data.datasource.path_util import (
+    _resolve_paths_and_filesystem,
+    _unwrap_protocol,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
@@ -421,6 +423,15 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
     assert file_sizes == expected_file_sizes
+
+    # Many directories should not trigger error.
+    if isinstance(fs, LocalFileSystem):
+        dir_paths = [dir1, dir2] * num_dfs
+        with caplog.at_level(logging.WARNING), patcher as mock_get:
+            file_paths, file_sizes = map(
+                list, zip(*meta_provider.expand_paths(dir_paths, fs))
+            )
+        assert len(file_paths) == len(paths) * num_dfs
 
 
 @pytest.mark.parametrize(

@@ -2,9 +2,7 @@ import pytest
 
 import ray
 from ray._raylet import GcsClient
-from ray.serve._private.default_impl import (
-    create_cluster_node_info_cache,
-)
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.tests.conftest import *  # noqa
 
 

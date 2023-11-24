@@ -72,7 +72,9 @@ def get_commit_range():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=str, help="json or envvars", default="envvars")
+    parser.add_argument(
+        "--output", type=str, help="json, rayci_tags or envvars", default="envvars"
+    )
     args = parser.parse_args()
 
     RAY_CI_BRANCH_BUILD = int(
@@ -136,7 +138,6 @@ if __name__ == "__main__":
         # End of dry run.
 
         skip_prefix_list = [
-            ".buildkite/",
             "doc/",
             "examples/",
             "dev/",
@@ -153,7 +154,14 @@ if __name__ == "__main__":
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("python/ray/data"):
+            elif (
+                changed_file.startswith("python/ray/data")
+                or changed_file == ".buildkite/data.rayci.yml"
+                or changed_file == "ci/docker/data.build.Dockerfile"
+                or changed_file == "ci/docker/datan.build.wanda.yaml"
+                or changed_file == "ci/docker/data6.build.wanda.yaml"
+                or changed_file == "ci/docker/data14.build.wanda.yaml"
+            ):
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -165,7 +173,6 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/tune"):
                 RAY_CI_ML_AFFECTED = 1
-                RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -176,7 +183,23 @@ if __name__ == "__main__":
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif re.match("^(python/ray/)?rllib/", changed_file):
+            elif (
+                changed_file == ".buildkite/ml.rayci.yml"
+                or changed_file == ".buildkite/pipeline.test.yml"
+                or changed_file == "ci/docker/ml.build.Dockerfile"
+                or changed_file == ".buildkite/pipeline.gpu.yml"
+                or changed_file == ".buildkite/pipeline.gpu_large.yml"
+                or changed_file == "ci/docker/ml.build.wanda.yaml"
+                or changed_file == "ci/ray_ci/ml.tests.yml"
+            ):
+                RAY_CI_ML_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
+                RAY_CI_TUNE_AFFECTED = 1
+            elif (
+                re.match("^(python/ray/)?rllib/", changed_file)
+                or changed_file == "ray_ci/rllib.tests.yml"
+                or changed_file == ".buildkite/rllib.rayci.yml"
+            ):
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -184,8 +207,11 @@ if __name__ == "__main__":
             elif re.match("rllib_contrib/", changed_file):
                 if not changed_file.endswith(".md"):
                     RAY_CI_RLLIB_CONTRIB_AFFECTED = 1
-            elif changed_file.startswith("python/ray/serve"):
-                RAY_CI_DOC_AFFECTED = 1
+            elif (
+                changed_file.startswith("python/ray/serve")
+                or changed_file == ".buildkite/serve.rayci.yml"
+                or changed_file == "ci/docker/serve.build.Dockerfile"
+            ):
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -212,23 +238,41 @@ if __name__ == "__main__":
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-                RAY_CI_DOC_AFFECTED = 1
                 # Python changes might impact cross language stack in Java.
                 # Java also depends on Python CLI to manage processes.
                 RAY_CI_JAVA_AFFECTED = 1
-                if changed_file.startswith("python/setup.py") or re.match(
-                    ".*requirements.*\.txt", changed_file
+                if (
+                    changed_file.startswith("python/setup.py")
+                    or re.match(".*requirements.*\.txt", changed_file)
+                    or changed_file == "python/requirements_compiled.txt"
                 ):
                     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 1
                 for compiled_extension in (".pxd", ".pyi", ".pyx", ".so"):
                     if changed_file.endswith(compiled_extension):
                         RAY_CI_COMPILED_PYTHON_AFFECTED = 1
                         break
-            elif changed_file.startswith("java/"):
+            elif (
+                changed_file == ".buildkite/core.rayci.yml"
+                or changed_file == "ci/docker/min.build.Dockerfile"
+                or changed_file == "ci/docker/min.build.wanda.yaml"
+                or changed_file == ".buildkite/serverless.rayci.yml"
+                or changed_file == ".buildkite/pipeline.ml.yml"
+            ):
+                RAY_CI_PYTHON_AFFECTED = 1
+            elif (
+                changed_file.startswith("java/")
+                or changed_file == ".buildkite/others.rayci.yml"
+            ):
                 RAY_CI_JAVA_AFFECTED = 1
-            elif changed_file.startswith("cpp/"):
+            elif (
+                changed_file.startswith("cpp/")
+                or changed_file == ".buildkite/pipeline.build_cpp.yml"
+            ):
                 RAY_CI_CPP_AFFECTED = 1
-            elif changed_file.startswith("docker/"):
+            elif (
+                changed_file.startswith("docker/")
+                or changed_file == ".buildkite/pipeline.build_release.yml"
+            ):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
             elif changed_file.startswith("doc/"):
@@ -242,7 +286,15 @@ if __name__ == "__main__":
                 # we pass, as the flag RAY_CI_DOC_AFFECTED is only
                 # used to indicate that tests/examples should be run
                 # (documentation will be built always)
-            elif changed_file.startswith("release/"):
+            elif (
+                changed_file == "ci/docker/doctest.build.Dockerfile"
+                or changed_file == "ci/docker/doctest.build.wanda.yaml"
+            ):
+                # common doctest always run without coverage
+                pass
+            elif changed_file.startswith("release/") or changed_file.startswith(
+                ".buildkite/release"
+            ):
                 if changed_file.startswith("release/ray_release"):
                     # Release test unit tests are ALWAYS RUN, so pass
                     pass
@@ -257,14 +309,36 @@ if __name__ == "__main__":
             elif changed_file.startswith("ci/lint"):
                 # Linter will always be run
                 RAY_CI_TOOLS_AFFECTED = 1
-            elif changed_file.startswith("ci/pipeline"):
+            elif (
+                changed_file.startswith("ci/pipeline")
+                or changed_file.startswith("ci/build")
+                or changed_file.startswith("ci/ray_ci")
+                or changed_file == ".buildkite/_forge.rayci.yml"
+                or changed_file == ".buildkite/_forge.aarch64.rayci.yml"
+                or changed_file == "ci/docker/forge.wanda.yaml"
+                or changed_file == "ci/docker/forge.aarch64.wanda.yaml"
+                or changed_file == ".buildkite/pipeline.build.yml"
+                or changed_file == ".buildkite/pipeline.ml.yml"
+                or changed_file == ".buildkite/hooks/post-command"
+            ):
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
-            elif changed_file.endswith("build-docker-images.py"):
+            elif (
+                changed_file.endswith("build-docker-images.py")
+                or changed_file == ".buildkite/build.rayci.yml"
+                or changed_file == ".buildkite/pipeline.arm64.yml"
+                or changed_file == "ci/docker/manylinux.Dockerfile"
+                or changed_file == "ci/docker/manylinux.wanda.yaml"
+                or changed_file == "ci/docker/manylinux.aarch64.wanda.yaml"
+                or changed_file == "ci/docker/ray.cpu.base.wanda.yaml"
+                or changed_file == "ci/docker/ray.cpu.base.aarch64.wanda.yaml"
+                or changed_file == "ci/docker/ray.cuda.base.wanda.yaml"
+                or changed_file == "ci/docker/ray.cuda.base.aarch64.wanda.yaml"
+            ):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_TOOLS_AFFECTED = 1
-            elif changed_file.startswith("ci/run"):
+            elif changed_file.startswith("ci/run") or changed_file == "ci/ci.sh":
                 RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.startswith("src/"):
                 RAY_CI_ML_AFFECTED = 1
@@ -279,7 +353,6 @@ if __name__ == "__main__":
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
-                RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_RELEASE_TESTS_AFFECTED = 1
             else:
                 print(
@@ -293,6 +366,8 @@ if __name__ == "__main__":
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
+                RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
                 RAY_CI_CPP_AFFECTED = 1
@@ -322,6 +397,7 @@ if __name__ == "__main__":
         RAY_CI_DOC_AFFECTED = 1
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
+        RAY_CI_DOCKER_AFFECTED = 1
         RAY_CI_DASHBOARD_AFFECTED = 1
         RAY_CI_TOOLS_AFFECTED = 1
         RAY_CI_WORKFLOW_AFFECTED = 1
@@ -366,9 +442,19 @@ if __name__ == "__main__":
     print(output_string, file=sys.stderr)
 
     # Used by buildkite log format
+    pairs = [item.split("=") for item in output_string.split(" ")]
+    affected_vars = [key for key, affected in pairs if affected == "1"]
     if args.output.lower() == "json":
-        pairs = [item.split("=") for item in output_string.split(" ")]
-        affected_vars = [key for key, affected in pairs if affected == "1"]
         print(json.dumps(affected_vars))
+    elif args.output.lower() == "rayci_tags":
+
+        def f(s):
+            if s.startswith("RAY_CI_"):
+                s = s[7:]
+            if s.endswith("_AFFECTED"):
+                s = s[:-9]
+            return s.lower()
+
+        print(" ".join(list(map(f, affected_vars))))
     else:
         print(output_string)

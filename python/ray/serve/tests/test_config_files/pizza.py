@@ -1,11 +1,10 @@
 from enum import Enum
-from typing import List, Dict, TypeVar
+from typing import Dict, List
 
-from ray import serve
-from ray.serve.handle import RayServeHandle
 import starlette.requests
 
-RayHandleLike = TypeVar("RayHandleLike")
+from ray import serve
+from ray.serve.handle import DeploymentHandle
 
 
 class Operation(str, Enum):
@@ -15,15 +14,15 @@ class Operation(str, Enum):
 
 @serve.deployment(ray_actor_options={"num_cpus": 0.15})
 class Router:
-    def __init__(self, multiplier: RayServeHandle, adder: RayServeHandle):
+    def __init__(self, multiplier: DeploymentHandle, adder: DeploymentHandle):
         self.adder = adder
         self.multiplier = multiplier
 
     async def route(self, op: Operation, input: int) -> str:
         if op == Operation.ADDITION:
-            amount = await (await self.adder.add.remote(input))
+            amount = await self.adder.add.remote(input)
         elif op == Operation.MULTIPLICATION:
-            amount = await (await self.multiplier.multiply.remote(input))
+            amount = await self.multiplier.multiply.remote(input)
 
         return f"{amount} pizzas please!"
 

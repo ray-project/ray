@@ -8,7 +8,6 @@ doctest(
             "tests/**",
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
-            "huggingface/transformers/transformers_trainer.py",
             "_internal/session.py",
             "context.py"
         ]
@@ -20,7 +19,6 @@ doctest(
 doctest(
     files = [
         "tensorflow/tensorflow_trainer.py",
-        "huggingface/transformers/transformers_trainer.py",
         "_internal/session.py",
         "context.py"
     ],
@@ -184,15 +182,6 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test (
-    name = "huggingface_basic_language_modeling_example",
-    size = "medium",
-    srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
-    args = ["--smoke-test", "--num-epochs 3"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
 py_test(
     name = "tensorflow_regression_example",
     size = "medium",
@@ -273,9 +262,9 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_accelerate_trainer_gpu",
+    name = "test_torch_accelerate",
     size = "large",
-    srcs = ["tests/test_accelerate_trainer_gpu.py"],
+    srcs = ["tests/test_torch_accelerate.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib",  ":conftest"]
 )
@@ -377,14 +366,6 @@ py_test(
 )
 
 py_test(
-    name = "test_huggingface",
-    size = "small",
-    srcs = ["tests/test_huggingface.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_torch_fsdp",
     size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
@@ -421,46 +402,6 @@ py_test(
     size = "medium",
     srcs = ["tests/test_lightgbm_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_lightning_checkpoint",
-    size = "medium",
-    srcs = ["tests/test_lightning_checkpoint.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_lightning_trainer_restore",
-    size = "medium",
-    srcs = ["tests/test_lightning_trainer_restore.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_lightning_trainer",
-    size = "large",
-    srcs = ["tests/test_lightning_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_lightning_predictor",
-    size = "medium",
-    srcs = ["tests/test_lightning_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_lightning_deepspeed",
-    size = "large",
-    srcs = ["tests/test_lightning_deepspeed.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
     deps = [":train_lib"]
 )
 
@@ -534,6 +475,14 @@ py_test(
     srcs = ["tests/test_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_result",
+    size = "medium",
+    srcs = ["tests/test_result.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -649,38 +598,6 @@ py_test(
 )
 
 py_test(
-    name = "test_transformers_checkpoint",
-    size = "small",
-    srcs = ["tests/test_transformers_checkpoint.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_transformers_predictor",
-    size = "medium",
-    srcs = ["tests/test_transformers_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_transformers_trainer_steps",
-    size = "enormous", # TODO: Reduce this.
-    srcs = ["tests/test_transformers_trainer_steps.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_transformers_trainer",
-    size = "large",
-    srcs = ["tests/test_transformers_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_tune",
     size = "large",
     srcs = ["tests/test_tune.py"],
@@ -709,6 +626,14 @@ py_test(
     size = "medium",
     srcs = ["tests/test_worker_group.py"],
     tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_windows",
+    size = "small",
+    srcs = ["tests/test_windows.py"],
+    tags = ["team:ml", "exclusive", "minimal"],
     deps = [":train_lib"]
 )
 

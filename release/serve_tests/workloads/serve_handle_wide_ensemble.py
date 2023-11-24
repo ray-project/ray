@@ -23,10 +23,8 @@ import click
 from typing import List
 from typing import Optional
 
-import ray
 from ray import serve
-from ray.serve.handle import RayServeSyncHandle
-from ray.serve.context import _get_global_client
+from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -58,42 +56,32 @@ class Node:
 class CombineNode:
     def __init__(
         self,
-        input_nodes: List[RayServeSyncHandle],
+        input_nodes: List[DeploymentHandle],
         compute_delay_secs,
-        sync_handle=True,
     ):
-        assert type(input_nodes) == list
-        self.input_nodes = input_nodes
+        assert isinstance(input_nodes, list)
+        self.handles = input_nodes
         self.compute_delay_secs = compute_delay_secs
-        self.sync_handle = sync_handle
 
     async def predict(self, data):
         results = [
-            node.predict.remote(data, self.compute_delay_secs)
-            for node in self.input_nodes
+            handle.predict.remote(data, self.compute_delay_secs)
+            for handle in self.handles
         ]
-        if self.sync_handle:
-            results = await asyncio.gather(*results)
-        else:
-            results = await asyncio.gather(*await asyncio.gather(*results))
+
+        results = await asyncio.gather(*results)
         return sum(results)
 
 
 def construct_wide_fanout_graph_with_pure_handle(
-    fanout_degree, sync_handle: bool, init_delay_secs=0, compute_delay_secs=0
+    fanout_degree, init_delay_secs=0, compute_delay_secs=0
 ) -> RayServeSyncHandle:
     nodes = []
     for id in range(fanout_degree):
-        Node.options(name=str(id)).deploy(id, init_delay_secs=init_delay_secs)
-        nodes.append(_get_global_client().get_handle(str(id), "", sync=sync_handle))
-    CombineNode.options(name="combine").deploy(
-        nodes, compute_delay_secs, sync_handle=sync_handle
-    )
-    return _get_global_client().get_handle("combine", "", sync=sync_handle)
-
-
-async def sanity_check_graph_deployment_with_async_handle(handle, expected_result):
-    assert await (await handle.predict.remote(0)) == expected_result
+        node = Node.options(name=str(id)).bind(id, init_delay_secs=init_delay_secs)
+        nodes.append(node)
+    app = CombineNode.options(name="combine").bind(nodes, compute_delay_secs)
+    return serve.run(app)
 
 
 @click.command()
@@ -112,7 +100,6 @@ async def sanity_check_graph_deployment_with_async_handle(handle, expected_resul
     default=DEFAULT_THROUGHPUT_TRIAL_DURATION_SECS,
 )
 @click.option("--local-test", type=bool, default=True)
-@click.option("--sync-handle", type=bool, default=True)
 def main(
     fanout_degree: Optional[int],
     init_delay_secs: Optional[int],
@@ -121,7 +108,6 @@ def main(
     num_clients: Optional[int],
     throughput_trial_duration_secs: Optional[int],
     local_test: Optional[bool],
-    sync_handle: Optional[bool],
 ):
     if local_test:
         setup_local_single_node_cluster(1, num_cpu_per_node=8)
@@ -130,21 +116,17 @@ def main(
 
     handle = construct_wide_fanout_graph_with_pure_handle(
         fanout_degree,
-        sync_handle,
         init_delay_secs=init_delay_secs,
         compute_delay_secs=compute_delay_secs,
     )
 
     # 0 + 1 + 2 + 3 + 4 + ... + (fanout_degree - 1)
     expected = ((0 + fanout_degree - 1) * fanout_degree) / 2
-    if sync_handle:
-        assert ray.get(handle.predict.remote(0)) == expected
-    else:
-        sanity_check_graph_deployment_with_async_handle(handle, expected)
+    assert handle.predict.remote(0).result() == expected
 
     throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(
-            handle,
+            handle.predict.remote,
             expected,
             duration_secs=throughput_trial_duration_secs,
             num_clients=num_clients,
@@ -152,7 +134,7 @@ def main(
     )
     latency_mean_ms, latency_std_ms = asyncio.run(
         benchmark_latency_ms(
-            handle,
+            handle.predict.remote,
             expected,
             num_requests=num_requests_per_client,
             num_clients=num_clients,
@@ -170,7 +152,6 @@ def main(
         "init_delay_secs": init_delay_secs,
         "compute_delay_secs": compute_delay_secs,
         "local_test": local_test,
-        "sync_handle": sync_handle,
     }
     results["perf_metrics"] = [
         {
