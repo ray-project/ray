@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-
+from ray.data.context import DataContext
 import ray
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
@@ -16,6 +16,76 @@ from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.mark.parametrize("new_backend", [True, False])
+@pytest.mark.parametrize("descending,boundaries", [(True, list(range(100,1000,200))), (False, list(range(100,1000,200))), (True, [1,998]), (False, [1,998])])
+def test_sort_with_specified_boundaries(descending, boundaries, new_backend):
+    def check_id_in_block(dataset, boundaries_, ordered_id, descending):
+        id_exp = []
+        for i in range(len(boundaries_)):
+            if boundaries_[i] > ordered_id[0] and boundaries_[i] <= ordered_id[-1]:
+                if i == 0:
+                    id_exp.append(list(range(ordered_id[0], boundaries_[i])))
+                else:
+                    if boundaries_[i - 1] <= ordered_id[0]:
+                        id_exp.append(list(range(ordered_id[0], boundaries_[i])))
+                    else:
+                        id_exp.append(list(range(boundaries_[i - 1], boundaries_[i])))
+            elif boundaries_[i] <= ordered_id[0]:
+                id_exp.append([])
+            else:
+                if len(id_exp) == 0:
+                    id_exp.append([])
+                else:
+                    if len(id_exp[-1]) > 0:
+                        if id_exp[-1][-1] >= ordered_id[-1]:
+                            id_exp.append([])
+                        else:
+                            id_exp.append(list(range(ordered_id[-1][-1] + 1, ordered_id[-1] + 1)))
+                    else:
+                        id_exp.append([])
+
+        if boundaries_[-1] <= ordered_id[0]:
+            id_exp.append(ordered_id)
+        elif boundaries_[0] > ordered_id[-1]:
+            id_exp.insert(0, ordered_id)
+        else:
+            id_exp.append(list(range(boundaries_[-1], ordered_id[-1] + 1)))
+
+
+        dfs = ray.get(dataset.to_pandas_refs())
+        if descending:
+            for i in range(len(dfs)):
+                if dfs[i].shape[0] == 0:
+                    assert id_exp[-1-i] != []
+                else:
+                    idx = dfs[i]["id"].values.tolist()
+                    idx.sort()
+                    assert idx == id_exp[-1-i]
+        else:
+            for i in range(len(dfs)):
+                if dfs[i].shape[0] == 0:
+                    assert id_exp[i] != []
+                else:
+                    idx = dfs[i]["id"].values.tolist()
+                    #print(idx,  id_exp[i])
+                    assert idx == id_exp[i]
+
+
+    x = np.random.randn(1000, 2)
+    idx = np.asarray(range(1000)).reshape(-1, 1)
+    np.random.shuffle(idx)
+    x = np.concatenate([idx, x], axis=1)
+    x = pd.DataFrame(x, columns=["id", "a", "b"])
+    ds = ray.data.from_pandas(x)
+    if new_backend:
+        DataContext.get_current().new_execution_backend = False
+    ds = ds.sort("id", descending, boundaries)
+    ordered_ids = x["id"].values.tolist()
+    ordered_ids.sort()
+    check_id_in_block(ds, boundaries, list(range(1000)), descending)
+    print("GOOD!")
 
 
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):

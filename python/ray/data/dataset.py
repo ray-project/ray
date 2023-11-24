@@ -2212,6 +2212,7 @@ class Dataset:
         self,
         key: Union[str, List[str], None] = None,
         descending: Union[bool, List[bool]] = False,
+        boundaries: Optional[list] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
 
@@ -2237,7 +2238,7 @@ class Dataset:
             A new, sorted :class:`Dataset`.
         """
 
-        sort_key = SortKey(key, descending)
+        sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.with_stage(SortStage(self, sort_key))
 
         logical_plan = self._logical_plan
