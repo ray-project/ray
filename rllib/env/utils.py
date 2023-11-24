@@ -2,6 +2,7 @@ import logging
 from typing import List, Optional, Type, Union
 
 import gymnasium as gym
+import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.env.env_context import EnvContext
@@ -178,25 +179,43 @@ def _gym_env_creator(
     return env
 
 
-class BufferWithLookback:
+class BufferWithInfiniteLookback:
     def __init__(
         self,
         data: Optional[List] = None,
         lookback: int = 0,
         space: Optional[gym.Space] = None,
     ):
-        self.data = data or []
+        self.data = data if data is not None else []
         self.lookback = lookback
-        self.finalized = False
+        self.finalized = not isinstance(self.data, list)
         self.space = space
         self.space_struct = get_base_struct_from_space(self.space)
 
-    def add(self, item):
+    def append(self, item) -> None:
+        """Appends the given item to the end of this buffer."""
         if self.finalized:
-            raise RuntimeError("Cannot add to a finalized LookbackBuffer.")
+            raise RuntimeError(f"Cannot `append` to a finalized {type(self).__name__}.")
         self.data.append(item)
 
+    def extend(self, items):
+        """Appends all items in `items` to the end of this buffer."""
+        if self.finalized:
+            raise RuntimeError(f"Cannot `extend` a finalized {type(self).__name__}.")
+        for item in items:
+            self.append(item)
+
+    def pop(self, index: int = -1):
+        """Removes the item at `index` from this buffer."""
+        if self.finalized:
+            raise RuntimeError(f"Cannot `pop` from a finalized {type(self).__name__}.")
+        return self.data.pop(index)
+
     def finalize(self):
+        """Finalizes this buffer by converting internal data lists into numpy arrays.
+
+        Thereby, if the individual items in the list are complex (nested 2)
+        """
         if not self.finalized:
             self.data = batch(self.data)
             self.finalized = True
@@ -208,32 +227,57 @@ class BufferWithLookback:
         fill: Optional[float] = None,
         one_hot_discrete: bool = False,
     ):
+        """TODO: docstring"""
         if fill is not None and self.space is None:
             raise ValueError(
-                "Cannot use `fill` argument in `LookbackBuffer.get()` if a "
+                f"Cannot use `fill` argument in `{type(self).__name__}.get()` if a "
                 "gym.Space was NOT provided during construction!"
             )
 
         if indices is None:
-            return self._get_all_data()
+            data = self._get_all_data()
         elif isinstance(indices, slice):
-            return self._get_slice(indices, fill)
+            data = self._get_slice(
+                indices,
+                fill=fill,
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            )
         elif isinstance(indices, list):
-            data = [self._get_int_index(i) for i in indices]
+            data = [
+                self._get_int_index(
+                    idx,
+                    fill=fill,
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                ) for idx in indices
+            ]
             if self.finalized:
                 data = batch(data)
-            return data
         else:
             assert isinstance(indices, int)
-            return self._get_int_index(indices, fill=fill)
+            data = self._get_int_index(
+                indices,
+                fill=fill,
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            )
+
+        # Convert discrete/multi-discrete components to one-hot vectors, if required.
+        if one_hot_discrete:
+            data = self._one_hot(data)
+
+        return data
+
+    def __getitem__(self, item):
+        """Support squared bracket syntax, e.g. buffer[:5]."""
+        return self.get(item)
 
     def __len__(self):
+        """Return the length of our data, excluding the lookback buffer."""
         return len(self.data) - self.lookback
 
     def _get_all_data(self):
         return self._get_slice(slice(None, None))
 
-    def _get_slice(self, slice_, fill=None, neg_indices_left_of_zero=False, one_hot_discrete=False):
+    def _get_slice(self, slice_, fill=None, neg_indices_left_of_zero=False):
         fill_left_count = fill_right_count = 0
 
         # Re-interpret slice bounds as absolute positions (>=0) within our
@@ -339,33 +383,54 @@ class BufferWithLookback:
                     + fill_batch * fill_right_count
                 )
 
-        # Convert discrete/multi-discrete components to one-hot vectors, if required.
-        if one_hot_discrete:
-
-            def _convert(data, space):
-                if isinstance(space, gym.spaces.Discrete):
-                    return one_hot(data, depth=space.n)
-                elif isinstance(space, gym.spaces.MultiDiscrete):
-                    return one_hot_multidiscrete(data, depths=space.nvec)
-                return data
-
-            if self.finalized:
-                data_slice = tree.map_structure(_convert, data_slice, self.space_struct)
-            else:
-                data_slice = [
-                    tree.map_structure(_convert, dslice, self.space_struct)
-                    for dslice in data_slice
-                ]
-
         return data_slice
 
-    def _get_int_index(self, idx: int, fill=None):
+    def _get_int_index(
+        self,
+        idx: int,
+        fill=None,
+        neg_indices_left_of_zero=False,
+    ):
         # If index >= 0 -> Ignore lookback buffer.
         # Otherwise, include lookback buffer.
-        if idx >= 0:
+        if idx >= 0 or neg_indices_left_of_zero:
             idx = self.lookback + idx
 
+        try:
+            if self.finalized:
+                return tree.map_structure(lambda s: s[idx], self.data)
+            else:
+                return self.data[idx]
+        # Out of range index -> If `fill`, use a fill dummy (B=0), if not, error out.
+        except IndexError as e:
+            if fill is not None:
+                return get_dummy_batch_for_space(
+                    self.space,
+                    fill_value=fill,
+                    batch_size=0,
+                )
+            else:
+                raise e
+            
+    def _one_hot(self, data):
+        if self.space is None:
+            raise ValueError(
+                f"Cannot `one_hot` data in `{type(self).__name__}` if a "
+                "gym.Space was NOT provided during construction!"
+            )
+
+        def _convert(dat_, space):
+            if isinstance(space, gym.spaces.Discrete):
+                return one_hot(dat_, depth=space.n)
+            elif isinstance(space, gym.spaces.MultiDiscrete):
+                return one_hot_multidiscrete(dat_, depths=space.nvec)
+            return dat_
+
         if self.finalized:
-            return tree.map_structure(lambda s: s[idx], self.data)
+            data = tree.map_structure(_convert, data, self.space_struct)
         else:
-            return self.data[idx]
+            data = [
+                tree.map_structure(_convert, dslice, self.space_struct)
+                for dslice in data
+            ]
+        return data
