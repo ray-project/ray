@@ -13,9 +13,11 @@ async def test_core_worker_io_thread_stack_size(shutdown_only):
 
     @ray.remote(num_cpus=0)
     def task():
-        return 1
+        import numpy
 
-    assert (await task.remote()) == 1
+        return numpy.zeros(1)
+
+    assert (await task.remote()).tolist() == [0]
 
 
 if __name__ == "__main__":
