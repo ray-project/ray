@@ -579,14 +579,10 @@ def _execution_allowed(
             "Operator incremental resource usage cannot specify both CPU "
             "and GPU at the same time, since it may cause deadlock."
         )
-    elif inc.object_store_memory:
-        raise NotImplementedError(
-            "Operator incremental resource usage must not include memory."
-        )
     inc_indicator = ExecutionResources(
         cpu=1 if inc.cpu else 0,
         gpu=1 if inc.gpu else 0,
-        object_store_memory=1 if inc.object_store_memory else 0,
+        object_store_memory=inc.object_store_memory,
     )
 
     # Under global limits; always allow.
@@ -607,5 +603,12 @@ def _execution_allowed(
     downstream_memory_ok = ExecutionResources(
         object_store_memory=downstream_usage.object_store_memory
     ).satisfies_limit(downstream_limit)
+
+    if (
+        global_ok_sans_memory
+        and inc.object_store_memory is not None
+        and inc.object_store_memory <= 0
+    ):
+        return True
 
     return global_ok_sans_memory and downstream_memory_ok
