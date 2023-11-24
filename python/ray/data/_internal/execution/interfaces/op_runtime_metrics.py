@@ -16,6 +16,7 @@ class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
     bytes_outputs: int
+    estimated_bytes_outputs: Optional[int]
 
 
 @dataclass
@@ -197,7 +198,11 @@ class OpRuntimeMetrics:
         """Callback when the operator submits a task."""
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
-        self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
+        self._running_tasks[task_index] = RunningTaskInfo(
+            inputs, 0, 0, self.average_bytes_outputs_per_task
+        )
+        if self.average_bytes_outputs_per_task is not None:
+            self.obj_store_mem_cur += self.average_bytes_outputs_per_task
 
     def on_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
@@ -215,7 +220,13 @@ class OpRuntimeMetrics:
 
         # Update object store metrics.
         self.obj_store_mem_alloc += output_bytes
-        self.obj_store_mem_cur += output_bytes
+        if task_info.estimated_bytes_outputs is None:
+            task_info.estimated_bytes_outputs = task_info.bytes_outputs
+            self.obj_store_mem_cur += task_info.bytes_outputs
+        elif task_info.bytes_outputs > task_info.estimated_bytes_outputs:
+            self.obj_store_mem_cur -= task_info.estimated_bytes_outputs
+            task_info.estimated_bytes_outputs = task_info.bytes_outputs
+            self.obj_store_mem_cur += task_info.estimated_bytes_outputs
         if self.obj_store_mem_cur > self.obj_store_mem_peak:
             self.obj_store_mem_peak = self.obj_store_mem_cur
 
@@ -234,6 +245,11 @@ class OpRuntimeMetrics:
         task_info = self._running_tasks[task_index]
         self.num_outputs_of_finished_tasks += task_info.num_outputs
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
+
+        if task_info.bytes_outputs < task_info.estimated_bytes_outputs:
+            self.obj_store_mem_cur -= task_info.estimated_bytes_outputs
+            task_info.estimated_bytes_outputs = task_info.bytes_outputs
+            self.obj_store_mem_cur += task_info.estimated_bytes_outputs
 
         inputs = self._running_tasks[task_index].inputs
         self.num_inputs_processed += len(inputs)
