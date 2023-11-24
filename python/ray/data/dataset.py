@@ -2212,7 +2212,7 @@ class Dataset:
         self,
         key: Union[str, List[str], None] = None,
         descending: Union[bool, List[bool]] = False,
-        boundaries: Optional[list] = None,
+        boundaries: List[Union[int, float]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
 
@@ -2220,12 +2220,32 @@ class Dataset:
             The `descending` parameter must be a boolean, or a list of booleans.
             If it is a list, all items in the list must share the same direction.
             Multi-directional sort is not supported yet.
+            The type of element in boundaries should be int or float currently.
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> ds.sort("id", descending=True).take(3)
-            [{'id': 99}, {'id': 98}, {'id': 97}]
+            >>> ds = ray.data.range(15)
+            >>> ds = ds.sort("id", descending=False, boundaries=[5, 10])
+            >>> for df in ray.get(ds.to_pandas_refs()):
+            >>>     print(df)
+                   id
+                0   0
+                1   1
+                2   2
+                3   3
+                4   4
+                   id
+                0   5
+                1   6
+                2   7
+                3   8
+                4   9
+                   id
+                0  10
+                1  11
+                2  12
+                3  13
+                4  14
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -2233,6 +2253,13 @@ class Dataset:
             key: The column or a list of columns to sort by.
             descending: Whether to sort in descending order. Must be a boolean or a list
                 of booleans matching the number of the columns.
+            boundaries: The list of values based on which to repartition the dataset.
+                For example, if the input boundary is [10,20], rows with values less
+                than 10 will be divided into the first block, rows with values greater
+                than or equal to 10 and less than 20 will be divided into the second block,
+                and rows with values greater than or equal to 20 will be divided into into
+                the third block.
+
 
         Returns:
             A new, sorted :class:`Dataset`.
