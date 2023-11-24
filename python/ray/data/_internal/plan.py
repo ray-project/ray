@@ -586,7 +586,8 @@ class ExecutionPlan:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            if self._run_with_new_execution_backend():
+            # if self._run_with_new_execution_backend():
+            if True:
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )

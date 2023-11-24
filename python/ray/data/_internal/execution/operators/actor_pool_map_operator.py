@@ -189,13 +189,17 @@ class ActorPoolMapOperator(MapOperator):
                 break
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
-            input_blocks = [block for block, _ in bundle.blocks]
+            input_blocks = []
+            read_input_files = []
+            for block, meta in bundle.blocks:
+                input_blocks.append(block)
+                read_input_files.extend(meta.input_files)
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
                 target_max_block_size=self.actual_target_max_block_size,
             )
             gen = actor.submit.options(num_returns="streaming", name=self.name).remote(
-                DataContext.get_current(), ctx, *input_blocks
+                DataContext.get_current(), ctx, read_input_files, *input_blocks
             )
 
             def _task_done_callback(actor_to_return):
@@ -378,12 +382,14 @@ class _MapWorker:
         self,
         data_context: DataContext,
         ctx: TaskContext,
+        read_input_files: List[List[str]],
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(
             self._map_transformer,
             data_context,
             ctx,
+            read_input_files,
             *blocks,
         )
 

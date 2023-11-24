@@ -29,6 +29,7 @@ class InputDataBuffer(PhysicalOperator):
             num_output_blocks: The number of output blocks. If not specified, progress
                 bars total will be set based on num output bundles instead.
         """
+        self._input_files: List[List[str]] = []
         if input_data is not None:
             assert input_data_factory is None
             # Copy the input data to avoid mutating the original list.
@@ -79,8 +80,14 @@ class InputDataBuffer(PhysicalOperator):
 
         self._num_output_bundles = len(self._input_data)
         block_metadata = []
+        input_files = []
         for bundle in self._input_data:
-            block_metadata.extend([m for (_, m) in bundle.blocks])
+            curr_bundle_input_files = []
+            for (_, m) in bundle.blocks:
+                block_metadata.append(m)
+                curr_bundle_input_files.extend(m.input_files)
+            input_files.append(curr_bundle_input_files)
+        self._input_files = input_files
         self._stats = {
             "input": block_metadata,
         }

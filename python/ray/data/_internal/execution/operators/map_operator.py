@@ -397,6 +397,7 @@ def _map_task(
     map_transformer: MapTransformer,
     data_context: DataContext,
     ctx: TaskContext,
+    upstream_input_files: Optional[List[List[str]]],
     *blocks: Block,
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
     """Remote function for a single operator task.
@@ -405,6 +406,8 @@ def _map_task(
         fn: The callable that takes Iterator[Block] as input and returns
             Iterator[Block] as output.
         blocks: The concrete block values from the task ref bundle.
+        upstream_input_files: The input files from upstream blocks,
+            to be propagated to the output bundle's metadata.
 
     Returns:
         A generator of blocks, followed by the list of BlockMetadata for the blocks
@@ -413,9 +416,12 @@ def _map_task(
     DataContext._set_current(data_context)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
+    if upstream_input_files is None:
+        upstream_input_files = []
+
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
-        # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        # Propagate upstream input files to output blocks' metadata.
+        m_out = BlockAccessor.for_block(b_out).get_metadata(upstream_input_files, None)
         m_out.exec_stats = stats.build()
         yield b_out
         yield m_out
