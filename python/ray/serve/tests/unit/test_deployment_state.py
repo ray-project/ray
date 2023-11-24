@@ -7,7 +7,6 @@ import pytest
 
 from ray.serve._private.common import (
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaName,
@@ -22,6 +21,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_CONCURRENT_QUERIES,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
 from ray.serve._private.deployment_state import (
     ActorReplicaWrapper,
@@ -33,7 +33,10 @@ from ray.serve._private.deployment_state import (
     ReplicaStateContainer,
     VersionedReplica,
 )
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import (
+    get_capacity_adjusted_num_replicas,
+    get_random_letters,
+)
 from ray.serve.tests.common.utils import MockKVStore, MockTimer
 
 
@@ -3310,9 +3313,7 @@ class TestTargetCapacity:
     def test_get_capacity_adjusted_num_replicas(
         self, num_replicas: int, target_capacity: Optional[float], expected_output: int
     ):
-        result = DeploymentState.get_capacity_adjusted_num_replicas(
-            num_replicas, target_capacity
-        )
+        result = get_capacity_adjusted_num_replicas(num_replicas, target_capacity)
         assert isinstance(result, int)
         assert result == expected_output
 

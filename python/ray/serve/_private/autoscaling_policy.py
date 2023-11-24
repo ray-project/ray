@@ -1,16 +1,20 @@
 import logging
 import math
 from abc import ABCMeta, abstractmethod
-from typing import List
+from typing import List, Optional
 
+from ray.serve._private.common import TargetCapacityScaleDirection
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
+from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def calculate_desired_num_replicas(
-    autoscaling_config: AutoscalingConfig, current_num_ongoing_requests: List[float]
+    autoscaling_config: AutoscalingConfig,
+    current_num_ongoing_requests: List[float],
+    override_min_replicas: Optional[float] = None,
 ) -> int:  # (desired replicas):
     """Returns the number of replicas to scale to based on the given metrics.
 
@@ -20,6 +24,8 @@ def calculate_desired_num_replicas(
         current_num_ongoing_requests (List[float]): A list of the number of
             ongoing requests for each replica.  Assumes each entry has already
             been time-averaged over the desired lookback window.
+        override_min_replicas: Overrides min_replicas from the config
+            calculating the final number of replicas.
 
     Returns:
         desired_num_replicas: The desired number of replicas to scale to, based
@@ -68,9 +74,13 @@ def calculate_desired_num_replicas(
     ):
         desired_num_replicas -= 1
 
-    # Ensure min_replicas <= desired_num_replicas <= max_replicas.
+    min_replicas = autoscaling_config.min_replicas
+    if override_min_replicas is not None:
+        min_replicas = override_min_replicas
+
+    # Ensure scaled_min_replicas <= desired_num_replicas <= scaled_max_replicas.
     desired_num_replicas = min(autoscaling_config.max_replicas, desired_num_replicas)
-    desired_num_replicas = max(autoscaling_config.min_replicas, desired_num_replicas)
+    desired_num_replicas = max(min_replicas, desired_num_replicas)
 
     return desired_num_replicas
 
@@ -148,6 +158,13 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         # scale_up_periods or scale_down_periods.
         self.decision_counter = 0
 
+        # Scales the min_replicas and max_replicas when calculating the final
+        # number of replicas.
+        self.target_capacity: Optional[float] = None
+
+        # Determines what lower bound to use when calculating num_replicas
+        self.scale_direction: Optional[TargetCapacityScaleDirection] = None
+
     def get_decision_num_replicas(
         self,
         curr_target_num_replicas: int,
@@ -166,7 +183,9 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         decision_num_replicas = curr_target_num_replicas
 
         desired_num_replicas = calculate_desired_num_replicas(
-            self.config, current_num_ongoing_requests
+            self.config,
+            current_num_ongoing_requests,
+            self.get_curr_lower_bound(),
         )
         # Scale up.
         if desired_num_replicas > curr_target_num_replicas:
@@ -202,3 +221,46 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             self.decision_counter = 0
 
         return decision_num_replicas
+
+    def set_target_capacity(
+        self,
+        new_target_capacity: Optional[float],
+        new_target_capacity_scale_direction: Optional[TargetCapacityScaleDirection],
+    ):
+        self.target_capacity = new_target_capacity
+        self.scale_direction = new_target_capacity_scale_direction
+
+    def get_capacity_adjusted_min_replicas(self) -> int:
+        return get_capacity_adjusted_num_replicas(
+            self.config.min_replicas, self.target_capacity
+        )
+
+    def get_capacity_adjusted_initial_replicas(self) -> Optional[int]:
+        if self.config.initial_replicas is None:
+            return None
+        else:
+            return get_capacity_adjusted_num_replicas(
+                self.config.initial_replicas, self.target_capacity
+            )
+
+    def get_capacity_adjusted_max_replicas(self) -> int:
+        return get_capacity_adjusted_num_replicas(
+            self.config.max_replicas, self.target_capacity
+        )
+
+    def apply_bounds(self, curr_target_num_replicas: int) -> int:
+        """Gets a valid target_num_replicas using the current value and bounds."""
+
+        curr_upper_bound = self.get_capacity_adjusted_max_replicas()
+        curr_lower_bound = self.get_curr_lower_bound()
+
+        return max(curr_lower_bound, min(curr_upper_bound, curr_target_num_replicas))
+
+    def get_curr_lower_bound(self) -> int:
+        if self.get_capacity_adjusted_initial_replicas() is not None and (
+            self.scale_direction is None
+            or self.scale_direction == TargetCapacityScaleDirection.UP
+        ):
+            return self.get_capacity_adjusted_initial_replicas()
+        else:
+            return self.get_capacity_adjusted_min_replicas()

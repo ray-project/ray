@@ -13,7 +13,6 @@ from ray.serve._private.application_state import (
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
@@ -21,6 +20,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import DeploymentSchema, ServeApplicationSchema

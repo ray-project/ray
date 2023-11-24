@@ -8,10 +8,17 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.exceptions import RayActorError
 from ray.serve import Application
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus, TargetCapacityScaleDirection
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.common import (
+    ApplicationStatus,
+    DeploymentStatus,
+    DeploymentStatusTrigger,
+    ReplicaState,
+    TargetCapacityScaleDirection,
+)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
@@ -338,24 +345,30 @@ def test_autoscaling_scale_to_zero(
     )
 
 
-signal = SignalActor.remote()
-
-
-@serve.deployment(
-    ray_actor_options={"num_cpus": 0},
-)
+@serve.deployment(ray_actor_options={"num_cpus": 0})
 class ControlledLifecycleDeployment:
     def __init__(self):
-        ray.get(signal.wait.remote())
+        self.signal = ray.get_actor(name="signal", namespace=SERVE_NAMESPACE)
+        ray.get(self.signal.wait.remote())
 
     def __call__(self) -> str:
         return "Hello world!"
 
     def __del__(self):
-        ray.get(signal.wait.remote())
+        # Use try-except here to avoid cluttering logs if the SignalActor
+        # gets torn down before the replicas during clean up.
+        try:
+            ray.get(self.signal.wait.remote())
+        except RayActorError:
+            print("Signal actor already dead. Replica exiting.")
 
 
-controlled_lifecycle_app = ControlledLifecycleDeployment.bind()
+def create_controlled_app(config: Dict) -> Application:
+    num_replicas = config["num_replicas"]
+    return ControlledLifecycleDeployment.options(
+        name="controlled",
+        num_replicas=num_replicas,
+    ).bind()
 
 
 def test_target_capacity_update_status(
@@ -363,17 +376,27 @@ def test_target_capacity_update_status(
 ):
     """Check how Serve's status updates when target_capacity changes."""
     app_name = "controlled_app"
+    deployment_name = "controlled"
+    num_replicas = 20
+
+    signal = SignalActor.options(name="signal", namespace=SERVE_NAMESPACE).remote()
 
     config = ServeDeploySchema(
         applications=[
             ServeApplicationSchema(
                 name=app_name,
                 import_path=(
-                    "ray.serve.tests.test_target_capacity:controlled_lifecycle_app"
+                    "ray.serve.tests.test_target_capacity:create_controlled_app"
                 ),
+                args={"num_replicas": num_replicas},
             )
         ]
     )
+
+    def check_num_running_replicas(expected_num_running_replicas: int):
+        deployment = serve.status().applications[app_name].deployments[deployment_name]
+        num_running_replicas = deployment.replica_states.get(ReplicaState.RUNNING, 0)
+        assert num_running_replicas == expected_num_running_replicas
 
     def apply_config_and_check_status(target_capacity: float):
         """Applies config with specified target_capacity."""
@@ -384,6 +407,24 @@ def test_target_capacity_update_status(
         wait_for_condition(
             lambda: serve.status().applications[app_name].status
             == ApplicationStatus.DEPLOYING
+        )
+        wait_for_condition(
+            lambda: serve.status()
+            .applications[app_name]
+            .deployments[deployment_name]
+            .status
+            in [
+                DeploymentStatus.UPDATING,
+                DeploymentStatus.UPSCALING,
+                DeploymentStatus.DOWNSCALING,
+            ]
+        )
+        assert (
+            serve.status()
+            .applications[app_name]
+            .deployments[deployment_name]
+            .status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
         )
 
     def start_replicas_and_check_status():
@@ -396,15 +437,21 @@ def test_target_capacity_update_status(
 
     # Initially deploy at target_capacity 0, and check status.
     apply_config_and_check_status(target_capacity=0.0)
+    check_num_running_replicas(0)
     start_replicas_and_check_status()
+    check_num_running_replicas(1)
 
     # Increase the target_capacity, and check again.
-    apply_config_and_check_status(target_capacity=20.0)
+    apply_config_and_check_status(target_capacity=50.0)
+    check_num_running_replicas(1)
     start_replicas_and_check_status()
+    check_num_running_replicas(int(0.5 * num_replicas))
 
     # Decrease the target_capacity, and check again.
-    apply_config_and_check_status(target_capacity=20.0)
+    apply_config_and_check_status(target_capacity=10.0)
+    check_num_running_replicas(int(0.5 * num_replicas))
     start_replicas_and_check_status()
+    check_num_running_replicas(int(0.1 * num_replicas))
 
 
 @serve.deployment(

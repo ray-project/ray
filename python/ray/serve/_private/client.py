@@ -9,7 +9,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
@@ -25,6 +24,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (

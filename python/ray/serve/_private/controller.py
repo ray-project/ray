@@ -14,7 +14,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
     DeploymentID,
-    DeploymentInfo,
     EndpointInfo,
     EndpointTag,
     MultiplexedReplicaInfo,
@@ -35,6 +34,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.logging_utils import (
@@ -379,10 +379,7 @@ class ServeController:
 
             try:
                 dsm_update_start_time = time.time()
-                any_recovering = self.deployment_state_manager.update(
-                    target_capacity=self._target_capacity,
-                    target_capacity_scale_direction=self._scale_direction,
-                )
+                any_recovering = self.deployment_state_manager.update()
                 self.dsm_update_duration_gauge_s.set(
                     time.time() - dsm_update_start_time
                 )
@@ -398,10 +395,7 @@ class ServeController:
 
             try:
                 asm_update_start_time = time.time()
-                self.application_state_manager.update(
-                    target_capacity=self._target_capacity,
-                    target_capacity_scale_direction=self._scale_direction,
-                )
+                self.application_state_manager.update()
                 self.asm_update_duration_gauge_s.set(
                     time.time() - asm_update_start_time
                 )
@@ -737,8 +731,8 @@ class ServeController:
     ) -> None:
         """Apply the config described in `ServeDeploySchema`.
 
-        This is idempotent and will upgrade the applications to the goal state
-        specified in the config.
+        This will upgrade the applications to the goal state specified in the
+        config.
 
         If `deployment_time` is not provided, `time.time()` is used.
         """
@@ -755,6 +749,12 @@ class ServeController:
             new_config=config,
             curr_scale_direction=self._scale_direction,
         )
+        log_target_capacity_change(
+            self._target_capacity,
+            config.target_capacity,
+            self._scale_direction,
+        )
+        self._target_capacity = config.target_capacity
 
         for app_config in config.applications:
             for deployments in app_config.deployments:
@@ -777,6 +777,8 @@ class ServeController:
                 app_config.name,
                 app_config,
                 deployment_time=deployment_time,
+                target_capacity=self._target_capacity,
+                target_capacity_scale_direction=self._scale_direction,
             )
 
         self.kv_store.put(
@@ -784,20 +786,12 @@ class ServeController:
             pickle.dumps(
                 (
                     deployment_time,
-                    config.target_capacity,
+                    self._target_capacity,
                     self._scale_direction,
                     new_config_checkpoint,
                 )
             ),
         )
-
-        if self._target_capacity != config.target_capacity:
-            logger.info(
-                "target_capacity updated from "
-                f"'{self._target_capacity}' to '{config.target_capacity}'."
-            )
-
-        self._target_capacity = config.target_capacity
 
         # Delete live applications not listed in the config.
         existing_applications = set(
@@ -1126,16 +1120,6 @@ def calculate_scale_direction(
     else:
         next_scale_direction = None
 
-    if next_scale_direction != curr_scale_direction:
-        if isinstance(next_scale_direction, TargetCapacityScaleDirection):
-            logger.info(
-                f"Target capacity scaling {next_scale_direction.value.lower()} "
-                f"from {curr_target_capacity} to {new_config.target_capacity}."
-            )
-        else:
-            assert next_scale_direction is None
-            logger.info("Target capacity entering 100% at steady state.")
-
     return next_scale_direction
 
 
@@ -1149,6 +1133,23 @@ def applications_match(config1: ServeDeploySchema, config2: ServeDeploySchema) -
     config2_app_names = {app.name for app in config2.applications}
 
     return config1_app_names == config2_app_names
+
+
+def log_target_capacity_change(
+    curr_target_capacity: Optional[float],
+    next_target_capacity: Optional[float],
+    next_scale_direction: Optional[TargetCapacityScaleDirection],
+):
+    """Logs changes in the target_capacity."""
+
+    if curr_target_capacity != next_target_capacity:
+        if isinstance(next_scale_direction, TargetCapacityScaleDirection):
+            logger.info(
+                f"Target capacity scaling {next_scale_direction.value.lower()} "
+                f"from {curr_target_capacity} to {next_target_capacity}."
+            )
+        else:
+            logger.info("Target capacity entering 100% at steady state.")
 
 
 @ray.remote(num_cpus=0)

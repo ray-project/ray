@@ -8,7 +8,6 @@ import traceback
 from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -22,7 +21,6 @@ from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
@@ -41,6 +39,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentScheduler,
@@ -54,6 +53,7 @@ from ray.serve._private.utils import (
     JavaActorHandleProxy,
     check_obj_ref_ready_nowait,
     format_actor_name,
+    get_capacity_adjusted_num_replicas,
     get_random_letters,
     msgpack_deserialize,
     msgpack_serialize,
@@ -89,40 +89,35 @@ class DeploymentTargetState:
     """The current goal state for a deployment.
 
     info: contains the information needed to initialize a replica.
-    num_replicas: the number of replicas to run.
-    adjust_capacity: whether the number of replicas should be adjusted by
-        the current target_capacity.
+    target_num_replicas: the number of replicas to run. This should already
+        be adjusted by the target_capacity.
     version: the goal version of the deployment.
     deleting: whether the deployment is being deleted.
     """
 
     info: Optional[DeploymentInfo]
-    num_replicas: int
-    adjust_capacity: bool
+    target_num_replicas: int
     version: Optional[DeploymentVersion]
     deleting: bool
 
     @classmethod
     def default(cls) -> "DeploymentTargetState":
-        return cls(None, -1, True, None, False)
+        return cls(None, -1, None, False)
 
     @classmethod
-    def from_deployment_info(
+    def create(
         cls,
         info: DeploymentInfo,
+        target_num_replicas: int,
         *,
         deleting: bool = False,
-        adjust_capacity: bool = True,
     ) -> "DeploymentTargetState":
         if deleting:
-            num_replicas = 0
-        else:
-            # If autoscaling config is not none, num_replicas should be decided based on
-            # the autoscaling policy and passed in as autoscaled_num_replicas
-            if info.autoscaled_num_replicas is not None:
-                num_replicas = info.autoscaled_num_replicas
-            else:
-                num_replicas = info.deployment_config.num_replicas
+            if target_num_replicas != 0:
+                raise ValueError(
+                    "target_num_replicas must be 0 when setting target state "
+                    f"to deleting. Got {target_num_replicas} instead."
+                )
 
         version = DeploymentVersion(
             info.version,
@@ -133,13 +128,13 @@ class DeploymentTargetState:
             max_replicas_per_node=info.replica_config.max_replicas_per_node,
         )
 
-        return cls(info, num_replicas, adjust_capacity, version, deleting)
+        return cls(info, target_num_replicas, version, deleting)
 
     def is_scaled_copy_of(self, other_target_state: "DeploymentTargetState") -> bool:
         """Checks if this target state is a scaled copy of another target state.
 
         A target state is a scaled copy of another target state if all
-        configurable info is identical, other than num_replicas.
+        configurable info is identical, other than target_num_replicas.
 
         Returns: True if this target state contains a non-None DeploymentInfo
             and is a scaled copy of the other target state.
@@ -1383,10 +1378,10 @@ class DeploymentState:
 
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
-        target_state = DeploymentTargetState.from_deployment_info(
-            self._target_state.info,
+        target_state = DeploymentTargetState.create(
+            info=self._target_state.info,
+            target_num_replicas=0,
             deleting=True,
-            adjust_capacity=self._target_state.adjust_capacity,
         )
         self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
@@ -1405,8 +1400,8 @@ class DeploymentState:
     def _set_target_state(
         self,
         target_info: DeploymentInfo,
+        target_num_replicas: int,
         status_trigger: DeploymentStatusTrigger,
-        adjust_capacity: bool = True,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
@@ -1417,8 +1412,8 @@ class DeploymentState:
 
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
-        new_target_state = DeploymentTargetState.from_deployment_info(
-            target_info, adjust_capacity=adjust_capacity
+        new_target_state = DeploymentTargetState.create(
+            target_info, target_num_replicas, deleting=False
         )
         self._save_checkpoint_func(writeahead_checkpoints={self._id: new_target_state})
 
@@ -1439,8 +1434,8 @@ class DeploymentState:
         if new_target_state.is_scaled_copy_of(self._target_state):
             not_updating = self._curr_status_info.status != DeploymentStatus.UPDATING
 
-            curr_num_replicas = self._target_state.num_replicas
-            new_num_replicas = new_target_state.num_replicas
+            curr_num_replicas = self._target_state.target_num_replicas
+            new_num_replicas = new_target_state.target_num_replicas
             num_replicas_changed = curr_num_replicas != new_num_replicas
 
             if not_updating and num_replicas_changed:
@@ -1465,31 +1460,6 @@ class DeploymentState:
 
         self._target_state = new_target_state
 
-    @staticmethod
-    def get_capacity_adjusted_num_replicas(
-        num_replicas: int, target_capacity: Optional[float]
-    ) -> int:
-        """Return the target state `num_replicas` adjusted by the `target_capacity`.
-
-        The output will only ever be 0 if the passed `num_replicas` is 0. This is to
-        support autoscaling deployments using scale-to-zero (we assume that any other
-        deployment should always have at least 1 replica).
-
-        Rather than using the default `round` behavior in Python, which rounds half to
-        even, uses the `decimal` module to round half up (standard rounding behavior).
-        """
-        if target_capacity is None or target_capacity == 100:
-            return num_replicas
-
-        if num_replicas == 0:
-            return 0
-
-        adjusted_num_replicas = Decimal(num_replicas * target_capacity) / Decimal(100.0)
-        rounded_adjusted_num_replicas = adjusted_num_replicas.to_integral_value(
-            rounding=ROUND_HALF_UP
-        )
-        return max(1, int(rounded_adjusted_num_replicas))
-
     def deploy(
         self,
         deployment_info: DeploymentInfo,
@@ -1498,56 +1468,74 @@ class DeploymentState:
     ) -> bool:
         """Deploy the deployment.
 
-        If the deployment already exists with the same version and config,
-        this is a no-op and returns False.
+        If the deployment already exists with the same version, config,
+        target_capacity, and target_capacity_scale_direction,
+        this method returns False.
 
         Returns:
             bool: Whether or not the deployment is being updated.
         """
-        # Ensures this method is idempotent.
-        existing_info = self._target_state.info
-        if existing_info is not None:
+
+        # Exit early if the deployment info hasn't changed. Ensures this method
+        # is idempotent.
+        curr_deployment_info = self._target_state.info
+        if curr_deployment_info is not None:
             # Redeploying should not reset the deployment's start time.
             if not self._target_state.deleting:
-                deployment_info.start_time_ms = existing_info.start_time_ms
+                deployment_info.start_time_ms = curr_deployment_info.start_time_ms
 
             if (
                 not self._target_state.deleting
-                and existing_info.deployment_config == deployment_info.deployment_config
-                and existing_info.replica_config.ray_actor_options
+                and curr_deployment_info.deployment_config
+                == deployment_info.deployment_config
+                and curr_deployment_info.replica_config.ray_actor_options
                 == deployment_info.replica_config.ray_actor_options
                 and deployment_info.version is not None
-                and existing_info.version == deployment_info.version
+                and curr_deployment_info.version == deployment_info.version
+                and curr_deployment_info.target_capacity == target_capacity
+                and curr_deployment_info.target_capacity_scale_direction
+                == target_capacity_scale_direction
             ):
                 return False
 
-        # If autoscaling config is not none, decide initial num replicas
-        autoscaling_config = deployment_info.deployment_config.autoscaling_config
-        if autoscaling_config is not None:
-            adjust_capacity = False
-            if autoscaling_config.initial_replicas is not None and (
-                target_capacity_scale_direction is None
-                or target_capacity_scale_direction == TargetCapacityScaleDirection.UP
-            ):
-                autoscaled_num_replicas = autoscaling_config.initial_replicas
-            else:
-                if existing_info is not None:
-                    autoscaled_num_replicas = self._target_state.num_replicas
-                else:
-                    autoscaled_num_replicas = autoscaling_config.min_replicas
-            autoscaled_num_replicas = self.get_capacity_adjusted_num_replicas(
-                autoscaled_num_replicas, target_capacity
+        if curr_deployment_info is not None:
+            logger.info(
+                f"not exiting early: {target_capacity} "
+                f"{target_capacity_scale_direction} "
+                f"{curr_deployment_info.target_capacity} "
+                f"{curr_deployment_info.target_capacity_scale_direction}"
             )
-            deployment_info.set_autoscaled_num_replicas(autoscaled_num_replicas)
         else:
-            # When not autoscaling, defer adjusting the capacity to the update
-            # loop.
-            adjust_capacity = True
+            logger.info(
+                f"not exiting early: {target_capacity} "
+                f"{target_capacity_scale_direction} "
+            )
+
+        deployment_info.set_target_capacity(
+            target_capacity, target_capacity_scale_direction
+        )
+
+        # Decide new target num_replicas.
+        autoscaling_policy = deployment_info.autoscaling_policy
+        if autoscaling_policy is not None:
+            autoscaling_policy.set_target_capacity(
+                target_capacity, target_capacity_scale_direction
+            )
+            if curr_deployment_info is None:
+                target_num_replicas = autoscaling_policy.apply_bounds(-1)
+            else:
+                target_num_replicas = autoscaling_policy.apply_bounds(
+                    self._target_state.target_num_replicas
+                )
+        else:
+            target_num_replicas = get_capacity_adjusted_num_replicas(
+                deployment_info.deployment_config.num_replicas, target_capacity
+            )
 
         self._set_target_state(
             deployment_info,
+            target_num_replicas=target_num_replicas,
             status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-            adjust_capacity=adjust_capacity,
         )
 
         logger.info(
@@ -1575,15 +1563,8 @@ class DeploymentState:
                 )
         return current_num_ongoing_requests
 
-    def autoscale(
-        self,
-        current_handle_queued_queries: int,
-        *,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
-    ) -> int:
-        """
-        Autoscale the deployment based on metrics
+    def autoscale(self, current_handle_queued_queries: int) -> int:
+        """Autoscale the deployment based on metrics.
 
         Args:
             current_handle_queued_queries: The number of handle queued queries,
@@ -1596,53 +1577,26 @@ class DeploymentState:
         current_num_ongoing_requests = self.get_replica_current_ongoing_requests()
         autoscaling_policy = self._target_state.info.autoscaling_policy
         decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
-            curr_target_num_replicas=self._target_state.num_replicas,
+            curr_target_num_replicas=self._target_state.target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
         )
 
-        # Clip the replica count by capacity-adjusted bounds.
-        # TODO (shrekris-anyscale): this should logic should be pushed into the
-        # autoscaling_policy. Need to discuss what the right API would look like.
-        upper_bound = self.get_capacity_adjusted_num_replicas(
-            autoscaling_policy.config.max_replicas, target_capacity
-        )
-        if (
-            target_capacity_scale_direction == TargetCapacityScaleDirection.UP
-            and autoscaling_policy.config.initial_replicas is not None
-        ):
-            lower_bound = self.get_capacity_adjusted_num_replicas(
-                autoscaling_policy.config.initial_replicas, target_capacity
-            )
-        else:
-            lower_bound = self.get_capacity_adjusted_num_replicas(
-                autoscaling_policy.config.min_replicas, target_capacity
-            )
-
-        clipped_decision_num_replicas = max(
-            lower_bound, min(decision_num_replicas, upper_bound)
-        )
-
-        if (
-            clipped_decision_num_replicas == self._target_state.num_replicas
-            and self._target_state.adjust_capacity is False
-        ):
+        if decision_num_replicas == self._target_state.target_num_replicas:
             return
 
         logger.info(
             f"Autoscaling replicas for deployment {self.deployment_name} in "
-            f"application {self.app_name} to {clipped_decision_num_replicas}. "
+            f"application {self.app_name} to {decision_num_replicas}. "
             f"current_num_ongoing_requests: {current_num_ongoing_requests}, "
             f"current handle queued queries: {current_handle_queued_queries}."
         )
 
         new_info = copy(self._target_state.info)
-        new_info.set_autoscaled_num_replicas(clipped_decision_num_replicas)
         new_info.version = self._target_state.version.code_version
         self._set_target_state(
             new_info,
             status_trigger=DeploymentStatusTrigger.AUTOSCALING,
-            adjust_capacity=False,
         )
 
     def delete(self) -> None:
@@ -2199,9 +2153,7 @@ class DeploymentState:
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
-    def update(
-        self, target_capacity: Optional[float] = None
-    ) -> DeploymentStateUpdateResult:
+    def update(self) -> DeploymentStateUpdateResult:
         """Attempts to reconcile this deployment to match its goal state.
 
         This is an asynchronous call; it's expected to be called repeatedly.
@@ -2210,13 +2162,9 @@ class DeploymentState:
         state of the system.
         """
         if self._target_state.deleting:
-            adjusted_target_num_replicas = 0
-        elif self._target_state.adjust_capacity:
-            adjusted_target_num_replicas = self.get_capacity_adjusted_num_replicas(
-                self._target_state.num_replicas, target_capacity
-            )
+            target_num_replicas = 0
         else:
-            adjusted_target_num_replicas = self._target_state.num_replicas
+            target_num_replicas = self._target_state.target_num_replicas
 
         deleted, any_replicas_recovering = False, False
         upscale = []
@@ -2227,16 +2175,14 @@ class DeploymentState:
             # we manage.
 
             # Check the state of existing replicas and transition if necessary.
-            self._check_and_update_replicas(adjusted_target_num_replicas)
+            self._check_and_update_replicas(target_num_replicas)
 
             self._stop_replicas_on_draining_nodes()
 
-            upscale, downscale = self._scale_deployment_replicas(
-                adjusted_target_num_replicas
-            )
+            upscale, downscale = self._scale_deployment_replicas(target_num_replicas)
 
             deleted, any_replicas_recovering = self._check_curr_status(
-                adjusted_target_num_replicas
+                target_num_replicas
             )
         except Exception:
             logger.exception(
@@ -2638,26 +2584,11 @@ class DeploymentStateManager:
             current_handle_queued_queries = 0
         return current_handle_queued_queries
 
-    def update(
-        self,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
-    ) -> bool:
+    def update(self) -> bool:
         """Updates the state of all deployments to match their goal state.
-
-        `target_capacity` represents the target capacity percentage for all deployments
-        across the cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for
-        each deployment will be scaled by this percentage.
 
         Returns True if any of the deployments have replicas in the RECOVERING state.
         """
-        if target_capacity is not None and (
-            target_capacity < 0 or target_capacity > 100
-        ):
-            raise ValueError(
-                f"Got invalid `target_capacity`: {target_capacity}. "
-                "`target_capacity` must be between 0 and 100."
-            )
 
         deleted_ids = []
         any_recovering = False
@@ -2670,15 +2601,9 @@ class DeploymentStateManager:
                     deployment_id,
                     deployment_state.get_autoscale_metric_lookback_period(),
                 )
-                deployment_state.autoscale(
-                    current_handle_queued_queries,
-                    target_capacity=target_capacity,
-                    target_capacity_scale_direction=target_capacity_scale_direction,
-                )
+                deployment_state.autoscale(current_handle_queued_queries)
 
-            deployment_state_update_result = deployment_state.update(
-                target_capacity=target_capacity
-            )
+            deployment_state_update_result = deployment_state.update()
             if deployment_state_update_result.upscale:
                 upscales[deployment_id] = deployment_state_update_result.upscale
             if deployment_state_update_result.downscale:
