@@ -11,13 +11,6 @@ from ray.rllib.utils.typing import MultiAgentDict
 
 # TODO (simon): Include cases in which the number of agents in an
 # episode are shrinking or growing during the episode itself.
-# TODO (simon): When creating a successor we do start the global
-# timestep mapping at 0 again, even though along the episode this
-# is not the case.
-# TODO (simon): When creating a successor we copy over the rewards
-# and the partial reward timestep mapping, this however might not toally
-# match with the global timestep mapping - plays a role when we create
-# another successor from that one and concatenate episodes.
 class MultiAgentEpisode:
     """Stores multi-agent episode data.
 
@@ -44,7 +37,6 @@ class MultiAgentEpisode:
         is_truncated: Union[List[MultiAgentDict], bool] = False,
         render_images: Optional[List[np.ndarray]] = None,
         extra_model_outputs: Optional[List[MultiAgentDict]] = None,
-        # TODO (simon): Validate terminated/truncated for env/agents.
     ) -> "MultiAgentEpisode":
         """Initializes a `MultiAgentEpisode`.
 
@@ -1179,6 +1171,9 @@ class MultiAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
+    # TODO (sven, simon): We are taking over dead agents to the successor
+    # is this intended or should we better check during concatenation, if
+    # the union of agents from both episodes is included? Next issue.
     def create_successor(self) -> "MultiAgentEpisode":
         """Restarts an ongoing episode from its last observation.
 
@@ -1251,6 +1246,124 @@ class MultiAgentEpisode:
         # Return the successor.
         return successor
 
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the state of a multi-agent episode.
+
+        Note that from an episode's state the episode itself can
+        be recreated.
+
+        Returns: A dicitonary containing pickable data fro a
+            `MultiAgentEpisode`.
+        """
+        # TODO (simon): Add the buffers.
+        return list(
+            {
+                "id_": self.id_,
+                "agent_ids": self._agent_ids,
+                "global_t_to_local_t": self.global_t_to_local_t,
+                "global_actions_t": self.global_actions_t,
+                "partial_rewards_t": self.partial_rewards_t,
+                "partial_rewards": self.partial_rewards,
+                "agent_episodes": list(
+                    {
+                        agent_id: agent_eps.get_state()
+                        for agent_id, agent_eps in self.agent_episodes.items()
+                    }.items()
+                ),
+                "t_started": self.t_started,
+                "t": self.t,
+                "ts_carriage_return": self.ts_carriage_return,
+                "is_terminated": self.is_terminated,
+                "is_truncated": self.is_truncated,
+            }.items()
+        )
+
+    @staticmethod
+    def from_state(state) -> None:
+        """Creates a multi-agent episode from a state dictionary.
+
+        See `MultiAgentEpisode.get_state()` for creating a state for
+        a `MultiAgentEpisode` pickable state. For recreating a
+        `MultiAgentEpisode` from a state, this state has to be complete,
+        i.e. all data must have been stored in the state.
+        """
+        # TODO (simon): Add the buffers.
+        episode = MultiAgentEpisode(id=state[0][1])
+        episode._agent_ids = state[1][1]
+        episode.global_t_to_local_t = state[2][1]
+        episode.global_actions_t = state[3][1]
+        episode.partial_rewards_t = state[4][1]
+        episode.partial_rewards = state[5][1]
+        episode.agent_episodes = {
+            agent_id: SingleAgentEpisode.from_state(agent_state)
+            for agent_id, agent_state in state[6][1]
+        }
+        episode.t_started = state[7][1]
+        episode.t = state[8][1]
+        episode.ts_carriage_return = state[9][1]
+        episode.is_terminated = state[10][1]
+        episode.is_trcunated = state[11][1]
+        return episode
+
+    def to_sample_batch(self) -> MultiAgentBatch:
+        """Converts a `MultiAgentEpisode` into a `MultiAgentBatch`.
+
+        Each `SingleAgentEpisode` instances in
+        `MultiAgentEpisode.agent_epiosdes` will be converted into
+        a `SampleBatch` and the environment timestep will be passed
+        towards the `MultiAgentBatch`'s `count`.
+
+        Returns: A `MultiAgentBatch` instance.
+        """
+        # TODO (simon): Check, if timesteps should be converted into global
+        # timesteps instead of agent steps.
+        # Note, only agents that have stepped are included into the batch.
+        return MultiAgentBatch(
+            policy_batches={
+                agent_id: agent_eps.to_sample_batch()
+                for agent_id, agent_eps in self.agent_episodes.items()
+                if agent_eps.t - agent_eps.t_started > 0
+            },
+            env_steps=self.t - self.t_started,
+        )
+
+    def get_return(self, consider_buffer=False) -> float:
+        """Get the all-agent return.
+
+        Args:
+            consider_buffer; Boolean. Defines, if we should also consider
+                buffered rewards wehn calculating return. Agents might
+                have received partial rewards, i.e. rewards without an
+                observation. These are stored to the buffer and added up
+                until the next observation is received by an agent.
+        Returns: A float. The aggregate return from all agents.
+        """
+
+        assert (
+            sum(len(agent_map) for agent_map in self.global_t_to_local_t.values()) > 0
+        ), (
+            "ERROR: Cannot determine return of episode that hasn't started, yet!"
+            "Call `MultiAgentEpisode.add_initial_observation(initial_observation=)` "
+            "first (after which `get_return(MultiAgentEpisode)` will be 0)."
+        )
+        env_return = sum(
+            agent_eps.get_return() for agent_eps in self.agent_episodes.values()
+        )
+        # If we should consider buffered partial rewards for agents.
+        if consider_buffer:
+            buffered_rewards = 0
+            for agent_buffer in self.agent_buffers.values():
+                if agent_buffer["rewards"].full():
+                    agent_buffered_rewards = agent_buffer["rewards"].get_nowait()
+                    buffered_rewards += agent_buffered_rewards
+                    # Write the agent rewards back to the buffer.
+                    agent_buffer["rewards"].put_nowait(agent_buffered_rewards)
+
+            return env_return + buffered_rewards
+        # Otherwise return the sum of recorded rewards from `SingleAgentEpisode`s.
+        else:
+            return env_return
+
     def _generate_action_timestep_mappings(self):
         # Note, here we use the indices that are from the predecessor, i.e.
         # these timesteps do not occur in the successor. This will have
@@ -1308,85 +1421,6 @@ class MultiAgentEpisode:
                 )
 
         return successor
-
-    def get_state(self) -> Dict[str, Any]:
-        """Returns the state of a multi-agent episode.
-
-        Note that from an episode's state the episode itself can
-        be recreated.
-
-        Returns: A dicitonary containing pickable data fro a
-            `MultiAgentEpisode`.
-        """
-        return list(
-            {
-                "id_": self.id_,
-                "agent_ids": self._agent_ids,
-                "global_t_to_local_t": self.global_t_to_local_t,
-                "agent_episodes": list(
-                    {
-                        agent_id: agent_eps.get_state()
-                        for agent_id, agent_eps in self.agent_episodes.items()
-                    }.items()
-                ),
-                "t_started": self.t_started,
-                "t": self.t,
-                "is_terminated": self.is_terminated,
-                "is_truncated": self.is_truncated,
-            }.items()
-        )
-
-    @staticmethod
-    def from_state(state) -> None:
-        """Creates a multi-agent episode from a state dictionary.
-
-        See `MultiAgentEpisode.get_state()` for creating a state for
-        a `MultiAgentEpisode` pickable state. For recreating a
-        `MultiAgentEpisode` from a state, this state has to be complete,
-        i.e. all data must have been stored in the state.
-        """
-        eps = MultiAgentEpisode(id=state[0][1])
-        eps._agent_ids = state[1][1]
-        eps.global_t_to_local_t = state[2][1]
-        eps.agent_episodes = {
-            agent_id: SingleAgentEpisode.from_state(agent_state)
-            for agent_id, agent_state in state[3][1]
-        }
-        eps.t_started = state[3][1]
-        eps.t = state[4][1]
-        eps.is_terminated = state[5][1]
-        eps.is_trcunated = state[6][1]
-        return eps
-
-    def to_sample_batch(self) -> MultiAgentBatch:
-        """Converts a `MultiAgentEpisode` into a `MultiAgentBatch`.
-
-        Each `SingleAgentEpisode` instances in
-        `MultiAgentEpisode.agent_epiosdes` will be converted into
-        a `SampleBatch` and the environment timestep will be passed
-        towards the `MultiAgentBatch`'s `count`.
-
-        Returns: A `MultiAgentBatch` instance.
-        """
-        # TODO (simon): Check, if timesteps should be converted into global
-        # timesteps instead of agent steps.
-        return MultiAgentBatch(
-            policy_batches={
-                agent_id: agent_eps.to_sample_batch()
-                for agent_id, agent_eps in self.agent_episodes.items()
-            },
-            env_steps=self.t,
-        )
-
-    def get_return(self) -> float:
-        """Get the all-agent return.
-
-        Returns: A float. The aggregate return from all agents.
-        """
-        # TODO (simon): Also include the partial rewards.
-        return sum(
-            [agent_eps.get_return() for agent_eps in self.agent_episodes.values()]
-        )
 
     def _generate_ts_mapping(
         self, observations: List[MultiAgentDict]
@@ -1574,9 +1608,6 @@ class MultiAgentEpisode:
                     is_truncateds,
                     use_global_t_to_local_t=False,
                 )
-                # else self._get_single_agent_data(
-                #     agent_id, is_truncateds, start_index=1, shift=-1
-                # )
             )
             # If a list the list could be empty, if the agent never stepped.
             agent_is_truncated = (
@@ -1612,7 +1643,8 @@ class MultiAgentEpisode:
             # agent rewards:
             #   1. Rewards between different observations -> added up and
             #       assigned to next observation.
-            #   2. Rewards after the last observation -> get buffered.
+            #   2. Rewards after the last observation -> get buffered and added up
+            #       in the buffer for the next observation.
             #   3. Rewards before the initial observation -> get buffered
             #       and added to the next observation.
             # All partial rewards are recorded in `partial_rewards` together
@@ -1912,7 +1944,9 @@ class MultiAgentEpisode:
         Returns: An integer defining the length of the episode or an
             error if the episode has not yet started.
         """
-        assert self.t_started < self.t, (
+        assert (
+            sum(len(agent_map) for agent_map in self.global_t_to_local_t.values()) > 0
+        ), (
             "ERROR: Cannot determine length of episode that hasn't started, yet!"
             "Call `MultiAgentEpisode.add_initial_observation(initial_observation=)` "
             "first (after which `len(MultiAgentEpisode)` will be 0)."
@@ -1931,24 +1965,6 @@ class _IndexMapping(list):
     multiple environment timesteps at which some agents have stepped.
     See for example `MultiAgentEpisode.get_observations()`.
     """
-
-    # def __init__(self, *args, **kwargs):
-    #     """Initializes and `_IndexMapping` instance."""
-
-    #     super(_IndexMapping, self).__init__(*args, **kwargs)
-
-    # def __getitem__(self, key):
-    #     """Gets the value at an index.
-
-    #     This ensures that slicing results again in an `_IndexMapping`.
-    #     """
-
-    #     if isinstance(key, slice):
-    #         item = super().__getitem__(self, key)
-    #         if isinstance(item, int):
-    #             return _IndexMapping([item])
-    #         else:
-    #             return _IndexMapping(super().__getitem__(self, key))
 
     def find_indices(self, indices_to_find: List[int], shift: int = 0):
         """Returns global timesteps at which an agent stepped.

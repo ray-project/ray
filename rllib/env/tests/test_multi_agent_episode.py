@@ -123,6 +123,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
         }
 
 
+# TODO (simon): Test `get_state()` and `from_state()`.
 class TestMultiAgentEpisode(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -1858,6 +1859,132 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertEqual(
             episode_1.agent_buffers["agent_4"]["actions"].queue[0], buffered_action
         )
+
+    def test_get_return(self):
+        # Generate an empty episode and ensure that the return is zero.
+        episode = MultiAgentEpisode()
+        # Ensure that the return of an empty episode cannopt be determined.
+        with self.assertRaises(AssertionError):
+            episode.get_return()
+
+        # Now sample 100 timesteps.
+        episode, env = self._mock_multi_agent_records_from_env()
+        # Ensure that the return is now at least zero.
+        self.assertGreaterEqual(episode.get_return(), 0.0)
+        # Assert that the return is indeed the sum of all agent returns.
+        agent_returns = sum(
+            agent_eps.get_return() for agent_eps in episode.agent_episodes.values()
+        )
+        self.assertTrue(episode.get_return(), agent_returns)
+        # Assert that adding the buffered rewards to the agent returns
+        # gives the expected result when considering the buffer in
+        # `get_return()`.
+        buffered_rewards = sum(
+            agent_buffer["rewards"].queue[0]
+            for agent_buffer in episode.agent_buffers.values()
+            if agent_buffer["rewards"].full()
+        )
+        self.assertTrue(
+            episode.get_return(consider_buffer=True), agent_returns + buffered_rewards
+        )
+
+    def test_len(self):
+        # Generate an empty episode and ensure that `len()` raises an error.
+        episode = MultiAgentEpisode()
+        # Now raise an error.
+        with self.assertRaises(AssertionError):
+            len(episode)
+
+        # Create an episode and environment and sample 100 timesteps.
+        episode, env = self._mock_multi_agent_records_from_env()
+        # Assert that the length is indeed 100.
+        self.assertEqual(len(episode), 100)
+        # Now, build a successor.
+        successor = episode.create_successor()
+        # Sample another 100 timesteps.
+        successor, env = self._mock_multi_agent_records_from_env(
+            episode=successor, env=env, init=False
+        )
+        # Ensure that the length of the successor is 100.
+        self.assertTrue(len(successor), 100)
+        # Now concatenate the two episodes.
+        episode.concat_episode(successor)
+        # Assert that the length is now 100.
+        self.assertTrue(len(episode), 200)
+
+    def test_to_sample_batch(self):
+        # Generate an environment and episode and sample 100 timesteps.
+        episode, env = self._mock_multi_agent_records_from_env()
+
+        # Now convert to sample batch.
+        batch = episode.to_sample_batch()
+
+        # Assert that the timestep in the `MultiAgentBatch` is identical
+        # to the episode timestep.
+        self.assertEqual(len(batch), len(episode))
+        # Assert that all agents are present in the multi-agent batch.
+        # Note, all agents have collected samples.
+        for agent_id in episode._agent_ids:
+            self.assertTrue(agent_id in batch.policy_batches)
+        # Assert that the recorded history length is correct.
+        for agent_id, agent_eps in episode.agent_episodes.items():
+            self.assertEqual(len(agent_eps), len(batch[agent_id]))
+        # Assert that terminated agents are terminated in the sample batch.
+        for agent_id in ["agent_1", "agent_5"]:
+            self.assertTrue(batch[agent_id]["terminateds"][-1])
+
+        # Now test that when creating a successor its sample batch will
+        # contain the correct values.
+        successor = episode.create_successor()
+        # Run 100 more timesteps for the successor.
+        successor, env = self._mock_multi_agent_records_from_env(
+            episode=successor, env=env, init=False
+        )
+        # Convert this episode to a `MultiAgentBatch`.
+        batch = successor.to_sample_batch()
+        # Assert that the number of timesteps match between episode and batch.
+        # Note, the successor starts at `ts=100`.
+        self.assertEqual(len(batch), len(successor))
+        # Assert that all agents that were not done, yet, are present in the batch.
+        for agent_id in env._agents_alive:
+            self.assertTrue(agent_id in batch.policy_batches)
+        # Ensure that the timesteps for each agent matches the it's batch length.
+        for agent_id, agent_eps in successor.agent_episodes.items():
+            # Note, we take over agent_ids
+            if not agent_eps.is_done:
+                self.assertEqual(len(agent_eps), len(batch[agent_id]))
+        # Assert that now all agents are truncated b/c the environment truncated
+        # them.
+        for agent_id in batch.policy_batches:
+            self.assertTrue(batch[agent_id]["truncateds"][-1])
+
+        # Test now that when we concatenate the same logic holds.
+        episode.concat_episode(successor)
+        # Convert the concatenated episode to a sample batch now.
+        batch = episode.to_sample_batch()
+        # Assert that the length of episode and batch match.
+        self.assertEqual(len(batch), len(episode))
+        # Assert that all agents are present in the multi-agent batch.
+        # Note, in the concatenated episode - in contrast to the successor
+        # - we have all agents stepped.
+        for agent_id in episode._agent_ids:
+            self.assertTrue(agent_id in batch.policy_batches)
+        # Assert that the recorded history length is correct.
+        for agent_id, agent_eps in episode.agent_episodes.items():
+            self.assertEqual(len(agent_eps), len(batch[agent_id]))
+        # Assert that terminated agents are terminated in the sample batch.
+        for agent_id in ["agent_1", "agent_5"]:
+            self.assertTrue(batch[agent_id]["terminateds"][-1])
+        # Assert that all the other agents are truncated by the environment.
+        for agent_id in env._agents_alive:
+            self.assertTrue(batch[agent_id]["truncateds"][-1])
+
+        # Finally, test that an empty episode, gives an empty batch.
+        episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
+        # Convert now to sample batch.
+        batch = episode.to_sample_batch()
+        # Ensure that this batch is empty.
+        self.assertEqual(len(batch), 0)
 
     def _mock_multi_agent_records_from_env(
         self,
