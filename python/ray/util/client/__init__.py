@@ -122,7 +122,6 @@ class _ClientContext:
             conn_info,
             "Ray Client",
             raise_on_mismatch=not ignore_version,
-            python_version_match_level="minor",
         )
 
     def disconnect(self):

@@ -1,5 +1,6 @@
 import contextlib
 import importlib
+import importlib.util
 import json
 import logging
 import multiprocessing
@@ -12,6 +13,7 @@ import sys
 import threading
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from subprocess import list2cmdline
 from typing import (
@@ -1190,15 +1192,45 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
     raise error
 
 
-def compute_version_info():
+@dataclass
+class VersionInfo:
+    ray_version: str
+    python_version: str
+    python_magic_number: str
+
+    def format_for_error(self) -> str:
+        # importlib.util.MAGIC_NUMBER is a four-byte string consisting of the actual
+        # PYC_MAGIC_NUMBER value and b"\r\n". The file Include/internal/pycore_magic_number.h
+        # in the CPython source has a list of PYC_MAGIC_NUMBER values: print that value too so
+        # it's easier to cross-reference.
+        numeric_magic = int.from_bytes(
+            bytes.fromhex(self.python_magic_number[:4]), "little"
+        )
+        return (
+            f"    Ray: {self.ray_version}\n"
+            + f"    Python: {self.python_version} "
+            + f"(bytecode magic {numeric_magic} / {self.python_magic_number})"
+        )
+
+    def is_compatible_with(self, cluster: "VersionInfo") -> bool:
+        if self.python_magic_number != cluster.python_magic_number:
+            return False
+        my_python_versions = self.python_version.split(".")
+        cluster_python_versions = cluster.python_version.split(".")
+        return my_python_versions[:2] == cluster_python_versions[:2]
+
+
+def compute_version_info() -> VersionInfo:
     """Compute the versions of Python, and Ray.
 
     Returns:
-        A tuple containing the version information.
+        A VersionInfo object for the current interpreter.
     """
-    ray_version = ray.__version__
-    python_version = ".".join(map(str, sys.version_info[:3]))
-    return ray_version, python_version
+    return VersionInfo(
+        ray_version=ray.__version__,
+        python_version=".".join(map(str, sys.version_info[:3])),
+        python_magic_number=importlib.util.MAGIC_NUMBER.hex(),
+    )
 
 
 def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
@@ -1215,71 +1247,57 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
 
 
 def check_version_info(
-    cluster_metadata,
-    this_process_address,
-    raise_on_mismatch=True,
-    python_version_match_level="patch",
-):
+    cluster_metadata: dict,
+    this_process_address: str,
+    raise_on_mismatch: bool = True,
+) -> None:
     """Check if the Python and Ray versions stored in GCS matches this process.
     Args:
         cluster_metadata: Ray cluster metadata from GCS.
         this_process_address: Informational only. The address of this process.
             e.g. "node address:port" or "Ray Client".
         raise_on_mismatch: Raise an exception on True, log a warning otherwise.
-        python_version_match_level: "minor" or "patch". To which python version level we
-            try to match. Note if "minor" and the patch is different, we will still log
-            a warning.
 
     Behavior:
         - We raise or log a warning, based on raise_on_mismatch, if:
             - Ray versions do not match; OR
-            - Python (major, minor) versions do not match,
-                if python_version_match_level == 'minor'; OR
-            - Python (major, minor, patch) versions do not match,
-                if python_version_match_level == 'patch'.
-        - We also log a warning if:
-            - Python (major, minor) versions match, AND
-            - Python patch versions do not match, AND
-            - python_version_match_level == 'minor' AND
-            - raise_on_mismatch == False.
+            - Python bytecode versions do not match
+        - If the Python version information in GCS does not include Python bytecode version
+          information, we log a warning and compare Python (major, minor, patch) versions instead.
+          In most circumstances the Ray version check will fail before this point.
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
-    cluster_version_info = (
-        cluster_metadata["ray_version"],
-        cluster_metadata["python_version"],
-    )
-    my_version_info = compute_version_info()
 
-    # Calculate: ray_matches, python_matches, python_full_matches
-    ray_matches = cluster_version_info[0] == my_version_info[0]
-    python_full_matches = cluster_version_info[1] == my_version_info[1]
-    if python_version_match_level == "patch":
-        python_matches = cluster_version_info[1] == my_version_info[1]
-    elif python_version_match_level == "minor":
-        my_python_versions = my_version_info[1].split(".")
-        cluster_python_versions = cluster_version_info[1].split(".")
-        python_matches = my_python_versions[:2] == cluster_python_versions[:2]
+    mismatch = None
+
+    my_version_info = compute_version_info()
+    cluster_ray_version = cluster_metadata["ray_version"]
+    if my_version_info.ray_version != cluster_ray_version:
+        mismatch = (
+            "    Ray: " + my_version_info.ray_version,
+            "    Ray: " + cluster_ray_version,
+        )
     else:
-        raise ValueError(
-            f"Invalid python_version_match_level: {python_version_match_level}, "
-            "want: 'minor' or 'patch'"
+        cluster_version_info = VersionInfo(
+            ray_version=cluster_metadata["ray_version"],
+            python_version=cluster_metadata["python_version"],
+            python_magic_number=cluster_metadata["python_magic_number"],
+        )
+        if not my_version_info.is_compatible_with(cluster_version_info):
+            mismatch = (
+                my_version_info.format_for_error(),
+                cluster_version_info.format_for_error(),
+            )
+
+    if mismatch is not None:
+        error_message = (
+            "Version mismatch: The cluster was started with:\n"
+            + mismatch[0]
+            + f"\nThis process on {this_process_address} was started with:\n"
+            + mismatch[1]
         )
 
-    mismatch_msg = (
-        "The cluster was started with:\n"
-        f"    Ray: {cluster_version_info[0]}\n"
-        f"    Python: {cluster_version_info[1]}\n"
-        f"This process on {this_process_address} was started with:\n"
-        f"    Ray: {my_version_info[0]}\n"
-        f"    Python: {my_version_info[1]}\n"
-    )
-
-    if ray_matches and python_matches:
-        if not python_full_matches:
-            logger.warning(f"Python patch version mismatch: {mismatch_msg}")
-    else:
-        error_message = f"Version mismatch: {mismatch_msg}"
         if raise_on_mismatch:
             raise RuntimeError(error_message)
         else:
