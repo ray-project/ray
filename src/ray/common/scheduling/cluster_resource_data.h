@@ -289,8 +289,8 @@ class TaskResourceInstances {
 class NodeResources {
  public:
   NodeResources() {}
-  NodeResources(const NodeResourceSet &resources)
-      : total(resources), available(resources) {}
+  NodeResources(const NodeResourceSet &resources);
+
   NodeResourceSet total;
   NodeResourceSet available;
   /// Only used by light resource report.

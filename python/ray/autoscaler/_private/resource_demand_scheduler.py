@@ -545,7 +545,12 @@ class ResourceDemandScheduler:
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 ip = self.provider.internal_ip(node_id)
-                available_resources = unused_resources_by_ip.get(ip)
+                available_resources = copy.deepcopy(unused_resources_by_ip.get(ip))
+                available = self.node_types[node_type]["resources"]
+                if available_resources and "node:gpu_memory_per_gpu" in available:
+                    available_resources["node:gpu_memory_per_gpu"] = available[
+                        "node:gpu_memory_per_gpu"
+                    ]
                 add_node(node_type, available_resources)
 
         for node_type, count in pending_nodes.items():

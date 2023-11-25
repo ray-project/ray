@@ -25,6 +25,7 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
                     "CPU": 2,
                     "GPU": 1,
                     "object_store_memory": 1024 * 1024 * 1024,
+                    "gpu_memory": 1000,
                 },
                 "node_config": {},
                 "min_workers": 0,
@@ -51,6 +52,11 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
         @ray.remote(num_gpus=1)
         def f():
             print("gpu ok")
+
+        # Triggers the addition of a GPU memory node.
+        @ray.remote(_gpu_memory=1000)
+        def f2():
+            print("gpu memory ok")
 
         # Triggers the addition of a CPU node.
         @ray.remote(num_cpus=3)

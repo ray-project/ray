@@ -20,6 +20,27 @@
 namespace ray {
 using namespace ::ray::scheduling;
 
+NodeResources::NodeResources(const NodeResourceSet &resources) {
+  NodeResourceSet resources_adjusted = resources;
+  absl::flat_hash_map<std::string, std::string> node_labels;
+  if (resources.Has(ResourceID::GPU_Memory())) {
+    // if gpu_memory is set, default GPU value is 1
+    if (!resources.Has(ResourceID::GPU())) {
+      resources_adjusted.Set(ResourceID::GPU(), 1);
+    }
+    node_labels["_gpu_memory_per_gpu"] =
+        std::to_string(resources.Get(ResourceID::GPU_Memory()).Double() /
+                       resources_adjusted.Get(ResourceID::GPU()).Double());
+    resources_adjusted.Set(ResourceID::GPU_Memory(), 0);
+  } else {
+    node_labels["_gpu_memory_per_gpu"] = "0";
+  }
+
+  this->total = resources_adjusted;
+  this->available = resources_adjusted;
+  this->labels = node_labels;
+}
+
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
@@ -59,8 +80,12 @@ NodeResources ResourceMapToNodeResources(
   auto node_labels_copy = node_labels;
 
   if (resource_map_total.find("gpu_memory") != resource_map_total.end()) {
+    // if gpu_memory is set, default GPU value is 1
+    if (resource_map_total.find("GPU") == resource_map_total.end()) {
+      resource_map_total_copy["GPU"] = 1;
+    }
     node_labels_copy["_gpu_memory_per_gpu"] = std::to_string(
-        resource_map_total.at("gpu_memory") / resource_map_total.at("GPU"));
+        resource_map_total.at("gpu_memory") / resource_map_total_copy.at("GPU"));
     resource_map_total_copy.erase("gpu_memory");
     resource_map_available_copy.erase("gpu_memory");
   } else {
@@ -108,6 +133,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
   }
   const ResourceSet resource_request_adjusted =
       this->ConvertRelativeResources(resource_request.GetResourceSet());
+
   if (!this->normal_task_resources.IsEmpty()) {
     auto available_resources = this->available;
     available_resources -= this->normal_task_resources;
@@ -159,6 +185,8 @@ const ResourceSet NodeResources::ConvertRelativeResources(
       num_gpus_request =
           (resource.Get(ResourceID::GPU_Memory()).Double() / total_gpu_memory_per_gpu) +
           1 / static_cast<double>(2 * kResourceUnitScaling);
+    } else {
+      return resource;
     }
     adjusted_resource.Set(ResourceID::GPU(), num_gpus_request);
     adjusted_resource.Set(ResourceID::GPU_Memory(), 0);
@@ -208,6 +236,8 @@ const ResourceSet NodeResourceInstances::ConvertRelativeResources(
       num_gpus_request =
           (resource.Get(ResourceID::GPU_Memory()).Double() / total_gpu_memory_per_gpu) +
           1 / static_cast<double>(2 * kResourceUnitScaling);
+    } else {
+      return resource;
     }
     adjusted_resource.Set(ResourceID::GPU(), num_gpus_request);
     adjusted_resource.Set(ResourceID::GPU_Memory(), 0);
