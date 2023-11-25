@@ -146,3 +146,21 @@ class AcceleratorManager(ABC):
             Return 0 if the current node doesn't contain accelerators of this family.
         """
         return 0
+
+    @staticmethod
+    def get_ec2_instance_accelerator_memory(
+        instance_type: str, instances: dict
+    ) -> Optional[str]:
+        """Get the accelerator total memory of this family on the current node.
+
+        Args:
+            instance_type: The ec2 instance type.
+            instances: Map from ec2 instance type to instance metadata returned by
+                ec2 `describe-instance-types`.
+
+        Returns:
+            The accelerator total memory of this family in bytes on the ec2 instance
+            with given type.
+            Return None if it's unknown.
+        """
+        return None

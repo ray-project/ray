@@ -662,6 +662,19 @@ class AWSNodeProvider(NodeProvider):
                             autodetected_resources[
                                 f"accelerator_type:{accelerator_type}"
                             ] = 1
+                        # autodetect gpu memory
+                        gpu_memory = (
+                            accelerator_manager.get_ec2_instance_accelerator_memory(
+                                instance_type, instances_dict
+                            )
+                        )
+                        if (
+                            accelerator_manager.get_resource_name() == "GPU"
+                            and gpu_memory
+                        ):
+                            autodetected_resources["gpu_memory"] = (
+                                num_accelerators * gpu_memory
+                            )
 
                 autodetected_resources.update(
                     available_node_types[node_type].get("resources", {})
