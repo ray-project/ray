@@ -830,8 +830,15 @@ py_test(
 py_test(
     name = "env/tests/test_single_agent_episode",
     tags = ["team:rllib", "env"],
-    size = "medium",
+    size = "small",
     srcs = ["env/tests/test_single_agent_episode.py"]
+)
+
+py_test(
+    name = "env/tests/test_lookback_buffer",
+    tags = ["team:rllib", "env"],
+    size = "small",
+    srcs = ["env/tests/test_lookback_buffer.py"]
 )
 
 py_test(
@@ -1335,7 +1342,6 @@ py_test(
 # Tag: utils
 # --------------------------------------------------------------------
 
-# Checkpoint Utils
 py_test(
     name = "test_checkpoint_utils",
     tags = ["team:rllib", "utils"],
