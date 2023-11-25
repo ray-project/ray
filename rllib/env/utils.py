@@ -248,7 +248,8 @@ class BufferWithInfiniteLookback:
                     idx,
                     fill=fill,
                     neg_indices_left_of_zero=neg_indices_left_of_zero,
-                ) for idx in indices
+                )
+                for idx in indices
             ]
             if self.finalized:
                 data = batch(data)
@@ -331,7 +332,7 @@ class BufferWithInfiniteLookback:
             start = stop = len(self.data)
         # Set to 0 (beginning of actual episode) if result is a negative index.
         elif start < 0:
-            fill_left_count = - start
+            fill_left_count = -start
             start = 0
         elif stop >= len(self.data):
             fill_right_count = stop - len(self.data)
@@ -411,7 +412,7 @@ class BufferWithInfiniteLookback:
                 )
             else:
                 raise e
-            
+
     def _one_hot(self, data):
         if self.space is None:
             raise ValueError(

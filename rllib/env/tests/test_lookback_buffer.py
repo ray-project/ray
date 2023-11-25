@@ -8,14 +8,15 @@ from ray.rllib.utils.test_utils import check
 
 
 class TestBufferWithInfiniteLookback(unittest.TestCase):
-    space = gym.spaces.Dict({
-        "a": gym.spaces.Discrete(4),
-        "b": gym.spaces.Box(-1.0, 1.0, (2, 3)),
-        "c": gym.spaces.Tuple([
-            gym.spaces.MultiDiscrete([2, 3]),
-            gym.spaces.Box(-1.0, 1.0, (1,))
-        ])
-    })
+    space = gym.spaces.Dict(
+        {
+            "a": gym.spaces.Discrete(4),
+            "b": gym.spaces.Box(-1.0, 1.0, (2, 3)),
+            "c": gym.spaces.Tuple(
+                [gym.spaces.MultiDiscrete([2, 3]), gym.spaces.Box(-1.0, 1.0, (1,))]
+            ),
+        }
+    )
 
     def test_append_and_pop(self):
         buffer = BufferWithInfiniteLookback(data=[0, 1, 2, 3])
@@ -37,9 +38,9 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         self.assertRaises(RuntimeError, lambda: buffer.pop())
 
     def test_complex_structs(self):
-        buffer = BufferWithInfiniteLookback(data=[
-            self.space.sample() for _ in range(4)
-        ])
+        buffer = BufferWithInfiniteLookback(
+            data=[self.space.sample() for _ in range(4)]
+        )
         self.assertTrue(len(buffer), 4)
         buffer.append(self.space.sample())
         self.assertTrue(len(buffer), 5)
@@ -224,7 +225,10 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
             # Left fill.
             check(buffer.get(slice(-8, None), fill=10), [10, 10, 0, 1, 2, 3, 4, 5])
             check(buffer.get(slice(-9, None), fill=10), [10, 10, 10, 0, 1, 2, 3, 4, 5])
-            check(buffer.get(slice(-10, None), fill=11), [11, 11, 11, 11, 0, 1, 2, 3, 4, 5])
+            check(
+                buffer.get(slice(-10, None), fill=11),
+                [11, 11, 11, 11, 0, 1, 2, 3, 4, 5],
+            )
             check(buffer.get(slice(-10, -4), fill=11), [11, 11, 11, 11, 0, 1])
             # Both start stop on left side.
             check(buffer.get(slice(-10, -9), fill=0), [0])
@@ -253,7 +257,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
     def test_get_with_fill_and_neg_indices_into_lookback_buffer(self):
         """Tests the `fill` argument of `get` with a lookback range >0."""
         buffer = BufferWithInfiniteLookback(
-            data=[0, 1, 2, 3,  4, 5, 6, 7, 8, 9, 10],
+            data=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             lookback=4,
             # Specify a space, so we can fill and one-hot discrete data properly.
             space=gym.spaces.Discrete(11),
@@ -276,29 +280,81 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
             # Slices with negative indices into lookback buffer.
             check(buffer.get(slice(-2, -1), neg_indices_left_of_zero=True), [2])
             check(buffer.get(slice(-2, 0), neg_indices_left_of_zero=True), [2, 3])
-            check(buffer.get(slice(-2, 4), neg_indices_left_of_zero=True), [2, 3, 4, 5, 6, 7])
-            check(buffer.get(slice(-2, None), neg_indices_left_of_zero=True), [2, 3, 4, 5, 6, 7, 8, 9, 10])
+            check(
+                buffer.get(slice(-2, 4), neg_indices_left_of_zero=True),
+                [2, 3, 4, 5, 6, 7],
+            )
+            check(
+                buffer.get(slice(-2, None), neg_indices_left_of_zero=True),
+                [2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
             # With left fill.
-            check(buffer.get(slice(-8, 0), fill=10, neg_indices_left_of_zero=True), [10, 10, 10, 10, 0, 1, 2, 3])
-            check(buffer.get(slice(-7, 1), fill=10, neg_indices_left_of_zero=True), [10, 10, 10, 0, 1, 2, 3, 4])
-            check(buffer.get(slice(-6, None), fill=11, neg_indices_left_of_zero=True), [11, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-            check(buffer.get(slice(-10, -4), fill=11, neg_indices_left_of_zero=True), [11, 11, 11, 11, 11, 11])
+            check(
+                buffer.get(slice(-8, 0), fill=10, neg_indices_left_of_zero=True),
+                [10, 10, 10, 10, 0, 1, 2, 3],
+            )
+            check(
+                buffer.get(slice(-7, 1), fill=10, neg_indices_left_of_zero=True),
+                [10, 10, 10, 0, 1, 2, 3, 4],
+            )
+            check(
+                buffer.get(slice(-6, None), fill=11, neg_indices_left_of_zero=True),
+                [11, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            check(
+                buffer.get(slice(-10, -4), fill=11, neg_indices_left_of_zero=True),
+                [11, 11, 11, 11, 11, 11],
+            )
             # Both start stop on left side.
-            check(buffer.get(slice(-10, -9), fill=0, neg_indices_left_of_zero=True), [0])
-            check(buffer.get(slice(-20, -15), fill=0, neg_indices_left_of_zero=True), [0, 0, 0, 0, 0])
-            check(buffer.get(slice(-1001, -1000), fill=6, neg_indices_left_of_zero=True), [6])
+            check(
+                buffer.get(slice(-10, -9), fill=0, neg_indices_left_of_zero=True), [0]
+            )
+            check(
+                buffer.get(slice(-20, -15), fill=0, neg_indices_left_of_zero=True),
+                [0, 0, 0, 0, 0],
+            )
+            check(
+                buffer.get(slice(-1001, -1000), fill=6, neg_indices_left_of_zero=True),
+                [6],
+            )
             # Both start stop on right side.
-            check(buffer.get(slice(10, 15), fill=0, neg_indices_left_of_zero=True), [0, 0, 0, 0, 0])
-            check(buffer.get(slice(15, 17), fill=0, neg_indices_left_of_zero=True), [0, 0])
-            check(buffer.get(slice(1000, 1001), fill=6, neg_indices_left_of_zero=True), [6])
+            check(
+                buffer.get(slice(10, 15), fill=0, neg_indices_left_of_zero=True),
+                [0, 0, 0, 0, 0],
+            )
+            check(
+                buffer.get(slice(15, 17), fill=0, neg_indices_left_of_zero=True), [0, 0]
+            )
+            check(
+                buffer.get(slice(1000, 1001), fill=6, neg_indices_left_of_zero=True),
+                [6],
+            )
             # Right fill.
-            check(buffer.get(slice(-2, 8), fill=12, neg_indices_left_of_zero=True), [2, 3, 4, 5, 6, 7, 8, 9, 10, 12])
-            check(buffer.get(slice(-1, 9), fill=13, neg_indices_left_of_zero=True), [3, 4, 5, 6, 7, 8, 9, 10, 13, 13])
-            check(buffer.get(slice(-1, 5), fill=-14, neg_indices_left_of_zero=True), [3, 4, 5, 6, 7, 8])
+            check(
+                buffer.get(slice(-2, 8), fill=12, neg_indices_left_of_zero=True),
+                [2, 3, 4, 5, 6, 7, 8, 9, 10, 12],
+            )
+            check(
+                buffer.get(slice(-1, 9), fill=13, neg_indices_left_of_zero=True),
+                [3, 4, 5, 6, 7, 8, 9, 10, 13, 13],
+            )
+            check(
+                buffer.get(slice(-1, 5), fill=-14, neg_indices_left_of_zero=True),
+                [3, 4, 5, 6, 7, 8],
+            )
             # No fill necessary (even though requested).
-            check(buffer.get(slice(-1, None), fill=999, neg_indices_left_of_zero=True), [3, 4, 5, 6, 7, 8, 9, 10])
-            check(buffer.get(slice(-4, -1), fill=999, neg_indices_left_of_zero=True), [0, 1, 2])
-            check(buffer.get(slice(-1, 2), fill=999, neg_indices_left_of_zero=True), [3, 4, 5])
+            check(
+                buffer.get(slice(-1, None), fill=999, neg_indices_left_of_zero=True),
+                [3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            check(
+                buffer.get(slice(-4, -1), fill=999, neg_indices_left_of_zero=True),
+                [0, 1, 2],
+            )
+            check(
+                buffer.get(slice(-1, 2), fill=999, neg_indices_left_of_zero=True),
+                [3, 4, 5],
+            )
 
         # Check the type on the finalized buffer (numpy arrays).
         data = buffer.get(slice(-17, -15), fill=0, neg_indices_left_of_zero=True)

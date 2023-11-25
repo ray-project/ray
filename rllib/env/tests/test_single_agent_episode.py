@@ -6,7 +6,6 @@ import gymnasium as gym
 from gymnasium.core import ActType, ObsType
 import numpy as np
 
-import ray
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.test_utils import check
 
@@ -39,7 +38,6 @@ class TestEnv(gym.Env):
 
 
 class TestSingelAgentEpisode(unittest.TestCase):
-
     def test_init(self):
         """Tests initialization of `SingleAgentEpisode`.
 

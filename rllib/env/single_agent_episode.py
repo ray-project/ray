@@ -5,12 +5,10 @@ import uuid
 
 import gymnasium as gym
 from gymnasium.core import ActType, ObsType
-import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.env.utils import BufferWithInfiniteLookback
-from ray.rllib.utils.spaces.space_utils import batch
 
 
 class SingleAgentEpisode:
@@ -135,6 +133,7 @@ class SingleAgentEpisode:
 
         prev_4_actions_col = batch(prev_4_a)
     """
+
     def __init__(
         self,
         id_: Optional[str] = None,
@@ -588,18 +587,12 @@ class SingleAgentEpisode:
         """
         assert not self.is_done and len_lookback_buffer >= 0
 
-        ## Make sure `len_lookback_buffer` does NOT exceed the amount of data we have
-        ## available in `self`.
-        #len_lookback_buffer = min(
-        #    len_lookback_buffer,
-        #    len(self) + self._len_lookback_buffer,  # This is the max. data we have.
-        #)
-
         # Initialize this chunk with the most recent obs and infos (even if lookback is
         # 0). Similar to an initial `env.reset()`.
         indices_obs_and_infos = slice(-len_lookback_buffer - 1, None)
         indices_rest = (
-            slice(-len_lookback_buffer, None) if len_lookback_buffer > 0
+            slice(-len_lookback_buffer, None)
+            if len_lookback_buffer > 0
             else slice(None, 0)
         )
 
@@ -741,8 +734,8 @@ class SingleAgentEpisode:
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
                 lookback buffer on the left side). This comes in very handy, if users
-                don't want to worry about reaching such boundaries and want to auto-fill.
-                For example, an episode with infos
+                don't want to worry about reaching such boundaries and want to
+                auto-fill. For example, an episode with infos
                 [{"l":10}, {"l":11},  {"a":12}, {"b":13}, {"c":14}] and lookback buffer
                 size of 2 (meaning infos {"l":10}, {"l":11} are part of the lookback
                 buffer) will respond to `get_infos(slice(-7, -2), fill={"o": 0.0})`
@@ -1045,13 +1038,11 @@ class SingleAgentEpisode:
         # whether is_terminated/truncated should be kept as-is.
         keep_done = slice_.stop is None or slice_.stop == len(self)
         start = slice_.start or 0
-        t_started = self.t_started + start + (
-            0 if start >= 0 else len(self)
-        )
+        t_started = self.t_started + start + (0 if start >= 0 else len(self))
 
         neg_indices_left_of_zero = (slice_.start or 0) >= 0
         slice_ = slice(
-            # Make sure that the lookback buffer is part of the new slice as well.        
+            # Make sure that the lookback buffer is part of the new slice as well.
             (slice_.start or 0) - self._len_lookback_buffer,
             slice_.stop,
             slice_.step,
@@ -1177,10 +1168,10 @@ class SingleAgentEpisode:
     def __repr__(self):
         return f"SAEps({self.id_} len={len(self)})"
 
-    def __getitem__(self, key: Union[str, slice]) -> "SingleAgentEpisode":
+    def __getitem__(self, item: slice) -> "SingleAgentEpisode":
         """Enable squared bracket indexing- and slicing syntax, e.g. episode[-4:]."""
-        if isinstance(key, slice):
-            return self.slice(slice_=key)
+        if isinstance(item, slice):
+            return self.slice(slice_=item)
         else:
             raise NotImplementedError(
                 f"SingleAgentEpisode does not support getting item '{item}'! "
