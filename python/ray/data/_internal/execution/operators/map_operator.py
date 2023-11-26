@@ -5,6 +5,9 @@ from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
 
 import ray
+
+# TODO(scottjlee): figure out how to work around circular import
+import ray.cloudpickle as cloudpickle
 from ray import ObjectRef
 from ray._raylet import StreamingObjectRefGenerator
 from ray.data._internal.compute import (
@@ -34,6 +37,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.datasource.datasource import ReadTask
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -393,6 +397,24 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
 
+TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
+
+
+def cleaned_metadata(read_task):
+    block_meta = read_task.get_metadata()
+    task_size = len(cloudpickle.dumps(read_task))
+    if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
+        if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
+            print(
+                f"WARNING: the read task size ({task_size} bytes) is larger "
+                "than the reported output size of the task "
+                f"({block_meta.size_bytes} bytes). This may be a size "
+                "reporting bug in the datasource being read from."
+            )
+        block_meta.size_bytes = task_size
+    return block_meta
+
+
 def _map_task(
     map_transformer: MapTransformer,
     data_context: DataContext,
@@ -415,7 +437,11 @@ def _map_task(
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        try:
+            m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        except TypeError:
+            assert isinstance(b_out, ReadTask)
+            m_out = cleaned_metadata(b_out)
         m_out.exec_stats = stats.build()
         yield b_out
         yield m_out

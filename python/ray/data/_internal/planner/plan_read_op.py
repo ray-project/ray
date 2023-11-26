@@ -81,16 +81,23 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         input_data_factory=get_input_data,
     )
 
+    def pass_through_read_tasks(
+        blocks: Iterable[ReadTask], _: TaskContext
+    ) -> Iterable[ReadTask]:
+        yield from blocks
+
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         for read_task in blocks:
             yield from read_task()
 
+    is_read_only = len(op.output_dependencies) == 0 and len(op.input_dependencies) == 0
     # Create a MapTransformer for a read operator
     transform_fns: List[MapTransformFn] = [
         # First, execute the read tasks.
-        BlockMapTransformFn(do_read),
+        BlockMapTransformFn(pass_through_read_tasks if is_read_only else do_read)
     ]
-    transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
+    if not is_read_only:
+        transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
     map_transformer = MapTransformer(transform_fns)
 
     return MapOperator.create(

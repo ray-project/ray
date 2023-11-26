@@ -30,6 +30,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
 from ray.data._internal.logical.rules.split_read_output_blocks import (
@@ -207,7 +208,12 @@ class ExecutionPlan:
         else:
             # Get schema of output blocks.
             schema = self.schema(fetch_if_missing=False)
-            dataset_blocks = self._snapshot_blocks
+            # For read-only tasks which are not snapshotted,
+            # get metadata from input blocks.
+            if self.is_read_only():
+                dataset_blocks = self._in_blocks
+            else:
+                dataset_blocks = self._snapshot_blocks
 
         if schema is None:
             schema_str = "Unknown schema"
@@ -312,7 +318,7 @@ class ExecutionPlan:
         copy._stages_after_snapshot.append(stage)
         return copy
 
-    def link_logical_plan(self, logical_plan):
+    def link_logical_plan(self, logical_plan: LogicalPlan):
         """Link the logical plan into this execution plan.
 
         This is used for triggering execution for optimizer code path in this legacy
@@ -586,7 +592,8 @@ class ExecutionPlan:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            if self._run_with_new_execution_backend():
+            # if self._run_with_new_execution_backend():
+            if True:
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )
@@ -605,6 +612,7 @@ class ExecutionPlan:
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
                     preserve_order=preserve_order,
+                    read_only=self.is_read_only(),
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
                 # to a fully lazy execution model, unless .materialize() is used. Th
@@ -669,6 +677,10 @@ class ExecutionPlan:
 
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
+            # TODO(scottjlee): come up with a better way to update _in_blocks for
+            # read-only cases.
+            if self.is_read_only():
+                self._in_blocks = blocks
             self._snapshot_stats = stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
@@ -820,6 +832,15 @@ class ExecutionPlan:
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
         return _is_lazy(self._in_blocks)
+
+    def is_read_only(self) -> bool:
+        """Return whether the underlying logical plan contains only a Read op."""
+        first_op = self._logical_plan.dag
+        return (
+            isinstance(first_op, Read)
+            and len(first_op.output_dependencies) == 0
+            and len(first_op.input_dependencies) == 0
+        )
 
     def is_read_stage_equivalent(self) -> bool:
         """Return whether this plan can be executed as only a read stage."""

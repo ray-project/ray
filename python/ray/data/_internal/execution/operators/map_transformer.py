@@ -289,6 +289,7 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
         if first is None:
             return []
         blocks = itertools.chain([first], block_iter)
+        # TODO(scottjlee): figure out how to handle when `first` is a ReadTask.
         empty_block = BlockAccessor.for_block(first).builder().build()
         # Don't hold the first block in memory, so we reset the reference.
         first = None

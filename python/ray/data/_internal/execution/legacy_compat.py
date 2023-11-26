@@ -96,6 +96,7 @@ def execute_to_legacy_block_list(
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
     preserve_order: bool,
+    read_only: bool,
 ) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
 
@@ -116,7 +117,7 @@ def execute_to_legacy_block_list(
         preserve_order,
     )
     bundles = executor.execute(dag, initial_stats=stats)
-    block_list = _bundles_to_block_list(bundles)
+    block_list = _bundles_to_block_list(bundles, read_only)
     # Set the stats UUID after execution finishes.
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
     return block_list
@@ -350,15 +351,31 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         raise NotImplementedError
 
 
-def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
+def _bundles_to_block_list(
+    bundles: Iterator[RefBundle],
+    is_lazy: bool = False,
+) -> BlockList:
     blocks, metadata = [], []
     owns_blocks = True
     for ref_bundle in bundles:
         if not ref_bundle.owns_blocks:
             owns_blocks = False
         for block, meta in ref_bundle.blocks:
-            blocks.append(block)
+            if is_lazy:
+                read_task = ray.get(block)
+                assert isinstance(read_task, ReadTask)
+                blocks.append(read_task)
+            else:
+                blocks.append(block)
             metadata.append(meta)
+    if is_lazy:
+        # TODO(scottjlee): get proper read task name and other args here.
+        return LazyBlockList(
+            blocks,
+            "ReadRange",
+            ray_remote_args={},
+            owned_by_consumer=owns_blocks,
+        )
     return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
 
 
