@@ -37,6 +37,23 @@ NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
   }
 }
 
+NodeResourceInstanceSet::NodeResourceInstanceSet(
+    const absl::flat_hash_map<std::string, double> &total) {
+  for (auto &[resource_name, quantity] : total) {
+    std::vector<FixedPoint> instances;
+    ResourceID resource_id(resource_name);
+    if (resource_id.IsUnitInstanceResource()) {
+      size_t num_instances = static_cast<size_t>(quantity);
+      for (size_t i = 0; i < num_instances; i++) {
+        instances.push_back(1.0);
+      };
+    } else {
+      instances.push_back(quantity);
+    }
+    Set(resource_id, instances);
+  }
+}
+
 NodeResourceInstanceSet::NodeResourceInstanceSet(const rpc::NodeResources &resources) {
   for (const auto &[resource_name, instances] : resources.resources()) {
     std::vector<FixedPoint> fps;

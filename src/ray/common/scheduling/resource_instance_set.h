@@ -28,9 +28,11 @@ class NodeResourceInstanceSet {
   NodeResourceInstanceSet(){};
 
   /// Construct a NodeResourceInstanceSet from a node total resources.
-  NodeResourceInstanceSet(const NodeResourceSet &total);
+  explicit NodeResourceInstanceSet(const NodeResourceSet &total);
 
-  NodeResourceInstanceSet(const rpc::NodeResources &resources);
+  explicit NodeResourceInstanceSet(const absl::flat_hash_map<std::string, double> &total);
+
+  explicit NodeResourceInstanceSet(const rpc::NodeResources &resources);
 
   /// Check whether a particular node resource exist.
   bool Has(ResourceID resource_id) const;

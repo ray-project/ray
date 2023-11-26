@@ -28,7 +28,7 @@ LocalResourceManager::LocalResourceManager(
     const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
-    std::function<void(const NodeResources &)> resource_change_subscriber)
+    std::function<void(const NodeResourceInstances &)> resource_change_subscriber)
     : local_node_id_(local_node_id),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
@@ -248,15 +248,6 @@ void LocalResourceManager::ReleaseWorkerResources(
   OnResourceOrStateChanged();
 }
 
-NodeResources LocalResourceManager::ToNodeResources() const {
-  NodeResources node_resources;
-  node_resources.available = local_resources_.available.ToNodeResourceSet();
-  node_resources.total = local_resources_.total.ToNodeResourceSet();
-  node_resources.labels = local_resources_.labels;
-  node_resources.is_draining = is_local_node_draining_;
-  return node_resources;
-}
-
 void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   // Update local object store usage and report to other raylets.
   if (get_used_object_store_memory_ == nullptr) {
@@ -388,7 +379,7 @@ void LocalResourceManager::OnResourceOrStateChanged() {
   if (resource_change_subscriber_ == nullptr) {
     return;
   }
-  resource_change_subscriber_(ToNodeResources());
+  resource_change_subscriber_(local_resources_);
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {

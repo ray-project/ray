@@ -56,7 +56,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
       const NodeResources &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
-      std::function<void(const NodeResources &)> resource_change_subscriber);
+      std::function<void(const NodeResourceInstances &)> resource_change_subscriber);
 
   scheduling::NodeID GetNodeId() const { return local_node_id_; }
 
@@ -169,9 +169,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Notify the subscriber that the local resouces or state has changed.
   void OnResourceOrStateChanged();
 
-  /// Convert local resources to NodeResources.
-  NodeResources ToNodeResources() const;
-
   /// Allocate local resources to satisfy a given request (resource_request).
   ///
   /// \param resource_request: Resources requested by a task.
@@ -214,7 +211,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Function to get whether the pull manager is at capacity.
   std::function<bool(void)> get_pull_manager_at_capacity_;
   /// Subscribes to resource changes.
-  std::function<void(const NodeResources &)> resource_change_subscriber_;
+  std::function<void(const NodeResourceInstances &)> resource_change_subscriber_;
 
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;

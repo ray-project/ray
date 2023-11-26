@@ -26,7 +26,7 @@ using namespace ::ray::raylet_scheduling_policy;
 ClusterResourceScheduler::ClusterResourceScheduler(
     instrumented_io_context &io_service,
     scheduling::NodeID local_node_id,
-    const NodeResources &local_node_resources,
+    const NodeResourceInstances &local_node_resources,
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
     bool is_local_node_with_raylet)
     : local_node_id_(local_node_id),
@@ -47,8 +47,10 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     std::function<bool(void)> get_pull_manager_at_capacity,
     const absl::flat_hash_map<std::string, std::string> &local_node_labels)
     : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
-  NodeResources node_resources = ResourceMapToNodeResources(
-      local_node_resources, local_node_resources, local_node_labels);
+  NodeResourceInstances node_resources;
+  node_resources.total = NodeResourceInstanceSet(local_node_resources);
+  node_resources.available = NodeResourceInstanceSet(local_node_resources);
+  node_resources.labels = local_node_labels;
   Init(io_service,
        node_resources,
        get_used_object_store_memory,
@@ -57,7 +59,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 
 void ClusterResourceScheduler::Init(
     instrumented_io_context &io_service,
-    const NodeResources &local_node_resources,
+    const NodeResourceInstances &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity) {
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service);
@@ -66,7 +68,7 @@ void ClusterResourceScheduler::Init(
       local_node_resources,
       get_used_object_store_memory,
       get_pull_manager_at_capacity,
-      [this](const NodeResources &local_resource_update) {
+      [this](const NodeResourceInstances &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
   RAY_CHECK(!local_node_id_.IsNil());
