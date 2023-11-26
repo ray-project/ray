@@ -2579,7 +2579,7 @@
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_1_large.yaml
 
   run:
     timeout: 86400
@@ -3168,7 +3168,6 @@
     script: python workloads/serve_handle_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
 
   alert: default
-  stable: False
 
   variations:
     - __suffix__: aws
