@@ -304,21 +304,24 @@ class TestSparkLocalCluster:
         cls.spark.stop()
 
     def test_basic(self):
-        setup_ray_cluster(
+        local_addr, remote_addr = setup_ray_cluster(
             num_worker_nodes=2,
             head_node_options={"include_dashboard": False},
             collect_log_to_path="/tmp/ray_log_collect",
         )
 
-        ray.init()
+        for cluster_addr in [local_addr, remote_addr]:
+            ray.init(address=cluster_addr)
 
-        @ray.remote
-        def f(x):
-            return x * x
+            @ray.remote
+            def f(x):
+                return x * x
 
-        futures = [f.remote(i) for i in range(32)]
-        results = ray.get(futures)
-        assert results == [i * i for i in range(32)]
+            futures = [f.remote(i) for i in range(32)]
+            results = ray.get(futures)
+            assert results == [i * i for i in range(32)]
+
+            ray.shutdown()
 
         shutdown_ray_cluster()
 

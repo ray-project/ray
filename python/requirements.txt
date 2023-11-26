@@ -53,7 +53,7 @@ prometheus_client>=0.7.1
 requests
 pandas
 tensorboardX<=2.6.0,>=1.9  # >=2.6.1 uses protobuf>=4, and conflicts with other packages.
-aiohttp>=3.7
+aiohttp>=3.7,<3.9
 starlette
 typer
 fsspec
