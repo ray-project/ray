@@ -150,11 +150,6 @@ class ClusterResourceManager {
   void AddOrUpdateNode(scheduling::NodeID node_id,
                        const NodeResourceInstances &node_resources);
 
-  void AddOrUpdateNode(
-      scheduling::NodeID node_id,
-      const absl::flat_hash_map<std::string, double> &resource_map_total,
-      const absl::flat_hash_map<std::string, double> &resource_map_available);
-
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
   bool GetNodeResources(scheduling::NodeID node_id,

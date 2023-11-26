@@ -341,6 +341,10 @@ class NodeResourceInstances {
  public:
   NodeResourceInstanceSet available;
   NodeResourceInstanceSet total;
+
+  /// Resources owned by normal tasks.
+  ResourceSet normal_task_resources;
+
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
 
@@ -354,6 +358,17 @@ class NodeResourceInstances {
   absl::optional<absl::Time> last_resource_update_time = absl::nullopt;
 
   bool object_pulls_queued = false;
+
+  /// Returns true if the node's total resources are enough to run the task.
+  bool IsFeasible(const ResourceRequest &resource_request) const;
+
+  /// Returns true if the node has the available resources to run the task.
+  bool IsAvailable(const ResourceRequest &resource_request,
+                   bool ignore_pull_manager_at_capacity = false) const;
+
+  /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
+  /// of each resource and return the highest.
+  float CalculateCriticalResourceUtilization() const;
 
   /// Extract available resource instances.
   const NodeResourceInstanceSet &GetAvailableResourceInstances() const;

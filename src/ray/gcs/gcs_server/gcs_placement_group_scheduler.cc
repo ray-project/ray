@@ -618,6 +618,7 @@ bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(
 void GcsPlacementGroupScheduler::CommitBundleResources(
     const std::shared_ptr<BundleLocations> &bundle_locations) {
   // Acquire bundle resources from gcs resources manager.
+  /*
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
   auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
@@ -645,6 +646,7 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
   for (const auto &listener : resources_changed_listeners_) {
     listener();
   }
+  */
 }
 
 void GcsPlacementGroupScheduler::ReturnBundleResources(

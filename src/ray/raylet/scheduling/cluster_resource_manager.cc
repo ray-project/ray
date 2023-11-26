@@ -49,15 +49,6 @@ std::optional<absl::Time> ClusterResourceManager::GetNodeResourceModifiedTs(
 }
 
 void ClusterResourceManager::AddOrUpdateNode(
-    scheduling::NodeID node_id,
-    const absl::flat_hash_map<std::string, double> &resources_total,
-    const absl::flat_hash_map<std::string, double> &resources_available) {
-  NodeResources node_resources =
-      ResourceMapToNodeResources(resources_total, resources_available);
-  AddOrUpdateNode(node_id, node_resources);
-}
-
-void ClusterResourceManager::AddOrUpdateNode(
     scheduling::NodeID node_id, const NodeResourceInstances &node_resources) {
   RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id.ToInt()
                  << ", node_resources: " << node_resources.DebugString();
@@ -168,7 +159,7 @@ bool ClusterResourceManager::DeleteResources(
 std::string ClusterResourceManager::GetNodeResourceViewString(
     scheduling::NodeID node_id) const {
   const auto &node = map_find_or_die(nodes_, node_id);
-  return node.GetLocalView().DictString();
+  return node.GetLocalView().DebugString();
 }
 
 const absl::flat_hash_map<scheduling::NodeID, Node>
@@ -183,10 +174,9 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
     return false;
   }
 
-  NodeResources *resources = it->second.GetMutableLocalView();
+  NodeResourceInstances *resources = it->second.GetMutableLocalView();
 
-  resources->available -= resource_request.GetResourceSet();
-  resources->available.RemoveNegative();
+  RAY_CHECK(resources->available.TryAllocate(resource_request.GetResourceSet()));
 
   // TODO(swang): We should also subtract object store memory if the task has
   // arguments. Right now we do not modify object_pulls_queued in case of
@@ -204,7 +194,7 @@ bool ClusterResourceManager::HasSufficientResource(
     return false;
   }
 
-  const NodeResources &resources = it->second.GetLocalView();
+  const NodeResourceInstances &resources = it->second.GetLocalView();
 
   if (!ignore_object_store_memory_requirement && resources.object_pulls_queued &&
       resource_request.RequiresObjectStoreMemory()) {

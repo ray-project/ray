@@ -105,9 +105,11 @@ void GcsResourceManager::HandleGetAllAvailableResources(
               {resource_name, resource_iter->second});
         }
       } else {
-        const auto &resource_value = node_resources.available.Get(resource_id);
-        resource.mutable_resources_available()->insert(
-            {resource_name, resource_value.Double()});
+        double resource_value = 0.0;
+        for (const auto &instance : node_resources.available.Get(resource_id)) {
+          resource_value += instance.Double();
+        }
+        resource.mutable_resources_available()->insert({resource_name, resource_value});
       }
     }
     reply->add_resources_list()->CopyFrom(resource);

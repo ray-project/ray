@@ -132,6 +132,57 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   return this->total == other.total && this->available == other.available;
 }
 
+bool NodeResourceInstances::IsFeasible(const ResourceRequest &resource_request) const {
+  return this->total >= resource_request.GetResourceSet();
+}
+
+bool NodeResourceInstances::IsAvailable(const ResourceRequest &resource_request,
+                                        bool ignore_pull_manager_at_capacity) const {
+  if (!ignore_pull_manager_at_capacity && resource_request.RequiresObjectStoreMemory() &&
+      this->object_pulls_queued) {
+    RAY_LOG(DEBUG) << "At pull manager capacity";
+    return false;
+  }
+
+  if (!this->normal_task_resources.IsEmpty()) {
+    auto available_resources = this->available;
+    available_resources.TryAllocate(this->normal_task_resources);
+    return available_resources >= resource_request.GetResourceSet();
+  }
+  return this->available >= resource_request.GetResourceSet();
+}
+
+float NodeResourceInstances::CalculateCriticalResourceUtilization() const {
+  float highest = 0;
+  for (const auto &i : {CPU, MEM, OBJECT_STORE_MEM}) {
+    double total = 0.0;
+    for (const auto &instance : this->total.Get(ResourceID(i))) {
+      total += instance.Double();
+    }
+    if (total == 0) {
+      continue;
+    }
+    double available = 0.0;
+    for (const auto &instance : this->available.Get(ResourceID(i))) {
+      available += instance.Double();
+    }
+    // Gcs scheduler handles the `normal_task_resources` specifically. So when calculating
+    // the available resources, we have to take one more step to take that into account.
+    // For raylet scheduling, the `normal_task_resources` is always empty.
+    if (this->normal_task_resources.Has(ResourceID(i))) {
+      available -= this->normal_task_resources.Get(ResourceID(i)).Double();
+      if (available < 0) {
+        available = 0;
+      }
+    }
+    float utilization = 1 - (available / total);
+    if (utilization > highest) {
+      highest = utilization;
+    }
+  }
+  return highest;
+}
+
 std::string NodeResourceInstances::DebugString() const {
   std::stringstream buffer;
   buffer << "{\"total\":" << total.DebugString();

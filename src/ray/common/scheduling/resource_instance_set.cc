@@ -71,6 +71,16 @@ const std::vector<FixedPoint> &NodeResourceInstanceSet::Get(
   }
 }
 
+std::set<ResourceID> NodeResourceInstanceSet::ExplicitResourceIds() const {
+  std::set<ResourceID> result;
+  for (const auto &[id, quantity] : resources_) {
+    if (!id.IsImplicitResource()) {
+      result.emplace(id);
+    }
+  }
+  return result;
+}
+
 NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
                                                       std::vector<FixedPoint> instances) {
   RAY_CHECK(!instances.empty());
@@ -100,6 +110,16 @@ bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) c
   return this->resources_ == other.resources_;
 }
 
+bool NodeResourceInstanceSet::operator>=(const ResourceSet &resource_demands) const {
+  for (auto &entry : resource_demands.Resources()) {
+    std::vector<FixedPoint> available = Get(entry.first);
+    if (!TryAllocate(entry.second, available)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
 NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> allocations;
@@ -123,8 +143,7 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
 }
 
 std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
-    ResourceID resource_id, FixedPoint demand) {
-  std::vector<FixedPoint> available = Get(resource_id);
+    FixedPoint demand, std::vector<FixedPoint> &available) const {
   if (available.empty()) {
     return std::nullopt;
   }
@@ -137,7 +156,6 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
     if (available[0] >= remaining_demand) {
       available[0] -= remaining_demand;
       allocation[0] = remaining_demand;
-      Set(resource_id, std::move(available));
       return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
     } else {
       // Not enough capacity.
@@ -192,8 +210,19 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
     }
   }
 
-  Set(resource_id, std::move(available));
   return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
+}
+
+std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
+    ResourceID resource_id, FixedPoint demand) {
+  std::vector<FixedPoint> available = Get(resource_id);
+
+  auto allocation = TryAllocate(demand, available);
+  if (allocation) {
+    Set(resource_id, std::move(available));
+  }
+
+  return allocation;
 }
 
 void NodeResourceInstanceSet::Free(ResourceID resource_id,

@@ -53,6 +53,8 @@ class NodeResourceInstanceSet {
   /// they have the same resources and instances.
   bool operator==(const NodeResourceInstanceSet &other) const;
 
+  bool operator>=(const ResourceSet &resource_demands) const;
+
   std::string DebugString() const;
 
   /// Try to allocate resources specified by `resource_demands`.
@@ -87,6 +89,9 @@ class NodeResourceInstanceSet {
 
   rpc::NodeResources ToProto() const;
 
+  /// Return all the ids of explicit resources that this set has.
+  std::set<ResourceID> ExplicitResourceIds() const;
+
   /// Only for testing.
   const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &Resources() const {
     return resources_;
@@ -112,6 +117,9 @@ class NodeResourceInstanceSet {
   /// \return the allocated instances, if allocation successful. Else, return nullopt.
   std::optional<std::vector<FixedPoint>> TryAllocate(ResourceID resource_id,
                                                      FixedPoint demand);
+
+  std::optional<std::vector<FixedPoint>> TryAllocate(
+      FixedPoint demand, std::vector<FixedPoint> &available) const;
 
   /// Map from the resource IDs to the resource instance values.
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
