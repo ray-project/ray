@@ -28,6 +28,7 @@ class Metric:
         name: str,
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
+        enable_internal_logging: bool = False
     ):
         if len(name) == 0:
             raise ValueError("Empty name is not allowed. Please provide a metric name.")
@@ -48,6 +49,8 @@ class Metric:
         for key in self._tag_keys:
             if not isinstance(key, str):
                 raise TypeError(f"Tag keys must be str, got {type(key)}.")
+        
+        self.enable_internal_logging = enable_internal_logging
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
@@ -146,6 +149,7 @@ class Metric:
             "description": self._description,
             "tag_keys": self._tag_keys,
             "default_tags": self._default_tags,
+            "enable_internal_logging":self.enable_internal_logging
         }
 
 
@@ -160,6 +164,7 @@ class Counter(Metric):
         name: Name of the metric.
         description: Description of the metric.
         tag_keys: Tag keys of the metric.
+        enable_internal_logging: Enables internal state tracking of metric. 
     """
 
     def __init__(
@@ -167,9 +172,12 @@ class Counter(Metric):
         name: str,
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
+        enable_internal_logging: bool = False
     ):
-        super().__init__(name, description, tag_keys)
+        super().__init__(name, description, tag_keys, enable_internal_logging)
         self._metric = CythonCount(self._name, self._description, self._tag_keys)
+        if self.enable_internal_logging:
+            self.count = 0 
 
     def __reduce__(self):
         deserializer = self.__class__
@@ -191,6 +199,15 @@ class Counter(Metric):
             raise ValueError(f"value must be >0, got {value}")
 
         self.record(value, tags=tags, _internal=True)
+
+        if self.enable_internal_logging:
+            self.count += 1
+    
+    def get(self):
+        if not self.enable_internal_logging:
+            raise Exception("Method 'get' called but 'enable_internal_logging' is False.")
+        return self.count
+        
 
 
 @DeveloperAPI
@@ -235,6 +252,7 @@ class Histogram(Metric):
         description: Description of the metric.
         boundaries: Boundaries of histogram buckets.
         tag_keys: Tag keys of the metric.
+        enable_internal_logging: Enables internal state tracking of metric. 
     """
 
     def __init__(
@@ -243,8 +261,9 @@ class Histogram(Metric):
         description: str = "",
         boundaries: List[float] = None,
         tag_keys: Optional[Tuple[str, ...]] = None,
+        enable_internal_logging: bool = False
     ):
-        super().__init__(name, description, tag_keys)
+        super().__init__(name, description, tag_keys, enable_internal_logging)
         if boundaries is None or len(boundaries) == 0:
             raise ValueError(
                 "boundaries argument should be provided when using "
@@ -257,11 +276,17 @@ class Histogram(Metric):
                     "Invalid `boundaries` argument at index "
                     f"{i}, {boundaries}. Use positive values for the arguments."
                 )
-
+        
         self.boundaries = boundaries
         self._metric = CythonHistogram(
             self._name, self._description, self.boundaries, self._tag_keys
         )
+
+        if self.enable_internal_logging:
+            self.boundaries.append(float('inf')) #match Prometheus output format with bucket for +Inf
+            self.bucket_counts = {boundary: 0.0 for boundary in self.boundaries}
+            self.event_count = 0 
+            self.total_sum = 0  
 
     def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Observe a given `value` and add it to the appropriate bucket.
@@ -277,6 +302,32 @@ class Histogram(Metric):
 
         self.record(value, tags, _internal=True)
 
+        if self.enable_internal_logging:
+            for boundary in self.boundaries:
+                if value <= boundary:
+                    self.bucket_counts[boundary] += 1
+
+            self.event_count += 1
+            self.total_sum += value
+
+    def get(self) -> Dict[str, Union[Dict[float, int], float, int]]:
+        """Get the current state of the histogram.
+
+        Returns:
+            A dictionary with cumulative bucket counts, total sum, and event count.
+
+        Raises:
+            Exception: If internal logging is disabled.
+        """
+        if not self.enable_internal_logging:
+            raise Exception("Method 'get' called but 'enable_internal_logging' is False.")
+
+        return {
+            "bucket_counts": self.bucket_counts,
+            "event_count": self.event_count,
+            "total_sum": self.total_sum,
+        }
+    
     def __reduce__(self):
         deserializer = Histogram
         serialized_data = (
@@ -308,6 +359,7 @@ class Gauge(Metric):
         name: Name of the metric.
         description: Description of the metric.
         tag_keys: Tag keys of the metric.
+        enable_internal_logging: Enables internal state tracking of metric.
     """
 
     def __init__(
@@ -315,9 +367,17 @@ class Gauge(Metric):
         name: str,
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
+        enable_internal_logging: bool = False
     ):
-        super().__init__(name, description, tag_keys)
+        super().__init__(name, description, tag_keys, enable_internal_logging)
         self._metric = CythonGauge(self._name, self._description, self._tag_keys)
+        if self.enable_internal_logging:
+            self.gauge = None
+
+    def get(self):
+        if not self.enable_internal_logging:
+            raise Exception("Method 'get' called but 'enable_internal_logging' is False.")
+        return self.gauge
 
     def set(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Set the gauge to the given `value`.
@@ -333,11 +393,47 @@ class Gauge(Metric):
 
         self.record(value, tags, _internal=True)
 
+        if self.enable_internal_logging:
+            self.gauge = value
+
     def __reduce__(self):
         deserializer = Gauge
         serialized_data = (self._name, self._description, self._tag_keys)
         return deserializer, serialized_data
 
+
+def get_prometheus_metric(port: int, metric_name: str):
+    """Query a metric from Prometheus. Details on response JSON schema from Prometheus
+    can be found here: https://prometheus.io/docs/prometheus/latest/querying/api
+
+    Args:
+        port (int): Port where Prometheus is running.
+        metric_name (str): Name of the metric to query.
+
+    Returns:
+        The 'data' part of the Prometheus response if the request is successful and response is valid JSON; 
+        otherwise, returns an appropriate error message.
+    """
+    import requests
+
+    try:
+        if not metric_name.startswith('ray_'):
+            metric_name = 'ray_' + metric_name
+
+        response = requests.get(f"http://localhost:{port}/api/v1/query?query={metric_name}")
+
+        if response.status_code != 200:
+            return f"Request failed with status code {response.status_code}"
+        response_json = response.json()
+        if response_json.get('status') != 'success':
+            return "Request to Prometheus did not succeed."
+        return response_json.get('data')
+    
+    except requests.exceptions.RequestException as e:
+        return f"Request failed: {e}"
+
+    except ValueError:
+        return "Response was not valid JSON."
 
 __all__ = [
     "Counter",
