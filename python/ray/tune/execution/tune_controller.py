@@ -22,7 +22,7 @@ from ray.train import CheckpointConfig
 from ray.train._internal.session import _FutureTrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.exceptions import RayActorError, RayTaskError
-from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
+from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError
 from ray.tune.execution.class_cache import _ActorClassCache
 from ray.tune.execution.experiment_state import (
     _ExperimentCheckpointManager,
@@ -1391,7 +1391,7 @@ class TuneController:
     def _process_trial_failure(
         self,
         trial: Trial,
-        exception: Optional[Union[TuneError, RayTaskError, RayActorError]] = None,
+        exception: Union[TuneError, RayTaskError, RayActorError],
     ):
         """Handle trial failure.
 
@@ -1899,8 +1899,6 @@ class TuneController:
         # Resetting this, in case that the trial is in saving status when it crashes.
         if trial.is_saving:
             trial.temporary_state.saving_to = None
-        if trial.is_restoring and exc:
-            exc = _TuneRestoreError(exc)
         self._schedule_trial_stop(trial, exception=exc)
 
         logger.debug("Trial %s: Notifying Scheduler and requeueing.", trial)

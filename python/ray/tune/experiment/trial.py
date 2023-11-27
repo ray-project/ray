@@ -27,7 +27,6 @@ from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.tune import TuneError
-from ray.tune.error import _TuneRestoreError
 from ray.tune.logger import NoopLogger
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -749,8 +748,7 @@ class Trial:
             return None
         return os.path.join(self.local_path, self.run_metadata.pickled_error_filename)
 
-    def _handle_restore_error(self, exc: _TuneRestoreError):
-        exc = exc.exc
+    def _handle_restore_error(self, exc: Exception):
         if self.temporary_state.num_restore_failures >= int(
             os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
         ):
@@ -777,7 +775,7 @@ class Trial:
     def handle_error(
         self, exc: Optional[Union[TuneError, RayTaskError, RayActorError]] = None
     ):
-        if isinstance(exc, _TuneRestoreError):
+        if self.is_restoring:
             self._handle_restore_error(exc)
         elif isinstance(exc, RayActorError):
             self._handle_ray_actor_error(exc)
