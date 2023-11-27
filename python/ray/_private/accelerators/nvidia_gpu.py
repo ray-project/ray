@@ -45,6 +45,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_current_node_num_accelerators() -> int:
         import ray._private.thirdparty.pynvml as pynvml
+
         try:
             pynvml.nvmlInit()
         except pynvml.NVMLError:
@@ -56,6 +57,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
         import ray._private.thirdparty.pynvml as pynvml
+
         try:
             pynvml.nvmlInit()
         except pynvml.NVMLError:

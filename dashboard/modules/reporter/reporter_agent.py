@@ -396,6 +396,7 @@ class ReporterAgent(
     @staticmethod
     def _get_gpu_usage():
         import ray._private.thirdparty.pynvml as pynvml
+
         global enable_gpu_usage_check
         if not enable_gpu_usage_check:
             return []
@@ -438,8 +439,8 @@ class ReporterAgent(
                 nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
                     gpu_handle
                 )
-                nv_graphics_processes = (
-                    pynvml.nvmlDeviceGetGraphicsRunningProcesses(gpu_handle)
+                nv_graphics_processes = pynvml.nvmlDeviceGetGraphicsRunningProcesses(
+                    gpu_handle
                 )
                 processes_pids = [
                     ProcessGPUInfo(
