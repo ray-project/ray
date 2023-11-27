@@ -1,5 +1,7 @@
 import os
 
+from unittest.mock import Mock, patch, call
+
 from abc import ABC
 import sys
 import pytest
@@ -10,6 +12,7 @@ from ray.util.concurrent.futures.ray_executor import (
     _RoundRobinActorPool,
     _BalancedActorPool,
     ActorPoolType,
+    _PoolActor
 )
 import time
 import typing as T
@@ -17,6 +20,7 @@ from functools import partial
 from multiprocessing import Process
 
 import ray
+from ray.actor import ActorHandle
 from ray.util.state import list_actors
 from concurrent.futures import (
     ThreadPoolExecutor,
@@ -24,6 +28,7 @@ from concurrent.futures import (
     TimeoutError as ConTimeoutError,
 )
 from concurrent.futures.thread import BrokenThreadPool
+from concurrent.futures import Future
 from ray.exceptions import RayTaskError, RayActorError
 
 from ray._private.worker import RayContext
@@ -154,9 +159,59 @@ class ActorPoolTests(ABC):
     def apt(self) -> ActorPoolType:
         ...
 
-    def test_actor_pool_must_have_actor(self):
+    @pytest.fixture
+    def actor_pool(self):
+        return self.apc()
+
+    def test_setting_max_tasks_per_actor(self, actor_pool):
+        assert actor_pool.max_tasks_per_actor is None
+        actor_pool.max_tasks_per_actor = 2
+        assert actor_pool.max_tasks_per_actor == 2
         with pytest.raises(ValueError):
-            self.apc(num_actors=0)
+            actor_pool.max_tasks_per_actor = -2
+
+    def test_setting_num_actors(self, actor_pool):
+        assert actor_pool.num_actors == 2
+        actor_pool.num_actors = 10
+        assert actor_pool.num_actors == 10
+        with pytest.raises(ValueError):
+            actor_pool.num_actors = -2
+        with pytest.raises(ValueError):
+            actor_pool.num_actors = 0
+
+    def test_setting_initializer(self, actor_pool):
+        assert actor_pool.initializer is None
+        actor_pool.initializer = lambda x: print(x)
+        with pytest.raises(TypeError):
+            actor_pool.initializer = 1
+        with pytest.raises(TypeError):
+            actor_pool.initializer = True
+
+    def test_setting_initargs(self, actor_pool):
+        assert actor_pool.initargs == ()
+        actor_pool.initargs = (1, 2)
+        assert actor_pool.initargs == (1, 2)
+        with pytest.raises(TypeError):
+            actor_pool.initargs = True
+
+    def test_submit_returns_a_future(self, actor_pool):
+        def f():
+            return 123
+        future = actor_pool.submit(f)
+        assert isinstance(future, Future)
+
+    def test_next_returns_pool_actor(self, actor_pool):
+        pool_actor = actor_pool.next()
+        actor = pool_actor["actor"]
+        assert isinstance(actor, ActorHandle)
+        task_count = pool_actor["task_count"]
+        assert task_count == 0
+
+    def test_get_actor_ids_returns_list_of_strings(self, actor_pool):
+        actor_ids = actor_pool.get_actor_ids()
+        assert type(actor_ids) == list
+        for i in actor_ids:
+            assert type(i) == str
 
     def test_actor_pool_exit_removes_from_pool(self):
         pool = self.apc(num_actors=1)
@@ -165,6 +220,17 @@ class ActorPoolTests(ABC):
         pool._exit_actor(actor)
         assert pool.pool == []
         assert Helpers.wait_actor_state_(actor["actor"], "DEAD")
+
+    def test__kill_actor_called_for_actors(self, actor_pool):
+        with patch.object(actor_pool, "_kill_actor") as mock_kill_actor:
+            actor_pool.kill()
+            mock_kill_actor.assert_has_calls([call(i) for i in actor_pool.pool], any_order=True)
+
+    def test__increment_task_count(self, actor_pool):
+        mock_actor = {"task_count": 0}
+        actor_pool.pool = [mock_actor]
+        actor_pool._increment_task_count(mock_actor)
+        assert mock_actor["task_count"] == 1
 
     def test_actor_pool_kills_actors(self):
         pool = self.apc(num_actors=2)

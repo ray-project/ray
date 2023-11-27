@@ -21,6 +21,7 @@ from ray.util.annotations import PublicAPI
 import ray.exceptions
 import ray.util.state as ray_state
 
+
 # Typing -----------------------------------------------
 
 T = TypeVar("T")
@@ -159,6 +160,9 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
 
     @initializer.setter
     def initializer(self, val: Optional[Callable[..., Any]]) -> None:
+        if val is not None:
+            if not callable(val):
+                raise TypeError("initializer must be callable")
         self._initializer = val
         return
 
@@ -168,6 +172,8 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
 
     @initargs.setter
     def initargs(self, val: tuple[Any, ...]) -> None:
+        if type(val) != tuple:
+            raise TypeError("initargs must be tuple")
         self._initargs = val
         return
 
