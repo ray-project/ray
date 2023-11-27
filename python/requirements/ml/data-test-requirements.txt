@@ -5,6 +5,7 @@ python-snappy
 tensorflow-datasets
 datasets
 pytest-repeat
+snowflake-connector-python
 soundfile
 google-cloud-bigquery
 google-cloud-bigquery-storage
