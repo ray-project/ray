@@ -46,6 +46,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/client_connection.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
 #include "ray/object_manager/plasma/malloc.h"
@@ -112,6 +113,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
             this->AddToClientObjectIds(object_id, fallback_allocated_fd, request->client);
           },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
+  ray::SetCloseOnFork(acceptor_);
+
   if (RayConfig::instance().event_stats_print_interval_ms() > 0 &&
       RayConfig::instance().event_stats()) {
     PrintAndRecordDebugDump();
