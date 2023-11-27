@@ -8,7 +8,6 @@ Examples using Ray Tune with ML Frameworks
     Keras Example <tune_mnist_keras>
     PyTorch Example <tune-pytorch-cifar>
     PyTorch Lightning Example <tune-pytorch-lightning>
-    Ray Serve Example <tune-serve-integration-mnist>
     Ray RLlib Example <pbt_ppo_example>
     XGBoost Example <tune-xgboost>
     LightGBM Example <lightgbm_example>
