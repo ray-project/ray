@@ -5766,7 +5766,7 @@
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 21600
+    timeout: 18000
     script: python multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 3
 
   variations:
@@ -5790,9 +5790,9 @@
     cluster_compute: dataset/multi_node_train_4_workers.yaml
 
   run:
-    timeout: 3600
-    prepare: python setup_chaos.py --kill-workers --kill-interval 50 --max-to-kill 20 --task-names "ReadImage->Map(crop_and_flip_image)"
-    script: python dataset/multi_node_train_benchmark.py --num-workers 4 --file-type image
+    timeout: 18000
+    prepare: python setup_chaos.py --kill-workers --kill-interval 200 --max-to-kill 50 --task-names "ReadImage->Map(wnid_to_index)->Map(crop_and_flip_image)"
+    script: python dataset/multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 3
 
   variations:
     - __suffix__: aws
@@ -5815,7 +5815,7 @@
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 21600
+    timeout: 18000
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --use-gpu
 
   variations:
@@ -5839,7 +5839,7 @@
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 21600
+    timeout: 18000
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order --use-gpu
 
   variations:
