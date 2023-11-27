@@ -137,6 +137,8 @@ class CoreWorkerPlasmaStoreProvider {
   /// argument to Get to retrieve the object data.
   Status Seal(const ObjectID &object_id);
 
+  Status Unseal(const ObjectID &object_id);
+
   /// Release the first reference to the object created by Put() or Create(). This should
   /// be called exactly once per object and until it is called, the object is pinned and
   /// cannot be evicted.

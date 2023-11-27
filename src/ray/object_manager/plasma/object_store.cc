@@ -69,6 +69,13 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
   return entry;
 }
 
+const LocalObject *ObjectStore::UnsealObject(const ObjectID &object_id) {
+  auto entry = GetMutableObject(object_id);
+  RAY_CHECK(entry != nullptr && entry->state == ObjectState::PLASMA_SEALED);
+  entry->state = ObjectState::PLASMA_CREATED;
+  return entry;
+}
+
 bool ObjectStore::DeleteObject(const ObjectID &object_id) {
   auto entry = GetMutableObject(object_id);
   if (entry == nullptr) {

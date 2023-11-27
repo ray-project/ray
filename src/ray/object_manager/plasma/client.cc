@@ -94,6 +94,7 @@ struct ObjectInUseEntry {
   PlasmaObject object;
   /// A flag representing whether the object has been sealed.
   bool is_sealed;
+  std::shared_ptr<Buffer> data = nullptr;
 };
 
 class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Impl> {
@@ -152,6 +153,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Status Abort(const ObjectID &object_id);
 
   Status Seal(const ObjectID &object_id);
+
+  Status Unseal(const ObjectID &object_id);
 
   Status Delete(const std::vector<ObjectID> &object_ids);
 
@@ -283,7 +286,6 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id,
     objects_in_use_[object_id] = std::make_unique<ObjectInUseEntry>();
     objects_in_use_[object_id]->object = *object;
     objects_in_use_[object_id]->count = 0;
-    objects_in_use_[object_id]->is_sealed = is_sealed;
     object_entry = objects_in_use_[object_id].get();
   } else {
     object_entry = elem->second.get();
@@ -293,6 +295,7 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id,
   // being used by this client. The corresponding decrement should happen in
   // PlasmaClient::Release.
   object_entry->count += 1;
+  object_entry->is_sealed = is_sealed;
 }
 
 Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
@@ -343,6 +346,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
       // Copy the metadata to the buffer.
       memcpy((*data)->Data() + object.data_size, metadata, object.metadata_size);
     }
+    //objects_in_use_[object_id]->data = *data;
   } else {
     RAY_LOG(FATAL) << "GPU is not enabled.";
   }
@@ -368,6 +372,27 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                                   fb::ObjectSource source,
                                                   int device_num) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+
+  // This version hangs?
+  //auto object_entry = objects_in_use_.find(object_id);
+  //if (object_entry != objects_in_use_.end()
+  //    && !object_entry->second->is_sealed
+  //    && object_entry->second->data != nullptr) {
+  //  RAY_LOG(DEBUG) << "Create object " << object_id << ", found unsealed object";
+  //  // The metadata should come right after the data.
+  //  const auto &object = object_entry->second->object;
+  //  RAY_CHECK(object.metadata_offset == object.data_offset + object.data_size);
+  //  *data = object_entry->second->data;
+  //  // If plasma_create is being called from a transfer, then we will not copy the
+  //  // metadata here. The metadata will be written along with the data streamed
+  //  // from the transfer.
+  //  if (metadata != NULL) {
+  //    // Copy the metadata to the buffer.
+  //    memcpy((*data)->Data() + object.data_size, metadata, object.metadata_size);
+  //  }
+  //  return Status::OK();
+  //}
+
   uint64_t retry_with_request_id = 0;
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
@@ -450,9 +475,9 @@ Status PlasmaClient::Impl::GetBuffers(
       // This client created the object but hasn't sealed it. If we call Get
       // with no timeout, we will deadlock, because this client won't be able to
       // call Seal.
-      RAY_CHECK(timeout_ms != -1)
-          << "Plasma client called get on an unsealed object that it created";
-      RAY_LOG(WARNING)
+      //RAY_CHECK(timeout_ms != -1)
+      //    << "Plasma client called get on an unsealed object that it created";
+      RAY_LOG(DEBUG)
           << "Attempting to get an object that this client created but hasn't sealed.";
       all_present = false;
     } else {
@@ -678,6 +703,31 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   return Release(object_id);
 }
 
+Status PlasmaClient::Impl::Unseal(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Unsealing object " << object_id;
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
+
+  // Make sure this client has a reference to the object before sending the
+  // request to Plasma.
+  auto object_entry = objects_in_use_.find(object_id);
+
+  if (object_entry == objects_in_use_.end()) {
+    return Status::ObjectNotFound("Unseal() called on an object without a reference to it");
+  }
+  if (!object_entry->second->is_sealed) {
+    return Status::ObjectAlreadySealed("Unseal() called on an already unsealed object");
+  }
+
+  object_entry->second->is_sealed = false;
+  /// Send the unseal request to Plasma.
+  RAY_RETURN_NOT_OK(SendUnsealRequest(store_conn_, object_id));
+
+  // Hack to keep the buffer pinned.
+  IncrementObjectCount(object_id, nullptr, false);
+
+  return Status::OK();
+}
+
 Status PlasmaClient::Impl::Abort(const ObjectID &object_id) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   auto object_entry = objects_in_use_.find(object_id);
@@ -812,7 +862,8 @@ Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             std::shared_ptr<Buffer> *data,
                                             fb::ObjectSource source,
                                             int device_num) {
-  return impl_->CreateAndSpillIfNeeded(object_id,
+  auto start_us = current_sys_time_us();
+  auto status = impl_->CreateAndSpillIfNeeded(object_id,
                                        owner_address,
                                        data_size,
                                        metadata,
@@ -820,6 +871,8 @@ Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                        data,
                                        source,
                                        device_num);
+  RAY_LOG(INFO) << "create time: " << current_sys_time_us() - start_us;
+  return status;
 }
 
 Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,
@@ -844,11 +897,17 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                          int64_t timeout_ms,
                          std::vector<ObjectBuffer> *object_buffers,
                          bool is_from_worker) {
-  return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
+  auto start_us = current_sys_time_us();
+  auto status = impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
+  RAY_LOG(INFO) << "get time: " << current_sys_time_us() - start_us;
+  return status;
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) {
-  return impl_->Release(object_id);
+  auto start_us = current_sys_time_us();
+  auto status = impl_->Release(object_id);
+  RAY_LOG(INFO) << "release time: " << current_sys_time_us() - start_us;
+  return status;
 }
 
 Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
@@ -857,7 +916,19 @@ Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
 
 Status PlasmaClient::Abort(const ObjectID &object_id) { return impl_->Abort(object_id); }
 
-Status PlasmaClient::Seal(const ObjectID &object_id) { return impl_->Seal(object_id); }
+Status PlasmaClient::Seal(const ObjectID &object_id) {
+  auto start_us = current_sys_time_us();
+  auto status = impl_->Seal(object_id);
+  RAY_LOG(INFO) << "seal time: " << current_sys_time_us() - start_us;
+  return status;
+}
+
+Status PlasmaClient::Unseal(const ObjectID &object_id) {
+  auto start_us = current_sys_time_us();
+  auto status = impl_->Unseal(object_id);
+  RAY_LOG(INFO) << "unseal time: " << current_sys_time_us() - start_us;
+  return status;
+}
 
 Status PlasmaClient::Delete(const ObjectID &object_id) {
   return impl_->Delete(std::vector<ObjectID>{object_id});

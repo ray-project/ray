@@ -641,6 +641,7 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
 
 void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
                                                std::vector<ObjectID> *deleted) {
+  return;
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.on_ref_removed) {
@@ -734,6 +735,7 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
 }
 
 void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
+  return;
   if (it->second.on_delete) {
     RAY_LOG(DEBUG) << "Calling on_delete for object " << it->first;
     it->second.on_delete(it->first);
