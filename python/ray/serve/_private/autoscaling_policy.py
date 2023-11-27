@@ -1,10 +1,12 @@
 import logging
 import math
-from abc import ABCMeta, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import List, Optional
 
+import ray
+from ray._private.utils import import_attr
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingConfig
 
@@ -319,6 +321,46 @@ class CustomScalingPolicy(AutoscalingPolicy):
 
     def __init__(self, config: AutoscalingConfig):
         self.config = config
+        self.custom_scaling_callable = import_attr(config.custom_scaling)
+        self.custom_config_ref = None
+
+    def get_custom_config_ref(self, autoscaling_context: AutoscalingContext):
+        """Get the custom config reference."""
+        return ray.remote(self.custom_scaling_callable).remote(autoscaling_context)
+
+    def get_decision_num_replicas(
+        self, autoscaling_context: AutoscalingContext
+    ) -> Optional[int]:
+        """Make a decision to scale replicas.
+
+        Returns the new number of replicas to scale to. Or None if the custom scaling
+        function call is not finished yet, finished but not returning an integer, or
+        errored out.
+        """
+        if self.custom_config_ref is None:
+            self.custom_config_ref = self.get_custom_config_ref(autoscaling_context)
+
+        finished, _ = ray.wait([self.custom_config_ref], timeout=0)
+        try:
+            if self.custom_config_ref in finished:
+                decision_num_replicas = ray.get(self.custom_config_ref)
+                self.custom_config_ref = None
+                if (
+                    isinstance(decision_num_replicas, int)
+                    and decision_num_replicas
+                    != autoscaling_context.curr_target_num_replicas
+                ):
+                    return decision_num_replicas
+                elif not isinstance(decision_num_replicas, int):
+                    logger.error(
+                        "Custom scaling policy must return an integer. Received type "
+                        f"{type(decision_num_replicas)}, for {decision_num_replicas}"
+                    )
+        except ray.exceptions.RayTaskError as e:
+            logger.error(f"Error in custom scaling policy: {e}")
+            self.custom_config_ref = None
+
+        return None
 
 
 class AutoscalingPolicyFactory:
