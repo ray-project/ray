@@ -403,11 +403,12 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
       RAY_LOG(DEBUG) << "Create shared object " << object_id << " exists";
       // Wait for no readers.
       auto plasma_header = GetPlasmaObjectHeader(entry->object);
-      plasma_header->WriteAcquire(entry->next_version_to_write);
       // TODO(sang)
       // NOTE: entry->object.data_size is the size of the data buffer.
       // When the object is shared, we can have object size smaller than the data buffer.
-      plasma_header->UpdateDataSize(data_size);
+      RAY_LOG(DEBUG) << "SANG-TODO Update the data size of " << object_id << ". Size: " << data_size;
+      auto next_version_to_write = plasma_header->version + 1;
+      plasma_header->WriteAcquire(next_version_to_write, data_size);
 
       // Prepare the data buffer and return to the client instead of sending
       // the IPC to object store.
@@ -463,10 +464,10 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
     RAY_CHECK(!entry->is_sealed);
     auto plasma_header = GetPlasmaObjectHeader(entry->object);
     // The corresponding WriteRelease takes place in Seal.
-    plasma_header->WriteAcquire(entry->next_version_to_write);
     // When an object is first created, the data size is equivalent to
     // buffer size.
-    plasma_header->UpdateDataSize(entry->object.data_size);
+    // The first creation's version is always 1.
+    plasma_header->WriteAcquire(/*next_version_to_write*/1, entry->object.data_size);
   }
 
   return status;
@@ -535,8 +536,9 @@ Status PlasmaClient::Impl::GetBuffers(
 
       // Wait for the object to become ready to read.
       auto plasma_header = GetPlasmaObjectHeader(*object);
-      auto data_size = plasma_header->GetDataSize();
       int64_t version_read = plasma_header->ReadAcquire(object_entry->second->next_version_to_read);
+      auto data_size = plasma_header->GetDataSize();
+      RAY_LOG(DEBUG) << "SANG-TODO data size is " << data_size;
       if (version_read > 0) {
         object_entry->second->is_shared = true;
         object_entry->second->next_version_to_read = version_read;
@@ -616,6 +618,7 @@ Status PlasmaClient::Impl::GetBuffers(
       // Wait for the object to become ready to read.
       auto plasma_header = GetPlasmaObjectHeader(*object);
       int64_t version_read = plasma_header->ReadAcquire(/*version=*/1);
+      auto data_size = plasma_header->GetDataSize();
       if (version_read > 0) {
         object_entry->is_shared = true;
         object_entry->next_version_to_read = version_read;
@@ -632,7 +635,7 @@ Status PlasmaClient::Impl::GetBuffers(
       // Finish filling out the return values.
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
       object_buffers[i].data =
-          SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
+          SharedMemoryBuffer::Slice(physical_buf, 0, data_size);
       object_buffers[i].metadata = SharedMemoryBuffer::Slice(
           physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
@@ -779,9 +782,11 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id, int64_t max_readers) 
   }
 
   auto plasma_header = GetPlasmaObjectHeader(object_entry->second->object);
+  // The value should've already updated when object is created.
+  auto next_version_to_write = plasma_header->version;
   plasma_header->WriteRelease(
-      /*write_version=*/object_entry->second->next_version_to_write, max_readers);
-  object_entry->second->next_version_to_write++;
+      /*write_version=*/next_version_to_write, max_readers);
+  object_entry->second->next_version_to_write = next_version_to_write;
 
   if (max_readers != -1) {
     object_entry->second->is_shared = true;

@@ -131,7 +131,6 @@ class DAGNode(DAGNodeBase):
                 - resolved values representing user input at runtime
         """
         if compiled:
-            print(args)
             assert len(args) == 1, "Compiled DAGs support exactly one InputNode arg"
             input_ref, input_max_readers, output_ref = self.compile()
             ray.worker.global_worker.put_object(

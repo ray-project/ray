@@ -71,7 +71,9 @@ struct PlasmaObjectHeader {
   void Destroy();
   // Blocks until there are no more readers.
   // NOTE: This does not protect against multiple writers.
-  void WriteAcquire(int64_t write_version);
+  /// \param write_version The new version for write.
+  /// \param new_size The new data size of the object.
+  void WriteAcquire(int64_t write_version, uint64_t new_size);
   // Call after completing a write to signal to max_readers many readers.
   void WriteRelease(int64_t write_version, int64_t max_readers);
   // Blocks until the given version is ready to read.
@@ -80,10 +82,6 @@ struct PlasmaObjectHeader {
   // writer. This is not necessary to call for objects that have
   // max_readers=-1.
   void ReadRelease(int64_t read_version);
-  // Update the data size of the plasma object.
-  // This has to be called only when writer lock is acquired
-  // via WriteAcquire.
-  void UpdateDataSize(uint64_t size);
   // Get the data size of the plasma object.
   // This has to be called only when reader lock is acquired
   // via ReadAcquire.

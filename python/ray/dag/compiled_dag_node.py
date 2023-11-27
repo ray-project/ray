@@ -5,9 +5,10 @@ from collections import defaultdict
 import ray
 
 
-MAX_BUFFER_SIZE = 1 * 1e9
+MAX_BUFFER_SIZE = int(100 * 1e6) # 100MB
 
 def allocate_shared_output_buffer(buffer_size_bytes: int = MAX_BUFFER_SIZE):
+    assert isinstance(MAX_BUFFER_SIZE, int)
     ref = ray.put(b"0" * buffer_size_bytes, max_readers=1)
     # TODO(swang): Sleep to make sure that the object store sees the Seal. Should
     # replace this with a better call to put reusable objects, and have the object
@@ -30,6 +31,13 @@ class CompiledTask:
     @property
     def max_readers(self):
         return len(self.dependent_node_idxs)
+
+    def __str__(self):
+        return f"""
+Node: {self.dag_node}
+Arguments: {self.args}
+Output: {self.output_ref}
+"""
 
 
 class CompiledDAG:

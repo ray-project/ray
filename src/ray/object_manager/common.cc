@@ -8,7 +8,8 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
     << "version: " << header->version << "\n"
     << "max_readers: " << header->max_readers << "\n"
     << "num_readers_acquired: " << header->num_readers_acquired << "\n"
-    << "num_reads_remaining: " << header->num_reads_remaining << "\n";
+    << "num_reads_remaining: " << header->num_reads_remaining << "\n"
+    << "data_size: " << header->data_size << "\n";
 }
 
 void PlasmaObjectHeader::Init() {
@@ -34,10 +35,6 @@ void PlasmaObjectHeader::Destroy() {
   RAY_CHECK(sem_destroy(&rw_semaphore) == 0);
 }
 
-void PlasmaObjectHeader::UpdateDataSize(uint64_t size) {
-  RAY_CHECK_EQ(num_readers_acquired, 0) << "WriteAcquire has to be called before calling this method.";
-  data_size = size;
-}
 // Get the data size of the plasma object.
 // This has to be called only when reader lock is acquired
 // via ReadAcquire.
@@ -46,12 +43,14 @@ uint64_t PlasmaObjectHeader::GetDataSize() const {
   return data_size;
 }
 
-void PlasmaObjectHeader::WriteAcquire(int64_t write_version) {
+void PlasmaObjectHeader::WriteAcquire(int64_t write_version, uint64_t new_size) {
+  RAY_LOG(DEBUG) << "WriteAcquire Waiting. version: " << write_version;
   sem_wait(&rw_semaphore);
-  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   RAY_LOG(DEBUG) << "WriteAcquire " << write_version;
+  RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   PrintPlasmaObjectHeader(this);
 
+  // TODO(sang): This can fail upon shutdown.
   RAY_CHECK(num_reads_remaining == 0);
   PrintPlasmaObjectHeader(this);
 
@@ -61,6 +60,7 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version) {
       << ". Are you sure this is the only writer?";
 
   version = write_version;
+  data_size = new_size;
 
   RAY_LOG(DEBUG) << "WriteAcquire done";
   PrintPlasmaObjectHeader(this);
@@ -68,6 +68,7 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version) {
 }
 
 void PlasmaObjectHeader::WriteRelease(int64_t write_version, int64_t write_max_readers) {
+  RAY_LOG(DEBUG) << "WriteRelease Waiting. version: " << write_version << " max readers: " << write_max_readers;
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   RAY_LOG(DEBUG) << "WriteRelease " << write_version << " max readers: " << write_max_readers;
   PrintPlasmaObjectHeader(this);
@@ -88,6 +89,7 @@ void PlasmaObjectHeader::WriteRelease(int64_t write_version, int64_t write_max_r
 }
 
 int64_t PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
+  RAY_LOG(DEBUG) << "ReadAcquire Waiting" << read_version;
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   RAY_LOG(DEBUG) << "ReadAcquire " << read_version;
   PrintPlasmaObjectHeader(this);
@@ -123,7 +125,7 @@ int64_t PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
 
 void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
   bool all_readers_done = false;
-  RAY_LOG(DEBUG) << "ReadRelease " << read_version;
+  RAY_LOG(DEBUG) << "ReadRelease Waiting" << read_version;
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   PrintPlasmaObjectHeader(this);
 

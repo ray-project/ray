@@ -50,6 +50,9 @@ Limitation:
 
 Issues:
 - ray.get on reused plasma buffer works with numpy but not with bytes (and probably other objects)
+- max_readers currently hangs if we don't read as many as max_readers. We should call it target_read instead or change the logic.
+- If we write and do not read, it hangs.
+- Chain is not working (run more than 1 task at actor at a time.). Expected?
 
 
 To port DAG code:
