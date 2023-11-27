@@ -1311,7 +1311,11 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   if (it == submissible_tasks_.end()) {
     return;
   }
-  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)
+      << ", task ID = " << it->first << ", status = "
+      << it->second.GetStatus()
+      // DO NOT SUBMIT remove this
+      << ", " << it->second.spec.GetMessage().DebugString();
   it->second.SetNodeId(node_id);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
   RecordTaskStatusEvent(it->second.spec.AttemptNumber(),

@@ -595,6 +595,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
+      RAY_LOG(INFO) << "ryw TaskEntry::SetStatus "
+                    << ", task ID = " << spec.TaskId() << ", status "
+                    << std::get<1>(status) << " -> " << new_status << ", "
+                    << ray::StackTrace();
       auto new_tuple = std::make_tuple(spec.GetName(), new_status, is_retry_);
       counter.Swap(status, new_tuple);
       status = new_tuple;

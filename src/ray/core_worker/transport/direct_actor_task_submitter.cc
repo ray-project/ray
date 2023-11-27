@@ -420,19 +420,25 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
 }
 
 void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &actor_id) {
+  RAY_LOG(INFO) << "ryw ResendOutOfOrderTasks " << actor_id;  // << ray::StackTrace();
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   if (!it->second.rpc_client) {
+    RAY_LOG(INFO) << "ryw ResendOutOfOrderTasks early return since rpc client == null ";
     return;
   }
   auto &client_queue = it->second;
   RAY_CHECK(!client_queue.worker_id.empty());
   auto out_of_order_completed_tasks =
       client_queue.actor_submit_queue->PopAllOutOfOrderCompletedTasks();
+  RAY_LOG(INFO) << "ryw ResendOutOfOrderTasks count "
+                << out_of_order_completed_tasks.size();
+
   for (const auto &completed_task : out_of_order_completed_tasks) {
     // Making a copy here because we are flipping a flag and the original value is
     // const.
     auto task_spec = completed_task.second;
+    RAY_LOG(INFO) << "ryw ResendOutOfOrderTasks task " << task_spec.DebugString();
     task_spec.GetMutableMessage().set_skip_execution(true);
     PushActorTask(client_queue, task_spec, /*skip_queue=*/true);
   }
@@ -572,9 +578,13 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         &error_info,
         /*mark_task_object_failed*/ is_actor_dead,
         fail_immediatedly);
-
+    // DO NOT SUBMIT prob: when the *last* attempt failed as exit, these 2 things happen
+    // 1. task will_retry = false, will MarkTaskCompleted
+    // 2. the actor died and is subject to restart, then ResendOutOfOrderTasks then check
+    // fail.
     RAY_LOG(INFO) << "ryw HandlePushTaskReply " << error_type << error_info.DebugString()
-                  << status << is_actor_dead << reply.DebugString();
+                  << " will_retry " << will_retry << ", " << status << is_actor_dead
+                  << reply.DebugString();
     if (!is_actor_dead && !will_retry) {
       // Ran out of retries, last failure = either user exception or actor death.
       if (status.ok()) {
