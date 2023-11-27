@@ -24,6 +24,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _is_local_scheme,
+    call_with_retry,
     make_async_gen,
 )
 from ray.data.block import Block, BlockAccessor
@@ -751,33 +752,16 @@ def _open_file_with_retry(
     This is to avoid transient task failure with remote storage (such as S3),
     when the remote storage throttles the requests.
     """
-    import random
-    import time
-
     if OPEN_FILE_MAX_ATTEMPTS < 1:
         raise ValueError(
             "OPEN_FILE_MAX_ATTEMPTS cannot be negative or 0. Get: "
             f"{OPEN_FILE_MAX_ATTEMPTS}"
         )
 
-    for i in range(OPEN_FILE_MAX_ATTEMPTS):
-        try:
-            return open_file()
-        except Exception as e:
-            error_message = str(e)
-            is_retryable = any(
-                [error in error_message for error in OPEN_FILE_RETRY_ON_ERRORS]
-            )
-            if is_retryable and i + 1 < OPEN_FILE_MAX_ATTEMPTS:
-                # Retry with binary expoential backoff with random jitter.
-                backoff = min(
-                    (2 ** (i + 1)) * random.random(),
-                    OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
-                )
-                logger.get_logger().debug(
-                    f"Retrying {i+1} attempts to open file {file_path} after "
-                    f"{backoff} seconds."
-                )
-                time.sleep(backoff)
-            else:
-                raise e from None
+    return call_with_retry(
+        open_file,
+        match=OPEN_FILE_RETRY_ON_ERRORS,
+        description=f"open file {file_path}",
+        max_attempts=OPEN_FILE_MAX_ATTEMPTS,
+        max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
+    )
