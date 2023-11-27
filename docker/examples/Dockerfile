@@ -18,7 +18,6 @@ RUN pip install --no-cache-dir -U pip \
     bayesian-optimization \
     hyperopt \
     ConfigSpace==0.4.10 \
-    sigopt \ 
     scikit-optimize \
     hpbandster \
     lightgbm \

@@ -57,12 +57,6 @@ def _import_zoopt_search():
     return ZOOptSearch
 
 
-def _import_sigopt_search():
-    from ray.tune.search.sigopt.sigopt_search import SigOptSearch
-
-    return SigOptSearch
-
-
 def _import_hebo_search():
     from ray.tune.search.hebo.hebo_search import HEBOSearch
 
@@ -79,7 +73,6 @@ SEARCH_ALG_IMPORT = {
     "bohb": _import_bohb_search,
     "optuna": _import_optuna_search,
     "zoopt": _import_zoopt_search,
-    "sigopt": _import_sigopt_search,
     "hebo": _import_hebo_search,
 }
 

@@ -195,20 +195,6 @@ Optuna (tune.search.optuna.OptunaSearch)
 
     optuna.OptunaSearch
 
-.. _sigopt:
-
-SigOpt (tune.search.sigopt.SigOptSearch)
-----------------------------------------
-
-You will need to use the `SigOpt experiment and space specification <https://docs.sigopt.com/ai-module-api-references/experiments>`__
-to specify your search space.
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    sigopt.SigOptSearch
-
 .. _skopt:
 
 Scikit-Optimize (tune.search.skopt.SkOptSearch)

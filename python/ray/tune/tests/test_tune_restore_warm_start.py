@@ -21,7 +21,6 @@ from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.bayesopt import BayesOptSearch
 from ray.tune.search.skopt import SkOptSearch
 from ray.tune.search.optuna import OptunaSearch
-from ray.tune.search.sigopt import SigOptSearch, load_sigopt_key
 from ray.tune.search.zoopt import ZOOptSearch
 from ray.tune.search.hebo import HEBOSearch
 from ray.tune.search.ax import AxSearch
@@ -227,70 +226,6 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             space, sampler=TPESampler(seed=10), metric="loss", mode="min"
         )
         return search_alg, cost
-
-
-class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def setUp(self):
-        AbstractWarmStartTest.setUp(self)
-        load_sigopt_key()
-
-    def set_basic_conf(self):
-        space = [
-            {
-                "name": "width",
-                "type": "int",
-                "bounds": {"min": 0, "max": 20},
-            },
-            {
-                "name": "height",
-                "type": "int",
-                "bounds": {"min": -100, "max": 100},
-            },
-        ]
-
-        def cost(space):
-            train.report(
-                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
-            )
-
-        # Unfortunately, SigOpt doesn't allow setting of random state. Thus,
-        # we always end up with different suggestions, which is unsuitable
-        # for the warm start test. Here we make do with points_to_evaluate,
-        # and ensure that state is preserved over checkpoints and restarts.
-        points = [
-            {"width": 5, "height": 20},
-            {"width": 10, "height": -20},
-            {"width": 15, "height": 30},
-            {"width": 5, "height": -30},
-            {"width": 10, "height": 40},
-            {"width": 15, "height": -40},
-            {"width": 5, "height": 50},
-            {"width": 10, "height": -50},
-            {"width": 15, "height": 60},
-            {"width": 12, "height": -60},
-        ]
-
-        search_alg = SigOptSearch(
-            space,
-            name="SigOpt Example Experiment",
-            metric="loss",
-            mode="min",
-            points_to_evaluate=points,
-        )
-        return search_alg, cost
-
-    def testWarmStart(self):
-        if "SIGOPT_KEY" not in os.environ:
-            self.skipTest("No SigOpt API key found in environment.")
-            return
-
-        super().testWarmStart()
-
-    def testRestore(self):
-        if "SIGOPT_KEY" not in os.environ:
-            self.skipTest("No SigOpt API key found in environment.")
-            return
-        super().testRestore()
 
 
 class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
