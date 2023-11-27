@@ -1168,8 +1168,8 @@ provider:
 
         assert payload["source"] == "OSS"
         assert payload["cloud_provider"] == "aws"
-        assert payload["min_worker_nodes"] is None
-        assert payload["max_worker_nodes"] == 1
+        assert payload["min_workers"] is None
+        assert payload["max_workers"] == 1
         assert payload["head_node_instance_type"] is None
         assert payload["worker_node_instance_types"] is None
         assert payload["total_num_cpus"] == 3
