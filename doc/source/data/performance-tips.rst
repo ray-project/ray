@@ -255,8 +255,8 @@ Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is 
     import ray
     ray.shutdown()
 
-
 .. testcode::
+
     import ray
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
@@ -286,6 +286,7 @@ Setting a lower batch size produces lower peak heap memory usage:
     ray.shutdown()
 
 .. testcode::
+
     import ray
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
@@ -347,7 +348,7 @@ There are two ways to do this:
 2. If you don't need control over the exact number of output blocks and just want to produce larger blocks, use :meth:`ds.map_batches(lambda batch: batch, batch_size=batch_size) <ray.data.Dataset.map_batches>` and set ``batch_size`` to the desired number of rows per block. This is executed in a streaming fashion and avoids materialization.
 
 When :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` is used, Ray Data coalesces blocks so that each map task can process at least this many rows.
-Note that the chosen ``batch_size`` does not necessarily determine the map task's final output block size; see :ref:`the section <data_out_of_memory>` on block memory usage for more information.
+Note that the chosen ``batch_size`` is a lower bound on the task's input block size but it does not necessarily determine the task's final *output* block size; see :ref:`the section <data_out_of_memory>` on block memory usage for more information on how block size is determined.
 
 To illustrate these, the following code uses both strategies to coalesce the 10 tiny blocks with 1 row each into 1 larger block with 10 rows:
 
@@ -358,6 +359,7 @@ To illustrate these, the following code uses both strategies to coalesce the 10 
     ray.shutdown()
 
 .. testcode::
+
     import ray
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
