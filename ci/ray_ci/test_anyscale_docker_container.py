@@ -21,7 +21,9 @@ class TestAnyscaleDockerContainer(RayCITestBase):
             "ci.ray_ci.docker_container.Container.run_script",
             side_effect=_mock_run_script,
         ), mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "test_branch"}):
-            container = AnyscaleDockerContainer("3.9", "cu11.8.0", "ray-ml")
+            container = AnyscaleDockerContainer(
+                "3.9", "cu11.8.0", "ray-ml", upload=True
+            )
             container.run()
             cmd = self.cmds[-1]
             aws_ecr = _DOCKER_ECR_REPO.split("/")[0]
