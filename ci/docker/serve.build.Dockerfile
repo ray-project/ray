@@ -14,15 +14,14 @@ ENV DOCKER_CERT_PATH=
 
 SHELL ["/bin/bash", "-ice"]
 
-COPY . .
-
 # Install podman
-RUN sudo apt update
-RUN sudo apt install software-properties-common uidmap -y
-RUN sudo sh -c "echo 'deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list"
-RUN sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 4D64390375060AA4
-RUN sudo apt-get update
-RUN sudo apt-get install podman -y
+RUN sudo apt install software-properties-common uidmap -y && \
+    sudo sh -c "echo 'deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list" && \
+    sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 4D64390375060AA4 && \
+    sudo apt-get update && \
+    sudo apt-get install podman -y
+
+COPY . .
 
 RUN <<EOF
 #!/bin/bash
