@@ -19,7 +19,6 @@ RUN pip install --no-cache-dir -U pip \
     hyperopt \
     ConfigSpace==0.4.10 \
     sigopt \ 
-    nevergrad \
     scikit-optimize \
     hpbandster \
     lightgbm \

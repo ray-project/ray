@@ -181,7 +181,7 @@ Simply pass in a ``search_alg`` argument to ``tune.TuneConfig``, which is taken 
     :end-before: __bayes_end__
 
 Tune has Search Algorithms that integrate with many popular **optimization** libraries,
-such as :ref:`Nevergrad <nevergrad>`, :ref:`HyperOpt <tune-hyperopt>`, or :ref:`Optuna <tune-optuna>`.
+such as :ref:`HyperOpt <tune-hyperopt>` or :ref:`Optuna <tune-optuna>`.
 Tune automatically converts the provided search space into the search
 spaces the search algorithms and underlying libraries expect.
 See the :ref:`Search Algorithm API documentation <tune-search-alg>` for more details.

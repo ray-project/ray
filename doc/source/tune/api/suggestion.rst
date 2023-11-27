@@ -184,17 +184,6 @@ HyperOpt (tune.search.hyperopt.HyperOptSearch)
 
     hyperopt.HyperOptSearch
 
-.. _nevergrad:
-
-Nevergrad (tune.search.nevergrad.NevergradSearch)
--------------------------------------------------
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    nevergrad.NevergradSearch
-
 .. _tune-optuna:
 
 Optuna (tune.search.optuna.OptunaSearch)

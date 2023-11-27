@@ -45,12 +45,6 @@ def _import_bohb_search():
     return TuneBOHB
 
 
-def _import_nevergrad_search():
-    from ray.tune.search.nevergrad.nevergrad_search import NevergradSearch
-
-    return NevergradSearch
-
-
 def _import_optuna_search():
     from ray.tune.search.optuna.optuna_search import OptunaSearch
 
@@ -83,7 +77,6 @@ SEARCH_ALG_IMPORT = {
     "hyperopt": _import_hyperopt_search,
     "bayesopt": _import_bayesopt_search,
     "bohb": _import_bohb_search,
-    "nevergrad": _import_nevergrad_search,
     "optuna": _import_optuna_search,
     "zoopt": _import_zoopt_search,
     "sigopt": _import_sigopt_search,
