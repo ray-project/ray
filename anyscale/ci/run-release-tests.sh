@@ -10,6 +10,8 @@ if [[ "${BUILDKITE_COMMIT}" == "HEAD" ]]; then
     export BUILDKITE_COMMIT
 fi
 
+aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 830883877497.dkr.ecr.us-west-2.amazonaws.com
+
 curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-441.0.0-linux-arm.tar.gz
 tar -xf google-cloud-cli-441.0.0-linux-arm.tar.gz
 ./google-cloud-sdk/install.sh -q
