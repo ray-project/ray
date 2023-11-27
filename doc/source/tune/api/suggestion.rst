@@ -209,17 +209,6 @@ FLAML `CFO documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tun
 
     flaml.CFO
 
-.. _Dragonfly:
-
-Dragonfly (tune.search.dragonfly.DragonflySearch)
--------------------------------------------------
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    dragonfly.DragonflySearch
-
 .. _tune-hebo:
 
 HEBO (tune.search.hebo.HEBOSearch)

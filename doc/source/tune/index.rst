@@ -9,7 +9,7 @@ Ray Tune: Hyperparameter Tuning
 
 Tune is a Python library for experiment execution and hyperparameter tuning at any scale.
 You can tune your favorite machine learning framework (:ref:`PyTorch <tune-pytorch-cifar-ref>`, :ref:`XGBoost <tune-xgboost-ref>`, :doc:`Scikit-Learn <examples/tune-sklearn>`, :doc:`TensorFlow and Keras <examples/tune_mnist_keras>`, and :doc:`more <examples/index>`) by running state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>` and :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
-Tune further integrates with a wide range of additional hyperparameter optimization tools, including :doc:`Ax <examples/ax_example>`, :doc:`BayesOpt <examples/bayesopt_example>`, :doc:`BOHB <examples/bohb_example>`, Dragonfly, :doc:`Hyperopt <examples/hyperopt_example>`, Nevergrad, :doc:`Optuna <examples/optuna_example>` and SigOpt.
+Tune further integrates with a wide range of additional hyperparameter optimization tools, including :doc:`Ax <examples/ax_example>`, :doc:`BayesOpt <examples/bayesopt_example>`, :doc:`BOHB <examples/bohb_example>`, Nevergrad, :doc:`Optuna <examples/optuna_example>` and SigOpt.
 
 **Click on the following tabs to see code examples for various machine learning frameworks**:
 

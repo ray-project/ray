@@ -33,12 +33,6 @@ def _import_cfo_search():
     return CFO
 
 
-def _import_dragonfly_search():
-    from ray.tune.search.dragonfly.dragonfly_search import DragonflySearch
-
-    return DragonflySearch
-
-
 def _import_skopt_search():
     from ray.tune.search.skopt.skopt_search import SkOptSearch
 
@@ -97,7 +91,6 @@ SEARCH_ALG_IMPORT = {
     "variant_generator": _import_variant_generator,
     "random": _import_variant_generator,
     "ax": _import_ax_search,
-    "dragonfly": _import_dragonfly_search,
     "skopt": _import_skopt_search,
     "hyperopt": _import_hyperopt_search,
     "bayesopt": _import_bayesopt_search,

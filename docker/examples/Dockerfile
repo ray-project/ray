@@ -27,7 +27,6 @@ RUN pip install --no-cache-dir -U pip \
     torch \
     torchvision \
     tensorboardX \
-    dragonfly-opt \
     zoopt \
     mlflow \
     pytest-remotedata>=0.3.1 \

@@ -17,8 +17,7 @@ from ray.tune.search import ConcurrencyLimiter
 
 
 def _invalid_objective(config):
-    # DragonFly uses `point`
-    metric = "point" if "point" in config else "report"
+    metric = "report"
 
     if config[metric] > 4:
         train.report({"_metric": float("inf")})
@@ -205,23 +204,6 @@ class InvalidValuesTest(unittest.TestCase):
                 metric="_metric",
                 mode="max",
                 num_samples=16,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
-    def testDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        np.random.seed(1000)  # At least one nan, inf, -inf and float
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=DragonflySearch(domain="euclidean", optimizer="random"),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=8,
                 reuse_actors=False,
             )
         self.assertCorrectExperimentOutput(out)
@@ -425,27 +407,6 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.assertEqual(get_len_X(searcher_copy), 1)
         self.assertEqual(get_len_y(searcher_copy), 1)
         searcher_copy.suggest("1")
-
-    def testDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        searcher = DragonflySearch(
-            space=self.space,
-            metric="metric",
-            mode="max",
-            domain="euclidean",
-            optimizer="bandit",
-        )
-
-        point = {
-            self.param_name: self.valid_value,
-        }
-
-        get_len_X = lambda s: len(s._opt.history.curr_opt_points)  # noqa E731
-        get_len_y = lambda s: len(s._opt.history.curr_opt_vals)  # noqa E731
-
-        self.run_add_evaluated_point(point, searcher, get_len_X, get_len_y)
-        self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
 
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
@@ -674,22 +635,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._save(searcher)
 
         searcher = CFO()
-        self._restore(searcher)
-
-    def testDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        searcher = DragonflySearch(
-            space=self.config,
-            metric=self.metric_name,
-            mode="max",
-            domain="euclidean",
-            optimizer="random",
-        )
-
-        self._save(searcher)
-
-        searcher = DragonflySearch()
         self._restore(searcher)
 
     def testHEBO(self):

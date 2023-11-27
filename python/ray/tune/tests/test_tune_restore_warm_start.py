@@ -19,7 +19,6 @@ from ray import train, tune
 from ray.rllib import _register_all
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
-from ray.tune.search.dragonfly import DragonflySearch
 from ray.tune.search.bayesopt import BayesOptSearch
 from ray.tune.search.flaml import CFO, BlendSearch
 from ray.tune.search.skopt import SkOptSearch
@@ -299,36 +298,6 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             space, sampler=TPESampler(seed=10), metric="loss", mode="min"
         )
         return search_alg, cost
-
-
-class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        from dragonfly.opt.gp_bandit import EuclideanGPBandit
-        from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
-        from dragonfly import load_config
-
-        def cost(space):
-            height, width = space["point"]
-            train.report(dict(loss=(height - 14) ** 2 - abs(width - 3)))
-
-        domain_vars = [
-            {"name": "height", "type": "float", "min": -10, "max": 10},
-            {"name": "width", "type": "float", "min": 0, "max": 20},
-        ]
-
-        domain_config = load_config({"domain": domain_vars})
-
-        func_caller = EuclideanFunctionCaller(
-            None, domain_config.domain.list_of_domains[0]
-        )
-        optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
-        search_alg = DragonflySearch(
-            optimizer, metric="loss", mode="min", random_state_seed=162
-        )
-        return search_alg, cost
-
-    def treat_trial_config(self, trial_config):
-        return [list(x["point"]) for x in trial_config]
 
 
 class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):

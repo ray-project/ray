@@ -96,16 +96,6 @@ class ConvergenceTest(unittest.TestCase):
 
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
-    def testConvergenceDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        np.random.seed(0)
-        searcher = DragonflySearch(domain="euclidean", optimizer="bandit")
-        analysis = self._testConvergence(searcher)
-
-        assert len(analysis.trials) < 100
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
-
     def testConvergenceHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
 
