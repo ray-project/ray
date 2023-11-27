@@ -114,6 +114,7 @@ class SetReadParallelismRule(Rule):
                 f"for stage {logical_op.name} to satisfy {reason}."
             )
         logical_op.set_detected_parallelism(detected_parallelism)
+
         if k is not None:
             logger.get_logger().info(
                 f"To satisfy the requested parallelism of {detected_parallelism}, "
