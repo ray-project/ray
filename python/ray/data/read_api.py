@@ -1048,11 +1048,10 @@ def read_json(
 
         >>> import pyarrow.json as pajson
         >>> block_size = 10 << 20 # Set block size to 10MB
-        >>> ray.data.read_json(
+        >>> ray.data.read_json(  # doctest: +SKIP
         ...     "s3://anonymous@ray-example-data/log.json",
         ...     read_options=pajson.ReadOptions(block_size=block_size)
         ... )
-        Dataset(num_blocks=8, num_rows=1, schema={timestamp: timestamp[s], size: int64})
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1879,14 +1878,14 @@ def read_databricks_tables(
 ) -> Dataset:
     """Read a Databricks unity catalog table or Databricks SQL execution result.
 
-    Before calling this API, set the ``DATABRICKS_HOST`` environment
+    Before calling this API, set the ``DATABRICKS_TOKEN`` environment
     variable to your Databricks warehouse access token.
 
     .. code-block:: console
 
         export DATABRICKS_TOKEN=...
 
-    If you're running your program on the Databricks runtime, also set the
+    If you're not running your program on the Databricks runtime, also set the
     ``DATABRICKS_HOST`` environment variable.
 
     .. code-block:: console
@@ -1906,7 +1905,7 @@ def read_databricks_tables(
             import ray
 
             ds = ray.data.read_databricks_tables(
-                warehouse_id='a885ad08b64951ad',
+                warehouse_id='...',
                 catalog='catalog_1',
                 schema='db_1',
                 query='select id from table_1 limit 750000',
