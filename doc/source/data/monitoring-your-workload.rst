@@ -27,7 +27,7 @@ For an overview of all datasets that have been running on your cluster, see the 
 * execution progress (measured in blocks)
 * execution state (running, failed, or finished)
 * dataset start/end time
-* dataset-level metrics (e.g., sum of rows processed over all operators)
+* dataset-level metrics (for example, sum of rows processed over all operators)
 
 .. image:: images/data-overview-table.png
    :align: center
