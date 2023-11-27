@@ -43,6 +43,7 @@ import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
 import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
+from ray.scripts.scripts import handle_rename
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
 from ray.util.state import list_nodes
@@ -1010,6 +1011,58 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
 
         _check_output_via_pattern("test_ray_cluster_dump.txt", result)
 
+
+# #CVGA-start
+class TestHandleRename:
+    def strip_ansi_codes(self, text):
+        """Remove ANSI escape codes from a string."""
+        ansi_escape = re.compile(r"\x1b\[([0-9]+)(;[0-9]+)*m")
+        return ansi_escape.sub("", text)
+
+    @pytest.mark.parametrize(
+        "input_string, expected_output",
+        [
+            ("\x1b[33mYellow Text\x1b[0m", "Yellow Text"),
+            ("some \x1b[1;31mBold Red Text\x1b[0m", "some Bold Red Text"),
+            ("No Formatting", "No Formatting"),
+            ("", ""),
+        ],
+    )
+    def test_strip_ansi_codes(self, input_string, expected_output):
+        assert self.strip_ansi_codes(input_string) == expected_output
+
+    def test_handle_rename_old_param_set(self, capsys):
+        result = handle_rename("old_value", "old_param", None, "new_param")
+        captured = capsys.readouterr()
+        assert result == "old_value"
+        assert (
+            "`old_param` is deprecated. Please use `new_param` instead."
+            in self.strip_ansi_codes(captured.out)
+        )
+
+    def test_handle_rename_new_param_set(self, capsys):
+        result = handle_rename(None, "old_param", "new_value", "new_param")
+        captured = capsys.readouterr()
+        assert result == "new_value"
+        assert captured.out == "" and captured.err == ""
+
+    def test_handle_rename_both_params_set(self, capsys):
+        result = handle_rename("old_value", "old_param", "new_value", "new_param")
+        captured = capsys.readouterr()
+        assert result == "new_value"
+        assert (
+            "Both `new_param` and `old_param` are set. Using `new_param`."
+            in self.strip_ansi_codes(captured.out)
+        )
+
+    def test_handle_rename_no_params_set(self, capsys):
+        result = handle_rename(None, "old_param", None, "new_param")
+        captured = capsys.readouterr()
+        assert result is None
+        assert captured.out == "" and captured.err == ""
+
+
+# #CVGA-end
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
