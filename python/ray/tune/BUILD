@@ -533,15 +533,6 @@ py_test(
 )
 
 py_test(
-    name = "cfo_example",
-    size = "small",
-    srcs = ["examples/cfo_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "cifar10_pytorch",
     size = "medium",
     srcs = ["examples/cifar10_pytorch.py"],
