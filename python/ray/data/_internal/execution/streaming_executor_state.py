@@ -606,8 +606,8 @@ def _execution_allowed(
 
     if (
         global_ok_sans_memory
-        and inc.object_store_memory is not None
-        and inc.object_store_memory <= 0
+        and op._metrics.average_bytes_change_per_task is not None
+        and op._metrics.average_bytes_change_per_task <= 0
     ):
         return True
 
