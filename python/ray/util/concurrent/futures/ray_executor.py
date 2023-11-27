@@ -15,7 +15,6 @@ from typing import (
     TypedDict,
     Union,
 )
-from enum import Enum
 
 import ray
 from ray.util.annotations import PublicAPI
@@ -39,11 +38,6 @@ class _PoolActor(TypedDict):
 
 
 # ------------------------------------------------------
-
-
-class ActorPoolType(Enum):
-    BALANCED = 0
-    ROUND_ROBIN = 1
 
 
 class _ActorPoolBase(ABC):
@@ -403,6 +397,10 @@ class RayExecutor(Executor):
     mp_context : Any | None
         This is only included for compatibility with
         concurrent.futures.ProcessPoolExecutor but is unused.
+    actor_pool_type: str | None
+        The type of actor pool to use: either 'balanced' (which will privilege
+        actors with fewer tasks), or 'roundrobin' (which will simply assign
+        tasks to actors sequentially.
     futures : list[Future[Any]]
         Aggregated Futures from initiated tasks
     actor_pool : _AbstractActorPool
@@ -430,7 +428,7 @@ class RayExecutor(Executor):
         initargs: tuple[Any, ...] = (),
         max_tasks_per_child: Optional[int] = None,
         mp_context: Optional[Any] = None,
-        actor_pool_type: Optional[ActorPoolType] = ActorPoolType.BALANCED,
+        actor_pool_type: str = "balanced",
         **kwargs: Any,
     ):
 
@@ -488,14 +486,19 @@ class RayExecutor(Executor):
             )
         self.max_workers = max_workers
 
-        if actor_pool_type == ActorPoolType.BALANCED:
+        actor_pool_type_err = ValueError(
+            "actor_pool_type must be either 'balanced' or 'roundrobin'"
+        )
+        if not isinstance(actor_pool_type, str):
+            raise actor_pool_type_err
+        if actor_pool_type.lower() == "balanced":
             self.actor_pool = _BalancedActorPool(
                 num_actors=max_workers,
                 initializer=initializer,
                 initargs=initargs,
                 max_tasks_per_actor=self.max_tasks_per_child,
             )
-        elif actor_pool_type == ActorPoolType.ROUND_ROBIN:
+        elif actor_pool_type.lower() == "roundrobin":
             self.actor_pool = _RoundRobinActorPool(
                 num_actors=max_workers,
                 initializer=initializer,
@@ -503,7 +506,7 @@ class RayExecutor(Executor):
                 max_tasks_per_actor=self.max_tasks_per_child,
             )
         else:
-            raise ValueError(r"Invalid actor pool type: {actor_pool_type}")
+            raise actor_pool_type_err
 
         return
 

@@ -11,7 +11,6 @@ from ray.util.concurrent.futures.ray_executor import (
     _AbstractActorPool,
     _RoundRobinActorPool,
     _BalancedActorPool,
-    ActorPoolType,
 )
 import time
 import typing as T
@@ -155,7 +154,7 @@ class ActorPoolTests(ABC):
         ...
 
     @property
-    def apt(self) -> ActorPoolType:
+    def apt(self) -> str:
         ...
 
     @pytest.fixture
@@ -344,8 +343,8 @@ class TestBalancedActorPool(ActorPoolTests, TestShared):
         return _BalancedActorPool
 
     @property
-    def apt(self) -> ActorPoolType:
-        return ActorPoolType.BALANCED
+    def apt(self) -> str:
+        return "balanced"
 
     def test_actor_pool_can_get_task_count(self):
         pool = self.apc(num_actors=2)
@@ -385,8 +384,8 @@ class TestRoundRobinActorPool(ActorPoolTests, TestShared):
         return _RoundRobinActorPool
 
     @property
-    def apt(self) -> ActorPoolType:
-        return ActorPoolType.ROUND_ROBIN
+    def apt(self) -> str:
+        return "roundrobin"
 
     def test_actor_pool_cycles_through_actors(self):
         pool = self.apc(num_actors=2)
@@ -401,6 +400,12 @@ class TestRoundRobinActorPool(ActorPoolTests, TestShared):
 
 
 class TestExistingInstanceSetup(TestShared):
+    def test_actor_pool_type(self):
+        with pytest.raises(ValueError):
+            RayExecutor(address=self.address, actor_pool_type=None)
+        with pytest.raises(ValueError):
+            RayExecutor(address=self.address, actor_pool_type="my-other-type")
+
     def test_remote_function_runs_on_specified_instance(self):
         with RayExecutor(address=self.address) as ex:
             result = ex.submit(lambda x: x * x, 100).result()
