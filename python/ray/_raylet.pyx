@@ -361,8 +361,12 @@ class StreamingObjectRefGenerator:
         if self.is_finished():
             return False
 
-        expected_ref = core_worker.peek_object_ref_stream(
+        expected_ref, is_ready = core_worker.peek_object_ref_stream(
             self._generator_ref)
+
+        if is_ready:
+            return True
+
         ready, _ = ray.wait(
             [expected_ref], timeout=0, fetch_local=False)
         return len(ready) > 0
