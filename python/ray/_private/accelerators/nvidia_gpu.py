@@ -63,11 +63,10 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         cuda_device_type = None
         if device_count > 0:
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            device_name = pynvml.nvmlDeviceGetName(handle)
-            if isinstance(device_name, bytes):
-                device_name = device_name.decode("utf-8")
             cuda_device_type = (
-                NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(device_name)
+                NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
+                    pynvml.nvmlDeviceGetName(handle)
+                )
             )
         pynvml.nvmlShutdown()
         return cuda_device_type
