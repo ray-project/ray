@@ -331,7 +331,6 @@ def test_python_object_leak(shutdown_only):
             return self.gc_garbage_len
 
         async def gen(self, fail=False):
-            gc.set_debug(gc.DEBUG_SAVEALL)
             gc.collect()
             self.gc_garbage_len = len(gc.garbage)
             print("Objects: ", self.gc_garbage_len)
@@ -341,7 +340,6 @@ def test_python_object_leak(shutdown_only):
             yield 1
 
         async def f(self, fail=False):
-            gc.set_debug(gc.DEBUG_SAVEALL)
             gc.collect()
             self.gc_garbage_len = len(gc.garbage)
             print("Objects: ", self.gc_garbage_len)
@@ -359,7 +357,6 @@ def test_python_object_leak(shutdown_only):
             return self.gc_garbage_len
 
         def f(self, fail=False):
-            gc.set_debug(gc.DEBUG_SAVEALL)
             gc.collect()
             self.gc_garbage_len = len(gc.garbage)
             print("Objects: ", self.gc_garbage_len)
@@ -369,7 +366,6 @@ def test_python_object_leak(shutdown_only):
             return 1
 
         def gen(self, fail=False):
-            gc.set_debug(gc.DEBUG_SAVEALL)
             gc.collect()
             self.gc_garbage_len = len(gc.garbage)
             print("Objects: ", self.gc_garbage_len)
