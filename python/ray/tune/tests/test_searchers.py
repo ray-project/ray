@@ -145,28 +145,6 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
-    def testBlendSearch(self):
-        from ray.tune.search.flaml import BlendSearch
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=BlendSearch(
-                    points_to_evaluate=[
-                        {"report": 1.0},
-                        {"report": 2.1},
-                        {"report": 3.1},
-                        {"report": 4.1},
-                    ]
-                ),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=16,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -178,32 +156,6 @@ class InvalidValuesTest(unittest.TestCase):
                 metric="_metric",
                 mode="max",
                 num_samples=8,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
-    def testCFO(self):
-        self.skipTest(
-            "Broken in FLAML, reenable once "
-            "https://github.com/microsoft/FLAML/pull/263 is merged"
-        )
-        from ray.tune.search.flaml import CFO
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=CFO(
-                    points_to_evaluate=[
-                        {"report": 1.0},
-                        {"report": 2.1},
-                        {"report": 3.1},
-                        {"report": 4.1},
-                    ]
-                ),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=16,
                 reuse_actors=False,
             )
         self.assertCorrectExperimentOutput(out)
@@ -605,16 +557,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = BayesOptSearch()
         self._restore(searcher)
 
-    def testBlendSearch(self):
-        from ray.tune.search.flaml import BlendSearch
-
-        searcher = BlendSearch(space=self.config, metric=self.metric_name, mode="max")
-
-        self._save(searcher)
-
-        searcher = BlendSearch()
-        self._restore(searcher)
-
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -626,16 +568,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
         assert "not_completed" in searcher.trial_to_params
-
-    def testCFO(self):
-        from ray.tune.search.flaml import CFO
-
-        searcher = CFO(space=self.config, metric=self.metric_name, mode="max")
-
-        self._save(searcher)
-
-        searcher = CFO()
-        self._restore(searcher)
 
     def testHEBO(self):
         if Version(pandas.__version__) >= Version("2.0.0"):

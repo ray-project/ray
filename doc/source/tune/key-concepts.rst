@@ -204,14 +204,6 @@ Here's an overview of all available search algorithms in Tune:
      - Bayesian/Bandit Optimization
      - [`Ax <https://ax.dev/>`__]
      - :doc:`/tune/examples/includes/ax_example`
-   * - :ref:`BlendSearch <BlendSearch>`
-     - Blended Search
-     - [`Bs <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-     - :doc:`/tune/examples/includes/blendsearch_example`
-   * - :ref:`CFO <CFO>`
-     - Cost-Frugal hyperparameter Optimization
-     - [`Cfo <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-     - :doc:`/tune/examples/includes/cfo_example`
    * - :ref:`HyperOptSearch <tune-hyperopt>`
      - Tree-Parzen Estimators
      - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]

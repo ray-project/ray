@@ -162,53 +162,6 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
     bohb.TuneBOHB
 
-.. _BlendSearch:
-
-BlendSearch (tune.search.flaml.BlendSearch)
--------------------------------------------
-
-BlendSearch is an economical hyperparameter optimization algorithm that combines local search with global search.
-It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
-It allows the users to specify a low-cost initial point as input if such point exists.
-
-In order to use this search algorithm, you will need to install ``flaml``:
-
-.. code-block:: bash
-
-    $ pip install 'flaml[blendsearch]'
-
-See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and documentation in FLAML `BlendSearch documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    flaml.BlendSearch
-
-.. _CFO:
-
-CFO (tune.search.flaml.CFO)
----------------------------
-
-CFO (Cost-Frugal hyperparameter Optimization) is a hyperparameter search algorithm based on randomized local search.
-It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
-It allows the users to specify a low-cost initial point as input if such point exists.
-
-In order to use this search algorithm, you will need to install ``flaml``:
-
-.. code-block:: bash
-
-    $ pip install flaml
-
-See the `CFO paper <https://arxiv.org/pdf/2005.01571.pdf>`_ and documentation in
-FLAML `CFO documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    flaml.CFO
-
 .. _tune-hebo:
 
 HEBO (tune.search.hebo.HEBOSearch)

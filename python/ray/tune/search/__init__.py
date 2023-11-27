@@ -21,18 +21,6 @@ def _import_ax_search():
     return AxSearch
 
 
-def _import_blendsearch_search():
-    from ray.tune.search.flaml.flaml_search import BlendSearch
-
-    return BlendSearch
-
-
-def _import_cfo_search():
-    from ray.tune.search.flaml.flaml_search import CFO
-
-    return CFO
-
-
 def _import_skopt_search():
     from ray.tune.search.skopt.skopt_search import SkOptSearch
 
@@ -100,8 +88,6 @@ SEARCH_ALG_IMPORT = {
     "zoopt": _import_zoopt_search,
     "sigopt": _import_sigopt_search,
     "hebo": _import_hebo_search,
-    "blendsearch": _import_blendsearch_search,
-    "cfo": _import_cfo_search,
 }
 
 

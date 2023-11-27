@@ -20,7 +20,6 @@ from ray.rllib import _register_all
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.bayesopt import BayesOptSearch
-from ray.tune.search.flaml import CFO, BlendSearch
 from ray.tune.search.skopt import SkOptSearch
 from ray.tune.search.nevergrad import NevergradSearch
 from ray.tune.search.optuna import OptunaSearch
@@ -191,54 +190,6 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         tune.run(
             cost, num_samples=10, search_alg=search_alg3, verbose=0, reuse_actors=True
         )
-
-
-class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = {
-            "height": tune.uniform(-100, 100),
-            "width": tune.randint(0, 100),
-        }
-
-        def cost(space):
-            train.report(
-                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
-            )
-
-        search_alg = CFO(
-            space=space,
-            metric="loss",
-            mode="min",
-            seed=20,
-        )
-
-        return search_alg, cost
-
-
-class BlendSearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = {
-            "height": tune.uniform(-100, 100),
-            "width": tune.randint(0, 100),
-            "time_budget_s": 10,
-        }
-
-        def cost(param):
-            train.report(
-                dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3), cost=1)
-            )
-
-        search_alg = BlendSearch(
-            space=space,
-            metric="loss",
-            mode="min",
-            seed=20,
-            # Mocked to be a constant to ensure reproductibility,
-            # as runtime (default) can fluctuate
-            cost_attr="cost",
-        )
-
-        return search_alg, cost
 
 
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
