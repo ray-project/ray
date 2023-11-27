@@ -223,7 +223,7 @@ This can be used in conjunction with column pruning when appropriate to get the 
 Reducing memory usage
 ---------------------
 
-.. _data_memory:
+.. _data_out_of_memory:
 
 Troubleshooting out-of-memory errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
