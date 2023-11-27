@@ -1316,9 +1316,11 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 
 Status CoreWorker::SealOwned(const ObjectID &object_id,
                              bool pin_object,
-                             const std::unique_ptr<rpc::Address> &owner_address) {
+                             const std::unique_ptr<rpc::Address> &owner_address,
+                             int64_t max_readers) {
   auto status =
-      SealExisting(object_id, pin_object, ObjectID::Nil(), std::move(owner_address));
+      SealExisting(object_id, pin_object, ObjectID::Nil(), std::move(owner_address),
+          max_readers);
   if (status.ok()) return status;
   RemoveLocalReference(object_id);
   if (reference_counter_->HasReference(object_id)) {
@@ -1332,8 +1334,9 @@ Status CoreWorker::SealOwned(const ObjectID &object_id,
 Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 bool pin_object,
                                 const ObjectID &generator_id,
-                                const std::unique_ptr<rpc::Address> &owner_address) {
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
+                                const std::unique_ptr<rpc::Address> &owner_address,
+                                int64_t max_readers) {
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id, max_readers));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
@@ -1355,6 +1358,11 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   return Status::OK();
+}
+
+Status CoreWorker::GetRelease(const std::vector<ObjectID> &object_ids) {
+  RAY_CHECK(object_ids.size() == 1);
+  return plasma_store_provider_->GetRelease(object_ids[0]);
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
@@ -1824,6 +1832,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args,
     int64_t num_returns,
+    bool is_compiled_dag_task,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const std::string &debugger_breakpoint,
@@ -1833,6 +1842,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &concurrency_group_name,
     bool include_job_config,
     int64_t generator_backpressure_num_objects) {
+  RAY_LOG(DEBUG) << "is compiled dag task " << is_compiled_dag_task;
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1868,6 +1878,7 @@ void CoreWorker::BuildCommonTaskSpec(
       caller_id,
       address,
       num_returns,
+      is_compiled_dag_task,
       returns_dynamic,
       is_streaming_generator,
       generator_backpressure_num_objects,
@@ -1923,6 +1934,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       function,
                       args,
                       task_options.num_returns,
+                      task_options.is_compiled_dag_task,
                       constrained_resources,
                       constrained_resources,
                       debugger_breakpoint,
@@ -2009,6 +2021,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       function,
                       args,
                       1,
+                      false,
                       new_resource,
                       new_placement_resources,
                       "" /* debugger_breakpoint */,
@@ -2248,6 +2261,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
                       function,
                       args,
                       task_options.num_returns,
+                      task_options.is_compiled_dag_task,
                       task_options.resources,
                       required_resources,
                       "",    /* debugger_breakpoint */
@@ -2788,6 +2802,10 @@ Status CoreWorker::ExecuteTask(
 
   if (!options_.is_local_mode) {
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
+  }
+  // XXX avoid metric crash on resubmit
+  if (task_spec.IsCompiledDagTask()) {
+    task_counter_.IncPending(func_name, task_spec.IsRetry());
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;

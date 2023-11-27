@@ -398,7 +398,7 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
     return;
   }
   if (it->second.local_ref_count == 0) {
-    RAY_LOG(WARNING)
+    RAY_LOG(DEBUG)  // XXX fix for compiled dag
         << "Tried to decrease ref count for object ID that has count 0 " << object_id
         << ". This should only happen if ray.internal.free was called earlier.";
     return;
@@ -641,6 +641,10 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
 
 void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
                                                std::vector<ObjectID> *deleted) {
+  // TODO(swang): disable ref counting properly, for shared
+  // objects only.
+  return;
+
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.on_ref_removed) {

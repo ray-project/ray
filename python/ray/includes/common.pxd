@@ -293,7 +293,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
                    const c_vector[CObjectReference] &nested_refs)
         c_bool HasData() const
         c_bool HasMetadata() const
-        const size_t DataSize() const
+        const size_t GetSize() const
         const shared_ptr[CBuffer] &GetData()
         const shared_ptr[CBuffer] &GetMetadata() const
         c_bool IsInPlasmaError() const
@@ -319,11 +319,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CTaskOptions "ray::core::TaskOptions":
         CTaskOptions()
-        CTaskOptions(c_string name, int num_returns,
+        CTaskOptions(c_string name, int num_returns, c_bool is_compiled_dag_task,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects)
-        CTaskOptions(c_string name, int num_returns,
+        CTaskOptions(c_string name, int num_returns, c_bool is_compiled_dag_task,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,

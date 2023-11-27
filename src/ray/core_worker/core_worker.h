@@ -653,7 +653,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealOwned(const ObjectID &object_id,
                    bool pin_object,
-                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+                   const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+                   int64_t max_readers = -1);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -670,7 +671,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status SealExisting(const ObjectID &object_id,
                       bool pin_object,
                       const ObjectID &generator_id = ObjectID::Nil(),
-                      const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+                      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+                      int64_t max_readers = -1);
+
+  Status GetRelease(const std::vector<ObjectID> &object_ids);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -1339,6 +1343,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args,
       int64_t num_returns,
+      bool is_compiled_dag_task,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint,

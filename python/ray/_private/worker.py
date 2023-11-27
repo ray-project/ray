@@ -467,6 +467,8 @@ class Worker:
         # different drivers that connect to the same Serve instance.
         # See https://github.com/ray-project/ray/pull/35070.
         self._filter_logs_by_job = True
+        # TODO(ekl) aren't job ids unique per worker now so we can cache it?
+        self._cached_job_id = None
         # the debugger port for this worker
         self._debugger_port = None
 
@@ -487,9 +489,12 @@ class Worker:
 
     @property
     def current_job_id(self):
-        if hasattr(self, "core_worker"):
-            return self.core_worker.get_current_job_id()
-        return JobID.nil()
+        if self._cached_job_id is None:
+            if hasattr(self, "core_worker"):
+                self._cached_job_id = self.core_worker.get_current_job_id()
+            else:
+                return JobID.nil()
+        return self._cached_job_id
 
     @property
     def actor_id(self):
@@ -687,7 +692,7 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None):
+    def put_object(self, value, object_ref=None, owner_address=None, max_readers=-1):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -743,7 +748,10 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object_and_increment_local_ref(
-                serialized_value, object_ref=object_ref, owner_address=owner_address
+                serialized_value,
+                object_ref=object_ref,
+                owner_address=owner_address,
+                max_readers=max_readers,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -2488,6 +2496,12 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
 blocking_get_inside_async_warned = False
 
 
+def release(object_ref):
+    worker = global_worker
+    worker.check_connected()
+    worker.core_worker.get_release([object_ref])
+
+
 @overload
 def get(
     object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
@@ -2619,7 +2633,10 @@ def get(
 @PublicAPI
 @client_mode_hook
 def put(
-    value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
+    value: Any,
+    *,
+    _owner: Optional["ray.actor.ActorHandle"] = None,
+    max_readers=-1,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -2665,7 +2682,9 @@ def put(
 
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, owner_address=serialize_owner_address)
+            object_ref = worker.put_object(
+                value, owner_address=serialize_owner_address, max_readers=max_readers
+            )
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "

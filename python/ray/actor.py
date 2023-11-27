@@ -29,6 +29,7 @@ from ray._raylet import (
     StreamingObjectRefGenerator,
     raise_sys_exit_with_custom_error_message,
 )
+from ray.dag.class_node import PARENT_CLASS_NODE_KEY, ClassMethodNode
 from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
@@ -73,6 +74,7 @@ def method(*args, **kwargs):
         "num_returns",
         "concurrency_group",
         "_generator_backpressure_num_objects",
+        "_is_compiled_dag_task",
     ]
     error_string = (
         "The @ray.method decorator must be applied using at least one of "
@@ -96,6 +98,8 @@ def method(*args, **kwargs):
             method.__ray_generator_backpressure_num_objects__ = kwargs[
                 "_generator_backpressure_num_objects"
             ]
+        if "_is_compiled_dag_task" in kwargs:
+            method.__ray_is_compiled_dag_task__ = kwargs["_is_compiled_dag_task"]
         return method
 
     return annotate_method
@@ -115,6 +119,7 @@ class ActorMethod:
         _method_name: The name of the actor method.
         _num_returns: The default number of return values that the method
             invocation should return.
+        _is_compiled_dag_task: Whether this is a cached dag task.
         _generator_backpressure_num_objects: Generator-only config.
             If a number of unconsumed objects reach this threshold,
             a actor task stop pausing.
@@ -132,13 +137,15 @@ class ActorMethod:
         actor: object,
         method_name: str,
         num_returns: int,
+        is_compiled_dag_task: bool,
         generator_backpressure_num_objects: int,
         decorator=None,
         hardref=False,
     ):
-        self._actor_ref = weakref.ref(actor)
+        self._actor_ref = weakref.proxy(actor)
         self._method_name = method_name
         self._num_returns = num_returns
+        self._is_compiled_dag_task = is_compiled_dag_task
         self._generator_backpressure_num_objects = generator_backpressure_num_objects
         # This is a decorator that is used to wrap the function invocation (as
         # opposed to the function execution). The decorator must return a
@@ -161,6 +168,10 @@ class ActorMethod:
             f"'object.{self._method_name}.remote()'."
         )
 
+    @DeveloperAPI
+    def bind(self, *args, **kwargs):
+        return self._bind(args, kwargs)
+
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
 
@@ -182,7 +193,42 @@ class ActorMethod:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(args=args, kwargs=kwargs, **options)
 
+            @DeveloperAPI
+            def bind(self, *args, **kwargs):
+                return func_cls._bind(args=args, kwargs=kwargs, **options)
+
         return FuncWrapper()
+
+    @wrap_auto_init
+    @_tracing_actor_method_invocation
+    def _bind(
+        self,
+        args=None,
+        kwargs=None,
+        name="",
+        num_returns=None,
+        concurrency_group=None,
+        _generator_backpressure_num_objects=None,
+    ):
+        # TODO(sang): unify option passing
+        options = {
+            "name": name,
+            "num_returns": num_returns,
+            "concurrency_group": concurrency_group,
+            "_generator_backpressure_num_objects": _generator_backpressure_num_objects,
+        }
+        other_args_to_resolve = {
+            PARENT_CLASS_NODE_KEY: self._actor_ref,
+        }
+
+        node = ClassMethodNode(
+            self._method_name,
+            args,
+            kwargs,
+            options,
+            other_args_to_resolve=other_args_to_resolve,
+        )
+        return node
 
     @wrap_auto_init
     @_tracing_actor_method_invocation
@@ -193,17 +239,20 @@ class ActorMethod:
         name="",
         num_returns=None,
         concurrency_group=None,
+        _is_compiled_dag_task=None,
         _generator_backpressure_num_objects=None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
+        if _is_compiled_dag_task is None:
+            _is_compiled_dag_task = self._is_compiled_dag_task
         if _generator_backpressure_num_objects is None:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
 
         def invocation(args, kwargs):
-            actor = self._actor_hard_ref or self._actor_ref()
+            actor = self._actor_hard_ref or self._actor_ref
             if actor is None:
                 raise RuntimeError("Lost reference to actor")
             return actor._actor_method_call(
@@ -212,6 +261,7 @@ class ActorMethod:
                 kwargs=kwargs,
                 name=name,
                 num_returns=num_returns,
+                is_compiled_dag_task=_is_compiled_dag_task,
                 concurrency_group_name=concurrency_group,
                 generator_backpressure_num_objects=(
                     _generator_backpressure_num_objects
@@ -226,7 +276,7 @@ class ActorMethod:
 
     def __getstate__(self):
         return {
-            "actor": self._actor_ref(),
+            "actor": self._actor_ref,
             "method_name": self._method_name,
             "num_returns": self._num_returns,
             "decorator": self._decorator,
@@ -289,6 +339,7 @@ class _ActorClassMethodMetadata(object):
         self.decorators = {}
         self.signatures = {}
         self.num_returns = {}
+        self.is_compiled_dag_task = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
 
@@ -323,6 +374,13 @@ class _ActorClassMethodMetadata(object):
                 self.concurrency_group_for_methods[
                     method_name
                 ] = method.__ray_concurrency_group__
+
+            if hasattr(method, "__ray_is_compiled_dag_task__"):
+                self.is_compiled_dag_task[
+                    method_name
+                ] = method.__ray_is_compiled_dag_task__
+            else:
+                self.is_compiled_dag_task[method_name] = False
 
             if hasattr(method, "__ray_generator_backpressure_num_objects__"):
                 self.generator_backpressure_num_objects[
@@ -1041,6 +1099,7 @@ class ActorClass:
             meta.method_meta.decorators,
             meta.method_meta.signatures,
             meta.method_meta.num_returns,
+            meta.method_meta.is_compiled_dag_task,
             meta.method_meta.generator_backpressure_num_objects,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
@@ -1104,6 +1163,7 @@ class ActorHandle:
         method_decorators,
         method_signatures,
         method_num_returns: Dict[str, int],
+        method_is_compiled_dag_task: Dict[str, bool],
         method_generator_backpressure_num_objects: Dict[str, int],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
@@ -1116,6 +1176,7 @@ class ActorHandle:
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
         self._ray_method_num_returns = method_num_returns
+        self._ray_method_is_compiled_dag_task = method_is_compiled_dag_task
         self._ray_method_generator_backpressure_num_objects = (
             method_generator_backpressure_num_objects
         )
@@ -1142,6 +1203,7 @@ class ActorHandle:
                     self,
                     method_name,
                     self._ray_method_num_returns[method_name],
+                    self._ray_method_is_compiled_dag_task[method_name],
                     self._ray_method_generator_backpressure_num_objects.get(
                         method_name
                     ),  # noqa
@@ -1170,6 +1232,7 @@ class ActorHandle:
         kwargs: Dict[str, Any] = None,
         name: str = "",
         num_returns: Optional[int] = None,
+        is_compiled_dag_task: bool = False,
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
     ):
@@ -1236,6 +1299,7 @@ class ActorHandle:
             list_args,
             name,
             num_returns,
+            is_compiled_dag_task,
             self._ray_actor_method_cpus,
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,

@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <semaphore.h>
+
+#include <atomic>
 #include <boost/asio.hpp>
 #include <functional>
 
@@ -36,6 +39,55 @@ using RestoreSpilledObjectCallback =
                        const std::string &,
                        std::function<void(const ray::Status &)>)>;
 
+
+struct PlasmaObjectHeader {
+  // Protects all following state. We use a mutex and conditional variable here
+  // because there can be multiple readers and:
+  // - we should not write again until all readers are done.
+  // - we should not read again until a write is done.
+  pthread_mutex_t mut;
+  pthread_cond_t cond;
+  sem_t rw_semaphore;
+  int64_t version = 0;
+  // Max number of reads allowed before the writer can write
+  // again. This value should be set by the writer before
+  // posting to can_read. reader_mut must be held when
+  // reading.
+  int64_t max_readers = 0;
+  // Readers increment once they are done reading. Once this value reaches
+  // max_readers, the last reader should signal to the writer.
+  int64_t num_reads_remaining = 0;
+  // Number of readers currently reading. Not necessary for synchronization,
+  // but useful for debugging.
+  int64_t num_readers_acquired = 0;
+  // The valid data size of the Ray object.
+  // Normally, Plasma object is immutable, and it is equivalent to the
+  // data buffer size. However, this can be overwritten when the plasma object
+  // is mutable (E.g., when accerlated DAG is used).
+  // This should not be modified or accessed directly.
+  uint64_t data_size = 0;
+
+  void Init();
+  void Destroy();
+  // Blocks until there are no more readers.
+  // NOTE: This does not protect against multiple writers.
+  /// \param write_version The new version for write.
+  /// \param new_size The new data size of the object.
+  void WriteAcquire(int64_t write_version, uint64_t new_size);
+  // Call after completing a write to signal to max_readers many readers.
+  void WriteRelease(int64_t write_version, int64_t max_readers);
+  // Blocks until the given version is ready to read.
+  int64_t ReadAcquire(int64_t read_version);
+  // Finishes the read. If all reads are done, signals to the
+  // writer. This is not necessary to call for objects that have
+  // max_readers=-1.
+  void ReadRelease(int64_t read_version);
+  // Get the data size of the plasma object.
+  // This has to be called only when reader lock is acquired
+  // via ReadAcquire.
+  uint64_t GetDataSize() const;
+};
+
 /// A struct that includes info about the object.
 struct ObjectInfo {
   ObjectID object_id;
@@ -50,7 +102,9 @@ struct ObjectInfo {
   /// Owner's worker ID.
   WorkerID owner_worker_id;
 
-  int64_t GetObjectSize() const { return data_size + metadata_size; }
+  int64_t GetObjectSize() const {
+    return sizeof(PlasmaObjectHeader) + data_size + metadata_size;
+  }
 
   bool operator==(const ObjectInfo &other) const {
     return ((object_id == other.object_id) && (data_size == other.data_size) &&

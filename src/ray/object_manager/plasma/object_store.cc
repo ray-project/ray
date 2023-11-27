@@ -29,6 +29,10 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
                  << object_info.data_size;
   RAY_CHECK(object_table_.count(object_info.object_id) == 0)
       << object_info.object_id << " already exists!";
+
+  RAY_LOG(DEBUG) << "ALLOCATING " << sizeof(ray::PlasmaObjectHeader) << " "
+                 << object_info.data_size << " " << object_info.metadata_size;
+
   auto object_size = object_info.GetObjectSize();
   auto allocation = fallback_allocate ? allocator_.FallbackAllocate(object_size)
                                       : allocator_.Allocate(object_size);
@@ -38,6 +42,7 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   if (!allocation.has_value()) {
     return nullptr;
   }
+
   auto ptr = std::make_unique<LocalObject>(std::move(allocation.value()));
   auto entry =
       object_table_.emplace(object_info.object_id, std::move(ptr)).first->second.get();
@@ -46,6 +51,10 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   entry->create_time = std::time(nullptr);
   entry->construct_duration = -1;
   entry->source = source;
+
+  auto plasma_header = entry->GetPlasmaObjectHeader();
+  *plasma_header = ray::PlasmaObjectHeader{};
+  plasma_header->Init();
 
   RAY_LOG(DEBUG) << "create object " << object_info.object_id << " succeeded";
   return entry;
@@ -64,6 +73,7 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
   if (entry == nullptr || entry->state == ObjectState::PLASMA_SEALED) {
     return nullptr;
   }
+
   entry->state = ObjectState::PLASMA_SEALED;
   entry->construct_duration = std::time(nullptr) - entry->create_time;
   return entry;
@@ -74,6 +84,10 @@ bool ObjectStore::DeleteObject(const ObjectID &object_id) {
   if (entry == nullptr) {
     return false;
   }
+  // TODO(swang): Make sure Seal coroutine is done before deleting.
+  auto plasma_header = entry->GetPlasmaObjectHeader();
+  plasma_header->Destroy();
+
   allocator_.Free(std::move(entry->allocation));
   object_table_.erase(object_id);
   return true;

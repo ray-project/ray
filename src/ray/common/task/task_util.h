@@ -125,6 +125,7 @@ class TaskSpecBuilder {
       const TaskID &caller_id,
       const rpc::Address &caller_address,
       uint64_t num_returns,
+      bool is_compiled_dag_task,
       bool returns_dynamic,
       bool is_streaming_generator,
       int64_t generator_backpressure_num_objects,
@@ -150,6 +151,7 @@ class TaskSpecBuilder {
     message_->set_caller_id(caller_id.Binary());
     message_->mutable_caller_address()->CopyFrom(caller_address);
     message_->set_num_returns(num_returns);
+    message_->set_is_compiled_dag_task(is_compiled_dag_task);
     message_->set_returns_dynamic(returns_dynamic);
     message_->set_streaming_generator(is_streaming_generator);
     message_->set_generator_backpressure_num_objects(generator_backpressure_num_objects);

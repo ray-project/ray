@@ -214,6 +214,8 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
+bool TaskSpecification::IsCompiledDagTask() const { return message_->is_compiled_dag_task(); }
+
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
