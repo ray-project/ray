@@ -25,7 +25,7 @@ namespace ray {
 
 LocalResourceManager::LocalResourceManager(
     scheduling::NodeID local_node_id,
-    const NodeResources &node_resources,
+    const NodeResourceInstances &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const NodeResourceInstances &)> resource_change_subscriber)
@@ -34,8 +34,8 @@ LocalResourceManager::LocalResourceManager(
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       resource_change_subscriber_(resource_change_subscriber) {
   RAY_CHECK(node_resources.total == node_resources.available);
-  local_resources_.available = NodeResourceInstanceSet(node_resources.total);
-  local_resources_.total = NodeResourceInstanceSet(node_resources.total);
+  local_resources_.available = node_resources.total;
+  local_resources_.total = node_resources.total;
   local_resources_.labels = node_resources.labels;
   const auto now = absl::Now();
   for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {

@@ -82,8 +82,9 @@ class ClusterResourceManager {
 
   /// Subtract available resource from a given node.
   /// Return false if such node doesn't exist.
-  bool SubtractNodeAvailableResources(scheduling::NodeID node_id,
-                                      const ResourceRequest &resource_request);
+  std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
+  SubtractNodeAvailableResources(scheduling::NodeID node_id,
+                                 const ResourceRequest &resource_request);
 
   /// Check if we have sufficient resource to fullfill resource request for an given node.
   ///
@@ -97,8 +98,9 @@ class ClusterResourceManager {
 
   /// Add available resource to a given node.
   /// Return false if such node doesn't exist.
-  bool AddNodeAvailableResources(scheduling::NodeID node_id,
-                                 const ResourceSet &resource_set);
+  bool AddNodeAvailableResources(
+      scheduling::NodeID node_id,
+      const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &allocations);
 
   /// Update node normal task resources.
   /// Return false if such node doesn't exist.

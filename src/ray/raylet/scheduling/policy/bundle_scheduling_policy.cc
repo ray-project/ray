@@ -256,7 +256,10 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
   const auto &sorted_resource_request_list = sorted_result.second;
 
   std::vector<scheduling::NodeID> result_nodes;
+  std::vector<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
+      result_allocations;
   result_nodes.resize(sorted_resource_request_list.size());
+  result_allocations.resize(sorted_resource_request_list.size());
   std::list<std::pair<int, const ResourceRequest *>> required_resources_list_copy;
   int index = 0;
   for (const auto &resource_request : sorted_resource_request_list) {
@@ -277,9 +280,11 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
 
     const auto &node_resources = best_node.second->GetLocalView();
 
-    RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-        best_node.first, *required_resources));
+    auto allocations = cluster_resource_manager_.SubtractNodeAvailableResources(
+        best_node.first, *required_resources);
+    RAY_CHECK(allocations.has_value());
     result_nodes[required_resources_index] = best_node.first;
+    result_allocations[required_resources_index] = allocations.value();
     required_resources_list_copy.pop_front();
 
     // We try to schedule more resources on one node.
@@ -293,9 +298,11 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
                  options.max_cpu_fraction_per_node,
                  available_cpus_before_bundle_scheduling.at(best_node.first))) {
         // Then allocate it.
-        RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-            best_node.first, *iter->second));
+        allocations = cluster_resource_manager_.SubtractNodeAvailableResources(
+            best_node.first, *iter->second);
+        RAY_CHECK(allocations.has_value());
         result_nodes[iter->first] = best_node.first;
+        result_allocations[iter->first] = allocations.value();
         required_resources_list_copy.erase(iter++);
       } else {
         // Otherwise try other node.
@@ -310,7 +317,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!result_nodes[index].IsNil()) {
       RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
-          result_nodes[index], (*sorted_resource_request_list[index]).GetResourceSet()));
+          result_nodes[index], result_allocations[index]));
     }
   }
 
@@ -344,6 +351,8 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
   const auto &sorted_resource_request_list = sorted_result.second;
 
   std::vector<scheduling::NodeID> result_nodes;
+  std::vector<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
+      result_allocations;
   absl::flat_hash_map<scheduling::NodeID, const Node *> selected_nodes;
   for (const auto &resource_request : sorted_resource_request_list) {
     // Score and sort nodes.
@@ -355,8 +364,10 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     // There are nodes to meet the scheduling requirements.
     if (!best_node.first.IsNil()) {
       result_nodes.emplace_back(best_node.first);
-      RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-          best_node.first, *resource_request));
+      auto allocations = cluster_resource_manager_.SubtractNodeAvailableResources(
+          best_node.first, *resource_request);
+      RAY_CHECK(allocations.has_value());
+      result_allocations.emplace_back(allocations.value());
       candidate_nodes.erase(result_nodes.back());
       selected_nodes.emplace(best_node);
     } else {
@@ -367,8 +378,10 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
                                    available_cpus_before_bundle_scheduling);
       if (!best_node.first.IsNil()) {
         result_nodes.emplace_back(best_node.first);
-        RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-            best_node.first, *resource_request));
+        auto allocations = cluster_resource_manager_.SubtractNodeAvailableResources(
+            best_node.first, *resource_request);
+        RAY_CHECK(allocations.has_value());
+        result_allocations.emplace_back(allocations.value());
       } else {
         break;
       }
@@ -380,7 +393,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!result_nodes[index].IsNil()) {
       RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
-          result_nodes[index], (*sorted_resource_request_list[index]).GetResourceSet()));
+          result_nodes[index], result_allocations[index]));
     }
   }
 

@@ -245,8 +245,9 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
   if (!IsSchedulable(resource_request, node_id)) {
     return false;
   }
-  return cluster_resource_manager_->SubtractNodeAvailableResources(node_id,
-                                                                   resource_request);
+  return cluster_resource_manager_
+      ->SubtractNodeAvailableResources(node_id, resource_request)
+      .has_value();
 }
 
 std::string ClusterResourceScheduler::DebugString(void) const {

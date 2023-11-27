@@ -27,7 +27,7 @@ bool IsGPURequest(const ResourceRequest &resource_request) {
   return resource_request.Has(ResourceID::GPU());
 }
 
-bool DoesNodeHaveGPUs(const NodeResources &resources) {
+bool DoesNodeHaveGPUs(const NodeResourceInstances &resources) {
   return resources.total.Has(ResourceID::GPU());
 }
 }  // namespace
@@ -80,7 +80,8 @@ scheduling::NodeID SchedulingPolicy::HybridPolicyWithFilter(
   const auto local_it = nodes_.find(local_node_id_);
   RAY_CHECK(local_it != nodes_.end());
   auto predicate = [node_filter, &is_node_available](
-                       scheduling::NodeID node_id, const NodeResources &node_resources) {
+                       scheduling::NodeID node_id,
+                       const NodeResourceInstances &node_resources) {
     if (!is_node_available(node_id)) {
       return false;
     }

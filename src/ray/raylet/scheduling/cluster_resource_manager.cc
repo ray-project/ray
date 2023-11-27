@@ -124,8 +124,8 @@ bool ClusterResourceManager::DeleteResources(
 
   auto local_view = it->second.GetMutableLocalView();
   for (const auto &resource_id : resource_ids) {
-    local_view->total.Set(resource_id, 0);
-    local_view->available.Set(resource_id, 0);
+    local_view->total.Remove(resource_id);
+    local_view->available.Remove(resource_id);
   }
   return true;
 }
@@ -141,22 +141,21 @@ const absl::flat_hash_map<scheduling::NodeID, Node>
   return nodes_;
 }
 
-bool ClusterResourceManager::SubtractNodeAvailableResources(
+std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
+ClusterResourceManager::SubtractNodeAvailableResources(
     scheduling::NodeID node_id, const ResourceRequest &resource_request) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
-    return false;
+    return std::nullopt;
   }
 
   NodeResourceInstances *resources = it->second.GetMutableLocalView();
 
-  RAY_CHECK(resources->available.TryAllocate(resource_request.GetResourceSet()));
+  return resources->available.TryAllocate(resource_request.GetResourceSet());
 
   // TODO(swang): We should also subtract object store memory if the task has
   // arguments. Right now we do not modify object_pulls_queued in case of
   // performance regressions in spillback.
-
-  return true;
 }
 
 bool ClusterResourceManager::HasSufficientResource(
@@ -178,23 +177,18 @@ bool ClusterResourceManager::HasSufficientResource(
   return resources.available >= resource_request.GetResourceSet();
 }
 
-bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_id,
-                                                       const ResourceSet &resource_set) {
+bool ClusterResourceManager::AddNodeAvailableResources(
+    scheduling::NodeID node_id,
+    const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &allocations) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return false;
   }
 
   auto node_resources = it->second.GetMutableLocalView();
-  for (auto &resource_id : resource_set.ResourceIds()) {
+  for (auto &[resource_id, allocation] : allocations) {
     if (node_resources->total.Has(resource_id)) {
-      auto available = node_resources->available.Get(resource_id);
-      auto total = node_resources->total.Get(resource_id);
-      auto new_available = available + resource_set.Get(resource_id);
-      if (new_available > total) {
-        new_available = total;
-      }
-      node_resources->available.Set(resource_id, new_available);
+      node_resources->available.Free(resource_id, allocation);
     }
   }
   return true;

@@ -344,6 +344,7 @@ class NodeResourceInstances {
 
   /// Resources owned by normal tasks.
   ResourceSet normal_task_resources;
+  int64_t latest_resources_normal_task_timestamp = 0;
 
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;

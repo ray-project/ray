@@ -53,7 +53,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
  public:
   LocalResourceManager(
       scheduling::NodeID local_node_id,
-      const NodeResources &node_resources,
+      const NodeResourceInstances &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
       std::function<void(const NodeResourceInstances &)> resource_change_subscriber);
