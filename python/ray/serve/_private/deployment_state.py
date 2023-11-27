@@ -690,13 +690,7 @@ class ActorReplicaWrapper:
 
         Returns the timeout after which to kill the actor.
         """
-        try:
-            handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
-            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
-        except ValueError:
-            # ValueError thrown from ray.get_actor means actor has already been deleted.
-            pass
-
+        self._graceful_shutdown_ref = self._actor_handle.prepare_for_shutdown.remote()
         return self.graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:
