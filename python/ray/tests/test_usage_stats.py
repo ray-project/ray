@@ -40,8 +40,8 @@ schema = {
         "collect_timestamp_ms": {"type": "integer"},
         "session_start_timestamp_ms": {"type": "integer"},
         "cloud_provider": {"type": ["null", "string"]},
-        "min_worker_nodes": {"type": ["null", "integer"]},
-        "max_worker_nodes": {"type": ["null", "integer"]},
+        "min_workers": {"type": ["null", "integer"]},
+        "max_workers": {"type": ["null", "integer"]},
         "head_node_instance_type": {"type": ["null", "string"]},
         "libc_version": {"type": ["null", "string"]},
         "worker_node_instance_types": {
