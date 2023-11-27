@@ -499,6 +499,7 @@ def test_status_basic(ray_start_stop):
     for name, status in default_app["deployments"].items():
         expected_deployments.remove(name)
         assert status["status"] in {"HEALTHY", "UPDATING"}
+        assert status["status_trigger"] == "CONFIG_UPDATE_COMPLETED"
         assert status["replica_states"]["RUNNING"] in {0, 1}
         assert "message" in status
     assert len(expected_deployments) == 0
@@ -537,6 +538,10 @@ def test_status_error_msg_format(ray_start_stop):
         api_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         assert cli_status["status"] == "DEPLOY_FAILED"
         assert remove_ansi_escape_sequences(cli_status["message"]) in api_status.message
+
+        deployment_status = cli_status["deployments"]["A"]
+        assert deployment_status["status"] == "UNHEALTHY"
+        assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
         return True
 
     wait_for_condition(check_for_failed_deployment)
@@ -608,7 +613,11 @@ def test_status_constructor_error(ray_start_stop):
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
-        assert "ZeroDivisionError" in status["deployments"]["A"]["message"]
+
+        deployment_status = status["deployments"]["A"]
+        assert deployment_status["status"] == "UNHEALTHY"
+        assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
+        assert "ZeroDivisionError" in deployment_status["message"]
         return True
 
     wait_for_condition(check_for_failed_deployment)

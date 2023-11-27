@@ -37,11 +37,11 @@ class ParquetBaseDatasource(FileBasedDatasource):
         """
         return "ParquetBulk"
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str):
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         import pyarrow.parquet as pq
 
         use_threads = self.read_table_args.pop("use_threads", False)
-        return pq.read_table(f, use_threads=use_threads, **self.read_table_args)
+        yield pq.read_table(f, use_threads=use_threads, **self.read_table_args)
 
     def _open_input_source(
         self,

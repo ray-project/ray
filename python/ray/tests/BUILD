@@ -117,8 +117,10 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_bounded_threads.py",
+    "test_bounded_unix_sockets.py",
     "test_autoscaler_fake_scaledown.py",
     "accelerators/test_neuron.py",
+    "accelerators/test_npu.py",
     "accelerators/test_tpu.py",
     "accelerators/test_nvidia_gpu.py",
     "accelerators/test_hpu.py",
