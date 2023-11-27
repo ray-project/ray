@@ -15,11 +15,11 @@ from typing import (
     TypedDict,
     Union,
 )
+import random
 
 import ray
 from ray.util.annotations import PublicAPI
 import ray.exceptions
-import ray.util.state as ray_state
 
 
 # Typing -----------------------------------------------
@@ -96,9 +96,8 @@ class _ActorPoolBase(ABC):
 
 class _AbstractActorPool(_ActorPoolBase, ABC):
 
-    """
-    Common actor pool methods and attributes
-    """
+    """Common actor pool methods and attributes. New actor pool types should
+    extend this. See _RandomActorPool and _RoundRobinActorPool below."""
 
     def __init__(
         self,
@@ -257,12 +256,11 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
         return pool_actor["actor"]
 
 
-class _BalancedActorPool(_AbstractActorPool):
+class _RandomActorPool(_AbstractActorPool):
 
     """This class manages a pool of Ray actors by distributing tasks amongst
-    them in a simple balanced fashion - actors with the fewest scheduled tasks
-    are prioritised. Functions are executed remotely in the actor pool using
-    submit().
+    them in a random choice fashion. Functions are executed remotely in the
+    actor pool using submit().
 
     ...
 
@@ -283,21 +281,6 @@ class _BalancedActorPool(_AbstractActorPool):
         concurrent.futures.ProcessPoolExecutor).
     """
 
-    def get_actor_task_counts(self) -> dict[str, int]:
-        actor_tasks = {actor_id: 0 for actor_id in self.get_actor_ids()}
-        for task_state in ray_state.list_tasks():
-            t_actor_id = task_state.actor_id
-            assert t_actor_id is not None
-            if all(
-                (
-                    task_state.type == "ACTOR_TASK",
-                    t_actor_id in actor_tasks,
-                    task_state.state not in ["FINISHED", "FAILED"],
-                )
-            ):
-                actor_tasks[t_actor_id] += 1
-        return actor_tasks
-
     def next(self) -> _PoolActor:
         """
         Get the next priority member of the actor pool
@@ -307,17 +290,7 @@ class _BalancedActorPool(_AbstractActorPool):
         _PoolActor
             The current priority actor in the pool
         """
-        task_counts = self.get_actor_task_counts()
-        actor_id = min(task_counts, key=lambda k: task_counts[k])
-        try:
-            [pool_actor] = [
-                i for i in self.pool if i["actor"]._ray_actor_id.hex() == actor_id
-            ]
-        except ValueError as err:
-            raise ValueError(
-                f"Could not acquire next actor with id: {actor_id}"
-            ) from err
-        return pool_actor
+        return random.choice(self.pool)
 
 
 class _RoundRobinActorPool(_AbstractActorPool):
@@ -400,8 +373,8 @@ class RayExecutor(Executor):
         This is only included for compatibility with
         concurrent.futures.ProcessPoolExecutor but is unused.
     actor_pool_type: str | None
-        The type of actor pool to use: either 'balanced' (which will privilege
-        actors with fewer tasks), or 'roundrobin' (which will simply assign
+        The type of actor pool to use: either 'random' (which will assign tasks
+        to randomly selected actors), or 'roundrobin' (which will simply assign
         tasks to actors sequentially.
     futures : list[Future[Any]]
         Aggregated Futures from initiated tasks
@@ -430,7 +403,7 @@ class RayExecutor(Executor):
         initargs: tuple[Any, ...] = (),
         max_tasks_per_child: Optional[int] = None,
         mp_context: Optional[Any] = None,
-        actor_pool_type: str = "balanced",
+        actor_pool_type: str = "random",
         **kwargs: Any,
     ):
 
@@ -489,12 +462,12 @@ class RayExecutor(Executor):
         self.max_workers = max_workers
 
         actor_pool_type_err = ValueError(
-            "actor_pool_type must be either 'balanced' or 'roundrobin'"
+            "actor_pool_type must be either 'random' or 'roundrobin'"
         )
         if not isinstance(actor_pool_type, str):
             raise actor_pool_type_err
-        if actor_pool_type.lower() == "balanced":
-            self.actor_pool = _BalancedActorPool(
+        if actor_pool_type.lower() == "random":
+            self.actor_pool = _RandomActorPool(
                 num_actors=max_workers,
                 initializer=initializer,
                 initargs=initargs,

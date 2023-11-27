@@ -10,7 +10,7 @@ from ray.util.concurrent.futures.ray_executor import (
     _ActorPoolBase,
     _AbstractActorPool,
     _RoundRobinActorPool,
-    _BalancedActorPool,
+    _RandomActorPool,
 )
 import time
 import typing as T
@@ -337,45 +337,14 @@ class ActorPoolTests(ABC):
             assert future1.result() == 123
 
 
-class TestBalancedActorPool(ActorPoolTests, TestShared):
+class TestRandomActorPool(ActorPoolTests, TestShared):
     @property
     def apc(self) -> type[_AbstractActorPool]:
-        return _BalancedActorPool
+        return _RandomActorPool
 
     @property
     def apt(self) -> str:
-        return "balanced"
-
-    def test_actor_pool_can_get_task_count(self):
-        pool = self.apc(num_actors=2)
-        task_counts = pool.get_actor_task_counts()
-        assert list(task_counts.values()) == [0, 0]
-
-    def test_actor_pool_prioritises_free_actors(self):
-        def f():
-            time.sleep(10)
-            return True
-
-        pool = self.apc(num_actors=2)
-        assert len(pool.pool) == 2
-        assert Helpers.wait_actor_state(pool, "ALIVE")
-
-        tasks = sum(pool.get_actor_task_counts().values())
-        assert tasks == 0
-
-        pool.submit(f)
-        Helpers.wait_assert(
-            partial(
-                lambda p: [0, 1] == sorted(p.get_actor_task_counts().values()), pool
-            )
-        )
-
-        pool.submit(f)
-        Helpers.wait_assert(
-            partial(
-                lambda p: [1, 1] == sorted(p.get_actor_task_counts().values()), pool
-            )
-        )
+        return "random"
 
 
 class TestRoundRobinActorPool(ActorPoolTests, TestShared):
