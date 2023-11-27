@@ -88,11 +88,12 @@ class ProcessFD {
   ~ProcessFD();
   ProcessFD();
   ProcessFD(pid_t pid, intptr_t fd = -1);
-  ProcessFD(const ProcessFD &other);
   ProcessFD(ProcessFD &&other);
-  ProcessFD &operator=(const ProcessFD &other);
   ProcessFD &operator=(ProcessFD &&other);
-  intptr_t CloneFD() const;
+
+  ProcessFD(const ProcessFD &other) = delete;
+  ProcessFD &operator=(const ProcessFD &other) = delete;
+
   void CloseFD();
   intptr_t GetFD() const;
   pid_t GetId() const;
@@ -217,17 +218,7 @@ class ProcessFD {
   }
 };
 
-ProcessFD::~ProcessFD() {
-  if (fd_ != -1) {
-    bool success;
-#ifdef _WIN32
-    success = !!CloseHandle(reinterpret_cast<HANDLE>(fd_));
-#else
-    success = close(static_cast<int>(fd_)) == 0;
-#endif
-    RAY_CHECK(success) << "error " << errno << " closing process " << pid_ << " FD";
-  }
-}
+ProcessFD::~ProcessFD() { CloseFD(); }
 
 ProcessFD::ProcessFD() : pid_(-1), fd_(-1) {}
 
@@ -277,17 +268,7 @@ ProcessFD::ProcessFD(pid_t pid, intptr_t fd) : pid_(pid), fd_(fd) {
   }
 }
 
-ProcessFD::ProcessFD(const ProcessFD &other) : ProcessFD(other.pid_, other.CloneFD()) {}
-
 ProcessFD::ProcessFD(ProcessFD &&other) : ProcessFD() { *this = std::move(other); }
-
-ProcessFD &ProcessFD::operator=(const ProcessFD &other) {
-  if (this != &other) {
-    // Construct a copy, then call the move constructor
-    *this = static_cast<ProcessFD>(other);
-  }
-  return *this;
-}
 
 ProcessFD &ProcessFD::operator=(ProcessFD &&other) {
   if (this != &other) {
@@ -299,32 +280,19 @@ ProcessFD &ProcessFD::operator=(ProcessFD &&other) {
   return *this;
 }
 
-intptr_t ProcessFD::CloneFD() const {
-  intptr_t fd;
+void ProcessFD::CloseFD() {
   if (fd_ != -1) {
+    bool success;
 #ifdef _WIN32
-    HANDLE handle;
-    BOOL inheritable = FALSE;
-    fd = DuplicateHandle(GetCurrentProcess(),
-                         reinterpret_cast<HANDLE>(fd_),
-                         GetCurrentProcess(),
-                         &handle,
-                         0,
-                         inheritable,
-                         DUPLICATE_SAME_ACCESS)
-             ? reinterpret_cast<intptr_t>(handle)
-             : -1;
+    success = !!CloseHandle(reinterpret_cast<HANDLE>(fd_));
 #else
-    fd = dup(static_cast<int>(fd_));
+    success = close(static_cast<int>(fd_)) == 0;
 #endif
-    RAY_DCHECK(fd != -1);
-  } else {
-    fd = -1;
+    RAY_CHECK(success) << "error " << errno << " closing process " << pid_ << " FD";
   }
-  return fd;
-}
 
-void ProcessFD::CloseFD() { fd_ = -1; }
+  fd_ = -1;
+}
 
 intptr_t ProcessFD::GetFD() const { return fd_; }
 
@@ -350,6 +318,7 @@ Process::Process(const char *argv[],
                  std::error_code &ec,
                  bool decouple,
                  const ProcessEnvironment &env) {
+  /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
   if (!ec) {

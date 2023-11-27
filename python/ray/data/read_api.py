@@ -495,14 +495,17 @@ def read_bigquery(
     """Create a dataset from BigQuery.
 
     The data to read from is specified via the ``project_id``, ``dataset``
-    and/or ``query``parameters. The dataset is created from the results of
-    executing``query`` if a query is provided. Otherwise, the entire
+    and/or ``query`` parameters. The dataset is created from the results of
+    executing ``query`` if a query is provided. Otherwise, the entire
     ``dataset`` is read.
 
     For more information about BigQuery, see the following concepts:
-    - Project id: `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>` # noqa: E501
-    - Dataset: `Datasets Intro <https://cloud.google.com/bigquery/docs/datasets-intro>` # noqa: E501
-    - Query: `Query Syntax <https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax>` # noqa: E501
+
+    - Project id: `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_
+
+    - Dataset: `Datasets Intro <https://cloud.google.com/bigquery/docs/datasets-intro>`_
+
+    - Query: `Query Syntax <https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax>`_
 
     This method uses the BigQuery Storage Read API which reads in parallel,
     with a Ray read task to handle each stream. The number of streams is
@@ -510,7 +513,7 @@ def read_bigquery(
     or automatically chosen if unspecified (see the ``parallelism`` arg below).
 
     .. warning::
-        The maximum query response size is 10GB. For more information, see `BigQuery response too large to return <https://cloud.google.com/knowledge/kb/bigquery-response-too-large-to-return-consider-setting-allowlargeresults-to-true-in-your-job-configuration-000004266>` # noqa: E501
+        The maximum query response size is 10GB. For more information, see `BigQuery response too large to return <https://cloud.google.com/knowledge/kb/bigquery-response-too-large-to-return-consider-setting-allowlargeresults-to-true-in-your-job-configuration-000004266>`_.
 
     Examples:
         .. testcode::
@@ -525,7 +528,7 @@ def read_bigquery(
 
     Args:
         project_id: The name of the associated Google Cloud Project that hosts the dataset to read.
-            For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+            For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_.
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
         parallelism: The requested parallelism of the read. If -1, it will be
@@ -536,7 +539,7 @@ def read_bigquery(
     Returns:
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
         on the specified BigQuery dataset.
-    """
+    """  # noqa: E501
     datasource = BigQueryDatasource(project_id=project_id, dataset=dataset, query=query)
     return read_datasource(
         datasource,
@@ -557,6 +560,7 @@ def read_parquet(
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
     **arrow_parquet_args,
 ) -> Dataset:
@@ -670,6 +674,8 @@ def read_parquet(
             set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
 
     Returns:
@@ -697,6 +703,7 @@ def read_parquet(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -863,6 +870,7 @@ def read_parquet_bulk(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
     file_extensions: Optional[List[str]] = ParquetBaseDatasource._FILE_EXTENSIONS,
     **arrow_parquet_args,
 ) -> Dataset:
@@ -938,6 +946,8 @@ def read_parquet_bulk(
             set of arguments, see
             the `PyArrow API <https://arrow.apache.org/docs/python/generated/\
                 pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
 
     Returns:
@@ -958,8 +968,8 @@ def read_parquet_bulk(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
-        **arrow_parquet_args,
     )
     return read_datasource(
         datasource,
@@ -979,6 +989,7 @@ def read_json(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
     file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
@@ -1028,6 +1039,20 @@ def read_json(
         >>> ds.take(1)
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
+        When reading large files, the default block size configured in PyArrow can be too small,
+        resulting in the following error:
+        ``pyarrow.lib.ArrowInvalid: straddling object straddles two block boundaries
+        (try to increase block size?)``.
+
+        To resolve this, use the ``read_options`` parameter to set a larger block size:
+
+        >>> import pyarrow.json as pajson
+        >>> block_size = 10 << 20 # Set block size to 10MB
+        >>> ray.data.read_json(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/log.json",
+        ...     read_options=pajson.ReadOptions(block_size=block_size)
+        ... )
+
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
@@ -1065,6 +1090,8 @@ def read_json(
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
                 hive-style-partitioning/>`_.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
@@ -1090,6 +1117,7 @@ def read_json(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1108,6 +1136,7 @@ def read_csv(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
     file_extensions: Optional[List[str]] = None,
@@ -1218,6 +1247,8 @@ def read_csv(
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
                 hive-style-partitioning/>`_.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
@@ -1244,6 +1275,7 @@ def read_csv(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1266,6 +1298,7 @@ def read_text(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
     file_extensions: Optional[List[str]] = None,
@@ -1322,6 +1355,8 @@ def read_text(
             dataset. By default, no files are filtered.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
@@ -1346,6 +1381,7 @@ def read_text(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1363,6 +1399,7 @@ def read_numpy(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
     file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
@@ -1403,6 +1440,8 @@ def read_numpy(
             match "*.npy*".
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
@@ -1425,6 +1464,7 @@ def read_numpy(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1442,6 +1482,7 @@ def read_tfrecords(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
     shuffle: Union[Literal["files"], None] = None,
@@ -1511,6 +1552,8 @@ def read_tfrecords(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths:  If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
@@ -1539,6 +1582,7 @@ def read_tfrecords(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(datasource, parallelism=parallelism)
@@ -1559,6 +1603,7 @@ def read_webdataset(
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
@@ -1587,6 +1632,8 @@ def read_webdataset(
         verbose_open: Whether to print the file names as they are opened.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
 
     Returns:
@@ -1614,6 +1661,7 @@ def read_webdataset(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(datasource, parallelism=parallelism)
@@ -1830,14 +1878,14 @@ def read_databricks_tables(
 ) -> Dataset:
     """Read a Databricks unity catalog table or Databricks SQL execution result.
 
-    Before calling this API, set the ``DATABRICKS_HOST`` environment
+    Before calling this API, set the ``DATABRICKS_TOKEN`` environment
     variable to your Databricks warehouse access token.
 
     .. code-block:: console
 
         export DATABRICKS_TOKEN=...
 
-    If you're running your program on the Databricks runtime, also set the
+    If you're not running your program on the Databricks runtime, also set the
     ``DATABRICKS_HOST`` environment variable.
 
     .. code-block:: console
@@ -1857,7 +1905,7 @@ def read_databricks_tables(
             import ray
 
             ds = ray.data.read_databricks_tables(
-                warehouse_id='a885ad08b64951ad',
+                warehouse_id='...',
                 catalog='catalog_1',
                 schema='db_1',
                 query='select id from table_1 limit 750000',

@@ -1,5 +1,6 @@
 import sys
 import warnings
+import os
 
 import pytest
 
@@ -7,6 +8,7 @@ import ray
 from ray._private.utils import get_ray_doc_version
 import ray.cluster_utils
 from ray._private.test_utils import placement_group_assert_no_leak
+from ray._private.test_utils import skip_flaky_test
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -338,6 +340,10 @@ def test_placement_group_spread(
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 @pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
+@pytest.mark.skipif(
+    skip_flaky_test(),
+    reason="https://github.com/ray-project/ray/issues/38726",
+)
 def test_placement_group_strict_spread(
     ray_start_cluster, connect_to_client, gcs_actor_scheduling_enabled
 ):
@@ -646,8 +652,6 @@ def test_omp_num_threads_in_pg(ray_start_cluster):
 
     @ray.remote(num_cpus=3)
     def test_omp_num_threads():
-        import os
-
         omp_threads = os.environ["OMP_NUM_THREADS"]
         return int(omp_threads)
 
@@ -670,8 +674,6 @@ def test_omp_num_threads_in_pg(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
