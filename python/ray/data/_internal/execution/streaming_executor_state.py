@@ -4,10 +4,11 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
 import math
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.autoscaling_requester import (
@@ -37,9 +38,6 @@ from ray.data.context import DataContext
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
-
-# A RefBundle or an exception / end of stream indicator.
-MaybeRefBundle = Union[RefBundle, Exception, None]
 
 # The fraction of the object store capacity that will be used as the default object
 # store memory limit for the streaming executor.
@@ -105,6 +103,47 @@ class DownstreamMemoryInfo:
     object_store_memory: float
 
 
+class RefBundleDeque(deque):
+    """Thread-safe wrapper around collections.deque that stores current stats."""
+
+    def __init__(self):
+        self.memory_usage = 0
+        self._lock = threading.Lock()
+        super().__init__()
+
+    def append(self, ref: RefBundle):
+        with self._lock:
+            self.memory_usage += ref.size_bytes()
+        super().append(ref)
+
+    def appendleft(self, ref: RefBundle):
+        with self._lock:
+            self.memory_usage += ref.size_bytes()
+        super().appendleft(ref)
+
+    def pop(self) -> RefBundle:
+        ref = super().pop()
+        with self._lock:
+            self.memory_usage -= ref.size_bytes()
+        return ref
+
+    def popleft(self) -> RefBundle:
+        ref = super().popleft()
+        with self._lock:
+            self.memory_usage -= ref.size_bytes()
+        return ref
+
+    def remove(self, ref: RefBundle):
+        super().remove(ref)
+        with self._lock:
+            self.memory_usage -= ref.size_bytes()
+
+    def clear(self):
+        super().clear()
+        with self._lock:
+            self.memory_usage = 0
+
+
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -115,17 +154,17 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[Deque[MaybeRefBundle]]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[RefBundleDeque]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
-        self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
+        self.inqueues: List[RefBundleDeque] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
         #
         # Note: this queue is also accessed concurrently from the consumer thread.
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
-        self.outqueue: Deque[MaybeRefBundle] = deque()
+        self.outqueue: RefBundleDeque = RefBundleDeque()
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
@@ -133,6 +172,10 @@ class OpState:
         # Tracks whether `input_done` is called for each input op.
         self.input_done_called = [False] * len(op.input_dependencies)
         self.dependents_completed_called = False
+
+        # Used for StreamingExecutor to signal exception or end of execution
+        self._finished: bool = False
+        self._exception: Optional[Exception] = None
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
@@ -206,13 +249,22 @@ class OpState:
                 return
         assert False, "Nothing to dispatch"
 
-    def get_output_blocking(self, output_split_idx: Optional[int]) -> MaybeRefBundle:
+    def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.
+
+        Raises:
+            StopIteration: If all outputs are already consumed.
+            Exception: If there was an exception raised during execution.
         """
         while True:
+            # Check if StreamingExecutor has caught an exception or is done execution.
+            if self._exception is not None:
+                raise self._exception
+            elif self._finished and len(self.outqueue) == 0:
+                raise StopIteration()
             try:
                 # Non-split output case.
                 if output_split_idx is None:
@@ -221,12 +273,7 @@ class OpState:
                 # Scan the queue and look for outputs tagged for the given index.
                 for i in range(len(self.outqueue)):
                     bundle = self.outqueue[i]
-                    if bundle is None or isinstance(bundle, Exception):
-                        # End of stream for this index! Note that we
-                        # do not remove the None, so that it can act
-                        # as the termination signal for all indices.
-                        return bundle
-                    elif bundle.output_split_idx == output_split_idx:
+                    if bundle.output_split_idx == output_split_idx:
                         self.outqueue.remove(bundle)
                         return bundle
 
@@ -242,29 +289,12 @@ class OpState:
         for op, inq in zip(self.op.input_dependencies, self.inqueues):
             # Exclude existing input data items from dynamic memory usage.
             if not isinstance(op, InputDataBuffer):
-                total += self._queue_memory_usage(inq)
+                total += inq.memory_usage
         return total
 
     def outqueue_memory_usage(self) -> int:
         """Return the object store memory of this operator's outqueue."""
-        return self._queue_memory_usage(self.outqueue)
-
-    def _queue_memory_usage(self, queue: Deque[RefBundle]) -> int:
-        """Sum the object store memory usage in this queue.
-
-        Note: Python's deque isn't truly thread-safe since it raises RuntimeError
-        if it detects concurrent iteration. Hence we don't use its iterator but
-        manually index into it.
-        """
-
-        object_store_memory = 0
-        for i in range(len(queue)):
-            try:
-                bundle = queue[i]
-                object_store_memory += bundle.size_bytes()
-            except IndexError:
-                break  # Concurrent pop from the outqueue by the consumer thread.
-        return object_store_memory
+        return self.outqueue.memory_usage
 
     def outqueue_num_blocks(self) -> int:
         """Return the number of blocks in this operator's outqueue."""
@@ -277,6 +307,13 @@ class OpState:
             except IndexError:
                 break
         return len(self.outqueue)
+
+    def mark_finished(self, exception: Optional[Exception] = None):
+        """Marks this operator as finished. Used for exiting get_output_blocking."""
+        if exception is None:
+            self._finished = True
+        else:
+            self._exception = exception
 
 
 def build_streaming_topology(

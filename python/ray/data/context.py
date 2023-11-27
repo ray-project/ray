@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -153,6 +153,8 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
 # Whether to enable get_object_locations for metric
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
+DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = ["AWS Error INTERNAL_FAILURE"]
+
 
 @DeveloperAPI
 class DataContext:
@@ -194,6 +196,7 @@ class DataContext:
         enable_progress_bars: bool,
         enable_get_object_locations_for_metrics: bool,
         use_runtime_metrics_scheduling: bool,
+        write_file_retry_on_errors: List[str],
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
@@ -231,6 +234,7 @@ class DataContext:
             enable_get_object_locations_for_metrics
         )
         self.use_runtime_metrics_scheduling = use_runtime_metrics_scheduling
+        self.write_file_retry_on_errors = write_file_retry_on_errors
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
@@ -292,6 +296,7 @@ class DataContext:
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
                     use_runtime_metrics_scheduling=DEFAULT_USE_RUNTIME_METRICS_SCHEDULING,
+                    write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
                 )
 
             return _default_context
