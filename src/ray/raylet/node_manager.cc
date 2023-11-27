@@ -2533,6 +2533,10 @@ rpc::ObjectStoreStats AccumulateStoreStats(
     if (cur_store.object_pulls_queued()) {
       store_stats.set_object_pulls_queued(true);
     }
+    store_stats.set_cumulative_created_objects(store_stats.cumulative_created_objects() +
+                                               cur_store.cumulative_created_objects());
+    store_stats.set_cumulative_created_bytes(store_stats.cumulative_created_bytes() +
+                                             cur_store.cumulative_created_bytes());
   }
   return store_stats;
 }
