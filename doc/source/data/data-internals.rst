@@ -23,9 +23,9 @@ The :class:`~ray.data.Dataset` is the user-facing Python object
 (usually held in the driver), while materialized blocks are stored as objects in Ray's
 shared-memory :ref:`object store <objects-in-ray>`.
 
-Generally speaking, the number of concurrently executing tasks will determine CPU utilization (or GPU utilization if using GPU transforms).
+Generally speaking, the number of concurrently executing tasks determines CPU utilization (or GPU utilization if using GPU transforms).
 The total heap memory usage is a function (determined by your UDF) of the number of concurrently executing tasks multiplied by the block size.
-The total number of materialized blocks in scope will determine Ray's object store usage; if this exceeds Ray's object store capacity, then Ray will automatically spill blocks to disk.
+The total number of materialized blocks in scope determines Ray's object store usage; if this exceeds Ray's object store capacity, then Ray automatically spills blocks to disk.
 Ray Data uses :ref:`streaming execution <streaming_execution>` to minimize the total number of materialized blocks in scope and therefore avoid spilling.
 
 .. image:: images/dataset-arch.svg
@@ -40,7 +40,7 @@ Reading files
 -------------
 
 Ray Data uses :ref:`Ray tasks <task-key-concept>` to read files in parallel. Each read
-task reads one or more files and produces a _stream_ of one or more output blocks.
+task reads one or more files and produces a stream of one or more output blocks.
 These output blocks are either stored in Ray's object store or fed directly to the downstream transform.
 
 .. image:: images/dataset-read.svg
