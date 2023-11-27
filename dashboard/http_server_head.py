@@ -140,6 +140,9 @@ class HttpServerDashboardHead:
                 pathlib.posixpath.realpath(request.path)
             )
             if request_path != parent and parent not in request_path.parents:
+                logger.info(
+                    f"Rejecting {request_path=} because it is not relative to {parent=}"
+                )
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
