@@ -11,5 +11,4 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-RUN pip install -U --ignore-installed  \
-  -r doc/requirements-doc.txt
+RUN pip install -r doc/requirements-doc.txt
