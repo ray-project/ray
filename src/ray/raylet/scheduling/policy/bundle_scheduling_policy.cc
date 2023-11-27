@@ -27,7 +27,7 @@ namespace {
 ///   allocated by the current bundles so far. It will help us figuring out
 ///   the total CPU allocation from the current bundles for this node.
 bool AllocationWillExceedMaxCpuFraction(
-    const ray::NodeResources &node_resources,
+    const ray::NodeResourceInstances &node_resources,
     const ray::ResourceRequest &bundle_resource_request,
     double max_cpu_fraction_per_node,
     double available_cpus_before_curernt_pg_request) {
@@ -37,11 +37,11 @@ bool AllocationWillExceedMaxCpuFraction(
   }
 
   auto cpu_id = ray::ResourceID::CPU();
-  auto total_cpus = node_resources.total.Get(cpu_id).Double();
+  auto total_cpus = node_resources.total.Get(cpu_id)[0].Double();
 
   // Calculate max_reservable_cpus
   auto max_reservable_cpus =
-      max_cpu_fraction_per_node * node_resources.total.Get(cpu_id).Double();
+      max_cpu_fraction_per_node * node_resources.total.Get(cpu_id)[0].Double();
 
   // If the max reservable cpu < 1, we allow at least 1 CPU.
   if (max_reservable_cpus < 1) {
@@ -66,7 +66,7 @@ bool AllocationWillExceedMaxCpuFraction(
   FixedPoint cpus_used_by_pg_before(0);
   for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
     if (ray::GetOriginalResourceNameFromWildcardResource(resource_id.Binary()) == "CPU") {
-      cpus_used_by_pg_before += node_resources.total.Get(resource_id);
+      cpus_used_by_pg_before += node_resources.total.Get(resource_id)[0];
     }
   }
 
@@ -76,7 +76,7 @@ bool AllocationWillExceedMaxCpuFraction(
   // available CPUs after allocating CPUs for the current pg request.
   auto cpus_allocated_by_current_pg_request =
       (available_cpus_before_curernt_pg_request -
-       node_resources.available.Get(cpu_id).Double());
+       node_resources.available.Get(cpu_id)[0].Double());
 
   auto cpus_to_allocate_by_current_pg_request =
       (cpus_allocated_by_current_pg_request +
@@ -125,7 +125,7 @@ BundleSchedulingPolicy::GetAvailableCpusBeforeBundleScheduling() const {
   for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
     result.emplace(
         entry.first,
-        entry.second.GetLocalView().available.Get(ray::ResourceID::CPU()).Double());
+        entry.second.GetLocalView().available.Get(ray::ResourceID::CPU())[0].Double());
   }
   return result;
 }

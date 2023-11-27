@@ -397,7 +397,7 @@ void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       main_service_,
       scheduling::NodeID(kGCSNodeID.Binary()),
-      NodeResources(),
+      NodeResourceInstances(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
       /*is_local_node_with_raylet=*/false);

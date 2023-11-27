@@ -66,15 +66,6 @@ class ClusterResourceManager {
   /// Get number of nodes in the cluster.
   int64_t NumNodes() const;
 
-  /// Update total capacity of a given resource of a given node.
-  ///
-  /// \param node_id: Node whose resource we want to update.
-  /// \param resource_id: Resource which we want to update.
-  /// \param resource_total: New capacity of the resource.
-  void UpdateResourceCapacity(scheduling::NodeID node_id,
-                              scheduling::ResourceID resource_id,
-                              double resource_total);
-
   /// Delete a given resource from a given node.
   ///
   /// \param node_id: Node whose resource we want to delete.
@@ -131,6 +122,9 @@ class ClusterResourceManager {
 
   void SetNodeLabels(const scheduling::NodeID &node_id,
                      const absl::flat_hash_map<std::string, std::string> &labels);
+
+  void SetNodeResources(const scheduling::NodeID &node_id,
+                        const NodeResourceInstanceSet &total);
 
  private:
   friend class ClusterResourceScheduler;

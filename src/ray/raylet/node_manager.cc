@@ -986,14 +986,10 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
       scheduling::NodeID(node_id.Binary()), labels);
 
   // TODO: Always use the message from ray syncer.
-  ResourceRequest resources;
-  for (auto &resource_entry : node_info.resources_total()) {
-    resources.Set(scheduling::ResourceID(resource_entry.first),
-                  FixedPoint(resource_entry.second));
-  }
-  if (ResourceCreateUpdated(node_id, resources)) {
-    cluster_task_manager_->ScheduleAndDispatchTasks();
-  }
+  cluster_resource_scheduler_->GetClusterResourceManager().SetNodeResources(
+      scheduling::NodeID(node_id.Binary()),
+      NodeResourceInstanceSet(MapFromProtobuf(node_info.resources_total())));
+  cluster_task_manager_->ScheduleAndDispatchTasks();
   // Update the resource view if a new message has been sent.
   if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
                                                  syncer::MessageType::RESOURCE_VIEW)) {
@@ -1102,30 +1098,6 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
       }
     }
   }
-}
-
-bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
-                                        const ResourceRequest &createUpdatedResources) {
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
-                 << " with created or updated resources: "
-                 << createUpdatedResources.DebugString() << ". Updating resource map."
-                 << " skip=" << (node_id == self_node_id_);
-
-  // Skip updating local node since local node always has the latest information.
-  // Updating local node could result in a inconsistence view in cluster resource
-  // scheduler which could make task hang.
-  if (node_id == self_node_id_) {
-    return false;
-  }
-
-  for (const auto &resource_id : createUpdatedResources.ResourceIds()) {
-    cluster_resource_scheduler_->GetClusterResourceManager().UpdateResourceCapacity(
-        scheduling::NodeID(node_id.Binary()),
-        resource_id,
-        createUpdatedResources.Get(resource_id).Double());
-  }
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
-  return true;
 }
 
 bool NodeManager::ResourceDeleted(const NodeID &node_id,

@@ -673,6 +673,7 @@ void GcsPlacementGroupScheduler::AddResourcesChangedListener(
 
 bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
     const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle) {
+  /*
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
   auto node_id = scheduling::NodeID(bundle.first.Binary());
@@ -734,6 +735,7 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
   // Add reserved bundle resources back to the node.
   cluster_resource_manager.AddNodeAvailableResources(
       node_id, bundle_spec->GetRequiredResources().GetResourceSet());
+  */
   return true;
 }
 

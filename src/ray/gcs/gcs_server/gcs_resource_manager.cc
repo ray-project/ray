@@ -283,10 +283,9 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   NodeID node_id = NodeID::FromBinary(node.node_id());
   scheduling::NodeID scheduling_node_id(node_id.Binary());
   if (!node.resources_total().empty()) {
-    for (const auto &entry : node.resources_total()) {
-      cluster_resource_manager_.UpdateResourceCapacity(
-          scheduling_node_id, scheduling::ResourceID(entry.first), entry.second);
-    }
+    cluster_resource_manager_.SetNodeResources(
+        scheduling_node_id,
+        NodeResourceInstanceSet(MapFromProtobuf(node.resources_total())));
   } else {
     RAY_LOG(WARNING) << "The registered node " << node_id
                      << " doesn't set the total resources.";

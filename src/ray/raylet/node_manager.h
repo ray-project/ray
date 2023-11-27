@@ -266,13 +266,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void NodeRemoved(const NodeID &node_id);
 
-  /// Handler for the addition or updation of a resource in the GCS
-  /// \param node_id ID of the node that created or updated resources.
-  /// \param createUpdatedResources Created or updated resources.
-  /// \return Whether the update is applied.
-  bool ResourceCreateUpdated(const NodeID &node_id,
-                             const ResourceRequest &createUpdatedResources);
-
   /// Handler for the deletion of a resource in the GCS
   /// \param node_id ID of the node that deleted resources.
   /// \param resource_names Names of deleted resources.

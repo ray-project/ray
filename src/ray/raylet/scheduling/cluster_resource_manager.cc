@@ -115,32 +115,6 @@ const NodeResourceInstances &ClusterResourceManager::GetNodeResources(
 
 int64_t ClusterResourceManager::NumNodes() const { return nodes_.size(); }
 
-void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
-                                                    scheduling::ResourceID resource_id,
-                                                    double resource_total) {
-  auto it = nodes_.find(node_id);
-  if (it == nodes_.end()) {
-    NodeResources node_resources;
-    it = nodes_.emplace(node_id, node_resources).first;
-  }
-
-  auto local_view = it->second.GetMutableLocalView();
-  FixedPoint resource_total_fp(resource_total);
-  auto local_total = local_view->total.Get(resource_id);
-  auto local_available = local_view->available.Get(resource_id);
-  auto diff_capacity = resource_total_fp - local_total;
-  auto total = local_total + diff_capacity;
-  auto available = local_available + diff_capacity;
-  if (total < 0) {
-    total = 0;
-  }
-  if (available < 0) {
-    available = 0;
-  }
-  local_view->total.Set(resource_id, total);
-  local_view->available.Set(resource_id, available);
-}
-
 bool ClusterResourceManager::DeleteResources(
     scheduling::NodeID node_id, const std::vector<scheduling::ResourceID> &resource_ids) {
   auto it = nodes_.find(node_id);
@@ -268,10 +242,21 @@ void ClusterResourceManager::SetNodeLabels(
     const absl::flat_hash_map<std::string, std::string> &labels) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
-    NodeResources node_resources;
+    NodeResourceInstances node_resources;
     it = nodes_.emplace(node_id, node_resources).first;
   }
   it->second.GetMutableLocalView()->labels = labels;
+}
+
+void ClusterResourceManager::SetNodeResources(const scheduling::NodeID &node_id,
+                                              const NodeResourceInstanceSet &total) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    NodeResourceInstances node_resources;
+    it = nodes_.emplace(node_id, node_resources).first;
+  }
+  it->second.GetMutableLocalView()->total = total;
+  it->second.GetMutableLocalView()->available = total;
 }
 
 }  // namespace ray
