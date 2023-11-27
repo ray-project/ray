@@ -19,10 +19,18 @@ export type DataMetrics = {
     value: number;
     max: number;
   };
-  ray_data_output_bytes: {
+  ray_data_output_rows: {
     max: number;
   };
   ray_data_spilled_bytes: {
+    max: number;
+  };
+  ray_data_cpu_usage_cores: {
+    value: number;
+    max: number;
+  };
+  ray_data_gpu_usage_cores: {
+    value: number;
     max: number;
   };
   progress: number;

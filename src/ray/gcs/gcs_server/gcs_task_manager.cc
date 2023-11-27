@@ -147,9 +147,7 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   }
 
   // Update the task event.
-  stats_counter_.Decrement(kNumTaskEventsBytesStored, existing_task.ByteSizeLong());
   existing_task.MergeFrom(task_events);
-  stats_counter_.Increment(kNumTaskEventsBytesStored, existing_task.ByteSizeLong());
 
   // Move the task events around different gc priority list.
   auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
@@ -182,7 +180,6 @@ GcsTaskManager::GcsTaskManagerStorage::AddNewTaskEvent(rpc::TaskEvents &&task_ev
   const auto &added_task_events = loc->GetTaskEventsMutable();
 
   // Stats tracking
-  stats_counter_.Increment(kNumTaskEventsBytesStored, added_task_events.ByteSizeLong());
   stats_counter_.Increment(kNumTaskEventsStored);
   // Bump the task counters by type.
   if (added_task_events.has_task_info() && added_task_events.attempt_number() == 0) {
@@ -279,7 +276,6 @@ void GcsTaskManager::GcsTaskManagerStorage::RemoveTaskAttempt(
   // Update the tracking
   job_task_summary_[job_id].RecordProfileEventsDropped(NumProfileEvents(to_remove));
   job_task_summary_[job_id].RecordTaskAttemptDropped(GetTaskAttempt(to_remove));
-  stats_counter_.Decrement(kNumTaskEventsBytesStored, to_remove.ByteSizeLong());
   stats_counter_.Decrement(kNumTaskEventsStored);
   stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
   stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
@@ -498,8 +494,6 @@ std::string GcsTaskManager::DebugString() {
      << "\n-Total num status task events dropped: "
      << counters[kTotalNumTaskAttemptsDropped] << "\n-Total num profile events dropped: "
      << counters[kTotalNumProfileTaskEventsDropped]
-     << "\n-Total num bytes of task event stored: "
-     << 1.0 * counters[kNumTaskEventsBytesStored] / 1024 / 1024 << "MiB"
      << "\n-Current num of task events stored: " << counters[kNumTaskEventsStored]
      << "\n-Total num of actor creation tasks: " << counters[kTotalNumActorCreationTask]
      << "\n-Total num of actor tasks: " << counters[kTotalNumActorTask]
@@ -521,8 +515,6 @@ void GcsTaskManager::RecordMetrics() {
 
   ray::stats::STATS_gcs_task_manager_task_events_stored.Record(
       counters[kNumTaskEventsStored]);
-  ray::stats::STATS_gcs_task_manager_task_events_stored_bytes.Record(
-      counters[kNumTaskEventsBytesStored]);
 
   {
     absl::MutexLock lock(&mutex_);

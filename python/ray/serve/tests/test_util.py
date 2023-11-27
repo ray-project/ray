@@ -11,6 +11,7 @@ from fastapi.encoders import jsonable_encoder
 import ray
 from ray import serve
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import (
     MetricsPusher,
     calculate_remaining_timeout,
@@ -520,18 +521,14 @@ def test_metrics_pusher_multiple_tasks():
         metrics_pusher.register_task(lambda: task("C", counter, result), 0.7)
         metrics_pusher.start()
 
-        # This busy wait loop should run for at most a few hundred milliseconds
-        # The test should finish by then, and if the test fails this prevents
-        # an infinite loop
-        for _ in range(10000000):
+        # Check there are three results set and all are expected.
+        def check_results():
             for key in result.keys():
                 assert result[key] == expected_results[key]
-            if len(result) == 3:
-                break
+            assert len(result) == 3
+            return True
 
-        # Check there are three results set and all are expected.
-        for key in expected_results.keys():
-            assert result[key] == expected_results[key]
+        wait_for_condition(check_results)
 
 
 def test_is_running_in_asyncio_loop_false():

@@ -147,7 +147,7 @@ def test_non_restartable_actor_throws_oom_error(ray_with_memory_monitor):
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold - 0.1
+        memory_usage_threshold - 0.3
     )
     ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 

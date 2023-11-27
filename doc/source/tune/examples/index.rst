@@ -14,9 +14,6 @@ Ray Tune Examples
 .. _tune-experiment-tracking-examples:
 .. include:: experiment-tracking.rst
 
-.. _tune-hpo-framework-examples:
-.. include:: hpo-frameworks.rst
-
 .. _tune-general-examples:
 .. include:: other-examples.rst
 

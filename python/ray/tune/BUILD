@@ -569,15 +569,6 @@ py_test(
 )
 
 py_test(
-    name = "dragonfly_example",
-    size = "medium",
-    srcs = ["examples/dragonfly_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "hyperband_example",
     size = "medium",
     srcs = ["examples/hyperband_example.py"],
@@ -672,15 +663,6 @@ py_test(
     srcs = ["examples/mnist_pytorch_trainable.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "pytorch"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "nevergrad_example",
-    size = "small",
-    srcs = ["examples/nevergrad_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 

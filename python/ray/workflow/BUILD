@@ -18,11 +18,15 @@ LARGE_TESTS = [
   "tests/test_recovery.py",
   "tests/test_basic_workflows_2.py",
   "tests/test_metadata.py",
-  "tests/test_events.py"
+]
+
+LARGE_ALL_CORE_TESTS = [
+  "tests/test_http_events_2.py",
+  "tests/test_events.py",
 ]
 
 py_test_module_list(
-  files = glob(["tests/test_*.py", "examples/**/*.py"], exclude=LARGE_TESTS),
+  files = glob(["tests/test_*.py", "examples/**/*.py"], exclude=LARGE_TESTS+LARGE_ALL_CORE_TESTS),
   size = "medium",
   extra_srcs = SRCS,
   tags = ["team:core", "exclusive"],
@@ -34,5 +38,13 @@ py_test_module_list(
   size = "large",
   extra_srcs = SRCS,
   tags = ["team:core", "exclusive"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = LARGE_ALL_CORE_TESTS,
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["team:core", "use_all_core", "exclusive"],
   deps = ["//:ray_lib"],
 )
