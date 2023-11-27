@@ -334,7 +334,7 @@ bool WorkerContext::CurrentThreadIsMain() const {
   return boost::this_thread::get_id() == main_thread_id_;
 }
 
-const TaskID WorkerContext::GetMainThreadOrActorCreationTaskID() const {
+const TaskID &WorkerContext::GetMainThreadOrActorCreationTaskID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return main_thread_or_actor_creation_task_id_;
 }

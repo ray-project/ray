@@ -1,3 +1,4 @@
+import asyncio
 import ray
 import os
 import signal
@@ -5,6 +6,9 @@ import time
 import sys
 import pytest
 import warnings
+import threading
+
+from queue import Queue
 
 from ray._private.test_utils import SignalActor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -395,6 +399,160 @@ def test_async_actor_task_id(shutdown_only):
         return True
 
     wait_for_condition(verify)
+
+
+def test_task_id_in_background_thread_normal_actor(shutdown_only):
+    """
+    Test background thread of a regular actor.
+    """
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            self.lock = threading.Lock()
+            self.task_id = None
+
+            def target():
+                with self.lock:
+                    self.task_id = ray.get_runtime_context().get_task_id()
+
+            self.t = threading.Thread(target=target)
+            self.t.start()
+            self.t.join()
+
+        def run_thread(self):
+            def target():
+                with self.lock:
+                    self.task_id = ray.get_runtime_context().get_task_id()
+
+            self.t = threading.Thread(target=target)
+            self.t.start()
+            self.t.join()
+
+        def get(self):
+            with self.lock:
+                return self.task_id, ray.get_runtime_context().get_task_id()
+
+    a = A.remote()
+    ray.get(a.__ray_ready__.remote())
+    task_id_background, _ = ray.get(a.get.remote())
+
+    def verify():
+        tasks = list_tasks()
+        actor_creation_task_id = None
+        for task in tasks:
+            if task.type == "ACTOR_CREATION_TASK":
+                actor_creation_task_id = task.task_id
+        return task_id_background == actor_creation_task_id
+
+    wait_for_condition(verify)
+
+
+def test_task_id_in_background_thread_threaded_actor(shutdown_only):
+    """
+    Test background thread of a threaded actor.
+    """
+
+    @ray.remote(max_concurrency=100)
+    class A:
+        def __init__(self):
+            self.lock = threading.Lock()
+            self.task_id = None
+
+        def run_thread(self):
+            def target():
+                with self.lock:
+                    self.task_id = ray.get_runtime_context().get_task_id()
+
+            self.t = threading.Thread(target=target)
+            self.t.start()
+            self.t.join()
+
+        def get(self):
+            with self.lock:
+                return self.task_id, ray.get_runtime_context().get_task_id()
+
+    a = A.remote()
+    ray.get(a.__ray_ready__.remote())
+    ray.get(a.run_thread.remote())
+    task_id_background, _ = ray.get(a.get.remote())
+
+    def verify():
+        tasks = list_tasks()
+        actor_creation_task_id = None
+        for task in tasks:
+            if task.type == "ACTOR_CREATION_TASK":
+                actor_creation_task_id = task.task_id
+        return task_id_background == actor_creation_task_id
+
+    wait_for_condition(verify)
+
+
+def test_task_id_in_background_thread_async_actor(shutdown_only):
+    """
+    Test background thread of a async actor.
+    """
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            self.lock = threading.Lock()
+            self.task_id = None
+            self.t = None
+
+        async def run_thread(self):
+            def target():
+                with self.lock:
+                    self.task_id = ray.get_runtime_context().get_task_id()
+
+            self.t = threading.Thread(target=target)
+            self.t.start()
+            self.t.join()
+            await asyncio.sleep(0)
+
+        async def get(self):
+            with self.lock:
+                return self.task_id, ray.get_runtime_context().get_task_id()
+
+    a = A.remote()
+    ray.get(a.__ray_ready__.remote())
+    ray.get(a.run_thread.remote())
+    task_id_background, _ = ray.get(a.get.remote())
+
+    def verify():
+        tasks = list_tasks()
+        actor_creation_task_id = None
+        for task in tasks:
+            if task.type == "ACTOR_CREATION_TASK":
+                actor_creation_task_id = task.task_id
+        return task_id_background == actor_creation_task_id
+
+    wait_for_condition(verify)
+
+
+def test_task_id_in_background_thread_normal_task(shutdown_only):
+    """
+    Test background thread of a normal task.
+    """
+
+    @ray.remote
+    def f():
+        lock = threading.Lock()
+        task_id = None
+        queue = Queue()
+
+        def target():
+            with lock:
+                queue.put(ray.get_runtime_context().get_task_id())
+
+        t = threading.Thread(target=target)
+        t.start()
+        t.join()
+        task_id = queue.get()
+        return task_id, ray.get_runtime_context().get_task_id()
+
+    task_id_background, task_id = ray.get(f.remote())
+    assert task_id_background == task_id
 
 
 if __name__ == "__main__":

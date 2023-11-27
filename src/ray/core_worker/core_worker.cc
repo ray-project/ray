@@ -1955,6 +1955,20 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   return returned_refs;
 }
 
+const TaskID &CoreWorker::GetCurrentTaskId() const {
+  const auto &task_id = worker_context_.GetCurrentTaskID();
+  absl::MutexLock lock(&mutex_);
+  if (current_tasks_.find(task_id) == current_tasks_.end()) {
+    // If the task ID cannot be found, it means the API is called within
+    // user-created thread (e.g., Python thread by thread.Thread).
+    // In this case, there's no clear way to know the task id, so we revert
+    // to the main thread' taskID.
+    return worker_context_.GetMainThreadOrActorCreationTaskID();
+  } else {
+    return task_id;
+  }
+}
+
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
