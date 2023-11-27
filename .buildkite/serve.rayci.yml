@@ -27,8 +27,6 @@ steps:
         --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.8
         --privileged
     depends_on: "servebuild"
-    env:
-      PYTHON_VERSION: "3.8.13"
 
   - label: ":ray-serve: serve: pydantic < 2.0 tests"
     parallelism: 2
@@ -44,8 +42,6 @@ steps:
         --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.8 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
         --privileged
     depends_on: servepydantic1build
-    env:
-      PYTHON_VERSION: "3.8.13"
 
   - label: ":ray-serve: serve: Python 3.11 tests"
     parallelism: 2
