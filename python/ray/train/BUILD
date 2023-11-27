@@ -478,6 +478,14 @@ py_test(
 )
 
 py_test(
+    name = "test_result",
+    size = "medium",
+    srcs = ["tests/test_result.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_session",
     size = "small",
     srcs = ["tests/test_session.py"],

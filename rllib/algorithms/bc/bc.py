@@ -6,7 +6,7 @@ from ray.rllib.core.learner import Learner
 from ray.rllib.core.learner.learner_group_config import ModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_AGENT_STEPS_SAMPLED,
@@ -71,8 +71,7 @@ class BCConfig(MARWILConfig):
         # not important for behavioral cloning.
         self.postprocess_inputs = False
         # Set RLModule as default.
-        self.rl_module(_enable_rl_module_api=True)
-        self.training(_enable_learner_api=True)
+        self.experimental(_enable_new_api_stack=True)
         # __sphinx_doc_end__
         # fmt: on
 
@@ -116,11 +115,6 @@ class BCConfig(MARWILConfig):
 
     @override(MARWILConfig)
     def validate(self) -> None:
-        # Can not use Tf with learner api.
-        if self.framework_str == "tf":
-            self.rl_module(_enable_rl_module_api=False)
-            self.training(_enable_learner_api=False)
-
         # Call super's validation method.
         super().validate()
 
@@ -139,9 +133,9 @@ class BC(MARWIL):
     def get_default_config(cls) -> AlgorithmConfig:
         return BCConfig()
 
-    @ExperimentalAPI
+    @override(MARWIL)
     def training_step(self) -> ResultDict:
-        if not self.config["_enable_rl_module_api"]:
+        if not self.config._enable_new_api_stack:
             # Using ModelV2.
             return super().training_step()
         else:

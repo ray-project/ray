@@ -364,23 +364,6 @@ def snake_to_camel_case(snake_str: str) -> str:
     return words[0] + "".join(word[:1].upper() + word[1:] for word in words[1:])
 
 
-def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
-    """Converts dictionary's keys from snake case to camel case.
-
-    Does not modify original dictionary.
-    """
-
-    camel_dict = dict()
-
-    for key, val in snake_dict.items():
-        if isinstance(key, str):
-            camel_dict[snake_to_camel_case(key)] = val
-        else:
-            camel_dict[key] = val
-
-    return camel_dict
-
-
 def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
     """Check if ray object reference is ready without waiting for it."""
     finished, _ = ray.wait([obj_ref], timeout=0)

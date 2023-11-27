@@ -474,9 +474,9 @@ class RLModule(abc.ABC):
 
     @OverrideToImplementCustomLogic
     def is_stateful(self) -> bool:
-        """Returns True if the initial state is empty.
+        """Returns False if the initial state is an empty dict (or None).
 
-        By default, RLlib assumes that the module is not recurrent if the initial
+        By default, RLlib assumes that the module is non-recurrent if the initial
         state is an empty dict and recurrent otherwise.
         This behavior can be overridden by implementing this method.
         """

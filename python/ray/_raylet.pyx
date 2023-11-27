@@ -128,6 +128,7 @@ from ray.includes.common cimport (
     PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
+    WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR,
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
@@ -282,7 +283,7 @@ class StreamingObjectRefGenerator:
         self.worker.check_connected()
         core_worker = self.worker.core_worker
         return core_worker.peek_object_ref_stream(
-            self._generator_ref)
+            self._generator_ref)[0]
 
     def __iter__(self) -> "StreamingObjectRefGenerator":
         return self
@@ -331,16 +332,17 @@ class StreamingObjectRefGenerator:
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
         """
-        self.worker.check_connected()
         core_worker = self.worker.core_worker
 
         # Wait for the next ObjectRef to become ready.
-        expected_ref = core_worker.peek_object_ref_stream(
+        expected_ref, is_ready = core_worker.peek_object_ref_stream(
             self._generator_ref)
-        ready, unready = ray.wait(
-            [expected_ref], timeout=timeout_s, fetch_local=False)
-        if len(unready) > 0:
-            return ObjectRef.nil()
+
+        if not is_ready:
+            _, unready = ray.wait(
+                [expected_ref], timeout=timeout_s, fetch_local=False)
+            if len(unready) > 0:
+                return ObjectRef.nil()
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(
@@ -379,18 +381,18 @@ class StreamingObjectRefGenerator:
             timeout_s: Optional[float] = None
     ):
         """Same API as _next_sync, but it is for async context."""
-        self.worker.check_connected()
         core_worker = self.worker.core_worker
-
-        ref = core_worker.peek_object_ref_stream(
+        ref, is_ready = core_worker.peek_object_ref_stream(
             self._generator_ref)
-        # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait(
-            [asyncio.create_task(self.suppress_exceptions(ref))],
-            timeout=timeout_s
-        )
-        if len(unready) > 0:
-            return ObjectRef.nil()
+
+        if not is_ready:
+            # TODO(swang): Avoid fetching the value.
+            ready, unready = await asyncio.wait(
+                [asyncio.create_task(self.suppress_exceptions(ref))],
+                timeout=timeout_s
+            )
+            if len(unready) > 0:
+                return ObjectRef.nil()
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(
@@ -456,6 +458,13 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsRpcError():
         raise RpcError(message, rpc_code=status.rpc_code())
+    elif status.IsIntentionalSystemExit():
+        with gil:
+            raise_sys_exit_with_custom_error_message(message)
+    elif status.IsUnexpectedSystemExit():
+        with gil:
+            raise_sys_exit_with_custom_error_message(
+                message, exit_code=1)
     else:
         raise RaySystemError(message)
 
@@ -691,6 +700,31 @@ cdef int prepare_actor_concurrency_groups(
             key.encode("ascii"), value["max_concurrency"], c_fd_list)
         concurrency_groups.push_back(cg)
     return 1
+
+
+def raise_sys_exit_with_custom_error_message(
+        ray_terminate_msg: str,
+        exit_code: int = 0) -> None:
+    """It is equivalent to sys.exit, but it can contain
+    a custom message. Custom message is reported to
+    raylet and is accessible via GCS (from `ray get workers`).
+
+    Note that sys.exit == raise SystemExit. I.e., this API
+    simply raises SystemExit with a custom error message accessible
+    via `e.ray_terminate_msg`.
+
+    Args:
+        ray_terminate_msg: The error message to propagate to GCS.
+        exit_code: The exit code. If it is not 0, it is considered
+            as a system error.
+    """
+    # Raising SystemExit(0) is equivalent to
+    # sys.exit(0).
+    # https://docs.python.org/3/library/exceptions.html#SystemExit
+    e = SystemExit(exit_code)
+    e.ray_terminate_msg = ray_terminate_msg
+    raise e
+
 
 cdef prepare_args_and_increment_put_refs(
         CoreWorker core_worker,
@@ -1112,13 +1146,13 @@ cdef report_streaming_generator_output(
                 is_plasma_object(return_obj.second)))
 
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+            check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 return_obj,
                 context.generator_id,
                 context.caller_address,
                 generator_index,
                 context.attempt_number,
-                context.waiter)
+                context.waiter))
         context.generator_index += 1
         return True
     else:
@@ -1146,13 +1180,13 @@ cdef report_streaming_generator_output(
             "Writes to a ObjectRefStream of an "
             "index {}".format(context.generator_index))
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+            check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 return_obj,
                 context.generator_id,
                 context.caller_address,
                 generator_index,
                 context.attempt_number,
-                context.waiter)
+                context.waiter))
         context.generator_index += 1
         return False
 
@@ -1515,10 +1549,7 @@ cdef void execute_task(
     # actor, Ray will exit the actor.
     def exit_current_actor_if_asyncio():
         if core_worker.current_actor_is_asyncio():
-            error = SystemExit(0)
-            error.is_ray_terminate = True
-            error.ray_terminate_msg = "exit_actor() is called."
-            raise error
+            raise_sys_exit_with_custom_error_message("exit_actor() is called.")
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
@@ -1963,7 +1994,7 @@ cdef execute_task_with_cancellation_handler(
         actor = None
         actor_id = core_worker.get_actor_id()
         if not actor_id.is_nil():
-            actor = core_worker.actors[actor_id]
+            actor = worker.actors[actor_id]
 
         store_task_errors(
                 worker, e,
@@ -1993,12 +2024,9 @@ cdef execute_task_with_cancellation_handler(
         # If we've reached the max number of executions for this worker, exit.
         task_counter = manager.get_task_counter(function_descriptor)
         if task_counter == execution_info.max_calls:
-            exit = SystemExit(0)
-            exit.is_ray_terminate = True
-            exit.ray_terminate_msg = (
+            raise_sys_exit_with_custom_error_message(
                 "max_call has reached, "
                 f"max_calls: {execution_info.max_calls}")
-            raise exit
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2086,16 +2114,16 @@ cdef CRayStatus task_execution_handler(
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
-            if hasattr(e, "is_ray_terminate"):
-                return CRayStatus.IntentionalSystemExit(e.ray_terminate_msg)
-            elif hasattr(e, "is_creation_task_error"):
+            if hasattr(e, "is_creation_task_error"):
                 return CRayStatus.CreationTaskError(e.init_error_message)
             elif e.code is not None and e.code == 0:
                 # This means the system exit was
                 # normal based on the python convention.
                 # https://docs.python.org/3/library/sys.html#sys.exit
-                return CRayStatus.IntentionalSystemExit(
-                    f"Worker exits with an exit code {e.code}.")
+                msg = f"Worker exits with an exit code {e.code}."
+                if hasattr(e, "ray_terminate_msg"):
+                    msg += (f" {e.ray_terminate_msg}")
+                return CRayStatus.IntentionalSystemExit(msg)
             else:
                 msg = f"Worker exits with an exit code {e.code}."
                 # In K8s, SIGTERM likely means we hit memory limits, so print
@@ -2103,9 +2131,10 @@ cdef CRayStatus task_execution_handler(
                 if "KUBERNETES_SERVICE_HOST" in os.environ:
                     msg += (
                         " The worker may have exceeded K8s pod memory limits.")
+                if hasattr(e, "ray_terminate_msg"):
+                    msg += (f" {e.ray_terminate_msg}")
                 if hasattr(e, "unexpected_error_traceback"):
-                    msg += (f"\n {e.unexpected_error_traceback}")
-                logger.exception(msg)
+                    msg += (f" {e.unexpected_error_traceback}")
                 return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
@@ -2122,10 +2151,30 @@ cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
 
 cdef CRayStatus check_signals() nogil:
     with gil:
+        # The Python exceptions are not handled if it is raised from cdef,
+        # so we have to handle it here.
         try:
             PyErr_CheckSignals()
         except KeyboardInterrupt:
             return CRayStatus.Interrupted(b"")
+        except SystemExit as e:
+            error_msg = (
+                "SystemExit is raised (sys.exit is called).")
+            if e.code is not None:
+                error_msg += f" Exit code: {e.code}."
+            else:
+                error_msg += " Exit code was not specified."
+
+            if hasattr(e, "ray_terminate_msg"):
+                error_msg += f" {e.ray_terminate_msg}"
+
+            if e.code and e.code == 0:
+                return CRayStatus.IntentionalSystemExit(error_msg.encode("utf-8"))
+            else:
+                return CRayStatus.UnexpectedSystemExit(error_msg.encode("utf-8"))
+        # By default, if signals raise an exception, Python just prints them.
+        # To keep the same behavior, we don't handle any other exceptions.
+
     return CRayStatus.OK()
 
 
@@ -3059,15 +3108,15 @@ cdef class CoreWorker:
         self._task_id_to_future = {}
         self.thread_pool_for_async_event_loop = None
 
-    def shutdown(self):
+    def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
         # shutdown. So we can't call
         # `CCoreWorkerProcess.GetCoreWorker().GetWorkerType()` here.
         # Instead, we use the cached `is_driver` flag to test if it's a
         # driver.
-        if self.is_driver:
-            with nogil:
-                CCoreWorkerProcess.Shutdown()
+        assert self.is_driver
+        with nogil:
+            CCoreWorkerProcess.Shutdown()
 
     def notify_raylet(self):
         with nogil:
@@ -3077,13 +3126,16 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.RunTaskExecutionLoop()
 
-    def exit_worker(self, exit_type: str, c_string detail):
+    def drain_and_exit_worker(self, exit_type: str, c_string detail):
         """
         Exit the current worker process. This API should only be used by
-        a worker. If this API is called, the worker will finish currently
-        executing task, initiate the shutdown, and stop itself gracefully.
-        The given exit_type and detail will be reported to GCS, and any
-        worker failure error will contain them.
+        a worker. If this API is called, the worker will wait to finish
+        currently executing task, initiate the shutdown, and stop
+        itself gracefully. The given exit_type and detail will be
+        reported to GCS, and any worker failure error will contain them.
+
+        The behavior of this API while a task is running is undefined.
+        Avoid using the API when a task is still running.
         """
         cdef:
             CWorkerExitType c_exit_type
@@ -3093,6 +3145,8 @@ cdef class CoreWorker:
             c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
         if exit_type == "system":
             c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
+        elif exit_type == "intentional_system_exit":
+            c_exit_type = WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR
         else:
             raise ValueError(f"Invalid exit type: {exit_type}")
         assert not self.is_driver
@@ -3136,6 +3190,13 @@ cdef class CoreWorker:
     def should_capture_child_tasks_in_placement_group(self):
         return CCoreWorkerProcess.GetCoreWorker(
             ).ShouldCaptureChildTasksInPlacementGroup()
+
+    def update_task_is_debugger_paused(self, TaskID task_id, is_debugger_paused):
+        cdef:
+            CTaskID c_task_id = task_id.native()
+
+        return CCoreWorkerProcess.GetCoreWorker(
+            ).UpdateTaskIsDebuggerPaused(c_task_id, is_debugger_paused)
 
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
@@ -4604,16 +4665,17 @@ cdef class CoreWorker:
     def peek_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
-            CObjectReference c_object_ref
+            pair[CObjectReference, c_bool] c_object_ref_and_is_ready_pair
 
         with nogil:
-            c_object_ref = (
+            c_object_ref_and_is_ready_pair = (
                     CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
                         c_generator_id))
 
-        return ObjectRef(
-            c_object_ref.object_id(),
-            c_object_ref.owner_address().SerializeAsString())
+        return (ObjectRef(
+                    c_object_ref_and_is_ready_pair.first.object_id(),
+                    c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
+                c_object_ref_and_is_ready_pair.second)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

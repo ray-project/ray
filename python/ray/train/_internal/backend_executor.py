@@ -150,7 +150,7 @@ class BackendExecutor:
         # TODO remove passing in trial_driver_ip.
 
         trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
-        self.worker_group.group_workers_by_ip(trial_driver_ip)
+        self.worker_group.sort_workers_by_ip_and_gpu_id(trial_driver_ip)
 
         try:
             if initialization_hook:

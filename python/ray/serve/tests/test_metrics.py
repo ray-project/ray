@@ -16,6 +16,7 @@ from ray.serve._private.long_poll import LongPollHost, UpdatedObject
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import gRPCOptions
 from ray.serve.drivers import DAGDriver
+from ray.serve.handle import DeploymentHandle
 from ray.serve.http_adapters import json_request
 from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.common.utils import (
@@ -62,7 +63,7 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
-    ray.get([handle.remote(url) for _ in range(10)])
+    [handle.remote(url) for _ in range(10)]
 
     # Ping gPRC proxy
     channel = grpc.insecure_channel("localhost:9000")
@@ -847,17 +848,17 @@ class TestRequestContextMetrics:
         @serve.deployment
         @serve.ingress(app)
         class G:
-            def __init__(self, handle1, handle2):
+            def __init__(self, handle1: DeploymentHandle, handle2: DeploymentHandle):
                 self.handle1 = handle1
                 self.handle2 = handle2
 
             @app.get("/api")
             async def app1(self):
-                return await (await self.handle1.remote())
+                return await self.handle1.remote()
 
             @app.get("/api2")
             async def app2(self):
-                return await (await self.handle2.remote())
+                return await self.handle2.remote()
 
         serve.run(G.bind(g1.bind(), g2.bind()), name="app")
         resp = requests.get("http://127.0.0.1:8000/api")

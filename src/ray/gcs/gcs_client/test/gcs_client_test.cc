@@ -355,30 +355,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  gcs::NodeResourceInfoAccessor::ResourceMap GetResources(const NodeID &node_id) {
-    gcs::NodeResourceInfoAccessor::ResourceMap resource_map;
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
-        node_id,
-        [&resource_map, &promise](
-            Status status,
-            const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &result) {
-          if (result) {
-            resource_map.insert(result->begin(), result->end());
-          }
-          promise.set_value(true);
-        }));
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return resource_map;
-  }
-
-  bool ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-        resources, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
     std::promise<bool> promise;
     std::vector<rpc::AvailableResources> resources;
@@ -595,44 +571,6 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
-TEST_P(GcsClientTest, TestNodeResourceUsage) {
-  // Register node.
-  auto node_info = Mocker::GenNodeInfo();
-  RAY_CHECK(RegisterNode(*node_info));
-
-  // Report resource usage of a node to GCS.
-  NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto resource = std::make_shared<rpc::ResourcesData>();
-  resource->set_node_id(node_id.Binary());
-  resource->set_should_global_gc(true);
-  std::string resource_name = "CPU";
-  double resource_value = 1.0;
-  (*resource->mutable_resources_total())[resource_name] = resource_value;
-  ASSERT_TRUE(ReportResourceUsage(resource));
-
-  // Get and check last report resource usage.
-  auto last_resource_usage = gcs_client_->NodeResources().GetLastResourceUsage();
-  ASSERT_EQ(last_resource_usage->total.Get(scheduling::ResourceID::CPU()),
-            resource_value);
-}
-
-TEST_P(GcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
-  // Register node.
-  auto node_info = Mocker::GenNodeInfo();
-  RAY_CHECK(RegisterNode(*node_info));
-
-  // Report unchanged resource usage of a node to GCS.
-  NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto resource = std::make_shared<rpc::ResourcesData>();
-  resource->set_node_id(node_id.Binary());
-  ASSERT_TRUE(ReportResourceUsage(resource));
-
-  // Report changed resource usage of a node to GCS.
-  auto resource1 = std::make_shared<rpc::ResourcesData>();
-  resource1->set_node_id(node_id.Binary());
-  ASSERT_TRUE(ReportResourceUsage(resource1));
-}
-
 TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
@@ -643,14 +581,13 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
 
   // Report resource usage of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto resource = std::make_shared<rpc::ResourcesData>();
-  resource->set_node_id(node_id.Binary());
+  syncer::ResourceViewSyncMessage resource;
   // Set this flag to indicate resources has changed.
-  (*resource->mutable_resources_available())["CPU"] = 1.0;
-  (*resource->mutable_resources_available())["GPU"] = 10.0;
-  (*resource->mutable_resources_total())["CPU"] = 1.0;
-  (*resource->mutable_resources_total())["GPU"] = 10.0;
-  ASSERT_TRUE(ReportResourceUsage(resource));
+  (*resource.mutable_resources_available())["CPU"] = 1.0;
+  (*resource.mutable_resources_available())["GPU"] = 10.0;
+  (*resource.mutable_resources_total())["CPU"] = 1.0;
+  (*resource.mutable_resources_total())["GPU"] = 10.0;
+  gcs_server_->UpdateGcsResourceManagerInTest(node_id, resource);
 
   // Assert get all available resources right.
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
@@ -790,19 +727,15 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(RegisterNode(*node_info));
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   std::string key = "CPU";
-  auto resources = std::make_shared<rpc::ResourcesData>();
-  resources->set_node_id(node_info->node_id());
-  // Set this flag because GCS won't publish unchanged resources.
-  resources->set_should_global_gc(true);
-  ASSERT_TRUE(ReportResourceUsage(resources));
+  syncer::ResourceViewSyncMessage resources;
+  gcs_server_->UpdateGcsResourceManagerInTest(node_id, resources);
 
   RestartGcsServer();
 
   node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
   node_id = NodeID::FromBinary(node_info->node_id());
-  resources->set_node_id(node_info->node_id());
-  ASSERT_TRUE(ReportResourceUsage(resources));
+  gcs_server_->UpdateGcsResourceManagerInTest(node_id, resources);
 
   WaitForExpectedCount(node_change_count, 2);
 }
@@ -1020,6 +953,30 @@ TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
   auto nodes = GetNodeInfoList();
   for (const auto &node : nodes) {
     EXPECT_TRUE(node_ids.contains(NodeID::FromBinary(node.node_id())));
+  }
+}
+
+TEST_P(GcsClientTest, TestRegisterHeadNode) {
+  // Test at most only one head node is alive in GCS server
+  auto head_node_info = Mocker::GenNodeInfo(1);
+  head_node_info->set_is_head_node(true);
+  ASSERT_TRUE(RegisterNode(*head_node_info));
+
+  auto worker_node_info = Mocker::GenNodeInfo(1);
+  ASSERT_TRUE(RegisterNode(*worker_node_info));
+
+  auto head_node_info_2 = Mocker::GenNodeInfo(1);
+  head_node_info_2->set_is_head_node(true);
+  ASSERT_TRUE(RegisterNode(*head_node_info_2));
+
+  // check only one head node alive
+  auto nodes = GetNodeInfoList();
+  for (auto &node : nodes) {
+    if (node.node_id() != head_node_info->node_id()) {
+      ASSERT_TRUE(node.state() == rpc::GcsNodeInfo::ALIVE);
+    } else {
+      ASSERT_TRUE(node.state() == rpc::GcsNodeInfo::DEAD);
+    }
   }
 }
 

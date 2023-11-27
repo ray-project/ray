@@ -49,9 +49,6 @@ from ray.rllib.evaluation.metrics import (
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_THIS_ITER_COUNTER,  # TODO: Backward compatibility.
-)
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline import get_dataset_and_shards
@@ -99,6 +96,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
     SAMPLE_TIMER,
+    STEPS_TRAINED_THIS_ITER_COUNTER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
@@ -744,7 +742,7 @@ class Algorithm(Trainable, AlgorithmBase):
             method_config["type"] = method_type
 
         self.learner_group = None
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             # TODO (Kourosh): This is an interim solution where policies and modules
             #  co-exist. In this world we have both policy_map and MARLModule that need
             #  to be consistent with one another. To make a consistent parity between
@@ -1592,7 +1590,6 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
     @OverrideToImplementCustomLogic
-    @DeveloperAPI
     def training_step(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
 
@@ -1633,7 +1630,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # cases should use the multi-GPU optimizer, even if only using 1 GPU).
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
-            if self.config._enable_learner_api:
+            if self.config._enable_new_api_stack:
                 is_module_trainable = self.workers.local_worker().is_policy_to_train
                 self.learner_group.set_is_module_trainable(is_module_trainable)
                 train_results = self.learner_group.update(train_batch)
@@ -1655,7 +1652,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # TODO (Kourosh): figure out how we are going to sync MARLModule
             # weights to MARLModule weights under the policy_map objects?
             from_worker_or_trainer = None
-            if self.config._enable_learner_api:
+            if self.config._enable_new_api_stack:
                 from_worker_or_trainer = self.learner_group
             self.workers.sync_weights(
                 from_worker_or_learner_group=from_worker_or_trainer,
@@ -1932,7 +1929,10 @@ class Algorithm(Trainable, AlgorithmBase):
         filtered_obs, filtered_state = [], []
         for agent_id, ob in observations.items():
             worker = self.workers.local_worker()
-            preprocessed = worker.preprocessors[policy_id].transform(ob)
+            if worker.preprocessors.get(policy_id) is not None:
+                preprocessed = worker.preprocessors[policy_id].transform(ob)
+            else:
+                preprocessed = ob
             filtered = worker.filters[policy_id](preprocessed, update=False)
             filtered_obs.append(filtered)
             if state is None:
@@ -2104,7 +2104,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # If learner API is enabled, we need to also add the underlying module
         # to the learner group.
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             policy = self.get_policy(policy_id)
             module = policy.model
             self.learner_group.add_module(
@@ -2293,7 +2293,7 @@ class Algorithm(Trainable, AlgorithmBase):
             policy_states = state["worker"].pop("policy_states", {})
 
         # Add RLlib checkpoint version.
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER
         else:
             state["checkpoint_version"] = CHECKPOINT_VERSION
@@ -2328,7 +2328,7 @@ class Algorithm(Trainable, AlgorithmBase):
             policy.export_checkpoint(policy_dir, policy_state=policy_state)
 
         # if we are using the learner API, save the learner group state
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.save_state(learner_state_dir)
 
@@ -2340,7 +2340,7 @@ class Algorithm(Trainable, AlgorithmBase):
         checkpoint_info = get_checkpoint_info(checkpoint_dir)
         checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.load_state(learner_state_dir)
 
@@ -2389,7 +2389,7 @@ class Algorithm(Trainable, AlgorithmBase):
         eval_cf.freeze()
 
         # resources for the driver of this trainable
-        if cf._enable_learner_api:
+        if cf._enable_new_api_stack:
             if cf.num_learner_workers == 0:
                 # in this case local_worker only does sampling and training is done on
                 # local learner worker
@@ -2444,7 +2444,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # resources for remote learner workers
         learner_bundles = []
-        if cf._enable_learner_api and cf.num_learner_workers > 0:
+        if cf._enable_new_api_stack and cf.num_learner_workers > 0:
             learner_bundles = cls._get_learner_bundles(cf)
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles

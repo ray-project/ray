@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -30,8 +30,13 @@ DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
 # all input blocks anyway, so there is no performance advantage to having
 # smaller blocks. Setting a larger block size allows avoiding overhead from an
 # excessive number of partitions.
-# We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
-DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
+# We choose 1GiB as 4x less than the typical memory:core ratio (4:1).
+DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
+
+# We will attempt to slice blocks whose size exceeds this factor *
+# target_max_block_size. We will warn the user if slicing fails and we produce
+# blocks larger than this threshold.
+MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
 # Dataset will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
@@ -143,6 +148,8 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
 # Whether to enable get_object_locations for metric
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
+DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = ["AWS Error INTERNAL_FAILURE"]
+
 
 @DeveloperAPI
 class DataContext:
@@ -183,6 +190,7 @@ class DataContext:
         use_ray_tqdm: bool,
         enable_progress_bars: bool,
         enable_get_object_locations_for_metrics: bool,
+        write_file_retry_on_errors: List[str],
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
@@ -219,6 +227,7 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
+        self.write_file_retry_on_errors = write_file_retry_on_errors
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
@@ -279,6 +288,7 @@ class DataContext:
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
+                    write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
                 )
 
             return _default_context

@@ -796,8 +796,13 @@ void CoreWorker::Exit(
     exiting_detail_ = std::optional<std::string>{detail};
   }
   // Release the resources early in case draining takes a long time.
-  RAY_CHECK_OK(
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
+  auto status =
+      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
+  if (!status.ok()) {
+    RAY_LOG(WARNING)
+        << "Failed to notify Raylet. It is either the raylet is already dead or the "
+           "raylet disconnects the client because it kills this worker.";
+  }
 
   RAY_LOG(DEBUG) << "Exit signal received, remove all local references.";
   /// Since this core worker is exiting, it's necessary to release all local references,
@@ -2517,6 +2522,26 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
+  PeriodicalRunner signal_checker(task_execution_service_);
+  if (options_.check_signals) {
+    signal_checker.RunFnPeriodically(
+        [this] {
+          /// The overhead of this is only a single digit microsecond.
+          auto status = options_.check_signals();
+          if (status.IsIntentionalSystemExit()) {
+            Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+                 absl::StrCat("Worker exits by a signal. ", status.message()),
+                 nullptr);
+          } else if (status.IsUnexpectedSystemExit()) {
+            Exit(
+                rpc::WorkerExitType::SYSTEM_ERROR,
+                absl::StrCat("Worker exits unexpectedly by a signal. ", status.message()),
+                nullptr);
+          }
+        },
+        10,
+        "CoreWorker.CheckSignal");
+  }
   task_execution_service_.run();
   RAY_CHECK(is_shutdown_)
       << "Task execution loop was terminated without calling shutdown API.";
@@ -2825,12 +2850,13 @@ Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
-rpc::ObjectReference CoreWorker::PeekObjectRefStream(const ObjectID &generator_id) {
-  auto object_id = task_manager_->PeekObjectRefStream(generator_id);
+std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
+    const ObjectID &generator_id) {
+  auto [object_id, ready] = task_manager_->PeekObjectRefStream(generator_id);
   rpc::ObjectReference object_ref;
   object_ref.set_object_id(object_id.Binary());
   object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
-  return object_ref;
+  return {object_ref, ready};
 }
 
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
@@ -4302,6 +4328,22 @@ void CoreWorker::RecordTaskLogEnd(int64_t stdout_end_offset,
       rpc::TaskStatus::NIL,
       /* include_task_info */ false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
+}
+
+void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
+                                            const bool is_debugger_paused) {
+  absl::MutexLock lock(&mutex_);
+  auto current_task_it = current_tasks_.find(task_id);
+  RAY_CHECK(current_task_it != current_tasks_.end())
+      << "We should have set the current task spec before executing the task.";
+  RAY_LOG(DEBUG) << "Task " << current_task_it->second.TaskId()
+                 << " is paused by debugger set to" << is_debugger_paused;
+  task_manager_->RecordTaskStatusEvent(
+      current_task_it->second.AttemptNumber(),
+      current_task_it->second,
+      rpc::TaskStatus::NIL,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused));
 }
 
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(

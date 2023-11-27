@@ -1,5 +1,4 @@
 import abc
-
 from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.utils.actor_manager import FaultAwareApply

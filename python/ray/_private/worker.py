@@ -55,7 +55,10 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import (
+    StreamingObjectRefGenerator,
+    raise_sys_exit_with_custom_error_message,
+)
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -464,6 +467,8 @@ class Worker:
         # different drivers that connect to the same Serve instance.
         # See https://github.com/ray-project/ray/pull/35070.
         self._filter_logs_by_job = True
+        # the debugger port for this worker
+        self._debugger_port = None
 
     @property
     def connected(self):
@@ -537,6 +542,29 @@ class Worker:
     def runtime_env(self):
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
+
+    @property
+    def debugger_port(self):
+        """Get the debugger port for this worker"""
+        return self._debugger_port
+
+    def set_debugger_port(self, port):
+        worker_id = self.core_worker.get_worker_id()
+        ray._private.state.update_worker_debugger_port(worker_id, port)
+        self._debugger_port = port
+
+    @contextmanager
+    def task_paused_by_debugger(self):
+        """Use while the task is paused by debugger"""
+        try:
+            self.core_worker.update_task_is_debugger_paused(
+                ray.get_runtime_context()._get_current_task_id(), True
+            )
+            yield
+        finally:
+            self.core_worker.update_task_is_debugger_paused(
+                ray.get_runtime_context()._get_current_task_id(), False
+            )
 
     def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
         """Set the worker's err file where stderr is redirected to"""
@@ -785,8 +813,10 @@ class Worker:
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
-            shutdown(True)
-            sys.exit(1)
+            raise_sys_exit_with_custom_error_message(
+                "The process receives a SIGTERM.", exit_code=1
+            )
+            # Note: shutdown() function is called from atexit handler.
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
@@ -1742,7 +1772,8 @@ def shutdown(_exiting_interpreter: bool = False):
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
-        global_worker.core_worker.shutdown()
+        if global_worker.mode == SCRIPT_MODE or global_worker.mode == LOCAL_MODE:
+            global_worker.core_worker.shutdown_driver()
         del global_worker.core_worker
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)
@@ -1790,7 +1821,7 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
+    should_dedup = data.get("pid") not in ["autoscaler"]
 
     if data["is_err"]:
         if should_dedup:
@@ -1908,9 +1939,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         else:
             res = "pid="
             if data.get("actor_name"):
-                res = data["actor_name"] + " " + res
+                res = f"{data['actor_name']} {res}"
             elif data.get("task_name"):
-                res = data["task_name"] + " " + res
+                res = f"{data['task_name']} {res}"
             return res
 
     def message_for(data: Dict[str, str], line: str) -> str:
@@ -2066,7 +2097,13 @@ def listen_error_messages(worker, threads_stopped):
                 # the separate unhandled exception handler.
                 pass
             else:
-                logger.warning(error_message)
+                print_to_stdstream(
+                    {
+                        "lines": [error_message],
+                        "pid": "raylet",
+                        "is_err": False,
+                    }
+                )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
 
@@ -3269,7 +3306,7 @@ def remote(
             By default it is empty.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
-            See `ray.util.accelerators` for accelerator types.
+            See :ref:`accelerator types <accelerator_types>`.
         memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the

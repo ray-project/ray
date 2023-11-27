@@ -83,7 +83,10 @@ class SingleAgentEpisode:
         # Rewards: t1 to T.
         self.rewards = [] if rewards is None else rewards
         # Infos: t0 (initial info) to T.
-        self.infos = [] if infos is None else infos
+        if infos is None:
+            self.infos = [{} for _ in range(len(self.observations))]
+        else:
+            self.infos = infos
         # h-states: t0 (in case this episode is a continuation chunk, we need to know
         # about the initial h) to T.
         # TODO (simon): Create as list not as singleton.
@@ -526,3 +529,6 @@ class SingleAgentEpisode:
             "first (after which `len(SingleAgentEpisode)` will be 0)."
         )
         return len(self.observations) - 1
+
+    def __repr__(self):
+        return f"SAEps({self.id_} len={len(self)})"

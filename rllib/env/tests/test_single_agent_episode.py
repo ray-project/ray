@@ -9,7 +9,7 @@ import ray
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 # TODO (simon): Add to the tests `info` and `extra_model_outputs`
-# as soon as #39732 is merged.
+#  as soon as #39732 is merged.
 
 
 class TestEnv(gym.Env):
@@ -230,7 +230,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
             info=info,
             is_terminated=is_terminated,
             is_truncated=is_truncated,
-            extra_model_output={"extra": np.random.random()},
+            extra_model_output={"extra": np.random.random(1)},
         )
         # Assert that this does not change also the predecessor's data.
         self.assertFalse(len(episode_1.observations) == len(episode_2.observations))

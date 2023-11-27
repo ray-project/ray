@@ -2,8 +2,10 @@ import importlib
 import logging
 import os
 import pathlib
+import random
 import sys
 import threading
+import time
 import urllib.parse
 from collections import deque
 from types import ModuleType
@@ -33,7 +35,7 @@ if TYPE_CHECKING:
     from ray.data._internal.compute import ComputeStrategy
     from ray.data._internal.sort import SortKey
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
-    from ray.data.datasource import Reader
+    from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
@@ -101,7 +103,7 @@ def _autodetect_parallelism(
     parallelism: int,
     target_max_block_size: int,
     ctx: DataContext,
-    reader: Optional["Reader"] = None,
+    datasource_or_legacy_reader: Optional[Union["Datasource", "Reader"]] = None,
     mem_size: Optional[int] = None,
     placement_group: Optional["PlacementGroup"] = None,
     avail_cpus: Optional[int] = None,
@@ -125,7 +127,8 @@ def _autodetect_parallelism(
             DatasetContext because it may be set per-op instead of
             per-Dataset.
         ctx: The current Dataset context to use for configs.
-        reader: The datasource reader, to be used for data size estimation.
+        datasource_or_legacy_reader: The datasource or legacy reader, to be used for
+            data size estimation.
         mem_size: If passed, then used to compute the parallelism according to
             target_max_block_size.
         placement_group: The placement group that this Dataset
@@ -140,8 +143,8 @@ def _autodetect_parallelism(
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
-    if mem_size is None and reader:
-        mem_size = reader.estimate_inmemory_data_size()
+    if mem_size is None and datasource_or_legacy_reader:
+        mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
     if mem_size is not None and not np.isnan(mem_size):
         min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
         max_reasonable_parallelism = max(1, int(mem_size / ctx.target_min_block_size))
@@ -450,6 +453,36 @@ def ConsumptionAPI(*args, **kwargs):
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return _consumption_api()(args[0])
     return _consumption_api(*args, **kwargs)
+
+
+def _all_to_all_api(*args, **kwargs):
+    """Annotate the function with an indication that it's a all to all API, and that it
+    is an operation that requires all inputs to be materialized in-memory to execute.
+    """
+
+    def wrap(obj):
+        _insert_doc_at_pattern(
+            obj,
+            message=(
+                "This operation requires all inputs to be "
+                "materialized in object store for it to execute."
+            ),
+            pattern="Examples:",
+            insert_after=False,
+            directive="note",
+        )
+        return obj
+
+    return wrap
+
+
+def AllToAllAPI(*args, **kwargs):
+    """Annotate the function with an indication that it's a all to all API, and that it
+    is an operation that requires all inputs to be materialized in-memory to execute.
+    """
+    # This should only be used as a decorator for dataset methods.
+    assert len(args) == 1 and len(kwargs) == 0 and callable(args[0])
+    return _all_to_all_api()(args[0])
 
 
 def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
@@ -833,3 +866,46 @@ def make_async_gen(
         num_threads_alive = num_workers - num_threads_finished
         if num_threads_alive > 0:
             output_queue.release(num_threads_alive)
+
+
+def call_with_retry(
+    f: Callable[[], Any],
+    match: List[str],
+    description: str,
+    *,
+    max_attempts: int = 10,
+    max_backoff_s: int = 32,
+) -> Any:
+    """Retry a function with exponential backoff.
+
+    Args:
+        f: The function to retry.
+        match: A list of strings to match in the exception message.
+        description: An imperitive description of the function being retried. For
+            example, "open the file".
+        max_attempts: The maximum number of attempts to retry.
+        max_backoff_s: The maximum number of seconds to backoff.
+    """
+    assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
+
+    for i in range(max_attempts):
+        try:
+            return f()
+        except Exception as e:
+            is_retryable = any([pattern in str(e) for pattern in match])
+            if is_retryable and i + 1 < max_attempts:
+                # Retry with binary expoential backoff with random jitter.
+                backoff = min((2 ** (i + 1)) * random.random(), max_backoff_s)
+                logger.debug(
+                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
+                )
+                time.sleep(backoff)
+            else:
+                raise e from None
+
+
+def create_dataset_tag(dataset_name: Optional[str], *args):
+    tag = dataset_name or "dataset"
+    for arg in args:
+        tag += f"_{arg}"
+    return tag

@@ -8,6 +8,10 @@ _DOCKER_ECR_REPO = os.environ.get(
     "RAYCI_WORK_REPO",
     "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
 )
+_DOCKER_GCP_REGISTRY = os.environ.get(
+    "RAYCI_GCP_REGISTRY",
+    "us-west1-docker.pkg.dev/anyscale-oss-ci",
+)
 _DOCKER_ENV = [
     "BUILDKITE_BUILD_URL",
     "BUILDKITE_BRANCH",
@@ -29,9 +33,16 @@ class Container:
     A wrapper for running commands in ray ci docker container
     """
 
-    def __init__(self, docker_tag: str, volumes: Optional[List[str]] = None) -> None:
+    def __init__(
+        self,
+        docker_tag: str,
+        volumes: Optional[List[str]] = None,
+        envs: Optional[List[str]] = None,
+    ) -> None:
         self.docker_tag = docker_tag
         self.volumes = volumes or []
+        self.envs = envs or []
+        self.envs += _DOCKER_ENV
 
     def run_script_with_output(self, script: List[str]) -> bytes:
         """
@@ -82,12 +93,16 @@ class Container:
             "run",
             "-i",
             "--rm",
+            "--env",
+            "NVIDIA_DISABLE_REQUIRE=1",
             "--volume",
             "/tmp/artifacts:/artifact-mount",
+            "--add-host",
+            "rayci.localhost:host-gateway",
         ]
         for volume in self.volumes:
             command += ["--volume", volume]
-        for env in _DOCKER_ENV:
+        for env in self.envs:
             command += ["--env", env]
         for cap in _DOCKER_CAP_ADD:
             command += ["--cap-add", cap]

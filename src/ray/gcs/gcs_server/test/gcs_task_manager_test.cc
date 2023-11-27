@@ -155,6 +155,7 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
 
     request.mutable_filters()->set_exclude_driver(exclude_driver);
+
     task_manager->GetIoContext().dispatch(
         [this, &promise, &request, &reply]() {
           task_manager->HandleGetTaskEvents(
@@ -278,6 +279,20 @@ class GcsTaskManagerMemoryLimitedTest : public GcsTaskManagerTest {
         R"(
 {
   "task_events_max_num_task_in_gcs": 10
+}
+  )");
+  }
+};
+
+class GcsTaskManagerDroppedTaskAttemptsLimit : public GcsTaskManagerTest {
+ public:
+  GcsTaskManagerDroppedTaskAttemptsLimit() : GcsTaskManagerTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_max_num_task_in_gcs": 10,
+  "task_events_max_dropped_task_attempts_tracked_per_job_in_gcs": 5,
+  "task_events_dropped_task_attempts_gc_threshold_s": 3
 }
   )");
   }
@@ -967,6 +982,30 @@ TEST_F(GcsTaskManagerTest, TestMultipleJobsDataLoss) {
         task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
     EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 0);
   }
+}
+
+TEST_F(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit) {
+  // Test that when the number of dropped task attempts exceeds the limit,
+  // we should be them to prevent OOM.
+
+  // Generate 20 task attempts, 10 should be dropped.
+  {
+    for (int i = 0; i < 20; i++) {
+      auto t = GenTaskIDForJob(0);
+      SyncAddTaskEvent({t}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 0);
+    }
+  }
+
+  // Before GC we should have 10 dropped task attempts tracked.
+  auto job_summary =
+      task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
+  EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 10);
+
+  // After GC, there should only be 5 tracked.
+  job_summary.GcOldDroppedTaskAttempts(JobID::FromInt(0));
+  EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 5);
+  EXPECT_EQ(job_summary.num_dropped_task_attempts_evicted_, 5);
+  EXPECT_EQ(job_summary.NumTaskAttemptsDropped(), 10);
 }
 
 TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitGcPriorityBased) {

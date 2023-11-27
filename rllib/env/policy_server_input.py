@@ -43,12 +43,12 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         :skipif: True
 
         import gymnasium as gym
-        from ray.rllib.algorithms.pg import PGConfig
+        from ray.rllib.algorithms.ppo import PPOConfig
         from ray.rllib.env.policy_client import PolicyClient
         from ray.rllib.env.policy_server_input import PolicyServerInput
         addr, port = ...
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .offline_data(
                 input_=lambda ioctx: PolicyServerInput(ioctx, addr, port)
@@ -56,9 +56,9 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
             # Run just 1 server (in the Algorithm's WorkerSet).
             .rollouts(num_rollout_workers=0)
         )
-        pg = config.build()
+        algo = config.build()
         while True:
-            pg.train()
+            algo.train()
         client = PolicyClient(
             "localhost:9900", inference_mode="local")
         eps_id = client.start_episode()
@@ -68,6 +68,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         _, reward, _, _, _ = env.step(action)
         client.log_returns(eps_id, reward)
         client.log_returns(eps_id, reward)
+        algo.stop()
     """
 
     @PublicAPI
@@ -134,7 +135,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
                 """This sampler only maintains a queue to get metrics from."""
 
                 def __init__(self, metrics_queue):
-                    """Initializes an AsyncSampler instance.
+                    """Initializes a MetricsDummySampler instance.
 
                     Args:
                         metrics_queue: A queue of metrics

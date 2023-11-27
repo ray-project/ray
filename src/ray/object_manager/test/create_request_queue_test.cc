@@ -25,8 +25,10 @@ class MockClient : public ClientInterface {
  public:
   MOCK_METHOD1(SendFd, Status(MEMFD_TYPE));
   MOCK_METHOD0(GetObjectIDs, const std::unordered_set<ray::ObjectID> &());
-  MOCK_METHOD1(MarkObjectAsUsed, void(const ObjectID &object_id));
-  MOCK_METHOD1(MarkObjectAsUnused, void(const ObjectID &object_id));
+  MOCK_METHOD2(MarkObjectAsUsed,
+               void(const ObjectID &object_id,
+                    std::optional<MEMFD_TYPE> fallback_allocated_fd));
+  MOCK_METHOD1(MarkObjectAsUnused, bool(const ObjectID &object_id));
 };
 
 #define ASSERT_REQUEST_UNFINISHED(queue, req_id)                    \

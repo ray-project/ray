@@ -5,7 +5,7 @@ import sys
 import signal
 from collections import Counter
 from typing import List, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 from ray._private.state_api_test_utils import get_state_api_manager
@@ -119,11 +119,6 @@ from ray.util.state.state_cli import ray_list
 from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
-
-if sys.version_info >= (3, 8, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
 
 """
 Unit tests
@@ -909,10 +904,6 @@ async def test_api_manager_list_workers(state_api_manager):
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -994,10 +985,6 @@ async def test_api_manager_list_tasks(state_api_manager):
     assert len(result.result) == 1
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks_events(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1106,10 +1093,6 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     assert result["end_time_ms"] is None
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summarize_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1197,10 +1180,6 @@ async def test_api_manager_summarize_tasks(state_api_manager):
     assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1309,10 +1288,6 @@ async def test_api_manager_list_objects(state_api_manager):
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client

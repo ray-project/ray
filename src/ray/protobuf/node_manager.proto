@@ -131,6 +131,8 @@ message ReturnWorkerRequest {
   bool disconnect_worker = 3;
   // Whether the worker is exiting and cannot be reused.
   bool worker_exiting = 4;
+  // The error message for disconnect_worker.
+  string disconnect_worker_error_detail = 5;
 }
 
 message ReturnWorkerReply {
@@ -222,6 +224,10 @@ message ObjectStoreStats {
   bool object_pulls_queued = 13;
   // The number of primary copies of objects in the local node.
   int64 num_object_store_primary_copies = 14;
+  // The total number of objects that have been allocated to plasma.
+  int64 cumulative_created_objects = 15;
+  // The total number of bytes that have been allocated to plasma objects.
+  int64 cumulative_created_bytes = 16;
 }
 
 message GetNodeStatsReply {
@@ -281,16 +287,6 @@ message GetSystemConfigRequest {
 
 message GetSystemConfigReply {
   string system_config = 1;
-}
-
-message UpdateResourceUsageRequest {
-  // This is a serialized version of ResourceUsageBatchData. This extra layer of
-  // serialization allows the sender to cache the expensive operation of serializing a
-  // `ResourceUsageBatchData` when sending this request to all nodes.
-  bytes serialized_resource_usage_batch = 1;
-}
-
-message UpdateResourceUsageReply {
 }
 
 message GetTasksInfoRequest {
@@ -361,8 +357,6 @@ message DrainRayletReply {
 
 // Service for inter-node-manager communication.
 service NodeManagerService {
-  // Update the node's view of the cluster resource usage.
-  rpc UpdateResourceUsage(UpdateResourceUsageRequest) returns (UpdateResourceUsageReply);
   // Handle the case when GCS restarted.
   rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
   // Get the resource load of the raylet.
