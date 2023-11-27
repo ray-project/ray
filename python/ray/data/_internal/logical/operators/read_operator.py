@@ -25,7 +25,7 @@ class Read(AbstractMap):
     def set_detected_parallelism(self, parallelism: int):
         """
         Set the true parallelism that should be used during execution. This
-        should be detected by the optimizer.
+        should be specified by the user or detected by the optimizer.
         """
         self._detected_parallelism = parallelism
 

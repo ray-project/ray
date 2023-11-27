@@ -108,12 +108,12 @@ class SetReadParallelismRule(Rule):
         )
 
         if logical_op._parallelism == -1:
-            logical_op._detected_parallelism = detected_parallelism
             assert reason != ""
             logger.get_logger().info(
                 f"Using autodetected parallelism={detected_parallelism} "
                 f"for stage {logical_op.name} to satisfy {reason}."
             )
+        logical_op.set_detected_parallelism(detected_parallelism)
         if k is not None:
             logger.get_logger().info(
                 f"To satisfy the requested parallelism of {detected_parallelism}, "
