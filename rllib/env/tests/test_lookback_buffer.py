@@ -4,6 +4,7 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.env.utils import BufferWithInfiniteLookback
+from ray.rllib.utils.spaces.space_utils import batch, get_dummy_batch_for_space
 from ray.rllib.utils.test_utils import check
 
 
@@ -395,6 +396,89 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
                     one_hot_discrete=True,
                 ),
                 [0, 0],
+            )
+
+    def test_get_with_complex_space(self):
+        """Tests, whether zero-hot is properly done when fill=0."""
+        buffer = BufferWithInfiniteLookback(
+            data=[
+                get_dummy_batch_for_space(
+                    space=self.space,
+                    batch_size=0,
+                    fill_value=float(i),
+                )
+                for i in range(4)
+            ],
+            lookback=2,
+            # Specify a space, so we can fill and one-hot discrete data properly.
+            space=self.space,
+        )
+
+        buffer_0 = {
+            "a": 0,
+            "b": np.array([[0, 0, 0], [0, 0, 0]]),
+            "c": (np.array([0, 0]), np.array([0])),
+        }
+        buffer_0_one_hot = {
+            "a": np.array([0.0, 0.0, 0.0, 0.0]),
+            "b": np.array([[0, 0, 0], [0, 0, 0]]),
+            "c": (np.array([0, 0, 0, 0, 0]), np.array([0])),
+        }
+        buffer_1 = {
+            "a": 1,
+            "b": np.array([[1, 1, 1], [1, 1, 1]]),
+            "c": (np.array([1, 1]), np.array([1])),
+        }
+        buffer_2 = {
+            "a": 2,
+            "b": np.array([[2, 2, 2], [2, 2, 2]]),
+            "c": (np.array([2, 2]), np.array([2])),
+        }
+        buffer_3 = {
+            "a": 3,
+            "b": np.array([[3, 3, 3], [3, 3, 3]]),
+            "c": (np.array([3, 3]), np.array([3])),
+        }
+
+        def batch_(s):
+            return s
+
+        # Test on ongoing and finalized buffer.
+        for finalized in [False, True]:
+            if finalized:
+                buffer.finalize()
+
+                def batch_(s):
+                    return batch(s)
+
+            self.assertTrue(len(buffer), 2)
+
+            check(buffer.get(-1), buffer_3)
+            check(buffer.get(-2), buffer_2)
+            check(buffer.get(-3), buffer_1)
+            check(buffer.get(-4), buffer_0)
+            check(buffer.get(-5, fill=0.0), buffer_0)
+            check(buffer.get([-5, 5], fill=0.0), batch_([buffer_0, buffer_0]))
+            check(buffer.get([-5, 1], fill=0.0), batch_([buffer_0, buffer_3]))
+            check(buffer.get([1, -10], fill=0.0), batch_([buffer_3, buffer_0]))
+            check(
+                buffer.get([-10], fill=0.0, one_hot_discrete=True),
+                batch_([buffer_0_one_hot]),
+            )
+            check(buffer.get(slice(0, 1), fill=0.0), batch_([buffer_2]))
+            check(buffer.get(slice(1, 3), fill=0.0), batch_([buffer_3, buffer_0]))
+            check(buffer.get(slice(-10, -12), fill=0.0), batch_([buffer_0, buffer_0]))
+            check(
+                buffer.get(slice(-10, -12), fill=0.0, neg_indices_left_of_zero=True),
+                batch_([buffer_0, buffer_0]),
+            )
+            check(
+                buffer.get(slice(100, 98), fill=0.0, neg_indices_left_of_zero=True),
+                batch_([buffer_0, buffer_0]),
+            )
+            check(
+                buffer.get(slice(100, 98), fill=0.0),
+                batch_([buffer_0, buffer_0]),
             )
 
 

@@ -189,18 +189,9 @@ class BufferWithInfiniteLookback:
         self.data = data if data is not None else []
         self.lookback = lookback
         self.finalized = not isinstance(self.data, list)
+        self._final_len = None
         self.space = space
         self.space_struct = get_base_struct_from_space(self.space)
-        self.space_struct_one_hot = tree.map_structure(
-            lambda s: (
-                gym.spaces.Box(0.0, 1.0, (s.n,))
-                if isinstance(s, gym.spaces.Discrete)
-                else gym.spaces.Box(0.0, 1.0, (np.sum(s.nvec),))
-                if isinstance(s, gym.spaces.MultiDiscrete)
-                else s
-            ),
-            self.space_struct,
-        )
 
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""
@@ -227,6 +218,7 @@ class BufferWithInfiniteLookback:
         Thereby, if the individual items in the list are complex (nested 2)
         """
         if not self.finalized:
+            self._final_len = len(self.data) - self.lookback
             self.data = batch(self.data)
             self.finalized = True
 
@@ -291,6 +283,7 @@ class BufferWithInfiniteLookback:
                     idx,
                     fill=fill,
                     neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    one_hot_discrete=one_hot_discrete,
                 )
                 for idx in indices
             ]
@@ -313,6 +306,9 @@ class BufferWithInfiniteLookback:
 
     def __len__(self):
         """Return the length of our data, excluding the lookback buffer."""
+        if self._final_len is not None:
+            assert self.finalized
+            return self._final_len
         return len(self.data) - self.lookback
 
     def _get_all_data(self, one_hot_discrete=False):
@@ -328,6 +324,7 @@ class BufferWithInfiniteLookback:
         neg_indices_left_of_zero=False,
         one_hot_discrete=False,
     ):
+        len_self_plus_lookback = len(self) + self.lookback
         fill_left_count = fill_right_count = 0
 
         # Re-interpret slice bounds as absolute positions (>=0) within our
@@ -346,14 +343,14 @@ class BufferWithInfiniteLookback:
                 start = self.lookback + start
             # Interpret index as counting "from end".
             else:
-                start = len(self.data) + start
+                start = len_self_plus_lookback + start
         # Start is 0 or positive -> timestep right after lookback is interpreted as 0.
         else:
             start = self.lookback + start
 
         # Stop is None -> Set stop to very last index + 1 of our internal data.
         if stop is None:
-            stop = len(self.data)
+            stop = len_self_plus_lookback
         # Stop is negative.
         elif stop < 0:
             # `neg_indices_left_of_zero=True` -> User wants to index into the lookback
@@ -364,7 +361,7 @@ class BufferWithInfiniteLookback:
             # Interpret index as counting "from end". Set to 0 (beginning of actual
             # episode) if result is a negative index.
             else:
-                stop = len(self.data) + stop
+                stop = len_self_plus_lookback + stop
         # Stop is positive -> Add lookback range to it.
         else:
             stop = self.lookback + stop
@@ -375,20 +372,23 @@ class BufferWithInfiniteLookback:
             fill_right_count = 0
             start = stop = 0
         # Both start and stop are on right side.
-        elif start >= len(self.data) and stop >= len(self.data):
+        elif start >= len_self_plus_lookback and stop >= len_self_plus_lookback:
             fill_right_count = abs(start - stop)
             fill_left_count = 0
-            start = stop = len(self.data)
+            start = stop = len_self_plus_lookback
         # Set to 0 (beginning of actual episode) if result is a negative index.
         elif start < 0:
             fill_left_count = -start
             start = 0
-        elif stop >= len(self.data):
-            fill_right_count = stop - len(self.data)
-            stop = len(self.data)
+        elif stop >= len_self_plus_lookback:
+            fill_right_count = stop - len_self_plus_lookback
+            stop = len_self_plus_lookback
 
         assert start >= 0 and stop >= 0, (start, stop)
-        assert start <= len(self.data) and stop <= len(self.data), (start, stop)
+        assert start <= len_self_plus_lookback and stop <= len_self_plus_lookback, (
+            start,
+            stop,
+        )
         slice_ = slice(start, stop, slice_.step)
 
         # Perform the actual slice.
@@ -457,7 +457,7 @@ class BufferWithInfiniteLookback:
         # have to fill, if required. Invalidate the index by setting it to one larger
         # than max.
         if neg_indices_left_of_zero and idx < 0:
-            idx = len(self.data)
+            idx = len(self) + self.lookback
 
         try:
             if self.finalized:

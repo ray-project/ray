@@ -136,10 +136,12 @@ def get_dummy_batch_for_space(
             base_struct = get_base_struct_from_space(space)
         return tree.map_structure(
             lambda s: get_dummy_batch_for_space(
-                s,
-                batch_size,
-                fill_value,
-                one_hot_discrete,
+                space=s,
+                batch_size=batch_size,
+                fill_value=fill_value,
+                time_size=time_size,
+                time_major=time_major,
+                one_hot_discrete=one_hot_discrete,
             ),
             base_struct,
         )
