@@ -72,7 +72,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
                 except pynvml.NVMLError_NotSupported:
                     cuda_devices.append(str(index))
                     continue
-                if max_mig_count == 0: 
+                if max_mig_count == 0:
                     cuda_devices.append(str(index))
                     continue
                 for mig_index in range(max_mig_count):
