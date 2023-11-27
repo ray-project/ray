@@ -60,6 +60,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
+from ray.autoscaler._private.util import rewrite_deprecated_workers_fields
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
 from ray.core.generated import usage_pb2, gcs_pb2
 
@@ -112,10 +113,10 @@ class UsageStatsToReport:
     session_start_timestamp_ms: int
     #: The cloud provider found in the cluster.yaml file (e.g., aws).
     cloud_provider: Optional[str]
-    #: The min_worker_nodes found in the cluster.yaml file.
-    min_worker_nodes: Optional[int]
-    #: The max_worker_nodes found in the cluster.yaml file.
-    max_worker_nodes: Optional[int]
+    #: The min_workers (deprecated) or min_worker_nodes found in the cluster.yaml file.
+    min_workers: Optional[int]
+    #: The max_workers (deprecated) or max_worker_nodes found in the cluster.yaml file.
+    max_workers: Optional[int]
     #: The head node instance type found in the cluster.yaml file (e.g., i3.8xlarge).
     head_node_instance_type: Optional[str]
     #: The worker node instance types found in the cluster.yaml file (e.g., i3.8xlarge).
@@ -646,6 +647,8 @@ def get_cluster_config_to_report(
     try:
         with open(cluster_config_file_path) as f:
             config = yaml.safe_load(f)
+            config = rewrite_deprecated_workers_fields(config)
+
             result = ClusterConfigToReport()
             if "min_worker_nodes" in config:
                 result.min_worker_nodes = config["min_worker_nodes"]
@@ -762,8 +765,8 @@ def generate_report_data(
         collect_timestamp_ms=int(time.time() * 1000),
         session_start_timestamp_ms=cluster_metadata["session_start_timestamp_ms"],
         cloud_provider=cluster_config_to_report.cloud_provider,
-        min_worker_nodes=cluster_config_to_report.min_worker_nodes,
-        max_worker_nodes=cluster_config_to_report.max_worker_nodes,
+        min_workers=cluster_config_to_report.min_worker_nodes,
+        max_workers=cluster_config_to_report.max_worker_nodes,
         head_node_instance_type=cluster_config_to_report.head_node_instance_type,
         worker_node_instance_types=cluster_config_to_report.worker_node_instance_types,
         total_num_cpus=cluster_status_to_report.total_num_cpus,
