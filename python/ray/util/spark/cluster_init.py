@@ -18,6 +18,7 @@ import ray._private.services
 from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray._private.storage import _load_class
+from ray.autoscaler._private.util import rewrite_deprecated_workers_fields
 
 from .utils import (
     exec_cmd,
@@ -1439,6 +1440,7 @@ class AutoscalingCluster:
                 )
             )
         )
+        base_config = rewrite_deprecated_workers_fields(base_config)
         custom_config = copy.deepcopy(base_config)
         custom_config["available_node_types"] = worker_node_types
         custom_config["available_node_types"]["ray.head.default"] = {
@@ -1447,8 +1449,8 @@ class AutoscalingCluster:
             "max_worker_nodes": 0,
         }
 
-        custom_config["max_workers"] = sum(
-            v["max_workers"] for _, v in worker_node_types.items()
+        custom_config["max_worker_nodes"] = sum(
+            v["max_worker_nodes"] for _, v in worker_node_types.items()
         )
 
         custom_config["provider"].update(extra_provider_config)
