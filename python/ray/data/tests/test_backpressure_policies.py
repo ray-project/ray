@@ -338,7 +338,7 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
 
     def consume(batch):
         print("Consume task started", batch["id"])
-        time.sleep(0.1)
+        time.sleep(0.01)
         return {"id": batch["id"], "result": [0 for _ in batch["id"]]}
 
     data_context = ray.data.DataContext.get_current()
@@ -362,9 +362,11 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
     ds = ray.data.range(NUM_ROWS_TOTAL, parallelism=NUM_TASKS)
     ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
     ds = ds.map_batches(consume, batch_size=None, num_cpus=0.9)
-    for _ in ds.iter_batches():
+    for _ in ds.iter_batches(batch_size=None):
         pass
-    max_spilled_bytes = int(2.0 * max_pending_block_bytes)
+    # One object can be spilled multiple times,
+    # so the spilling amount can be larger than the pending block size.
+    max_spilled_bytes = int(3.0 * max_pending_block_bytes)
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             object_store_stats={
