@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import time
 from functools import partial
 from concurrent.futures import Executor, Future
+from concurrent.futures._base import _result_or_cancel  # type: ignore
 from typing import (
     Any,
     Callable,
@@ -541,20 +542,6 @@ class RayExecutor(Executor):
         self.futures.append(future)
         return future
 
-    @staticmethod
-    def _result_or_cancel(fut: Future[T], timeout: Optional[float] = None) -> T:
-        """
-        From concurrent.futures
-        """
-        try:
-            try:
-                return fut.result(timeout)
-            finally:
-                fut.cancel()
-        finally:
-            # Break a reference cycle with the exception in self._exception
-            del fut
-
     def map(
         self,
         fn: Callable[..., T],
@@ -629,11 +616,9 @@ class RayExecutor(Executor):
                 while fs:
                     # Careful not to keep a reference to the popped future
                     if end_time is None:
-                        yield self._result_or_cancel(fs.pop())
+                        yield _result_or_cancel(fs.pop())
                     else:
-                        yield self._result_or_cancel(
-                            fs.pop(), end_time - time.monotonic()
-                        )
+                        yield _result_or_cancel(fs.pop(), end_time - time.monotonic())
             finally:
                 for future in fs:
                     future.cancel()

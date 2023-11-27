@@ -1,6 +1,6 @@
 import os
 
-from unittest.mock import Mock, patch, call
+from unittest.mock import patch, call
 
 from abc import ABC
 import sys
@@ -12,7 +12,6 @@ from ray.util.concurrent.futures.ray_executor import (
     _RoundRobinActorPool,
     _BalancedActorPool,
     ActorPoolType,
-    _PoolActor
 )
 import time
 import typing as T
@@ -197,6 +196,7 @@ class ActorPoolTests(ABC):
     def test_submit_returns_a_future(self, actor_pool):
         def f():
             return 123
+
         future = actor_pool.submit(f)
         assert isinstance(future, Future)
 
@@ -224,7 +224,9 @@ class ActorPoolTests(ABC):
     def test__kill_actor_called_for_actors(self, actor_pool):
         with patch.object(actor_pool, "_kill_actor") as mock_kill_actor:
             actor_pool.kill()
-            mock_kill_actor.assert_has_calls([call(i) for i in actor_pool.pool], any_order=True)
+            mock_kill_actor.assert_has_calls(
+                [call(i) for i in actor_pool.pool], any_order=True
+            )
 
     def test__increment_task_count(self, actor_pool):
         mock_actor = {"task_count": 0}
