@@ -8,9 +8,9 @@ import org.apache.hc.client5.http.fluent.Request;
 
 public class HttpIngress {
 
-	public String call(String request) {
+  public String call(String request) {
     return "Hello " + request + "!";
-	}
+  }
 
   public static void main(String[] args) throws IOException {
     Application app = Serve.deployment().setDeploymentDef(HttpIngress.class.getName()).bind();
