@@ -440,9 +440,6 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
             "c": (np.array([3, 3]), np.array([3])),
         }
 
-        def batch_(s):
-            return s
-
         # Test on ongoing and finalized buffer.
         for finalized in [False, True]:
             if finalized:
@@ -450,6 +447,11 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
 
                 def batch_(s):
                     return batch(s)
+
+            else:
+
+                def batch_(s):
+                    return s
 
             self.assertTrue(len(buffer), 2)
 
