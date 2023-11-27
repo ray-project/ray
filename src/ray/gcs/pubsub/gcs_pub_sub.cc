@@ -361,7 +361,6 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
     grpc::Status status = pubsub_stub_->GcsSubscriberPoll(context.get(), request, &reply);
     mu_.Lock();
 
-    RAY_LOG(INFO) << "vct poll done";
     if (status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
         status.error_code() == grpc::StatusCode::UNAVAILABLE) {
       return Status::OK();
@@ -408,9 +407,7 @@ Status PythonGcsSubscriber::PollError(std::string *key_id,
                                       int64_t timeout_ms,
                                       rpc::ErrorTableData *data) {
   rpc::PubMessage message;
-  RAY_LOG(INFO) << "do polling vct " << timeout_ms;
   RAY_RETURN_NOT_OK(DoPoll(timeout_ms, &message));
-  RAY_LOG(INFO) << ":)" << timeout_ms;
   *key_id = message.key_id();
   *data = message.error_info_message();
   return Status::OK();
