@@ -785,7 +785,10 @@ def start(
         with cli_logger.group("Next steps"):
             dashboard_url = node.address_info["webui_url"]
             if ray_constants.ENABLE_RAY_CLUSTER:
-                cli_logger.print("To add another node to this Ray cluster, run")
+                cli_logger.print(
+                    "To add another node to this Ray cluster, "
+                    "run the following from that node:"
+                )
                 # NOTE(kfstorm): Java driver rely on this line to get the address
                 # of the cluster. Please be careful when updating this line.
                 cli_logger.print(
@@ -797,7 +800,7 @@ def start(
                 )
 
             cli_logger.newline()
-            cli_logger.print("To connect to this Ray cluster:")
+            cli_logger.print("To connect to this Ray cluster from this node:")
             with cli_logger.indented():
                 cli_logger.print("{} ray", cf.magenta("import"))
                 cli_logger.print(
@@ -831,11 +834,16 @@ def start(
                 )
 
             cli_logger.newline()
-            cli_logger.print("To terminate the Ray runtime, run")
+            cli_logger.print(
+                "To terminate the Ray runtime, run the following from any Ray node:"
+            )
             cli_logger.print(cf.bold("  ray stop"))
 
             cli_logger.newline()
-            cli_logger.print("To view the status of the cluster, use")
+            cli_logger.print(
+                "To view the status of the cluster, "
+                "run the following from any Ray node:"
+            )
             cli_logger.print("  {}".format(cf.bold("ray status")))
 
             if dashboard_url:
