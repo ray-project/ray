@@ -265,7 +265,7 @@ Execution Memory
 During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
 Ray caps object store memory usage by spilling to disk, but excessive worker heap memory usage can cause out-of-memory errors.
 
-For more information on tuning memory usage and preventing out-of-memory errors, see the :ref:`performance guide <data_out_of_memory>`.
+For more information on tuning memory usage and preventing out-of-memory errors, see the :ref:`performance guide <data_memory>`.
 
 Object Store Memory
 -------------------
