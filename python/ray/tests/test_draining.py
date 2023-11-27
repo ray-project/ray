@@ -279,8 +279,8 @@ def test_draining_reason(ray_start_cluster):
     )
     assert is_accepted
 
-    cluster.remove_node(n, True)
-    time.sleep(2)
+    cluster.remove_node(n, False)
+    # time.sleep(2)
     try:
         ray.get(actor.ping.remote())
         raise

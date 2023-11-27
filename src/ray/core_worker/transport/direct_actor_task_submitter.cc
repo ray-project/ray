@@ -365,10 +365,6 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
     absl::MutexLock lock(&mu_);
     for (auto &queue_pair : client_queues_) {
       auto &queue = queue_pair.second;
-      if (!queue.rpc_client) {
-        RAY_LOG(INFO) << "No address found for raylet.";
-        continue;
-      }
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
