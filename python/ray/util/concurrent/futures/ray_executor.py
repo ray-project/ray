@@ -173,6 +173,9 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
         return
 
     def _build_actor(self) -> _PoolActor:
+        if not ray.is_initialized():
+            raise ray.exceptions.RayError("No existing ray instance")
+
         @ray.remote
         class ExecutorActor:
             def __init__(
@@ -191,7 +194,6 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
             def exit(self) -> None:
                 ray.actor.exit_actor()
 
-        assert ray.is_initialized()
         actor = ExecutorActor.options().remote(  # type: ignore[attr-defined]
             self.initializer, self.initargs
         )
