@@ -121,6 +121,7 @@ class RemoteFunction:
             self._default_options["runtime_env"] = self._runtime_env
 
         self._language = language
+        self._is_generator = inspect.isgeneratorfunction(function)
         self._function = function
         self._function_signature = None
         # Guards trace injection to enforce exactly once semantics
@@ -331,7 +332,14 @@ class RemoteFunction:
             "placement_group_capture_child_tasks"
         ]
         scheduling_strategy = task_options["scheduling_strategy"]
+
         num_returns = task_options["num_returns"]
+        if num_returns is None:
+            if self._is_generator:
+                num_returns = "streaming"
+            else:
+                num_returns = 1
+
         if num_returns == "dynamic":
             num_returns = -1
         elif num_returns == "streaming":

@@ -42,14 +42,6 @@ At the end of these guides you will often find links to even more examples.
             How To Tune PyTorch Lightning Models
 
     .. grid-item-card::
-        :img-top: /images/serve.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: tune-serve-integration-mnist
-
-            Model Selection & Serving With Ray Serve
-
-    .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
