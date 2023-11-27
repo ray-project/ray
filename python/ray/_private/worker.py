@@ -56,7 +56,6 @@ import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._raylet import (
-    RawSerializedObject,
     StreamingObjectRefGenerator,
     raise_sys_exit_with_custom_error_message,
 )
@@ -731,22 +730,17 @@ class Worker:
                 object_ref is None
             ), "Local Mode does not support inserting with an ObjectRef"
 
-        if isinstance(value, bytes):
-            # This is a fast path to skip the serializer context lookup overhead for
-            # bytes types.
-            serialized_value = RawSerializedObject(value)
-        else:
-            try:
-                serialized_value = self.get_serialization_context().serialize(value)
-            except TypeError as e:
-                sio = io.StringIO()
-                ray.util.inspect_serializability(value, print_file=sio)
-                msg = (
-                    "Could not serialize the put value "
-                    f"{repr(value)}:\n"
-                    f"{sio.getvalue()}"
-                )
-                raise TypeError(msg) from e
+        try:
+            serialized_value = self.get_serialization_context().serialize(value)
+        except TypeError as e:
+            sio = io.StringIO()
+            ray.util.inspect_serializability(value, print_file=sio)
+            msg = (
+                "Could not serialize the put value "
+                f"{repr(value)}:\n"
+                f"{sio.getvalue()}"
+            )
+            raise TypeError(msg) from e
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
