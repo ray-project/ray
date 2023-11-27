@@ -35,6 +35,6 @@ Debugging
    :nosignatures:
    :toctree: doc/
 
-   ray.util.pdb.set_trace
+   ray.util.rpdb.set_trace
    ray.util.inspect_serializability
    ray.timeline

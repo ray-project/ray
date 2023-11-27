@@ -173,6 +173,9 @@ class TableBlockAccessor(BlockAccessor):
     def column_names(self) -> List[str]:
         raise NotImplementedError
 
+    def append_column(self, name: str, data: Any) -> Block:
+        raise NotImplementedError
+
     def to_block(self) -> Block:
         return self._table
 

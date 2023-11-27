@@ -1,7 +1,7 @@
 import json
 import os
 import posixpath
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import pandas as pd
 import pyarrow
@@ -14,7 +14,10 @@ import ray
 from ray.data.block import Block
 from ray.data.dataset import Dataset
 from ray.data.datasource import FileBasedDatasource, PathPartitionParser
-from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
+from ray.data.datasource.file_based_datasource import (
+    FileExtensionFilter,
+    _resolve_paths_and_filesystem,
+)
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -35,16 +38,16 @@ class CSVDatasource(FileBasedDatasource):
 
         self._block_type = block_type
 
-    def _read_file(self, f: pa.NativeFile, path: str) -> Block:
+    def _read_stream(self, f: pa.NativeFile, path: str) -> Iterator[Block]:
         assert self._block_type in {pd.DataFrame, pa.Table}
 
         if self._block_type is pa.Table:
             from pyarrow import csv
 
-            return csv.read_csv(f)
+            yield csv.read_csv(f)
 
         if self._block_type is pd.DataFrame:
-            return pd.read_csv(f)
+            yield pd.read_csv(f)
 
 
 def write_csv(data: Dict[str, List[Any]], path: str) -> None:
@@ -61,6 +64,11 @@ def read_csv(
 ) -> Dataset:
     datasource = CSVDatasource(paths, block_type=block_type, partitioning=partitioning)
     return ray.data.read_datasource(datasource)
+
+
+def test_file_extension_filter_is_deprecated():
+    with pytest.warns(DeprecationWarning):
+        FileExtensionFilter("csv")
 
 
 class PathPartitionEncoder:

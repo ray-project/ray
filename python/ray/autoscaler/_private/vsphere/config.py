@@ -96,6 +96,17 @@ def validate_frozen_vm_configs(conf: dict):
             )
 
 
+def update_gpu_config_in_provider_section(
+    config, head_node_config, worker_node_configs
+):
+    provider_config = config["provider"]
+    vsphere_config = provider_config["vsphere_config"]
+    if "gpu_config" in vsphere_config:
+        head_node_config["gpu_config"] = vsphere_config["gpu_config"]
+        for worker_node_config in worker_node_configs:
+            worker_node_config["gpu_config"] = vsphere_config["gpu_config"]
+
+
 def check_and_update_frozen_vm_configs_in_provider_section(
     config, head_node_config, worker_node_configs
 ):
@@ -208,6 +219,8 @@ def update_vsphere_configs(config):
         config, head_node_config, worker_node_configs
     )
 
+    update_gpu_config_in_provider_section(config, head_node_config, worker_node_configs)
+
 
 def configure_key_pair(config):
     logger.info("Configuring keys for Ray Cluster Launcher to ssh into the head node.")
@@ -231,3 +244,11 @@ def configure_key_pair(config):
     config["file_mounts"][public_key_remote_path] = PUBLIC_KEY_PATH
 
     return config
+
+
+def is_dynamic_passthrough(node_config):
+    if "gpu_config" in node_config:
+        gpu_config = node_config["gpu_config"]
+        if gpu_config and gpu_config["dynamic_pci_passthrough"]:
+            return True
+    return False
