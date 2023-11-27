@@ -35,8 +35,10 @@ class DataOpTask(OpTask):
     def __init__(
         self,
         streaming_gen: StreamingObjectRefGenerator,
+        inputs: RefBundle,
         output_ready_callback: Callable[[RefBundle], None],
         task_done_callback: Callable[[], None],
+        task_failed_callback: Callable[[], None],
     ):
         """
         Args:
@@ -50,8 +52,10 @@ class DataOpTask(OpTask):
         # interface. So each individual operator don't need to take care of the
         # BlockMetadata.
         self._streaming_gen = streaming_gen
+        self._inputs = inputs
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self._task_failed_callback = task_failed_callback
 
     def get_waitable(self) -> StreamingObjectRefGenerator:
         return self._streaming_gen
@@ -85,9 +89,14 @@ class DataOpTask(OpTask):
                 # And in this case, the block_ref is the exception object.
                 # TODO(hchen): Ray Core should have a better interface for
                 # detecting and obtaining the exception.
-                ex = ray.get(block_ref)
-                self._task_done_callback()
-                raise ex
+                try:
+                    ex = ray.get(block_ref)
+                    self._task_done_callback()
+                    raise ex
+                except ray.exceptions.RayActorError as e:
+                    # RayActorError occurs when actor dead.
+                    self._task_failed_callback()
+                    break
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
