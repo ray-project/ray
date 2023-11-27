@@ -289,6 +289,9 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
                 [2, 3, 4, 5, 6, 7, 8, 9, 10],
             )
             # With left fill.
+            check(buffer.get(-8, fill=10, neg_indices_left_of_zero=True), 10)
+            check(buffer.get(-800, fill=10, neg_indices_left_of_zero=True), 10)
+            check(buffer.get([-8, -1], fill=9, neg_indices_left_of_zero=True), [9, 3])
             check(
                 buffer.get(slice(-8, 0), fill=10, neg_indices_left_of_zero=True),
                 [10, 10, 10, 10, 0, 1, 2, 3],
@@ -330,6 +333,9 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
                 [6],
             )
             # Right fill.
+            check(buffer.get(8, fill=10, neg_indices_left_of_zero=True), 10)
+            check(buffer.get(800, fill=10, neg_indices_left_of_zero=True), 10)
+            check(buffer.get([8, 1], fill=9, neg_indices_left_of_zero=True), [9, 5])
             check(
                 buffer.get(slice(-2, 8), fill=12, neg_indices_left_of_zero=True),
                 [2, 3, 4, 5, 6, 7, 8, 9, 10, 12],
@@ -363,6 +369,33 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         data = buffer.get([-3, -1], fill=0, neg_indices_left_of_zero=True)
         self.assertTrue(isinstance(data, np.ndarray))
         check(data, [1, 3])
+
+    def test_get_with_fill_0_and_zero_hot(self):
+        """Tests, whether zero-hot is properly done when fill=0."""
+        buffer = BufferWithInfiniteLookback(
+            data=[0, 1, 0, 1],
+            # Specify a space, so we can fill and one-hot discrete data properly.
+            space=gym.spaces.Discrete(2),
+        )
+
+        # Test on ongoing and finalized buffer.
+        for finalized in [False, True]:
+            if finalized:
+                buffer.finalize()
+
+            self.assertTrue(len(buffer), 4)
+
+            # Right side fill 0. Should be zero-hot.
+            check(buffer.get(4, fill=0, one_hot_discrete=True), [0, 0])
+            check(
+                buffer.get(
+                    -1,
+                    neg_indices_left_of_zero=True,
+                    fill=0,
+                    one_hot_discrete=True,
+                ),
+                [0, 0],
+            )
 
 
 if __name__ == "__main__":

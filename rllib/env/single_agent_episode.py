@@ -632,7 +632,7 @@ class SingleAgentEpisode:
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
             neg_indices_left_of_zero: If True, negative values in `indices` are
-                interpreted as as "before ts=0", meaning going back into the lookback
+                interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with observations [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
                 respond to `get_observations(-1, neg_indices_left_of_zero=True)`
@@ -647,10 +647,13 @@ class SingleAgentEpisode:
                 For example, an episode with observations [10, 11,  12, 13, 14] and
                 lookback buffer size of 2 (meaning observations `10` and `11` are part
                 of the lookback buffer) will respond to
-                `get_observations(slice(-7, -2), fill=0.0)` with [0.0, 0.0, 10, 11, 12].
+                `get_observations(slice(-7, -2), fill=0.0)` with
+                `[0.0, 0.0, 10, 11, 12]`.
             one_hot_discrete: If True, will return one-hot vectors (instead of
                 int-values) for those sub-components of a (possibly complex) observation
-                space that are Discrete or MultiDiscrete.
+                space that are Discrete or MultiDiscrete.  Note that if `fill=0` and the
+                requested `indices` are out of the range of our data, the returned
+                one-hot vectors will actually be zero-hot (all slots zero).
 
         Examples:
 
@@ -722,7 +725,7 @@ class SingleAgentEpisode:
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
             neg_indices_left_of_zero: If True, negative values in `indices` are
-                interpreted as as "before ts=0", meaning going back into the lookback
+                interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with infos
                 [{"l":4}, {"l":5}, {"l":6},  {"a":7}, {"b":8}, {"c":9}], where the
                 first 3 items are the lookback buffer (ts=0 item is {"a": 7}), will
@@ -739,7 +742,7 @@ class SingleAgentEpisode:
                 [{"l":10}, {"l":11},  {"a":12}, {"b":13}, {"c":14}] and lookback buffer
                 size of 2 (meaning infos {"l":10}, {"l":11} are part of the lookback
                 buffer) will respond to `get_infos(slice(-7, -2), fill={"o": 0.0})`
-                with [{"o":0.0}, {"o":0.0}, {"l":10}, {"l":11}, {"a":12}].
+                with `[{"o":0.0}, {"o":0.0}, {"l":10}, {"l":11}, {"a":12}]`.
 
         Examples:
 
@@ -796,7 +799,7 @@ class SingleAgentEpisode:
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
             neg_indices_left_of_zero: If True, negative values in `indices` are
-                interpreted as as "before ts=0", meaning going back into the lookback
+                interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with actions [4, 5, 6,  7, 8, 9], where
                 [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will respond
                 to `get_actions(-1, neg_indices_left_of_zero=True)` with `6` and
@@ -810,10 +813,12 @@ class SingleAgentEpisode:
                 For example, an episode with actions [10, 11,  12, 13, 14] and
                 lookback buffer size of 2 (meaning actions `10` and `11` are part
                 of the lookback buffer) will respond to
-                `get_actions(slice(-7, -2), fill=0.0)` with [0.0, 0.0, 10, 11, 12].
+                `get_actions(slice(-7, -2), fill=0.0)` with `[0.0, 0.0, 10, 11, 12]`.
             one_hot_discrete: If True, will return one-hot vectors (instead of
                 int-values) for those sub-components of a (possibly complex) action
-                space that are Discrete or MultiDiscrete.
+                space that are Discrete or MultiDiscrete. Note that if `fill=0` and the
+                requested `indices` are out of the range of our data, the returned
+                one-hot vectors will actually be zero-hot (all slots zero).
 
         Examples:
 
@@ -899,7 +904,7 @@ class SingleAgentEpisode:
                 For example, an episode with rewards [10, 11,  12, 13, 14] and
                 lookback buffer size of 2 (meaning rewards `10` and `11` are part
                 of the lookback buffer) will respond to
-                `get_rewards(slice(-7, -2), fill=0.0)` with [0.0, 0.0, 10, 11, 12].
+                `get_rewards(slice(-7, -2), fill=0.0)` with `[0.0, 0.0, 10, 11, 12]`.
 
         Examples:
 
@@ -956,7 +961,7 @@ class SingleAgentEpisode:
                 used, in which case negative indices are interpreted as "before ts=0",
                 meaning going back into the lookback buffer.
             neg_indices_left_of_zero: If True, negative values in `indices` are
-                interpreted as as "before ts=0", meaning going back into the lookback
+                interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 extra_model_outputs['a'] = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will respond to
