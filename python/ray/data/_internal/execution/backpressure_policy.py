@@ -114,7 +114,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
         assert self._init_cap > 0
         assert 0 < self._cap_multiply_threshold <= 1
-        assert self._cap_multiplier > 1
+        assert self._cap_multiplier >= 1
 
         logger.debug(
             "ConcurrencyCapBackpressurePolicy initialized with config: "
@@ -126,7 +126,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
     def can_add_input(self, op: "PhysicalOperator") -> bool:
         metrics = op.metrics
-        while metrics.num_tasks_finished >= (
+        while self._cap_multiplier > 1 and metrics.num_tasks_finished >= (
             self._concurrency_caps[op] * self._cap_multiply_threshold
         ):
             self._concurrency_caps[op] *= self._cap_multiplier
@@ -193,7 +193,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
     ) -> Dict["OpState", int]:
         max_blocks_to_read_per_op: Dict["OpState", int] = {}
         downstream_num_active_tasks = 0
-        for op, state in list(topology.items())[::-1]:
+        for op, state in reversed(topology.items()):
             max_blocks_to_read_per_op[state] = (
                 self._max_num_blocks_in_op_output_queue - state.outqueue_num_blocks()
             )

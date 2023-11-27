@@ -1,10 +1,6 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import (
-    FileBasedDatasource,
-    _resolve_kwargs,
-)
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -13,36 +9,31 @@ if TYPE_CHECKING:
 
 @PublicAPI
 class JSONDatasource(FileBasedDatasource):
-    """JSON datasource, for reading and writing JSON and JSONL files.
+    """JSON datasource, for reading and writing JSON and JSONL files."""
 
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import JSONDatasource
-        >>> source = JSONDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource( # doctest: +SKIP
-        ...     source, paths="/path/to/dir").take()
-        [{"a": 1, "b": "foo"}, ...]
-    """
+    _FILE_EXTENSIONS = ["json", "jsonl"]
 
-    _FILE_EXTENSION = ["json", "jsonl"]
-
-    # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        *,
+        arrow_json_args: Optional[Dict[str, Any]] = None,
+        **file_based_datasource_kwargs,
+    ):
         from pyarrow import json
 
-        read_options = reader_args.pop(
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        if arrow_json_args is None:
+            arrow_json_args = {}
+
+        self.read_options = arrow_json_args.pop(
             "read_options", json.ReadOptions(use_threads=False)
         )
-        return json.read_json(f, read_options=read_options, **reader_args)
+        self.arrow_json_args = arrow_json_args
 
-    def _write_block(
-        self,
-        f: "pyarrow.NativeFile",
-        block: BlockAccessor,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args,
-    ):
-        writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
-        orient = writer_args.pop("orient", "records")
-        lines = writer_args.pop("lines", True)
-        block.to_pandas().to_json(f, orient=orient, lines=lines, **writer_args)
+    # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str):
+        from pyarrow import json
+
+        yield json.read_json(f, read_options=self.read_options, **self.arrow_json_args)

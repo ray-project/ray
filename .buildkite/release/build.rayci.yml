@@ -1,0 +1,27 @@
+group: build
+steps:
+  - label: ":tapioca: build: anyscale py{{matrix}} docker"
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version {{matrix}}
+        --platform cu12.1.1 --platform cpu --image-type ray --upload
+    depends_on:
+      - manylinux
+      - forge
+      - raycudabase
+      - raycpubase
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.11"
+
+  - label: ":tapioca: build: anyscale-ml py{{matrix}} docker"
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version {{matrix}}
+        --platform cu11.8.0 --image-type ray-ml --upload
+    depends_on:
+      - manylinux
+      - forge
+      - ray-mlcudabase
+    matrix:
+      - "3.8"
+      - "3.9"

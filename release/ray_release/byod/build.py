@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Dict
 
 import boto3
 import hashlib
@@ -7,7 +7,6 @@ import subprocess
 import sys
 import time
 
-from ray_release.byod.build_ray import build_ray
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -75,7 +74,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
         logger.info(f"Test {test.get_name()} does not require a custom byod image")
         return
     byod_image = test.get_anyscale_byod_image()
-    if _byod_image_exist(test, base_image=False):
+    if _image_exist(byod_image):
         logger.info(f"Image {byod_image} already exists")
         return
 
@@ -105,7 +104,6 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     """
     Builds the Anyscale BYOD images for the given tests.
     """
-    build_ray(tests)
     _download_dataplane_build_file()
     to_be_built = {}
     built = set()
@@ -129,12 +127,12 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
             else:
                 byod_requirements = f"{REQUIREMENTS_BYOD}_{py_version}.txt"
 
-            if _byod_image_exist(test):
+            if _image_exist(byod_image):
                 logger.info(f"Image {byod_image} already exists")
                 built.add(byod_image)
                 continue
             ray_image = test.get_ray_image()
-            if not _ray_image_exist(ray_image):
+            if not _image_exist(ray_image):
                 # TODO(can): instead of waiting for the base image to be built, we can
                 #  build it ourselves
                 timeout = BASE_IMAGE_WAIT_TIMEOUT - (int(time.time()) - start)
@@ -217,11 +215,18 @@ def _validate_and_push(byod_image: str) -> None:
     )
 
 
-def _get_ray_commit() -> str:
-    return os.environ.get(
+def _get_ray_commit(envs: Optional[Dict[str, str]] = None) -> str:
+    if envs is None:
+        envs = os.environ
+    for key in [
+        "RAY_WANT_COMMIT_IN_IMAGE",
         "COMMIT_TO_TEST",
-        os.environ["BUILDKITE_COMMIT"],
-    )
+        "BUILDKITE_COMMIT",
+    ]:
+        commit = envs.get(key, "")
+        if commit:
+            return commit
+    return ""
 
 
 def _download_dataplane_build_file() -> None:
@@ -239,36 +244,13 @@ def _download_dataplane_build_file() -> None:
         assert digest == DATAPLANE_DIGEST, "Mismatched dataplane digest found!"
 
 
-def _ray_image_exist(ray_image: str) -> bool:
+def _image_exist(image: str) -> bool:
     """
     Checks if the given image exists in Docker
     """
     p = subprocess.run(
-        ["docker", "manifest", "inspect", ray_image],
+        ["docker", "manifest", "inspect", image],
         stdout=sys.stderr,
         stderr=sys.stderr,
     )
     return p.returncode == 0
-
-
-def _byod_image_exist(test: Test, base_image: bool = True) -> bool:
-    """
-    Checks if the given Anyscale BYOD image exists.
-    """
-    if os.environ.get("BYOD_NO_CACHE", False):
-        return False
-    if test.is_gce():
-        # TODO(can): check image existence on GCE; without this, we'll always rebuild
-        return False
-    client = boto3.client("ecr", region_name="us-west-2")
-    image_tag = (
-        test.get_byod_base_image_tag() if base_image else test.get_byod_image_tag()
-    )
-    try:
-        client.describe_images(
-            repositoryName=test.get_byod_repo(),
-            imageIds=[{"imageTag": image_tag}],
-        )
-        return True
-    except client.exceptions.ImageNotFoundException:
-        return False

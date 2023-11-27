@@ -1062,6 +1062,57 @@ def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
     assert sorted([x["out"] for x in ds.take()]) == [1, 3]
 
 
+def test_groupby_map_groups_extra_args(ray_start_regular_shared):
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    def func(df, a, b, c):
+        df["value"] = df["value"] * a + b + c
+        return df
+
+    ds = ds.groupby("group").map_groups(
+        func,
+        fn_args=(2, 1),
+        fn_kwargs={"c": 3},
+    )
+    assert sorted([x["value"] for x in ds.take()]) == [6, 8, 10, 12]
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas", "numpy"])
+def test_groupby_map_groups_multicolumn(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
+    # Test built-in count aggregation
+    print(f"Seeding RNG for test_groupby_arrow_count with: {RANDOM_SEED}")
+    random.seed(RANDOM_SEED)
+    xs = list(range(100))
+    random.shuffle(xs)
+
+    ds = ray.data.from_items([{"A": (x % 2), "B": (x % 3)} for x in xs]).repartition(
+        num_parts
+    )
+
+    agg_ds = ds.groupby(["A", "B"]).map_groups(
+        lambda df: {"count": [len(df["A"])]}, batch_format=ds_format
+    )
+    assert agg_ds.count() == 6
+    assert agg_ds.take_all() == [
+        {"count": 17},
+        {"count": 16},
+        {"count": 17},
+        {"count": 17},
+        {"count": 17},
+        {"count": 16},
+    ]
+
+
 def test_random_block_order_schema(ray_start_regular_shared):
     df = pd.DataFrame({"a": np.random.rand(10), "b": np.random.rand(10)})
     ds = ray.data.from_pandas(df).randomize_block_order()

@@ -273,7 +273,6 @@ def run(
     chdir_to_trial_dir: bool = _DEPRECATED_VALUE,  # Deprecated (2.8)
     local_dir: Optional[str] = None,
     # == internal only ==
-    _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
@@ -782,7 +781,6 @@ def run(
                 num_samples=num_samples,
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
-                _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,
                 trial_name_creator=trial_name_creator,

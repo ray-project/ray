@@ -1,3 +1,4 @@
+import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import List
@@ -27,15 +28,11 @@ def test_batching(serve_instance):
 
     handle = serve.run(BatchingExample.bind())
 
-    object_refs = []
-    for _ in range(20):
-        object_refs.append(handle.remote(1))
-
-    counter_result = ray.get(object_refs)
+    result_list = [handle.remote(1) for _ in range(20)]
     # since count is only updated per batch of queries
     # If there atleast one __call__ fn call with batch size greater than 1
     # counter result will always be less than 20
-    assert max(counter_result) < 20
+    assert max([r.result() for r in result_list]) < 20
 
 
 def test_batching_exception(serve_instance):
@@ -55,7 +52,7 @@ def test_batching_exception(serve_instance):
     handle = serve.run(NoListReturned.bind())
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        assert ray.get(handle.remote(1))
+        assert handle.remote(1).result()
 
 
 @pytest.mark.asyncio
@@ -91,6 +88,71 @@ async def test_batch_generator_streaming_response_integration_test(serve_instanc
     for idx, response in enumerate(responses):
         assert response.status_code == 200
         assert response.text == "".join([prompt_prefix + str(idx)] * NUM_YIELDS)
+
+
+def test_batching_client_dropped_unary(serve_instance):
+    """Test unary batching with clients that drops the connection.
+
+    After requests are dropped. The next request should succeed.
+    """
+
+    @serve.deployment
+    class ModelUnary:
+        @serve.batch(max_batch_size=5)
+        async def handle_batch(self, requests):
+            await asyncio.sleep(0.05)
+            return ["fake-response" for _ in range(len(requests))]
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+    serve.run(ModelUnary.bind())
+
+    url = "http://localhost:8000/"
+
+    # Sending requests with clients that drops the connection.
+    for _ in range(3):
+        with pytest.raises(requests.exceptions.ReadTimeout):
+            requests.get(url, timeout=0.005)
+
+    # The following request should succeed.
+    resp = requests.get(url, timeout=1)
+    assert resp.status_code == 200
+    assert resp.text == "fake-response"
+
+
+def test_batching_client_dropped_streaming(serve_instance):
+    """Test streaming batching with clients that drops the connection.
+
+    After requests are dropped. The next request should succeed.
+    """
+
+    @serve.deployment
+    class ModelStreaming:
+        @serve.batch(max_batch_size=3)
+        async def handle_batch(self, requests):
+            await asyncio.sleep(0.05)
+            for i in range(10):
+                yield [str(i) for _ in range(len(requests))]
+
+        async def __call__(self, request):
+            return StreamingResponse(self.handle_batch(request))
+
+    serve.run(ModelStreaming.bind())
+
+    url = "http://localhost:8000/"
+
+    # Sending requests with clients that drops the connection.
+    for _ in range(3):
+        with pytest.raises(
+            (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError)
+        ):
+            requests.get(url, timeout=0.005)
+
+    # The following request should succeed.
+    resp = requests.get(url, timeout=1)
+    assert resp.status_code == 200
+    assert resp.text == "0123456789"
 
 
 if __name__ == "__main__":

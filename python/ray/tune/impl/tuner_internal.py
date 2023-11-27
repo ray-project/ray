@@ -3,7 +3,6 @@ import io
 import os
 import math
 import logging
-import tempfile
 from pathlib import Path
 from typing import (
     Any,
@@ -21,7 +20,6 @@ import pyarrow.fs
 
 import ray.cloudpickle as pickle
 from ray.util import inspect_serializability
-from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
@@ -372,21 +370,6 @@ class TunerInternal:
 
         self._resume_config = resume_config
         self._is_restored = True
-
-    def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
-        """Sync down trainable state from remote storage.
-
-        Returns:
-            Tuple of (downloaded from remote, local_dir)
-        """
-        if not is_non_local_path_uri(restore_path):
-            return False, Path(restore_path).expanduser().absolute().as_posix()
-
-        tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
-
-        restore_uri = URI(restore_path)
-        download_from_uri(str(restore_uri / _TUNER_PKL), str(tempdir / _TUNER_PKL))
-        return True, str(tempdir)
 
     def _choose_run_config(
         self,
