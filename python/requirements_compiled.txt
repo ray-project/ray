@@ -137,9 +137,6 @@ attrs==21.4.0
     #   pytest
     #   sarif-om
     #   semgrep
-    #   sphinx-external-toc
-autodoc-pydantic==2.0.1
-    # via -r /ray/ci/../doc/requirements-doc.txt
 autograd==1.6.2
     # via pymoo
 autorom==0.6.1 ; platform_machine != "arm64"
@@ -201,7 +198,6 @@ beautifulsoup4==4.11.1
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   nbconvert
-    #   pydata-sphinx-theme
 black==22.10.0
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 bleach==6.1.0
@@ -285,8 +281,6 @@ click==8.1.7
     #   mlflow
     #   ray
     #   semgrep
-    #   sphinx-click
-    #   sphinx-external-toc
     #   tensorflow-datasets
     #   typer
     #   uvicorn
@@ -426,11 +420,7 @@ docutils==0.17.1
     #   -r /ray/ci/../python/requirements/lint-requirements.txt
     #   myst-nb
     #   myst-parser
-    #   pydata-sphinx-theme
     #   sphinx
-    #   sphinx-click
-    #   sphinx-jsonschema
-    #   sphinx-tabs
     #   sphinx-togglebutton
 dopamine-rl==4.0.5 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
@@ -581,11 +571,19 @@ google-api-core==2.14.0
     #   google-api-python-client
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
+    #   google-cloud-common
+    #   google-cloud-compute
     #   google-cloud-core
+    #   google-cloud-filestore
+    #   google-cloud-redis
+    #   google-cloud-resource-manager
+    #   google-cloud-secret-manager
     #   google-cloud-storage
     #   opencensus
 google-api-python-client==2.65.0
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via
+    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
 google-apitools==0.5.32
     # via gsutil
 google-auth==2.23.4
@@ -607,10 +605,22 @@ google-cloud-bigquery==3.13.0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 google-cloud-bigquery-storage==2.22.0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
+google-cloud-common==1.2.0
+    # via google-cloud-filestore
+google-cloud-compute==1.14.1
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
 google-cloud-core==2.3.3
     # via
     #   google-cloud-bigquery
     #   google-cloud-storage
+google-cloud-filestore==1.7.0
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
+google-cloud-redis==2.13.2
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
+google-cloud-resource-manager==1.10.4
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
+google-cloud-secret-manager==2.16.4
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
 google-cloud-storage==2.5.0
     # via
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
@@ -630,6 +640,7 @@ google-resumable-media==2.6.0
 googleapis-common-protos==1.61.0
     # via
     #   google-api-core
+    #   grpc-google-iam-v1
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorflow-metadata
@@ -655,6 +666,10 @@ graphviz==0.20.1
     # via catboost
 greenlet==3.0.1
     # via sqlalchemy
+grpc-google-iam-v1==0.12.7
+    # via
+    #   google-cloud-resource-manager
+    #   google-cloud-secret-manager
 grpcio==1.59.3 ; sys_platform != "darwin"
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -662,18 +677,19 @@ grpcio==1.59.3 ; sys_platform != "darwin"
     #   aim
     #   google-api-core
     #   google-cloud-bigquery
+    #   googleapis-common-protos
+    #   grpc-google-iam-v1
     #   grpcio-status
-    #   grpcio-tools
     #   mlagents-envs
     #   opencensus-proto
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
-grpcio-status==1.48.2
-    # via google-api-core
-grpcio-tools==1.48.2
-    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
+grpcio-status==1.48.2 ; python_version < "3.11"
+    # via
+    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
+    #   google-api-core
 gsutil==5.27
     # via -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
@@ -762,7 +778,6 @@ importlib-metadata==4.10.0
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ale-py
     #   alembic
-    #   autodoc-pydantic
     #   flask
     #   gym
     #   gymnasium
@@ -860,8 +875,6 @@ jinja2==3.0.3
     #   nbdime
     #   notebook
     #   sphinx
-    #   sphinx-tabs
-    #   sphinxcontrib-redoc
     #   torch
     #   torch-geometric
 jmespath==1.0.1
@@ -891,7 +904,6 @@ jsonpointer==2.4
     # via
     #   jsonpatch
     #   jsonschema
-    #   sphinx-jsonschema
 jsonschema==4.17.3
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -908,7 +920,6 @@ jsonschema==4.17.3
     #   openapi-spec-validator
     #   ray
     #   semgrep
-    #   sphinxcontrib-redoc
 jsonschema-spec==0.1.6
     # via openapi-spec-validator
 junit-xml==1.9
@@ -966,9 +977,7 @@ jupyterlab-server==2.24.0
 jupyterlab-widgets==1.1.7
     # via ipywidgets
 jupytext==1.13.6
-    # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 kaggle-environments==1.7.11
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 keras==2.11.0
@@ -1132,12 +1141,9 @@ mypy-extensions==1.0.0
     #   black
     #   mypy
 myst-nb==0.13.1
-    # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 myst-parser==0.15.2
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   myst-nb
 nbclassic==1.0.0
@@ -1404,7 +1410,6 @@ packaging==21.3
     #   onnxruntime
     #   optuna
     #   plotly
-    #   pydata-sphinx-theme
     #   pytest
     #   pytest-rerunfailures
     #   pytest-sugar
@@ -1523,6 +1528,12 @@ proto-plus==1.22.3
     # via
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
+    #   google-cloud-common
+    #   google-cloud-compute
+    #   google-cloud-filestore
+    #   google-cloud-redis
+    #   google-cloud-resource-manager
+    #   google-cloud-secret-manager
 protobuf==3.19.6
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -1531,9 +1542,15 @@ protobuf==3.19.6
     #   google-api-core
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
+    #   google-cloud-common
+    #   google-cloud-compute
+    #   google-cloud-filestore
+    #   google-cloud-redis
+    #   google-cloud-resource-manager
+    #   google-cloud-secret-manager
     #   googleapis-common-protos
+    #   grpc-google-iam-v1
     #   grpcio-status
-    #   grpcio-tools
     #   mlagents-envs
     #   mlflow
     #   onnx
@@ -1613,21 +1630,14 @@ pycparser==2.21
     # via cffi
 pydantic==2.5.0
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   autodoc-pydantic
     #   aws-sam-translator
     #   deepspeed
     #   fastapi
     #   gradio
-    #   pydantic-settings
 pydantic-core==2.14.1
     # via pydantic
-pydantic-settings==2.1.0
-    # via autodoc-pydantic
-pydata-sphinx-theme==0.8.1
-    # via sphinx-book-theme
 pydeprecate==0.3.2
     # via pytorch-lightning
 pydot==1.4.2
@@ -1644,7 +1654,6 @@ pyglet==1.5.15
     # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 pygments==2.13.0
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ipython
     #   knack
@@ -1652,7 +1661,6 @@ pygments==2.13.0
     #   nbdime
     #   rich
     #   sphinx
-    #   sphinx-tabs
 pyjwt==2.8.0
     # via
     #   adal
@@ -1765,8 +1773,6 @@ python-dateutil==2.8.2
     #   moto
     #   pandas
     #   segment-analytics-python
-python-dotenv==1.0.0
-    # via pydantic-settings
 python-jose==3.3.0
     # via moto
 python-json-logger==2.0.7
@@ -1822,10 +1828,6 @@ pyyaml==6.0.1
     #   pymars
     #   pytorch-lightning
     #   ray
-    #   sphinx-book-theme
-    #   sphinx-external-toc
-    #   sphinx-jsonschema
-    #   sphinxcontrib-redoc
     #   timm
     #   transformers
     #   wandb
@@ -1840,7 +1842,6 @@ pyzmq==24.0.1
 querystring-parser==1.2.4
     # via mlflow
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   raydp
     #   tune-sklearn
     #   xgboost-ray
@@ -1892,7 +1893,6 @@ requests==2.31.0
     #   segment-analytics-python
     #   semgrep
     #   sphinx
-    #   sphinx-jsonschema
     #   tensorboard
     #   tensorflow-datasets
     #   tf2onnx
@@ -2075,8 +2075,6 @@ six==1.16.0
     #   querystring-parser
     #   responses
     #   rfc3339-validator
-    #   sphinx-sitemap
-    #   sphinxcontrib-redoc
     #   tensorflow
     #   tensorflow-probability
     #   tf2onnx
@@ -2103,47 +2101,13 @@ soupsieve==2.5
     # via beautifulsoup4
 sphinx==4.3.2
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   autodoc-pydantic
     #   jupyter-sphinx
     #   myst-nb
     #   myst-parser
-    #   pydata-sphinx-theme
-    #   sphinx-book-theme
-    #   sphinx-click
-    #   sphinx-copybutton
-    #   sphinx-design
-    #   sphinx-external-toc
-    #   sphinx-remove-toctrees
-    #   sphinx-sitemap
-    #   sphinx-tabs
     #   sphinx-togglebutton
-    #   sphinx-version-warning
-    #   sphinxcontrib-redoc
-    #   sphinxemoji
-sphinx-book-theme==0.3.3
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-click==3.0.2
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-copybutton==0.4.0
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-design==0.4.1
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-external-toc==0.2.4
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-jsonschema==1.17.2
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-remove-toctrees==0.0.3
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-sitemap==2.2.0
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-tabs==3.4.0
-    # via -r /ray/ci/../doc/requirements-doc.txt
 sphinx-togglebutton==0.2.3
     # via myst-nb
-sphinx-version-warning==1.1.2
-    # via -r /ray/ci/../doc/requirements-doc.txt
 sphinxcontrib-applehelp==1.0.4
     # via sphinx
 sphinxcontrib-devhelp==1.0.2
@@ -2154,12 +2118,8 @@ sphinxcontrib-jsmath==1.0.1
     # via sphinx
 sphinxcontrib-qthelp==1.0.3
     # via sphinx
-sphinxcontrib-redoc==1.6.0
-    # via -r /ray/ci/../doc/requirements-doc.txt
 sphinxcontrib-serializinghtml==1.1.5
     # via sphinx
-sphinxemoji==0.2.0
-    # via -r /ray/ci/../doc/requirements-doc.txt
 sqlalchemy==1.4.17
     # via
     #   aim
@@ -2243,8 +2203,9 @@ termcolor==2.3.0
     #   pytest-sugar
     #   tensorflow
     #   tensorflow-datasets
-terminado==0.18.0
+terminado==0.10.1
     # via
+    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   jupyter-server
     #   nbclassic
     #   notebook
@@ -2331,6 +2292,7 @@ torchvision==0.15.2
     #   timm
 tornado==6.1
     # via
+    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   bokeh
     #   distributed
     #   ipykernel
@@ -2433,7 +2395,6 @@ uritemplate==4.1.1
     # via google-api-python-client
 urllib3==1.26.18
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   botocore
     #   databricks-cli
     #   distributed
@@ -2484,7 +2445,6 @@ wandb==0.13.4
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 watchfiles==0.19.0
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
 wcmatch==8.5
