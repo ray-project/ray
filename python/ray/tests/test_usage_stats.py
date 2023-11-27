@@ -1055,23 +1055,33 @@ provider:
     sys.version_info >= (3, 11, 0),
     reason=("Currently not passing for Python 3.11"),
 )
+@pytest.mark.parametrize("legacy_worker_param", [True, False])
 def test_usage_report_e2e(
-    monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
+    monkeypatch,
+    ray_start_cluster,
+    tmp_path,
+    reset_usage_stats,
+    gcs_storage_type,
+    legacy_worker_param,
 ):
     """
-    Test usage report works e2e with env vars.
+    Test usage report works end-to-end with environment variables.
     """
     cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
-    cluster_config_file_path.write_text(
-        """
+    if legacy_worker_param:
+        worker_setting = "min_workers: 1"
+    else:
+        worker_setting = "min_worker_nodes: 1"
+
+    cluster_config = f"""
 cluster_name: minimal
-max_worker_nodes: 1
+{worker_setting}
 provider:
     type: aws
     region: us-west-2
     availability_zone: us-west-2a
 """
-    )
+    cluster_config_file_path.write_text(cluster_config)
     with monkeypatch.context() as m:
         m.setenv("HOME", str(tmp_path))
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
