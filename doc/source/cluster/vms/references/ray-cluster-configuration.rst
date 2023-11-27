@@ -1399,7 +1399,7 @@ In some cases, adding special nodes without any resources may be desirable. Such
 ``available_node_types.<node_type_name>.node_type.min_worker_nodes``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The minimum number of workers to maintain for this node type regardless of utilization.
+The minimum number of worker nodes to maintain for this node type regardless of utilization.
 
 * **Required:** No
 * **Importance:** High
