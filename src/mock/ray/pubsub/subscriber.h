@@ -70,9 +70,9 @@ class MockSubscriber : public SubscriberInterface {
               (const rpc::ChannelType channel_type,
                const rpc::Address &publisher_address,
                const std::string &key_id),
-              (const override));
+              (const, override));
 
-  MOCK_METHOD(std::string, DebugString, (), (const override));
+  MOCK_METHOD(std::string, DebugString, (), (const, override));
 };
 
 }  // namespace pubsub
