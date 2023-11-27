@@ -335,13 +335,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
-        :link: /tune/examples/dragonfly_example
-        :link-type: doc
-
-        How To Use Tune With Dragonfly
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
         :link: /tune/examples/hyperopt_example
         :link-type: doc
 
@@ -356,13 +349,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
-        :link: /tune/examples/flaml_example
-        :link-type: doc
-
-        How To Use Tune With BlendSearch and CFO
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
         :link: /tune/examples/bohb_example
         :link-type: doc
 
@@ -370,24 +356,10 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
-        :link: /tune/examples/nevergrad_example
-        :link-type: doc
-
-        How To Use Tune With Nevergrad
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
         :link: /tune/examples/optuna_example
         :link-type: doc
 
         How To Use Tune With Optuna
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-        :link: /tune/examples/sigopt_example
-        :link-type: doc
-
-        How To Use Tune With SigOpt
 
     .. grid-item-card:: :bdg-warning:`Video`
         :class-item: gallery-item tuning serving
@@ -460,13 +432,6 @@ Ray Examples
         :link-type: ref
 
         How To Tune PyTorch Lightning Models
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning serving tune serve
-        :link: /tune/examples/tune-serve-integration-mnist
-        :link-type: doc
-
-        Model Selection & Serving With Ray Serve
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl tuning serving tune serve
