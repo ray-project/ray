@@ -5,9 +5,9 @@ Monitoring Your Workload
 
 This section helps you debug and monitor the execution of your :class:`~ray.data.Dataset` by viewing the:
 
-* Ray Data overview :ref:`Ray Data Overview`
-* Ray dashboard metrics :ref:`Ray Dashboard Metrics`
-* Ray Data logs :ref:`Ray Data Logs`
+* :ref:`Ray Data Overview`
+* :ref:`Ray Dashboard Metrics`
+* :ref:`Ray Data Logs`
 
 Ray Data Dashboard
 ------------------
@@ -15,7 +15,7 @@ Ray Data Dashboard
 Ray Data emits Prometheus metrics in real-time while a Dataset is executing. These metrics are tagged by both dataset and operator, and are displayed in multiple views across the Ray dashboard.
 
 .. note::
-   Most metrics are only available for physical operators that use the map operation.
+   Most metrics are only available for physical operators that use the map operation. For example, physical operators created by :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, and :meth:`~ray.data.Dataset.flat_map`.
 
 .. _Ray Data Overview:
 
