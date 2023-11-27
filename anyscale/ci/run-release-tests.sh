@@ -17,6 +17,7 @@ PATH="$(pwd)/google-cloud-sdk/bin:$PATH"
 export PATH
 gcloud auth login --cred-file=release/aws2gce_runtime_iam.json --quiet
 gcloud auth configure-docker us-west1-docker.pkg.dev --quiet
+
 pip3 install --user -U pip
 pip3 install --user -r release/requirements_buildkite.txt
 pip3 install --user --no-deps -e release/
