@@ -1,6 +1,9 @@
 from typing import Any, Dict
 
-from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.algorithms.ppo.ppo import (
+    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
+    PPOConfig,
+)
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.annotations import override
