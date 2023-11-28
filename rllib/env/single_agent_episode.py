@@ -265,7 +265,12 @@ class SingleAgentEpisode:
                 (e.g. `vf_preds`  for PPO).
         """
         # Cannot add data to an already done episode.
-        assert not self.is_done and not self.is_numpy
+        assert not self.is_done, (
+            "The episode is already done! No data can be added anymore."
+        )
+        assert not self.is_numpy, (
+            "The episode is already finalized! No data can be added anymore."
+        )
 
         self.observations.append(observation)
         self.actions.append(action)

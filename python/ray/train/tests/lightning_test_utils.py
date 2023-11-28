@@ -54,9 +54,9 @@ class LinearModule(pl.LightningModule):
     def configure_optimizers(self):
         if self.strategy == "fsdp":
             # Feed FSDP wrapped model parameters to optimizer
-            return torch.optim.SGD(self.trainer.model.parameters(), lr=0.1)
+            return torch.optim.AdamW(self.trainer.model.parameters(), lr=0.1)
         else:
-            return torch.optim.SGD(self.parameters(), lr=0.1)
+            return torch.optim.AdamW(self.parameters(), lr=0.1)
 
 
 class DoubleLinearModule(pl.LightningModule):
@@ -92,7 +92,7 @@ class DoubleLinearModule(pl.LightningModule):
         return self.forward(batch)
 
     def configure_optimizers(self):
-        return torch.optim.SGD(self.parameters(), lr=0.1)
+        return torch.optim.AdamW(self.parameters(), lr=0.1)
 
 
 class DummyDataModule(pl.LightningDataModule):

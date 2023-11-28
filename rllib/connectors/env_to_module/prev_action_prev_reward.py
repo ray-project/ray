@@ -46,7 +46,7 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         for episode in episodes:
             # Learner connector pipeline. Episodes have been finalized/numpy'ized.
             if self.as_learner_connector:
-                assert episode.is_numpy
+                assert episode.finalized
                 # Loop through each timestep in the episode and add the previous n
                 # actions and previous m rewards (based on that timestep) to the batch.
                 for ts in range(len(episode)):
@@ -55,7 +55,7 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                         indices=slice(ts - self.n_prev_actions, ts),
                         # Make sure negative indices are NOT interpreted as "counting
                         # from the end".
-                        interpret_neg_idx_left_of_zero=True,
+                        neg_indices_left_of_zero=True,
                         # In case we are at the very beginning of the episode, e.g.
                         # ts==0, fill the left side with zero-actions.
                         fill=0.0,
@@ -66,21 +66,21 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                     # Do the same for rewards.
                     prev_r.append(episode.get_rewards(
                         indices=slice(ts - self.n_prev_rewards, ts),
-                        interpret_neg_idx_left_of_zero=True,
+                        neg_indices_left_of_zero=True,
                         fill=0.0,
                     ))
             # Env-to-module pipeline. Episodes still operate on lists.
             else:
-                assert not episode.is_numpy
-                prev_a.append(episode.get_actions(
+                assert not episode.finalized
+                prev_a.append(batch(episode.get_actions(
                     indices=slice(-self.n_prev_actions, None),
                     fill=0.0,
                     one_hot_discrete=True,
-                ))
-                prev_r.append(episode.get_rewards(
+                )))
+                prev_r.append(np.array(episode.get_rewards(
                     indices=slice(-self.n_prev_rewards, None),
                     fill=0.0,
-                ))
+                )))
 
         input_[SampleBatch.PREV_ACTIONS] = batch(prev_a)
         input_[SampleBatch.PREV_REWARDS] = np.array(prev_r)
