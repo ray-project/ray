@@ -312,6 +312,17 @@ def test_autoscaling_scale_to_zero(
         },
     )
 
+    # Increase to target_capacity 1, should remain at 0 replicas initially.
+    config.target_capacity = 1.0
+    client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 1.0)
+    wait_for_condition(
+        check_expected_num_replicas,
+        deployment_to_num_replicas={
+            SCALE_TO_ZERO_DEPLOYMENT_NAME: 0,
+        },
+    )
+
     # Send a bunch of requests. Autoscaler will want to scale it up to max replicas,
     # but it should stay at one due to the target_capacity.
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
