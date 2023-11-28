@@ -320,6 +320,7 @@ class MapOperator(OneToOneOperator, ABC):
                 task_done_callback()
 
         self._data_tasks[task_index] = DataOpTask(
+            task_index,
             gen,
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
@@ -338,7 +339,7 @@ class MapOperator(OneToOneOperator, ABC):
             task_done_callback()
 
         self._metadata_tasks[task_index] = MetadataOpTask(
-            result_ref, _task_done_callback
+            task_index, result_ref, _task_done_callback
         )
 
     def get_active_tasks(self) -> List[OpTask]:
