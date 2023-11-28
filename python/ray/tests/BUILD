@@ -26,6 +26,7 @@ py_test_module_list(
     "test_actor_pool.py",
     "test_async.py",
     "test_asyncio.py",
+    "test_core_worker_io_thread_stack_size.py",
     "test_actor_lifetime.py",
     "test_advanced.py",
     "test_advanced_2.py",
