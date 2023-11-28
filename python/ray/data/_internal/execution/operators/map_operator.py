@@ -1,4 +1,5 @@
 import copy
+import functools
 import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
@@ -296,8 +297,8 @@ class MapOperator(OneToOneOperator, ABC):
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
 
-        def _task_done_callback(task_index):
-            self._metrics.on_task_finished(task_index)
+        def _task_done_callback(task_index: int, exception: Optional[Exception]):
+            self._metrics.on_task_finished(task_index, exception)
 
             # Estimate number of tasks from inputs received and tasks submitted so far
             estimated_num_tasks = (
@@ -321,7 +322,7 @@ class MapOperator(OneToOneOperator, ABC):
         self._data_tasks[task_index] = DataOpTask(
             gen,
             lambda output: _output_ready_callback(task_index, output),
-            lambda: _task_done_callback(task_index),
+            functools.partial(_task_done_callback, task_index),
         )
 
     def _submit_metadata_task(
