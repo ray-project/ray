@@ -16,15 +16,6 @@ from ray._private.utils import (
 )
 from ray._private.process_watcher import create_check_raylet_task
 
-
-def import_libs():
-    my_dir = os.path.abspath(os.path.dirname(__file__))
-    sys.path.insert(0, os.path.join(my_dir, "thirdparty_files"))  # for aiohttp
-    sys.path.insert(0, my_dir)  # for runtime_env_agent and runtime_env_consts
-
-
-import_libs()
-
 import runtime_env_consts  # noqa: E402
 from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 from aiohttp import web  # noqa: E402
