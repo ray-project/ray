@@ -144,8 +144,8 @@ class SingleAgentEpisode:
         action_space: Optional[gym.Space] = None,
         rewards: List[SupportsFloat] = None,
         infos: List[Dict] = None,
-        is_terminated: bool = False,
-        is_truncated: bool = False,
+        terminated: bool = False,
+        truncated: bool = False,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
         render_images: Optional[List[np.ndarray]] = None,
         t_started: Optional[int] = None,
@@ -181,10 +181,10 @@ class SingleAgentEpisode:
                 rewards, is_terminated, is_truncated, and all necessary
                 `extra_model_outputs`). States are only avasilable if a stateful
                 model (`RLModule`) is used.
-            is_terminated: Optional. A boolean indicating, if the episode is already
+            terminated: Optional. A boolean indicating, if the episode is already
                 terminated. Note, this parameter is only needed, if episode data is
                 provided in the constructor. The default is `False`.
-            is_truncated: Optional. A boolean indicating, if the episode was
+            truncated: Optional. A boolean indicating, if the episode was
                 truncated. Note, this parameter is only needed, if episode data is
                 provided in the constructor. The default is `False`.
             extra_model_outputs: Optional. A list of dictionaries containing specific
@@ -242,10 +242,10 @@ class SingleAgentEpisode:
         )
 
         # obs[-1] is the final observation in the episode.
-        self.is_terminated = is_terminated
+        self.is_terminated = terminated
         # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
         # observations in following chunks for this episode).
-        self.is_truncated = is_truncated
+        self.is_truncated = truncated
         # Extra model outputs, e.g. `action_dist_input` needed in the batch.
         self.extra_model_outputs = defaultdict(
             functools.partial(
@@ -375,10 +375,10 @@ class SingleAgentEpisode:
         reward: SupportsFloat,
         info: Optional[Dict[str, Any]] = None,
         *,
-        is_terminated: bool = False,
-        is_truncated: bool = False,
+        terminated: bool = False,
+        truncated: bool = False,
         render_image: Optional[np.ndarray] = None,
-        extra_model_output: Optional[Dict[str, Any]] = None,
+        extra_model_outputs: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Adds results of an `env.step()` call (including the action) to this episode.
 
@@ -392,13 +392,13 @@ class SingleAgentEpisode:
             action: The last action used by the agent during the call to `env.step()`.
             reward: The last reward received by the agent after taking `action`.
             info: The last info recevied from the environment after taking `action`.
-            is_terminated: A boolean indicating, if the environment has been
+            terminated: A boolean indicating, if the environment has been
                 terminated (after taking `action`).
-            is_truncated: A boolean indicating, if the environment has been
+            truncated: A boolean indicating, if the environment has been
                 truncated (after taking `action`).
             render_image: Optional. An RGB uint8 image from rendering
                 the environment (after taking `action`).
-            extra_model_output: The last timestep's specific model outputs.
+            extra_model_outputs: The last timestep's specific model outputs.
                 These are normally outputs of an RLModule that were computed along with
                 `action`, e.g. `action_logp` or `action_dist_inputs`.
         """
@@ -415,11 +415,11 @@ class SingleAgentEpisode:
         self.t += 1
         if render_image is not None:
             self.render_images.append(render_image)
-        if extra_model_output is not None:
-            for k, v in extra_model_output.items():
+        if extra_model_outputs is not None:
+            for k, v in extra_model_outputs.items():
                 self.extra_model_outputs[k].append(v)
-        self.is_terminated = is_terminated
-        self.is_truncated = is_truncated
+        self.is_terminated = terminated
+        self.is_truncated = truncated
 
         # Validate our data.
         self.validate()

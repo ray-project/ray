@@ -126,17 +126,17 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Sample 100 timesteps and add them to the episode.
         for i in range(100):
             action = env.action_space.sample()
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             episode.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
                 info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={"extra": np.random.random(1)},
+                terminated=terminated,
+                truncated=truncated,
+                extra_model_outputs={"extra": np.random.random(1)},
             )
-            if is_terminated or is_truncated:
+            if terminated or truncated:
                 break
 
         # Assert that the episode timestep is at 100.
@@ -175,15 +175,15 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Sample 100 steps.
         for i in range(100):
             action = i
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             episode_1.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
                 info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={"extra": np.random.random(1)},
+                terminated=terminated,
+                truncated=truncated,
+                extra_model_outputs={"extra": np.random.random(1)},
             )
 
         # Assert that the episode has indeed 100 timesteps.
@@ -203,15 +203,15 @@ class TestSingelAgentEpisode(unittest.TestCase):
 
         # Test immutability.
         action = 100
-        obs, reward, is_terminated, is_truncated, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         episode_2.add_env_step(
             observation=obs,
             action=action,
             reward=reward,
             info=info,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
-            extra_model_output={"extra": np.random.random(1)},
+            terminated=terminated,
+            truncated=truncated,
+            extra_model_outputs={"extra": np.random.random(1)},
         )
         # Assert that this does not change also the predecessor's data.
         self.assertFalse(len(episode_1.observations) == len(episode_2.observations))
