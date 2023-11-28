@@ -303,8 +303,6 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             return decision_num_replicas
 
         # Clip the replica count by capacity-adjusted bounds.
-        # TODO (shrekris-anyscale): this should logic should be pushed into the
-        # autoscaling_policy. Need to discuss what the right API would look like.
         upper_bound = get_capacity_adjusted_num_replicas(
             self.config.max_replicas, context.target_capacity
         )
@@ -442,13 +440,15 @@ class AutoscalingPolicyManager:
     def get_decision_num_replicas(
         self, autoscaling_context: AutoscalingContext
     ) -> Optional[int]:
-        """Make a decision to scale replicas.
 
-        Returns the new number of replicas to scale to. Or None if the custom scaling
-        function call is not finished yet, finished but not returning an integer, or
-        errored out.
-        """
-        return self.autoscaling_policy.get_decision_num_replicas(autoscaling_context)
+        decision_num_replicas = self.autoscaling_policy.get_decision_num_replicas(
+            autoscaling_context
+        )
+        if decision_num_replicas == autoscaling_context.curr_target_num_replicas:
+            return None
+
+        return decision_num_replicas
+
         # if self.replica_decision_call_ref is None:
         #     self.replica_decision_call_ref = self._get_custom_config_ref(
         #         autoscaling_context
