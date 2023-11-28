@@ -11,7 +11,6 @@ from prometheus_client.core import (
     CounterMetricFamily,
     GaugeMetricFamily,
     HistogramMetricFamily,
-    UnknownMetricFamily,
 )
 
 from opencensus.common.transports import sync
@@ -196,7 +195,7 @@ class Collector(object):
         elif isinstance(agg_data, aggregation_data_module.SumAggregationData):
             metric = metrics_map.get(metric_name)
             if not metric:
-                metric = UnknownMetricFamily(
+                metric = CounterMetricFamily(
                     name=metric_name,
                     documentation=metric_description,
                     labels=label_keys,

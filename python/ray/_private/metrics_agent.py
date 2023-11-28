@@ -14,6 +14,7 @@ from prometheus_client.core import (
     HistogramMetricFamily,
 )
 from opencensus.metrics.export.value import ValueDouble
+from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
 from opencensus.stats import aggregation
 from opencensus.stats import measure as measure_module
 from opencensus.stats.view_manager import ViewManager
@@ -24,6 +25,7 @@ from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
     LastValueAggregationData,
+    SumAggregationData
 )
 from opencensus.stats.view import View
 from opencensus.tags import tag_key as tag_key_module
@@ -164,7 +166,10 @@ class OpencensusProxyMetric:
                 if point.HasField("int64_value"):
                     data = CountAggregationData(point.int64_value)
                 elif point.HasField("double_value"):
-                    data = LastValueAggregationData(ValueDouble, point.double_value)
+                    if metric.metric_descriptor.type == MetricDescriptorType.CUMULATIVE_DOUBLE:
+                        data = SumAggregationData(ValueDouble, point.double_value)
+                    else:
+                        data = LastValueAggregationData(ValueDouble, point.double_value)
                 elif point.HasField("distribution_value"):
                     dist_value = point.distribution_value
                     counts_per_bucket = [bucket.count for bucket in dist_value.buckets]
@@ -369,6 +374,18 @@ class OpenCensusProxyCollector:
                 buckets=buckets,
                 sum_value=agg_data.sum,
             )
+            return metric
+
+        elif isinstance(agg_data, SumAggregationData):
+            metric = metrics_map.get(metric_name)
+            if not metric:
+                metric = CounterMetricFamily(
+                    name=metric_name,
+                    documentation=metric_description,
+                    labels=label_keys,
+                )
+                metrics_map[metric_name] = metric
+            metric.add_metric(labels=label_values, value=agg_data.sum_data)
             return metric
 
         elif isinstance(agg_data, LastValueAggregationData):
