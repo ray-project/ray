@@ -131,6 +131,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                 content_type="application/json",
             )
         except Exception as e:
+            logging.exception("Exception occured while getting datasets.")
             return Response(
                 status=503,
                 text=str(e),
