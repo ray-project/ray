@@ -16,19 +16,31 @@ from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks, list_workers
 
+# Runtime env that points to an image that layers on top of the
+# rayproject/ray:nightly-py38-cpu image and downgrades python version
+# to 3.8.16 to match that of the Ray CI environment
+PLAIN_CONTAINER_RUNTIME_ENV = {
+    "container": {
+        "image": "zcin/ray:nightly-py3816-cpu",
+        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
+    }
+}
+
+# Runtime env that points to an image that
+# - layers on top of the rayproject/ray:nightly-py38-cpu image
+# - downgrades python version to 3.8.16 to match that of the Ray CI environment
+# - contains a custom file that a Serve deployment can read when executing requests
+SERVE_CONTAINER_RUNTIME_ENV = {
+    "container": {
+        "image": "zcin/runtime-env-prototype:ci",
+        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
+    }
+}
+
 
 @pytest.mark.skip
 def test_basic(ray_start_stop):
-    @serve.deployment(
-        ray_actor_options={
-            "runtime_env": {
-                "container": {
-                    "image": "zcin/runtime-env-prototype:nested",
-                    "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
-                }
-            }
-        }
-    )
+    @serve.deployment(ray_actor_options={"runtime_env": SERVE_CONTAINER_RUNTIME_ENV})
     class Model:
         def __call__(self):
             with open("file.txt") as f:
@@ -50,14 +62,7 @@ def test_basic(ray_start_stop):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_put_get(shutdown_only):
-    @ray.remote(
-        runtime_env={
-            "container": {
-                "image": "zcin/ray:nightly-py3816-cpu",
-                "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
-            }
-        }
-    )
+    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
     # @ray.remote
     def create_ref():
         ref = ray.put(np.zeros(100_000_000))
@@ -70,14 +75,7 @@ def test_put_get(shutdown_only):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_shared_memory(shutdown_only):
-    @ray.remote(
-        runtime_env={
-            "container": {
-                "image": "zcin/ray:nightly-py3816-cpu",
-                "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
-            }
-        }
-    )
+    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
     # @ray.remote
     def f():
         array = np.random.rand(5000, 5000)
@@ -99,27 +97,23 @@ def test_log_file_exists(shutdown_only):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
-    def task_created():
+    def task_finished():
         tasks = list_tasks()
         assert len(tasks) > 0
+        assert tasks[0].worker_id
+        assert tasks[0].worker_pid
+        assert tasks[0].state == "FINISHED"
         return True
 
     # Run a basic workload.
-    @ray.remote(
-        runtime_env={
-            "container": {
-                "image": "zcin/ray:nightly-py3816-cpu",
-                "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
-            }
-        }
-    )
+    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
     # @ray.remote
     def f():
         for i in range(10):
             print(f"test {i}")
 
     f.remote()
-    wait_for_condition(task_created)
+    wait_for_condition(task_finished)
 
     task_state = list_tasks()[0]
     worker_id = task_state.worker_id
@@ -129,12 +123,8 @@ def test_log_file_exists(shutdown_only):
 
     paths = [path.name for path in log_dir_path.iterdir()]
     assert f"python-core-worker-{worker_id}_{worker_pid}.log" in paths
-    assert any(
-        re.search(f"^worker-{worker_id}-.*-{worker_pid}.err$", path) for path in paths
-    )
-    assert any(
-        re.search(f"^worker-{worker_id}-.*-{worker_pid}.out$", path) for path in paths
-    )
+    assert any(re.search(f"^worker-{worker_id}-.*-{worker_pid}.err$", p) for p in paths)
+    assert any(re.search(f"^worker-{worker_id}-.*-{worker_pid}.out$", p) for p in paths)
 
 
 @pytest.mark.skip
@@ -156,11 +146,13 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
                 return w
         assert False
 
-    @ray.remote
+    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    # @ray.remote
     def f():
         return ray.get(g.remote())
 
-    @ray.remote
+    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    # @ray.remote
     def g():
         return os.getpid()
 
@@ -179,7 +171,7 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
 
     ray.shutdown()
 
-    @ray.remote(num_cpus=1)
+    @ray.remote(num_cpus=1, runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
     class A:
         def __init__(self):
             self.sleeping = False
@@ -216,7 +208,8 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
 
     wait_for_condition(verify_exit_by_pg_removed)
 
-    @ray.remote
+    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    # @ray.remote
     class PidDB:
         def __init__(self):
             self.pid = None
@@ -229,7 +222,8 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
 
     p = PidDB.remote()
 
-    @ray.remote
+    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    # @ray.remote
     class FaultyActor:
         def __init__(self):
             p.record_pid.remote(os.getpid())

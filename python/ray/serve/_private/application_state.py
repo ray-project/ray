@@ -404,7 +404,7 @@ class ApplicationState:
             )
 
             # Record telemetry for container runtime env feature
-            if "container" in self._target_state.config.runtime_env:
+            if self._target_state.config.runtime_env.get("container"):
                 ServeUsageTag.CONTAINER_RUNTIME_ENV_USED.record("1")
 
             # Kick off new build app task
