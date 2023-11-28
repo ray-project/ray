@@ -262,7 +262,7 @@ class ApplicationState:
     def _clear_target_state(self):
         """Clears the target state but doesn't delete the application."""
 
-        self._set_target_state(dict(), None, None, None, None, False)
+        self._set_target_state(None, None, None, None, None, False)
 
     def _delete_deployment(self, name):
         id = EndpointTag(name, self._name)
