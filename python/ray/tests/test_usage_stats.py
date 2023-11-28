@@ -1069,9 +1069,9 @@ def test_usage_report_e2e(
     """
     cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
     if legacy_worker_param:
-        worker_setting = "min_workers: 1"
+        worker_setting = "max_workers: 1"
     else:
-        worker_setting = "min_worker_nodes: 1"
+        worker_setting = "max_worker_nodes: 1"
 
     cluster_config = f"""
 cluster_name: minimal
