@@ -783,11 +783,12 @@ class MultiAgentEpisode:
         """Stores initial observation.
 
         Args:
-            initial_observation: Obligatory. A dictionary, mapping agent ids
-                to initial observations. Note that not all agents must have
-                an initial observation.
-            initial_info: Optional. A dictionary, mapping agent ids to initial
-                infos. Note that not all agents must have an initial info.
+            initial_observation: A dictionary mapping agent ids
+                to initial observations. Note that some agents may not have an initial
+                observation.
+            initial_info: A dictionary mapping agent ids to initial
+                infos. Note that some agents may not have an initial
+                info dict.
             initial_render_image: An RGB uint8 image from rendering the
                 environment.
         """
@@ -795,6 +796,7 @@ class MultiAgentEpisode:
         # Assume that this episode is completely empty and has not stepped yet.
         # Leave self.t (and self.t_started) at 0.
         assert self.t == self.t_started == 0
+        initial_info = initial_info or {}
 
         # TODO (simon): After clearing with sven for initialization of timesteps
         # this might be removed.
@@ -816,7 +818,7 @@ class MultiAgentEpisode:
             self.agent_episodes[agent_id].add_initial_observation(
                 # Note, initial observation has to be provided.
                 initial_observation=initial_observation[agent_id],
-                initial_info=None if initial_info is None else initial_info[agent_id],
+                initial_info=initial_info.get(agent_id),
                 initial_state=None,
             )
 
@@ -827,48 +829,54 @@ class MultiAgentEpisode:
         reward: MultiAgentDict,
         *,
         info: Optional[MultiAgentDict] = None,
-        is_terminated: Optional[bool] = None,
-        is_truncated: Optional[bool] = None,
+        is_terminated: Optional[MultiAgentDict] = None,
+        is_truncated: Optional[MultiAgentDict] = None,
         render_image: Optional[np.ndarray] = None,
         extra_model_output: Optional[MultiAgentDict] = None,
     ) -> None:
         """Adds a timestep to the episode.
 
         Args:
-            observation: Mandatory. A dictionary, mapping agent ids to their
-                corresponding observations. Note that not all agents must have stepped
-                a this timestep.
-            action: Mandatory. A dictionary, mapping agent ids to their
-                corresponding actions. Note that not all agents must have stepped
-                a this timestep.
-            reward: Mandatory. A dictionary, mapping agent ids to their
-                corresponding observations. Note that not all agents must have stepped
-                a this timestep.
-            info: Optional. A dictionary, mapping agent ids to their
-                corresponding info. Note that not all agents must have stepped
-                a this timestep.
-            is_terminated: A boolean indicating, if the environment has been
-                terminated.
-            is_truncated: A boolean indicating, if the environment has been
-                truncated.
-            render_image: Optional. An RGB uint8 image from rendering the environment.
-            extra_model_output: Optional. A dictionary, mapping agent ids to their
+            observation: A dictionary mapping agent ids to their corresponding
+                observations. Note that some agents may not have stepped at this
+                timestep.
+            action: Mandatory. A dictionary mapping agent ids to their
+                corresponding actions. Note that some agents may not have stepped at
+                this timestep.
+            reward: Mandatory. A dictionary mapping agent ids to their
+                corresponding observations. Note that some agents may not have stepped
+                at this timestep.
+            info: A dictionary mapping agent ids to their
+                corresponding info. Note that some agents may not have stepped at this
+                timestep.
+            is_terminated: A dictionary mapping agent ids to their `terminated` flags,
+                indicating, whether the environment has been terminated for them.
+                A special `__all__` key indicates that the episode is terminated for
+                all agent ids.
+            is_terminated: A dictionary mapping agent ids to their `truncated` flags,
+                indicating, whether the environment has been truncated for them.
+                A special `__all__` key indicates that the episode is `truncated` for
+                all agent ids.
+            render_image: An RGB uint8 image from rendering the environment.
+            extra_model_output: Optional. A dictionary mapping agent ids to their
                 corresponding specific model outputs (also in a dictionary; e.g.
                 `vf_preds` for PPO).
         """
         # Cannot add data to an already done episode.
         assert not self.is_done
 
+        is_terminated = is_terminated or {}
+        is_truncated = is_truncated or {}
+
         # Environment step.
         self.t += 1
 
-        # TODO (sven, simon): Wilol there still be an `__all__` that is
-        # terminated or truncated?
-        # TODO (simon): Maybe allow user to not provide this and then all is False?
-        self.is_terminated = (
-            False if is_terminated is None else is_terminated["__all__"]
-        )
-        self.is_truncated = False if is_truncated is None else is_truncated["__all__"]
+        # TODO (sven, simon): Will there still be an `__all__` that is
+        #  terminated or truncated?
+        # TODO (simon): Maybe allow user to not provide this and then `__all__` is
+        #  False?
+        self.is_terminated = is_terminated.get("__all__", False)
+        self.is_truncated = is_truncated.get("__all__", False)
 
         # Note that we store the render images into the `MultiAgentEpisode`
         # instead of storing them into each `SingleAgentEpisode`.
@@ -882,11 +890,9 @@ class MultiAgentEpisode:
                 continue
 
             agent_is_terminated = (
-                False if agent_id not in is_terminated else is_terminated[agent_id]
-            ) or is_terminated["__all__"]
-            agent_is_truncated = (
-                False if agent_id not in is_truncated else is_truncated[agent_id]
-            ) or is_truncated["__all__"]
+                is_terminated.get(agent_id, False) or self.is_terminated
+            )
+            agent_is_truncated = is_truncated.get(agent_id, False) or self.is_truncated
 
             # CASE 1: observation, no action.
             # If we have an observation, but no action, we might have a buffered action,
@@ -933,7 +939,7 @@ class MultiAgentEpisode:
                         observation=observation[agent_id],
                         action=agent_action,
                         reward=agent_reward,
-                        info=None if agent_id not in info else info[agent_id],
+                        info=info.get(agent_id),
                         is_terminated=agent_is_terminated,
                         is_truncated=agent_is_truncated,
                         extra_model_output=agent_extra_model_output,
@@ -975,9 +981,7 @@ class MultiAgentEpisode:
 
                         self.agent_episodes[agent_id].add_initial_observation(
                             initial_observation=observation[agent_id],
-                            initial_info=None
-                            if agent_id not in info
-                            else info[agent_id],
+                            initial_info=info.get(agent_id),
                         )
             # CASE 2: No observation, but action.
             # We have no observation, but we have an action. This must be an orphane
@@ -1088,7 +1092,7 @@ class MultiAgentEpisode:
                         observation=self.agent_episodes[agent_id].observations[-1],
                         action=agent_action,
                         reward=agent_reward,
-                        info=None if agent_id not in info else info[agent_id],
+                        info=info.get(agent_id),
                         is_terminated=agent_is_terminated,
                         is_truncated=agent_is_truncated,
                         extra_model_output=agent_extra_model_output,
@@ -1134,7 +1138,7 @@ class MultiAgentEpisode:
                     observation=observation[agent_id],
                     action=action[agent_id],
                     reward=0.0 if agent_id not in reward else reward[agent_id],
-                    info=None if agent_id not in info else info[agent_id],
+                    info=info.get(agent_id),
                     is_terminated=agent_is_terminated,
                     is_truncated=agent_is_truncated,
                     extra_model_output=None
@@ -1172,8 +1176,8 @@ class MultiAgentEpisode:
         return self.is_terminated or self.is_truncated
 
     # TODO (sven, simon): We are taking over dead agents to the successor
-    # is this intended or should we better check during concatenation, if
-    # the union of agents from both episodes is included? Next issue.
+    #  is this intended or should we better check during concatenation, if
+    #  the union of agents from both episodes is included? Next issue.
     def create_successor(self) -> "MultiAgentEpisode":
         """Restarts an ongoing episode from its last observation.
 

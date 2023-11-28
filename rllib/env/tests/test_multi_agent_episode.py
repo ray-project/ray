@@ -143,7 +143,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         episode = MultiAgentEpisode(t_started=10)
         self.assertTrue(episode.t == episode.t_started == 10)
 
-        # Sample 100 values and intiialize the episode with observations.
+        # Sample 100 values and initialize the episode with observations.
         env = MultiAgentTestEnv()
         # Initialize containers.
         observations = []
