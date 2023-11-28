@@ -571,10 +571,14 @@ message VirtualClusterBundle {
   map<string, double> resources = 1;
   // Labels added to the node that scheduled this bundle.
   map<string, string> labels = 2;
+  // If true, for a resource name *not* defined in `resources`, a task/actor can request
+  // and the virtual cluster would try to acquire them from the physical cluster.
+  bool allow_wildcard_resources = 3;
 }
 
 message VirtualClusterBundleSet {
   VirtualClusterBundle bundle = 1;
+  // Initial scheduling will make at least this many replicas.
   int64 min_replicas = 2;
   int64 max_replicas = 3;
 }
@@ -627,10 +631,6 @@ message VirtualClusterBundleSet {
 message VirtualClusterSpec {
   bytes virtual_cluster_id = 1;
   repeated VirtualClusterBundleSet bundles = 2;
-  // If true, for a resource name *not* defined in *any* `bundles.bundle.resources`, a
-  // task/actor can request and the virtual cluster would try to acquire them from the
-  // physical cluster.
-  bool allow_wildcard_resources = 3;
   // The schedule strategy of bundles in this Virtual Cluster.
   // The wildcard resources are *not* limited by the strategy, because they are
   // allocated *within* each bundle.

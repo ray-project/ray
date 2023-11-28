@@ -2118,9 +2118,24 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::CreateVirtualCluster(
     const std::vector<std::unordered_map<std::string, double>> &bundles,
     VirtualClusterID *virtual_cluster_id) {
+  // TODO(ryw): current limitations:
+  // - strategy == SPREAD
+  // - allow_wildcard_resources == true (to allow default no-bundle VC)
+  // - min max replicas both == 1
+  // - labels are none.
+  // Will update the interface once the schedulers are done.
   *virtual_cluster_id = VirtualClusterID::FromRandom();
-  VirtualClusterSpecBuilder builder;
-  builder.SetVirtualClusterSpec(*virtual_cluster_id, bundles);
+
+  VirtualClusterSpecBuilder builder(*virtual_cluster_id,
+                                    /*strategy=*/rpc::PlacementStrategy::SPREAD);
+  std::unordered_map<std::string, std::string> empty;
+  for (const auto &resource : bundles) {
+    builder.AddBundleSet(resource,
+                         /*labels=*/empty,
+                         /*allow_wildcard_resources=*/true,
+                         /*min_replicas=*/1,
+                         /*max_replicas=*/1);
+  }
   return gcs_client_->VirtualClusters().SyncCreateVirtualCluster(builder.Build());
 }
 

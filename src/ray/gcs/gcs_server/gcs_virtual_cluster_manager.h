@@ -54,6 +54,20 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   ClusterResourceScheduler &cluster_resource_scheduler_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   std::deque<rpc::CreateVirtualClusterRequest> pending_virtual_clusters_;
+  // TODO(ryw): revamp this since VCs now can up/down scale. The idea:
+  // - each VC is tracked in one of the states:
+  //    - CREATING: being created.
+  //        difference from UNSATISFIED(real=0,desired=min): creation is 2pc atomic
+  //    - SATISFIED(desired_replicas per bundle set): VC is good, no scaling needed
+  //    - UNSATISFIED(desired_replicas & real_relicas per bundle set): VC needs some
+  //    scaling,
+  //        load added to the autoscaler or request sent to raylet to unload
+  //
+  // This manager becomes a event driven reactor:
+  // - on parent load update: maybe CREATING | UNSATISFIED -> SATISFIED
+  // - on user load update: maybe SATISFIED -> UNSATISFIED(desired=new)
+  // - on RPC to create VCs: () -> CREATING
+  // - on RPC to delete VCs: <any> -> ()
   std::unordered_map<VirtualClusterID, VirtualClusterCreationTracker>
       ongoing_virtual_clusters_;
 };
