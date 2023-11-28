@@ -1,35 +1,12 @@
-from typing import Type, Union, TYPE_CHECKING
+from typing import Union
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.learner_group import LearnerGroup
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
-
-if TYPE_CHECKING:
-    import gymnasium as gym
-    import torch
-    import tensorflow as tf
-
-    from ray.rllib.core.learner.learner import Learner
-
-
-Optimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
-
-
-DEFAULT_POLICY_ID = "default_policy"
-
-
-@DeveloperAPI
-def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
-    if framework == "tf2":
-        import tensorflow as tf
-
-        return tf.keras.optimizers.Adam
-    elif framework == "torch":
-        import torch
-
-        return torch.optim.Adam
-    else:
-        raise ValueError(f"Unsupported framework: {framework}")
 
 
 @DeveloperAPI
