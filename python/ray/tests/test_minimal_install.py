@@ -33,7 +33,7 @@ def test_correct_python_version():
     os.environ.get("RAY_MINIMAL", "0") != "1",
     reason="Skip unless running in a minimal install.",
 )
-def test_ray_works_with_various_non_minimal_deps():
+def test_module_import_with_various_non_minimal_deps():
     import unittest.mock as mock
     import itertools
 
