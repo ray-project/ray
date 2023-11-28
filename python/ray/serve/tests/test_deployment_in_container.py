@@ -48,7 +48,7 @@ def test_basic(ray_start_stop):
     )
 
 
-# @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_put_get(shutdown_only):
     @ray.remote(
         runtime_env={
@@ -68,7 +68,7 @@ def test_put_get(shutdown_only):
     ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
 
 
-# @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_shared_memory(shutdown_only):
     @ray.remote(
         runtime_env={
@@ -90,7 +90,7 @@ def test_shared_memory(shutdown_only):
     assert val.shape == (5000, 5000)
 
 
-# @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_log_file_exists(shutdown_only):
     """Verify worker log file exists"""
     ray.init(num_cpus=1)
