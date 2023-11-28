@@ -127,6 +127,4 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
 if __name__ == "__main__":
     benchmark = Benchmark("gpu-batch-inference")
     benchmark.run_fn("batch-inference", main)
-
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")
-    benchmark.write_result(test_output_json)
+    benchmark.write_result(os.environ.get("TEST_OUTPUT_JSON"))
