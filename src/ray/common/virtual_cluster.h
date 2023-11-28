@@ -40,25 +40,33 @@ class VirtualClusterSpecification : public MessageWrapper<rpc::VirtualClusterSpe
 
 class VirtualClusterSpecBuilder {
  public:
-  VirtualClusterSpecBuilder() : message_(std::make_shared<rpc::VirtualClusterSpec>()) {}
-
-  /// Set the common attributes of the virtual cluster spec.
-  /// See `common.proto` for meaning of the arguments.
-  ///
-  /// \return Reference to the builder object itself.
-  VirtualClusterSpecBuilder &SetVirtualClusterSpec(
-      const VirtualClusterID &virtual_cluster_id,
-      const std::vector<std::unordered_map<std::string, double>>
-          &virtual_cluster_bundles) {
+  // Creates a Builder with no bundle sets.
+  VirtualClusterSpecBuilder(const VirtualClusterID &virtual_cluster_id,
+                            rpc::PlacementStrategy strategy)
+      : message_(std::make_shared<rpc::VirtualClusterSpec>()) {
     message_->set_virtual_cluster_id(virtual_cluster_id.Binary());
+    message_->set_strategy(strategy);
+  }
 
-    for (const auto &resources : virtual_cluster_bundles) {
-      auto *message_bundle = message_->add_bundles();
-      for (const auto &[name, count] : resources) {
-        if (count != 0) {
-          message_bundle->mutable_resources()->insert({name, count});
-        }
+  VirtualClusterSpecBuilder &AddBundleSet(
+      const std::unordered_map<std::string, double> &resources,
+      const std::unordered_map<std::string, std::string> labels,
+      bool allow_wildcard_resources,
+      int64_t min_replicas,
+      int64_t max_replicas) {
+    rpc::VirtualClusterBundleSet *bundle_set = message_->add_bundles();
+    bundle_set->set_min_replicas(min_replicas);
+    bundle_set->set_max_replicas(max_replicas);
+    rpc::VirtualClusterBundle *bundle = bundle_set->mutable_bundle();
+    bundle->set_allow_wildcard_resources(allow_wildcard_resources);
+
+    for (const auto &[name, count] : resources) {
+      if (count != 0) {
+        bundle->mutable_resources()->insert({name, count});
       }
+    }
+    for (const auto &[key, val] : labels) {
+      bundle->mutable_labels()->insert({key, val});
     }
     return *this;
   }

@@ -45,16 +45,24 @@ void GcsVirtualClusterManager::HandleRemoveVirtualCluster(
 
 std::vector<rpc::PlacementGroupTableData>
 GcsVirtualClusterManager::GetVirtualClusterLoad() const {
+  // TODO(ryw): this returns the load of the *min replicas* for now. But like k8s we will
+  // need a *desired* number of replicas in record in this class, e.g. when VC = {min=1,
+  // max=10} and you upscale you may want this load to be replica = 5.
   std::vector<rpc::PlacementGroupTableData> load;
   for (const auto &request : pending_virtual_clusters_) {
     rpc::PlacementGroupTableData data;
-    for (const auto &vc_bundle : request.virtual_cluster_spec().bundles()) {
+    for (const auto &vc_bundle_set : request.virtual_cluster_spec().bundles()) {
+      const auto &vc_bundle = vc_bundle_set.bundle();
       auto *pg_bundle = data.add_bundles();
-      pg_bundle->mutable_unit_resources()->insert(vc_bundle.resources().begin(),
-                                                  vc_bundle.resources().end());
+      for (size_t i = 0; i < vc_bundle_set.min_replicas(); ++i) {
+        pg_bundle->mutable_unit_resources()->insert(vc_bundle.resources().begin(),
+                                                    vc_bundle.resources().end());
+      }
     }
-    data.set_strategy(rpc::PlacementStrategy::STRICT_SPREAD);
-    load.emplace_back(data);
+    RAY_CHECK(request.virtual_cluster_spec().strategy() == rpc::PlacementStrategy::SPREAD)
+        << " other strategies coming soon";
+    data.set_strategy(rpc::PlacementStrategy::SPREAD);
+    load.push_back(std::move(data));
   }
   return load;
 }
@@ -144,12 +152,19 @@ GcsVirtualClusterManager::Schedule(const rpc::CreateVirtualClusterRequest &reque
   std::vector<VirtualClusterBundleSpec> bundles;
   std::vector<const ResourceRequest *> resource_request_list;
   bundles.reserve(request.virtual_cluster_spec().bundles_size());
-  for (size_t i = 0; i < request.virtual_cluster_spec().bundles_size(); i++) {
-    bundles.emplace_back(request.virtual_cluster_spec().bundles(i), vc_id);
-    resource_request_list.emplace_back(&bundles[i].GetRequiredResources());
+  // Request `min_replica` bundles for each bundle set.
+  for (const auto &bundle_set : request.virtual_cluster_spec().bundles()) {
+    for (size_t i = 0; i < bundle_set.min_replicas(); ++i) {
+      const auto &spec = bundles.emplace_back(bundle_set.bundle(), vc_id);
+      resource_request_list.emplace_back(&spec.GetRequiredResources());
+    }
   }
+  // TODO(ryw): support all stragtegies. key point: store the BundleLocations in this
+  // class like in PG.
+  RAY_CHECK(request.virtual_cluster_spec().strategy() == rpc::PlacementStrategy::SPREAD)
+      << "non-SPREAD stragtegies are not supported yet. Stay tuned";
   auto scheduling_result = cluster_resource_scheduler_.Schedule(
-      resource_request_list, SchedulingOptions::BundleStrictSpread());
+      resource_request_list, SchedulingOptions::BundleSpread());
   if (!scheduling_result.status.IsSuccess()) {
     return std::nullopt;
   }

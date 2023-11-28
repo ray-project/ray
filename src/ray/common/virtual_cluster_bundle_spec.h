@@ -51,9 +51,9 @@ class VirtualClusterBundleSpec : public MessageWrapper<rpc::VirtualClusterBundle
                                     VirtualClusterID vc_id)
       : MessageWrapper(std::move(message)),
         vc_id_(vc_id),
-        unit_resource_(ComputeResources(*message_)),
+        unit_resource_(std::make_shared<ResourceRequest>(ComputeResources(*message_))),
         bundle_resource_labels_(
-            ComputeFormattedBundleResourceLabels(unit_resource_, vc_id_)) {}
+            ComputeFormattedBundleResourceLabels(*unit_resource_, vc_id_)) {}
 
   explicit VirtualClusterBundleSpec(const VirtualClusterBundleSpec &) = default;
 
@@ -62,9 +62,10 @@ class VirtualClusterBundleSpec : public MessageWrapper<rpc::VirtualClusterBundle
   std::string DebugString() const;
 
   /// Return the resources that are to be acquired by this bundle.
+  /// The reference is valid even if this VirtualClusterBundleSpec class is copied around.
   ///
   /// \return The resources that will be acquired by this bundle.
-  const ResourceRequest &GetRequiredResources() const { return unit_resource_; }
+  const ResourceRequest &GetRequiredResources() const { return *unit_resource_; }
 
   /// Get all virtual cluster bundle resource labels.
   /// When a bundle is commited on a node, we'll add the following special resource on
@@ -85,7 +86,7 @@ class VirtualClusterBundleSpec : public MessageWrapper<rpc::VirtualClusterBundle
   /// Field storing unit resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
   /// instead of keeping shared pointers here.
-  const ResourceRequest unit_resource_;
+  const std::shared_ptr<const ResourceRequest> unit_resource_;
 
   const absl::flat_hash_map<std::string, double> bundle_resource_labels_;
 
