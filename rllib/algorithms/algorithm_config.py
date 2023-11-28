@@ -1,4 +1,5 @@
 import copy
+from enum import Enum
 import logging
 import math
 import os
@@ -289,8 +290,6 @@ class AlgorithmConfig(_Config):
         }
 
         # Torch compile settings
-        from ray.rllib.core.learner.torch.torch_learner import TorchCompileWhatToCompile
-
         self.torch_compile_learner = False
         self.torch_compile_learner_what_to_compile = (
             TorchCompileWhatToCompile.FORWARD_TRAIN
@@ -3765,3 +3764,27 @@ class AlgorithmConfig(_Config):
     @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
     def num_workers(self):
         pass
+
+
+class TorchCompileWhatToCompile(str, Enum):
+    """Enumerates schemes of what parts of the TorchLearner can be compiled.
+
+    This can be either the entire update step of the learner or only the forward
+    methods (and therein the forward_train method) of the RLModule.
+
+    .. note::
+        - torch.compiled code can become slow on graph breaks or even raise
+            errors on unsupported operations. Empirically, compiling
+            `forward_train` should introduce little graph breaks, raise no
+            errors but result in a speedup comparable to compiling the
+            complete update.
+        - Using `complete_update` is experimental and may result in errors.
+    """
+
+    # Compile the entire update step of the learner.
+    # This includes the forward pass of the RLModule, the loss computation, and the
+    # optimizer step.
+    COMPLETE_UPDATE = "complete_update"
+    # Only compile the forward methods (and therein the forward_train method) of the
+    # RLModule.
+    FORWARD_TRAIN = "forward_train"

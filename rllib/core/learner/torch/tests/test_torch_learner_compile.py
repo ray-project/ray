@@ -4,11 +4,11 @@ import unittest
 import gymnasium as gym
 
 import ray
-from ray.rllib.core.learner.torch.torch_learner import TorchCompileWhatToCompile
-from ray.rllib.utils.torch_utils import _dynamo_is_available
+from ray.rllib.algorithms.algorithm_config import TorchCompileWhatToCompile
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
+from ray.rllib.utils.torch_utils import _dynamo_is_available
 
 
 class TestLearner(unittest.TestCase):

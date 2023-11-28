@@ -7,7 +7,6 @@ import ray
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 
-# from ray.rllib.core.testing.utils import get_learner, get_module_spec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.framework import try_import_tf, try_import_torch

@@ -1,8 +1,8 @@
-from typing import Type, Union
+from typing import Type, TYPE_CHECKING, Union
+
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
-from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.annotations import override, ExperimentalAPI
@@ -14,6 +14,9 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.typing import RLModuleSpec, ResultDict
+
+if TYPE_CHECKING:
+    from ray.rllib.core.learner import Learner
 
 
 class BCConfig(MARWILConfig):
@@ -97,7 +100,7 @@ class BCConfig(MARWILConfig):
             )
 
     @override(AlgorithmConfig)
-    def get_default_learner_class(self) -> Union[Type[Learner], str]:
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.bc.torch.bc_torch_learner import BCTorchLearner
 
