@@ -15,7 +15,8 @@ py_test(
  size="small",
  srcs = ["simple_tune.py"],
  deps = ["//:ray_lib"],
- tags = ["team:ml", "compat", "exclusive"]
+ tags = ["team:ml", "compat", "exclusive"],
+ args = ["--smoke-test"]
 )
 
 

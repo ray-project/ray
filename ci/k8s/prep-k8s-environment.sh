@@ -2,21 +2,21 @@
 
 # This scripts creates a kind cluster and verify it works
 
-set -xe
+set -exo pipefail
 
 # Install kind
-wget https://github.com/kubernetes-sigs/kind/releases/download/v0.11.1/kind-linux-amd64
+curl -sfL "https://github.com/kubernetes-sigs/kind/releases/download/v0.11.1/kind-linux-amd64" -o kind-linux-amd64
 chmod +x kind-linux-amd64
 mv ./kind-linux-amd64 /usr/bin/kind
 kind --help
 
 # Install kubectl
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+curl -sfL "https://dl.k8s.io/release/v1.28.4/bin/linux/amd64/kubectl" -o kubectl
 chmod +x kubectl
 mv ./kubectl /usr/bin/kubectl
 kubectl version --client
 
-curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
+curl -sfL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.2.1/kustomize_v5.2.1_linux_amd64.tar.gz" | tar -xzf - kustomize
 mv ./kustomize /usr/bin/kustomize
 
 # Delete dangling clusters

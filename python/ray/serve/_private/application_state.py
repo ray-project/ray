@@ -39,6 +39,7 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
 )
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
 from ray.types import ObjectRef
 
@@ -306,9 +307,16 @@ class ApplicationState:
             config = deployment_info.deployment_config
             self._endpoint_state.update_endpoint(
                 deployment_id,
+                # The current meaning of the "is_cross_language" field is ambiguous.
+                # We will work on optimizing and removing this field in the future.
+                # Instead of using the "is_cross_language" field, we will directly
+                # compare if the replica is Python, which will assist the Python
+                # router in determining if the replica invocation is a cross-language
+                # operation.
                 EndpointInfo(
                     route=deployment_info.route_prefix,
-                    app_is_cross_language=config.is_cross_language,
+                    app_is_cross_language=config.deployment_language
+                    != DeploymentLanguage.PYTHON,
                 ),
             )
         else:

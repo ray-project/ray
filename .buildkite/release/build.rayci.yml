@@ -9,7 +9,6 @@ steps:
       - forge
       - raycudabase
       - raycpubase
-    job_env: forge
     matrix:
       - "3.8"
       - "3.9"
@@ -23,7 +22,6 @@ steps:
       - manylinux
       - forge
       - ray-mlcudabase
-    job_env: forge
     matrix:
       - "3.8"
       - "3.9"

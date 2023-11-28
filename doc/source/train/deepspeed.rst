@@ -37,7 +37,7 @@ You only need to run your existing training code with a TorchTrainer. You can ex
 
         # Start training
         ...
-    
+
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
@@ -49,11 +49,11 @@ You only need to run your existing training code with a TorchTrainer. You can ex
     trainer.fit()
 
 
-Below is a simple example of ZeRO-3 training with DeepSpeed only. 
+Below is a simple example of ZeRO-3 training with DeepSpeed only.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Example with Ray Data
+    .. tab-item:: Example with Ray Data
 
         .. dropdown:: Show Code
 
@@ -62,7 +62,7 @@ Below is a simple example of ZeRO-3 training with DeepSpeed only.
                 :start-after: __deepspeed_torch_basic_example_start__
                 :end-before: __deepspeed_torch_basic_example_end__
 
-    .. group-tab:: Example with PyTorch DataLoader
+    .. tab-item:: Example with PyTorch DataLoader
 
         .. dropdown:: Show Code
 
@@ -73,9 +73,9 @@ Below is a simple example of ZeRO-3 training with DeepSpeed only.
 
 .. tip::
 
-    To run DeepSpeed with pure PyTorch, you **don't need to** provide any additional Ray Train utilities 
-    like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training funciton. Instead, 
-    keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything 
+    To run DeepSpeed with pure PyTorch, you **don't need to** provide any additional Ray Train utilities
+    like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training funciton. Instead,
+    keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything
     for distributed training.
 
 Run DeepSpeed with other frameworks
