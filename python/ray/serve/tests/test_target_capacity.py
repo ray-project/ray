@@ -96,10 +96,22 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
         ]
     )
 
-    # Initially deploy at target_capacity 0, should have 1 replica of each.
+    # Initially deploy at target_capacity 0, should have no replicas.
     config.target_capacity = 0.0
     client.deploy_apps(config)
     wait_for_condition(lambda: serve.status().target_capacity == 0.0)
+    wait_for_condition(
+        check_expected_num_replicas,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: 0,
+            DOWNSTREAM_DEPLOYMENT_NAME: 0,
+        },
+    )
+
+    # Initially deploy at target_capacity 1, should have 1 replica of each.
+    config.target_capacity = 1.0
+    client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 1.0)
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
@@ -174,6 +186,18 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+        },
+    )
+
+    # Decrease target_capacity to 1, both should fully scale down.
+    config.target_capacity = 1.0
+    client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 1.0)
+    wait_for_condition(
+        check_expected_num_replicas,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: 1,
+            DOWNSTREAM_DEPLOYMENT_NAME: 1,
         },
     )
 
@@ -281,6 +305,17 @@ def test_autoscaling_scale_to_zero(
     config.target_capacity = 0.0
     client.deploy_apps(config)
     wait_for_condition(lambda: serve.status().target_capacity == 0.0)
+    wait_for_condition(
+        check_expected_num_replicas,
+        deployment_to_num_replicas={
+            SCALE_TO_ZERO_DEPLOYMENT_NAME: 0,
+        },
+    )
+
+    # Increase to target_capacity 1, should remain at 0 replicas initially.
+    config.target_capacity = 1.0
+    client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 1.0)
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
@@ -456,8 +491,9 @@ class TestInitialReplicasHandling:
             ],
         )
 
-        test_target_capacities = [0, 20, 60, 40, 30, 100, None]
+        test_target_capacities = [0, 1, 20, 60, 40, 30, 100, None]
         expected_num_replicas = [
+            0,
             1,
             2,
             6,
@@ -503,7 +539,7 @@ class TestInitialReplicasHandling:
             ],
         )
 
-        test_target_capacities = [0, 20, 60, 40, 30, 100, None]
+        test_target_capacities = [0, 1, 20, 60, 40, 30, 100, None]
         expected_num_replicas = [0] * len(test_target_capacities)
 
         for target_capacity, num_replicas in zip(
