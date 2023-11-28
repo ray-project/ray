@@ -3592,8 +3592,6 @@ class TestTargetCapacity:
             total=5,
             by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING, 4)],
         )
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
         assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
         assert (
             deployment_state.curr_status_info.status_trigger
@@ -3624,8 +3622,6 @@ class TestTargetCapacity:
             total=10,
             by_state=[(ReplicaState.RUNNING, 5), (ReplicaState.STARTING, 5)],
         )
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
         assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
         assert (
             deployment_state.curr_status_info.status_trigger
@@ -3686,8 +3682,6 @@ class TestTargetCapacity:
             total=10,
             by_state=[(ReplicaState.RUNNING, 5), (ReplicaState.STARTING, 5)],
         )
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
         assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
         assert (
             deployment_state.curr_status_info.status_trigger
