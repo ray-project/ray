@@ -295,7 +295,7 @@ class DataContext:
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
-                    use_runtime_metrics_scheduling=DEFAULT_USE_RUNTIME_METRICS_SCHEDULING,
+                    use_runtime_metrics_scheduling=DEFAULT_USE_RUNTIME_METRICS_SCHEDULING,  # noqa: E501
                     write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
                 )
 
