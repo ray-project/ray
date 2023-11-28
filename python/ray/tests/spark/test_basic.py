@@ -363,8 +363,8 @@ class TestSparkLocalCluster:
                         "object_store_memory": 40000000,
                     },
                     "node_config": {},
-                    "min_workers": 0,
-                    "max_workers": 100,
+                    "min_worker_nodes": 0,
+                    "max_worker_nodes": 100,
                 },
             },
             extra_provider_config={
