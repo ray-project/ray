@@ -3,7 +3,7 @@ import ray
 import time
 import numpy as np
 import os
-from ray._private.test_utils import skip_flaky_test
+from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.exceptions import OwnerDiedError
 
 
@@ -156,10 +156,7 @@ def test_multiple_objects(ray_start_cluster):
     assert ray.get(owner.remote_get_object_refs.remote(borrower), timeout=60)
 
 
-# https://github.com/ray-project/ray/issues/30341
-@pytest.mark.skipif(
-    skip_flaky_test(), reason="https://github.com/ray-project/ray/issues/41175"
-)
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41175")
 def test_owner_assign_inner_object(shutdown_only):
 
     ray.init()

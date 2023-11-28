@@ -384,6 +384,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
+  /// Return True if there's no more object to read. False otherwise.
+  bool IsFinished(const ObjectID &generator_id) const;
+
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.
   /// \param[in] generator_id The object ref id of the streaming
@@ -1659,7 +1662,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<raylet::RayletClient> local_raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
-  std::thread io_thread_;
+  boost::thread io_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounter> reference_counter_;

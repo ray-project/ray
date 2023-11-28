@@ -8,6 +8,26 @@
 User Guides
 ===========
 
+.. toctree::
+    :hidden:
+
+    rllib-advanced-api
+    rllib-models
+    rllib-saving-and-loading-algos-and-policies
+    rllib-concepts
+    rllib-sample-collection
+    rllib-replay-buffers
+    rllib-offline
+    rllib-catalogs
+    rllib-connector
+    rllib-rlmodule
+    rllib-learner
+    rllib-torch2x
+    rllib-fault-tolerance
+    rllib-dev
+    rllib-cli
+
+
 .. _rllib-feature-guide:
 
 RLlib Feature Guides
