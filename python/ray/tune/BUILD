@@ -525,29 +525,11 @@ py_test(
 )
 
 py_test(
-    name = "blendsearch_example",
-    size = "medium",
-    srcs = ["examples/blendsearch_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "bohb_example",
     size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
-)
-
-py_test(
-    name = "cfo_example",
-    size = "small",
-    srcs = ["examples/cfo_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
 )
 
 py_test(
@@ -796,36 +778,6 @@ py_test(
 #     args = ["--smoke-test"]
 # )
 
-# Needs SigOpt API key.
-py_test(
-    name = "sigopt_example",
-    size = "medium",
-    srcs = ["examples/sigopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-
-# Needs SigOpt API key.
-py_test(
-    name = "sigopt_multi_objective_example",
-    size = "medium",
-    srcs = ["examples/sigopt_multi_objective_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-# Needs SigOpt API key.
-py_test(
-    name = "sigopt_prior_beliefs_example",
-    size = "medium",
-    srcs = ["examples/sigopt_prior_beliefs_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
 
 py_test(
     name = "tf_mnist_example",
