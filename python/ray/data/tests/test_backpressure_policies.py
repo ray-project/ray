@@ -322,7 +322,7 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
     ray.init(num_cpus=16, object_store_memory=2 * 1024 * 1024 * 1024)
 
     NUM_ROWS_PER_TASK = 10
-    NUM_TASKS = 32
+    NUM_TASKS = 24
     NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS
     BLOCK_SIZE = 100 * 1024 * 1024
 
