@@ -103,15 +103,17 @@ RayObject::RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_err
 
 bool RayObject::IsException(rpc::ErrorType *error_type) const {
   // For performance, assume metadata of >2 chars (e.g., "PYTHON"), is not an error.
+  static_assert(ray::rpc::ErrorType_MAX < 100);
   if (metadata_ == nullptr || metadata_->Size() > 2) {
     return false;
   }
   // TODO (kfstorm): metadata should be structured.
-  const std::string metadata(reinterpret_cast<const char *>(metadata_->Data()),
-                             metadata_->Size());
+  const std::string_view metadata(reinterpret_cast<const char *>(metadata_->Data()),
+                                  metadata_->Size());
   // Fast path for IsInPlasmaError objects.
+  static_assert(ray::rpc::ErrorType::OBJECT_IN_PLASMA == 4);
   if (metadata == "4") {
-    /*=std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA)*/
+    *error_type = rpc::ErrorType::OBJECT_IN_PLASMA;
     return true;
   }
   const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
@@ -134,7 +136,8 @@ bool RayObject::IsInPlasmaError() const {
   const std::string_view metadata(reinterpret_cast<const char *>(metadata_->Data()),
                                   metadata_->Size());
   // Keep in sync with common.proto.
-  return metadata == "4"; /*=std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA)*/
+  static_assert(ray::rpc::ErrorType::OBJECT_IN_PLASMA == 4);
+  return metadata == "4";
 }
 
 }  // namespace ray

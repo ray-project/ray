@@ -559,6 +559,10 @@ class Worker:
         ray._private.state.update_worker_debugger_port(worker_id, port)
         self._debugger_port = port
 
+    def set_cached_job_id(self, job_id):
+        """Set the cached job id to speed `current_job_id()`."""
+        self._cached_job_id = job_id
+
     @contextmanager
     def task_paused_by_debugger(self):
         """Use while the task is paused by debugger"""
