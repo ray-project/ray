@@ -12,14 +12,18 @@ from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.data._internal.progress_bar import ProgressBar
 from ray.util.placement_group import placement_group
 from ray._private.test_utils import (
+    NodeKillerActor,
     get_log_message,
     get_and_run_resource_killer,
     WorkerKillerActor,
     wait_for_condition,
 )
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+)
 from ray.exceptions import RayTaskError, ObjectLostError
 from ray.util.state.common import ListApiOptions, StateResource
-from ray.util.state.api import StateApiClient
+from ray.util.state.api import StateApiClient, list_nodes
 
 
 def assert_no_system_failure(p, timeout):
@@ -267,7 +271,7 @@ def test_worker_killer():
         WorkerKillerActor,
         1,
         max_to_kill=3,
-        task_filter=lambda task: task.name == task_name,
+        kill_filter_fn=lambda: lambda task: task.name == task_name,
     )
     worker_to_kill.options(name=task_name, max_retries=3).remote()
 
@@ -301,6 +305,41 @@ def test_worker_killer():
             assert (task.task_id, task.worker_pid) in killed_tasks
 
     ray.shutdown()
+
+
+def test_node_killer():
+    ray.init()
+
+    task_name = "target_task"
+
+    @ray.remote
+    def target_task():
+        while True:
+            pass
+
+    worker_nodes = [node for node in list_nodes() if not node["is_head_node"]]
+    node_to_kill = worker_nodes[0]
+    node_killer = get_and_run_resource_killer(
+        NodeKillerActor,
+        1,
+        max_to_kill=1,
+        kill_filter_fn=lambda: lambda node: node["NodeID"] == node_to_kill["NodeID"],
+    )
+    scheduling_strategy = NodeAffinitySchedulingStrategy(
+        node_id=node_to_kill, soft=False
+    )
+    target_task.options(
+        name=task_name, max_retries=3, scheduling_strategy=scheduling_strategy
+    ).remote()
+
+    def check():
+        killed = ray.get(node_killer.get_total_killed.remote())
+        assert len(killed) == 1
+        died = {node["NodeID"] for node in list_nodes() if not node["Alive"]}
+        assert killed[0] == died[0]
+        assert killed[0] == node_to_kill
+
+    wait_for_condition(check)
 
 
 if __name__ == "__main__":
