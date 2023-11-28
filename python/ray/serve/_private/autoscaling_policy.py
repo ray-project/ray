@@ -1,11 +1,12 @@
 import logging
 import math
+import os
 from abc import ABCMeta, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Any, List, Optional
+
 import requests
-import os
 
 import ray
 from ray._private.utils import import_attr
@@ -161,6 +162,7 @@ class AutoscalingContext:
             return resp.json()["data"]["result"]
         except Exception as e:
             return None
+
     @property
     def cpu_utilization(self):
         return self.prometheus_metrics("ray_node_cpu_utilization")
