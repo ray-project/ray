@@ -3,6 +3,16 @@
 Ray Tune: Hyperparameter Tuning
 ===============================
 
+.. toctree::
+    :hidden:
+
+    Getting Started <getting-started>
+    Key Concepts <key-concepts>
+    tutorials/overview
+    examples/index
+    faq
+    api/api
+
 .. image:: images/tune_overview.png
     :scale: 50%
     :align: center
