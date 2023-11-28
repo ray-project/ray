@@ -1,85 +1,65 @@
-```{title} Welcome to Ray!
-```
-
-```{raw} html
-
-<link rel="stylesheet"
-      href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
-</link>
-<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
-<script>hljs.highlightAll();</script>
-
-
-<script>
-    const toc = document.getElementsByClassName("bd-toc")[0];
-    toc.style.cssText = 'display: none !important';
-    const main = document.getElementById("main-content");
-    main.style.cssText = 'max-width: 100% !important'; 
-</script>
-
 <title>Welcome to Ray!</title>
 
-<div style = "background-image: url(_static/img/LandingPageBG.JPG); background-repeat:no-repeat; background-size:cover;">
-<div class="container remove-mobile">
-  <div class="row">
-    <div class="col-6">
-      <h1 style="font-weight:600;">Welcome to Ray!</h1>
-      <p>Ray is an open-source unified framework for scaling AI and Python applications. 
-      It provides the compute layer for parallel processing so that 
-      you don’t need to be a distributed systems expert.
-      </p>
-      <div class="image-header" style="padding:0px;">
-        <a href="https://github.com/ray-project/ray">
-            <img class="icon-hover" src="_static/img/github-fill.png" width="25px" height="25px" />
-        </a>
-        <a href="https://docs.google.com/forms/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform">
-            <img class="icon-hover" src="_static/img/slack-fill.png" width="25px" height="25px" />
-        </a>
-        <a href="https://twitter.com/raydistributed">
-            <img class="icon-hover" src="_static/img/twitter-fill.png" width="25px" height="25px" />
-        </a>
+<div>
+  <div class="container remove-mobile">
+    <div class="row">
+      <div class="col-6">
+        <h1 style="font-weight:600;">Welcome to Ray!</h1>
+        <p>Ray is an open-source unified framework for scaling AI and Python applications.
+        It provides the compute layer for parallel processing so that
+        you don’t need to be a distributed systems expert.
+        </p>
+        <div class="image-header" style="padding:0px;">
+          <a href="https://github.com/ray-project/ray">
+              <img class="icon-hover" src="_static/img/github-fill.png" width="25px" height="25px" />
+          </a>
+          <a href="https://docs.google.com/forms/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform">
+              <img class="icon-hover" src="_static/img/slack-fill.png" width="25px" height="25px" />
+          </a>
+          <a href="https://twitter.com/raydistributed">
+              <img class="icon-hover" src="_static/img/twitter-fill.png" width="25px" height="25px" />
+          </a>
+        </div>
       </div>
-    </div>
-    <div class="col-6">
-      <iframe width="450px" height="240px" style="border-radius:"10px";"
-       src="https://www.youtube.com/embed/Iu_F_EzQb5o?modestbranding=1" 
-       title="YouTube Preview" 
-       frameborder="0" allow="accelerometer; autoplay;" 
-       allowfullscreen></iframe>
+      <div class="col-6">
+        <iframe
+          id="ray-intro-video"
+          src="https://www.youtube.com/embed/Iu_F_EzQb5o?modestbranding=1"
+          title="YouTube Preview"
+          frameborder="0"
+          allowfullscreen></iframe>
+      </div>
     </div>
   </div>
 </div>
-</div>
-
 
 <div class="container remove-mobile" style="margin-bottom:30px; margin-top:80px; padding:0px;">
-
 
 <h2 style="font-weight:600;">Scaling with Ray</h2>
 
 <div class="row">
-    <div class="col-4">
-        <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical" style="border-bottom:none;">
-          <a class="nav-link active" id="v-pills-batch-tab" data-toggle="pill" href="#v-pills-data" role="tab" aria-controls="v-pills-data" aria-selected="true" style="color:black; font-weigth: 500; margin-top:8px;">
-            Batch Inference
-          </a>
-          <a class="nav-link" id="v-pills-training-tab" data-toggle="pill" href="#v-pills-training" role="tab" aria-controls="v-pills-training" aria-selected="false" style="color:black; font-weigth: 500; margin-top:8px;">
-            Model Training
-          </a>
-          <a class="nav-link" id="v-pills-tuning-tab" data-toggle="pill" href="#v-pills-tuning" role="tab" aria-controls="v-pills-tuning" aria-selected="false" style="color:black; font-weigth: 500; margin-top:8px;">
-            Hyperparameter Tuning
-          <a class="nav-link" id="v-pills-serving-tab" data-toggle="pill" href="#v-pills-serving" role="tab" aria-controls="v-pills-serving" aria-selected="false" style="color:black; font-weigth: 500; margin-top:8px;">
-            Model Serving
-          </a>
-          <a class="nav-link" id="v-pills-rl-tab" data-toggle="pill" href="#v-pills-rl" role="tab" aria-controls="v-pills-rl" aria-selected="false" style="color:black; font-weigth: 500; margin-top:8px;">
-            Reinforcement Learning
-          </a>
-        </div>
+  <div class="col-4">
+    <div class="nav flex-column nav-pills" id="v-pills-tab" aria-orientation="vertical">
+      <a class="nav-link active" id="v-pills-batch-tab" data-toggle="pill" role="tab" aria-controls="v-pills-data" aria-selected="true">
+        Batch Inference
+      </a>
+      <a class="nav-link" id="v-pills-training-tab" data-toggle="pill" role="tab" aria-controls="v-pills-training" aria-selected="false">
+        Model Training
+      </a>
+      <a class="nav-link" id="v-pills-tuning-tab" data-toggle="pill" role="tab" aria-controls="v-pills-tuning" aria-selected="false">
+        Hyperparameter Tuning
+      <a class="nav-link" id="v-pills-serving-tab" data-toggle="pill" role="tab" aria-controls="v-pills-serving" aria-selected="false">
+        Model Serving
+      </a>
+      <a class="nav-link" id="v-pills-rl-tab" data-toggle="pill" role="tab" aria-controls="v-pills-rl" aria-selected="false">
+        Reinforcement Learning
+      </a>
     </div>
-    <div class="col-8">
-        <div class="tab-content" id="v-pills-tabContent" style="box-shadow: 0px 6px 30px 5px rgba(3,28,74,0.12); border-radius:8px;">
-          <div class="tab-pane fade show active" id="v-pills-data" role="tabpanel" aria-labelledby="v-pills-data-tab" style="user-select:none;">
-            <pre style="margin:0;"><code class="language-python not-selectable">
+  </div>
+  <div class="col-8">
+    <div class="tab-content" id="v-pills-tabContent">
+      <div class="tab-pane fade show active" id="v-pills-data" role="tabpanel" aria-labelledby="v-pills-data-tab">
+        <pre style="margin:0;"><code class="language-python not-selectable">
 from typing import Dict
 import numpy as np
 
@@ -121,7 +101,7 @@ predictions.show(limit=1)
                   <a href="./data/data.html" target="_blank">Learn more </a> | <a href="./data/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
-                    <a href="https://github.com/ray-project/ray/blob/master/doc/source/data/examples/huggingface_vit_batch_prediction.ipynb" style="color:black;" target="_blank">
+                    <a href="https://github.com/ray-project/ray/blob/master/doc/source/data/examples/huggingface_vit_batch_prediction.ipynb" target="_blank">
                         <img src="_static/img/github-fill.png" height="25px" /> Open in Github
                     </a>
                 </div>
@@ -154,7 +134,7 @@ result = trainer.fit()
                   <a href="./train/train.html" target="_blank">Learn more </a> | <a href="./train/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
-                    <a href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_model_training_colab.ipynb" style="color:black;" target="_blank">
+                    <a href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_model_training_colab.ipynb" target="_blank">
                         <img src="_static/img/colab.png" height="25px" /> Open in colab
                     </a>
                 </div>
@@ -191,7 +171,7 @@ result_grid = tuner.fit()
                   <a href="./tune/index.html" target="_blank">Learn more </a> | <a href="./tune/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
-                    <a href="https://github.com/ray-project/ray/blob/master/doc/source/tune/examples/lightgbm_example.ipynb" style="color:black;" target="_blank">
+                    <a href="https://github.com/ray-project/ray/blob/master/doc/source/tune/examples/lightgbm_example.ipynb" target="_blank">
                         <img src="_static/img/github-fill.png" height="25px" /> Open in Github
                     </a>
                 </div>
@@ -241,12 +221,12 @@ class PredictDeployment:
                    <a href="./serve/index.html" target="_blank">Learn more </a> | <a href="./serve/api/index.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
-                    <a href="https://github.com/ray-project/ray/blob/master/doc/source/ray-air/examples/gptj_serving.ipynb" style="color:black;" target="_blank">
+                    <a href="https://github.com/ray-project/ray/blob/master/doc/source/ray-air/examples/gptj_serving.ipynb" target="_blank">
                         <img src="_static/img/github-fill.png" height="25px" /> Open in Github
                     </a>
                 </div>
-              </div>          
-          </div>  
+              </div>
+          </div>
           <div class="tab-pane fade" id="v-pills-rl" role="tabpanel" aria-labelledby="v-pills-rl-tab" style="user-select:none;">
             <pre style="margin:0;"><code class="language-python not-selectable">
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -274,34 +254,34 @@ ppo_algo.evaluate()
                   <a href="./rllib/index.html" target="_blank">Learn more </a> | <a href="./rllib/package_ref/index.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
-                    <a href="https://github.com/anyscale/ray-summit-2022-training/blob/main/ray-rllib/ex_01_intro_gym_and_rllib.ipynb" style="color:black;" target="_blank">
+                    <a href="https://github.com/anyscale/ray-summit-2022-training/blob/main/ray-rllib/ex_01_intro_gym_and_rllib.ipynb" target="_blank">
                         <img src="_static/img/github-fill.png" height="25px" /> Open in Github
                     </a>
                 </div>
-              </div>       
+              </div>
           </div>
-                  
-          
+
+
         </div>
     </div>
 </div>
-  
+
 </div>
 
 
 
 <div class="container" style="margin-bottom:30px; margin-top:80px; padding:0px;">
     <h2 style="font-weight:600;">Getting Started</h2>
-    
+
 <div class="grid-container">
   <a class="no-underline" href="./ray-overview/index.html" target="_blank"> <div class="info-box" style="height:100%;">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/ray_logo.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Learn basics</h3>
         </div>
-        <p style="color:#515151;">Understand how the Ray framework scales your ML workflows.</p>      
-        <p style="font-weight:600;">Learn more > </p>  
-  </div> </a>  
+        <p>Understand how the Ray framework scales your ML workflows.</p>
+        <p style="font-weight:600;">Learn more > </p>
+  </div> </a>
    <a class="no-underline" href="./ray-overview/installation.html" target="_blank"> <div class="info-box" style="height:100%;">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/download.png" width="44px" height="44px" />
@@ -309,14 +289,14 @@ ppo_algo.evaluate()
         </div>
         <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p>
   </div></a>
-  <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
+  <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank"
         ><div class="info-box" style="height:100%;">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/code.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Try it out</h3>
         </div>
-        <p style="color:#515151;">Experiment with Ray with an introductory notebook.</p>
-        <p style="font-weight:600;">Open the notebook></p> 
+        <p>Experiment with Ray with an introductory notebook.</p>
+        <p style="font-weight:600;">Open the notebook></p>
   </div></a>
 </div>
 
@@ -331,7 +311,7 @@ ppo_algo.evaluate()
             <img src="_static/img/AIR.png" width="32px" height="32px" />
             <h3 style="font-size:20px; font-weight:600;">Ray Libraries</h3>
         </div>
-        <p>Scale the entire ML pipeline from data ingest to model serving with high-level Python APIs that integrate with popular ecosystem frameworks.</p>      
+        <p>Scale the entire ML pipeline from data ingest to model serving with high-level Python APIs that integrate with popular ecosystem frameworks.</p>
         <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-overview/getting-started.html#ray-ai-runtime-libraries-quickstart" target="_blank">Learn more about Ray Libraries></a>
   </div>
   <div class="info-box-2">
@@ -340,15 +320,15 @@ ppo_algo.evaluate()
             <h3 style="font-size:20px; font-weight:600;">Ray Core</h3>
         </div>
         <p>Scale generic Python code with simple, foundational primitives that enable a high degree of control for building distributed applications or custom platforms.</p>
-        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-core/walkthrough.html" target="_blank">Learn more about Core ></a>      
+        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-core/walkthrough.html" target="_blank">Learn more about Core ></a>
   </div>
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/rayclusters.png" width="32px" height="32px" />
             <h3 style="font-size:20px; font-weight:600;">Ray Clusters</h3>
         </div>
-        <p>Deploy a Ray cluster on AWS, GCP, Azure or kubernetes from a laptop to a large cluster to seamlessly scale workloads for production</p>      
-        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./cluster/getting-started.html" target="_blank">Learn more about clusters ></a>      
+        <p>Deploy a Ray cluster on AWS, GCP, Azure or kubernetes from a laptop to a large cluster to seamlessly scale workloads for production</p>
+        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./cluster/getting-started.html" target="_blank">Learn more about clusters ></a>
   </div>
 </div>
 
@@ -357,62 +337,61 @@ ppo_algo.evaluate()
   <h2 style="font-weight:600;">Getting involved</h2>
 </div>
   <div class="grid-container">
-    <div> 
+    <div>
     <h4> Join the community </h4>
     <a class="no-underline" href="https://www.meetup.com/Bay-Area-Ray-Meetup/" target="_blank"> <div class="community-box">
         <div class="image-header">
             <img src="_static/img/meetup.png" width="24px" height="24px" />
             <p>Attend community events</p>
-        </div>    
+        </div>
     </div></a>
     <a class="no-underline" href="https://share.hsforms.com/1Ee3Gh8c9TY69ZQib-yZJvgc7w85" target="_blank"> <div class="community-box">
         <div class="image-header">
             <img src="_static/img/mail.png" width="24px" height="24px" />
             <p>Subscribe to the newsletter</p>
-        </div>  
-    </div></a> 
+        </div>
+    </div></a>
     <a class="no-underline" href="https://twitter.com/raydistributed" target="_blank"> <div class="community-box">
         <div class="image-header">
             <img src="_static/img/twitter-fill.png" width="24px" height="24px" />
             <p>Follow us on Twitter</p>
-        </div> 
-    </div></a> 
+        </div>
+    </div></a>
   </div>
-<div> 
+<div>
     <h4> Get Support </h4>
      <a class="no-underline" href="https://docs.google.com/forms/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform" target="_blank"> <div class="community-box">
         <div class="image-header">
             <img src="_static/img/slack-fill.png" width="24px" height="24px" />
             <p>Find community on Slack</p>
-        </div>     
+        </div>
     </div></a>
     <a class="no-underline" href="https://discuss.ray.io/" target="_blank"> <div class="community-box">
         <div class="image-header">
             <img src="_static/img/chat.png" width="24px" height="24px" />
             <p>Ask questions to the forum</p>
-        </div>     
+        </div>
     </div></a>
     <a class="no-underline" href="https://github.com/ray-project/ray/issues/new/choose" target="_blank"> <div class="community-box">
         <div class="image-header">
             <img src="_static/img/github-fill.png" width="24px" height="24px" />
             <p>Open an issue</p>
-        </div>  
+        </div>
     </div></a>
   </div>
-  <div> 
+  <div>
     <h4> Contribute to Ray </h4>
     <a class="no-underline" href="./ray-contribute/getting-involved.html" target="_blank"> <div class="community-box">
         <div class="image-header">
             <img src="_static/img/mail.png" width="24px" height="24px" />
             <p>Contributor's guide</p>
-        </div>     
+        </div>
     </div></a>
     <a class="no-underline" href="https://github.com/ray-project/ray/pulls" target="_blank"> <div class="community-box">
         <div class="image-header">
             <img src="_static/img/github-fill.png" width="24px" height="24px" />
             <p>Create a pull request</p>
-        </div>     
+        </div>
     </div></a>
   </div>
 </div>
-```
