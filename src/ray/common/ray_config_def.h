@@ -886,3 +886,5 @@ RAY_CONFIG(bool, enable_autoscaler_v2, false)
 // Python GCS client number of reconnection retry and timeout.
 RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
 RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
+
+RAY_CONFIG(int, object_manager_client_connection_num, 4)
