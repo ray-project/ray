@@ -248,18 +248,26 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             self.config.max_replicas, self.target_capacity
         )
 
-    def apply_bounds(self, curr_target_num_replicas: int) -> int:
+    def apply_initial_bounds(self, curr_target_num_replicas: int) -> int:
         """Gets a valid target_num_replicas using the current value and bounds."""
 
-        curr_upper_bound = self.get_capacity_adjusted_max_replicas()
-        curr_lower_bound = self.get_curr_lower_bound()
+        initial_upper_bound = self.get_capacity_adjusted_max_replicas()
 
-        return max(curr_lower_bound, min(curr_upper_bound, curr_target_num_replicas))
-
-    def get_curr_lower_bound(self) -> int:
         if self.get_capacity_adjusted_initial_replicas() is not None and (
             self.scale_direction is None
             or self.scale_direction == TargetCapacityScaleDirection.UP
+        ):
+            initial_lower_bound = self.get_capacity_adjusted_initial_replicas()
+        else:
+            initial_lower_bound = self.get_capacity_adjusted_min_replicas()
+
+        return max(
+            initial_lower_bound, min(initial_upper_bound, curr_target_num_replicas)
+        )
+
+    def get_curr_lower_bound(self) -> int:
+        if self.get_capacity_adjusted_initial_replicas() is not None and (
+            self.scale_direction == TargetCapacityScaleDirection.UP
         ):
             return self.get_capacity_adjusted_initial_replicas()
         else:

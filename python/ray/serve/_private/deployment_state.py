@@ -1498,19 +1498,6 @@ class DeploymentState:
             ):
                 return False
 
-        if curr_deployment_info is not None:
-            logger.info(
-                f"not exiting early: {target_capacity} "
-                f"{target_capacity_scale_direction} "
-                f"{curr_deployment_info.target_capacity} "
-                f"{curr_deployment_info.target_capacity_scale_direction}"
-            )
-        else:
-            logger.info(
-                f"not exiting early: {target_capacity} "
-                f"{target_capacity_scale_direction} "
-            )
-
         deployment_info.set_target_capacity(
             target_capacity, target_capacity_scale_direction
         )
@@ -1522,9 +1509,9 @@ class DeploymentState:
                 target_capacity, target_capacity_scale_direction
             )
             if curr_deployment_info is None:
-                target_num_replicas = autoscaling_policy.apply_bounds(-1)
+                target_num_replicas = autoscaling_policy.apply_initial_bounds(-1)
             else:
-                target_num_replicas = autoscaling_policy.apply_bounds(
+                target_num_replicas = autoscaling_policy.apply_initial_bounds(
                     self._target_state.target_num_replicas
                 )
         else:
