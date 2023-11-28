@@ -72,7 +72,10 @@ class Caller(Blackhole):
 
     async def _do_single_batch(self):
         durations = await asyncio.gather(
-            *[self._execute(self._consume_single_stream) for _ in range(self._batch_size)]
+            *[
+                self._execute(self._consume_single_stream)
+                for _ in range(self._batch_size)
+            ]
         )
 
         self._durations.extend(durations)
@@ -82,7 +85,6 @@ class Caller(Blackhole):
         await fn()
         dur_s = time.monotonic() - start
         return dur_s * 1000  # ms
-
 
     async def run_benchmark(self) -> Tuple[float, float]:
         total_runtime = await run_throughput_benchmark(
