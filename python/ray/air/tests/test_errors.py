@@ -22,14 +22,12 @@ import pytest
 from tempfile import TemporaryDirectory
 
 import ray
-import ray.exceptions
 from ray import train, tune
 from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.trainer import BaseTrainer, TrainingFailedError
 from ray.tune import Tuner, TuneConfig, TuneError
-import ray.tune.execution.tune_controller
 
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
@@ -206,8 +204,8 @@ class FailingDataParallelTrainer(DataParallelTrainer):
     def _propagate_results(self, training_results: List[_TrainingResult]):
         super()._propagate_results(training_results)
 
-        if training_results[0].metrics["iter"] == 0:
-            print("\nFailing the coordinator actor!!\n")
+        if training_results[0].metrics["round"] == 2:
+            print("[Round 2b] Failing the coordinator actor!!")
             # NOTE: ray.actor.exit_actor raises a SystemExit, which only exits out
             # of this training thread. This is because the actors spawned by
             # Ray Train looks like:
@@ -219,70 +217,52 @@ class FailingDataParallelTrainer(DataParallelTrainer):
             os._exit(1)
 
 
-@pytest.mark.parametrize(
-    "error_type", ["worker_actor", "coordinator_actor", "worker_task"]
-)
-def test_preemption_error(tmp_path, monkeypatch, error_type):
+def test_preemption_error(tmp_path):
     """This test simulates preemption actor errors at different levels of execution
     and checks that the error counting is correct:
     - Round 0: Actor error in the training worker. (shouldn't be counted)
     - Round 1: User error in the training worker.
     - Round 2: Actor error in the coordinator actor. (shouldn't be counted)
+    - Round 3: No error.
     This run should pass with `max_failures=1`.
     """
 
-    class MockRayActorError(ray.exceptions.RayActorError):
-        preempted = True
-
-    monkeypatch.setattr(
-        ray.tune.execution.tune_controller, "RayActorError", MockRayActorError
-    )
-    monkeypatch.setattr(ray.exceptions, "RayActorError", MockRayActorError)
-
     def train_fn(config):
         checkpoint = train.get_checkpoint()
-        iter = 0
+        round = 0
         if checkpoint:
-            iter = load_dict_checkpoint(checkpoint)["iter"] + 1
+            round = load_dict_checkpoint(checkpoint)["round"] + 1
 
-        with create_dict_checkpoint({"iter": iter}) as checkpoint:
-            ray.train.report({"iter": iter}, checkpoint=checkpoint)
+        with create_dict_checkpoint({"round": round}) as checkpoint:
+            ray.train.report({"round": round}, checkpoint=checkpoint)
 
-        if iter > 0:
-            return
-
-        if error_type == "worker_actor":
-            print("\nERROR: Ray actor error from the training worker\n")
+        if round == 0:
+            print("\n[Round 0] Ray actor error from the training worker\n")
             os._exit(1)
-        elif error_type == "worker_task":
-            print("\nERROR: User training loop error\n")
+        elif round == 1:
+            print("\n[Round 1] User training loop error\n")
             raise RuntimeError("This is an error in the user code.")
-        elif error_type == "coordinator_actor":
-            print("\nERROR: Ray actor error from the dist. training coordinator\n")
+        elif round == 2:
+            print(
+                "\n[Round 2a] No worker error -- instead, "
+                "mock a Train coordinator actor failure (2b)\n"
+            )
+        elif round == 3:
+            print("\n[Round 3] No error on the last round.\n")
         else:
-            raise NotImplementedError(f"Unknown error type: {error_type}")
+            raise RuntimeError("Should stop after round=3...")
 
-    trainer_cls = (
-        FailingDataParallelTrainer
-        if error_type == "coordinator_actor"
-        else DataParallelTrainer
-    )
-    trainer = trainer_cls(
+    trainer = FailingDataParallelTrainer(
         train_loop_per_worker=train_fn,
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(
             storage_path=str(tmp_path),
             name="test_preemption_error",
-            failure_config=train.FailureConfig(fail_fast=False, max_failures=0),
+            failure_config=train.FailureConfig(fail_fast=False, max_failures=1),
         ),
     )
-    if error_type in ["worker_actor", "coordinator_actor"]:
-        result = trainer.fit()
-        assert result.metrics["iter"] == 1
-        assert not result.error
-    else:
-        with pytest.raises(TrainingFailedError):
-            trainer.fit()
+    result = trainer.fit()
+    assert result.metrics["round"] == 3
 
     # TODO(justinvyu): Add some way to get the history of errors from the result.
 
