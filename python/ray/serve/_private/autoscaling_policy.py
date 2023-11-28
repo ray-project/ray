@@ -15,6 +15,7 @@ def calculate_desired_num_replicas(
     autoscaling_config: AutoscalingConfig,
     current_num_ongoing_requests: List[float],
     override_min_replicas: Optional[float] = None,
+    override_max_replicas: Optional[float] = None,
 ) -> int:  # (desired replicas):
     """Returns the number of replicas to scale to based on the given metrics.
 
@@ -25,7 +26,9 @@ def calculate_desired_num_replicas(
             ongoing requests for each replica.  Assumes each entry has already
             been time-averaged over the desired lookback window.
         override_min_replicas: Overrides min_replicas from the config
-            calculating the final number of replicas.
+            when calculating the final number of replicas.
+        override_max_replicas: Overrides max_replicas from the config
+            when calculating the final number of replicas.
 
     Returns:
         desired_num_replicas: The desired number of replicas to scale to, based
@@ -75,12 +78,14 @@ def calculate_desired_num_replicas(
         desired_num_replicas -= 1
 
     min_replicas = autoscaling_config.min_replicas
+    max_replicas = autoscaling_config.max_replicas
     if override_min_replicas is not None:
         min_replicas = override_min_replicas
+    if override_max_replicas is not None:
+        max_replicas = override_max_replicas
 
     # Ensure scaled_min_replicas <= desired_num_replicas <= scaled_max_replicas.
-    desired_num_replicas = min(autoscaling_config.max_replicas, desired_num_replicas)
-    desired_num_replicas = max(min_replicas, desired_num_replicas)
+    desired_num_replicas = max(min_replicas, min(max_replicas, desired_num_replicas))
 
     return desired_num_replicas
 
@@ -186,6 +191,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             self.config,
             current_num_ongoing_requests,
             self.get_curr_lower_bound(),
+            self.get_capacity_adjusted_max_replicas(),
         )
         # Scale up.
         if desired_num_replicas > curr_target_num_replicas:
