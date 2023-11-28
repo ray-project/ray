@@ -33,7 +33,7 @@ class ContainerManager:
             "--cgroup-manager=cgroupfs",
             "--network=host",
             "--pid=host",
-            "--ipc=host",
+            # "--ipc=host",
             "--user=root",
         ]
 
