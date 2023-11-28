@@ -160,15 +160,19 @@ class AutoscalingContext:
                 params={"query": metrics_name},
             )
             return resp.json()["data"]["result"]
-        except Exception as e:
-            return None
+        except requests.exceptions.ConnectionError:
+            return []
+        except requests.exceptions.JSONDecodeError:
+            return []
+        except KeyError:
+            return []
 
     @property
-    def cpu_utilization(self):
+    def cpu_utilization(self) -> List[Any]:
         return self.prometheus_metrics("ray_node_cpu_utilization")
 
     @property
-    def gpu_utilization(self):
+    def gpu_utilization(self) -> List[Any]:
         return self.prometheus_metrics("ray_node_gpus_utilization")
 
 
