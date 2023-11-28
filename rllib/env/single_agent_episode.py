@@ -403,7 +403,9 @@ class SingleAgentEpisode:
                 `action`, e.g. `action_logp` or `action_dist_inputs`.
         """
         # Cannot add data to an already done episode.
-        assert not self.is_done
+        assert (
+            not self.is_done
+        ), "The agent is already done: no data can be added to its episode."
 
         self.observations.append(observation)
         self.actions.append(action)
@@ -444,11 +446,13 @@ class SingleAgentEpisode:
         assert len(self.observations) == len(self.infos)
         if len(self.observations) == 0:
             assert (
-                len(self.observations)
-                == len(self.infos)
+                len(self.infos)
                 == len(self.rewards)
                 == len(self.actions)
+                == 0
             )
+            for k, v in self.extra_model_outputs.items():
+                assert len(v) == 0
         # Make sure we always have one more obs stored than rewards (and actions)
         # due to the reset and last-obs logic of an MDP.
         else:
@@ -460,6 +464,7 @@ class SingleAgentEpisode:
             )
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
+
             # Make sure, length of pre-buffer and len(self) make sense.
             assert self._len_lookback_buffer + len(self) == len(self.rewards.data)
 

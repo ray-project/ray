@@ -192,7 +192,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Create a successor.
         episode_2 = episode_1.cut()
         # Assert that it has the same id.
-        self.assertTrue(episode_1.id_ == episode_2.id_)
+        self.assertEqual(episode_1.id_, episode_2.id_)
         # Assert that the timestep starts at the end of the last episode.
         self.assertTrue(episode_1.t == episode_2.t == episode_2.t_started)
         # Assert that the last observation of `episode_1` is the first of
@@ -382,11 +382,11 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Reset the id.
         episode_2.id_ = episode_1.id_
         # Assert that when timesteps do not match an error is thrown.
-        episode_2.t += 1
+        episode_2.t_started += 1
         with self.assertRaises(AssertionError):
             episode_1.concat_episode(episode_2)
         # Reset the timestep.
-        episode_2.t -= 1
+        episode_2.t_started -= 1
         # Assert that when the first episode is already done no concatenation can take
         # place.
         episode_1.is_terminated = True
