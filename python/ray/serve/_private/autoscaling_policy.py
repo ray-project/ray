@@ -1,9 +1,11 @@
 import logging
 import math
-from abc import ABC, ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional
+import requests
+import os
 
 import ray
 from ray._private.utils import import_attr
@@ -11,6 +13,7 @@ from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAM
 from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
 
 
 class TargetCapacityScaleDirection(str, Enum):
@@ -123,29 +126,48 @@ class AutoscalingContext:
         curr_target_num_replicas: int,
         current_num_ongoing_requests: List[float],
         current_handle_queued_queries: float,
-        **kwargs,
+        target_capacity: Optional[float] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+        adjust_capacity: bool = False,
     ):
         """
         Arguments:
             curr_target_num_replicas: The number of replicas that the
                 deployment is currently trying to scale to.
-            current_num_ongoing_requests: List[float]: List of number of
+            current_num_ongoing_requests: List of number of
                 ongoing requests for each replica.
-            current_handle_queued_queries : The number of handle queued queries,
+            current_handle_queued_queries: The number of handle queued queries,
                 if there are multiple handles, the max number of queries at
                 a single handle should be passed in
-
+            target_capacity: The target capacity of the deployment.
+            target_capacity_scale_direction: The direction of the target capacity scale.
+            adjust_capacity: whether the number of replicas should be adjusted by
+                the current target_capacity.
         """
         self.curr_target_num_replicas = curr_target_num_replicas
         self.current_num_ongoing_requests = current_num_ongoing_requests
         self.current_handle_queued_queries = current_handle_queued_queries
-        self.__dict__.update(kwargs)
+        self.target_capacity = target_capacity
+        self.target_capacity_scale_direction = target_capacity_scale_direction
+        self.adjust_capacity = adjust_capacity
 
-    def prometheus_metrics(self, metrics_name: str) -> float:
+    def prometheus_metrics(self, metrics_name: str) -> List[Any]:
         """Return the current metrics from Prometheus given the metrics name."""
-        # TODO (genesu): Implement this. Look into how is the metrics logged for remote
-        #  server
-        return 12.3
+        try:
+            resp = requests.get(
+                f"{PROMETHEUS_HOST}/api/v1/query",
+                params={"query": metrics_name},
+            )
+            return resp.json()["data"]["result"]
+        except Exception as e:
+            return None
+    @property
+    def cpu_utilization(self):
+        return self.prometheus_metrics("ray_node_cpu_utilization")
+
+    @property
+    def gpu_utilization(self):
+        return self.prometheus_metrics("ray_node_gpus_utilization")
 
 
 class AutoscalingPolicy:
