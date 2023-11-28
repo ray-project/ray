@@ -26,6 +26,7 @@ py_test_module_list(
     "test_actor_pool.py",
     "test_async.py",
     "test_asyncio.py",
+    "test_core_worker_io_thread_stack_size.py",
     "test_actor_lifetime.py",
     "test_advanced.py",
     "test_advanced_2.py",
@@ -113,12 +114,14 @@ py_test_module_list(
   tags = ["exclusive", "no_main", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
-    
+
 py_test_module_list(
   files = [
     "test_actor_bounded_threads.py",
+    "test_bounded_unix_sockets.py",
     "test_autoscaler_fake_scaledown.py",
     "accelerators/test_neuron.py",
+    "accelerators/test_npu.py",
     "accelerators/test_tpu.py",
     "accelerators/test_nvidia_gpu.py",
     "accelerators/test_hpu.py",
@@ -296,7 +299,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_e2e.py",
-    "test_monitor_service.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],

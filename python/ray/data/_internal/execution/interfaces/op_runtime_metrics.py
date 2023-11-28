@@ -51,6 +51,10 @@ class OpRuntimeMetrics:
     bytes_outputs_generated: int = field(
         default=0, metadata={"map_only": True, "export_metric": True}
     )
+    # Number of rows of generated output blocks that are from finished tasks.
+    rows_outputs_generated: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
 
     # Number of output blocks that are already taken by the downstream.
     num_outputs_taken: int = 0
@@ -72,6 +76,8 @@ class OpRuntimeMetrics:
     num_tasks_have_outputs: int = field(default=0, metadata={"map_only": True})
     # Number of finished tasks.
     num_tasks_finished: int = field(default=0, metadata={"map_only": True})
+    # Number of failed tasks.
+    num_tasks_failed: int = field(default=0, metadata={"map_only": True})
 
     # === Object store memory metrics ===
 
@@ -218,12 +224,16 @@ class OpRuntimeMetrics:
         for block_ref, meta in output.blocks:
             assert meta.exec_stats and meta.exec_stats.wall_time_s
             self.block_generation_time += meta.exec_stats.wall_time_s
+            assert meta.num_rows is not None
+            self.rows_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
 
-    def on_task_finished(self, task_index: int):
+    def on_task_finished(self, task_index: int, exception: Optional[Exception]):
         """Callback when a task is finished."""
         self.num_tasks_running -= 1
         self.num_tasks_finished += 1
+        if exception is not None:
+            self.num_tasks_failed += 1
 
         task_info = self._running_tasks[task_index]
         self.num_outputs_of_finished_tasks += task_info.num_outputs

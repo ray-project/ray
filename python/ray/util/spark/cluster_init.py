@@ -11,7 +11,7 @@ import uuid
 import warnings
 import requests
 from packaging.version import Version
-from typing import Optional, Dict, Type
+from typing import Optional, Dict, Tuple, Type
 
 import ray
 import ray._private.services
@@ -90,6 +90,7 @@ class RayClusterOnSpark:
         start_hook,
         ray_dashboard_port,
         spark_job_server,
+        ray_client_server_port,
     ):
         self.autoscale = autoscale
         self.address = address
@@ -101,6 +102,7 @@ class RayClusterOnSpark:
         self.start_hook = start_hook
         self.ray_dashboard_port = ray_dashboard_port
         self.spark_job_server = spark_job_server
+        self.ray_client_server_port = ray_client_server_port
 
         self.is_shutdown = False
         self.spark_job_is_canceled = False
@@ -482,6 +484,14 @@ def _setup_ray_cluster(
     include_dashboard = head_node_options.pop("include_dashboard", None)
     ray_dashboard_port = head_node_options.pop("dashboard_port", None)
 
+    ray_client_server_port = get_random_unused_port(
+        ray_head_ip,
+        min_port=9000,
+        max_port=10000,
+        exclude_list=port_exclude_list,
+    )
+    port_exclude_list.append(ray_client_server_port)
+
     if autoscale:
         spark_job_server_port = get_random_unused_port(
             ray_head_ip,
@@ -525,7 +535,10 @@ def _setup_ray_cluster(
             "--include-dashboard=false",
         ]
 
-    _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
+    _logger.info(
+        f"Ray head hostname: {ray_head_ip}, port: {ray_head_port}, "
+        f"ray client server port: {ray_client_server_port}."
+    )
 
     cluster_unique_id = uuid.uuid4().hex[:8]
 
@@ -586,6 +599,7 @@ def _setup_ray_cluster(
         ray_head_proc, tail_output_deque = autoscaling_cluster.start(
             ray_head_ip,
             ray_head_port,
+            ray_client_server_port,
             ray_temp_dir,
             dashboard_options,
             head_node_options,
@@ -602,6 +616,7 @@ def _setup_ray_cluster(
             "--head",
             f"--node-ip-address={ray_head_ip}",
             f"--port={ray_head_port}",
+            f"--ray-client-server-port={ray_client_server_port}",
             f"--num-cpus={num_cpus_head_node}",
             f"--num-gpus={num_gpus_head_node}",
             f"--memory={heap_memory_head_node}",
@@ -654,6 +669,7 @@ def _setup_ray_cluster(
         start_hook=start_hook,
         ray_dashboard_port=ray_dashboard_port,
         spark_job_server=spark_job_server,
+        ray_client_server_port=ray_client_server_port,
     )
 
     if not autoscale:
@@ -818,7 +834,7 @@ def setup_ray_cluster(
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
     **kwargs,
-) -> str:
+) -> Tuple[str, str]:
     """
     Set up a ray cluster on the spark cluster by starting a ray head node in the
     spark application's driver side node.
@@ -835,15 +851,17 @@ def setup_ray_cluster(
     Args:
         num_worker_nodes: This argument represents how many ray worker nodes to start
             for the ray cluster.
-            Specifying the `num_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
+            If autoscale=True, then the ray cluster starts with zero worker node,
+            and it can scale up to at most `num_worker_nodes` worker nodes.
+            In non-autoscaling mode, you can
+            specify the `num_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
             represents a ray cluster
             configuration that will use all available resources configured for the
             spark application.
             To create a spark application that is intended to exclusively run a
-            shared ray cluster, it is recommended to set this argument to
-            `ray.util.spark.MAX_NUM_WORKER_NODES`.
-            If autoscale=True, then the ray cluster starts with zero worker node,
-            and it can scale up to at most `num_worker_nodes` worker nodes.
+            shared ray cluster in non-scaling, it is recommended to set this argument
+            to `ray.util.spark.MAX_NUM_WORKER_NODES`.
+
         num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
             provided, use spark application configuration 'spark.task.cpus' instead.
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
@@ -919,7 +937,14 @@ def setup_ray_cluster(
             Default value is 1.0, minimum value is 0
 
     Returns:
-        The address of the initiated Ray cluster on spark.
+        A tuple of (address, remote_connection_address)
+        "address" is in format of "<ray_head_node_ip>:<port>"
+        "remote_connection_address" is in format of
+        "ray://<ray_head_node_ip>:<ray-client-server-port>",
+        if your client runs on a machine that also hosts a Ray cluster node locally,
+        you can connect to the Ray cluster via ``ray.init(address)``,
+        otherwise you can connect to the Ray cluster via
+        ``ray.init(remote_connection_address)``.
     """
     global _active_ray_cluster
 
@@ -1033,12 +1058,6 @@ def setup_ray_cluster(
     num_spark_task_gpus = int(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
-
-    if num_gpus_worker_node is not None and num_spark_task_gpus == 0:
-        raise ValueError(
-            "The spark cluster worker nodes are not configured with 'gpu' resources, "
-            "so that you cannot specify the `num_gpus_worker_node` argument."
-        )
 
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
         raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
@@ -1158,10 +1177,15 @@ def setup_ray_cluster(
                 f"Current value is {num_gpus_head_node}."
             )
 
-    if num_cpus_head_node == 0 and num_gpus_head_node == 0:
+    if (
+        num_cpus_head_node == 0
+        and num_gpus_head_node == 0
+        and object_store_memory_head_node is None
+    ):
         # Because tasks that require CPU or GPU resources are not scheduled to Ray
-        # head node, limit the heap memory and object store memory allocation to the
-        # head node.
+        # head node, and user does not set `object_store_memory_head_node` explicitly,
+        # limit the heap memory and object store memory allocation to the
+        # head node, in order to save spark driver memory.
         heap_memory_head_node = 128 * 1024 * 1024
         object_store_memory_head_node = 128 * 1024 * 1024
     else:
@@ -1195,7 +1219,10 @@ def setup_ray_cluster(
         # If connect cluster successfully, set global _active_ray_cluster to be the
         # started cluster.
         _active_ray_cluster = cluster
-    return cluster.address
+
+    head_ip = cluster.address.split(":")[0]
+    remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
+    return cluster.address, remote_connection_address
 
 
 def _start_ray_worker_nodes(
@@ -1444,6 +1471,11 @@ class AutoscalingCluster:
             "node_config": {},
             "max_workers": 0,
         }
+
+        custom_config["max_workers"] = sum(
+            v["max_workers"] for _, v in worker_node_types.items()
+        )
+
         custom_config["provider"].update(extra_provider_config)
 
         custom_config["upscaling_speed"] = upscaling_speed
@@ -1455,6 +1487,7 @@ class AutoscalingCluster:
         self,
         ray_head_ip,
         ray_head_port,
+        ray_client_server_port,
         ray_temp_dir,
         dashboard_options,
         head_node_options,
@@ -1485,6 +1518,7 @@ class AutoscalingCluster:
             "--head",
             f"--node-ip-address={ray_head_ip}",
             f"--port={ray_head_port}",
+            f"--ray-client-server-port={ray_client_server_port}",
             f"--autoscaling-config={autoscale_config}",
             *dashboard_options,
         ]

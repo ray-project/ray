@@ -251,7 +251,7 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
-            "pydantic < 2",  # 2.0.0 brings breaking changes
+            "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
@@ -768,11 +768,12 @@ setuptools.setup(
         "ray distributed parallel machine-learning hyperparameter-tuning"
         "reinforcement-learning deep-learning serving python"
     ),
+    python_requires=">=3.8",
     classifiers=[
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},
