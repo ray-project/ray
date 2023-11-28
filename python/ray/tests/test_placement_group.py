@@ -8,7 +8,7 @@ import ray
 from ray._private.utils import get_ray_doc_version
 import ray.cluster_utils
 from ray._private.test_utils import placement_group_assert_no_leak
-from ray._private.test_utils import skip_flaky_test
+from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -340,10 +340,7 @@ def test_placement_group_spread(
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 @pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
-@pytest.mark.skipif(
-    skip_flaky_test(),
-    reason="https://github.com/ray-project/ray/issues/38726",
-)
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38726")
 def test_placement_group_strict_spread(
     ray_start_cluster, connect_to_client, gcs_actor_scheduling_enabled
 ):
