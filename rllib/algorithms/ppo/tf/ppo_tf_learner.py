@@ -1,13 +1,14 @@
 import logging
 from typing import Any, Dict, Mapping
 
-from ray.rllib.algorithms.ppo.ppo_learner import (
+from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
-    PPOLearner,
+    PPOConfig,
 )
+from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
@@ -18,7 +19,6 @@ from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
-
 
 _, tf, _ = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -118,7 +118,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
-        if hps.use_kl_loss:
+        if config.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
         # Register important loss stats.
@@ -148,7 +148,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig,
+        config: PPOConfig,
         timestep: int,
         sampled_kl_values: dict,
     ) -> Dict[str, Any]:

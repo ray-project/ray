@@ -1,13 +1,14 @@
 import logging
 from typing import Any, Dict, Mapping
 
-from ray.rllib.algorithms.ppo.ppo_learner import (
+from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
-    PPOLearner,
+    PPOConfig,
 )
+from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.utils.torch_utils import sequence_mask
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
