@@ -37,7 +37,6 @@ def test_module_import_with_various_non_minimal_deps():
     import unittest.mock as mock
     import itertools
 
-    # Mock an entire module
     optional_modules = [
         "opencensus",
         "prometheus_client",
