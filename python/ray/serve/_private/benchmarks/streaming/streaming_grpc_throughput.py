@@ -1,14 +1,17 @@
 import asyncio
 import contextlib
-import click
-import grpc
-
 from concurrent import futures
 from tempfile import TemporaryDirectory
 
-from ray.serve._private.benchmarks.streaming.common import Caller, IOMode
-from ray.serve._private.benchmarks.streaming._grpc import test_server_pb2_grpc, test_server_pb2
+import click
+import grpc
+
+from ray.serve._private.benchmarks.streaming._grpc import (
+    test_server_pb2,
+    test_server_pb2_grpc,
+)
 from ray.serve._private.benchmarks.streaming._grpc.grpc_server import TestGRPCServer
+from ray.serve._private.benchmarks.streaming.common import Caller, IOMode
 
 
 class GrpcCaller(Caller):
@@ -27,7 +30,9 @@ async def create_test_server(socket_type, tempdir):
     elif socket_type == "local_tcp":
         addr = "localhost:5432"
         server_creds = grpc.local_server_credentials(grpc.LocalConnectionType.LOCAL_TCP)
-        channel_creds = grpc.local_channel_credentials(grpc.LocalConnectionType.LOCAL_TCP)
+        channel_creds = grpc.local_channel_credentials(
+            grpc.LocalConnectionType.LOCAL_TCP
+        )
     else:
         raise NotImplementedError(f"Not supported socket type ({socket_type})")
 
@@ -37,13 +42,23 @@ async def create_test_server(socket_type, tempdir):
 
     @contextlib.asynccontextmanager
     async def get_channel(interceptors=None):
-        async with grpc.aio.secure_channel(addr, credentials=channel_creds, interceptors=interceptors or []) as channel:
+        async with grpc.aio.secure_channel(
+            addr, credentials=channel_creds, interceptors=interceptors or []
+        ) as channel:
             yield channel
 
     return server, get_channel
 
 
-async def run_grpc_benchmark(batch_size, io_mode, socket_type, num_replicas, num_trials, tokens_per_request, trial_runtime):
+async def run_grpc_benchmark(
+    batch_size,
+    io_mode,
+    socket_type,
+    num_replicas,
+    num_trials,
+    tokens_per_request,
+    trial_runtime,
+):
     with TemporaryDirectory() as tempdir:
         server, get_channel = await create_test_server(socket_type, tempdir)
         test_server_pb2_grpc.add_GRPCTestServerServicer_to_server(
@@ -138,7 +153,8 @@ def main(
             num_replicas,
             num_trials,
             tokens_per_request,
-            trial_runtime)
+            trial_runtime,
+        )
     )
 
 
