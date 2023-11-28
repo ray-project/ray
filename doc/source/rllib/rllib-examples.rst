@@ -43,12 +43,6 @@ Environments and Adapters
    Use this example to try things out and watch the game and the learning progress live in the editor.
    Providing a compiled game, this example could also run in distributed fashion with `num_workers > 0`.
    For a more heavy-weight, distributed, cloud-based example, see ``Unity3D client/server`` below.
-- `Rendering and recording of an environment <https://github.com/ray-project/ray/blob/master/rllib/examples/env_rendering_and_recording.py>`__:
-   Example showing how to switch on rendering and recording of an env.
-- `Coin Game Example <https://github.com/ray-project/ray/blob/master/rllib/examples/coin_game_env.py>`__:
-   Coin Game Env Example (provided by the "Center on Long Term Risk").
-- `DMLab Watermaze example <https://github.com/ray-project/ray/blob/master/rllib/examples/dmlab_watermaze.py>`__:
-   Example for how to use a DMLab environment (Watermaze).
 - `RecSym environment example (for recommender systems) using the SlateQ algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py>`__:
    Script showing how to train SlateQ on a RecSym environment.
 - `SUMO (Simulation of Urban MObility) environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/sumo_env_local.py>`__:

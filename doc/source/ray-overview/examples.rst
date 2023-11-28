@@ -635,24 +635,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/env_rendering_and_recording.py
-
-        Rendering and recording of an environment
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/coin_game_env.py
-
-        Coin game example with RLlib
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/dmlab_watermaze.py
-
-        Example for how to use a DMLab environment (Watermaze)
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py
 
         RecSym environment example (for recommender systems) using the SlateQ algorithm
