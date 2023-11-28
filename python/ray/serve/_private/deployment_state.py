@@ -1661,9 +1661,7 @@ class DeploymentState:
 
         return replicas_changed
 
-    def _check_and_stop_outdated_version_replicas(
-        self, target_num_replicas: int
-    ) -> bool:
+    def _check_and_stop_outdated_version_replicas(self) -> bool:
         """Stops replicas with outdated versions to implement rolling updates.
 
         This includes both explicit code version updates and changes to the
@@ -1673,7 +1671,7 @@ class DeploymentState:
         """
         # Short circuit if target replicas is 0 (the deployment is being
         # deleted) because this will be handled in the main loop.
-        if target_num_replicas == 0:
+        if self._target_state.target_num_replicas == 0:
             return False
 
         # We include STARTING and UPDATING replicas here
@@ -1692,7 +1690,10 @@ class DeploymentState:
 
         # If the deployment is currently scaling down, let the scale down
         # complete before doing a rolling update.
-        if target_num_replicas < old_running_replicas + old_stopping_replicas:
+        if (
+            self._target_state.target_num_replicas
+            < old_running_replicas + old_stopping_replicas
+        ):
             return False
 
         # The number of replicas that are currently in transition between
@@ -1700,43 +1701,48 @@ class DeploymentState:
         # count the number of stopping replicas because once replicas finish
         # stopping, they are removed from the data structure.
         pending_replicas = (
-            target_num_replicas - new_running_replicas - old_running_replicas
+            self._target_state.target_num_replicas
+            - new_running_replicas
+            - old_running_replicas
         )
 
         # Maximum number of replicas that can be updating at any given time.
         # There should never be more than rollout_size old replicas stopping
         # or rollout_size new replicas starting.
-        rollout_size = max(int(0.2 * target_num_replicas), 1)
+        rollout_size = max(int(0.2 * self._target_state.target_num_replicas), 1)
         max_to_stop = max(rollout_size - pending_replicas, 0)
 
         return self._stop_or_update_outdated_version_replicas(max_to_stop)
 
     def _scale_deployment_replicas(
         self,
-        target_num_replicas: int,
     ) -> Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Scale the given deployment to the number of replicas."""
 
         assert (
-            target_num_replicas >= 0
+            self._target_state.target_num_replicas >= 0
         ), "Target number of replicas must be greater than or equal to 0."
 
         upscale = []
         downscale = None
 
-        self._check_and_stop_outdated_version_replicas(target_num_replicas)
+        self._check_and_stop_outdated_version_replicas()
 
         current_replicas = self._replicas.count(
             states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
         )
         recovering_replicas = self._replicas.count(states=[ReplicaState.RECOVERING])
 
-        delta_replicas = target_num_replicas - current_replicas - recovering_replicas
+        delta_replicas = (
+            self._target_state.target_num_replicas
+            - current_replicas
+            - recovering_replicas
+        )
         if delta_replicas == 0:
             return (upscale, downscale)
 
         elif delta_replicas > 0:
-            # Don't ever exceed target_num_replicas.
+            # Don't ever exceed self._target_state.target_num_replicas.
             stopping_replicas = self._replicas.count(
                 states=[
                     ReplicaState.STOPPING,
@@ -1747,7 +1753,7 @@ class DeploymentState:
                 # Exponential backoff
                 failed_to_start_threshold = min(
                     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-                    target_num_replicas * 3,
+                    self._target_state.target_num_replicas * 3,
                 )
                 if self._replica_constructor_retry_counter >= failed_to_start_threshold:
                     # Wait 1, 2, 4, ... seconds before consecutive retries, with random
@@ -1796,7 +1802,7 @@ class DeploymentState:
 
         return upscale, downscale
 
-    def _check_curr_status(self, target_num_replicas: int) -> Tuple[bool, bool]:
+    def _check_curr_status(self) -> Tuple[bool, bool]:
         """Check the current deployment status.
 
         Checks the difference between the target vs. running replica count for
@@ -1823,7 +1829,8 @@ class DeploymentState:
 
         failed_to_start_count = self._replica_constructor_retry_counter
         failed_to_start_threshold = min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT, target_num_replicas * 3
+            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+            self._target_state.target_num_replicas * 3,
         )
 
         # Got to make a call to complete current deploy() goal after
@@ -1872,7 +1879,8 @@ class DeploymentState:
                 return True, any_replicas_recovering
 
             if (
-                target_num_replicas == running_at_target_version_replica_cnt
+                self._target_state.target_num_replicas
+                == running_at_target_version_replica_cnt
                 and running_at_target_version_replica_cnt == all_running_replica_cnt
             ):
                 if self._curr_status_info.status == DeploymentStatus.UPSCALING:
@@ -1900,7 +1908,7 @@ class DeploymentState:
         return False, any_replicas_recovering
 
     def _check_startup_replicas(
-        self, original_state: ReplicaState, target_num_replicas: int, stop_on_slow=False
+        self, original_state: ReplicaState, stop_on_slow=False
     ) -> List[Tuple[DeploymentReplica, ReplicaStartupStatus]]:
         """
         Common helper function for startup actions tracking and status
@@ -1959,7 +1967,7 @@ class DeploymentState:
         # backoff factor by setting EXPONENTIAL_BACKOFF_FACTOR)
         failed_to_start_threshold = min(
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            target_num_replicas * 3,
+            self._target_state.target_num_replicas * 3,
         )
         if (
             replicas_failed
@@ -2000,7 +2008,7 @@ class DeploymentState:
             },
         )
 
-    def _check_and_update_replicas(self, target_num_replicas: int):
+    def _check_and_update_replicas(self):
         """
         Check current state of all DeploymentReplica being tracked, and compare
         with state container from previous update() cycle to see if any state
@@ -2046,14 +2054,10 @@ class DeploymentState:
                     )
 
         slow_start_replicas = []
-        slow_start = self._check_startup_replicas(
-            ReplicaState.STARTING, target_num_replicas
-        )
-        slow_update = self._check_startup_replicas(
-            ReplicaState.UPDATING, target_num_replicas
-        )
+        slow_start = self._check_startup_replicas(ReplicaState.STARTING)
+        slow_update = self._check_startup_replicas(ReplicaState.UPDATING)
         slow_recover = self._check_startup_replicas(
-            ReplicaState.RECOVERING, target_num_replicas, stop_on_slow=True
+            ReplicaState.RECOVERING, stop_on_slow=True
         )
 
         slow_start_replicas = slow_start + slow_update + slow_recover
@@ -2149,10 +2153,6 @@ class DeploymentState:
         Also updates the internal DeploymentStatusInfo based on the current
         state of the system.
         """
-        if self._target_state.deleting:
-            target_num_replicas = 0
-        else:
-            target_num_replicas = self._target_state.target_num_replicas
 
         deleted, any_replicas_recovering = False, False
         upscale = []
@@ -2163,15 +2163,13 @@ class DeploymentState:
             # we manage.
 
             # Check the state of existing replicas and transition if necessary.
-            self._check_and_update_replicas(target_num_replicas)
+            self._check_and_update_replicas()
 
             self._stop_replicas_on_draining_nodes()
 
-            upscale, downscale = self._scale_deployment_replicas(target_num_replicas)
+            upscale, downscale = self._scale_deployment_replicas()
 
-            deleted, any_replicas_recovering = self._check_curr_status(
-                target_num_replicas
-            )
+            deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:
             logger.exception(
                 "Exception occurred trying to update deployment state:\n"
