@@ -445,12 +445,7 @@ class SingleAgentEpisode:
         """
         assert len(self.observations) == len(self.infos)
         if len(self.observations) == 0:
-            assert (
-                len(self.infos)
-                == len(self.rewards)
-                == len(self.actions)
-                == 0
-            )
+            assert len(self.infos) == len(self.rewards) == len(self.actions) == 0
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == 0
         # Make sure we always have one more obs stored than rewards (and actions)
