@@ -63,7 +63,6 @@ def test_basic(ray_start_stop):
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_put_get(shutdown_only):
     @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
-    # @ray.remote
     def create_ref():
         ref = ray.put(np.zeros(100_000_000))
         return ref
@@ -76,7 +75,6 @@ def test_put_get(shutdown_only):
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_shared_memory(shutdown_only):
     @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
-    # @ray.remote
     def f():
         array = np.random.rand(5000, 5000)
         return ray.put(array)
@@ -107,7 +105,6 @@ def test_log_file_exists(shutdown_only):
 
     # Run a basic workload.
     @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
-    # @ray.remote
     def f():
         for i in range(10):
             print(f"test {i}")
@@ -147,12 +144,10 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
         assert False
 
     @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
-    # @ray.remote
     def f():
         return ray.get(g.remote())
 
     @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
-    # @ray.remote
     def g():
         return os.getpid()
 
@@ -209,7 +204,6 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
     wait_for_condition(verify_exit_by_pg_removed)
 
     @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
-    # @ray.remote
     class PidDB:
         def __init__(self):
             self.pid = None
@@ -223,7 +217,6 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
     p = PidDB.remote()
 
     @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
-    # @ray.remote
     class FaultyActor:
         def __init__(self):
             p.record_pid.remote(os.getpid())
