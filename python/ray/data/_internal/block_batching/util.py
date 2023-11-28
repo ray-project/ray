@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from contextlib import nullcontext
 from typing import Any, Callable, Iterator, List, Optional, Tuple
 
@@ -12,6 +13,7 @@ from ray.data._internal.block_batching.interfaces import (
     CollatedBatch,
 )
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -40,28 +42,47 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
     stats: Optional[DatasetStats] = None,
+    num_threadpool_workers: Optional[int] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
+        num_threadpool_workers: The number of threads to use in the thread pool.
+            ``None`` by default to not use thread pool.
     """
     hits = 0
     misses = 0
     unknowns = 0
 
-    for block_ref in block_ref_iter:
-        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
-        hits += current_hit
-        misses += current_miss
-        unknowns += current_unknown
-
-        # TODO(amogkam): Optimized further by batching multiple references in a single
-        # `ray.get()` call.
-        with stats.iter_get_s.timer() if stats else nullcontext():
+    def threadpool_computations_get_block(
+        block_ref_iter: Iterator[ObjectRef[Block]],
+    ) -> Iterator[Tuple[Block, int, int, int, float]]:
+        for block_ref in block_ref_iter:
+            hit, miss, unknown = _calculate_ref_hits([block_ref])
+            time_start = time.perf_counter()
             block = ray.get(block_ref)
+            time_taken = time.perf_counter() - time_start
+            yield block, hit, miss, unknown, time_taken
+
+    if num_threadpool_workers > 0:
+        block_iter = make_async_gen(
+            base_iterator=block_ref_iter,
+            fn=threadpool_computations_get_block,
+            num_workers=num_threadpool_workers,
+        )
+    else:
+        block_iter = threadpool_computations_get_block(block_ref_iter)
+
+    for block, hit, miss, unknown, time_taken in block_iter:
         yield block
+
+        hits += hit
+        misses += miss
+        unknowns += unknown
+        if stats:
+            stats.iter_get_s.add(time_taken)
 
     if stats:
         stats.iter_blocks_local = hits
