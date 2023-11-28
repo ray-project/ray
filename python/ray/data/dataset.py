@@ -1025,7 +1025,10 @@ class Dataset:
 
         plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
 
-        logical_plan = self._logical_plan
+        import copy
+
+        logical_plan = copy.deepcopy(self._logical_plan)
+        # logical_plan = self._logical_plan
         if logical_plan is not None:
             op = Repartition(
                 logical_plan.dag,

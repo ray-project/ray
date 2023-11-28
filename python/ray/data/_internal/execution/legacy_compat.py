@@ -122,6 +122,47 @@ def execute_to_legacy_block_list(
     return block_list
 
 
+def execute_read_only_to_legacy_lazy_block_list(
+    executor: Executor,
+    plan: ExecutionPlan,
+    allow_clear_input_blocks: bool,
+    dataset_uuid: str,
+    preserve_order: bool,
+) -> LazyBlockList:
+    read_map_op, stats = _get_execution_dag(
+        executor,
+        plan,
+        allow_clear_input_blocks,
+        preserve_order,
+    )
+    assert isinstance(read_map_op, MapOperator), read_map_op
+    input_data_buffer = read_map_op.input_dependency
+    assert isinstance(input_data_buffer, InputDataBuffer), input_data_buffer
+    # Execute the InputDataBuffer op only, to
+    # initialize known metadata from ReadTasks.
+    bundles = executor.execute(input_data_buffer, initial_stats=stats)
+
+    read_tasks = []
+    metadata = []
+    owns_blocks = True
+    for bundle in bundles:
+        if not bundle.owns_blocks:
+            owns_blocks = False
+        bundle_md = []
+        for read_task, meta in bundle.blocks:
+            read_tasks.append(read_task)
+            bundle_md.append(meta)
+        metadata.append(bundle_md)
+
+    _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
+    return LazyBlockList(
+        read_tasks,
+        "test_read_stage_name",
+        cached_metadata=metadata,
+        owned_by_consumer=owns_blocks,
+    )
+
+
 def _get_execution_dag(
     executor: Executor,
     plan: ExecutionPlan,

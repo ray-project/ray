@@ -29,7 +29,10 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
 from ray.data._internal.logical.rules.split_read_output_blocks import (
@@ -207,7 +210,10 @@ class ExecutionPlan:
         else:
             # Get schema of output blocks.
             schema = self.schema(fetch_if_missing=False)
-            dataset_blocks = self._snapshot_blocks
+            if self.is_read_only():
+                dataset_blocks = self._in_blocks
+            else:
+                dataset_blocks = self._snapshot_blocks
 
         if schema is None:
             schema_str = "Unknown schema"
@@ -424,6 +430,43 @@ class ExecutionPlan:
                 self.execute()
             else:
                 return None
+        context = self._context
+        # if context.use_new_read_only_path and self.is_read_only():
+        if self.is_read_only():
+            assert isinstance(self._logical_plan, LogicalPlan)
+            allow_clear_input_blocks: bool = True
+            preserve_order: bool = False
+            metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
+            from ray.data._internal.execution.streaming_executor import (
+                StreamingExecutor,
+            )
+
+            executor = StreamingExecutor(
+                copy.deepcopy(context.execution_options),
+                metrics_tag,
+            )
+            from ray.data._internal.execution.legacy_compat import _get_execution_dag
+
+            read_map_op, stats = _get_execution_dag(
+                executor,
+                self,
+                allow_clear_input_blocks,
+                preserve_order,
+            )
+            assert isinstance(read_map_op, MapOperator), read_map_op
+            input_data_buffer = read_map_op.input_dependency
+            assert isinstance(input_data_buffer, InputDataBuffer), input_data_buffer
+            # Execute the InputDataBuffer op only, to
+            # initialize known metadata from ReadTasks.
+            bundles = executor.execute(input_data_buffer, initial_stats=stats)
+
+            bundles_metadata = []
+            for bundle in bundles:
+                for _, meta in bundle.blocks:
+                    bundles_metadata.append(meta)
+            self._schema = unify_block_metadata_schema(bundles_metadata)
+            return self._schema
+
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
             # This applies to newly created dataset. For example, initial dataset
@@ -586,8 +629,10 @@ class ExecutionPlan:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            if self._run_with_new_execution_backend():
+            # if self._run_with_new_execution_backend():
+            if True:
                 from ray.data._internal.execution.legacy_compat import (
+                    execute_read_only_to_legacy_lazy_block_list,
                     execute_to_legacy_block_list,
                 )
                 from ray.data._internal.execution.streaming_executor import (
@@ -599,13 +644,23 @@ class ExecutionPlan:
                     copy.deepcopy(context.execution_options),
                     metrics_tag,
                 )
-                blocks = execute_to_legacy_block_list(
-                    executor,
-                    self,
-                    allow_clear_input_blocks=allow_clear_input_blocks,
-                    dataset_uuid=self._dataset_uuid,
-                    preserve_order=preserve_order,
-                )
+                if self.is_read_only():
+                    # get lazy block list
+                    blocks = execute_read_only_to_legacy_lazy_block_list(
+                        executor,
+                        self,
+                        allow_clear_input_blocks=allow_clear_input_blocks,
+                        dataset_uuid=self._dataset_uuid,
+                        preserve_order=preserve_order,
+                    )
+                else:
+                    blocks = execute_to_legacy_block_list(
+                        executor,
+                        self,
+                        allow_clear_input_blocks=allow_clear_input_blocks,
+                        dataset_uuid=self._dataset_uuid,
+                        preserve_order=preserve_order,
+                    )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
                 # to a fully lazy execution model, unless .materialize() is used. Th
                 # reason we need it right now is since the user may iterate over a
@@ -820,6 +875,15 @@ class ExecutionPlan:
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
         return _is_lazy(self._in_blocks)
+
+    def is_read_only(self) -> bool:
+        """Return whether the underlying logical plan contains only a Read op."""
+        root_op = self._logical_plan.dag
+        return (
+            isinstance(root_op, Read)
+            and len(root_op.output_dependencies) == 0
+            and len(root_op.input_dependencies) == 0
+        )
 
     def is_read_stage_equivalent(self) -> bool:
         """Return whether this plan can be executed as only a read stage."""
