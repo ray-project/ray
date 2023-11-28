@@ -1059,12 +1059,6 @@ def setup_ray_cluster(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
 
-    if num_gpus_worker_node is not None and num_spark_task_gpus == 0:
-        raise ValueError(
-            "The spark cluster worker nodes are not configured with 'gpu' resources, "
-            "so that you cannot specify the `num_gpus_worker_node` argument."
-        )
-
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
         raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
 

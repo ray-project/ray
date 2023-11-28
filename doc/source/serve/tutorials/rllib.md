@@ -20,7 +20,7 @@ In particular, we show:
 - How to load this model from a checkpoint.
 - How to parse the JSON request and evaluate the payload in RLlib.
 
-```{margin}
+```{note}
 Check out the [Key Concepts](serve-key-concepts) page to learn more general information about Ray Serve.
 ```
 

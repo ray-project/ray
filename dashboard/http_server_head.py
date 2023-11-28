@@ -130,14 +130,19 @@ class HttpServerDashboardHead:
     @aiohttp.web.middleware
     async def path_clean_middleware(self, request, handler):
         if request.path.startswith("/static") or request.path.startswith("/logs"):
-            parent = pathlib.Path(
+            parent = pathlib.PurePosixPath(
                 "/logs" if request.path.startswith("/logs") else "/static"
             )
 
             # If the destination is not relative to the expected directory,
             # then the user is attempting path traversal, so deny the request.
-            request_path = pathlib.Path(request.path).resolve()
+            request_path = pathlib.PurePosixPath(
+                pathlib.posixpath.realpath(request.path)
+            )
             if request_path != parent and parent not in request_path.parents:
+                logger.info(
+                    f"Rejecting {request_path=} because it is not relative to {parent=}"
+                )
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
