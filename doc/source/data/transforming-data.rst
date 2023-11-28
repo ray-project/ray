@@ -124,10 +124,10 @@ To transform batches with actors, complete these steps:
 
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
-2. Create an :class:`~ray.data.ActorPoolStrategy` and configure the number of concurrent
-   workers. Each worker transforms a partition of data.
+2. Configure ``concurrency`` with the number of concurrent workers. Each worker
+transforms a partition of data.
 
-3. Call :meth:`~ray.data.Dataset.map_batches` and pass your ``ActorPoolStrategy`` to ``compute``.
+3. Call :meth:`~ray.data.Dataset.map_batches`.
 
 .. tab-set::
 
@@ -154,7 +154,7 @@ To transform batches with actors, complete these steps:
 
             ds = (
                 ray.data.from_numpy(np.ones((32, 100)))
-                .map_batches(TorchPredictor, compute=ray.data.ActorPoolStrategy(size=2))
+                .map_batches(TorchPredictor, concurrency=2)
             )
 
         .. testcode::
@@ -188,7 +188,7 @@ To transform batches with actors, complete these steps:
                 .map_batches(
                     TorchPredictor,
                     # Two workers with one GPU each
-                    compute=ray.data.ActorPoolStrategy(size=2),
+                    concurrency=2,
                     # Batch size is required if you're using GPUs.
                     batch_size=4,
                     num_gpus=1

@@ -17,6 +17,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Tuple,
     TypeVar,
     Union,
 )
@@ -535,6 +536,35 @@ def validate_compute(
                 "fn_constructor_args can only be specified if providing a "
                 f"CallableClass instance for fn, but got: {fn}"
             )
+
+
+def get_compute_strategy(
+    compute: Optional[Union[str, "ComputeStrategy"]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+) -> "ComputeStrategy":
+    # Lazily import these objects to avoid circular imports.
+    from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+
+    if compute is not None:
+        logger.warning(
+            "The argument `compute` is deprecated in Ray 2.9. Please specify "
+            "argument `concurrency` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/transforming-data.html#"
+            "transforming-batches-with-actors."
+        )
+        return compute
+    else:
+        if isinstance(concurrency, tuple):
+            assert (
+                len(concurrency) == 2
+                and isinstance(concurrency[0], int)
+                and isinstance(concurrency[1], int)
+            )
+            return ActorPoolStrategy(min_size=concurrency[0], max_size=concurrency[1])
+        elif isinstance(concurrency, int):
+            return ActorPoolStrategy(size=concurrency)
+        else:
+            return TaskPoolStrategy()
 
 
 def capfirst(s: str):
