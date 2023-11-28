@@ -85,11 +85,14 @@ class SetReadParallelismRule(Rule):
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         ops = [plan.dag]
 
-        while len(ops) == 1 and not isinstance(ops[0], InputDataBuffer):
-            logical_op = plan.op_map[ops[0]]
+        while len(ops) > 0:
+            op = ops.pop(0)
+            if isinstance(op, InputDataBuffer):
+                continue
+            logical_op = plan.op_map[op]
             if isinstance(logical_op, Read):
-                self._apply(ops[0], logical_op)
-            ops = ops[0].input_dependencies
+                self._apply(op, logical_op)
+            ops += op.input_dependencies
 
         return plan
 
