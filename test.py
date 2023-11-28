@@ -8,7 +8,10 @@ import ray
 @ray.remote
 def get_task_id():
     
-    return ray.get_runtime_context().get_node_info()
+    ray.get_runtime_context().set_label({b"hello":b"huili"})
+    ray.get_runtime_context().get_node_info()
+    ray.get_runtime_context().set_label({b"hello":b"yicheng"})
+    ray.get_runtime_context().get_node_info()
 # # All the below code generates different task ids.
 # a = Actor.remote()
 # Task ids are available for actor tasks.

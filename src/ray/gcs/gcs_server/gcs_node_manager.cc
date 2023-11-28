@@ -84,9 +84,26 @@ void GcsNodeManager::HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request
                                             rpc::UpdateNodeLabelsReply *reply,
                                             rpc::SendReplyCallback send_reply_callback){
     const auto node_id = NodeID::FromBinary(request.node_id());
-    std::unordered_map<std::string, std::string> new_labels(request.labels().begin(),
+    
+    std::unordered_map<std::string, std::string> labels(request.labels().begin(),
                                                        request.labels().end());
-    UpdateNodeLabels(node_id,new_labels);
+    // RAY_LOG(INFO) << "Check the update label, node id = " << node_id;
+    // std::shared_ptr<rpc::GcsNodeInfo> node;
+    // auto iter = alive_nodes_.find(node_id);
+    // if (iter != alive_nodes_.end()) {
+    //   node = iter->second;
+    // }else{
+    //   return;
+    // }
+    UpdateNodeLabels(node_id,labels);
+  //   RAY_LOG(INFO)  << "Set label to node: " <<"The node with node id: " << node_id
+  //         << " and address: " << node->node_manager_address()
+  //         << "and port:" << node->node_manager_port()
+  //         << " and node name: " << node->node_name()
+  //         << " has been updated";
+  // for (auto pair : labels) {
+  //       RAY_LOG(INFO)  << "New label Key: " << pair.first << ", Value: " << pair.second ;
+  //   }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     
 }
@@ -95,7 +112,7 @@ void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered
   std::shared_ptr<rpc::GcsNodeInfo> node;
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
-    node = std::move(iter->second);
+    node = iter->second;
   }else{
     return;
   }
@@ -103,7 +120,25 @@ void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
-  node->mutable_labels()->insert(labels.begin(), labels.end());
+
+  auto& myMap = *node->mutable_labels();
+  for(auto pair: labels){
+
+    myMap[pair.first]=pair.second;
+  }
+  
+ 
+
+  RAY_LOG(INFO)  << "Set label to node: " <<"The node with node id: " << node_id
+          << " and address: " << node->node_manager_address()
+          << "and port:" << node->node_manager_port()
+          << " and node name: " << node->node_name()
+          << " has been updated";
+  for (const auto& pair : myMap ) {
+        RAY_LOG(INFO)  << "New label Key: " << pair.first << ", Value: " << pair.second ;
+    }
+  auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+
   auto on_put_done = [this,
                       remote_address = remote_address,
                       labels,

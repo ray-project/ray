@@ -544,7 +544,13 @@ void raylet::RayletClient::UpdateLabel(
 
   rpc::UpdateLabelRequest request;
   request.set_node_id(node_id.Binary());
-  request.mutable_new_labels()->insert(new_labels.begin(),new_labels.end());
+  
+  auto& myMap = *request.mutable_new_labels();
+  for(auto pair: new_labels){
+
+    myMap[pair.first]=pair.second;
+  }
+  // request.mutable_new_labels()->insert(new_labels.begin(),new_labels.end());
   grpc_client_->UpdateLabel(request, callback);
 
 }
