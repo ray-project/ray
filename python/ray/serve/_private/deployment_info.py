@@ -4,11 +4,10 @@ import ray
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import TargetCapacityScaleDirection
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
 from ray.serve.generated.serve_pb2 import (
-    DeploymentInfo as DeploymentInfoProto,
     TargetCapacityScaleDirection as TargetCapacityScaleDirectionProtoEnum,
 )
-
 
 # Concurrency group used for operations that cannot be blocked by user code
 # (e.g., health checks and fetching queue length).
@@ -156,7 +155,9 @@ class DeploymentInfo:
             "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
-            "target_capacity": proto.target_capacity if proto.target_capacity != -1 else None,
+            "target_capacity": proto.target_capacity
+            if proto.target_capacity != -1
+            else None,
             "target_capacity_scale_direction": SCALE_DIRECTION_FROM_PROTO[
                 proto.target_capacity_scale_direction
             ],

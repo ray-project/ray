@@ -1596,6 +1596,7 @@ class DeploymentState:
         new_info.version = self._target_state.version.code_version
         self._set_target_state(
             new_info,
+            decision_num_replicas,
             status_trigger=DeploymentStatusTrigger.AUTOSCALING,
         )
 
