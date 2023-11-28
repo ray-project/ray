@@ -46,7 +46,7 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         for episode in episodes:
             # Learner connector pipeline. Episodes have been finalized/numpy'ized.
             if self.as_learner_connector:
-                assert episode.finalized
+                assert episode.is_numpy
                 # Loop through each timestep in the episode and add the previous n
                 # actions and previous m rewards (based on that timestep) to the batch.
                 for ts in range(len(episode)):
@@ -71,7 +71,7 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                     ))
             # Env-to-module pipeline. Episodes still operate on lists.
             else:
-                assert not episode.finalized
+                assert not episode.is_numpy
                 prev_a.append(batch(episode.get_actions(
                     indices=slice(-self.n_prev_actions, None),
                     fill=0.0,

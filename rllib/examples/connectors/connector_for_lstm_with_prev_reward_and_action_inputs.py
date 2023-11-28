@@ -4,7 +4,10 @@ import os
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.connectors.env_to_module.prev_action_prev_reward import (
-    PrevRewardPrevActionConnector
+    PrevRewardPrevActionEnvToModule
+)
+from ray.rllib.connectors.learner.prev_action_prev_reward import (
+    PrevRewardPrevActionLearner
 )
 from ray.rllib.connectors.connector_pipeline_v2 import (
     ConnectorPipelineV2,
@@ -55,7 +58,7 @@ if __name__ == "__main__":
         # Create the env-to-module connector.
         env_to_module = EnvToModulePipeline(
             ctx=ctx,
-            connectors=[PrevRewardPrevActionConnector(ctx=ctx)]
+            connectors=[PrevRewardPrevActionEnvToModule(ctx=ctx)]
         )
         # Leave module-to-env undefined as we don't need any special behavior
         # here.
@@ -72,7 +75,7 @@ if __name__ == "__main__":
         learner_connector = ConnectorPipelineV2(
             ctx=ctx,
             connectors=[
-                PrevRewardPrevActionConnector(
+                PrevRewardPrevActionLearner(
                     ctx=ctx,
                     as_learner_connector=True,
                 ),

@@ -1,12 +1,9 @@
-from typing import Any, List, Optional, Union
-
 import gymnasium as gym
 from gymnasium.spaces import Tuple, Dict
 import numpy as np
-import tree  # pip install dm_tree
-
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.numpy import one_hot
+import tree  # pip install dm_tree
+from typing import Any, List, Optional, Union
 
 
 @DeveloperAPI
@@ -109,7 +106,8 @@ def get_dummy_batch_for_space(
     """Returns batched dummy data (using `batch_size`) for the given `space`.
 
     Note: The returned batch will not pass a `space.contains(batch)` test
-    as an additional batch dimension has to be added as dim=0.
+    as an additional batch dimension has to be added at axis 0, unless `batch_size` is
+    set to 0.
 
     Args:
         space: The space to get a dummy batch for.
@@ -119,53 +117,51 @@ def get_dummy_batch_for_space(
         fill_value: The value to fill the batch with
             or "random" for random values.
         time_size: If not None, add an optional time axis
-            of `time_size` size to the returned batch.
+            of `time_size` size to the returned batch. This time axis might either
+            be inserted at axis=1 (default) or axis=0, if `time_major` is True.
         time_major: If True AND `time_size` is not None, return batch
             as shape [T x B x ...], otherwise as [B x T x ...]. If `time_size`
             if None, ignore this setting and return [B x ...].
-        one_hot_discrete: Whether to one-hot discrete- or multi-discrete space
-            components.
+        one_hot_discrete: If True, will return one-hot vectors (instead of
+            int-values) for those sub-components of a (possibly complex) `space`
+            that are Discrete or MultiDiscrete. Note that in case `fill_value` is 0.0,
+            this will result in zero-hot vectors (where all slots have a value of 0.0).
 
     Returns:
         The dummy batch of size `bqtch_size` matching the given space.
     """
     # Complex spaces. Perform recursive calls of this function.
-    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
+    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, dict, tuple)):
+        base_struct = space
+        if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
+            base_struct = get_base_struct_from_space(space)
         return tree.map_structure(
-            lambda s: get_dummy_batch_for_space(s, batch_size, fill_value=fill_value),
-            get_base_struct_from_space(space),
+            lambda s: get_dummy_batch_for_space(
+                space=s,
+                batch_size=batch_size,
+                fill_value=fill_value,
+                time_size=time_size,
+                time_major=time_major,
+                one_hot_discrete=one_hot_discrete,
+            ),
+            base_struct,
         )
 
+    if one_hot_discrete:
+        if isinstance(space, gym.spaces.Discrete):
+            space = gym.spaces.Box(0.0, 1.0, (space.n,), np.float32)
+        elif isinstance(space, gym.spaces.MultiDiscrete):
+            space = gym.spaces.Box(0.0, 1.0, (np.sum(space.nvec),), np.float32)
+
+    # Primivite spaces: Box, Discrete, MultiDiscrete.
     # Random values: Use gym's sample() method.
     if fill_value == "random":
-        # Determine, which function to use for sampling.
-        if (
-                one_hot_discrete
-                and isinstance(space, gym.spaces.Discrete)
-        ):
-            def sample_fn():
-                return one_hot(space.sample(), depth=space.n)
-
-        elif (
-                one_hot_discrete
-                and isinstance(space, gym.spaces.MultiDiscrete)
-        ):
-            def sample_fn():
-                return np.concatenate(
-                    [
-                        one_hot(s, depth=n) for s, n in zip(space.sample(), space.n_vec)
-                    ]
-                )
-        else:
-            sample_fn = space.sample
-
-        # Perform the sampling into the correct final shape.
         if time_size is not None:
             assert batch_size > 0 and time_size > 0
             if time_major:
                 return np.array(
                     [
-                        [sample_fn() for _ in range(batch_size)]
+                        [space.sample() for _ in range(batch_size)]
                         for t in range(time_size)
                     ],
                     dtype=space.dtype,
@@ -173,21 +169,20 @@ def get_dummy_batch_for_space(
             else:
                 return np.array(
                     [
-                        [sample_fn() for t in range(time_size)]
+                        [space.sample() for t in range(time_size)]
                         for _ in range(batch_size)
                     ],
                     dtype=space.dtype,
                 )
         else:
             return np.array(
-                [sample_fn() for _ in range(batch_size)]
+                [space.sample() for _ in range(batch_size)]
                 if batch_size > 0
-                else sample_fn(),
+                else space.sample(),
                 dtype=space.dtype,
             )
     # Fill value given: Use np.full.
     else:
-        # Determine the output shape depending on batch and time dimensions.
         if time_size is not None:
             assert batch_size > 0 and time_size > 0
             if time_major:
@@ -196,17 +191,8 @@ def get_dummy_batch_for_space(
                 shape = [batch_size, time_size]
         else:
             shape = [batch_size] if batch_size > 0 else []
-
-        # For one-hot and discrete spaces, need to flatten the last dim.
-        if one_hot_discrete and isinstance(space, gym.spaces.Discrete):
-            space_shape = (space.n,)
-        elif one_hot_discrete and isinstance(space, gym.spaces.MultiDiscrete):
-            space_shape = (sum(space.n_vec),)
-        else:
-            space_shape = space.shape
-
         return np.full(
-            shape + list(space_shape), fill_value=fill_value, dtype=space.dtype
+            shape + list(space.shape), fill_value=fill_value, dtype=space.dtype
         )
 
 

@@ -6,7 +6,6 @@ import gymnasium as gym
 from gymnasium.core import ActType, ObsType
 import numpy as np
 
-import ray
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.test_utils import check
 
@@ -39,14 +38,6 @@ class TestEnv(gym.Env):
 
 
 class TestSingelAgentEpisode(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        ray.shutdown()
-
     def test_init(self):
         """Tests initialization of `SingleAgentEpisode`.
 
@@ -76,9 +67,11 @@ class TestSingelAgentEpisode(unittest.TestCase):
         episode = self._create_episode(num_data=100, len_lookback_buffer=10)
         # The lookback buffer now takes 10 ts and the length of the episode is only 90.
         self.assertTrue(len(episode) == 90)
-        self.assertTrue(episode.t_started == 10)
-        self.assertTrue(episode.t == 100)
-        self.assertTrue(len(episode.rewards) == 100)
+        # `t_started` is 0 by default.
+        self.assertTrue(episode.t_started == 0)
+        self.assertTrue(episode.t == 90)
+        self.assertTrue(len(episode.rewards) == 90)
+        self.assertTrue(len(episode.rewards.data) == 100)
 
         # Build the same episode, but with a 10 ts lookback buffer AND a specific
         # `t_started`.
@@ -89,7 +82,8 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertTrue(len(episode) == 90)
         self.assertTrue(episode.t_started == 50)
         self.assertTrue(episode.t == 140)
-        self.assertTrue(len(episode.rewards) == 100)
+        self.assertTrue(len(episode.rewards) == 90)
+        self.assertTrue(len(episode.rewards.data) == 100)
 
     def test_add_env_reset(self):
         """Tests adding initial observations and infos.
@@ -132,17 +126,17 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Sample 100 timesteps and add them to the episode.
         for i in range(100):
             action = env.action_space.sample()
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             episode.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
                 info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={"extra": np.random.random(1)},
+                terminated=terminated,
+                truncated=truncated,
+                extra_model_outputs={"extra": np.random.random(1)},
             )
-            if is_terminated or is_truncated:
+            if terminated or truncated:
                 break
 
         # Assert that the episode timestep is at 100.
@@ -181,15 +175,15 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Sample 100 steps.
         for i in range(100):
             action = i
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             episode_1.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
                 info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={"extra": np.random.random(1)},
+                terminated=terminated,
+                truncated=truncated,
+                extra_model_outputs={"extra": np.random.random(1)},
             )
 
         # Assert that the episode has indeed 100 timesteps.
@@ -206,77 +200,128 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertTrue(episode_1.observations[-1] == episode_2.observations[0])
         # Assert that the last info of `episode_1` is the first of episode_2`.
         self.assertTrue(episode_1.infos[-1] == episode_2.infos[0])
-        # Assert that rewards and actions are empty in the new chunk.
-        self.assertTrue(episode_2.actions == [])
-        self.assertTrue(episode_2.rewards == [])
 
         # Test immutability.
         action = 100
-        obs, reward, is_terminated, is_truncated, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         episode_2.add_env_step(
             observation=obs,
             action=action,
             reward=reward,
             info=info,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
-            extra_model_output={"extra": np.random.random(1)},
+            terminated=terminated,
+            truncated=truncated,
+            extra_model_outputs={"extra": np.random.random(1)},
         )
         # Assert that this does not change also the predecessor's data.
         self.assertFalse(len(episode_1.observations) == len(episode_2.observations))
 
-    def test_split_at(self):
+    def test_slices(self):
         # TEST #1: even split (50/50)
         episode = self._create_episode(100)
         self.assertTrue(episode.t == 100 and episode.t_started == 0)
 
         # Convert to numpy before splitting.
-        episode.convert_lists_to_numpy()
+        episode.finalize()
 
         # Create two 50/50 episode chunks.
-        # The first chunk will be `episode` itself (changed in place).
-        # The second chunk will be `s2`
-        e2 = episode.split_at(index=50)
+        e1 = episode[:50]
+        self.assertTrue(e1.is_finalized)
+        e2 = episode.slice(slice(50, None))
+        self.assertTrue(e2.is_finalized)
 
-        # Make sure, `episode` and split chunk make sense.
-        self.assertTrue(len(episode) == 50)
+        # Make sure, `e1` and `e2` make sense.
+        self.assertTrue(len(e1) == 50)
         self.assertTrue(len(e2) == 50)
-        self.assertTrue(episode.id_ == e2.id_)
-        self.assertTrue(episode.t_started == 0)
-        self.assertTrue(episode.t == 50)
+        self.assertTrue(e1.id_ == e2.id_)
+        self.assertTrue(e1.t_started == 0)
+        self.assertTrue(e1.t == 50)
         self.assertTrue(e2.t_started == 50)
         self.assertTrue(e2.t == 100)
-        # Make sure the chunks are not identical, but last obs of episode matches
-        # last obs of e2.
-        check(episode.get_observations(-1), e2.get_observations(0))
-        check(episode.observations[4], e2.observations[4], false=True)
-        check(episode.observations[10], e2.observations[10], false=True)
+        # Make sure the chunks are not identical, but last obs of `e1` matches
+        # last obs of `e2`.
+        check(e1.get_observations(-1), e2.get_observations(0))
+        check(e1.observations[4], e2.observations[4], false=True)
+        check(e1.observations[10], e2.observations[10], false=True)
 
         # TEST #2: Uneven split (33/66).
         episode = self._create_episode(99)
         self.assertTrue(episode.t == 99 and episode.t_started == 0)
 
         # Convert to numpy before splitting.
-        episode.convert_lists_to_numpy()
+        episode.finalize()
 
         # Create two 50/50 episode chunks.
-        # The first chunk will be `episode` itself (changed in place).
-        # The second chunk will be `s2`
-        e2 = episode.split_at(index=33)
+        e1 = episode.slice(slice(None, 33))
+        self.assertTrue(e1.is_finalized)
+        e2 = episode[33:]
+        self.assertTrue(e2.is_finalized)
 
-        # Make sure, `episode` and split chunk make sense.
-        self.assertTrue(len(episode) == 33)
+        # Make sure, `e1` and `e2` chunk make sense.
+        self.assertTrue(len(e1) == 33)
         self.assertTrue(len(e2) == 66)
-        self.assertTrue(episode.id_ == e2.id_)
-        self.assertTrue(episode.t_started == 0)
-        self.assertTrue(episode.t == 33)
+        self.assertTrue(e1.id_ == e2.id_)
+        self.assertTrue(e1.t_started == 0)
+        self.assertTrue(e1.t == 33)
         self.assertTrue(e2.t_started == 33)
         self.assertTrue(e2.t == 99)
-        # Make sure the chunks are not identical, but last obs of episode matches
-        # last obs of e2.
-        check(episode.get_observations(-1), e2.get_observations(0))
-        check(episode.observations[4], e2.observations[4], false=True)
-        check(episode.observations[10], e2.observations[10], false=True)
+        # Make sure the chunks are not identical, but last obs of `e1` matches
+        # last obs of `e2`.
+        check(e1.get_observations(-1), e2.get_observations(0))
+        check(e1.observations[4], e2.observations[4], false=True)
+        check(e1.observations[10], e2.observations[10], false=True)
+
+        # TEST #3: Split with lookback buffer (buffer=10, split=20/30).
+        episode = self._create_episode(
+            num_data=60, t_started=15, len_lookback_buffer=10
+        )
+        self.assertTrue(episode.t == 65 and episode.t_started == 15)
+
+        # Convert to numpy before splitting.
+        episode.finalize()
+
+        # Create two 20/30 episode chunks.
+        e1 = episode.slice(slice(None, 20))
+        self.assertTrue(e1.is_finalized)
+        e2 = episode[20:]
+        self.assertTrue(e2.is_finalized)
+
+        # Make sure, `e1` and `e2` make sense.
+        self.assertTrue(len(e1) == 20)
+        self.assertTrue(len(e2) == 30)
+        self.assertTrue(e1.id_ == e2.id_)
+        self.assertTrue(e1.t_started == 15)
+        self.assertTrue(e1.t == 35)
+        self.assertTrue(e2.t_started == 35)
+        self.assertTrue(e2.t == 65)
+        # Make sure the chunks are not identical, but last obs of `e1` matches
+        # last obs of `e2`.
+        check(e1.get_observations(-1), e2.get_observations(0))
+        check(e1.observations[5], e2.observations[5], false=True)
+        check(e1.observations[11], e2.observations[11], false=True)
+        # Make sure the lookback buffers of both chunks are still working.
+        check(
+            e1.get_observations(-1, neg_indices_left_of_zero=True),
+            episode.observations.data[episode._len_lookback_buffer - 1],
+        )
+        check(
+            e1.get_actions(-1, neg_indices_left_of_zero=True),
+            episode.actions.data[episode._len_lookback_buffer - 1],
+        )
+        check(
+            e2.get_observations([-5, -2], neg_indices_left_of_zero=True),
+            [
+                episode.observations.data[20 + episode._len_lookback_buffer - 5],
+                episode.observations.data[20 + episode._len_lookback_buffer - 2],
+            ],
+        )
+        check(
+            e2.get_rewards([-5, -2], neg_indices_left_of_zero=True),
+            [
+                episode.rewards.data[20 + episode._len_lookback_buffer - 5],
+                episode.rewards.data[20 + episode._len_lookback_buffer - 2],
+            ],
+        )
 
     def test_concat_episode(self):
         """Tests if concatenation of two `SingleAgentEpisode`s works.
@@ -350,7 +395,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Reset `is_terminated`.
         episode_1.is_terminated = False
 
-        # Concate the episodes.
+        # Concatenate the episodes.
 
         episode_1.concat_episode(episode_2)
         # Assert that the concatenated episode start at `t_started=0`
@@ -371,61 +416,6 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # TODO (sven): Do we really need a deepcopy here?
         # self.assertNotEqual(id(episode_2.observations[5]),
         # id(episode_1.observations[105]))
-
-    def test_get_and_from_state(self):
-        """Tests, if a `SingleAgentEpisode` can be reconstructed form state.
-
-        This test constructs an episode, stores it to its dictionary state and
-        recreates a new episode form this state. Thereby it ensures that all
-        atttributes are indeed identical to the primer episode and the data is
-        complete.
-        """
-        # Create an empty episode.
-        episode = SingleAgentEpisode()
-        # Create an environment.
-        env = TestEnv()
-        # Add initial observation.
-        init_obs, init_info = env.reset()
-        episode.add_env_reset(observation=init_obs, info=init_info)
-        # Sample 100 steps.
-        for i in range(100):
-            action = i
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
-            episode.add_env_step(
-                observation=obs,
-                action=action,
-                reward=reward,
-                info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={"extra": np.random.random(1)},
-            )
-
-        # Get the state and reproduce it from state.
-        state = episode.get_state()
-        episode_reproduced = SingleAgentEpisode.from_state(state)
-
-        # Assert that the data is complete.
-        self.assertEqual(episode.id_, episode_reproduced.id_)
-        self.assertEqual(episode.t, episode_reproduced.t)
-        self.assertEqual(episode.t_started, episode_reproduced.t_started)
-        self.assertEqual(episode.is_terminated, episode_reproduced.is_terminated)
-        self.assertEqual(episode.is_truncated, episode_reproduced.is_truncated)
-        self.assertListEqual(episode.observations, episode_reproduced.observations)
-        self.assertListEqual(episode.actions, episode_reproduced.actions)
-        self.assertListEqual(episode.rewards, episode_reproduced.rewards)
-        self.assertListEqual(episode.infos, episode_reproduced.infos)
-        self.assertEqual(episode.is_terminated, episode_reproduced.is_terminated)
-        self.assertEqual(episode.is_truncated, episode_reproduced.is_truncated)
-        self.assertListEqual(episode.render_images, episode_reproduced.render_images)
-        self.assertDictEqual(
-            episode.extra_model_outputs, episode_reproduced.extra_model_outputs
-        )
-
-        # Assert that reconstruction breaks, if the data is not complete.
-        state[1][1].pop()
-        with self.assertRaises(AssertionError):
-            episode_reproduced = SingleAgentEpisode.from_state(state)
 
     def _create_episode(self, num_data, t_started=None, len_lookback_buffer=0):
         # Sample 100 values and initialize episode with observations and infos.

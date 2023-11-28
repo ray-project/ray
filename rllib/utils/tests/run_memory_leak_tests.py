@@ -122,11 +122,12 @@ if __name__ == "__main__":
         leaking = True
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)
-            algo = get_trainable_cls(experiment["run"])(experiment["config"])
-            results = check_memory_leaks(
-                algo,
-                to_check=set(args.to_check),
-            )
+            if isinstance(experiment["run"], str):
+                algo_cls = get_trainable_cls(experiment["run"])
+            else:
+                algo_cls = get_trainable_cls(experiment["run"].__name__)
+            algo = algo_cls(experiment["config"])
+            results = check_memory_leaks(algo, to_check=set(args.to_check))
             if not results:
                 leaking = False
         finally:
