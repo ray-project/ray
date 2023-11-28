@@ -44,7 +44,7 @@ class DataOpTask(OpTask):
         task_index: int,
         streaming_gen: StreamingObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[], None],
+        task_done_callback: Callable[[Optional[Exception]], None],
     ):
         """
         Args:
@@ -82,7 +82,7 @@ class DataOpTask(OpTask):
                     # And it's not stopped yet.
                     break
             except StopIteration:
-                self._task_done_callback()
+                self._task_done_callback(None)
                 break
 
             try:
@@ -94,9 +94,12 @@ class DataOpTask(OpTask):
                 # And in this case, the block_ref is the exception object.
                 # TODO(hchen): Ray Core should have a better interface for
                 # detecting and obtaining the exception.
-                ex = ray.get(block_ref)
-                self._task_done_callback()
-                raise ex
+                try:
+                    ray.get(block_ref)
+                    assert False, "Above ray.get should raise an exception."
+                except Exception as ex:
+                    self._task_done_callback(ex)
+                    raise ex from None
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )

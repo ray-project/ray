@@ -120,6 +120,7 @@ py_test_module_list(
     "test_bounded_unix_sockets.py",
     "test_autoscaler_fake_scaledown.py",
     "accelerators/test_neuron.py",
+    "accelerators/test_npu.py",
     "accelerators/test_tpu.py",
     "accelerators/test_nvidia_gpu.py",
     "accelerators/test_hpu.py",
