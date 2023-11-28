@@ -1253,13 +1253,13 @@ class DeploymentState:
         """
         Check if the deployment is under autoscaling
         """
-        return self._target_state.info.autoscaling_policy is not None
+        return self._target_state.info.autoscaling_policy_manager.should_autoscale()
 
     def get_autoscale_metric_lookback_period(self) -> float:
         """
         Return the autoscaling metrics look back period
         """
-        return self._target_state.info.autoscaling_policy.config.look_back_period_s
+        return self._target_state.info.autoscaling_policy_manager.config.look_back_period_s
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -1572,7 +1572,8 @@ class DeploymentState:
             return
 
         current_num_ongoing_requests = self.get_replica_current_ongoing_requests()
-        autoscaling_policy = self._target_state.info.autoscaling_policy
+        # TODO (genesu): look into refactor more of those logics into the manager
+        autoscaling_policy_manager = self._target_state.info.autoscaling_policy_manager
         autoscaling_context = AutoscalingContext(
             curr_target_num_replicas=self._target_state.num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
@@ -1581,7 +1582,7 @@ class DeploymentState:
             target_capacity_scale_direction=target_capacity_scale_direction,
             adjust_capacity=self._target_state.adjust_capacity,
         )
-        decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
+        decision_num_replicas = autoscaling_policy_manager.get_decision_num_replicas(
             autoscaling_context=autoscaling_context,
         )
 

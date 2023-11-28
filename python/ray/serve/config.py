@@ -22,6 +22,7 @@ from ray.serve._private.constants import (
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+DEFAULT_AUTOSCALING_POLICY = "ray.serve._private.autoscaling_policy:BasicAutoscalingPolicy"
 
 
 @PublicAPI(stability="stable")
@@ -60,13 +61,14 @@ class AutoscalingConfig(BaseModel):
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
 
-    # Custom autoscaling config
-    custom_scaling: Optional[str] = None
+    # Custom autoscaling config. Defaulting to the request based autoscaler.
+    autoscaling_policy: str = DEFAULT_AUTOSCALING_POLICY
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
-        # Ignore this validation if custom scaling is enabled.
-        if values.get("custom_scaling"):
+        # Ignore this validation if custom scaling is used.
+        autoscaling_policy = values.get("autoscaling_policy")
+        if autoscaling_policy is not None and autoscaling_policy != DEFAULT_AUTOSCALING_POLICY:
             return max_replicas
 
         min_replicas = values.get("min_replicas")

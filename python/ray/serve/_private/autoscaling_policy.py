@@ -11,7 +11,7 @@ import requests
 import ray
 from ray._private.utils import import_attr
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, DEFAULT_AUTOSCALING_POLICY
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
@@ -349,7 +349,7 @@ class CustomScalingPolicy(AutoscalingPolicy):
 
     def __init__(self, config: AutoscalingConfig):
         self.config = config
-        self.custom_scaling_callable = import_attr(config.custom_scaling)
+        self.custom_scaling_callable = import_attr(config.autoscaling_policy)
         self.custom_config_ref = None
 
     def get_custom_config_ref(self, autoscaling_context: AutoscalingContext):
@@ -391,20 +391,29 @@ class CustomScalingPolicy(AutoscalingPolicy):
         return None
 
 
-class AutoscalingPolicyFactory:
+class AutoscalingPolicyManager:
     """Factory for creating autoscaling policies."""
+    def __init__(self, config: Optional[AutoscalingConfig]):
+        self.config = config
+        self.autoscaling_policy = None
+        self.create_policy()
 
-    @staticmethod
-    def create_policy(config: AutoscalingConfig) -> AutoscalingPolicy:
+    def should_autoscale(self) -> bool:
+        """Returns whether autoscaling should be performed."""
+        return self.config is not None
+
+    def create_policy(self):
         """Creates an autoscaling policy based on the given config.
 
         Args:
             config: The config to use for the policy.
-
-        Returns:
-            AutoscalingPolicy: The autoscaling policy.
         """
-        if config.custom_scaling:
-            return CustomScalingPolicy(config)
+        if self.config is not None and self.config != DEFAULT_AUTOSCALING_POLICY:
+            self.autoscaling_policy = CustomScalingPolicy(self.config)
         else:
-            return BasicAutoscalingPolicy(config)
+            self.autoscaling_policy = BasicAutoscalingPolicy(self.config)
+
+    def get_decision_num_replicas(
+        self, autoscaling_context: AutoscalingContext
+    ) -> Optional[int]:
+        return self.autoscaling_policy.get_decision_num_replicas(autoscaling_context)

@@ -5,7 +5,7 @@ from typing import Any, Dict, List, NamedTuple, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve._private.autoscaling_policy import AutoscalingPolicyFactory
+from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
@@ -270,12 +270,9 @@ class DeploymentInfo:
         self.route_prefix = route_prefix
         self.docs_path = docs_path
         self.ingress = ingress
-        if deployment_config.autoscaling_config is not None:
-            self.autoscaling_policy = AutoscalingPolicyFactory.create_policy(
-                config=deployment_config.autoscaling_config,
-            )
-        else:
-            self.autoscaling_policy = None
+        self.autoscaling_policy_manager = AutoscalingPolicyManager(
+            config=deployment_config.autoscaling_config
+        )
         # Num replicas decided by the autoscaling policy. This is mutually exclusive
         # from deployment_config.num_replicas. This value is updated through
         # set_autoscaled_num_replicas()
