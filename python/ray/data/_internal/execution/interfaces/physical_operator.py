@@ -23,6 +23,13 @@ class OpTask(ABC):
     The task can be either a regular task or an actor task.
     """
 
+    def __init__(self, task_index: int):
+        self._task_index = task_index
+
+    def task_index(self) -> int:
+        """Return the index of the task."""
+        return self._task_index
+
     @abstractmethod
     def get_waitable(self) -> Waitable:
         """Return the ObjectRef or StreamingObjectRefGenerator to wait on."""
@@ -34,6 +41,7 @@ class DataOpTask(OpTask):
 
     def __init__(
         self,
+        task_index: int,
         streaming_gen: StreamingObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
         task_done_callback: Callable[[Optional[Exception]], None],
@@ -45,6 +53,7 @@ class DataOpTask(OpTask):
                 from the generator.
             task_done_callback: The callback to call when the task is done.
         """
+        super().__init__(task_index)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
         # interface. So each individual operator don't need to take care of the
@@ -102,13 +111,17 @@ class MetadataOpTask(OpTask):
     """Represents an OpTask that only handles metadata, instead of Block data."""
 
     def __init__(
-        self, object_ref: ray.ObjectRef, task_done_callback: Callable[[], None]
+        self,
+        task_index: int,
+        object_ref: ray.ObjectRef,
+        task_done_callback: Callable[[], None],
     ):
         """
         Args:
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
         """
+        super().__init__(task_index)
         self._object_ref = object_ref
         self._task_done_callback = task_done_callback
 
