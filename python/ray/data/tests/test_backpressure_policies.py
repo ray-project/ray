@@ -363,7 +363,7 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
     ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
     ds = ds.map_batches(consume, batch_size=None, num_cpus=0.9)
     # Check core execution metrics every 10 rows, because it's expensive.
-    for i, _ in enumerate(ds.iter_batches(batch_size=NUM_ROWS_PER_TASK)):
+    for _ in ds.iter_batches(batch_size=NUM_ROWS_PER_TASK):
         # The amount of generated data should be less than
         # max_pending_block_bytes (pending data) +
         # NUM_ROWS_PER_TASK * BLOCK_SIZE (consumed data)
