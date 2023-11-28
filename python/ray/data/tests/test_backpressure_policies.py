@@ -300,29 +300,29 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
 def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F811
     """Test backpressure on a synthetic large-scale workload."""
-    # The cluster has 16 CPUs and 2GB object store memory.
+    # The cluster has 10 CPUs and 2GB object store memory.
     # The dataset will have 2GB * 25% = 512MB memory budget.
     #
     # Each produce task generates 10 blocks, each of which has 0.1GB data.
     #
     # Without any backpressure, the producer tasks will output at most
-    # 16 * 10 * 0.1GB = 16GB data.
+    # 10 * 10 * 0.1GB = 10GB data.
     #
     # With StreamingOutputBackpressurePolicy and the following configuration,
-    # the executor will still schedule 16 produce tasks, but only the first task is
+    # the executor will still schedule 10 produce tasks, but only the first task is
     # allowed to output all blocks. The total size of pending blocks will be
-    # (10 + 15 * 1 + 1) * 0.1GB = 2.6GB,
+    # (10 + 9 * 1 + 1) * 0.1GB = 2GB,
     # where
     # - 10 is the number of blocks in the first task.
-    # - 15 * 1 is the number of blocks pending at the streaming generator level of
+    # - 9 * 1 is the number of blocks pending at the streaming generator level of
     #   the other 15 tasks.
     # - 1 is the number of blocks pending at the output queue.
-    max_pending_block_bytes = int(2.6 * 1024**3)
+    max_pending_block_bytes = int(2 * 1024**3)
 
-    ray.init(num_cpus=16, object_store_memory=2 * 1024 * 1024 * 1024)
+    ray.init(num_cpus=10, object_store_memory=2 * 1024 * 1024 * 1024)
 
     NUM_ROWS_PER_TASK = 10
-    NUM_TASKS = 24
+    NUM_TASKS = 20
     NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS
     BLOCK_SIZE = 100 * 1024 * 1024
 
