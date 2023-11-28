@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torchvision.models import resnet50, ResNet50_Weights
 
-from benchmark import Benchmark
+from benchmark import Benchmark, BenchmarkMetric
 import ray
 from ray.data import ActorPoolStrategy
 
@@ -112,28 +112,13 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
     )
 
     # For structured output integration with internal tooling
-    results = {"data_directory": data_directory, "data_format": data_format}
-    results["perf_metrics"] = {
-        "total_time_s": {
-            "perf_metric_name": "total_time_s",
-            "perf_metric_value": total_time,
-            "perf_metric_type": "LATENCY",
-        },
-        "throughput_images_s": {
-            "perf_metric_name": "throughput_images_s",
-            "perf_metric_value": throughput,
-            "perf_metric_type": "THROUGHPUT",
-        },
-        "total_time_s_w/o_metadata_fetch": {
-            "perf_metric_name": "total_time_s_w/o_metadata_fetch",
-            "perf_metric_value": total_time_without_metadata_fetch,
-            "perf_metric_type": "LATENCY",
-        },
-        "throughput_images_s_w/o_metadata_fetch": {
-            "perf_metric_name": "throughput_images_s_w/o_metadata_fetch",
-            "perf_metric_value": throughput_without_metadata_fetch,
-            "perf_metric_type": "THROUGHPUT",
-        },
+    results = {
+        "data_directory": data_directory,
+        "data_format": data_format,
+        BenchmarkMetric.RUNTIME.value: total_time,
+        BenchmarkMetric.THROUGHPUT.value: throughput,
+        "total_time_s_w/o_metadata_fetch": total_time_without_metadata_fetch,
+        "throughput_images_s_w/o_metadata_fetch": throughput_without_metadata_fetch,
     }
 
     return results
