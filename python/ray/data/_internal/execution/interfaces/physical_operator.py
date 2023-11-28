@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -14,7 +14,7 @@ from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
-Waitable = Union[ray.ObjectRef, StreamingObjectRefGenerator]
+Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
 
 
 class OpTask(ABC):
@@ -25,7 +25,7 @@ class OpTask(ABC):
 
     @abstractmethod
     def get_waitable(self) -> Waitable:
-        """Return the ObjectRef or StreamingObjectRefGenerator to wait on."""
+        """Return the ObjectRef or ObjectRefGenerator to wait on."""
         pass
 
 
@@ -34,7 +34,7 @@ class DataOpTask(OpTask):
 
     def __init__(
         self,
-        streaming_gen: StreamingObjectRefGenerator,
+        streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
         task_done_callback: Callable[[Optional[Exception]], None],
     ):
@@ -53,7 +53,7 @@ class DataOpTask(OpTask):
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
 
-    def get_waitable(self) -> StreamingObjectRefGenerator:
+    def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
     def on_data_ready(self, max_blocks_to_read: Optional[int]) -> int:
