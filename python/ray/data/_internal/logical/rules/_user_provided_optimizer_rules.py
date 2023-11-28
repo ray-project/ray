@@ -4,7 +4,7 @@ from ray._private.ray_constants import env_bool
 from ray.data._internal.logical.interfaces.optimizer import Rule
 
 ANYSCALE_LOCAL_LIMIT_MAP_OPERATOR_ENABLED = env_bool(
-    "ANYSCALE_LOCAL_LIMIT_MAP_OPERATOR_ENABLED", True
+    "ANYSCALE_LOCAL_LIMIT_MAP_OPERATOR_ENABLED", False
 )
 
 
