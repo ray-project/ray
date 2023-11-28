@@ -362,24 +362,32 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
     ds = ray.data.range(NUM_ROWS_TOTAL, parallelism=NUM_TASKS)
     ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
     ds = ds.map_batches(consume, batch_size=None, num_cpus=0.9)
-    for _ in ds.iter_batches(batch_size=None):
-        pass
-    # One object can be spilled multiple times,
-    # so the spilling amount can be larger than the pending block size.
-    max_spilled_bytes = int(3.0 * max_pending_block_bytes)
-    last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(
-            object_store_stats={
-                "spilled_bytes_total": lambda x: x < max_spilled_bytes,
-                "restored_bytes_total": lambda x: x < max_spilled_bytes,
-                "cumulative_created_plasma_bytes": lambda x: x
-                > NUM_ROWS_TOTAL * BLOCK_SIZE,
-                "cumulative_created_plasma_objects": lambda _: True,
-            },
-        ),
-        last_snapshot,
-    )
-    print("CoreExecutionMetrics", last_snapshot)
+    for i, _ in enumerate(ds.iter_batches(batch_size=None)):
+        # Check core execution metrics every 10 rows, because it's expensive.
+        if i % NUM_ROWS_PER_TASK != 0:
+            continue
+
+        # The amount of generated data should be less than
+        # max_pending_block_bytes (pending data) +
+        # NUM_ROWS_PER_TASK * BLOCK_SIZE (consumed data)
+        max_created_bytes_per_consumption = (
+            max_pending_block_bytes + NUM_ROWS_PER_TASK * BLOCK_SIZE
+        )
+
+        last_snapshot = assert_core_execution_metrics_equals(
+            CoreExecutionMetrics(
+                object_store_stats={
+                    "spilled_bytes_total": lambda x: x
+                    <= 1.5 * max_created_bytes_per_consumption,
+                    "restored_bytes_total": lambda x: x
+                    <= 1.5 * max_created_bytes_per_consumption,
+                    "cumulative_created_plasma_bytes": lambda x: x
+                    <= 1.5 * max_created_bytes_per_consumption,
+                    "cumulative_created_plasma_objects": lambda _: True,
+                },
+            ),
+            last_snapshot,
+        )
 
 
 if __name__ == "__main__":
