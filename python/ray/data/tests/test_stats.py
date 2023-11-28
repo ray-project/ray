@@ -36,6 +36,7 @@ def gen_expected_metrics(
             "'bytes_inputs_received': N",
             "'num_inputs_processed': N",
             "'bytes_inputs_processed': N",
+            "'bytes_inputs_of_submitted_tasks': N",
             "'num_outputs_generated': N",
             "'bytes_outputs_generated': N",
             "'rows_outputs_generated': N",
