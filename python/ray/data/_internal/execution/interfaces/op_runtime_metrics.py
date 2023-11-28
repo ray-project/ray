@@ -42,6 +42,8 @@ class OpRuntimeMetrics:
     num_inputs_processed: int = field(default=0, metadata={"map_only": True})
     # Total size in bytes of processed input blocks.
     bytes_inputs_processed: int = field(default=0, metadata={"map_only": True})
+    # Size in bytes of input blocks passed to submitted tasks.
+    bytes_inputs_of_submitted_tasks: int = field(default=0, metadata={"map_only": True})
 
     # === Outputs-related metrics ===
 
@@ -105,8 +107,6 @@ class OpRuntimeMetrics:
         default=0, metadata={"map_only": True, "export_metric": True}
     )
 
-    bytes_inputs_of_submitted_tasks: int = field(default=0, metadata={"map_only": True})
-
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
 
@@ -161,10 +161,10 @@ class OpRuntimeMetrics:
 
     @property
     def average_bytes_inputs_per_task(self) -> Optional[float]:
-        if self.num_tasks_finished == 0:
+        if self.num_tasks_submitted == 0:
             return None
         else:
-            return self.bytes_inputs_of_submitted_tasks / self.num_tasks_finished
+            return self.bytes_inputs_of_submitted_tasks / self.num_tasks_submitted
 
     @property
     def average_bytes_outputs_per_task(self) -> Optional[float]:
