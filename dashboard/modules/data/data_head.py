@@ -120,9 +120,10 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                 content_type="application/json",
             )
         except Exception as e:
+            import traceback
             return Response(
                 status=503,
-                text=str(e),
+                text=str(traceback.format_exception(e)),
             )
 
     async def run(self, server):
