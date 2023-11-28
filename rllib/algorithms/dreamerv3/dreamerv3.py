@@ -8,7 +8,6 @@ D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
 import copy
-import dataclasses
 import gc
 import logging
 import tree  # pip install dm_tree

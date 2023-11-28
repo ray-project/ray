@@ -185,10 +185,10 @@ class TestAlgorithmConfig(unittest.TestCase):
         config = config.rl_module(rl_module_spec=SingleAgentRLModuleSpec(A))
         self.assertEqual(config.rl_module_spec.module_class, A)
 
-    def test_learner_hyperparameters_per_module(self):
+    def test_config_per_module(self):
         """Tests, whether per-module config overrides (multi-agent) work as expected."""
 
-        # Compile PPO HPs from a config object.
+        # Compile individual agents' PPO configs from a config object.
         config = (
             PPOConfig()
             .training(kl_coeff=0.5)
@@ -202,30 +202,31 @@ class TestAlgorithmConfig(unittest.TestCase):
             )
         )
 
-        # Check default HPs.
+        # Check default config.
         check(config.lr, 0.00005)
         check(config.grad_clip, None)
         check(config.grad_clip_by, "global_norm")
         check(config.kl_coeff, 0.5)
 
         # `module_1` overrides.
-        hps_1 = config.get_config_for_module("module_1")
-        check(hps_1.learning_rate, 0.01)
-        check(hps_1.grad_clip, None)
-        check(hps_1.grad_clip_by, "global_norm")
-        check(hps_1.kl_coeff, 0.1)
+        config_1 = config.get_config_for_module("module_1")
+        check(config_1.lr, 0.01)
+        check(config_1.grad_clip, None)
+        check(config_1.grad_clip_by, "global_norm")
+        check(config_1.kl_coeff, 0.1)
 
         # `module_2` overrides.
-        hps_2 = config.get_config_for_module("module_2")
-        check(hps_2.learning_rate, 0.00005)
-        check(hps_2.grad_clip, 100.0)
-        check(hps_2.grad_clip_by, "global_norm")
-        check(hps_2.kl_coeff, 0.5)
+        config_2 = config.get_config_for_module("module_2")
+        check(config_2.lr, 0.00005)
+        check(config_2.grad_clip, 100.0)
+        check(config_2.grad_clip_by, "global_norm")
+        check(config_2.kl_coeff, 0.5)
 
-        # No `module_3` overrides (b/c module_3 uses the top-level HP object directly).
+        # No `module_3` overrides (b/c module_3 uses the top-level config
+        # object directly).
         self.assertTrue("module_3" not in config._per_module_overrides)
-        hps_3 = config.get_config_for_module("module_3")
-        self.assertTrue(hps_3 is hps)
+        config_3 = config.get_config_for_module("module_3")
+        self.assertTrue(config_3 is config)
 
     def test_learner_api(self):
         config = (

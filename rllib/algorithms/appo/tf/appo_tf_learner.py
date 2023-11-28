@@ -1,12 +1,13 @@
 from typing import Any, Dict, Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.algorithms.appo.appo_learner import (
-    AppoLearner,
+from ray.rllib.algorithms.appo.appo import (
+    APPOConfig,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
     OLD_ACTION_DIST_LOGITS_KEY,
 )
+from ray.rllib.algorithms.appo.appo_learner import AppoLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
@@ -27,7 +28,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig,
+        config: APPOConfig,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
@@ -176,7 +177,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
     def _update_module_target_networks(
         self,
         module_id: ModuleID,
-        config: AlgorithmConfig,
+        config: APPOConfig,
     ) -> None:
         module = self.module[module_id]
 
@@ -190,7 +191,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
 
     @override(AppoLearner)
     def _update_module_kl_coeff(
-        self, module_id: ModuleID, config: AlgorithmConfig, sampled_kl: float
+        self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
     ) -> Dict[str, Any]:
         # Update the current KL value based on the recently measured value.
         # Increase.

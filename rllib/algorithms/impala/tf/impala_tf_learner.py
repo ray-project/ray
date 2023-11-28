@@ -1,5 +1,6 @@
 from typing import Mapping
 
+from ray.rllib.algorithms.impala.impala import ImpalaConfig
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core.learner.learner import ENTROPY_KEY

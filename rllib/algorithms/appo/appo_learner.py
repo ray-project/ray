@@ -1,22 +1,13 @@
 import abc
-from dataclasses import dataclass
-from typing import Any, Mapping, TYPE_CHECKING
+from typing import Any, Mapping
 
+from ray.rllib.algorithms.appo.appo import APPOConfig
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 from ray.rllib.utils.schedules.scheduler import Scheduler
-
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.appo.appo import APPOConfig
-
-
-LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
-LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
-OLD_ACTION_DIST_KEY = "old_action_dist"
-OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
 
 class AppoLearner(ImpalaLearner):
@@ -50,7 +41,7 @@ class AppoLearner(ImpalaLearner):
         self,
         *,
         module_id: ModuleID,
-        config: "APPOConfig",
+        config: APPOConfig,
         timestep: int,
         last_update: int,
         mean_kl_loss_per_module: dict,
@@ -76,7 +67,7 @@ class AppoLearner(ImpalaLearner):
             module_id=module_id, config=config, timestep=timestep
         )
 
-        if (timestep - last_update) >= config.target_update_frequency_ts:
+        if (timestep - last_update) >= config.target_update_frequency:
             self._update_module_target_networks(module_id, config)
             results[NUM_TARGET_UPDATES] = 1
             results[LAST_TARGET_UPDATE_TS] = timestep
@@ -95,7 +86,7 @@ class AppoLearner(ImpalaLearner):
 
     @abc.abstractmethod
     def _update_module_target_networks(
-        self, module_id: ModuleID, config: "APPOConfig"
+        self, module_id: ModuleID, config: APPOConfig
     ) -> None:
         """Update the target policy of each module with the current policy.
 
@@ -108,7 +99,7 @@ class AppoLearner(ImpalaLearner):
 
     @abc.abstractmethod
     def _update_module_kl_coeff(
-        self, module_id: ModuleID, config: "APPOConfig", sampled_kl: float
+        self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
     ) -> Mapping[str, Any]:
         """Dynamically update the KL loss coefficients of each module with.
 

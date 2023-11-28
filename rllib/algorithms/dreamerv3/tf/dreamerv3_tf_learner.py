@@ -40,7 +40,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
     @override(TfLearner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: DreamerV3Config=None, hps=None
+        self, module_id: ModuleID, config: DreamerV3Config = None, hps=None
     ):
         """Create the 3 optimizers for Dreamer learning: world_model, actor, critic.
 
@@ -98,7 +98,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig,
+        config: DreamerV3Config,
         module_gradients_dict: Dict[str, Any],
     ) -> ParamDict:
         """Performs gradient clipping on the 3 module components' computed grads.
@@ -273,7 +273,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 module_id,
                 {
                     # Replace 'T' with '1'.
-                    "DREAM_DATA_" + key[:-1] + "1": value[:, hps.batch_size_B]
+                    "DREAM_DATA_" + key[:-1] + "1": value[:, config.batch_size_B]
                     for key, value in dream_data.items()
                     if key.endswith("H_BxT")
                 },
@@ -284,7 +284,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             # Learn critic in symlog'd space.
             rewards_t0_to_H_BxT=dream_data["rewards_dreamed_t0_to_H_BxT"],
             intrinsic_rewards_t1_to_H_BxT=(
-                dream_data["rewards_intrinsic_t1_to_H_B"] if config.use_curiosity else None
+                dream_data["rewards_intrinsic_t1_to_H_B"]
+                if config.use_curiosity
+                else None
             ),
             continues_t0_to_H_BxT=dream_data["continues_dreamed_t0_to_H_BxT"],
             value_predictions_t0_to_H_BxT=dream_data["values_dreamed_t0_to_H_BxT"],

@@ -1,5 +1,6 @@
 from typing import Mapping
 
+from ray.rllib.algorithms.impala.impala import ImpalaConfig
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,

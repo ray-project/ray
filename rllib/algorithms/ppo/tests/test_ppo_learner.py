@@ -7,10 +7,8 @@ import tensorflow as tf
 import tree  # pip install dm-tree
 
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
-from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_CURR_KL_COEFF_KEY
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.algorithms.ppo.ppo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.tune.registry import register_env
@@ -122,7 +120,6 @@ class TestPPO(unittest.TestCase):
                 ),
             )
         )
-        algo = config.build()
 
         for _ in framework_iterator(config, ("tf2", "torch")):
             algo_config = config.copy(copy_frozen=False)

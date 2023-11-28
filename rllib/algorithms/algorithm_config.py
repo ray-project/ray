@@ -22,8 +22,6 @@ import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
-from ray.rllib.core.learner.learner_group import LearnerGroup
-from ray.rllib.core.learner.torch.torch_learner import TorchCompileWhatToCompile
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
@@ -63,11 +61,11 @@ from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
     LearningRateOrSchedule,
-    ModuleSpec,
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
+    RLModuleSpec,
     SampleBatchType,
 )
 from ray.tune.logger import Logger
@@ -101,12 +99,13 @@ path: /tmp/
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.core.learner import Learner
+    from ray.rllib.core.learner.learner_group import LearnerGroup
     from ray.rllib.evaluation.episode import Episode as OldEpisode
 
 logger = logging.getLogger(__name__)
 
 
-def _check_rl_module_spec(module_spec: ModuleSpec) -> None:
+def _check_rl_module_spec(module_spec: RLModuleSpec) -> None:
     if not isinstance(module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)):
         raise ValueError(
             "rl_module_spec must be an instance of "
@@ -288,7 +287,10 @@ class AlgorithmConfig(_Config):
             "intra_op_parallelism_threads": 8,
             "inter_op_parallelism_threads": 8,
         }
+
         # Torch compile settings
+        from ray.rllib.core.learner.torch.torch_learner import TorchCompileWhatToCompile
+
         self.torch_compile_learner = False
         self.torch_compile_learner_what_to_compile = (
             TorchCompileWhatToCompile.FORWARD_TRAIN
@@ -817,6 +819,10 @@ class AlgorithmConfig(_Config):
 
         # Make sure the Learner's torch-what-to-compile setting is supported.
         if self.torch_compile_learner:
+            from ray.rllib.core.learner.torch.torch_learner import (
+                TorchCompileWhatToCompile,
+            )
+
             if self.torch_compile_learner_what_to_compile not in [
                 TorchCompileWhatToCompile.FORWARD_TRAIN,
                 TorchCompileWhatToCompile.COMPLETE_UPDATE,
@@ -1151,11 +1157,12 @@ class AlgorithmConfig(_Config):
         *,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
-    ) -> LearnerGroup:
-
+    ) -> "LearnerGroup":
         rl_module_spec = None
         if env is not None or spaces is not None:
             rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
+
+        from ray.rllib.core.learner.learner_group import LearnerGroup
 
         learner_group = LearnerGroup(config=self, module_spec=rl_module_spec)
 
@@ -1199,8 +1206,8 @@ class AlgorithmConfig(_Config):
             # In case, the per-module sub-config object is still a dict, convert
             # it to a fully qualified AlgorithmConfig object here first.
             if isinstance(self._per_module_overrides[module_id], dict):
-                self._per_module_overrides[module_id] = (
-                    self.copy().update_from_dict(self._per_module_overrides[module_id])
+                self._per_module_overrides[module_id] = self.copy().update_from_dict(
+                    self._per_module_overrides[module_id]
                 )
             # Return the module specific version of self.
             return self._per_module_overrides[module_id]
@@ -2641,7 +2648,7 @@ class AlgorithmConfig(_Config):
     def rl_module(
         self,
         *,
-        rl_module_spec: Optional[ModuleSpec] = NotProvided,
+        rl_module_spec: Optional[RLModuleSpec] = NotProvided,
         # Deprecated arg.
         _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -3228,14 +3235,14 @@ class AlgorithmConfig(_Config):
             torch_dynamo_mode=self.torch_compile_worker_dynamo_mode,
         )
 
-    def get_default_rl_module_spec(self) -> ModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         """Returns the RLModule spec to use for this algorithm.
 
         Override this method in the sub-class to return the RLModule spec given
         the input framework.
 
         Returns:
-            The ModuleSpec (SingleAgentRLModuleSpec or MultiAgentRLModuleSpec) to use
+            The RLModuleSpec (SingleAgentRLModuleSpec or MultiAgentRLModuleSpec) to use
             for this algorithm's RLModule.
         """
         raise NotImplementedError
@@ -3274,7 +3281,7 @@ class AlgorithmConfig(_Config):
                 values from other sources of information (e.g. environement)
             single_agent_rl_module_spec: The SingleAgentRLModuleSpec to use for
                 constructing a MultiAgentRLModuleSpec. If None, the already
-                configured spec (`self._rl_module_spec`) or the default ModuleSpec for
+                configured spec (`self._rl_module_spec`) or the default RLModuleSpec for
                 this algorithm (`self.get_default_rl_module_spec()`) will be used.
             env: An optional env instance, from which to infer the different spaces for
                 the different SingleAgentRLModules. If not provided, will try to infer
@@ -3297,9 +3304,9 @@ class AlgorithmConfig(_Config):
         # TODO (Kourosh): Raise an error if the config is not frozen
         # If the module is single-agent convert it to multi-agent spec
 
-        # The default ModuleSpec (might be multi-agent or single-agent).
+        # The default RLModuleSpec (might be multi-agent or single-agent).
         default_rl_module_spec = self.get_default_rl_module_spec()
-        # The currently configured ModuleSpec (might be multi-agent or single-agent).
+        # The currently configured RLModuleSpec (might be multi-agent or single-agent).
         # If None, use the default one.
         current_rl_module_spec = self._rl_module_spec or default_rl_module_spec
 
@@ -3480,44 +3487,6 @@ class AlgorithmConfig(_Config):
                 module_spec.model_config_dict = policy_spec.config.get("model", {})
 
         return marl_module_spec
-
-    #TODO: Deprecate as well
-    #def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
-    #    if not self._is_frozen:
-    #        raise ValueError(
-    #            "Cannot call `get_learner_group_config()` on an unfrozen "
-    #            "AlgorithmConfig! Please call `AlgorithmConfig.freeze()` first."
-    #        )
-
-    #    config = (
-    #        LearnerGroupConfig()
-    #        .module(module_spec)
-    #        .learner(
-    #            learner_class=self.learner_class,
-    #            #learner_hyperparameters=self.get_learner_hyperparameters(),
-    #        )
-    #        .resources(
-    #            num_learner_workers=self.num_learner_workers,
-    #            num_cpus_per_learner_worker=(
-    #                self.num_cpus_per_learner_worker
-    #                if not self.num_gpus_per_learner_worker
-    #                else 0
-    #            ),
-    #            num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
-    #            local_gpu_idx=self.local_gpu_idx,
-    #        )
-    #    )
-
-    #    if self.framework_str == "torch":
-    #        config.framework(
-    #            torch_compile=self.torch_compile_learner,
-    #            torch_compile_cfg=self.get_torch_compile_learner_config(),
-    #            torch_compile_what_to_compile=self.torch_compile_learner_what_to_compile,  # noqa: E501
-    #        )
-    #    elif self.framework_str == "tf2":
-    #        config.framework(eager_tracing=self.eager_tracing)
-
-    #    return config
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""

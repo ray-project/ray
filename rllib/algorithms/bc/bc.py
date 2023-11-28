@@ -13,7 +13,7 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
-from ray.rllib.utils.typing import ModuleSpec, ResultDict
+from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 
 
 class BCConfig(MARWILConfig):
@@ -75,7 +75,7 @@ class BCConfig(MARWILConfig):
         # fmt: on
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> ModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
 

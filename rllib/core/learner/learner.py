@@ -15,12 +15,11 @@ from typing import (
     Sequence,
     Set,
     Tuple,
-    Type,
     Union,
-    TYPE_CHECKING,
 )
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
@@ -63,9 +62,6 @@ from ray.rllib.utils.typing import (
 )
 from ray.util.annotations import PublicAPI
 
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -193,7 +189,7 @@ class Learner:
     def __init__(
         self,
         *,
-        config: "AlgorithmConfig",
+        config: AlgorithmConfig,
         module_spec: Optional[
             Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
         ] = None,
@@ -375,7 +371,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
+        self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
     ) -> None:
         """Configures an optimizer for the given module_id.
 
@@ -467,7 +463,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: "AlgorithmConfig" = None,
+        config: AlgorithmConfig = None,
         module_gradients_dict: ParamDict,
         hps=None,
     ) -> ParamDict:
@@ -891,7 +887,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: "AlgorithmConfig" = None,
+        config: AlgorithmConfig = None,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
         hps=None,
@@ -1038,7 +1034,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: "AlgorithmConfig" = None,
+        config: AlgorithmConfig = None,
         timestep: int,
         hps=None,
         **kwargs,
@@ -1417,7 +1413,7 @@ class Learner:
         # Module was provided directly through constructor -> Use as-is.
         if self._module_obj is not None:
             module = self._module_obj
-        # ModuleSpec was provided directly through constructor -> Use it to build the
+        # RLModuleSpec was provided directly through constructor -> Use it to build the
         # RLModule.
         elif self._module_spec is not None:
             module = self._module_spec.build()
@@ -1548,7 +1544,7 @@ class Learner:
 
     @Deprecated(
         help="Use `config` (AlgorithmConfig) everywhere where you would have used "
-             "Learner.hps instead.",
+        "Learner.hps instead.",
         error=True,
     )
     @property

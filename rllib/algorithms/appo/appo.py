@@ -9,12 +9,10 @@ See `appo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
-import dataclasses
 from typing import Optional, Type
 import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.appo.appo_learner import LEARNER_RESULTS_KL_KEY
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -32,6 +30,12 @@ from ray.rllib.utils.typing import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
+OLD_ACTION_DIST_KEY = "old_action_dist"
+OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
 
 class APPOConfig(ImpalaConfig):

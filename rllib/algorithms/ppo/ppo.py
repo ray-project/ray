@@ -9,7 +9,6 @@ See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
-import dataclasses
 import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 

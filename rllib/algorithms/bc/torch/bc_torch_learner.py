@@ -1,6 +1,7 @@
 import logging
 from typing import Mapping
 
+from ray.rllib.algorithms.bc.bc import BCConfig
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
@@ -23,7 +24,7 @@ class BCTorchLearner(TorchLearner):
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig,
+        config: BCConfig,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType]
     ) -> TensorType:

@@ -1,12 +1,13 @@
 from typing import Any, Dict, Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.algorithms.appo.appo_learner import (
-    AppoLearner,
+from ray.rllib.algorithms.appo.appo import (
+    APPOConfig,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
     OLD_ACTION_DIST_LOGITS_KEY,
 )
+from ray.rllib.algorithms.appo.appo_learner import AppoLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     make_time_major,
     vtrace_torch,
@@ -37,7 +38,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig,
+        config: APPOConfig,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
@@ -111,8 +112,8 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=hps.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=hps.vtrace_clip_rho_threshold,
+            clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )
 
         # The policy gradients loss.
@@ -128,10 +129,10 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         surrogate_loss = torch.minimum(
             pg_advantages * logp_ratio,
             pg_advantages
-            * torch.clip(logp_ratio, 1 - hps.clip_param, 1 + hps.clip_param),
+            * torch.clip(logp_ratio, 1 - config.clip_param, 1 + config.clip_param),
         )
 
-        if hps.use_kl_loss:
+        if config.use_kl_loss:
             action_kl = old_target_policy_dist.kl(target_policy_dist)
             mean_kl_loss = torch.mean(action_kl)
         else:
@@ -148,7 +149,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         # The summed weighted loss.
         total_loss = (
             mean_pi_loss
-            + (mean_vf_loss * hps.vf_loss_coeff)
+            + (mean_vf_loss * config.vf_loss_coeff)
             + (
                 mean_entropy_loss
                 * self.entropy_coeff_schedulers_per_module[
@@ -210,7 +211,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
 
     @override(AppoLearner)
     def _update_module_target_networks(
-        self, module_id: ModuleID, config: AlgorithmConfig
+        self, module_id: ModuleID, config: APPOConfig
     ) -> None:
         module = self.module[module_id]
 
@@ -225,7 +226,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
 
     @override(AppoLearner)
     def _update_module_kl_coeff(
-        self, module_id: ModuleID, config: AlgorithmConfig, sampled_kl: float
+        self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
     ) -> Dict[str, Any]:
         # Update the current KL value based on the recently measured value.
         # Increase.

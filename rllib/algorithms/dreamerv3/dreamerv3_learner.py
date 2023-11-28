@@ -7,9 +7,9 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from dataclasses import dataclass
 from typing import Any, DefaultDict, Dict
 
+from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -54,7 +54,7 @@ class DreamerV3Learner(Learner):
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig,
+        config: DreamerV3Config,
         timestep: int,
     ) -> Dict[str, Any]:
         """Updates the EMA weights of the critic network."""

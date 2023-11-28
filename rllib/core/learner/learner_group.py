@@ -15,6 +15,7 @@ from typing import (
 import uuid
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
@@ -24,7 +25,7 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator
-from ray.rllib.utils.typing import ModuleSpec, ResultDict
+from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
@@ -72,12 +73,12 @@ class LearnerGroup:
     def __init__(
         self,
         *,
-        config: "AlgorithmConfig",
-        module_spec: Optional[ModuleSpec] = None,
+        config: AlgorithmConfig,
+        module_spec: Optional[RLModuleSpec] = None,
         max_queue_len: int = 20,
-        #learner_spec: LearnerSpec,
+        # learner_spec: LearnerSpec,
     ):
-        #scaling_config = learner_spec.learner_group_scaling_config
+        # scaling_config = learner_spec.learner_group_scaling_config
         self.config = config
         learner_class = self.config.learner_class
         module_spec = module_spec or self.config.get_marl_module_spec()
@@ -117,7 +118,7 @@ class LearnerGroup:
                 train_cls_kwargs={
                     "config": config,
                     "module_spec": module_spec,
-                }
+                },
             )
             self._backend_executor = backend_executor
 

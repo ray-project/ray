@@ -89,8 +89,12 @@ class RemoteTrainingHelper:
 
         new_module_id = "test_module"
 
-        add_module_to_learner_or_learner_group(fw, env, new_module_id, learner_group)
-        add_module_to_learner_or_learner_group(fw, env, new_module_id, local_learner)
+        add_module_to_learner_or_learner_group(
+            config, env, new_module_id, learner_group
+        )
+        add_module_to_learner_or_learner_group(
+            config, env, new_module_id, local_learner
+        )
 
         # make the state of the learner and the local learner_group identical
         local_learner.set_state(learner_group.get_state())
@@ -139,10 +143,12 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         config = (
             BaseTestingAlgorithmConfig()
             .training(learner_class=BCTfLearner)
-            .rl_module(rl_module_spec=SingleAgentRLModuleSpec(
-                module_class=DiscreteBCTFModule,
-                model_config_dict={"fcnet_hiddens": [32]},
-            ))
+            .rl_module(
+                rl_module_spec=SingleAgentRLModuleSpec(
+                    module_class=DiscreteBCTFModule,
+                    model_config_dict={"fcnet_hiddens": [32]},
+                )
+            )
         )
         learner_group = config.build_learner_group(env=env)
         print(learner_group)
@@ -234,7 +240,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
             # add a test_module
             add_module_to_learner_or_learner_group(
-                fw, env, new_module_id, learner_group
+                config, env, new_module_id, learner_group
             )
 
             # do training that includes the test_module
@@ -296,16 +302,12 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
             # env will have agent ids 0 and 1
             env = MultiAgentCartPole({"num_agents": 2})
 
-            config_overrides = (
-                REMOTE_CONFIGS.get(scaling_mode)
-                or LOCAL_CONFIGS.get(scaling_mode)
+            config_overrides = REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(
+                scaling_mode
             )
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-            #get_learner_group(
-                #fw, env, scaling_config, is_multi_agent=True
-            #)
             learner_group = config.build_learner_group(env=env)
-            spec = get_module_spec(framework=fw, env=env)
+            spec = config.get_marl_module_spec(env=env).module_specs[DEFAULT_POLICY_ID]
             learner_group.add_module(module_id="0", module_spec=spec)
             learner_group.add_module(module_id="1", module_spec=spec)
             learner_group.remove_module(DEFAULT_POLICY_ID)
@@ -439,8 +441,8 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
-            config_overrides = (
-                    REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(scaling_mode)
+            config_overrides = REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(
+                scaling_mode
             )
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             initial_learner_group = config.build_learner_group(env=env)

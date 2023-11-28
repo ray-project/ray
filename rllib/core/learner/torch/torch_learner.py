@@ -116,7 +116,10 @@ class TorchLearner(Learner):
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None,
+        self,
+        module_id: ModuleID,
+        config: "AlgorithmConfig" = None,
+        hps=None,
     ) -> None:
         if hps is not None:
             deprecation_warning(

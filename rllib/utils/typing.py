@@ -51,7 +51,7 @@ TensorShape = Union[Tuple[int], List[int]]
 NetworkType = Union["torch.nn.Module", "tf.keras.Module"]
 
 # An RLModule spec (single-agent or multi-agent).
-ModuleSpec = Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"]
+RLModuleSpec = Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"]
 
 # Represents a fully filled out config of a Algorithm class.
 # Note: Policy config dicts are usually the same as AlgorithmConfigDict, but

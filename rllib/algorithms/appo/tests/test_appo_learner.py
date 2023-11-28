@@ -8,7 +8,6 @@ import ray.rllib.algorithms.appo as appo
 from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
 )
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.framework import try_import_tf
@@ -94,7 +93,9 @@ class TestAPPOTfLearner(unittest.TestCase):
             algo_config.validate()
             algo_config.freeze()
 
-            learner_group = algo_config.build_learner_group()
+            learner_group = algo_config.build_learner_group(
+                env=algo.workers.local_worker().env
+            )
             learner_group.set_weights(algo.get_weights())
             learner_group.update(train_batch.as_multi_agent())
 
