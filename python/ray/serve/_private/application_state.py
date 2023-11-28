@@ -403,6 +403,10 @@ class ApplicationState:
                 target_config=self._target_state.config,
             )
 
+            # Record telemetry for container runtime env feature
+            if "container" in self._target_state.config.runtime_env:
+                ServeUsageTag.CONTAINER_RUNTIME_ENV_USED.record("1")
+
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
