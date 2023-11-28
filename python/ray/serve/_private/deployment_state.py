@@ -1259,7 +1259,9 @@ class DeploymentState:
         """
         Return the autoscaling metrics look back period
         """
-        return self._target_state.info.autoscaling_policy_manager.config.look_back_period_s
+        return (
+            self._target_state.info.autoscaling_policy_manager.config.look_back_period_s
+        )
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """

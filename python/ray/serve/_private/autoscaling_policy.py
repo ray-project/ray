@@ -11,7 +11,7 @@ import requests
 import ray
 from ray._private.utils import import_attr
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
-from ray.serve.config import AutoscalingConfig, DEFAULT_AUTOSCALING_POLICY
+from ray.serve.config import DEFAULT_AUTOSCALING_POLICY, AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
@@ -393,6 +393,7 @@ class CustomScalingPolicy(AutoscalingPolicy):
 
 class AutoscalingPolicyManager:
     """Factory for creating autoscaling policies."""
+
     def __init__(self, config: Optional[AutoscalingConfig]):
         self.config = config
         self.autoscaling_policy = None
