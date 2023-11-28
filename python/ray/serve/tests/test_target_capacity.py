@@ -480,8 +480,9 @@ class TestInitialReplicasHandling:
             ],
         )
 
-        test_target_capacities = [0, 20, 60, 40, 30, 100, None]
+        test_target_capacities = [0, 1, 20, 60, 40, 30, 100, None]
         expected_num_replicas = [
+            0,
             1,
             2,
             6,
@@ -527,7 +528,7 @@ class TestInitialReplicasHandling:
             ],
         )
 
-        test_target_capacities = [0, 20, 60, 40, 30, 100, None]
+        test_target_capacities = [0, 1, 20, 60, 40, 30, 100, None]
         expected_num_replicas = [0] * len(test_target_capacities)
 
         for target_capacity, num_replicas in zip(
