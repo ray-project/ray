@@ -14,12 +14,9 @@ class MultiAgentTestEnv(MultiAgentEnv):
     def __init__(self, truncate=True):
         self.t = 0
         self._agent_ids = {"agent_" + str(i) for i in range(10)}
-        self.observation_space = {
-            agent_id: gym.spaces.Discrete(201) for agent_id in self._agent_ids
-        }
-        self.action_space = {
-            agent_id: gym.spaces.Discrete(200) for agent_id in self._agent_ids
-        }
+
+        self.observation_space = gym.spaces.Discrete(201)
+        self.action_space = gym.spaces.Discrete(200)
 
         self._agents_alive = set(self._agent_ids)
         self.truncate = truncate
@@ -31,7 +28,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
         options: Optional[dict] = None,
     ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         # Call the super's reset function.
-        super().reset(seed=seed, options=options)
+        super().reset(seed=seed if seed else 0, options=options)
 
         # Set the timestep back to zero.
         self.t = 0
@@ -118,9 +115,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
 
     def action_space_sample(self, agent_ids: List[str] = None) -> MultiAgentDict:
         # Actually not used at this stage.
-        return {
-            agent_id: self.action_space[agent_id].sample() for agent_id in agent_ids
-        }
+        return {agent_id: self.action_space.sample() for agent_id in agent_ids}
 
 
 # TODO (simon): Test `get_state()` and `from_state()`.

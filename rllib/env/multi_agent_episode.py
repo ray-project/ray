@@ -83,7 +83,6 @@ class MultiAgentEpisode:
                 actions, rewards, is_terminated, is_truncated, and all necessary
                 `extra_model_outputs`).
         """
-
         self.id_: str = id_ or uuid.uuid4().hex
 
         # Agent ids must be provided if data is provided. The Episode cannot
