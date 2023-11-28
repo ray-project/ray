@@ -2804,7 +2804,11 @@ Status CoreWorker::ExecuteTask(
     absl::MutexLock lock(&mutex_);
     auto it = current_tasks_.find(task_spec.TaskId());
     RAY_CHECK(it != current_tasks_.end());
-    current_tasks_.erase(it);
+    // Actor creation task should not be removed from current_tasks
+    // so that we can access the task spec anytime.
+    if (task_type != TaskType::ACTOR_CREATION_TASK) {
+      current_tasks_.erase(it);
+    }
     if (task_spec.IsNormalTask()) {
       resource_ids_.reset(new ResourceMappingType());
     }
