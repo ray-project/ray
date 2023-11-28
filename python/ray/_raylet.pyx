@@ -4467,6 +4467,7 @@ cdef class CoreWorker:
           func_kwargs: Optional[Dict] = None,
     ):
         """Run the async function or coroutine to the event loop.
+
         The event loop is running in a separate thread.
 
         Args:
@@ -4479,6 +4480,10 @@ cdef class CoreWorker:
                 track the task_id -> future mapping).
             func_args: The arguments for the async function.
             func_kwargs: The keyword arguments for the async function.
+
+        NOTE: func_args and func_kwargs are intentionally passed as a tuple/dict and
+        not unpacked to avoid collisions between system arguments and user-provided
+        arguments. See https://github.com/ray-project/ray/issues/41272.
         """
         cdef:
             CFiberEvent event
