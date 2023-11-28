@@ -4,6 +4,8 @@ import os
 from abc import ABCMeta, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
+
+# from inspect import isclass
 from typing import Any, List, Optional
 
 import requests
@@ -349,7 +351,7 @@ class CustomScalingPolicy(AutoscalingPolicy):
 
     def __init__(self, config: AutoscalingConfig):
         self.config = config
-        # self.custom_scaling_callable = import_attr(config.autoscaling_policy)
+        self.custom_scaling_callable = import_attr(config.autoscaling_policy)
         self.custom_config_ref = None
 
     def get_custom_config_ref(self, autoscaling_context: AutoscalingContext):
@@ -398,31 +400,44 @@ class AutoscalingPolicyManager:
         self.config = config
         self.autoscaling_policy = None
         self.replica_decision_call_ref = None
-        # self.replica_decision_callable = import_attr(config.autoscaling_policy)
-        self.create_policy()
+        self._create_policy()
 
-    def _get_replica_decision_callable(self):
-        """Get the replica decision callable."""
-        self.replica_decision_callable = import_attr(self.config.autoscaling_policy)
-
-    def _get_custom_config_ref(self, autoscaling_context: AutoscalingContext):
-        """Get the custom config reference."""
-        return ray.remote(self.custom_scaling_callable).remote(autoscaling_context)
+    #     self._import_autoscaling_policy()
+    #
+    # def _import_autoscaling_policy(self):
+    #     """Get the replica decision callable."""
+    #     if self.config:
+    #         if isinstance(self.config.autoscaling_policy, str):
+    #             imported_autoscaling_policy = import_attr(
+    #                 self.config.autoscaling_policy
+    #             )
+    #         else:
+    #             imported_autoscaling_policy = self.config.autoscaling_policy
+    #
+    #         if isclass(imported_autoscaling_policy):
+    #             self.autoscaling_policy = self.autoscaling_policy(self.config)
+    #         else:
+    #             self.autoscaling_policy = imported_autoscaling_policy
+    #
+    # def _get_custom_config_ref(self, autoscaling_context: AutoscalingContext):
+    #     """Get the custom config reference."""
+    #     if isclass(self.autoscaling_policy):
+    #         actor_handle = ray.remote(self.autoscaling_policy).remote(self.config)
+    #         return actor_handle.get_decision_num_replicas.remote(autoscaling_context)
+    #     else:
+    #         return ray.remote(self.autoscaling_policy).remote(self.config)
 
     def should_autoscale(self) -> bool:
         """Returns whether autoscaling should be performed."""
         return self.config is not None
 
-    def create_policy(self):
-        """Creates an autoscaling policy based on the given config.
-
-        Args:
-            config: The config to use for the policy.
-        """
-        if self.config is not None and self.config != DEFAULT_AUTOSCALING_POLICY:
-            self.autoscaling_policy = CustomScalingPolicy(self.config)
-        elif self.config is not None:
-            self.autoscaling_policy = BasicAutoscalingPolicy(self.config)
+    def _create_policy(self):
+        """Creates an autoscaling policy based on the given config."""
+        if self.config:
+            if self.config.autoscaling_policy != DEFAULT_AUTOSCALING_POLICY:
+                self.autoscaling_policy = CustomScalingPolicy(self.config)
+            else:
+                self.autoscaling_policy = BasicAutoscalingPolicy(self.config)
 
     def get_decision_num_replicas(
         self, autoscaling_context: AutoscalingContext
