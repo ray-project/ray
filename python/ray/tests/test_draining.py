@@ -284,7 +284,7 @@ def test_draining_reason(ray_start_cluster):
     try:
         ray.get(actor.ping.remote())
         raise
-    except ray.exceptions.RayPreemptionError as e:
+    except ray.exceptions.RayActorError as e:
         assert e.preempted
 
 

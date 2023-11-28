@@ -331,12 +331,6 @@ class RayActorError(RayError):
         return RayActorError(task_error)
 
 
-class RayPreemptionError(RayActorError):
-    def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
-        super().__init__(cause)
-        assert self.preempted
-
-
 @PublicAPI
 class RaySystemError(RayError):
     """Indicates that Ray encountered a system error.
