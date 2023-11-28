@@ -887,4 +887,8 @@ RAY_CONFIG(bool, enable_autoscaler_v2, false)
 RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
 RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 
+// The number of sockets between object manager.
+// The higher the number the higher throughput of the data
+// trasfer it'll be, but it'll also user more sockets and
+// more CPU resources.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)
