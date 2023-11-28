@@ -1392,8 +1392,8 @@ class DeploymentState:
         self,
         target_info: DeploymentInfo,
         target_num_replicas: int,
-        status_trigger: DeploymentStatusTrigger,
         allow_scaling_statuses: bool,
+        autoscale: bool = False,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
@@ -1427,30 +1427,31 @@ class DeploymentState:
                 ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
         # Determine if the updated target state simply scales the current state.
-        if new_target_state.is_scaled_copy_of(self._target_state):
+        if (
+            new_target_state.is_scaled_copy_of(self._target_state)
+            and allow_scaling_statuses
+        ):
+            curr_num = self._target_state.num_replicas
+            new_num = new_target_state.num_replicas
 
-            curr_num_replicas = self._target_state.target_num_replicas
-            new_num_replicas = new_target_state.target_num_replicas
-            num_replicas_changed = curr_num_replicas != new_num_replicas
-
-            if allow_scaling_statuses and num_replicas_changed:
-                scaling_direction = (
-                    DeploymentStatus.UPSCALING
-                    if new_num_replicas > curr_num_replicas
-                    else DeploymentStatus.DOWNSCALING
+            if new_num > curr_num:
+                self._curr_status_info = self._curr_status_info.transition(
+                    "automatically_increase_num_replicas"
+                    if autoscale
+                    else "manually_increase_num_replicas",
+                    message=f"Upscaling from {curr_num} to {new_num} replicas.",
                 )
-                self._curr_status_info = self._curr_status_info.update(
-                    status=scaling_direction,
-                    status_trigger=status_trigger,
-                    message=(
-                        f"{scaling_direction.capitalize()} from "
-                        f"{curr_num_replicas} to {new_num_replicas} replicas."
-                    ),
+            elif new_num < curr_num:
+                self._curr_status_info = self._curr_status_info.transition(
+                    "automatically_decrease_num_replicas"
+                    if autoscale
+                    else "manually_decrease_num_replicas",
+                    message=f"Downscaling from {curr_num} to {new_num} replicas.",
                 )
         else:
             # Otherwise, the deployment configuration has actually been updated.
-            self._curr_status_info = self._curr_status_info.update(
-                status=DeploymentStatus.UPDATING, status_trigger=status_trigger
+            self._curr_status_info = self._curr_status_info.transition(
+                "config_update_started"
             )
 
         self._target_state = new_target_state
@@ -1527,7 +1528,6 @@ class DeploymentState:
         self._set_target_state(
             deployment_info,
             target_num_replicas=target_num_replicas,
-            status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
             allow_scaling_statuses=allow_scaling_statuses,
         )
 
@@ -1603,7 +1603,7 @@ class DeploymentState:
         self._set_target_state(
             new_info,
             decision_num_replicas,
-            status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+            autoscale=True,
             allow_scaling_statuses=allow_scaling_statuses,
         )
 
@@ -1897,9 +1897,8 @@ class DeploymentState:
                 # reached target replica count
                 self._replica_constructor_retry_counter = -1
             else:
-                self._curr_status_info = self._curr_status_info.update(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                self._curr_status_info = self._curr_status_info.transition(
+                    "replica_startup_failed",
                     message=(
                         f"The deployment failed to start {failed_to_start_count} times "
                         "in a row. This may be due to a problem with its "
@@ -1932,26 +1931,7 @@ class DeploymentState:
                 == running_at_target_version_replica_cnt
                 and running_at_target_version_replica_cnt == all_running_replica_cnt
             ):
-                if self._curr_status_info.status == DeploymentStatus.UPSCALING:
-                    status_trigger = DeploymentStatusTrigger.UPSCALE_COMPLETED
-                elif self._curr_status_info.status == DeploymentStatus.DOWNSCALING:
-                    status_trigger = DeploymentStatusTrigger.DOWNSCALE_COMPLETED
-                elif (
-                    self._curr_status_info.status == DeploymentStatus.UPDATING
-                    and self._curr_status_info.status_trigger
-                    == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-                ):
-                    status_trigger = DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
-                elif self._curr_status_info.status == DeploymentStatus.UNHEALTHY:
-                    status_trigger = DeploymentStatusTrigger.UNSPECIFIED
-                else:
-                    status_trigger = self._curr_status_info.status_trigger
-
-                self._curr_status_info = self._curr_status_info.update(
-                    status=DeploymentStatus.HEALTHY,
-                    status_trigger=status_trigger,
-                )
-
+                self._curr_status_info = self._curr_status_info.transition("healthy")
                 return False, any_replicas_recovering
 
         return False, any_replicas_recovering
@@ -2094,9 +2074,8 @@ class DeploymentState:
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
                 if replica.version == self._target_state.version:
-                    self._curr_status_info = self._curr_status_info.update(
-                        status=DeploymentStatus.UNHEALTHY,
-                        status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    self._curr_status_info = self._curr_status_info.transition(
+                        "health_check_failed",
                         message="A replica's health check failed. This "
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",
@@ -2222,9 +2201,8 @@ class DeploymentState:
                 "Exception occurred trying to update deployment state:\n"
                 + traceback.format_exc()
             )
-            self._curr_status_info = self._curr_status_info.update(
-                status=DeploymentStatus.UNHEALTHY,
-                status_trigger=DeploymentStatusTrigger.INTERNAL_ERROR,
+            self._curr_status_info = self._curr_status_info.transition(
+                "internal_error",
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
 

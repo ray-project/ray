@@ -52,7 +52,12 @@ class MockDeploymentStateManager:
                 (info, deleting) = checkpointed_data
 
                 self.deployment_infos[name] = info
-                self.deployment_statuses[name] = DeploymentStatus.UPDATING
+                self.deployment_statuses[name] = DeploymentStatusInfo(
+                    name=name,
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message="",
+                )
                 self.deleting[name] = deleting
 
     def deploy(
