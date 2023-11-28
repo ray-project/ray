@@ -83,7 +83,7 @@ Note that rerunning `serve run` will redeploy all deployments. To prevent redepl
 
 To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-ref) for more information.
 
-When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  
+When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.
 
 Let's see a simple example that just packages the code. Run the following command on your local machine, with your remote cluster head node IP address substituted for `<head-node-ip-address>` in the command:
 
@@ -106,7 +106,7 @@ For more complex dependencies, including files outside the working directory, en
 serve run  --address=ray://<head-node-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:app
 ```
 
-You can also specify the `runtime_env` in a YAML file; see [serve run](serve_cli.html#serve-run) for details.
+You can also specify the `runtime_env` in a YAML file; see [serve run](#serve-cli) for details.
 
 ## What's Next?
 

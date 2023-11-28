@@ -21,24 +21,6 @@ def _import_ax_search():
     return AxSearch
 
 
-def _import_blendsearch_search():
-    from ray.tune.search.flaml.flaml_search import BlendSearch
-
-    return BlendSearch
-
-
-def _import_cfo_search():
-    from ray.tune.search.flaml.flaml_search import CFO
-
-    return CFO
-
-
-def _import_dragonfly_search():
-    from ray.tune.search.dragonfly.dragonfly_search import DragonflySearch
-
-    return DragonflySearch
-
-
 def _import_skopt_search():
     from ray.tune.search.skopt.skopt_search import SkOptSearch
 
@@ -63,12 +45,6 @@ def _import_bohb_search():
     return TuneBOHB
 
 
-def _import_nevergrad_search():
-    from ray.tune.search.nevergrad.nevergrad_search import NevergradSearch
-
-    return NevergradSearch
-
-
 def _import_optuna_search():
     from ray.tune.search.optuna.optuna_search import OptunaSearch
 
@@ -81,12 +57,6 @@ def _import_zoopt_search():
     return ZOOptSearch
 
 
-def _import_sigopt_search():
-    from ray.tune.search.sigopt.sigopt_search import SigOptSearch
-
-    return SigOptSearch
-
-
 def _import_hebo_search():
     from ray.tune.search.hebo.hebo_search import HEBOSearch
 
@@ -97,18 +67,13 @@ SEARCH_ALG_IMPORT = {
     "variant_generator": _import_variant_generator,
     "random": _import_variant_generator,
     "ax": _import_ax_search,
-    "dragonfly": _import_dragonfly_search,
     "skopt": _import_skopt_search,
     "hyperopt": _import_hyperopt_search,
     "bayesopt": _import_bayesopt_search,
     "bohb": _import_bohb_search,
-    "nevergrad": _import_nevergrad_search,
     "optuna": _import_optuna_search,
     "zoopt": _import_zoopt_search,
-    "sigopt": _import_sigopt_search,
     "hebo": _import_hebo_search,
-    "blendsearch": _import_blendsearch_search,
-    "cfo": _import_cfo_search,
 }
 
 

@@ -32,9 +32,6 @@ py_test_module_list(
     "test_util.py",
     "test_cross_language.py",
     "test_proxy.py",
-    "test_http_adapters.py",
-    "test_deployment_graph_driver.py",
-    "test_deployment_graph_config.py",
     "test_deployment_graph_ingress_deployment.py",
     "test_deployment_graph_handle_serde.py",
     "test_websockets.py",
@@ -64,7 +61,6 @@ py_test_module_list(
     "test_cluster.py",
     "test_autoscaling_policy.py",
     "test_fastapi.py",
-    "test_deployment_graph_autoscaling.py",
     "test_cancellation.py",
     "test_streaming_response.py",
     "test_controller_recovery.py",
@@ -106,7 +102,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_api.py",
-    "test_deployment_graph.py",
+    "test_model_composition.py",
   ],
   size = "large",
   tags = ["exclusive", "team:serve", "minimal"],
