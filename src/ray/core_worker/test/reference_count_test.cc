@@ -19,11 +19,12 @@
 #include "absl/functional/bind_front.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/pubsub/publisher.h"
+#include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/pubsub/mock_pubsub.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 
@@ -38,8 +39,8 @@ class ReferenceCountTest : public ::testing::Test {
   std::unique_ptr<ReferenceCounter> rc;
   virtual void SetUp() {
     rpc::Address addr;
-    publisher_ = std::make_shared<mock_pubsub::MockPublisher>();
-    subscriber_ = std::make_shared<mock_pubsub::MockSubscriber>();
+    publisher_ = std::make_shared<pubsub::MockPublisher>();
+    subscriber_ = std::make_shared<pubsub::MockSubscriber>();
     rc = std::make_unique<ReferenceCounter>(
         addr, publisher_.get(), subscriber_.get(), [](const NodeID &node_id) {
           return true;
@@ -55,8 +56,8 @@ class ReferenceCountTest : public ::testing::Test {
 
   void AssertNoLeaks() { ASSERT_EQ(rc->NumObjectIDsInScope(), 0); }
 
-  std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
-  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
 };
 
 class ReferenceCountLineageEnabledTest : public ::testing::Test {
@@ -64,8 +65,8 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
   std::unique_ptr<ReferenceCounter> rc;
   virtual void SetUp() {
     rpc::Address addr;
-    publisher_ = std::make_shared<mock_pubsub::MockPublisher>();
-    subscriber_ = std::make_shared<mock_pubsub::MockSubscriber>();
+    publisher_ = std::make_shared<pubsub::MockPublisher>();
+    subscriber_ = std::make_shared<pubsub::MockSubscriber>();
     rc = std::make_unique<ReferenceCounter>(
         addr,
         publisher_.get(),
@@ -80,8 +81,8 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
     rc.reset();
   }
 
-  std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
-  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
 };
 
 /// The 2 classes below are implemented to support distributed mock test using
@@ -821,8 +822,8 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   uint8_t data[] = {1, 2, 3, 4, 5, 6, 7, 8};
   RayObject buffer(std::make_shared<LocalMemoryBuffer>(data, sizeof(data)), nullptr, {});
 
-  auto publisher = std::make_shared<mock_pubsub::MockPublisher>();
-  auto subscriber = std::make_shared<mock_pubsub::MockSubscriber>();
+  auto publisher = std::make_shared<pubsub::MockPublisher>();
+  auto subscriber = std::make_shared<pubsub::MockSubscriber>();
   auto rc = std::shared_ptr<ReferenceCounter>(
       new ReferenceCounter(rpc::WorkerAddress(rpc::Address()),
                            publisher.get(),
