@@ -117,8 +117,8 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
         "data_format": data_format,
         BenchmarkMetric.RUNTIME.value: total_time,
         BenchmarkMetric.THROUGHPUT.value: throughput,
-        "total_time_s_w/o_metadata_fetch": total_time_without_metadata_fetch,
-        "throughput_images_s_w/o_metadata_fetch": throughput_without_metadata_fetch,
+        "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
+        "throughput_images_s_wo_metadata_fetch": throughput_without_metadata_fetch,
     }
 
     return results
