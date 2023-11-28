@@ -25,7 +25,7 @@ from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
     LastValueAggregationData,
-    SumAggregationData
+    SumAggregationData,
 )
 from opencensus.stats.view import View
 from opencensus.tags import tag_key as tag_key_module
@@ -166,7 +166,10 @@ class OpencensusProxyMetric:
                 if point.HasField("int64_value"):
                     data = CountAggregationData(point.int64_value)
                 elif point.HasField("double_value"):
-                    if metric.metric_descriptor.type == MetricDescriptorType.CUMULATIVE_DOUBLE:
+                    if (
+                        metric.metric_descriptor.type
+                        == MetricDescriptorType.CUMULATIVE_DOUBLE
+                    ):
                         data = SumAggregationData(ValueDouble, point.double_value)
                     else:
                         data = LastValueAggregationData(ValueDouble, point.double_value)

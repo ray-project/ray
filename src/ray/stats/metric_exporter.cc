@@ -231,10 +231,9 @@ opencensus::proto::metrics::v1::Metric *addMetricProtoPayload(
   metric_descriptor_proto->set_description(measure_descriptor.description());
   metric_descriptor_proto->set_unit(measure_descriptor.units());
   metric_descriptor_proto->set_type(
-    view_descriptor.aggregation() == opencensus::stats::Aggregation::Sum()
+      view_descriptor.aggregation() == opencensus::stats::Aggregation::Sum()
           ? opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_DOUBLE
-          : opencensus::proto::metrics::v1::MetricDescriptor::UNSPECIFIED
-  );
+          : opencensus::proto::metrics::v1::MetricDescriptor::UNSPECIFIED);
 
   for (const auto &tag_key : view_descriptor.columns()) {
     metric_descriptor_proto->add_label_keys()->set_key(tag_key.name());
