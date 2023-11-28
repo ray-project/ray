@@ -67,7 +67,6 @@ def test_put_get(ray_start_stop):
         ref = ray.put(np.zeros(100_000_000))
         return ref
 
-    ray.init(num_cpus=1, object_store_memory=1000_000_000)
     wrapped_ref = create_ref.remote()
     print(ray.get(ray.get(wrapped_ref)))
 
