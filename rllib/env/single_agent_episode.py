@@ -89,6 +89,7 @@ class SingleAgentEpisode:
             self.infos = infos
         # h-states: t0 (in case this episode is a continuation chunk, we need to know
         # about the initial h) to T.
+        # TODO (simon): Create as list not as singleton.
         self.states = states
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
@@ -229,7 +230,9 @@ class SingleAgentEpisode:
                 (e.g. `vf_preds`  for PPO).
         """
         # Cannot add data to an already done episode.
-        assert not self.is_done
+        assert (
+            not self.is_done
+        ), "The agent is already done: no data can be added to its episode."
 
         self.observations.append(observation)
         self.actions.append(action)
@@ -274,7 +277,7 @@ class SingleAgentEpisode:
         # self.t = self.t_started = len(observations) - 1. Then
         # we add a single timestep. self.t += 1 and
         # self.t - self.t_started is 1, but len(rewards) is 100.
-        assert len(self.rewards) == (self.t - self.t_started)
+        # assert len(self.rewards) == (self.t - self.t_started)
 
         if len(self.extra_model_outputs) > 0:
             for k, v in self.extra_model_outputs.items():
