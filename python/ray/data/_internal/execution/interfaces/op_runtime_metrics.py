@@ -161,6 +161,8 @@ class OpRuntimeMetrics:
 
     @property
     def average_bytes_inputs_per_task(self) -> Optional[float]:
+        """Average size in bytes of ref bundles passed to tasks, or ``None`` if no
+        tasks have been submitted."""
         if self.num_tasks_submitted == 0:
             return None
         else:
@@ -177,6 +179,8 @@ class OpRuntimeMetrics:
 
     @property
     def average_bytes_change_per_task(self) -> Optional[float]:
+        """Average size difference in bytes of input ref bundles and output ref
+        bundles per task."""
         if (
             self.average_bytes_inputs_per_task is None
             or self.average_bytes_outputs_per_task is None
