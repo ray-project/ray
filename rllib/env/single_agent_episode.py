@@ -215,6 +215,8 @@ class SingleAgentEpisode:
         else:
             self._len_lookback_buffer = len(rewards or [])
 
+        infos = infos or [{} for _ in range(len(observations or []))]
+
         # Observations: t0 (initial obs) to T.
         self.observation_space = observation_space
         self.observations = BufferWithInfiniteLookback(
@@ -235,7 +237,8 @@ class SingleAgentEpisode:
         )
         # Infos: t0 (initial info) to T.
         self.infos = BufferWithInfiniteLookback(
-            data=infos, lookback=self._len_lookback_buffer
+            data=infos,
+            lookback=self._len_lookback_buffer,
         )
 
         # obs[-1] is the final observation in the episode.
@@ -1009,10 +1012,20 @@ class SingleAgentEpisode:
             index provided OR `indices` is a slice object.
             As single item (B=0 -> no additional 0-axis) if `indices` is a single int.
         """
-        return self.extra_model_outputs[key].get(
-            indices=indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
-            fill=fill,
+        value = self.extra_model_outputs[key]
+        # The expected case is: `value` is a `BufferWithInfiniteLookback`.
+        if isinstance(value, BufferWithInfiniteLookback):
+            return value.get(
+                indices=indices,
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                fill=fill,
+            )
+        # It might be that the user has added new key/value pairs in their custom
+        # postprocessing/connector logic. The values are then most likely numpy
+        # arrays. We convert them automatically to buffers and get the requested
+        # indices (with the given options) from there.
+        return BufferWithInfiniteLookback(value).get(
+            indices, fill=fill, neg_indices_left_of_zero=neg_indices_left_of_zero
         )
 
     def slice(self, slice_: slice) -> "SingleAgentEpisode":
@@ -1092,7 +1105,7 @@ class SingleAgentEpisode:
         )
 
     def get_data_dict(self):
-        """Converts a `SingleAgentEpisode` into a data dict mapping str keys to data.
+        """Converts a SingleAgentEpisode into a data dict mapping str keys to data.
 
         The keys used are:
         SampleBatch.EPS_ID, T, OBS, INFOS, ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS,

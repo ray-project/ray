@@ -182,7 +182,7 @@ def _gym_env_creator(
 class BufferWithInfiniteLookback:
     def __init__(
         self,
-        data: Optional[List] = None,
+        data: Optional[Union[List, np.ndarray]] = None,
         lookback: int = 0,
         space: Optional[gym.Space] = None,
     ):
