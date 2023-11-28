@@ -464,14 +464,11 @@ To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASE
     $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort.py
     $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
 
-.. testoutput::
-    :options: +MOCK
-
-    Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
-    [dataset]: Run `pip install tqdm` to enable progress reporting.
-    2022-05-04 17:30:28,806	INFO push_based_shuffle.py:118 -- Using experimental push-based shuffle.
-    Finished in 9.571171760559082
-    ...
+    # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
+    # [dataset]: Run `pip install tqdm` to enable progress reporting.
+    # 2022-05-04 17:30:28,806	INFO push_based_shuffle.py:118 -- Using experimental push-based shuffle.
+    # Finished in 9.571171760559082
+    # ...
 
 You can also specify the shuffle implementation during program execution by
 setting the ``DataContext.use_push_based_shuffle`` flag:
