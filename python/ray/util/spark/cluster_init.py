@@ -592,7 +592,7 @@ def _setup_ray_cluster(
         ray_temp_dir = None
         ray_default_tmp_dir = _get_default_ray_tmp_dir()
         os.makedirs(ray_default_tmp_dir, exist_ok=True)
-        object_spilling_dir = os.path.join(ray_default_tmp_dir, "ray_spill")
+        object_spilling_dir = os.path.join(ray_default_tmp_dir, "spill")
     else:
         global_cluster_lock_fd = None
         if ray_temp_root_dir is None:
