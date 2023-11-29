@@ -713,11 +713,12 @@ def _execution_allowed(
 
     # If completing a task decreases the overall object store memory usage, allow it
     # even if we're over the global limit.
-    if DataContext.get_current().use_runtime_metrics_scheduling:
-        return (
-            global_ok_sans_memory
-            and op.metrics.average_bytes_change_per_task is not None
-            and op.metrics.average_bytes_change_per_task <= 0
-        )
-    else:
-        return global_ok_sans_memory and downstream_memory_ok
+    if (
+        DataContext.get_current().use_runtime_metrics_scheduling
+        and global_ok_sans_memory
+        and op.metrics.average_bytes_change_per_task is not None
+        and op.metrics.average_bytes_change_per_task <= 0
+    ):
+        return True
+
+    return global_ok_sans_memory and downstream_memory_ok
