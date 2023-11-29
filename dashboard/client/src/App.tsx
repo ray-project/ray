@@ -17,7 +17,11 @@ import { JobDetailInfoPage } from "./pages/job/JobDetailInfoPage";
 import { JobDetailLayout, JobPage } from "./pages/job/JobDetailLayout";
 import { MainNavLayout } from "./pages/layout/MainNavLayout";
 import { SideTabPage } from "./pages/layout/SideTabLayout";
-import { LogsLayout } from "./pages/log/Logs";
+import {
+  LogsLayout,
+  StateApiLogsListPage,
+  StateApiLogViewerPage,
+} from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
 import { DashboardUids, getMetricsInfo } from "./pages/metrics/utils";
 import Nodes, { ClusterMainPageLayout } from "./pages/node";
@@ -50,7 +54,6 @@ dayjs.extend(duration);
 // lazy loading fro prevent loading too much code at once
 const Actors = React.lazy(() => import("./pages/actor"));
 const CMDResult = React.lazy(() => import("./pages/cmd/CMDResult"));
-const Logs = React.lazy(() => import("./pages/log/Logs"));
 
 // a global map for relations
 export type GlobalContextType = {
@@ -285,12 +288,14 @@ const App = () => {
                   </Route>
                 </Route>
                 <Route element={<LogsLayout />} path="logs">
+                  <Route element={<StateApiLogsListPage />} path="" />
+                  <Route element={<StateApiLogViewerPage />} path="viewer" />
                   {/* TODO(aguo): Refactor Logs component to use optional query
                         params since react-router 6 doesn't support optional path params... */}
-                  <Route element={<Logs />} path="" />
+                  {/* <Route element={<Logs />} path="" />
                   <Route element={<Logs />} path=":host">
                     <Route element={<Logs />} path=":path" />
-                  </Route>
+                  </Route> */}
                 </Route>
               </Route>
               <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />

@@ -61,31 +61,6 @@ class LogHead(dashboard_utils.DashboardHeadModule):
             text=self._directory_as_html(index_text_log_url), content_type="text/html"
         )
 
-    @routes.get("/log_proxy")
-    async def get_log_from_proxy(self, req) -> aiohttp.web.StreamResponse:
-        url = req.query.get("url")
-        if not url:
-            raise Exception("url is None.")
-        body = await req.read()
-        # Special logic to handle hashtags only. The only character that
-        # is not getting properly encoded by aiohttp's static file server
-        encoded_url = url.replace("#", "%23")
-        async with self._proxy_session.request(
-            req.method, encoded_url, data=body, headers=req.headers
-        ) as r:
-            sr = aiohttp.web.StreamResponse(
-                status=r.status, reason=r.reason, headers=req.headers
-            )
-            sr.content_length = r.content_length
-            sr.content_type = r.content_type
-            if r.charset and not sr.content_type.startswith("application/octet-stream"):
-                sr.charset = r.charset
-            writer = await sr.prepare(req)
-            async for data in r.content.iter_any():
-                await writer.write(data)
-
-            return sr
-
     @staticmethod
     def _directory_as_html(index_text_log_url) -> str:
         # returns directory's index as html
