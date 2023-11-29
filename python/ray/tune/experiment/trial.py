@@ -759,8 +759,7 @@ class Trial:
             self.temporary_state.num_restore_failures += 1
 
     def _handle_ray_actor_error(self, exc: RayActorError):
-        exc._preempted = True  # TODO(justinvyu): Test the real integration
-        if not exc._preempted:
+        if not exc.preempted:
             # Only count non-preempted actor errors as failures.
             self.run_metadata.num_failures += 1
 
