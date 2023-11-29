@@ -236,7 +236,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
     RAY_LOG(INFO) << "Connecting to actor " << actor_id << " at worker "
                   << WorkerID::FromBinary(address.worker_id());
-    ResendOutOfOrderTasks(actor_id);
+    ResendOutOfOrderCompletedTasks(actor_id);
     SendPendingTasks(actor_id);
   }
 
@@ -419,7 +419,8 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &actor_id) {
+void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderCompletedTasks(
+    const ActorID &actor_id) {
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   if (!it->second.rpc_client) {

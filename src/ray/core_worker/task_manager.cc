@@ -908,8 +908,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     }
     if (will_retry) {
       MarkTaskRetryOnFailed(it->second, error_info);
-    } else {
-      //?
     }
   }
 
@@ -1027,11 +1025,9 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type) << " Fail immediately? "
-                 << fail_immediately;
-  RAY_LOG(INFO) << "FailOrRetryPendingTask " << task_id << ", error " << error_type
-                << ", status " << *status << ", error info "
-                << (ray_error_info == nullptr ? "nullptr" : ray_error_info->DebugString())
-                << " fail_immediately " << fail_immediately;
+                 << fail_immediately << ", status " << *status << ", error info "
+                 << (ray_error_info == nullptr ? "nullptr"
+                                               : ray_error_info->DebugString());
   bool will_retry = false;
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(
