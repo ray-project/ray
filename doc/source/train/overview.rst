@@ -5,7 +5,7 @@
 Ray Train Overview
 ==================
 
-        
+
 To use Ray Train effectively, you need to understand four main concepts:
 
 #. :ref:`Training function <train-overview-training-function>`: A Python function that contains your model training logic.
@@ -33,9 +33,9 @@ Ray Train documentation uses the following conventions:
 
     def train_func():
         """User-defined training function that runs on each distributed worker process.
-        
-        This function typically contains logic for loading the model, 
-        loading the dataset, training the model, saving checkpoints, 
+
+        This function typically contains logic for loading the model,
+        loading the dataset, training the model, saving checkpoints,
         and logging metrics.
         """
         ...
@@ -45,7 +45,7 @@ Ray Train documentation uses the following conventions:
 Worker
 ------
 
-Ray Train distributes model training compute to individual worker processes across the cluster. 
+Ray Train distributes model training compute to individual worker processes across the cluster.
 Each worker is a process that executes the `train_func`.
 The number of workers determines the parallelism of the training job and is configured in the :class:`~ray.train.ScalingConfig`.
 
@@ -79,7 +79,7 @@ Trainer
 -------
 
 The Trainer ties the previous three concepts together to launch distributed training jobs.
-Ray Train provides :ref:`Trainer classes <train-api>` for different frameworks. 
+Ray Train provides :ref:`Trainer classes <train-api>` for different frameworks.
 Calling the :meth:`fit() <ray.train.trainer.BaseTrainer.fit>` method executes the training job by:
 
 #. Launching workers as defined by the :ref:`scaling_config <train-overview-scaling-config>`.
@@ -97,6 +97,6 @@ Calling the :meth:`fit() <ray.train.trainer.BaseTrainer.fit>` method executes th
 .. testcode::
 
     from ray.train.torch import TorchTrainer
-    
+
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     trainer.fit()
