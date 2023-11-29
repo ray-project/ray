@@ -11,7 +11,6 @@ from typing import Any, List, Optional
 import requests
 
 import ray
-from ray._private.utils import import_attr
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
 from ray.serve.config import DEFAULT_AUTOSCALING_POLICY, AutoscalingConfig
 
@@ -349,7 +348,7 @@ class CustomScalingPolicy(AutoscalingPolicy):
 
     def __init__(self, config: AutoscalingConfig):
         self.config = config
-        self.custom_scaling_callable = import_attr(config.autoscaling_policy)
+        self.custom_scaling_callable = config.get_autoscaling_policy()
         self.custom_config_ref = None
 
     def get_custom_config_ref(self, autoscaling_context: AutoscalingContext):
@@ -432,7 +431,8 @@ class AutoscalingPolicyManager:
     def _create_policy(self):
         """Creates an autoscaling policy based on the given config."""
         if self.config:
-            if self.config.autoscaling_policy != DEFAULT_AUTOSCALING_POLICY:
+            autoscaling_policy_callable = self.config.get_autoscaling_policy()
+            if autoscaling_policy_callable != BasicAutoscalingPolicy:
                 self.autoscaling_policy = CustomScalingPolicy(self.config)
             else:
                 self.autoscaling_policy = BasicAutoscalingPolicy(self.config)
@@ -440,7 +440,6 @@ class AutoscalingPolicyManager:
     def get_decision_num_replicas(
         self, autoscaling_context: AutoscalingContext
     ) -> Optional[int]:
-
         decision_num_replicas = self.autoscaling_policy.get_decision_num_replicas(
             autoscaling_context
         )

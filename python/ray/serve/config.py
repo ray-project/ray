@@ -1,4 +1,5 @@
 import logging
+import pickle
 import warnings
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
@@ -64,7 +65,7 @@ class AutoscalingConfig(BaseModel):
     upscale_delay_s: NonNegativeFloat = 30.0
 
     # Custom autoscaling config. Defaulting to the request based autoscaler.
-    autoscaling_policy: str = DEFAULT_AUTOSCALING_POLICY
+    autoscaling_policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -97,6 +98,19 @@ class AutoscalingConfig(BaseModel):
                 )
 
         return max_replicas
+
+    @validator("autoscaling_policy", always=True)
+    def serialize_autoscaling_policy(cls, autoscaling_policy, values):
+        if isinstance(autoscaling_policy, Callable):
+            return pickle.dumps(autoscaling_policy, 0).decode()
+
+        return autoscaling_policy
+
+    def get_autoscaling_policy(self) -> Callable:
+        try:
+            return import_attr(self.autoscaling_policy)
+        except ModuleNotFoundError:
+            return pickle.loads(self.autoscaling_policy.encode())
 
     def get_upscale_smoothing_factor(self) -> PositiveFloat:
         return self.upscale_smoothing_factor or self.smoothing_factor
