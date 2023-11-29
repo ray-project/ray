@@ -1,5 +1,5 @@
 """
-This test suite covers error handling and propagation in Ray AIR.
+This test suite covers error handling and propagation in Ray Train/Tune.
 
 There are two main error types to test:
 1. Trainable errors: These happen in the remote actor itself.
@@ -16,19 +16,24 @@ These tests should:
 - Assert how errors from the Tune driver get propagated to the user.
 """
 import gc
-import os
-from typing import List
-import pytest
+import threading
+import time
 from tempfile import TemporaryDirectory
+
+import pytest
 
 import ray
 from ray import train, tune
+from ray._private.test_utils import wait_for_condition
+from ray._raylet import GcsClient
+from ray.cluster_utils import Cluster
+from ray.core.generated import autoscaler_pb2
 from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
-from ray.train._internal.session import _TrainingResult
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.trainer import BaseTrainer, TrainingFailedError
 from ray.tune import Tuner, TuneConfig, TuneError
 
+from ray.tests.conftest import *  # noqa
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
@@ -46,6 +51,34 @@ def gc_collect():
     # unit tests that share a Ray session
     yield
     gc.collect()
+
+
+@pytest.fixture
+def cluster_setup(ray_start_cluster_head: Cluster):
+    # Sets up a cluster with 4 nodes: head node + 3 workers
+    cluster = ray_start_cluster_head
+    nodes = []
+    nodes.append(cluster.add_node(resources={"worker1": 1, "coordinator": 1}))
+    nodes.append(cluster.add_node(resources={"worker2": 1, "cpu": 1}))
+    nodes.append(cluster.add_node(resources={"worker3": 1, "cpu": 1}))
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    worker1_node_id = ray.get(get_node_id.options(resources={"worker1": 1}).remote())
+    worker2_node_id = ray.get(get_node_id.options(resources={"worker2": 1}).remote())
+    worker3_node_id = ray.get(get_node_id.options(resources={"worker3": 1}).remote())
+    wait_for_condition(
+        lambda: len({node["NodeID"] for node in ray.nodes() if (node["Alive"])}) == 4
+    )
+
+    yield cluster, nodes, [
+        worker1_node_id,
+        worker2_node_id,
+        worker3_node_id,
+    ]
 
 
 class _TestSpecificError(RuntimeError):
@@ -200,71 +233,88 @@ def test_driver_error_with_trainer(ray_start_4_cpus, tmp_path, error_on):
     assert TrainingFailedError._FAILURE_CONFIG_MSG not in str(exc_info.value)
 
 
-class FailingDataParallelTrainer(DataParallelTrainer):
-    def _propagate_results(self, training_results: List[_TrainingResult]):
-        super()._propagate_results(training_results)
+@pytest.mark.parametrize("error_at_level", ["worker", "coordinator"])
+def test_preemption_handling(
+    cluster_setup,
+    tmp_path,
+    error_at_level: str,
+):
+    """Integration test for node preemption handling in Ray Train/Tune.
+    Even though `max_failures=0`, preemption errors should still be retried."""
+    cluster, nodes, node_ids = cluster_setup
+    # node 1 = coordinator, node 2 = worker, node 3 = worker
+    coordinator_node, worker_node, _ = nodes
+    coordinator_node_id, worker_node_id, _ = node_ids
 
-        if training_results[0].metrics["round"] == 2:
-            print("[Round 2b] Failing the coordinator actor!!")
-            # NOTE: ray.actor.exit_actor raises a SystemExit, which only exits out
-            # of this training thread. This is because the actors spawned by
-            # Ray Train looks like:
-            # Coordinator (event handling main thread + training thread <- we are here)
-            #   Worker 0 (event handling main thread + training thread)
-            #   ...
-            #   Worker n-1 (same as above)
-            # We need to use os._exit to exit out of the entire actor main thread.
-            os._exit(1)
-
-
-def test_preemption_error(tmp_path):
-    """This test simulates preemption actor errors at different levels of execution
-    and checks that the error counting is correct:
-    - Round 0: Actor error in the training worker. (shouldn't be counted)
-    - Round 1: User error in the training worker.
-    - Round 2: Actor error in the coordinator actor. (shouldn't be counted)
-    - Round 3: No error.
-    This run should pass with `max_failures=1`.
-    """
+    num_workers = 2
+    tmp_path.joinpath("markers").mkdir()
 
     def train_fn(config):
         checkpoint = train.get_checkpoint()
-        round = 0
+        start_iter = 0
         if checkpoint:
-            round = load_dict_checkpoint(checkpoint)["round"] + 1
+            start_iter = load_dict_checkpoint(checkpoint)["iter"] + 1
+            print(f"Restored at iter = {start_iter}")
 
-        with create_dict_checkpoint({"round": round}) as checkpoint:
-            ray.train.report({"round": round}, checkpoint=checkpoint)
+        for iter in range(start_iter, 6):
+            with create_dict_checkpoint({"iter": iter}) as checkpoint:
+                ray.train.report({"iter": iter}, checkpoint=checkpoint)
 
-        if round == 0:
-            print("\n[Round 0] Ray actor error from the training worker\n")
-            os._exit(1)
-        elif round == 1:
-            print("\n[Round 1] User training loop error\n")
-            raise RuntimeError("This is an error in the user code.")
-        elif round == 2:
-            print(
-                "\n[Round 2a] No worker error -- instead, "
-                "mock a Train coordinator actor failure (2b)\n"
-            )
-        elif round == 3:
-            print("\n[Round 3] No error on the last round.\n")
-        else:
-            raise RuntimeError("Should stop after round=3...")
+            if iter == 2:
+                # Write a "done marker" to tell the driver to simulate a preemption.
+                tmp_path.joinpath(
+                    "markers", str(ray.train.get_context().get_world_rank())
+                ).touch()
+                # Await execution.
+                time.sleep(120)
 
-    trainer = FailingDataParallelTrainer(
-        train_loop_per_worker=train_fn,
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(
-            storage_path=str(tmp_path),
-            name="test_preemption_error",
-            failure_config=train.FailureConfig(fail_fast=False, max_failures=1),
-        ),
+    def launch_training():
+        trainer = DataParallelTrainer(
+            train_loop_per_worker=train_fn,
+            scaling_config=ScalingConfig(
+                num_workers=num_workers,
+                trainer_resources={"coordinator": 1},
+                resources_per_worker={"cpu": 1},  # worker2 and worker3
+            ),
+            run_config=RunConfig(
+                storage_path=str(tmp_path),
+                name="test_preemption_error",
+                failure_config=train.FailureConfig(fail_fast=False, max_failures=0),
+            ),
+        )
+        result = trainer.fit()
+        assert result.metrics["iter"] == 5
+
+    t = threading.Thread(target=launch_training)
+    t.start()
+
+    # Wait until the workers are ready for preemption (after a few checkpoints).
+    while len(list(tmp_path.joinpath("markers").glob("*"))) < num_workers:
+        time.sleep(0.5)
+
+    if error_at_level == "coordinator":
+        node, node_id = coordinator_node, coordinator_node_id
+    elif error_at_level == "worker":
+        node, node_id = worker_node, worker_node_id
+    else:
+        raise NotImplementedError(f"Invalid error_at_level = {error_at_level}")
+
+    # Preempt a node.
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    print("Draining node...")
+    is_accepted = gcs_client.drain_node(
+        node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
     )
-    result = trainer.fit()
-    assert result.metrics["round"] == 3
-
-    # TODO(justinvyu): Add some way to get the history of errors from the result.
+    assert is_accepted
+    print("Killing node...")
+    cluster.remove_node(node, allow_graceful=True)
+    print("Adding new node..")  # so that the job can be rescheduled
+    # New node can replace a preempted coordinator or worker
+    # NOTE: `cluster.add_node` only works in the main thread.
+    cluster.add_node(resources={"coordinator": 1, "cpu": 1})
+    t.join()  # Assert no errors during training.
 
 
 if __name__ == "__main__":
