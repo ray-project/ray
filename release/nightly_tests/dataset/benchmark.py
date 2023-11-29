@@ -154,7 +154,7 @@ class Benchmark:
         }
         if isinstance(fn_output, dict):
             extra_metrics = {}
-            for metric_key, metric_val in fn_output:
+            for metric_key, metric_val in fn_output.items():
                 if metric_key in BenchmarkMetric.__members__:
                     curr_case_metrics[metric_key] = metric_val
                 else:

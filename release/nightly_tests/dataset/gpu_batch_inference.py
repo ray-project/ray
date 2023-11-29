@@ -112,14 +112,13 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
 
     # For structured output integration with internal tooling
     results = {
-        "data_directory": data_directory,
-        "data_format": data_format,
         BenchmarkMetric.RUNTIME.value: total_time,
         BenchmarkMetric.THROUGHPUT.value: throughput,
+        "data_directory": data_directory,
+        "data_format": data_format,
         "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
         "throughput_images_s_wo_metadata_fetch": throughput_without_metadata_fetch,
     }
-    print("===> results in main:", results)
 
     return results
 
@@ -127,5 +126,4 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
 if __name__ == "__main__":
     benchmark = Benchmark("gpu-batch-inference")
     benchmark.run_fn("batch-inference", main)
-    print("===> benchmark results:", benchmark.result)
     benchmark.write_result()
