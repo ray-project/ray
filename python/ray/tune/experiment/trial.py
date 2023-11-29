@@ -22,7 +22,10 @@ from ray.air.constants import (
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint, CheckpointConfig
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.constants import (
+    RAY_CHDIR_TO_TRIAL_DIR,
+    RAY_TRAIN_COUNT_PREEMPTION_ERRORS,
+)
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
@@ -759,7 +762,10 @@ class Trial:
             self.temporary_state.num_restore_failures += 1
 
     def _handle_ray_actor_error(self, exc: RayActorError):
-        if not exc.preempted:
+        count_preemption_errors = bool(
+            int(os.environ.get(RAY_TRAIN_COUNT_PREEMPTION_ERRORS, "0"))
+        )
+        if not exc.preempted or count_preemption_errors:
             # Only count non-preempted actor errors as failures.
             self.run_metadata.num_failures += 1
 
