@@ -19,7 +19,7 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     EndpointInfo,
     EndpointTag,
-    TargetCapacityScaleDirection,
+    TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -71,7 +71,7 @@ class BuildAppTaskInfo:
     code_version: str
     config: ServeApplicationSchema
     target_capacity: Optional[float]
-    target_capacity_scale_direction: Optional[TargetCapacityScaleDirection]
+    target_capacity_direction: Optional[TargetCapacityDirection]
     finished: bool
 
 
@@ -92,7 +92,7 @@ class ApplicationTargetState:
     config: application config deployed by user. None if application was
         deployed through serve.run.
     target_capacity: the target_capacity to use when adjusting num_replicas.
-    target_capacity_scale_direction: the scale direction to use when
+    target_capacity_direction: the scale direction to use when
         running the Serve autoscaler.
     deleting: whether the application is being deleted.
     """
@@ -101,7 +101,7 @@ class ApplicationTargetState:
     code_version: Optional[str]
     config: Optional[ServeApplicationSchema]
     target_capacity: Optional[float]
-    target_capacity_scale_direction: Optional[TargetCapacityScaleDirection]
+    target_capacity_direction: Optional[TargetCapacityDirection]
     deleting: bool
 
 
@@ -147,7 +147,7 @@ class ApplicationState:
             code_version=None,
             config=None,
             target_capacity=None,
-            target_capacity_scale_direction=None,
+            target_capacity_direction=None,
             deleting=False,
         )
         self._save_checkpoint_func = save_checkpoint_func
@@ -201,7 +201,7 @@ class ApplicationState:
             checkpoint_data.code_version,
             checkpoint_data.config,
             checkpoint_data.target_capacity,
-            checkpoint_data.target_capacity_scale_direction,
+            checkpoint_data.target_capacity_direction,
             checkpoint_data.deleting,
         )
 
@@ -211,7 +211,7 @@ class ApplicationState:
         code_version: str,
         target_config: Optional[ServeApplicationSchema],
         target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+        target_capacity_direction: Optional[TargetCapacityDirection] = None,
         deleting: bool = False,
     ):
         """Set application target state.
@@ -241,7 +241,7 @@ class ApplicationState:
             code_version,
             target_config,
             target_capacity,
-            target_capacity_scale_direction,
+            target_capacity_direction,
             deleting,
         )
 
@@ -339,14 +339,14 @@ class ApplicationState:
             code_version=None,
             target_config=None,
             target_capacity=None,
-            target_capacity_scale_direction=None,
+            target_capacity_direction=None,
         )
 
     def deploy_config(
         self,
         config: ServeApplicationSchema,
         target_capacity: Optional[float],
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection],
+        target_capacity_direction: Optional[TargetCapacityDirection],
         deployment_time: int,
     ) -> None:
         """Deploys an application config.
@@ -375,7 +375,7 @@ class ApplicationState:
                     deployment_infos=overrided_infos,
                     target_config=config,
                     target_capacity=target_capacity,
-                    target_capacity_scale_direction=target_capacity_scale_direction,
+                    target_capacity_direction=target_capacity_direction,
                 )
             except (TypeError, ValueError, RayServeException):
                 self._clear_target_state()
@@ -420,7 +420,7 @@ class ApplicationState:
                 code_version=config_version,
                 config=config,
                 target_capacity=target_capacity,
-                target_capacity_scale_direction=target_capacity_scale_direction,
+                target_capacity_direction=target_capacity_direction,
                 finished=False,
             )
 
@@ -630,8 +630,8 @@ class ApplicationState:
             # Apply the target capacity information to the deployment info.
             deploy_info.set_target_capacity(
                 new_target_capacity=self._target_state.target_capacity,
-                new_target_capacity_scale_direction=(
-                    self._target_state.target_capacity_scale_direction
+                new_target_capacity_direction=(
+                    self._target_state.target_capacity_direction
                 ),
             )
 
@@ -670,8 +670,8 @@ class ApplicationState:
                 code_version=self._build_app_task_info.code_version,
                 target_config=self._build_app_task_info.config,
                 target_capacity=self._build_app_task_info.target_capacity,
-                target_capacity_scale_direction=(
-                    self._build_app_task_info.target_capacity_scale_direction
+                target_capacity_direction=(
+                    self._build_app_task_info.target_capacity_direction
                 ),
             )
         elif task_status == BuildAppStatus.FAILED:
@@ -829,7 +829,7 @@ class ApplicationStateManager:
         app_config: ServeApplicationSchema,
         deployment_time: float = 0,
         target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+        target_capacity_direction: Optional[TargetCapacityDirection] = None,
     ) -> None:
         """Deploy application from config."""
 
@@ -844,7 +844,7 @@ class ApplicationStateManager:
         self._application_states[name].deploy_config(
             app_config,
             target_capacity,
-            target_capacity_scale_direction,
+            target_capacity_direction,
             deployment_time=deployment_time,
         )
 

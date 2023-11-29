@@ -382,7 +382,7 @@ class RequestProtocol(str, Enum):
     GRPC = "gRPC"
 
 
-class TargetCapacityScaleDirection(str, Enum):
+class TargetCapacityDirection(str, Enum):
     """Determines what direction the target capacity is scaling."""
 
     UP = "UP"

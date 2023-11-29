@@ -20,7 +20,7 @@ from ray.serve._private.common import (
     NodeId,
     RunningReplicaInfo,
     StatusOverview,
-    TargetCapacityScaleDirection,
+    TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
@@ -210,7 +210,7 @@ class ServeController:
 
         # The target capacity percentage for all deployments across the cluster.
         self._target_capacity: Optional[float] = None
-        self._scale_direction: Optional[TargetCapacityScaleDirection] = None
+        self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         self._recover_state_from_checkpoint()
 
         # Nodes where proxy actors should run.
@@ -477,8 +477,12 @@ class ServeController:
         )
 
     def _recover_state_from_checkpoint(self):
-        deployment_time, serve_config, scale_direction = self._read_config_checkpoint()
-        self._scale_direction = scale_direction
+        (
+            deployment_time,
+            serve_config,
+            target_capacity_direction,
+        ) = self._read_config_checkpoint()
+        self._target_capacity_direction = target_capacity_direction
         if serve_config is not None:
             logger.info(
                 "Recovered config from checkpoint.", extra={"log_to_stderr": False}
@@ -487,9 +491,7 @@ class ServeController:
 
     def _read_config_checkpoint(
         self,
-    ) -> Tuple[
-        float, Optional[ServeDeploySchema], Optional[TargetCapacityScaleDirection]
-    ]:
+    ) -> Tuple[float, Optional[ServeDeploySchema], Optional[TargetCapacityDirection]]:
         """Reads the current Serve config checkpoint.
 
         The Serve config checkpoint stores active application configs and
@@ -503,8 +505,8 @@ class ServeController:
                 active application states. It may not exactly match the
                 submitted config (e.g. the top-level http options may be
                 different).
-            3. The scaling direction calculated after the Serve config was
-               submitted.
+            3. The target_capacity direction calculated after the Serve
+               was submitted.
 
         If the GCS doesn't contain a checkpoint, returns (0, None, None).
         """
@@ -515,7 +517,7 @@ class ServeController:
             (
                 deployment_time,
                 target_capacity,
-                scale_direction,
+                target_capacity_direction,
                 config_checkpoints_dict,
             ) = pickle.loads(checkpoint)
 
@@ -525,7 +527,7 @@ class ServeController:
                     applications=list(config_checkpoints_dict.values()),
                     target_capacity=target_capacity,
                 ),
-                scale_direction,
+                target_capacity_direction,
             )
         else:
             return (0.0, None, None)
@@ -744,15 +746,15 @@ class ServeController:
 
         _, curr_config, _ = self._read_config_checkpoint()
 
-        self._scale_direction = calculate_scale_direction(
+        self._target_capacity_direction = calculate_target_capacity_direction(
             curr_config=curr_config,
             new_config=config,
-            curr_scale_direction=self._scale_direction,
+            curr_target_capacity_direction=self._target_capacity_direction,
         )
         log_target_capacity_change(
             self._target_capacity,
             config.target_capacity,
-            self._scale_direction,
+            self._target_capacity_direction,
         )
         self._target_capacity = config.target_capacity
 
@@ -778,7 +780,7 @@ class ServeController:
                 app_config,
                 deployment_time=deployment_time,
                 target_capacity=self._target_capacity,
-                target_capacity_scale_direction=self._scale_direction,
+                target_capacity_direction=self._target_capacity_direction,
             )
 
         self.kv_store.put(
@@ -787,7 +789,7 @@ class ServeController:
                 (
                     deployment_time,
                     self._target_capacity,
-                    self._scale_direction,
+                    self._target_capacity_direction,
                     new_config_checkpoint,
                 )
             ),
@@ -1081,46 +1083,46 @@ class ServeController:
                 log_file_path = handler.baseFilename
         return self.system_logging_config, log_file_path
 
-    def _get_scale_direction(self) -> Optional[TargetCapacityScaleDirection]:
+    def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:
         """Gets the controller's scale direction (for testing purposes)."""
 
-        return self._scale_direction
+        return self._target_capacity_direction
 
 
-def calculate_scale_direction(
+def calculate_target_capacity_direction(
     curr_config: Optional[ServeDeploySchema],
     new_config: ServeDeploySchema,
-    curr_scale_direction: Optional[float],
-) -> Optional[TargetCapacityScaleDirection]:
+    curr_target_capacity_direction: Optional[float],
+) -> Optional[TargetCapacityDirection]:
     """Compares two Serve configs to calculate the next scaling direction."""
 
     curr_target_capacity = None
-    next_scale_direction = None
+    next_target_capacity_direction = None
 
     if curr_config is not None and applications_match(curr_config, new_config):
         curr_target_capacity = curr_config.target_capacity
         next_target_capacity = new_config.target_capacity
 
         if curr_target_capacity == next_target_capacity:
-            next_scale_direction = curr_scale_direction
+            next_target_capacity_direction = curr_target_capacity_direction
         elif curr_target_capacity is None:
             # The current config has finished rolling out. The next config
             # is now starting to roll out, so we set the scale direction to up.
-            next_scale_direction = TargetCapacityScaleDirection.UP
+            next_target_capacity_direction = TargetCapacityDirection.UP
         elif next_target_capacity is None:
-            next_scale_direction = None
+            next_target_capacity_direction = None
         elif curr_target_capacity < next_target_capacity:
-            next_scale_direction = TargetCapacityScaleDirection.UP
+            next_target_capacity_direction = TargetCapacityDirection.UP
         else:
-            next_scale_direction = TargetCapacityScaleDirection.DOWN
+            next_target_capacity_direction = TargetCapacityDirection.DOWN
     elif new_config.target_capacity is not None:
         # A config with different apps has been applied, and it contains a
         # target_capacity. Serve must start scaling this config up.
-        next_scale_direction = TargetCapacityScaleDirection.UP
+        next_target_capacity_direction = TargetCapacityDirection.UP
     else:
-        next_scale_direction = None
+        next_target_capacity_direction = None
 
-    return next_scale_direction
+    return next_target_capacity_direction
 
 
 def applications_match(config1: ServeDeploySchema, config2: ServeDeploySchema) -> bool:
@@ -1138,14 +1140,15 @@ def applications_match(config1: ServeDeploySchema, config2: ServeDeploySchema) -
 def log_target_capacity_change(
     curr_target_capacity: Optional[float],
     next_target_capacity: Optional[float],
-    next_scale_direction: Optional[TargetCapacityScaleDirection],
+    next_target_capacity_direction: Optional[TargetCapacityDirection],
 ):
     """Logs changes in the target_capacity."""
 
     if curr_target_capacity != next_target_capacity:
-        if isinstance(next_scale_direction, TargetCapacityScaleDirection):
+        if isinstance(next_target_capacity_direction, TargetCapacityDirection):
             logger.info(
-                f"Target capacity scaling {next_scale_direction.value.lower()} "
+                "Target capacity scaling "
+                f"{next_target_capacity_direction.value.lower()} "
                 f"from {curr_target_capacity} to {next_target_capacity}."
             )
         else:

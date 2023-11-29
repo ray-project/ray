@@ -1463,7 +1463,7 @@ class DeploymentState:
         """Deploy the deployment.
 
         If the deployment already exists with the same version, config,
-        target_capacity, and target_capacity_scale_direction,
+        target_capacity, and target_capacity_direction,
         this method returns False.
 
         Returns:
@@ -1488,8 +1488,8 @@ class DeploymentState:
                 and curr_deployment_info.version == deployment_info.version
                 and curr_deployment_info.target_capacity
                 == deployment_info.target_capacity
-                and curr_deployment_info.target_capacity_scale_direction
-                == deployment_info.target_capacity_scale_direction
+                and curr_deployment_info.target_capacity_direction
+                == deployment_info.target_capacity_direction
             ):
                 return False
 

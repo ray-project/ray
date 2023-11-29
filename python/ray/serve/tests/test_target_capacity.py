@@ -16,7 +16,7 @@ from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
-    TargetCapacityScaleDirection,
+    TargetCapacityDirection,
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
@@ -236,8 +236,8 @@ def test_controller_recover_target_capacity(
     client.deploy_apps(config)
     wait_for_condition(lambda: serve.status().target_capacity == 100.0)
     assert (
-        ray.get(client._controller._get_scale_direction.remote())
-        == TargetCapacityScaleDirection.UP
+        ray.get(client._controller._get_target_capacity_direction.remote())
+        == TargetCapacityDirection.UP
     )
 
     # Scale down to target_capacity 50, both deployments should be at half scale.
@@ -252,8 +252,8 @@ def test_controller_recover_target_capacity(
         },
     )
     assert (
-        ray.get(client._controller._get_scale_direction.remote())
-        == TargetCapacityScaleDirection.DOWN
+        ray.get(client._controller._get_target_capacity_direction.remote())
+        == TargetCapacityDirection.DOWN
     )
 
     ray.kill(client._controller, no_restart=False)
@@ -268,8 +268,8 @@ def test_controller_recover_target_capacity(
         },
     )
     assert (
-        ray.get(client._controller._get_scale_direction.remote())
-        == TargetCapacityScaleDirection.DOWN
+        ray.get(client._controller._get_target_capacity_direction.remote())
+        == TargetCapacityDirection.DOWN
     )
 
 

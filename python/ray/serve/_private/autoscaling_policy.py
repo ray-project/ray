@@ -3,7 +3,7 @@ import math
 from abc import ABCMeta, abstractmethod
 from typing import List, Optional
 
-from ray.serve._private.common import TargetCapacityScaleDirection
+from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingConfig
@@ -168,7 +168,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         self.target_capacity: Optional[float] = None
 
         # Determines what lower bound to use when calculating num_replicas
-        self.scale_direction: Optional[TargetCapacityScaleDirection] = None
+        self.target_capacity_direction: Optional[TargetCapacityDirection] = None
 
     def get_decision_num_replicas(
         self,
@@ -231,10 +231,10 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
     def set_target_capacity(
         self,
         new_target_capacity: Optional[float],
-        new_target_capacity_scale_direction: Optional[TargetCapacityScaleDirection],
+        new_target_capacity_direction: Optional[TargetCapacityDirection],
     ):
         self.target_capacity = new_target_capacity
-        self.scale_direction = new_target_capacity_scale_direction
+        self.target_capacity_direction = new_target_capacity_direction
 
     def get_capacity_adjusted_min_replicas(self) -> int:
         return get_capacity_adjusted_num_replicas(
@@ -260,8 +260,8 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         initial_upper_bound = self.get_capacity_adjusted_max_replicas()
 
         if self.get_capacity_adjusted_initial_replicas() is not None and (
-            self.scale_direction is None
-            or self.scale_direction == TargetCapacityScaleDirection.UP
+            self.target_capacity_direction is None
+            or self.target_capacity_direction == TargetCapacityDirection.UP
         ):
             initial_lower_bound = self.get_capacity_adjusted_initial_replicas()
         else:
@@ -273,7 +273,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
     def get_curr_lower_bound(self) -> int:
         if self.get_capacity_adjusted_initial_replicas() is not None and (
-            self.scale_direction == TargetCapacityScaleDirection.UP
+            self.target_capacity_direction == TargetCapacityDirection.UP
         ):
             return self.get_capacity_adjusted_initial_replicas()
         else:

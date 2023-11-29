@@ -196,7 +196,7 @@ message ReplicaConfig {
   int32 max_replicas_per_node = 8;
 }
 
-enum TargetCapacityScaleDirection {
+enum TargetCapacityDirection {
   UNSET = 0;
   UP = 1;
   DOWN = 2;
@@ -211,7 +211,7 @@ message DeploymentInfo {
   string version = 6;
   int64 end_time_ms = 7;
   double target_capacity = 8;
-  TargetCapacityScaleDirection target_capacity_scale_direction = 9;
+  TargetCapacityDirection target_capacity_direction = 9;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.

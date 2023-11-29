@@ -2,11 +2,11 @@ from typing import Any, Dict, Optional
 
 import ray
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
-from ray.serve._private.common import TargetCapacityScaleDirection
+from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
 from ray.serve.generated.serve_pb2 import (
-    TargetCapacityScaleDirection as TargetCapacityScaleDirectionProtoEnum,
+    TargetCapacityDirection as TargetCapacityDirectionProtoEnum,
 )
 
 # Concurrency group used for operations that cannot be blocked by user code
@@ -17,17 +17,17 @@ REPLICA_DEFAULT_ACTOR_OPTIONS = {
 }
 
 
-SCALE_DIRECTION_TO_PROTO = {
-    None: TargetCapacityScaleDirectionProtoEnum.UNSET,
-    TargetCapacityScaleDirection.UP: TargetCapacityScaleDirectionProtoEnum.UP,
-    TargetCapacityScaleDirection.DOWN: TargetCapacityScaleDirectionProtoEnum.DOWN,
+TARGET_CAPACITY_DIRECTION_TO_PROTO = {
+    None: TargetCapacityDirectionProtoEnum.UNSET,
+    TargetCapacityDirection.UP: TargetCapacityDirectionProtoEnum.UP,
+    TargetCapacityDirection.DOWN: TargetCapacityDirectionProtoEnum.DOWN,
 }
 
 
-SCALE_DIRECTION_FROM_PROTO = {
-    TargetCapacityScaleDirectionProtoEnum.UNSET: None,
-    TargetCapacityScaleDirectionProtoEnum.UP: TargetCapacityScaleDirection.UP,
-    TargetCapacityScaleDirectionProtoEnum.DOWN: TargetCapacityScaleDirection.DOWN,
+TARGET_CAPACITY_DIRECTION_FROM_PROTO = {
+    TargetCapacityDirectionProtoEnum.UNSET: None,
+    TargetCapacityDirectionProtoEnum.UP: TargetCapacityDirection.UP,
+    TargetCapacityDirectionProtoEnum.DOWN: TargetCapacityDirection.DOWN,
 }
 
 
@@ -45,7 +45,7 @@ class DeploymentInfo:
         docs_path: str = None,
         ingress: bool = False,
         target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+        target_capacity_direction: Optional[TargetCapacityDirection] = None,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -65,7 +65,7 @@ class DeploymentInfo:
         self.ingress = ingress
 
         self.target_capacity = target_capacity
-        self.target_capacity_scale_direction = target_capacity_scale_direction
+        self.target_capacity_direction = target_capacity_direction
 
         if deployment_config.autoscaling_config is not None:
             self.autoscaling_policy = BasicAutoscalingPolicy(
@@ -73,7 +73,7 @@ class DeploymentInfo:
             )
             self.autoscaling_policy.set_target_capacity(
                 target_capacity,
-                target_capacity_scale_direction,
+                target_capacity_direction,
             )
         else:
             self.autoscaling_policy = None
@@ -106,21 +106,21 @@ class DeploymentInfo:
             docs_path=self.docs_path,
             ingress=self.ingress,
             target_capacity=self.target_capacity,
-            target_capacity_scale_direction=self.target_capacity_scale_direction,
+            target_capacity_direction=self.target_capacity_direction,
         )
 
     def set_target_capacity(
         self,
         new_target_capacity: Optional[float],
-        new_target_capacity_scale_direction: Optional[TargetCapacityScaleDirection],
+        new_target_capacity_direction: Optional[TargetCapacityDirection],
     ):
         self.target_capacity = new_target_capacity
-        self.target_capacity_scale_direction = new_target_capacity_scale_direction
+        self.target_capacity_direction = new_target_capacity_direction
 
         if self.autoscaling_policy is not None:
             self.autoscaling_policy.set_target_capacity(
                 new_target_capacity,
-                new_target_capacity_scale_direction,
+                new_target_capacity_direction,
             )
 
     @property
@@ -158,8 +158,8 @@ class DeploymentInfo:
             "target_capacity": proto.target_capacity
             if proto.target_capacity != -1
             else None,
-            "target_capacity_scale_direction": SCALE_DIRECTION_FROM_PROTO[
-                proto.target_capacity_scale_direction
+            "target_capacity_direction": TARGET_CAPACITY_DIRECTION_FROM_PROTO[
+                proto.target_capacity_direction
             ],
         }
 
@@ -180,7 +180,7 @@ class DeploymentInfo:
             data["target_capacity"] = -1
         else:
             data["target_capacity"] = self.target_capacity
-        data["target_capacity_scale_direction"] = SCALE_DIRECTION_TO_PROTO[
-            self.target_capacity_scale_direction
+        data["target_capacity_direction"] = TARGET_CAPACITY_DIRECTION_TO_PROTO[
+            self.target_capacity_direction
         ]
         return DeploymentInfoProto(**data)

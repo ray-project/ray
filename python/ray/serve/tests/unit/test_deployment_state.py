@@ -13,7 +13,7 @@ from ray.serve._private.common import (
     ReplicaName,
     ReplicaState,
     ReplicaTag,
-    TargetCapacityScaleDirection,
+    TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
@@ -1992,8 +1992,10 @@ def test_new_version_and_scale_up(mock_deployment_state):
     )
 
 
-@pytest.mark.parametrize("scale_direction", ["up", "down"])
-def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction):
+@pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
+def test_scale_num_replicas(
+    mock_deployment_state_manager_full, target_capacity_direction
+):
     """Test upscaling and downscaling the number of replicas manually.
 
     Upscaling version:
@@ -2043,7 +2045,7 @@ def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction)
     )
 
     # upscale or downscale the number of replicas manually
-    new_num_replicas = 5 if scale_direction == "up" else 1
+    new_num_replicas = 5 if target_capacity_direction == "up" else 1
     info_2, _ = deployment_info(num_replicas=new_num_replicas, version=version)
     deployment_state_manager.deploy(deployment_id, info_2)
     deployment_state_manager.update()
@@ -2053,7 +2055,7 @@ def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction)
         deployment_state.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
-    if scale_direction == "up":
+    if target_capacity_direction == "up":
         check_counts(
             deployment_state,
             total=5,
@@ -2083,13 +2085,13 @@ def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction)
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
     assert deployment_state.curr_status_info.status_trigger == (
         DeploymentStatusTrigger.UPSCALE_COMPLETED
-        if scale_direction == "up"
+        if target_capacity_direction == "up"
         else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
     )
 
 
-@pytest.mark.parametrize("scale_direction", ["up", "down"])
-def test_autoscale(mock_deployment_state_manager_full, scale_direction):
+@pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
+def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction):
     """Test autoscaling up and down.
 
     Upscaling version:
@@ -2147,12 +2149,13 @@ def test_autoscale(mock_deployment_state_manager_full, scale_direction):
 
     for replica in depstate._replicas.get():
         deployment_state_manager.record_autoscaling_metrics(
-            (replica._actor.replica_tag, 2 if scale_direction == "up" else 0), None
+            (replica._actor.replica_tag, 2 if target_capacity_direction == "up" else 0),
+            None,
         )
 
     # status=UPSCALING/DOWNSCALING, status_trigger=AUTOSCALE
     deployment_state_manager.update()
-    if scale_direction == "up":
+    if target_capacity_direction == "up":
         check_counts(
             depstate,
             total=6,
@@ -2168,7 +2171,7 @@ def test_autoscale(mock_deployment_state_manager_full, scale_direction):
 
     # Set replicas ready and check statuses
     for replica in depstate._replicas.get():
-        if scale_direction == "up":
+        if target_capacity_direction == "up":
             replica._actor.set_ready()
         else:
             replica._actor.set_done_stopping()
@@ -2178,7 +2181,7 @@ def test_autoscale(mock_deployment_state_manager_full, scale_direction):
     assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
     assert depstate.curr_status_info.status_trigger == (
         DeploymentStatusTrigger.UPSCALE_COMPLETED
-        if scale_direction == "up"
+        if target_capacity_direction == "up"
         else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
     )
 
@@ -3294,12 +3297,12 @@ class TestTargetCapacity:
         deployment_state: DeploymentState,
         curr_deployment_info: DeploymentInfo,
         target_capacity: Optional[float],
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection],
+        target_capacity_direction: Optional[TargetCapacityDirection],
     ):
         new_deployment_info = deepcopy(curr_deployment_info)
         new_deployment_info.set_target_capacity(
             new_target_capacity=target_capacity,
-            new_target_capacity_scale_direction=target_capacity_scale_direction,
+            new_target_capacity_direction=target_capacity_direction,
         )
         updating = deployment_state.deploy(new_deployment_info)
         assert updating
@@ -3350,7 +3353,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=50,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3389,7 +3392,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=None,
-            target_capacity_scale_direction=None,
+            target_capacity_direction=None,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3415,7 +3418,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=100,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state.update()
@@ -3427,7 +3430,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=None,
-            target_capacity_scale_direction=None,
+            target_capacity_direction=None,
         )
 
         deployment_state.update()
@@ -3448,7 +3451,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=0,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3474,7 +3477,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=100,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3496,7 +3499,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=50,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.DOWN,
+            target_capacity_direction=TargetCapacityDirection.DOWN,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3528,7 +3531,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=1,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.DOWN,
+            target_capacity_direction=TargetCapacityDirection.DOWN,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3559,7 +3562,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=0,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.DOWN,
+            target_capacity_direction=TargetCapacityDirection.DOWN,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3599,7 +3602,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=0,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state.update()
@@ -3611,7 +3614,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=1,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3637,7 +3640,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=50,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3667,7 +3670,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=100,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3708,7 +3711,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=50,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3730,7 +3733,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=None,
-            target_capacity_scale_direction=None,
+            target_capacity_direction=None,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3774,7 +3777,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=50,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3800,7 +3803,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=None,
-            target_capacity_scale_direction=None,
+            target_capacity_direction=None,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3813,7 +3816,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=0,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
         deployment_state_update_result = deployment_state.update()
         assert not deployment_state_update_result.upscale
@@ -3825,7 +3828,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=50,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
         deployment_state_update_result = deployment_state.update()
         assert not deployment_state_update_result.upscale
@@ -3837,7 +3840,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=100,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
         assert not deployment_state_update_result.upscale
         assert not deployment_state_update_result.downscale
@@ -3850,7 +3853,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_2,
             target_capacity=100,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state._target_state.num_replicas = 1
@@ -3892,7 +3895,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=0,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state.update()
@@ -3903,7 +3906,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_1,
             target_capacity=1,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
         deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
@@ -3931,7 +3934,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_2,
             target_capacity=1,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state.update()
@@ -3943,7 +3946,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_2,
             target_capacity=50,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -3977,7 +3980,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_3,
             target_capacity=None,
-            target_capacity_scale_direction=None,
+            target_capacity_direction=None,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -4006,7 +4009,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_4,
             target_capacity=50,
-            target_capacity_scale_direction=TargetCapacityScaleDirection.UP,
+            target_capacity_direction=TargetCapacityDirection.UP,
         )
 
         deployment_state_update_result = deployment_state.update()
@@ -4040,7 +4043,7 @@ class TestTargetCapacity:
             deployment_state,
             b_info_4,
             target_capacity=None,
-            target_capacity_scale_direction=None,
+            target_capacity_direction=None,
         )
 
         deployment_state_update_result = deployment_state.update()
