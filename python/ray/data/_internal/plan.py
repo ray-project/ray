@@ -29,8 +29,6 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
@@ -210,10 +208,7 @@ class ExecutionPlan:
         else:
             # Get schema of output blocks.
             schema = self.schema(fetch_if_missing=False)
-            if self.is_read_only():
-                dataset_blocks = self._in_blocks
-            else:
-                dataset_blocks = self._snapshot_blocks
+            dataset_blocks = self._snapshot_blocks
 
         if schema is None:
             schema_str = "Unknown schema"
@@ -431,8 +426,8 @@ class ExecutionPlan:
             else:
                 return None
         context = self._context
-        # if context.use_new_read_only_path and self.is_read_only():
         if self.is_read_only():
+            # TODO(scottjlee): move this logic into self.execute() instead?
             assert isinstance(self._logical_plan, LogicalPlan)
             allow_clear_input_blocks: bool = True
             preserve_order: bool = False
@@ -445,26 +440,21 @@ class ExecutionPlan:
                 copy.deepcopy(context.execution_options),
                 metrics_tag,
             )
-            from ray.data._internal.execution.legacy_compat import _get_execution_dag
+            from ray.data._internal.execution.legacy_compat import (
+                execute_read_only_to_legacy_lazy_block_list,
+            )
 
-            read_map_op, stats = _get_execution_dag(
+            self._snapshot_blocks = execute_read_only_to_legacy_lazy_block_list(
                 executor,
                 self,
                 allow_clear_input_blocks,
+                self._dataset_uuid,
                 preserve_order,
             )
-            assert isinstance(read_map_op, MapOperator), read_map_op
-            input_data_buffer = read_map_op.input_dependency
-            assert isinstance(input_data_buffer, InputDataBuffer), input_data_buffer
-            # Execute the InputDataBuffer op only, to
-            # initialize known metadata from ReadTasks.
-            bundles = executor.execute(input_data_buffer, initial_stats=stats)
-
-            bundles_metadata = []
-            for bundle in bundles:
-                for _, meta in bundle.blocks:
-                    bundles_metadata.append(meta)
-            self._schema = unify_block_metadata_schema(bundles_metadata)
+            flattened_metadata = self._snapshot_blocks._flatten_metadata(
+                self._snapshot_blocks._cached_metadata
+            )
+            self._schema = unify_block_metadata_schema(flattened_metadata)
             return self._schema
 
         elif self._in_blocks is not None and self._snapshot_blocks is None:

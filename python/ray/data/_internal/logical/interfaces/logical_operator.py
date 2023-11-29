@@ -1,3 +1,4 @@
+import copy
 from typing import List
 
 from .operator import Operator
@@ -15,6 +16,11 @@ class LogicalOperator(Operator):
         name: str,
         input_dependencies: List["LogicalOperator"],
     ):
-        super().__init__(name, input_dependencies)
+        super().__init__(
+            name,
+            # Create a deep copy of the input operators
+            # to avoid modifying their output dependencies.
+            [copy.deepcopy(in_op) for in_op in input_dependencies],
+        )
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x

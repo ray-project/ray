@@ -149,14 +149,15 @@ def execute_read_only_to_legacy_lazy_block_list(
         if not bundle.owns_blocks:
             owns_blocks = False
         bundle_md = []
-        for read_task, meta in bundle.blocks:
-            read_tasks.append(read_task)
+        for read_task_ref, meta in bundle.blocks:
+            read_tasks.append(ray.get(read_task_ref))
             bundle_md.append(meta)
         metadata.append(bundle_md)
 
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
     return LazyBlockList(
         read_tasks,
+        # TODO(scottjlee): update the stage name
         "test_read_stage_name",
         cached_metadata=metadata,
         owned_by_consumer=owns_blocks,
