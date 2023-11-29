@@ -394,9 +394,9 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         else:
             filepath = Path(filename)
 
-        # We want to allow following relative paths that include symlinks pointing
-        # outside of the `root_log_dir`, so use `os.path.abspath` instead of
-        # `Path.resolve()` because `os.path.abspath` does not resolve symlinks.
+        # We want to allow relative paths that include symlinks pointing outside of the
+        # `root_log_dir`, so use `os.path.abspath` instead of `Path.resolve()` because
+        # `os.path.abspath` does not resolve symlinks.
         filepath = Path(os.path.abspath(filepath))
 
         if not filepath.is_file():
