@@ -110,7 +110,7 @@ bool RayObject::IsException(rpc::ErrorType *error_type) const {
   // TODO (kfstorm): metadata should be structured.
   const std::string_view metadata(reinterpret_cast<const char *>(metadata_->Data()),
                                   metadata_->Size());
-  // Fast path for IsInPlasmaError objects.
+  // Keep in sync with common.proto.
   static_assert(ray::rpc::ErrorType::OBJECT_IN_PLASMA == 4);
   if (metadata == "4") {
     *error_type = rpc::ErrorType::OBJECT_IN_PLASMA;
