@@ -43,12 +43,6 @@ Environments and Adapters
    Use this example to try things out and watch the game and the learning progress live in the editor.
    Providing a compiled game, this example could also run in distributed fashion with `num_workers > 0`.
    For a more heavy-weight, distributed, cloud-based example, see ``Unity3D client/server`` below.
-- `RecSym environment example (for recommender systems) using the SlateQ algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py>`__:
-   Script showing how to train SlateQ on a RecSym environment.
-- `SUMO (Simulation of Urban MObility) environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/sumo_env_local.py>`__:
-   Example demonstrating how to use the SUMO simulator in connection with RLlib.
-- `VizDoom example script using RLlib's auto-attention wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/vizdoom_with_attention_net.py>`__:
-   Script showing how to run PPO with an attention net against a VizDoom gym environment.
 - `Subprocess environment <https://github.com/ray-project/ray/blob/master/rllib/env/tests/test_env_with_subprocess.py>`__:
    Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
 
@@ -56,8 +50,6 @@ Environments and Adapters
 Custom- and Complex Models
 --------------------------
 
-- `Attention Net (GTrXL) learning the "repeat-after-me" environment <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__:
-   Example showing how to use the auto-attention wrapper for your default- and custom models in RLlib.
 - `LSTM model learning the "repeat-after-me" environment <https://github.com/ray-project/ray/blob/master/rllib/examples/lstm_auto_wrapping.py>`__:
    Example showing how to use the auto-LSTM wrapper for your default- and custom models in RLlib.
 - `Custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_keras_model.py>`__:

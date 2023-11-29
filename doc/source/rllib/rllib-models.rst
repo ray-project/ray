@@ -351,8 +351,7 @@ Check out RLlib's `GTrXL (Attention Net) <https://arxiv.org/abs/1910.06764>`__ i
 to get a better idea on how to write your own models of this type. These are the models we use
 as wrappers when ``use_attention=True``.
 
-You can run `this example script <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__ to run these nets within some of our algorithms.
-`There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/models/tests/test_attention_nets.py>`__, which confirms their learning capabilities in PPO and IMPALA.
+This `test case <https://github.com/ray-project/ray/blob/master/rllib/models/tests/test_attention_nets.py>`__ confirms their learning capabilities in PPO and IMPALA.
 
 Batch Normalization
 ```````````````````

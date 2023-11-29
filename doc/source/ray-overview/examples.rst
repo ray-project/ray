@@ -635,33 +635,9 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py
-
-        RecSym environment example (for recommender systems) using the SlateQ algorithm
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/sumo_env_local.py
-
-        Example demonstrating how to use the SUMO simulator in connection with RLlib.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/vizdoom_with_attention_net.py
-
-        VizDoom example script using RLlib's auto-attention wrapper
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
         :link: https://github.com/ray-project/ray/blob/master/rllib/env/tests/test_env_with_subprocess.py
 
         Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py
-
-        Attention Net (GTrXL) learning the "repeat-after-me" environment
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib

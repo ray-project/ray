@@ -1885,24 +1885,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/attention_net_tf",
-    main = "examples/attention_net.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=70", "--framework=tf"]
-)
-
-py_test(
-    name = "examples/attention_net_torch",
-    main = "examples/attention_net.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=70", "--framework torch"]
-)
-
-py_test(
     name = "examples/autoregressive_action_dist_tf",
     main = "examples/autoregressive_action_dist.py",
     tags = ["team:rllib", "exclusive", "examples"],
