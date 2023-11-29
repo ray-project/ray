@@ -425,6 +425,9 @@ def test_log_agent_resolve_filename(temp_dir):
     file.touch()
     subdir = root / "subdir"
     subdir.mkdir()
+
+    # Create a directory in the root that contains a valid file and
+    # is symlinked to by a path in the subdir.
     symlinked_dir = root / "symlinked"
     symlinked_dir.mkdir()
     symlinked_file = symlinked_dir / "valid_file"
