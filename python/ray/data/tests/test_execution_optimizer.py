@@ -36,6 +36,7 @@ from ray.data._internal.logical.operators.from_operators import (
     FromNumpy,
     FromPandas,
 )
+from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
@@ -43,6 +44,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.util import (
@@ -1622,6 +1624,38 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
             BatchMapTransformFn,
             BuildOutputBlocksMapTransformFn,
         ],
+    )
+
+
+def test_logical_plan_copy_after_adding_downstream_op(ray_start_regular_shared):
+    ds = ray.data.range(100)
+    ds2 = ds.repartition(5)
+
+    # The Read operator should not have Repartition as a downstream op.
+    read_op = ds._plan._logical_plan.dag
+    assert isinstance(read_op, Read)
+    assert read_op.input_dependencies == [] and read_op.output_dependencies == []
+
+    # The Repartition op should have a
+    # copy of the Read op as an input dependency.
+    repartition_op = ds2._plan._logical_plan.dag
+    assert isinstance(repartition_op, Repartition)
+    assert (
+        len(repartition_op.input_dependencies) == 1
+        # Cannot compare to original Read op for equality
+        # because the Read op is copied. Check the type instead.
+        and isinstance(repartition_op.input_dependencies[0], Read)
+        and repartition_op.output_dependencies == []
+    )
+
+    # After materializing the Dataset, the remaining operator is
+    # a InputData op.
+    ds2 = ds2.materialize()
+    input_data_op = ds2._plan._logical_plan.dag
+    assert isinstance(input_data_op, InputData)
+    assert (
+        input_data_op.input_dependencies == []
+        and input_data_op.output_dependencies == []
     )
 
 
