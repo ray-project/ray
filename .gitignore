@@ -4,6 +4,8 @@
 /python/ray/core
 /python/ray/thirdparty_files/
 /python/ray/_private/internal_thirdparty_files/
+# no longer used, but kept here for least developer disruption
+/python/ray/_private/runtime_env/agent/thirdparty_files/
 /python/ray/pyarrow_files/
 /python/ray/jars/
 /python/ray/cpp/
