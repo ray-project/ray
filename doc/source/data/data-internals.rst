@@ -19,6 +19,14 @@ to :term:`blocks <Block>`. Each block contains a disjoint subset of rows, and Ra
 loads and transforms these blocks in parallel.
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
+The :class:`~ray.data.Dataset` is the user-facing Python object
+(usually held in the driver), while materialized blocks are stored as objects in Ray's
+shared-memory :ref:`object store <objects-in-ray>`.
+
+Generally speaking, the number of concurrently executing tasks determines CPU utilization (or GPU utilization if using GPU transforms).
+The total heap memory usage is a function (determined by your UDF) of the number of concurrently executing tasks multiplied by the block size.
+The total number of materialized blocks in scope determines Ray's object store usage; if this exceeds Ray's object store capacity, then Ray automatically spills blocks to disk.
+Ray Data uses :ref:`streaming execution <streaming_execution>` to minimize the total number of materialized blocks in scope and therefore avoid spilling.
 
 .. image:: images/dataset-arch.svg
 
@@ -32,7 +40,8 @@ Reading files
 -------------
 
 Ray Data uses :ref:`Ray tasks <task-key-concept>` to read files in parallel. Each read
-task reads one or more files and produces an output block:
+task reads one or more files and produces a stream of one or more output blocks.
+These output blocks are either stored in Ray's object store or fed directly to the downstream transform.
 
 .. image:: images/dataset-read.svg
    :align: center
@@ -50,6 +59,7 @@ Transforming data
 
 Ray Data uses either :ref:`Ray tasks <task-key-concept>` or
 :ref:`Ray actors <actor-key-concept>` to transform blocks. By default, it uses tasks.
+Usually, transforms are fused together and with the upstream read task.
 
 .. image:: images/dataset-map.svg
    :align: center
@@ -253,10 +263,9 @@ Execution Memory
 ----------------
 
 During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
+Ray caps object store memory usage by spilling to disk, but excessive worker heap memory usage can cause out-of-memory errors.
 
-Ray Data attempts to bound its heap memory usage to ``num_execution_slots * max_block_size``. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified. The maximum block size is set by the configuration parameter `ray.data.DataContext.target_max_block_size` and is set to 512MiB by default. When a task's output is larger than this value, the worker automatically splits the output into multiple smaller blocks to avoid running out of heap memory.
-
-Large block size can lead to potential out-of-memory situations. To avoid these issues, make sure no single item in your Ray Data is too large, and always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
+For more information on tuning memory usage and preventing out-of-memory errors, see the :ref:`performance guide <data_memory>`.
 
 Object Store Memory
 -------------------
