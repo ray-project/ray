@@ -408,7 +408,7 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
       // When the object is shared, we can have object size smaller than the data buffer.
       RAY_LOG(DEBUG) << "SANG-TODO Update the data size of " << object_id << ". Size: " << data_size;
       auto next_version_to_write = plasma_header->version + 1;
-      plasma_header->WriteAcquire(next_version_to_write, data_size);
+      plasma_header->WriteAcquire(next_version_to_write, data_size, metadata_size);
 
       // Prepare the data buffer and return to the client instead of sending
       // the IPC to object store.
@@ -467,7 +467,7 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
     // When an object is first created, the data size is equivalent to
     // buffer size.
     // The first creation's version is always 1.
-    plasma_header->WriteAcquire(/*next_version_to_write*/1, entry->object.data_size);
+    plasma_header->WriteAcquire(/*next_version_to_write*/1, entry->object.data_size, metadata_size);
   }
 
   return status;
@@ -536,9 +536,13 @@ Status PlasmaClient::Impl::GetBuffers(
 
       // Wait for the object to become ready to read.
       auto plasma_header = GetPlasmaObjectHeader(*object);
+      client_mutex_.unlock();
       int64_t version_read = plasma_header->ReadAcquire(object_entry->second->next_version_to_read);
+      client_mutex_.lock();
       auto data_size = plasma_header->GetDataSize();
+      auto metadata_size = plasma_header->GetMetadataSize();
       RAY_LOG(DEBUG) << "SANG-TODO data size is " << data_size;
+      RAY_LOG(DEBUG) << "SANG-TODO metadata size is " << metadata_size;
       if (version_read > 0) {
         object_entry->second->is_shared = true;
         object_entry->second->next_version_to_read = version_read;
@@ -556,7 +560,7 @@ Status PlasmaClient::Impl::GetBuffers(
       object_buffers[i].data =
           SharedMemoryBuffer::Slice(physical_buf, 0, data_size);
       object_buffers[i].metadata = SharedMemoryBuffer::Slice(
-          physical_buf, object->data_size, object->metadata_size);
+          physical_buf, object->data_size, metadata_size);
       object_buffers[i].device_num = object->device_num;
       // Increment the count of the number of instances of this object that this
       // client is using. Cache the reference to the object.
@@ -617,8 +621,11 @@ Status PlasmaClient::Impl::GetBuffers(
       auto &object_entry = objects_in_use_[received_object_ids[i]];
       // Wait for the object to become ready to read.
       auto plasma_header = GetPlasmaObjectHeader(*object);
+      client_mutex_.unlock();
       int64_t version_read = plasma_header->ReadAcquire(/*version=*/1);
+      client_mutex_.lock();
       auto data_size = plasma_header->GetDataSize();
+      auto metadata_size = plasma_header->GetMetadataSize();
       if (version_read > 0) {
         object_entry->is_shared = true;
         object_entry->next_version_to_read = version_read;
@@ -637,7 +644,7 @@ Status PlasmaClient::Impl::GetBuffers(
       object_buffers[i].data =
           SharedMemoryBuffer::Slice(physical_buf, 0, data_size);
       object_buffers[i].metadata = SharedMemoryBuffer::Slice(
-          physical_buf, object->data_size, object->metadata_size);
+          physical_buf, object->data_size, metadata_size);
       object_buffers[i].device_num = object->device_num;
     } else {
       // The object was not retrieved.  The caller can detect this condition

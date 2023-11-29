@@ -66,6 +66,7 @@ struct PlasmaObjectHeader {
   // is mutable (E.g., when accerlated DAG is used).
   // This should not be modified or accessed directly.
   uint64_t data_size = 0;
+  uint64_t metadata_size = 0;  // TODO is it safe to grow this value?
 
   void Init();
   void Destroy();
@@ -73,7 +74,7 @@ struct PlasmaObjectHeader {
   // NOTE: This does not protect against multiple writers.
   /// \param write_version The new version for write.
   /// \param new_size The new data size of the object.
-  void WriteAcquire(int64_t write_version, uint64_t new_size);
+  void WriteAcquire(int64_t write_version, uint64_t new_size, uint64_t new_metadata_size);
   // Call after completing a write to signal to max_readers many readers.
   void WriteRelease(int64_t write_version, int64_t max_readers);
   // Blocks until the given version is ready to read.
@@ -86,6 +87,7 @@ struct PlasmaObjectHeader {
   // This has to be called only when reader lock is acquired
   // via ReadAcquire.
   uint64_t GetDataSize() const;
+  uint64_t GetMetadataSize() const;
 };
 
 /// A struct that includes info about the object.

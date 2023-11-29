@@ -9,7 +9,8 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
     << "max_readers: " << header->max_readers << "\n"
     << "num_readers_acquired: " << header->num_readers_acquired << "\n"
     << "num_reads_remaining: " << header->num_reads_remaining << "\n"
-    << "data_size: " << header->data_size << "\n";
+    << "data_size: " << header->data_size << "\n"
+    << "metadata_size: " << header->metadata_size << "\n";
 }
 
 void PlasmaObjectHeader::Init() {
@@ -43,7 +44,12 @@ uint64_t PlasmaObjectHeader::GetDataSize() const {
   return data_size;
 }
 
-void PlasmaObjectHeader::WriteAcquire(int64_t write_version, uint64_t new_size) {
+uint64_t PlasmaObjectHeader::GetMetadataSize() const {
+  RAY_CHECK_GE(num_readers_acquired, 0) << "ReadAcquire has to be called before calling this method.";
+  return metadata_size;
+}
+
+void PlasmaObjectHeader::WriteAcquire(int64_t write_version, uint64_t new_size, uint64_t new_metadata_size) {
   RAY_LOG(DEBUG) << "WriteAcquire Waiting. version: " << write_version;
   sem_wait(&rw_semaphore);
   RAY_LOG(DEBUG) << "WriteAcquire " << write_version;
@@ -61,6 +67,7 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version, uint64_t new_size) 
 
   version = write_version;
   data_size = new_size;
+  metadata_size = new_metadata_size;
 
   RAY_LOG(DEBUG) << "WriteAcquire done";
   PrintPlasmaObjectHeader(this);

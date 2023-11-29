@@ -13,7 +13,7 @@ class Actor:
 
     def inc(self, x):
         self.i += 1
-        if self.i > 2500:
+        if self.i > 1100:
             raise Exception("oops")
         return x
 
