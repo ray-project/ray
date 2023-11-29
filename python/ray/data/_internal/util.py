@@ -569,12 +569,12 @@ def get_compute_strategy(
             if not is_callable_class:
                 # Currently do not support concurrency control with function,
                 # i.e., running with Ray Tasks (`TaskPoolMapOperator`).
-                logger.warning(
+                raise ValueError(
                     "``concurrency`` is specified as: {concurrency}, "
                     "but ``fn`` is not a CallableClass: {fn}. The setting of "
-                    "``concurrency`` is only supported when ``fn`` is a CallableClass."
+                    "``concurrency`` is only supported when ``fn`` is a CallableClass. "
+                    "This can be supported in future releases."
                 )
-                return TaskPoolStrategy()
 
             if isinstance(concurrency, tuple):
                 assert (
