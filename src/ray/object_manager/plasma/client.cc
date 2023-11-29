@@ -95,7 +95,7 @@ struct ObjectInUseEntry {
   PlasmaObject object;
   /// A flag representing whether the object has been sealed.
   bool is_sealed;
-  bool is_shared = false;
+  bool is_mutable = false;
   /// For shared objects only.
   /// The last version that we read or wrote. To read or write again, we must
   /// pass a newer version than this.
@@ -119,6 +119,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                 const ray::rpc::Address &owner_address,
+                                bool is_mutable,
                                 int64_t data_size,
                                 const uint8_t *metadata,
                                 int64_t metadata_size,
@@ -141,6 +142,13 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                               fb::ObjectSource source,
                               int device_num);
 
+  Status WriteAcquireMutableObject(const ObjectID &object_id,
+                                   int64_t data_size,
+                                   const uint8_t *metadata,
+                                   int64_t metadata_size,
+                                   int64_t num_readers,
+                                   std::shared_ptr<Buffer> *data);
+
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers,
@@ -160,7 +168,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status Abort(const ObjectID &object_id);
 
-  Status Seal(const ObjectID &object_id, int64_t num_readers);
+  Status Seal(const ObjectID &object_id);
 
   Status Delete(const std::vector<ObjectID> &object_ids);
 
@@ -371,6 +379,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   // client is using. A call to PlasmaClient::Release is required to decrement
   // this count. Cache the reference to the object.
   IncrementObjectCount(object_id, &object, false);
+  // TODO(swang): Remove the second increment call.
   // We increment the count a second time (and the corresponding decrement will
   // happen in a PlasmaClient::Release call in plasma_seal) so even if the
   // buffer returned by PlasmaClient::Create goes out of scope, the object does
@@ -379,8 +388,57 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   return Status::OK();
 }
 
+Status PlasmaClient::Impl::WriteAcquireMutableObject(const ObjectID &object_id,
+                                                     int64_t data_size,
+                                                     const uint8_t *metadata,
+                                                     int64_t metadata_size,
+                                                     int64_t num_readers,
+                                                     std::shared_ptr<Buffer> *data) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  auto object_entry = objects_in_use_.find(object_id);
+  RAY_CHECK(object_entry != objects_in_use_.end());
+
+  auto &entry = object_entry->second;
+  RAY_CHECK(entry->is_mutable);
+  RAY_CHECK(entry->is_sealed) << "Must Seal before writing again to a mutable object";
+
+  RAY_LOG(DEBUG) << "Write mutable object " << object_id;
+
+  // Wait for no readers.
+  auto plasma_header = GetPlasmaObjectHeader(entry->object);
+  // NOTE: entry->object.data_size is the size of the data buffer.
+  // When the object is shared, we can have object size smaller than the data buffer.
+  // TODO(swang): Better exception.
+  // TODO(swang): Support data size larger than allocated buffer.
+  RAY_CHECK(data_size <= entry->object.data_size)
+      << "Cannot write mutable data size " << data_size
+      << " larger than allocated buffer size " << entry->object.data_size;
+  // TODO(swang): Support different metadata size.
+  RAY_CHECK(metadata_size == entry->object.metadata_size)
+      << "Metadata size must stay the same";
+  plasma_header->WriteAcquire(entry->next_version_to_write, data_size);
+  plasma_header->num_readers = num_readers;
+
+  // Prepare the data buffer and return to the client instead of sending
+  // the IPC to object store.
+  *data = std::make_shared<PlasmaMutableBuffer>(
+      shared_from_this(),
+      GetStoreFdAndMmap(entry->object.store_fd, entry->object.mmap_size) +
+          entry->object.data_offset,
+      data_size);
+  if (metadata != NULL) {
+    // Copy the metadata to the buffer.
+    memcpy(
+        (*data)->Data() + entry->object.data_size, metadata, entry->object.metadata_size);
+  }
+
+  entry->is_sealed = false;
+  return Status::OK();
+}
+
 Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                                   const ray::rpc::Address &owner_address,
+                                                  bool is_mutable,
                                                   int64_t data_size,
                                                   const uint8_t *metadata,
                                                   int64_t metadata_size,
@@ -388,44 +446,6 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                                   fb::ObjectSource source,
                                                   int device_num) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
-  auto object_entry = objects_in_use_.find(object_id);
-  if (object_entry != objects_in_use_.end()) {
-    auto &entry = object_entry->second;
-    if (entry->is_sealed && entry->is_shared) {
-      RAY_LOG(DEBUG) << "Create shared object " << object_id << " exists";
-      // Wait for no readers.
-      auto plasma_header = GetPlasmaObjectHeader(entry->object);
-      // TODO(sang)
-      // NOTE: entry->object.data_size is the size of the data buffer.
-      // When the object is shared, we can have object size smaller than the data buffer.
-      RAY_LOG(DEBUG) << "SANG-TODO Update the data size of " << object_id
-                     << ". Size: " << data_size;
-      auto next_version_to_write = plasma_header->version + 1;
-      plasma_header->WriteAcquire(next_version_to_write, data_size);
-
-      // Prepare the data buffer and return to the client instead of sending
-      // the IPC to object store.
-      *data = std::make_shared<PlasmaMutableBuffer>(
-          shared_from_this(),
-          GetStoreFdAndMmap(entry->object.store_fd, entry->object.mmap_size) +
-              entry->object.data_offset,
-          entry->object.data_size);
-      // If plasma_create is being called from a transfer, then we will not copy the
-      // metadata here. The metadata will be written along with the data streamed
-      // from the transfer.
-      if (metadata != NULL) {
-        // Copy the metadata to the buffer.
-        memcpy((*data)->Data() + entry->object.data_size,
-               metadata,
-               entry->object.metadata_size);
-      }
-
-      entry->is_sealed = false;
-      IncrementObjectCount(object_id, &entry->object, false);
-    }
-    return Status::OK();
-  }
-
   uint64_t retry_with_request_id = 0;
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
@@ -433,6 +453,7 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_,
                                       object_id,
                                       owner_address,
+                                      is_mutable,
                                       data_size,
                                       metadata_size,
                                       source,
@@ -454,16 +475,28 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
 
   if (status.ok()) {
     // Create IPC was successful.
-    object_entry = objects_in_use_.find(object_id);
+    auto object_entry = objects_in_use_.find(object_id);
     RAY_CHECK(object_entry != objects_in_use_.end());
     auto &entry = object_entry->second;
     RAY_CHECK(!entry->is_sealed);
+    entry->is_mutable = is_mutable;
+
     auto plasma_header = GetPlasmaObjectHeader(entry->object);
     // The corresponding WriteRelease takes place in Seal.
     // When an object is first created, the data size is equivalent to
     // buffer size.
     // The first creation's version is always 1.
-    plasma_header->WriteAcquire(/*next_version_to_write*/ 1, entry->object.data_size);
+    RAY_CHECK(entry->next_version_to_write == 1);
+    plasma_header->WriteAcquire(/*next_version_to_write*/ entry->next_version_to_write,
+                                entry->object.data_size);
+    if (entry->is_mutable) {
+      // The plasma store is the first reader. Once it read-releases, the
+      // writer may write an actual value.
+      plasma_header->num_readers = 1;
+    } else {
+      // Anyone may read.
+      plasma_header->num_readers = -1;
+    }
   }
 
   return status;
@@ -494,6 +527,7 @@ Status PlasmaClient::Impl::TryCreateImmediately(const ObjectID &object_id,
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_,
                                       object_id,
                                       owner_address,
+                                      /*is_mutable=*/false,
                                       data_size,
                                       metadata_size,
                                       source,
@@ -537,7 +571,7 @@ Status PlasmaClient::Impl::GetBuffers(
       auto data_size = plasma_header->GetDataSize();
       RAY_LOG(DEBUG) << "SANG-TODO data size is " << data_size;
       if (version_read > 0) {
-        object_entry->second->is_shared = true;
+        object_entry->second->is_mutable = true;
         object_entry->second->next_version_to_read = version_read;
       }
 
@@ -616,7 +650,7 @@ Status PlasmaClient::Impl::GetBuffers(
       int64_t version_read = plasma_header->ReadAcquire(/*version=*/1);
       auto data_size = plasma_header->GetDataSize();
       if (version_read > 0) {
-        object_entry->is_shared = true;
+        object_entry->is_mutable = true;
         object_entry->next_version_to_read = version_read;
       }
 
@@ -670,9 +704,13 @@ Status PlasmaClient::Impl::GetRelease(const ObjectID &object_id) {
   }
 
   auto &entry = object_entry->second;
-  //  RAY_CHECK(entry->is_sealed && entry->is_shared) << "ray.release must be called on "
-  //    "objects that are sealed and shared. sealed? " << entry->is_sealed
-  //    << " shared " << entry->is_shared;
+  if (!entry->is_sealed) {
+    return Status::ObjectNotFound("ray.release() called on an object that is not sealed");
+  }
+  if (!entry->is_mutable) {
+    return Status::ObjectNotFound(
+        "ray.release() called on an object that is not mutable");
+  }
 
   RAY_LOG(DEBUG) << "Release shared object " << object_id;
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
@@ -707,7 +745,7 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   RAY_CHECK(object_entry->second->count >= 0);
   // Check if the client is no longer using this object.
   // TODO(swang): Nicer way to pin shared objects.
-  if (object_entry->second->count == 0 && !object_entry->second->is_shared) {
+  if (object_entry->second->count == 0 && !object_entry->second->is_mutable) {
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
     MEMFD_TYPE fd = object_entry->second->object.store_fd;
     // Tell the store that the client no longer needs the object.
@@ -763,7 +801,7 @@ Status PlasmaClient::Impl::Contains(const ObjectID &object_id, bool *has_object)
   return Status::OK();
 }
 
-Status PlasmaClient::Impl::Seal(const ObjectID &object_id, int64_t num_readers) {
+Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   // Make sure this client has a reference to the object before sending the
@@ -778,15 +816,10 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id, int64_t num_readers) 
   }
 
   auto plasma_header = GetPlasmaObjectHeader(object_entry->second->object);
-  // The value should've already updated when object is created.
-  auto next_version_to_write = plasma_header->version;
   plasma_header->WriteRelease(
-      /*write_version=*/next_version_to_write, num_readers);
-  object_entry->second->next_version_to_write = next_version_to_write;
-
-  if (num_readers != -1) {
-    object_entry->second->is_shared = true;
-  }
+      /*write_version=*/object_entry->second->next_version_to_write);
+  // The next Write must pass a higher version.
+  object_entry->second->next_version_to_write++;
   object_entry->second->is_sealed = true;
   //// Send the seal request to Plasma.
   // RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
@@ -932,8 +965,19 @@ Status PlasmaClient::Connect(const std::string &store_socket_name,
       store_socket_name, manager_socket_name, release_delay, num_retries);
 }
 
+Status PlasmaClient::WriteAcquireMutableObject(const ObjectID &object_id,
+                                               int64_t data_size,
+                                               const uint8_t *metadata,
+                                               int64_t metadata_size,
+                                               int64_t num_readers,
+                                               std::shared_ptr<Buffer> *data) {
+  return impl_->WriteAcquireMutableObject(
+      object_id, data_size, metadata, metadata_size, num_readers, data);
+}
+
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             const ray::rpc::Address &owner_address,
+                                            bool is_mutable,
                                             int64_t data_size,
                                             const uint8_t *metadata,
                                             int64_t metadata_size,
@@ -942,6 +986,7 @@ Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             int device_num) {
   return impl_->CreateAndSpillIfNeeded(object_id,
                                        owner_address,
+                                       is_mutable,
                                        data_size,
                                        metadata,
                                        metadata_size,
@@ -989,9 +1034,7 @@ Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
 
 Status PlasmaClient::Abort(const ObjectID &object_id) { return impl_->Abort(object_id); }
 
-Status PlasmaClient::Seal(const ObjectID &object_id, int64_t num_readers) {
-  return impl_->Seal(object_id, num_readers);
-}
+Status PlasmaClient::Seal(const ObjectID &object_id) { return impl_->Seal(object_id); }
 
 Status PlasmaClient::Delete(const ObjectID &object_id) {
   return impl_->Delete(std::vector<ObjectID>{object_id});

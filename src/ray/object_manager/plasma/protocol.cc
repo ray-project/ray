@@ -200,6 +200,7 @@ Status SendCreateRetryRequest(const std::shared_ptr<StoreConn> &store_conn,
 Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                          ObjectID object_id,
                          const ray::rpc::Address &owner_address,
+                         bool is_mutable,
                          int64_t data_size,
                          int64_t metadata_size,
                          flatbuf::ObjectSource source,
@@ -213,6 +214,7 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                                     fbb.CreateString(owner_address.ip_address()),
                                     owner_address.port(),
                                     fbb.CreateString(owner_address.worker_id()),
+                                    is_mutable,
                                     data_size,
                                     metadata_size,
                                     source,
@@ -229,6 +231,7 @@ void ReadCreateRequest(uint8_t *data,
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
+  object_info->is_mutable = message->is_mutable();
   object_info->data_size = message->data_size();
   object_info->metadata_size = message->metadata_size();
   object_info->object_id = ObjectID::FromBinary(message->object_id()->str());

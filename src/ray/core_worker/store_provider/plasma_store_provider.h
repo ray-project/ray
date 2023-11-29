@@ -126,7 +126,14 @@ class CoreWorkerPlasmaStoreProvider {
                 const ObjectID &object_id,
                 const rpc::Address &owner_address,
                 std::shared_ptr<Buffer> *data,
-                bool created_by_worker);
+                bool created_by_worker,
+                bool is_mutable = false);
+
+  Status WriteAcquireMutableObject(const ObjectID &object_id,
+                                   const std::shared_ptr<Buffer> &metadata,
+                                   uint64_t data_size,
+                                   int64_t num_readers,
+                                   std::shared_ptr<Buffer> *data);
 
   /// Seal an object buffer created with Create().
   ///
@@ -135,7 +142,7 @@ class CoreWorkerPlasmaStoreProvider {
   ///
   /// \param[in] object_id The ID of the object. This can be used as an
   /// argument to Get to retrieve the object data.
-  Status Seal(const ObjectID &object_id, int64_t max_readers = -1);
+  Status Seal(const ObjectID &object_id);
 
   /// Release the first reference to the object created by Put() or Create(). This should
   /// be called exactly once per object and until it is called, the object is pinned and

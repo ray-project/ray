@@ -614,6 +614,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// small.
   /// \return Status.
   Status CreateOwnedAndIncrementLocalRef(
+      bool is_mutable,
       const std::shared_ptr<Buffer> &metadata,
       const size_t data_size,
       const std::vector<ObjectID> &contained_object_ids,
@@ -642,6 +643,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                         std::shared_ptr<Buffer> *data,
                         bool created_by_worker);
 
+  Status WriteAcquireMutableObject(const ObjectID &object_id,
+                                   const std::shared_ptr<Buffer> &metadata,
+                                   uint64_t data_size,
+                                   int64_t num_readers,
+                                   std::shared_ptr<Buffer> *data);
+
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateOwned()` call and then writing into the returned buffer.
   ///
@@ -656,8 +663,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealOwned(const ObjectID &object_id,
                    bool pin_object,
-                   const std::unique_ptr<rpc::Address> &owner_address = nullptr,
-                   int64_t max_readers = -1);
+                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -674,8 +680,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status SealExisting(const ObjectID &object_id,
                       bool pin_object,
                       const ObjectID &generator_id = ObjectID::Nil(),
-                      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
-                      int64_t max_readers = -1);
+                      const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   Status GetRelease(const std::vector<ObjectID> &object_ids);
 

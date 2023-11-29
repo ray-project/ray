@@ -90,7 +90,7 @@ class PlasmaClientInterface {
   ///
   /// \param object_id The ID of the object to seal.
   /// \return The return status.
-  virtual Status Seal(const ObjectID &object_id, int64_t num_readers = -1) = 0;
+  virtual Status Seal(const ObjectID &object_id) = 0;
 
   /// Abort an unsealed object in the object store. If the abort succeeds, then
   /// it will be as if the object was never created at all. The unsealed object
@@ -129,12 +129,20 @@ class PlasmaClientInterface {
   /// be either sealed or aborted.
   virtual Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                         const ray::rpc::Address &owner_address,
+                                        bool is_mutable,
                                         int64_t data_size,
                                         const uint8_t *metadata,
                                         int64_t metadata_size,
                                         std::shared_ptr<Buffer> *data,
                                         plasma::flatbuf::ObjectSource source,
                                         int device_num = 0) = 0;
+
+  virtual Status WriteAcquireMutableObject(const ObjectID &object_id,
+                                           int64_t data_size,
+                                           const uint8_t *metadata,
+                                           int64_t metadata_size,
+                                           int64_t num_readers,
+                                           std::shared_ptr<Buffer> *data) = 0;
 
   /// Delete a list of objects from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,
@@ -195,12 +203,20 @@ class PlasmaClient : public PlasmaClientInterface {
   /// be either sealed or aborted.
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                 const ray::rpc::Address &owner_address,
+                                bool is_mutable,
                                 int64_t data_size,
                                 const uint8_t *metadata,
                                 int64_t metadata_size,
                                 std::shared_ptr<Buffer> *data,
                                 plasma::flatbuf::ObjectSource source,
                                 int device_num = 0);
+
+  Status WriteAcquireMutableObject(const ObjectID &object_id,
+                                   int64_t data_size,
+                                   const uint8_t *metadata,
+                                   int64_t metadata_size,
+                                   int64_t num_readers,
+                                   std::shared_ptr<Buffer> *data);
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
@@ -294,7 +310,7 @@ class PlasmaClient : public PlasmaClientInterface {
   ///
   /// \param object_id The ID of the object to seal.
   /// \return The return status.
-  Status Seal(const ObjectID &object_id, int64_t num_readers = -1);
+  Status Seal(const ObjectID &object_id);
 
   /// Delete an object from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,

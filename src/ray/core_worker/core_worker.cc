@@ -1219,6 +1219,7 @@ Status CoreWorker::Put(const RayObject &object,
 }
 
 Status CoreWorker::CreateOwnedAndIncrementLocalRef(
+    bool is_mutable,
     const std::shared_ptr<Buffer> &metadata,
     const size_t data_size,
     const std::vector<ObjectID> &contained_object_ids,
@@ -1293,7 +1294,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                               *object_id,
                                               /* owner_address = */ real_owner_address,
                                               data,
-                                              created_by_worker);
+                                              created_by_worker,
+                                              is_mutable);
     }
     if (!status.ok()) {
       RemoveLocalReference(*object_id);
@@ -1324,12 +1326,20 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
   }
 }
 
+Status CoreWorker::WriteAcquireMutableObject(const ObjectID &object_id,
+                                             const std::shared_ptr<Buffer> &metadata,
+                                             uint64_t data_size,
+                                             int64_t num_readers,
+                                             std::shared_ptr<Buffer> *data) {
+  return plasma_store_provider_->WriteAcquireMutableObject(
+      object_id, metadata, data_size, num_readers, data);
+}
+
 Status CoreWorker::SealOwned(const ObjectID &object_id,
                              bool pin_object,
-                             const std::unique_ptr<rpc::Address> &owner_address,
-                             int64_t max_readers) {
-  auto status = SealExisting(
-      object_id, pin_object, ObjectID::Nil(), std::move(owner_address), max_readers);
+                             const std::unique_ptr<rpc::Address> &owner_address) {
+  auto status =
+      SealExisting(object_id, pin_object, ObjectID::Nil(), std::move(owner_address));
   if (status.ok()) return status;
   RemoveLocalReference(object_id);
   if (reference_counter_->HasReference(object_id)) {
@@ -1343,9 +1353,8 @@ Status CoreWorker::SealOwned(const ObjectID &object_id,
 Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 bool pin_object,
                                 const ObjectID &generator_id,
-                                const std::unique_ptr<rpc::Address> &owner_address,
-                                int64_t max_readers) {
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id, max_readers));
+                                const std::unique_ptr<rpc::Address> &owner_address) {
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;

@@ -3373,7 +3373,9 @@ cdef class CoreWorker:
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
                             owner_address=None,
-                            c_bool inline_small_object=True):
+                            c_bool inline_small_object=True,
+                            c_bool is_mutable=False,
+                            ):
         cdef:
             unique_ptr[CAddress] c_owner_address
 
@@ -3383,7 +3385,7 @@ cdef class CoreWorker:
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker()
                              .CreateOwnedAndIncrementLocalRef(
-                             metadata, data_size, contained_ids,
+                             is_mutable, metadata, data_size, contained_ids,
                              c_object_id, data, created_by_worker,
                              move(c_owner_address),
                              inline_small_object))
@@ -3470,15 +3472,42 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().SealExisting(
                             c_object_id, pin_object=False,
                             generator_id=CObjectID.Nil(),
-                            owner_address=c_owner_address,
-                            max_readers=-1))
+                            owner_address=c_owner_address))
+
+    def put_serialized_object_to_mutable_plasma_object(self, serialized_object,
+                                                       ObjectRef object_ref,
+                                                       num_readers,
+                                                       ):
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+            shared_ptr[CBuffer] data
+            unique_ptr[CAddress] null_owner_address
+
+        metadata = string_to_buffer(serialized_object.metadata)
+        data_size = serialized_object.total_bytes
+        check_status(CCoreWorkerProcess.GetCoreWorker().WriteAcquireMutableObject(
+                c_object_id,
+                metadata,
+                data_size,
+                num_readers,
+                &data,
+                ))
+        if data_size > 0:
+            (<SerializedObject>serialized_object).write_to(
+                Buffer.make(data))
+        check_status(
+            CCoreWorkerProcess.GetCoreWorker().SealExisting(
+                        c_object_id, pin_object=False,
+                        generator_id=CObjectID.Nil(),
+                        owner_address=null_owner_address))
 
     def put_serialized_object_and_increment_local_ref(self, serialized_object,
                                                       ObjectRef object_ref=None,
                                                       c_bool pin_object=True,
                                                       owner_address=None,
                                                       c_bool inline_small_object=True,
-                                                      max_readers=-1):
+                                                      c_bool is_mutable=False,
+                                                      ):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -3486,7 +3515,6 @@ cdef class CoreWorker:
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
-            int64_t c_max_readers = max_readers
 
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
@@ -3495,7 +3523,8 @@ cdef class CoreWorker:
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
             contained_object_ids,
-            &c_object_id, &data, True, owner_address, inline_small_object)
+            &c_object_id, &data, True, owner_address, inline_small_object,
+            is_mutable)
 
         logger.debug(
             f"Serialized object size of {c_object_id.Hex()} is {total_bytes} bytes")
@@ -3524,8 +3553,7 @@ cdef class CoreWorker:
                             CCoreWorkerProcess.GetCoreWorker().SealOwned(
                                         c_object_id,
                                         pin_object,
-                                        move(c_owner_address),
-                                        c_max_readers))
+                                        move(c_owner_address)))
                     else:
                         # Using custom object refs is not supported because we
                         # can't track their lifecycle, so we don't pin the
@@ -3534,8 +3562,7 @@ cdef class CoreWorker:
                             CCoreWorkerProcess.GetCoreWorker().SealExisting(
                                         c_object_id, pin_object=False,
                                         generator_id=CObjectID.Nil(),
-                                        owner_address=move(c_owner_address),
-                                        max_readers=c_max_readers))
+                                        owner_address=move(c_owner_address)))
 
         return c_object_id.Binary()
 

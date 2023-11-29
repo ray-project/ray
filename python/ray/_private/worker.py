@@ -688,7 +688,7 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None, max_readers=-1):
+    def put_object(self, value, object_ref=None, owner_address=None, is_mutable=False):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -736,6 +736,11 @@ class Worker:
                 f"{sio.getvalue()}"
             )
             raise TypeError(msg) from e
+
+        # If the object is mutable, then the raylet should never read the
+        # object. Instead, clients will keep the object pinned.
+        pin_object = not is_mutable
+
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
@@ -746,8 +751,9 @@ class Worker:
             self.core_worker.put_serialized_object_and_increment_local_ref(
                 serialized_value,
                 object_ref=object_ref,
+                pin_object=pin_object,
                 owner_address=owner_address,
-                max_readers=max_readers,
+                is_mutable=is_mutable,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -2630,12 +2636,53 @@ def get(
 
 
 @PublicAPI
+def _put_mutable_object(value: Any, object_ref: ObjectRef, num_readers: int):
+    worker = global_worker
+    worker.check_connected()
+
+    try:
+        serialized_value = worker.get_serialization_context().serialize(value)
+    except TypeError as e:
+        sio = io.StringIO()
+        ray.util.inspect_serializability(value, print_file=sio)
+        msg = (
+            "Could not serialize the put value " f"{repr(value)}:\n" f"{sio.getvalue()}"
+        )
+        raise TypeError(msg) from e
+
+    worker.core_worker.put_serialized_object_to_mutable_plasma_object(
+        serialized_value,
+        object_ref,
+        num_readers,
+    )
+
+
+@PublicAPI
+def _create_mutable_object(
+    buffer_size: int,
+) -> "ray.ObjectRef":
+    worker = global_worker
+    worker.check_connected()
+
+    value = b"0" * buffer_size
+
+    try:
+        object_ref = worker.put_object(value, owner_address=None, is_mutable=True)
+    except ObjectStoreFullError:
+        logger.info(
+            "Put failed since the value was either too large or the "
+            "store was full of pinned objects."
+        )
+        raise
+    return object_ref
+
+
+@PublicAPI
 @client_mode_hook
 def put(
     value: Any,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
-    max_readers=-1,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -2681,9 +2728,7 @@ def put(
 
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(
-                value, owner_address=serialize_owner_address, max_readers=max_readers
-            )
+            object_ref = worker.put_object(value, owner_address=serialize_owner_address)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "

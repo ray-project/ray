@@ -12,12 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 def test_put_mutable_object(ray_start_cluster):
-    # ref = ray.create_mutable_object(size_bytes=1000)
-
-    max_readers = 1
-    arr = b"binary"
-    ref = ray.put(arr, max_readers=max_readers)
-    ray.release(ref)
+    ray.init()
+    ref = ray._create_mutable_object(1000)
+    ray._put_mutable_object(b"hello", ref, num_readers=1)
+    assert ray.get(ref) == b"hello"
 
 
 if __name__ == "__main__":

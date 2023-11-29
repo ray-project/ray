@@ -83,8 +83,9 @@ struct PlasmaObjectHeader {
   /// \param new_size The new data size of the object.
   void WriteAcquire(int64_t write_version, uint64_t new_data_size);
 
-  // Call after completing a write to signal to num_readers many readers.
-  void WriteRelease(int64_t write_version, int64_t num_readers);
+  // Call after completing a write to signal that readers may read.
+  // num_readers should be set before calling this.
+  void WriteRelease(int64_t write_version);
 
   // Blocks until the given version or a more recent version is ready to read.
   //

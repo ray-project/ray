@@ -309,6 +309,8 @@ class PlasmaStore {
   bool dumped_on_oom_ ABSL_GUARDED_BY(mutex_) = false;
 
   GetRequestQueue get_request_queue_ ABSL_GUARDED_BY(mutex_);
+
+  absl::Mutex seal_deadline_timer_mutex_;
 };
 
 }  // namespace plasma

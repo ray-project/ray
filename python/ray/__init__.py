@@ -114,6 +114,8 @@ from ray._private.worker import (  # noqa: E402,F401
     WORKER_MODE,
     RESTORE_WORKER_MODE,
     SPILL_WORKER_MODE,
+    _create_mutable_object,
+    _put_mutable_object,
     cancel,
     get,
     get_actor,

@@ -108,12 +108,27 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
   return Status::OK();
 }
 
+Status CoreWorkerPlasmaStoreProvider::WriteAcquireMutableObject(
+    const ObjectID &object_id,
+    const std::shared_ptr<Buffer> &metadata,
+    uint64_t data_size,
+    int64_t num_readers,
+    std::shared_ptr<Buffer> *data) {
+  return store_client_.WriteAcquireMutableObject(object_id,
+                                                 data_size,
+                                                 metadata ? metadata->Data() : nullptr,
+                                                 metadata ? metadata->Size() : 0,
+                                                 num_readers,
+                                                 data);
+}
+
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data,
-                                             bool created_by_worker) {
+                                             bool created_by_worker,
+                                             bool is_mutable) {
   auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
   if (!created_by_worker) {
     source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
@@ -121,6 +136,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   Status status =
       store_client_.CreateAndSpillIfNeeded(object_id,
                                            owner_address,
+                                           is_mutable,
                                            data_size,
                                            metadata ? metadata->Data() : nullptr,
                                            metadata ? metadata->Size() : 0,
@@ -153,9 +169,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   return status;
 }
 
-Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id,
-                                           int64_t max_readers) {
-  return store_client_.Seal(object_id, max_readers);
+Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
+  return store_client_.Seal(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
