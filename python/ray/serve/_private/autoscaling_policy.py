@@ -96,9 +96,8 @@ def get_capacity_adjusted_num_replicas(
 ) -> int:
     """Return the target state `num_replicas` adjusted by the `target_capacity`.
 
-    The output will only ever be 0 if the passed `num_replicas` is 0. This is to
-    support autoscaling deployments using scale-to-zero (we assume that any other
-    deployment should always have at least 1 replica).
+    The output will only ever be 0 if `target_capacity` is 0 or `num_replicas` is
+    0 (to support autoscaling deployments using scale-to-zero).
 
     Rather than using the default `round` behavior in Python, which rounds half to
     even, uses the `decimal` module to round half up (standard rounding behavior).
@@ -106,7 +105,7 @@ def get_capacity_adjusted_num_replicas(
     if target_capacity is None or target_capacity == 100:
         return num_replicas
 
-    if num_replicas == 0:
+    if target_capacity == 0 or num_replicas == 0:
         return 0
 
     adjusted_num_replicas = Decimal(num_replicas * target_capacity) / Decimal(100.0)
