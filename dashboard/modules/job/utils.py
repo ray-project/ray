@@ -6,7 +6,7 @@ import traceback
 from dataclasses import dataclass
 from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
 
-from ray._private.internal_third_party import aiohttp
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 from aiohttp.web import Request, Response
 
 from ray._private import ray_constants
@@ -76,10 +76,10 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
             if new_chunk_char_count > MAX_CHUNK_CHAR_LENGTH:
                 # Too many characters, return 20000 in this chunk, and then
                 # continue loop with remaining characters in curr_line
-                truncated_line = curr_line[0 : MAX_CHUNK_CHAR_LENGTH - chunk_char_count]
+                truncated_line = curr_line[0: MAX_CHUNK_CHAR_LENGTH - chunk_char_count]
                 lines.append(truncated_line)
                 # Set remainder of current line to process next
-                curr_line = curr_line[MAX_CHUNK_CHAR_LENGTH - chunk_char_count :]
+                curr_line = curr_line[MAX_CHUNK_CHAR_LENGTH - chunk_char_count:]
                 yield lines or None
                 lines = []
                 chunk_char_count = 0
@@ -121,7 +121,6 @@ async def parse_and_validate_request(
     Returns:
         Parsed request object or Response object with status 400 and stacktrace.
     """
-    import aiohttp
 
     json_data = strip_keys_with_value_none(await req.json())
     try:

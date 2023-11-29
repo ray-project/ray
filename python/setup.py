@@ -37,10 +37,11 @@ SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
-# Public vendored third party files, imported when you `import ray` and is visible to all user code.
+# Public vendored third party files, imported when you `import ray` and is visible to
+# all user code.
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
-# Internal vendored third party files, imported only by internal processes (Dashboard and Runtime
-# Environment Agent) and are not visible by user code.
+# Internal vendored third party files, imported only by internal processes (Dashboard
+# and Runtime Environment Agent) and are not visible by user code.
 INTERNAL_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "internal_thirdparty_files"
 )

@@ -5,7 +5,7 @@ from packaging.version import Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 
-from ray._private.internal_third_party import aiohttp, aiohttp_cors
+from ray._private.internal_third_party import aiohttp, aiohttp_cors  # noqa: F401
 from aiohttp import hdrs
 
 

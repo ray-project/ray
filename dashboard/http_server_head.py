@@ -16,7 +16,7 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import GcsClient
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
-from ray._private.internal_third_party import aiohttp
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 from aiohttp import hdrs
 
 # Logger for this module. It should be configured at the entry point

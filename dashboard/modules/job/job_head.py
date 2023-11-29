@@ -6,7 +6,7 @@ import traceback
 from random import sample
 from typing import Iterator, Optional
 
-from ray._private.internal_third_party import aiohttp
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 from aiohttp.web import Request, Response
 from aiohttp.client import ClientResponse
 

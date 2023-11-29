@@ -14,7 +14,7 @@ import traceback
 from collections import namedtuple
 from typing import Any, Callable
 
-from ray._private.internal_third_party import aiohttp
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 from aiohttp import hdrs
 from aiohttp.web import Response, RouteDef
 from aiohttp.typedefs import PathLike

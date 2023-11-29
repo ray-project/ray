@@ -1,5 +1,5 @@
-# Anyone importing this file addes the internal third party files vendored in the Ray pip package.
-# Should only be used by the Dashboard and the Runtime Env Agent.
+# Anyone importing this file addes the internal third party files vendored in the Ray
+# pip package. Should only be used by the Dashboard and the Runtime Env Agent.
 
 
 def _configure_path():
@@ -17,6 +17,6 @@ def _configure_path():
 _configure_path()
 del _configure_path
 
-import aiosignal  # noqa: E402
-import aiohttp_cors  # noqa: E402
-import aiohttp  # noqa: E402
+import aiosignal  # noqa: E402 F401
+import aiohttp_cors  # noqa: E402 F401
+import aiohttp  # noqa: E402 F401
