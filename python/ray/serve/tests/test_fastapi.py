@@ -519,7 +519,6 @@ class TestModel(BaseModel):
 
 
 def test_fastapi_nested_field_in_response_model(serve_instance):
-
     app = FastAPI()
 
     @app.get("/", response_model=TestModel)

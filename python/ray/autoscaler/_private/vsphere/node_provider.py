@@ -243,7 +243,6 @@ class VsphereNodeProvider(NodeProvider):
         return self.external_ip(node_id)
 
     def set_node_tags(self, node_id, tags):
-
         # This method gets called from the Ray and it passes
         # node_id which needs to be vm.vm and not vm.name
         with self.lock:
@@ -252,7 +251,6 @@ class VsphereNodeProvider(NodeProvider):
                 category_id = self.create_category()
 
             for key, value in tags.items():
-
                 tag = kv_pair_to_vsphere_tag(key, value)
                 tag_id = self.get_tag(tag, category_id)
                 if not tag_id:

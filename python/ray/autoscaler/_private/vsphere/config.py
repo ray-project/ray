@@ -133,7 +133,6 @@ def check_and_update_frozen_vm_configs_in_provider_section(
     head_node_config["frozen_vm"] = vsphere_config["frozen_vm"]
 
     for worker_node_config in worker_node_configs:
-
         worker_node_config["frozen_vm"] = {}
 
         # Copy the fields from head node config to worker node config.

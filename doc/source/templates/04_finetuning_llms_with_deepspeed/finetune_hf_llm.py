@@ -138,7 +138,6 @@ def get_pretrained_path(model_id: str):
 
 
 def get_tokenizer(model_name, special_tokens):
-
     pretrained_path = get_pretrained_path(model_name)
     # Context for legacy=True: https://github.com/huggingface/transformers/issues/25176
     tokenizer = AutoTokenizer.from_pretrained(pretrained_path, legacy=True)
@@ -392,7 +391,6 @@ def training_function(kwargs: dict):
         for step, batch in tqdm.tqdm(
             enumerate(train_dataloader), total=train_ds_len // batch_size + 1
         ):
-
             # We could avoid this line since we set the accelerator with
             # `device_placement=True`.
             with accelerator.accumulate(model):
@@ -563,7 +561,6 @@ def training_function(kwargs: dict):
 
 
 def parse_args():
-
     parser = argparse.ArgumentParser(description="Simple example of training script.")
     parser.add_argument(
         "--mx",
@@ -667,7 +664,6 @@ def parse_args():
 
 
 def main():
-
     args = parse_args()
 
     if not args.output_dir:

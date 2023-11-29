@@ -255,7 +255,6 @@ class MLflowLoggerCallback(LoggerCallback):
         tracking_token: Optional[str] = None,
         save_artifact: bool = False,
     ):
-
         self.tracking_uri = tracking_uri
         self.registry_uri = registry_uri
         self.experiment_name = experiment_name
@@ -293,7 +292,6 @@ class MLflowLoggerCallback(LoggerCallback):
     def log_trial_start(self, trial: "Trial"):
         # Create run if not already exists.
         if trial not in self._trial_runs:
-
             # Set trial name in tags
             tags = self.tags.copy()
             tags["trial_name"] = str(trial)

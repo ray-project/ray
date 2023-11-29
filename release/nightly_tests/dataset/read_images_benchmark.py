@@ -43,7 +43,6 @@ def main(args):
 def generate_images(
     num_images: int, sizes: List[Tuple[int, int]], modes: List[str], formats: List[str]
 ) -> str:
-
     dimensions = []
     for mode in modes:
         if mode in ["1", "L", "P"]:

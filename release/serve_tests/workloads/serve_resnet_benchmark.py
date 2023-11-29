@@ -54,7 +54,6 @@ class ImageObjectioner:
         self.handle = handle
 
     async def predict(self, uris: List[str]):
-
         preprocessing_tasks = []
         for uri in uris:
             preprocessing_tasks.append(self.handle.remote([uri]))
@@ -76,7 +75,6 @@ class ImageObjectioner:
 @serve.deployment(num_replicas=5)
 class DataDownloader:
     def __init__(self):
-
         # For mutiple process scheduled in same node, torch.hub.load doesn't
         # handle the multi process to dowloand module well. So this is to make sure
         # there is only one replica to download the package
@@ -110,7 +108,6 @@ class DataDownloader:
 
 
 async def measure_http_throughput_tps(data_size: int = 8, requests_sent: int = 8):
-
     tps_stats = []
     model_inference_stats = []
 
@@ -132,7 +129,6 @@ async def measure_http_throughput_tps(data_size: int = 8, requests_sent: int = 8
 
 
 async def trial(measure_func, data_size: int = 8, num_clients: int = 1):
-
     client_tasks = [measure_func for _ in range(num_clients)]
 
     result_stats_list = await asyncio.gather(
@@ -163,7 +159,6 @@ async def trial(measure_func, data_size: int = 8, num_clients: int = 1):
 )
 @click.option("--smoke-run", type=bool, is_flag=True, default=False)
 def main(gpu_env: Optional[bool], smoke_run: Optional[bool]):
-
     test_name = "resnet50_cpu"
     device = "cpu"
     if gpu_env:

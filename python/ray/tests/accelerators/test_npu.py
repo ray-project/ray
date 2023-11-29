@@ -47,7 +47,6 @@ def test_visible_ascend_npu_ids(monkeypatch, shutdown_only):
     sys.modules["acl"] = __import__("mock_acl")
     monkeypatch.setenv("ASCEND_VISIBLE_DEVICES", "0,1,2")
     with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=4):
-
         ray.init()
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("NPU")
         assert manager.get_current_node_num_accelerators() == 4

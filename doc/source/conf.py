@@ -245,6 +245,7 @@ linkcheck_ignore = [
     "https://www.uber.com/blog/elastic-xgboost-ray/",
 ]
 
+
 # -- Options for HTML output ----------------------------------------------
 def render_svg_logo(path):
     with open(pathlib.Path(__file__).parent / path, "r") as f:
