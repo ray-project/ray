@@ -167,7 +167,10 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         # number of replicas.
         self.target_capacity: Optional[float] = None
 
-        # Determines what lower bound to use when calculating num_replicas
+        # Determines what lower bound to use when calculating num_replicas.
+        # When the target_capacity_direction is UP, the lower bound defaults
+        # to using initial_replicas and falls back to min_replicas if that value
+        # is None. Otherwise, the lower bound is based on min_replicas.
         self.target_capacity_direction: Optional[TargetCapacityDirection] = None
 
     def get_decision_num_replicas(
