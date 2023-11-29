@@ -405,7 +405,8 @@ class TestSparkLocalCluster:
                 ),
             ):
                 serve_global_ray_cluster(
-                    num_worker_nodes=1, autoscale=autoscale,
+                    num_worker_nodes=1,
+                    autoscale=autoscale,
                 )
 
         # shut down the cluster

@@ -1319,9 +1319,7 @@ def serve_global_ray_cluster(*args, **kwargs):
     """
 
     if "ray_temp_root_dir" in kwargs:
-        raise ValueError(
-            "'ray_temp_root_dir' argument is not supported in global mode"
-        )
+        raise ValueError("'ray_temp_root_dir' argument is not supported in global mode")
 
     if "is_global" in kwargs:
         raise ValueError(
