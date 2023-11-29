@@ -24,7 +24,7 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train.constants import (
     RAY_CHDIR_TO_TRIAL_DIR,
-    RAY_TRAIN_COUNT_PREEMPTION_ERRORS,
+    RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
 )
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
@@ -763,7 +763,7 @@ class Trial:
 
     def _handle_ray_actor_error(self, exc: RayActorError):
         count_preemption_errors = bool(
-            int(os.environ.get(RAY_TRAIN_COUNT_PREEMPTION_ERRORS, "0"))
+            int(os.environ.get(RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE, "0"))
         )
         exc.preempted = True  # TODO(justinvyu): remove
         if not exc.preempted or count_preemption_errors:

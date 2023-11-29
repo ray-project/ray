@@ -4,7 +4,7 @@ import pytest
 
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint
-from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_ERRORS
+from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.tune.experiment import Trial
@@ -27,34 +27,26 @@ def test_handle_preemption_error(
 ):
     """Check that the Trial counts preemption errors correctly."""
     if count_preemption_errors:
-        monkeypatch.setenv(RAY_TRAIN_COUNT_PREEMPTION_ERRORS, "1")
-
-    num_errors_before = trial.num_failures
+        monkeypatch.setenv(RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE, "1")
 
     # Case 1: Directly raised (preemption) RayActorError
     err = RayActorError()
     err.preempted = True
     trial.handle_error(err)
-    assert trial.num_failures == num_errors_before + (
-        1 if count_preemption_errors else 0
-    )
+    assert trial.num_failures == (1 if count_preemption_errors else 0)
 
     # Case 2: RayTaskError, where the cause is a (preemption) RayActorError
     wrapped_err = RayTaskError(
         function_name="test", traceback_str="traceback_str", cause=err
     )
     trial.handle_error(wrapped_err)
-    assert trial.num_failures == num_errors_before + (
-        2 if count_preemption_errors else 0
-    )
+    assert trial.num_failures == (2 if count_preemption_errors else 0)
 
     # Case 3: Non-preemption error
     non_preempted_err = RayActorError()
     non_preempted_err.preempted = False
     trial.handle_error(non_preempted_err)
-    assert trial.num_failures == num_errors_before + (
-        3 if count_preemption_errors else 1
-    )
+    assert trial.num_failures == (3 if count_preemption_errors else 1)
 
 
 def test_load_trial_from_json_state():
