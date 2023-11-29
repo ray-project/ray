@@ -243,7 +243,7 @@ class PPOLearner(Learner):
         orig_truncateds = []
         for episode in episodes:
             # Make sure the episode is already in numpy format.
-            assert episode.is_numpy
+            assert episode.is_finalized
             orig_truncateds.append(episode.is_truncated)
             # Add timestep.
             episode.t += 1

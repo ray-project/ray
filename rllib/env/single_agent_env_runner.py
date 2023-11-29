@@ -6,7 +6,6 @@ from collections import defaultdict
 from functools import partial
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -158,10 +157,6 @@ class SingleAgentEnvRunner(EnvRunner):
         # Set the connector context's `explore` flag to the desired value.
         self.connector_ctx.explore = explore
 
-        # TODO (sven): This gives a tricky circular import that goes
-        # deep into the library. We have to see, where to dissolve it.
-        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-
         done_episodes_to_return: List["SingleAgentEpisode"] = []
 
         # Have to reset the env (on all vector sub_envs).
@@ -172,7 +167,12 @@ class SingleAgentEnvRunner(EnvRunner):
             # call to `self._sample_timesteps()`.
             self._needs_initial_reset = False
 
-            self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
+            self._episodes = [
+                SingleAgentEpisode(
+                    observation_space=self.env.single_observation_space,
+                    action_space=self.env.single_action_space,
+                ) for _ in range(self.num_envs)
+            ]
 
             # Set initial obs in the episodes.
             for i in range(self.num_envs):
@@ -239,9 +239,9 @@ class SingleAgentEnvRunner(EnvRunner):
                         actions[i],
                         rewards[i],
                         info=infos[i]["final_info"],
-                        is_terminated=terminateds[i],
-                        is_truncated=truncateds[i],
-                        extra_model_output=extra_model_output,
+                        terminated=terminateds[i],
+                        truncated=truncateds[i],
+                        extra_model_outputs=extra_model_output,
                     )
 
                     done_episodes_to_return.append(
@@ -249,7 +249,10 @@ class SingleAgentEnvRunner(EnvRunner):
                     )
                     # Create a new episode object.
                     self._episodes[i] = SingleAgentEpisode(
-                        observations=[obs[i]], infos=[infos[i]]
+                        observations=[obs[i]],
+                        infos=[infos[i]],
+                        observation_space=self.env.single_observation_space,
+                        action_space=self.env.single_action_space,
                     )
                 else:
                     self._episodes[i].add_env_step(
@@ -267,7 +270,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Also, make sure we start new episode chunks (continuing the ongoing episodes
         # from the to-be-returned chunks).
         ongoing_episodes_continuations = [
-            eps.cut(overlap=self.config.episode_lookback_horizon)
+            eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
             for eps in self._episodes
         ]
 
@@ -280,7 +283,7 @@ class SingleAgentEnvRunner(EnvRunner):
             eps.validate()
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
             # Return finalized (numpy'ized) Episodes.
-            ongoing_episodes_to_return.append(eps.convert_lists_to_numpy())
+            ongoing_episodes_to_return.append(eps.finalize())
 
         # Continue collecting into the cut Episode chunks.
         self._episodes = ongoing_episodes_continuations
@@ -301,10 +304,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
         See docstring of `self.sample()` for more details.
         """
-        # TODO (sven): This gives a tricky circular import that goes
-        # deep into the library. We have to see, where to dissolve it.
-        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-
         # If user calls sample(num_timesteps=..) after this, we must reset again
         # at the beginning.
         self._needs_initial_reset = True
@@ -312,7 +311,12 @@ class SingleAgentEnvRunner(EnvRunner):
         done_episodes_to_return: List["SingleAgentEpisode"] = []
 
         obs, infos = self.env.reset()
-        episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
+        episodes = [
+            SingleAgentEpisode(
+                observation_space=self.env.single_observation_space,
+                action_space=self.env.single_action_space,
+            ) for _ in range(self.num_envs)
+        ]
 
         render_images = [None] * self.num_envs
         if with_render_data:
@@ -386,6 +390,8 @@ class SingleAgentEnvRunner(EnvRunner):
                         render_images=None
                         if render_images[i] is None
                         else [render_images[i]],
+                        observation_space=self.env.single_observation_space,
+                        action_space=self.env.single_action_space,
                     )
                 else:
                     episodes[i].add_env_step(

@@ -233,7 +233,9 @@ class SingleAgentEpisode:
         )
         # Rewards: t1 to T.
         self.rewards = BufferWithInfiniteLookback(
-            data=rewards, lookback=self._len_lookback_buffer
+            data=rewards,
+            lookback=self._len_lookback_buffer,
+            space=gym.spaces.Box(float("-inf"), float("inf"), (), dtype=np.float32),
         )
         # Infos: t0 (initial info) to T.
         self.infos = BufferWithInfiniteLookback(
