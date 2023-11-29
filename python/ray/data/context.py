@@ -104,7 +104,7 @@ DEFAULT_USE_STREAMING_EXECUTOR = bool(
 
 # Whether to use the runtime object store memory metrics for scheduling.
 DEFAULT_USE_RUNTIME_METRICS_SCHEDULING = bool(
-    int(os.environ.get("DEFAULT_USE_RUNTIME_METRICS_SCHEDULING", "1"))
+    int(os.environ.get("DEFAULT_USE_RUNTIME_METRICS_SCHEDULING", "0"))
 )
 
 # Whether to eagerly free memory (new backend only).
