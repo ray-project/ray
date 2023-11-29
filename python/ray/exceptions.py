@@ -315,7 +315,9 @@ class RayActorError(RayError):
                 )
             if cause.preempted:
                 self.preempted = True
-                error_msg_lines.append("\tThe actor's node was preempted.")
+                error_msg_lines.append(
+                    "\tThe actor's node was killed by a spot preemption."
+                )
             self.error_msg = "\n".join(error_msg_lines)
             self.actor_id = ActorID(cause.actor_id).hex()
 

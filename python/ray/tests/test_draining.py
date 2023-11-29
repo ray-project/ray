@@ -248,10 +248,16 @@ def test_scheduling_tasks_and_actors_during_draining(ray_start_cluster):
     ray.get(obj, timeout=2) == head_node_id
 
 
-def test_draining_reason(ray_start_cluster):
+@pytest.mark.parametrize(
+    "graceful",
+    [False, True],
+)
+def test_draining_reason(ray_start_cluster, graceful):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, resources={"node1": 1})
-    ray.init(address=cluster.address)
+    ray.init(
+        address=cluster.address,
+    )
     n = cluster.add_node(num_cpus=1, resources={"node2": 1})
 
     @ray.remote
@@ -279,7 +285,7 @@ def test_draining_reason(ray_start_cluster):
     )
     assert is_accepted
 
-    cluster.remove_node(n, False)
+    cluster.remove_node(n, graceful)
     # time.sleep(2)
     try:
         ray.get(actor.ping.remote())

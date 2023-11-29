@@ -1109,17 +1109,21 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
 }
 
 void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
+  // The node is dead, so we need to mark all of its actors preempted.
   if (created_actors_.find(node_id) == created_actors_.end()) {
     return;
   }
+
   for (const auto &id_iter : created_actors_.find(node_id)->second) {
     auto actor_iter = registered_actors_.find(id_iter.second);
-    RAY_CHECK(actor_iter != registered_actors_.end());
+    RAY_CHECK(actor_iter != registered_actors_.end())
+        << "Could not find actor " << id_iter.second.Hex() << " in registered actors.";
 
     actor_iter->second->GetMutableActorTableData()->set_preempted(true);
 
     const auto &actor_id = id_iter.second;
     const auto &actor_table_data = actor_iter->second->GetActorTableData();
+    RAY_CHECK(actor_table_data.state() == rpc::ActorTableData::DEAD);
 
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {

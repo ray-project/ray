@@ -889,4 +889,5 @@ RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 
 // Whether to reap actor death reason from GCS.
 // Costs an extra RPC.
+// TODO(vitsai): Remove this flag
 RAY_CONFIG(bool, enable_reap_actor_death, true)

@@ -278,7 +278,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
     int64_t num_restarts = -1;
-    /// Whether this actor has received a preemption request.
+    /// Whether this actor exits by spot preemption.
     bool preempted = false;
     /// The RPC client. We use shared_ptr to enable shared_from_this for
     /// pending client callbacks.

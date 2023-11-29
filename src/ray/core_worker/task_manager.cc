@@ -1035,7 +1035,6 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          const rpc::RayErrorInfo *ray_error_info,
                                          bool mark_task_object_failed,
                                          bool fail_immediately) {
-  // TODO(vitsai) do we even get the right error
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
