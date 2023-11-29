@@ -1504,15 +1504,17 @@ class DeploymentState:
         if autoscaling_policy is not None:
             if (
                 deployment_settings_changed
-                and autoscaling_policy.get_capacity_adjusted_initial_replicas()
-                is not None
+                and autoscaling_policy.config.initial_replicas is not None
             ):
-                target_num_replicas = (
-                    autoscaling_policy.get_capacity_adjusted_initial_replicas()
+                target_num_replicas = get_capacity_adjusted_num_replicas(
+                    autoscaling_policy.config.initial_replicas,
+                    deployment_info.target_capacity,
                 )
             else:
                 target_num_replicas = autoscaling_policy.apply_bounds(
-                    self._target_state.target_num_replicas
+                    self._target_state.target_num_replicas,
+                    deployment_info.target_capacity,
+                    deployment_info.target_capacity_direction,
                 )
         else:
             target_num_replicas = get_capacity_adjusted_num_replicas(
@@ -1568,6 +1570,8 @@ class DeploymentState:
             curr_target_num_replicas=self._target_state.target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
+            target_capacity=self._target_state.info.target_capacity,
+            target_capacity_direction=self._target_state.info.target_capacity_direction,
         )
 
         if decision_num_replicas == self._target_state.target_num_replicas:
