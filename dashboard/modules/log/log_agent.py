@@ -296,7 +296,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
             )
         log_files = []
         for p in path.glob(request.glob_filter):
-            log_files.append(str(p.relative_to(path)))
+            log_files.append(str(p.relative_to(path)) + ("/" if p.is_dir() else ""))
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
     @classmethod
