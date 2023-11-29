@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 import sys
+from copy import copy
 from pathlib import Path
 
 import numpy as np
@@ -77,6 +78,21 @@ def test_shared_memory(shutdown_only):
     assert size < sys.getsizeof(np.random.rand(5000, 5000))
     print(f"Size of result fetched from ray.put: {size}")
     assert val.shape == (5000, 5000)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_runtime_env_container_with_env_var(shutdown_only):
+    """Test container and env var work together in runtime env."""
+    runtime_env = copy(CONTAINER_RUNTIME_ENV)
+    runtime_env["env_vars"] = {"TEST1": "alice"}
+
+    @ray.remote(runtime_env=runtime_env)
+    def f():
+        return os.environ.get("TEST1")
+
+    ray.init()
+    res = ray.get(f.remote())
+    assert res == "alice"
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")

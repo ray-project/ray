@@ -339,6 +339,28 @@ class RuntimeEnv(dict):
                 "#create-env-file-manually"
             )
 
+        if self.get("container"):
+            if self.get("pip"):
+                raise ValueError(
+                    "The 'container' field cannot be used together with "
+                    "the 'pip' field of runtime_env."
+                )
+            if self.get("conda"):
+                raise ValueError(
+                    "The 'container' field cannot be used together with "
+                    "the 'conda' field of runtime_env."
+                )
+            if self.get("py_modules"):
+                raise ValueError(
+                    "The 'container' field cannot be used together with "
+                    "the 'py_modules' field of runtime_env."
+                )
+            if self.get("working_dir"):
+                raise ValueError(
+                    "The 'container' field cannot be used together with "
+                    "the 'working_dir' field of runtime_env."
+                )
+
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = self.get(option)
             if option_val is not None:

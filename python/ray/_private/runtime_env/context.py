@@ -67,6 +67,10 @@ class RuntimeEnvContext:
         else:
             executable = "exec "
 
+        # By default, raylet uses the path to default_worker.py on host.
+        # However, the path to default_worker.py inside the container
+        # can be different. We need the user to specify the path to
+        # default_worker.py inside the container.
         default_worker_path = self.container.get("worker_path")
         if self.container and default_worker_path:
             logger.debug(

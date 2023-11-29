@@ -34,13 +34,14 @@ class ContainerManager:
             "--network=host",
             "--pid=host",
             "--ipc=host",
+            "--env-host",
             "--user=root",
         ]
 
         container_command.append("--env")
         container_command.append("RAY_RAYLET_PID=" + os.getenv("RAY_RAYLET_PID"))
-        container_command.append("--env")
-        container_command.append("RAY_JOB_ID=$RAY_JOB_ID")
+        # container_command.append("--env")
+        # container_command.append("RAY_JOB_ID=$RAY_JOB_ID")
         if runtime_env.py_container_run_options():
             container_command.extend(runtime_env.py_container_run_options())
         # TODO(chenk008): add resource limit
