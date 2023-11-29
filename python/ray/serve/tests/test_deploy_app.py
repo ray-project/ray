@@ -1385,6 +1385,7 @@ class TestDeploywithLoggingConfig:
 
     @pytest.mark.parametrize("enable_access_log", [True, False])
     def test_access_log(self, client: ServeControllerClient, enable_access_log: bool):
+
         config_dict = self.get_deploy_config()
         config_dict["applications"][0]["logging_config"] = {
             "enable_access_log": enable_access_log,

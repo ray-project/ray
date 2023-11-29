@@ -786,6 +786,7 @@ def get_or_create_head_node(
         # cf.bold(provider.node_tags(head_node)[TAG_RAY_NODE_NAME]),
         _tags=dict(),
     ):  # add id, ARN to tags?
+
         # TODO(ekl) right now we always update the head node even if the
         # hash matches.
         # We could prompt the user for what they want to do here.
@@ -958,6 +959,7 @@ def _should_create_new_head(
             "Currently running head node is out-of-date with cluster configuration"
         ):
             if hashes_mismatch:
+
                 cli_logger.print(
                     "Current hash is {}, expected {}",
                     cf.bold(current_launch_hash),
@@ -1525,6 +1527,7 @@ def get_cluster_dump_archive(
     processes_verbose: bool = False,
     tempfile: Optional[str] = None,
 ) -> Optional[str]:
+
     # Inform the user what kind of logs are collected (before actually
     # collecting, so they can abort)
     content_str = ""

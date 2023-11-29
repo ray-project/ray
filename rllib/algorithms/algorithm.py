@@ -2371,6 +2371,7 @@ class Algorithm(Trainable, AlgorithmBase):
     def default_resource_request(
         cls, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
     ) -> Union[Resources, PlacementGroupFactory]:
+
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
         # Use `num_cpus_for_local_worker` and `num_gpus` for the local worker and
@@ -3364,6 +3365,7 @@ class TrainIterCtx:
         return self.time_stop - self.time_start
 
     def should_stop(self, results):
+
         # Before first call to `step()`.
         if results is None:
             # Fail after n retries.

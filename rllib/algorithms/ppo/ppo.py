@@ -505,6 +505,7 @@ class PPO(Algorithm):
                 self.workers.local_worker().set_weights(weights)
 
         if self.config._enable_new_api_stack:
+
             kl_dict = {}
             if self.config.use_kl_loss:
                 for pid in policies_to_update:
