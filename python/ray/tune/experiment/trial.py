@@ -765,7 +765,7 @@ class Trial:
         count_preemption_errors = bool(
             int(os.environ.get(RAY_TRAIN_COUNT_PREEMPTION_ERRORS, "0"))
         )
-        exc.preempted = True
+        exc.preempted = True  # TODO(justinvyu): remove
         if not exc.preempted or count_preemption_errors:
             # Only count non-preempted actor errors as failures.
             self.run_metadata.num_failures += 1
