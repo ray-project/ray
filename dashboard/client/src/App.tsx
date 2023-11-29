@@ -290,12 +290,6 @@ const App = () => {
                 <Route element={<LogsLayout />} path="logs">
                   <Route element={<StateApiLogsListPage />} path="" />
                   <Route element={<StateApiLogViewerPage />} path="viewer" />
-                  {/* TODO(aguo): Refactor Logs component to use optional query
-                        params since react-router 6 doesn't support optional path params... */}
-                  {/* <Route element={<Logs />} path="" />
-                  <Route element={<Logs />} path=":host">
-                    <Route element={<Logs />} path=":path" />
-                  </Route> */}
                 </Route>
               </Route>
               <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
