@@ -908,6 +908,8 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     }
     if (will_retry) {
       MarkTaskRetryOnFailed(it->second, error_info);
+    } else {
+      //?
     }
   }
 
@@ -1311,6 +1313,13 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   if (it == submissible_tasks_.end()) {
     return;
   }
+  // TODO: change this to PENDING || FAILED || SUCC
+  // TODO: write actor out of order
+  // send 10s
+  // send 2s and complete
+  // send 5s and exit ((so we have out of order completed ones))
+  // send 10s
+  // and restarts=1 -> restarting should resend and check fail
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)
       << ", task ID = " << it->first << ", status = "
       << it->second.GetStatus()

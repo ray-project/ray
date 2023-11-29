@@ -339,6 +339,8 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Resend all previously-received, out-of-order, received tasks for an actor.
   /// When sending these tasks, the tasks will have the flag skip_execution=true.
+  /// TODO: This is useful because we want the XXX
+  /// TODO: rename to ResendOutOfOrderCompletedTasks
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.

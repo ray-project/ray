@@ -107,9 +107,13 @@ void SequentialActorSubmitQueue::MarkTaskCompleted(uint64_t sequence_no,
   // cannot. In the case of tasks not received in order, the following block
   // ensure queue.next_task_reply_position are incremented to the max possible
   // value.
+  RAY_LOG(INFO) << "ryw MarkTaskCompleted " << sequence_no << " next_task_reply_position "
+                << next_task_reply_position << " q size "
+                << out_of_order_completed_tasks.size();
   out_of_order_completed_tasks.insert({sequence_no, task_spec});
   auto min_completed_task = out_of_order_completed_tasks.begin();
   while (min_completed_task != out_of_order_completed_tasks.end()) {
+    RAY_LOG(INFO) << "ryw MarkTaskCompleted head is " << min_completed_task->first;
     if (min_completed_task->first == next_task_reply_position) {
       next_task_reply_position++;
       // increment the iterator and erase the old value
