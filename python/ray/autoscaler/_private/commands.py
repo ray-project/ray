@@ -958,8 +958,8 @@ def _should_create_new_head(
         with cli_logger.group(
             "Currently running head node is out-of-date with cluster configuration"
         ):
-            if hashes_mismatch:
 
+            if hashes_mismatch:
                 cli_logger.print(
                     "Current hash is {}, expected {}",
                     cf.bold(current_launch_hash),
