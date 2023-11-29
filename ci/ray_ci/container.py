@@ -103,6 +103,8 @@ def _get_docker_run_command(team) -> List[str]:
         "BUILDKITE_JOB_ID",
         "--env",
         "BUILDKITE_LABEL",
+        "--env",
+        "NVIDIA_DISABLE_REQUIRE=1",
         "--cap-add",
         "SYS_PTRACE",
         "--cap-add",
