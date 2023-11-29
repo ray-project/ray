@@ -401,6 +401,7 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
             with pytest.raises(HTTPError):
                 response.raise_for_status()
 
+            # Getting jobs should be fine for browsers
             response = requests.get(webui_url + "/api/jobs")
             response.raise_for_status()
             break
