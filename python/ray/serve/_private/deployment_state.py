@@ -30,7 +30,6 @@ from ray.serve._private.common import (
     ReplicaState,
     ReplicaTag,
     RunningReplicaInfo,
-    TargetCapacityScaleDirection,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -1460,12 +1459,7 @@ class DeploymentState:
 
         self._target_state = new_target_state
 
-    def deploy(
-        self,
-        deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
-    ) -> bool:
+    def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version, config,
@@ -1492,22 +1486,16 @@ class DeploymentState:
                 == deployment_info.replica_config.ray_actor_options
                 and deployment_info.version is not None
                 and curr_deployment_info.version == deployment_info.version
-                and curr_deployment_info.target_capacity == target_capacity
+                and curr_deployment_info.target_capacity
+                == deployment_info.target_capacity
                 and curr_deployment_info.target_capacity_scale_direction
-                == target_capacity_scale_direction
+                == deployment_info.target_capacity_scale_direction
             ):
                 return False
-
-        deployment_info.set_target_capacity(
-            target_capacity, target_capacity_scale_direction
-        )
 
         # Decide new target num_replicas.
         autoscaling_policy = deployment_info.autoscaling_policy
         if autoscaling_policy is not None:
-            autoscaling_policy.set_target_capacity(
-                target_capacity, target_capacity_scale_direction
-            )
             if curr_deployment_info is None:
                 target_num_replicas = autoscaling_policy.apply_initial_bounds(-1)
             else:
@@ -1516,7 +1504,8 @@ class DeploymentState:
                 )
         else:
             target_num_replicas = get_capacity_adjusted_num_replicas(
-                deployment_info.deployment_config.num_replicas, target_capacity
+                deployment_info.deployment_config.num_replicas,
+                deployment_info.target_capacity,
             )
 
         self._set_target_state(
@@ -2510,8 +2499,6 @@ class DeploymentStateManager:
         self,
         deployment_id: DeploymentID,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> bool:
         """Deploy the deployment.
 
@@ -2527,11 +2514,7 @@ class DeploymentStateManager:
             )
             self._record_deployment_usage()
 
-        return self._deployment_states[deployment_id].deploy(
-            deployment_info,
-            target_capacity=target_capacity,
-            target_capacity_scale_direction=target_capacity_scale_direction,
-        )
+        return self._deployment_states[deployment_id].deploy(deployment_info)
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
         """Return list of deployment names in application."""

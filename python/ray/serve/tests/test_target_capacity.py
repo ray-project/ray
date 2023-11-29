@@ -215,8 +215,8 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
-            INGRESS_DEPLOYMENT_NAME: 1,
-            DOWNSTREAM_DEPLOYMENT_NAME: 1,
+            INGRESS_DEPLOYMENT_NAME: 0,
+            DOWNSTREAM_DEPLOYMENT_NAME: 0,
         },
     )
 
@@ -474,11 +474,11 @@ def test_target_capacity_update_status(
     apply_config_and_check_status(target_capacity=0.0)
     check_num_running_replicas(0)
     start_replicas_and_check_status()
-    check_num_running_replicas(1)
+    check_num_running_replicas(0)
 
     # Increase the target_capacity, and check again.
     apply_config_and_check_status(target_capacity=50.0)
-    check_num_running_replicas(1)
+    check_num_running_replicas(0)
     start_replicas_and_check_status()
     check_num_running_replicas(int(0.5 * num_replicas))
 

@@ -290,8 +290,6 @@ class ApplicationState:
         self,
         deployment_name: str,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> None:
         """Deploys a deployment in the application."""
         route_prefix = deployment_info.route_prefix
@@ -302,12 +300,7 @@ class ApplicationState:
 
         deployment_id = DeploymentID(deployment_name, self._name)
 
-        self._deployment_state_manager.deploy(
-            deployment_id,
-            deployment_info,
-            target_capacity=target_capacity,
-            target_capacity_scale_direction=target_capacity_scale_direction,
-        )
+        self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
@@ -633,6 +626,15 @@ class ApplicationState:
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
             deploy_info = deepcopy(info)
+
+            # Apply the target capacity information to the deployment info.
+            deploy_info.set_target_capacity(
+                new_target_capacity=self._target_state.target_capacity,
+                new_target_capacity_scale_direction=(
+                    self._target_state.target_capacity_scale_direction
+                ),
+            )
+
             # Apply the application logging config to the deployment logging config
             # if it is not set.
             if (
@@ -643,14 +645,7 @@ class ApplicationState:
                 deploy_info.deployment_config.logging_config = (
                     self._target_state.config.logging_config
                 )
-            self.apply_deployment_info(
-                deployment_name,
-                deploy_info,
-                target_capacity=self._target_state.target_capacity,
-                target_capacity_scale_direction=(
-                    self._target_state.target_capacity_scale_direction
-                ),
-            )
+            self.apply_deployment_info(deployment_name, deploy_info)
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
