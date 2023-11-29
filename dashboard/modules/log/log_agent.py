@@ -374,20 +374,25 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
 
         return start_offset, end_offset
 
-    async def _get_valid_log_file(self, request) -> Path:
+    @classmethod
+    def _resolve_filename(cls, root_log_dir: Path, filename: str) -> Path:
         """
-        Validates the file path from the request and
-        returns the absolute path of the log file if resolvable.
+        Resolves the file path relative to the root log directory.
 
         Args:
+            root_log_dir: Root log directory.
+            filename: File path relative to the root log directory.
 
         Raises:
             FileNotFoundError: If the file path is invalid.
+
+        Returns:
+            The absolute file path resolved from the root log directory.
         """
-        if not Path(request.log_file_name).is_absolute():
-            filepath = Path(self._dashboard_agent.log_dir) / request.log_file_name
+        if not Path(filename).is_absolute():
+            filepath = root_log_dir / filename
         else:
-            filepath = Path(request.log_file_name)
+            filepath = Path(filename)
 
         filepath = filepath.resolve()
 
@@ -395,11 +400,9 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
             raise FileNotFoundError(f"A file is not found at: {filepath}")
 
         try:
-            filepath.relative_to(self._dashboard_agent.log_dir)
+            filepath.relative_to(root_log_dir)
         except ValueError as e:
-            raise FileNotFoundError(
-                f"{filepath} not in {self._dashboard_agent.log_dir}: {e}"
-            )
+            raise FileNotFoundError(f"{filepath} not in {root_log_dir}: {e}")
 
         return filepath
 
@@ -418,7 +421,9 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         lines = request.lines if request.lines else 1000
 
         try:
-            filepath = await self._get_valid_log_file(request)
+            filepath = self._resolve_filename(
+                Path(self._dashboard_agent.log_dir), request.log_file_name
+            )
         except FileNotFoundError as e:
             await context.send_initial_metadata([[log_consts.LOG_GRPC_ERROR, str(e)]])
         else:
