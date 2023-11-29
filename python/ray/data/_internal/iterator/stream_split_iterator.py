@@ -155,7 +155,10 @@ class SplitCoordinator:
         def gen_epochs():
             while True:
                 executor = StreamingExecutor(
-                    copy.deepcopy(dataset.context.execution_options)
+                    copy.deepcopy(dataset.context.execution_options),
+                    create_dataset_tag(
+                        self._base_dataset._name, self._base_dataset._uuid
+                    ),
                 )
                 self._executor = executor
 
