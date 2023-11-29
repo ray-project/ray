@@ -1558,35 +1558,7 @@ class MultiAgentEpisode:
                 for key, val in _model_out.items():
                     agent_extra_model_outputs[key].append(val)
 
-            #agent_is_terminated = (
-            #    [False]
-            #    if terminateds is None
-            #    else self._get_single_agent_data(
-            #        agent_id, terminateds, use_global_t_to_local_t=False
-            #    )
-            #    # else self._get_single_agent_data(
-            #    #     agent_id, is_terminateds, start_index=1, shift=-1
-            #    # )
-            #)
-            ## If a list, the list could be empty, if the agent never stepped.
-            #agent_is_terminated = (
-            #    False if not agent_is_terminated else agent_is_terminated[-1]
-            #)
             agent_is_terminated = terminateds.get(agent_id, False)
-
-            #agent_is_truncated = (
-            #    [False]
-            #    if truncateds is None
-            #    else self._get_single_agent_data(
-            #        agent_id,
-            #        truncateds,
-            #        use_global_t_to_local_t=False,
-            #    )
-            #)
-            ## If a list the list could be empty, if the agent never stepped.
-            #agent_is_truncated = (
-            #    False if not agent_is_truncated else agent_is_truncated[-1]
-            #)
             agent_is_truncated = truncateds.get(agent_id, False)
 
             # If there are as many actions as observations we have to buffer.
@@ -1601,9 +1573,9 @@ class MultiAgentEpisode:
                         len(v) == len(agent_actions)
                         for v in agent_extra_model_outputs.values()
                     ), (
-                        f"Agent {agent_id} doesn't have the same number of `extra_model"
-                        f"_outputs` ({{k: len(v) for k, v in agent_extra_model_outputs.items()}}) "
-                        f"as it has actions ({len(agent_actions)})."
+                        f"Agent {agent_id} doesn't have the same number of "
+                        "`extra_model_outputs` as it has actions "
+                        f"({len(agent_actions)})."
                     )
                     # Put the last extra model outputs into the buffer.
                     self.agent_buffers[agent_id]["extra_model_outputs"].get_nowait()

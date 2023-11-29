@@ -108,7 +108,14 @@ class SingleAgentEpisode:
             "c": gym.spaces.Box(-1.0, 1.0, (2,)),
         }))
 
-        # ... fill episode with data
+        # ... fill episode with data ...
+        episode.add_env_reset(observation=0)
+        # ... from a few steps.
+        episode.add_env_step(
+            observation=1,
+            action={"a": 0, "b": np.array([1, 2]), "c": np.array([0.5, -0.5])},
+            reward=1.0,
+        )
 
         # In your connector
         prev_4_a = []
@@ -530,7 +537,7 @@ class SingleAgentEpisode:
             assert not episode.is_finalized
 
             # Let's finalize the episode.
-            episode.finalized()
+            episode.finalize()
             assert episode.is_finalized
 
             # We cannot add data anymore. The following would crash.
@@ -756,7 +763,7 @@ class SingleAgentEpisode:
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
             episode = SingleAgentEpisode(
-                infos=[{"a":0}, {"b":1}, {"c":2}, {"d":3}]
+                infos=[{"a":0}, {"b":1}, {"c":2}, {"d":3}],
                 # The following is needed, but not relevant for this demo.
                 observations=[0, 1, 2, 3], actions=[1, 2, 3], rewards=[1, 2, 3],
             )
@@ -998,15 +1005,15 @@ class SingleAgentEpisode:
             )
 
             # Plain usage (`indices` arg only).
-            episode.extra_model_outputs("mo", -1)  # 3
-            episode.extra_model_outputs("mo", 1)  # 0
-            episode.extra_model_outputs("mo", [0, 2])  # [1, 3]
-            episode.extra_model_outputs("mo", [-1, 0])  # [3, 1]
-            episode.extra_model_outputs("mo", slice(None, 2))  # [1, 2]
-            episode.extra_model_outputs("mo", slice(-2, None))  # [2, 3]
+            episode.get_extra_model_outputs("mo", -1)  # 3
+            episode.get_extra_model_outputs("mo", 1)  # 0
+            episode.get_extra_model_outputs("mo", [0, 2])  # [1, 3]
+            episode.get_extra_model_outputs("mo", [-1, 0])  # [3, 1]
+            episode.get_extra_model_outputs("mo", slice(None, 2))  # [1, 2]
+            episode.get_extra_model_outputs("mo", slice(-2, None))  # [2, 3]
             # Using `fill=...` (requesting slices beyond the boundaries).
-            episode.extra_model_outputs("mo", slice(-5, -2), fill=0)  # [0, 0, 1]
-            episode.extra_model_outputs("mo", slice(2, 5), fill=-1)  # [3, -1, -1]
+            episode.get_extra_model_outputs("mo", slice(-5, -2), fill=0)  # [0, 0, 1]
+            episode.get_extra_model_outputs("mo", slice(2, 5), fill=-1)  # [3, -1, -1]
 
         Returns:
             The collected extra_model_outputs[`key`].

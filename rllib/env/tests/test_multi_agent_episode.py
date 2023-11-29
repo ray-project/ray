@@ -160,8 +160,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Run 100 samples.
         for i in range(100):
             agents_to_step_next = [
-                aid for aid in obs.keys()
-                if aid in env._agents_alive
+                aid for aid in obs.keys() if aid in env._agents_alive
             ]
             action = {agent_id: i + 1 for agent_id in agents_to_step_next}
             # action = env.action_space_sample(agents_stepped)
@@ -2066,10 +2065,16 @@ class TestMultiAgentEpisode(unittest.TestCase):
         ]
         # Let no agent terminate or being truncated.
         terminateds = {
-            "__all__": False, "agent_1": False, "agent_3": False, "agent_4": False
+            "__all__": False,
+            "agent_1": False,
+            "agent_3": False,
+            "agent_4": False,
         }
         truncateds = {
-            "__all__": False, "agent_1": False, "agent_3": False, "agent_4": False
+            "__all__": False,
+            "agent_1": False,
+            "agent_3": False,
+            "agent_4": False,
         }
 
         # Return all observations.
