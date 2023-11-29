@@ -55,10 +55,8 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import (
-    ObjectRefGenerator,
-    raise_sys_exit_with_custom_error_message,
-)
+from ray._raylet import raise_sys_exit_with_custom_error_message
+from ray._raylet import ObjectRefGenerator as ObjectRefGeneratorImpl
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -121,6 +119,11 @@ T9 = TypeVar("T9")
 R = TypeVar("R")
 
 DAGNode = TypeVar("DAGNode")
+
+
+@DeveloperAPI(stability="beta")
+class ObjectRefGenerator(ObjectRefGeneratorImpl):
+    pass
 
 
 class RemoteFunctionNoArgs(Generic[R]):

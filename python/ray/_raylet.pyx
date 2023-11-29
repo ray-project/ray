@@ -269,7 +269,6 @@ class DynamicObjectRefGenerator:
         return len(self._refs)
 
 
-PublicAPI(stability="beta")
 class ObjectRefGenerator:
     """A generator to obtain object references
     from a task in a streaming manner.
@@ -278,6 +277,9 @@ class ObjectRefGenerator:
     async generator interface.
 
     The class is not thread-safe.
+
+    The class is not supposed to be initialized directly
+    and only should be created by `.remote`.
 
     >>> gen = generator_task.remote()
     >>> next(gen)
