@@ -147,6 +147,19 @@ class HttpServerDashboardHead:
         return await handler(request)
 
     @aiohttp.web.middleware
+    async def browsers_no_post_put_middleware(self, request, handler):
+        if (
+            request.path.startswith("/api")
+            and request.headers["User-Agent"].startswith("Mozilla")
+            and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
+        ):
+            return aiohttp.web.Response(
+                status=405, text="Method Not Allowed for browser traffic."
+            )
+
+        return await handler(request)
+
+    @aiohttp.web.middleware
     async def metrics_middleware(self, request, handler):
         start_time = time.monotonic()
 
@@ -185,7 +198,11 @@ class HttpServerDashboardHead:
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(
             client_max_size=100 * 1024**2,
-            middlewares=[self.metrics_middleware, self.path_clean_middleware],
+            middlewares=[
+                self.metrics_middleware,
+                self.path_clean_middleware,
+                self.browsers_no_post_put_middleware,
+            ],
         )
         app.add_routes(routes=routes.bound_routes())
 
