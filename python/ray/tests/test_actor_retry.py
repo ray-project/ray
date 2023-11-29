@@ -109,7 +109,7 @@ def test_options_takes_precedence_no_over_retry(shutdown_only):
         ["raise", "raise", "exit"],
         ["raise", "raise", "raise"],
     ],
-    ids=lambda lst: ','.join(lst)  # test case show name
+    ids=lambda lst: ",".join(lst),  # test case show name
 )
 def test_method_raise_and_exit(actions, shutdown_only):
     """
@@ -157,6 +157,36 @@ def test_method_exit_no_over_retry_max_restarts(shutdown_only):
             )
         )
     # 2 calls: 1 initial + 1 exception-retry + 1 exit-retry (then no more)
+    assert ray.get(counter.get_count.remote()) == 3
+
+
+def test_exit_only(shutdown_only):
+    """
+    Sanity testing: only do exit-retry works
+    """
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.options(max_restarts=2).remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(
+            trouble_maker.raise_or_exit.options(max_retries=2).remote(
+                counter, ["exit", "exit", "exit"]
+            )
+        )
+    # 3 = 1 initial + 2 retries (with the 2 restarts included)
+    assert ray.get(counter.get_count.remote()) == 3
+
+
+def test_exit_only_no_over_retry(shutdown_only):
+    """
+    Sanity testing: only do exit-retry works
+    """
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.options(max_restarts=2).remote()
+    ray.get(
+        trouble_maker.raise_or_exit.options(max_retries=2).remote(
+            counter, ["exit", "exit"]
+        )
+    ) == 2
     assert ray.get(counter.get_count.remote()) == 3
 
 

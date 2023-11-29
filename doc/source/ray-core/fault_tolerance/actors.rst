@@ -141,15 +141,19 @@ Actor method exceptions
 
 Sometime it's desired to retry when an actor method raises exceptions. You can use ``max_retries`` in combination with ``retry_exceptions`` to achieve it.
 
-``retry_exceptions`` can be set to `@ray.method(retry_exceptions=...)` decorator.
+Note: this behavior of retrying on user raised exceptions is disabled by default. If you enable it, you need to make sure the method is idempotent, meaning invoking it multiple times should be equivalent to invoking it only once.
+
+``retry_exceptions`` can be set to `@ray.method(retry_exceptions=...)` decorator, or in the `.options(retry_exceptions=...)` in the method call.
 
 - (Default case) If ``retry_exceptions == False``: no retries for user exceptions.
 - If ``retry_exceptions == True``: a method may be retried on user exception for up to ``max_retries`` times.
 - If ``retry_exceptions`` is a list of exceptions: a method may be retried on user exception for up to ``max_retries`` times, only if it raises an exception from these specific classes.
 
-``max_retries`` works for both exceptions and actor crashes. It can be set up in many ways:
+``max_retries`` works for both exceptions and actor crashes. It's determined in this order:
 
-- If it's set in the `.options(max_retries=2)` call, use that value.
-- Otherwise, if the method is set with the `@ray.method(max_retries=2)` decorator, use that value.
-- Otherwise, if the Actor class is set with `@ray.remote(max_task_retries=2)` decorator, use that value.
-- Otherwise, consider it's not set, or equivalently, set to zero.
+- the method call's `.options(max_retries=2)`, or if not set,
+- the method definition's `@ray.method(max_retries=2)` decorator, of if not set,
+- the Actor class definition's `@ray.remote(max_task_retries=2)` decorator, or if not set,
+- defaults to 0.
+
+For example, for an method with `max_retries=5` and `retry_exceptions=True`, and the actor has `max_restarts=2`, it may be executed up to 6 times: once for the initial invocation, and 5 retries. The 6 invocations may include 2 actor crashes. If all 6 invocations runs out, a `ray.get` call to the result Ray ObjectRef raises the exception raised in the last invocation, or `ray.exceptions.RayActorError` if the actor crashed in the last invocation.
