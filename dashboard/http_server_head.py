@@ -149,8 +149,9 @@ class HttpServerDashboardHead:
     @aiohttp.web.middleware
     async def browsers_no_post_put_middleware(self, request, handler):
         if (
-            request.path.startswith("/api")
-            and request.headers["User-Agent"].startswith("Mozilla")
+            # A best effort test for browser traffic. All common browsers
+            # start with Mozilla at the time of writing.
+            request.headers["User-Agent"].startswith("Mozilla")
             and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
         ):
             return aiohttp.web.Response(

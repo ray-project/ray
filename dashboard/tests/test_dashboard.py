@@ -395,7 +395,11 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
                 webui_url + "/api/jobs",
                 json={"entrypoint": "ls"},
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+                    "User-Agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/119.0.0.0 Safari/537.36"
+                    )
                 },
             )
             with pytest.raises(HTTPError):
