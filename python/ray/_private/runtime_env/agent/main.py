@@ -2,21 +2,19 @@ import sys
 import argparse
 import logging
 import pathlib
-import ray._private.ray_constants as ray_constants
-from ray.core.generated import (
-    runtime_env_agent_pb2,
-)
-from ray._private.utils import open_log
-from ray._private.ray_logging import (
-    configure_log_file,
-)
-from ray._private.utils import (
-    get_or_create_event_loop,
-)
-from ray._private.process_watcher import create_check_raylet_task
 
-import runtime_env_consts  # noqa: E402
-from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
+# for aiohttp
+import ray._private.import_this_to_import_internal_third_party_files
+
+import ray._private.ray_constants as ray_constants
+import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
+from ray.core.generated import runtime_env_agent_pb2
+from ray._private.utils import open_log
+from ray._private.ray_logging import configure_log_file
+from ray._private.utils import get_or_create_event_loop
+from ray._private.process_watcher import create_check_raylet_task
+from ray._private.runtime_env.agent.runtime_env_agent import RuntimeEnvAgent
+
 from aiohttp import web  # noqa: E402
 
 
