@@ -143,7 +143,13 @@ def load_and_execute_setup_hook_module(
         return None
     except Exception:
         error_message = (
-            "Failed to deserialize the setup hook method.\n" f"{traceback.format_exc()}"
+            "Failed to execute the setup hook method, "
+            f"{worker_process_setup_hook_key} "
+            "from ``ray.init(runtime_env="
+            f"{{'worker_process_setup_hook': {worker_process_setup_hook_key}}})``. "
+            "Please make sure the given module exists and is available "
+            "from ray workers. For more details, see the error trace below.\n"
+            f"{traceback.format_exc()}"
         )
         return error_message
 
