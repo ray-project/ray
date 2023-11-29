@@ -13,7 +13,7 @@ steps:
         --build-name data6build
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
-    depends_on: data6build
+    depends_on: [ "data6build", "forge" ]
     job_env: forge
 
   - label: ":database: data: arrow 12 tests"
@@ -29,7 +29,7 @@ steps:
         --build-name data12build
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
-    depends_on: data12build
+    depends_on: [ "data12build", "forge" ]
     job_env: forge
 
   - label: ":database: data: arrow nightly tests"
@@ -45,7 +45,7 @@ steps:
         --build-name datanbuild
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
-    depends_on: datanbuild
+    depends_on: [ "datanbuild", "forge" ]
     job_env: forge
 
   - label: ":database: data: flaky tests"
@@ -58,5 +58,5 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests 
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1 --parallelism-per-worker 3
         --build-name data12build
-    depends_on: data12build
+    depends_on: [ "data12build", "forge" ]
     job_env: forge

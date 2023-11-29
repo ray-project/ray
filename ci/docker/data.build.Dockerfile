@@ -14,4 +14,3 @@ SHELL ["/bin/bash", "-ice"]
 COPY . .
 
 RUN DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
-RUN pip install "datasets==2.14.0"
