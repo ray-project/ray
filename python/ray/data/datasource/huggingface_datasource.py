@@ -22,7 +22,7 @@ try:
     # in the module you are currently viewing. This ensures that when we
     # unpickle the Dataset, it runs before pickle tries to
     # import datasets_modules and prevents an exception from being thrown.
-    # Same logic is present inside Ray's TransformersTrainer and HF Transformers Ray
+    # Same logic is present inside HF Transformers Ray
     # integration: https://github.com/huggingface/transformers/blob/\
     # 7d5fde991d598370d961be8cb7add6541e2b59ce/src/transformers/integrations.py#L271
     # Also see https://github.com/ray-project/ray/issues/28084

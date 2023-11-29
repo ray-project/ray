@@ -226,10 +226,10 @@ class ParquetDatasource(Datasource):
 
             filtered_paths = set(expanded_paths) - set(paths)
             if filtered_paths:
-                logger.info(f"Filtered out the following paths: {filtered_paths}")
-
-        if len(paths) == 1:
-            paths = paths[0]
+                logger.info(f"Filtered out {len(filtered_paths)} paths")
+        else:
+            if len(paths) == 1:
+                paths = paths[0]
 
         if dataset_kwargs is None:
             dataset_kwargs = {}
@@ -500,6 +500,8 @@ def _read_fragments(
             table = pa.Table.from_batches([batch], schema=schema)
             if part:
                 for col, value in part.items():
+                    if columns and col not in columns:
+                        continue
                     table = table.set_column(
                         table.schema.get_field_index(col),
                         col,

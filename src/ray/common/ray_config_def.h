@@ -220,6 +220,13 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
 RAY_CONFIG(int64_t, max_grpc_message_size, 512 * 1024 * 1024)
 
+// The max gRPC message size (the gRPC internal default is 4MB) in communication with the
+// Agent.
+//
+// NOTE: This has to be kept in sync with AGENT_GRPC_MAX_MESSAGE_LENGTH in
+// ray_constants.py
+RAY_CONFIG(int64_t, agent_max_grpc_message_size, 20 * 1024 * 1024)
+
 // Retry timeout for trying to create a gRPC server. Only applies if the number
 // of retries is non zero.
 RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
@@ -479,8 +486,9 @@ RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 5)
 RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
 
 /// The batch size for metrics export.
-/// Normally each metrics is about < 1KB. 1000 means it is around 1MB.
-RAY_CONFIG(int64_t, metrics_report_batch_size, 1000)
+/// Normally each time-series << 1Kb. Batch size of 10_000 means expected payload
+/// will be under 10Mb.
+RAY_CONFIG(int64_t, metrics_report_batch_size, 10000)
 
 /// If task events (status change and profiling events) from driver should be ignored.
 /// Currently for testing only.
@@ -733,7 +741,7 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU")
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU")
 
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
