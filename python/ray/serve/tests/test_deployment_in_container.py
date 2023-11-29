@@ -16,21 +16,12 @@ from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks, list_workers
 
-# Runtime env that points to an image that layers on top of the
-# rayproject/ray:nightly-py38-cpu image and downgrades python version
-# to 3.8.16 to match that of the Ray CI environment
-PLAIN_CONTAINER_RUNTIME_ENV = {
-    "container": {
-        "image": "zcin/ray:nightly-py3816-cpu",
-        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
-    }
-}
-
 # Runtime env that points to an image that
 # - layers on top of the rayproject/ray:nightly-py38-cpu image
 # - downgrades python version to 3.8.16 to match that of the Ray CI environment
 # - contains a custom file that a Serve deployment can read when executing requests
-SERVE_CONTAINER_RUNTIME_ENV = {
+# See `docker/container-runtime-env-tests/Dockerfile`
+CONTAINER_RUNTIME_ENV = {
     "container": {
         "image": "zcin/runtime-env-prototype:ci",
         "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
@@ -40,7 +31,7 @@ SERVE_CONTAINER_RUNTIME_ENV = {
 
 @pytest.mark.skip
 def test_basic(ray_start_stop):
-    @serve.deployment(ray_actor_options={"runtime_env": SERVE_CONTAINER_RUNTIME_ENV})
+    @serve.deployment(ray_actor_options={"runtime_env": CONTAINER_RUNTIME_ENV})
     class Model:
         def __call__(self):
             with open("file.txt") as f:
@@ -55,14 +46,14 @@ def test_basic(ray_start_stop):
     wait_for_condition(
         check_application,
         app_handle=h,
-        expected="Hi I'm Cindy, this is version 1\n",
+        expected="Hello world ABC\n",
         timeout=300,
     )
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_put_get(shutdown_only):
-    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
     def create_ref():
         ref = ray.put(np.zeros(100_000_000))
         return ref
@@ -74,7 +65,7 @@ def test_put_get(shutdown_only):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_shared_memory(shutdown_only):
-    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
     def f():
         array = np.random.rand(5000, 5000)
         return ray.put(array)
@@ -106,7 +97,7 @@ def test_log_file_exists(shutdown_only):
         return True
 
     # Run a basic workload.
-    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
     def f():
         for i in range(10):
             print(f"test {i}")
@@ -145,11 +136,11 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
                 return w
         assert False
 
-    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
     def f():
         return ray.get(g.remote())
 
-    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
     def g():
         return os.getpid()
 
@@ -168,7 +159,7 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
 
     ray.shutdown()
 
-    @ray.remote(num_cpus=1, runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    @ray.remote(num_cpus=1, runtime_env=CONTAINER_RUNTIME_ENV)
     class A:
         def __init__(self):
             self.sleeping = False
@@ -205,7 +196,7 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
 
     wait_for_condition(verify_exit_by_pg_removed)
 
-    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
     class PidDB:
         def __init__(self):
             self.pid = None
@@ -218,7 +209,7 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
 
     p = PidDB.remote()
 
-    @ray.remote(runtime_env=PLAIN_CONTAINER_RUNTIME_ENV)
+    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
     class FaultyActor:
         def __init__(self):
             p.record_pid.remote(os.getpid())
