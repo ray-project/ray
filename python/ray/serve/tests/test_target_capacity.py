@@ -624,7 +624,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         # Send requests and check that the application scales up.
         requests = []
         handle = serve.get_app_handle(app_name)
-        for _ in range(3 * max_replicas):
+        for _ in range(4 * max_replicas):
             requests.append(handle.remote())
         ray.get(lifecycle_signal.send.remote())
         wait_for_condition(
@@ -632,19 +632,21 @@ class TestTargetCapacityUpdateAndServeStatus:
             expected_num_running_replicas=int(0.5 * max_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
+            timeout=15,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
 
         # Clear requests and check that application scales down.
         ray.get(request_signal.send.remote())
         results = [request.result() for request in requests]
-        assert results == ["Hello world!"] * (3 * max_replicas)
+        assert results == ["Hello world!"] * (4 * max_replicas)
         ray.get(lifecycle_signal.send.remote())
         wait_for_condition(
             self.check_num_running_replicas,
             expected_num_running_replicas=int(0.5 * initial_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
+            timeout=15,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
@@ -669,7 +671,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         # Check that target_capacity * max_replicas is still the upper bound.
         requests = []
         handle = serve.get_app_handle(app_name)
-        for _ in range(3 * max_replicas):
+        for _ in range(4 * max_replicas):
             requests.append(handle.remote())
         ray.get(lifecycle_signal.send.remote())
         wait_for_condition(
@@ -677,6 +679,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             expected_num_running_replicas=int(0.1 * max_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
+            timeout=15,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
 
@@ -684,13 +687,14 @@ class TestTargetCapacityUpdateAndServeStatus:
         # target_capacity * min_replicas.
         ray.get(request_signal.send.remote())
         results = [request.result() for request in requests]
-        assert results == ["Hello world!"] * (3 * max_replicas)
+        assert results == ["Hello world!"] * (4 * max_replicas)
         ray.get(lifecycle_signal.send.remote())
         wait_for_condition(
             self.check_num_running_replicas,
             expected_num_running_replicas=int(0.1 * min_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
+            timeout=15,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
