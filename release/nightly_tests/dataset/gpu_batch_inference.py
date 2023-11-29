@@ -1,7 +1,6 @@
 from typing import Dict
 import click
 import time
-import os
 
 import numpy as np
 import torch
@@ -127,4 +126,5 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
 if __name__ == "__main__":
     benchmark = Benchmark("gpu-batch-inference")
     benchmark.run_fn("batch-inference", main)
-    benchmark.write_result(os.environ.get("TEST_OUTPUT_JSON"))
+    benchmark.write_result()
+    print("===> Finished running test, exiting")
