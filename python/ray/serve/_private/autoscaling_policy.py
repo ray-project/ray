@@ -193,7 +193,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         desired_num_replicas = calculate_desired_num_replicas(
             self.config,
             current_num_ongoing_requests,
-            self.get_curr_lower_bound(),
+            self.get_running_lower_bound(),
             self.get_capacity_adjusted_max_replicas(),
         )
         # Scale up.
@@ -257,8 +257,15 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             self.config.max_replicas, self.target_capacity
         )
 
-    def apply_initial_bounds(self, curr_target_num_replicas: int) -> int:
-        """Gets a valid target_num_replicas using the current value and bounds."""
+    def apply_deployment_time_bounds(self, curr_target_num_replicas: int) -> int:
+        """Applies the autoscaling bounds to the current number of
+        running replicas when a deployment is first deployed.
+
+        - The upper bound is the capacity-adjusted max_replicas.
+        - The lower bound is the capacity-adjusted initial_replicas if the
+          initial_replicas is not None and the target_capacity_direction is
+          UP or None. Otherwise, it's the capacity min_replicas.
+        """
 
         initial_upper_bound = self.get_capacity_adjusted_max_replicas()
 
@@ -274,7 +281,13 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             initial_lower_bound, min(initial_upper_bound, curr_target_num_replicas)
         )
 
-    def get_curr_lower_bound(self) -> int:
+    def get_running_lower_bound(self) -> int:
+        """Get the autoscaling lower bound for when the deployment is running.
+        
+        The autoscaler uses initial_replicas scaled by target_capacity only
+        if the target capacity direction is UP.
+        """
+
         if self.get_capacity_adjusted_initial_replicas() is not None and (
             self.target_capacity_direction == TargetCapacityDirection.UP
         ):

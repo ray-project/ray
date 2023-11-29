@@ -1497,9 +1497,9 @@ class DeploymentState:
         autoscaling_policy = deployment_info.autoscaling_policy
         if autoscaling_policy is not None:
             if curr_deployment_info is None:
-                target_num_replicas = autoscaling_policy.apply_initial_bounds(-1)
+                target_num_replicas = autoscaling_policy.apply_deployment_time_bounds(-1)
             else:
-                target_num_replicas = autoscaling_policy.apply_initial_bounds(
+                target_num_replicas = autoscaling_policy.apply_deployment_time_bounds(
                     self._target_state.target_num_replicas
                 )
         else:
