@@ -772,6 +772,13 @@ py_test(
     srcs = ["env/tests/test_multi_agent_env.py"]
 )
 
+py_test(
+    name = "env/tests/test_multi_agent_episode",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_multi_agent_episode.py"]
+)
+
 sh_test(
     name = "env/tests/test_remote_inference_cartpole",
     tags = ["team:rllib", "env", "exclusive"],

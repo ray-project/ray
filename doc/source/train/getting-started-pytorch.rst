@@ -37,9 +37,9 @@ For reference, the final code is as follows:
 
 Compare a PyTorch training script with and without Ray Train.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: PyTorch
+    .. tab-item:: PyTorch
 
         .. This snippet isn't tested because it doesn't use any Ray code.
 
@@ -82,18 +82,14 @@ Compare a PyTorch training script with and without Ray Train.
                     optimizer.step()
 
                 metrics = {"loss": loss.item(), "epoch": epoch}
-                state = {
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "epoch": epoch,
-                }
                 checkpoint_dir = tempfile.mkdtemp()
                 checkpoint_path = os.path.join(checkpoint_dir, "model.pt")
-                torch.save(state, checkpoint_path)
-                print(f"[Epoch {epoch}] metrics = {metrics}")
+                torch.save(model.state_dict(), checkpoint_path)
+                print(metrics)
 
 
-    .. group-tab:: PyTorch + Ray Train
+
+    .. tab-item:: PyTorch + Ray Train
 
         .. code-block:: python
             :emphasize-lines: 12, 20, 22, 32, 37, 48, 53-56, 57
@@ -144,18 +140,16 @@ Compare a PyTorch training script with and without Ray Train.
                     # [3] Report metrics and checkpoint.
                     metrics = {"loss": loss.item(), "epoch": epoch}
                     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                        state = {
-                            "model_state_dict": model.module.state_dict(),
-                            "optimizer_state_dict": optimizer.state_dict(),
-                            "epoch": epoch,
-                        }
-                        torch.save(state, os.path.join(temp_checkpoint_dir, "checkpoint.pt"))
+                        torch.save(
+                            model.module.state_dict(),
+                            os.path.join(temp_checkpoint_dir, "model.pt")
+                        )
                         ray.train.report(
                             metrics,
                             checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
                         )
                     if ray.train.get_context().get_world_rank() == 0:
-                        print(f"[Epoch {epoch}] metrics = {metrics}")
+                        print(metrics)
 
             # [4] Configure scaling and resource requirements.
             scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
@@ -172,12 +166,12 @@ Compare a PyTorch training script with and without Ray Train.
 
             # [6] Load the trained model.
             with result.checkpoint.as_directory() as checkpoint_dir:
-                state = torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
+                model_state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
                 model = resnet18(num_classes=10)
                 model.conv1 = torch.nn.Conv2d(
                     1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
                 )
-                model.load_state_dict(state["model_state_dict"])
+                model.load_state_dict(model_state_dict)
 
 
 Set up a training function

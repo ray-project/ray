@@ -456,11 +456,6 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &callback);
 
- protected:
-  /// Cache which stores resource usage in last report used to check if they are changed.
-  /// Used by light resource usage report.
-  std::shared_ptr<NodeResources> last_resource_usage_ = std::make_shared<NodeResources>();
-
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.

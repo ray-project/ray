@@ -86,6 +86,8 @@ class StreamingExecutor(Executor, threading.Thread):
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
+        self._max_errored_blocks = DataContext.get_current().max_errored_blocks
+        self._num_errored_blocks = 0
 
         self._last_debug_log_time = 0
 
@@ -141,22 +143,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     item = self._outer._output_node.get_output_blocking(
                         output_split_idx
                     )
-                    # Translate the special sentinel values for MaybeRefBundle into
-                    # exceptions.
-                    if item is None:
-                        if self._outer._shutdown:
-                            raise StopIteration(f"{self._outer} is shutdown.")
-                        else:
-                            raise StopIteration
-                    elif isinstance(item, Exception):
-                        raise item
-                    else:
-                        # Otherwise return a concrete RefBundle.
-                        if self._outer._global_info:
-                            self._outer._global_info.update(
-                                1, dag._estimated_output_blocks
-                            )
-                        return item
+                    if self._outer._global_info:
+                        self._outer._global_info.update(1, dag._estimated_output_blocks)
+                    return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
                 except BaseException as e:
@@ -222,10 +211,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 pass
         except Exception as e:
             # Propagate it to the result iterator.
-            self._output_node.outqueue.append(e)
+            self._output_node.mark_finished(e)
         finally:
             # Signal end of results.
-            self._output_node.outqueue.append(None)
+            self._output_node.mark_finished()
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -266,7 +255,12 @@ class StreamingExecutor(Executor, threading.Thread):
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
-        process_completed_tasks(topology, self._backpressure_policies)
+        num_errored_blocks = process_completed_tasks(
+            topology, self._backpressure_policies, self._max_errored_blocks
+        )
+        if self._max_errored_blocks > 0:
+            self._max_errored_blocks -= num_errored_blocks
+        self._num_errored_blocks += num_errored_blocks
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()

@@ -36,9 +36,9 @@ For reference, the final code is as follows:
 
 Compare a PyTorch Lightning training script with and without Ray Train.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: PyTorch Lightning
+    .. tab-item:: PyTorch Lightning
 
         .. This snippet isn't tested because it doesn't use any Ray code.
 
@@ -85,9 +85,13 @@ Compare a PyTorch Lightning training script with and without Ray Train.
             trainer = pl.Trainer(max_epochs=10)
             trainer.fit(model, train_dataloaders=train_dataloader)
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> 2a6c6ee032701e49bcebd1df1a400f70fddb0cc7
 
 
-    .. group-tab:: PyTorch Lightning + Ray Train
+    .. tab-item:: PyTorch Lightning + Ray Train
 
         .. code-block:: python
             :emphasize-lines: 11-12, 38, 52-57, 59, 63, 66-73
@@ -157,6 +161,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
             scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 
             # [3] Launch distributed training job.
+<<<<<<< HEAD
             trainer = TorchTrainer(
                 train_func,
                 scaling_config=scaling_config,
@@ -171,6 +176,10 @@ Compare a PyTorch Lightning training script with and without Ray Train.
                 model = ImageClassifier.load_from_checkpoint(
                     os.path.join(checkpoint_dir, "checkpoint.ckpt"),
                 )
+=======
+            trainer = TorchTrainer(train_func, scaling_config=scaling_config)
+            result = trainer.fit()
+>>>>>>> 2a6c6ee032701e49bcebd1df1a400f70fddb0cc7
 
 
 Set up a training function
@@ -408,7 +417,7 @@ After you have converted your PyTorch Lightning training script to use Ray Train
 Version Compatibility
 ---------------------
 
-Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.0.4`. For full compatibility, use ``pytorch_lightning>=1.6.5`` .
+Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.1.2`. For full compatibility, use ``pytorch_lightning>=1.6.5`` .
 Earlier versions aren't prohibited but may result in unexpected issues. If you run into any compatibility issues, consider upgrading your PyTorch Lightning version or
 `file an issue <https://github.com/ray-project/ray/issues>`_.
 
@@ -437,9 +446,9 @@ with standard PyTorch Lightning scripts, ensuring users have better
 control over their native Lightning code.
 
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: (Deprecating) LightningTrainer
+    .. tab-item:: (Deprecating) LightningTrainer
 
         .. This snippet isn't tested because it raises a hard deprecation warning.
 
@@ -485,7 +494,8 @@ control over their native Lightning code.
             model = lightning_checkpoint.get_model(MyLightningModule)
 
 
-    .. group-tab:: (New API) TorchTrainer
+
+    .. tab-item:: (New API) TorchTrainer
 
         .. This snippet isn't tested because it runs with 4 GPUs, and CI is only run with 1.
 
