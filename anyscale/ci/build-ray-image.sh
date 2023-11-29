@@ -238,6 +238,13 @@ cp LICENSE.runtime "${CONTEXT_TMP}/LICENSE"
 aws s3 cp "${S3_TEMP}/download_anyscale_data" "${CONTEXT_TMP}/download_anyscale_data"
 chmod +x "${CONTEXT_TMP}/download_anyscale_data"
 
+# Must keep this consistent with anyscale/ci/upload-ray-site-pkg.sh
+if [[ "${RAY_RELEASE_BUILD:-}" == "true" ]]; then
+    ANYSCALE_PRESTART_DATA_PATH="common/ray-opt/${RAY_VERSION}/${FULL_COMMIT}/ray-opt-${PY_VERSION_CODE}.tar.gz"
+else
+    ANYSCALE_PRESTART_DATA_PATH=""  # stub an empty label
+fi
+
 # Generates a version stamp file.
 {
     echo "#!/bin/bash"
@@ -245,12 +252,17 @@ chmod +x "${CONTEXT_TMP}/download_anyscale_data"
     echo ": \${ANYSCALE_RAY_VERSION:=${RAY_VERSION}}"
     echo ": \${ANYSCALE_RAY_COMMIT:=${FULL_COMMIT}}"
     echo "export ANYSCALE_PY_VERSION_CODE ANYSCALE_RAY_VERSION ANYSCALE_RAY_COMMIT"
+
+    if [[ "${RAY_RELEASE_BUILD:-}" == "true" ]]; then
+        echo ": \${ANYSCALE_PRESTART_DATA_PATH:=${ANYSCALE_PRESTART_DATA_PATH}}"
+        echo "export ANYSCALE_PRESTART_DATA_PATH"
+    fi
 } > "${CONTEXT_TMP}/version-envs.sh"
 
 # We place in the oss site package.
 cp "${BUILD_TMP}/ray-oss.tgz" "${CONTEXT_TMP}/ray-oss.tgz"
 
-if [[ "${RAY_RELEASE_BUILD}" != "true" ]]; then
+if [[ "${RAY_RELEASE_BUILD:-}" != "true" ]]; then
     # In dev builds, we copy in the runtime site package, so that we do not
     # need to upload a dev version of site package to org data S3.
     cp "${BUILD_TMP}/ray-opt.tgz" "${CONTEXT_TMP}/ray-opt.tgz"
@@ -263,6 +275,7 @@ fi
             --build-arg FULL_BASE_IMAGE="${BASE_IMG}" \
             --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
             --build-arg RAY_VERSION="${RAY_VERSION}" \
+            --build-arg PRESTART_DATA_PATH="${ANYSCALE_PRESTART_DATA_PATH}" \
             -t "${RAY_IMG}" -f Dockerfile -
 )
 

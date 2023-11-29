@@ -14,6 +14,9 @@ FROM $FULL_BASE_IMAGE
 
 ARG WHEEL_PATH
 ARG RAY_VERSION="3.0.0.dev0"
+ARG PRESTART_DATA_PATH
+
+LABEL com.anyscale.ray.prestart-data-path=$PRESTART_DATA_PATH
 
 COPY requirements_compiled.txt ./
 COPY \

@@ -4,7 +4,7 @@ set -euo pipefail
 
 source anyscale/ci/setup-env.sh
 
-if [[ "${RAY_RELEASE_BUILD}" != "true" ]]; then
+if [[ "${RAY_RELEASE_BUILD:-}" != "true" ]]; then
     # Cleanup temp dir.
     echo "Not a release build, skipping upload the site package."
     exit
@@ -51,8 +51,11 @@ fi
 
 RAY_COMMIT="$(git rev-parse HEAD)"
 for PY_VERSION_CODE in "${PY_VERSION_CODES[@]}"; do
+    # Must keep this consistent with the image.
+    ANYSCALE_PRESTART_DATA_PATH="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}.tar.gz"
+
     aws s3 cp "${TMP}/ray-${PY_VERSION_CODE}-cpu.tar.gz" \
-        "s3://${ORG_DATA_BUCKET}/common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}.tar.gz"
+        "s3://${ORG_DATA_BUCKET}/${ANYSCALE_PRESTART_DATA_PATH}"
 done
 
 # Cleanup temp dir.
