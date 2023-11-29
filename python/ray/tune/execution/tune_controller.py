@@ -745,13 +745,6 @@ class TuneController:
 
         self._iteration += 1
 
-        if self._server:
-            with warn_if_slow("server"):
-                self._process_stop_requests()
-
-            if self.is_finished():
-                self._server.shutdown()
-
         with warn_if_slow("on_step_end"):
             self.on_step_end()
         with warn_if_slow("callbacks.on_step_end"):
@@ -2033,7 +2026,6 @@ class TuneController:
             "_trials",
             "_live_trials",
             "_stop_queue",
-            "_server",
             "_search_alg",
             "_placeholder_resolvers",
             "_scheduler_alg",
