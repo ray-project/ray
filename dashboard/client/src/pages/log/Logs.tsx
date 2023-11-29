@@ -140,10 +140,12 @@ export const StateApiLogsFilesList = ({
   folder,
   fileName,
 }: StateApiLogsFilesListProps) => {
-  const glob = fileName
+  // We want to do a partial search for file name.
+  const fileNameGlob = fileName ? `*${fileName}*` : undefined;
+  const glob = fileNameGlob
     ? folder
-      ? `${folder}/${fileName}`
-      : `${fileName}`
+      ? `${folder}/${fileNameGlob}`
+      : `${fileNameGlob}`
     : folder
     ? `${folder}/*`
     : undefined;
