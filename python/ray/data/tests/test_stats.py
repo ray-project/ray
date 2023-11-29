@@ -1,4 +1,5 @@
 import re
+import threading
 import time
 from collections import Counter
 from contextlib import contextmanager
@@ -13,9 +14,11 @@ from ray._private.test_utils import wait_for_condition
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.stats import (
     DatasetStats,
+    StatsManager,
     _get_or_create_stats_actor,
     _StatsActor,
 )
+from ray.data._internal.util import create_dataset_tag
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
@@ -33,6 +36,7 @@ def gen_expected_metrics(
             "'bytes_inputs_received': N",
             "'num_inputs_processed': N",
             "'bytes_inputs_processed': N",
+            "'bytes_inputs_of_submitted_tasks': N",
             "'num_outputs_generated': N",
             "'bytes_outputs_generated': N",
             "'rows_outputs_generated': N",
@@ -44,6 +48,7 @@ def gen_expected_metrics(
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
+            "'num_tasks_failed': Z",
             "'obj_store_mem_alloc': N",
             "'obj_store_mem_freed': N",
             "'obj_store_mem_cur': Z",
@@ -148,7 +153,7 @@ def enable_get_object_locations_flag():
 @contextmanager
 def patch_update_stats_actor():
     with patch(
-        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
+        "ray.data._internal.stats.StatsManager.update_execution_metrics"
     ) as update_fn:
         yield update_fn
 
@@ -156,8 +161,10 @@ def patch_update_stats_actor():
 @contextmanager
 def patch_update_stats_actor_iter():
     with patch(
-        "ray.data._internal.block_batching.iter_batches.update_stats_actor_iter_metrics"
-    ) as update_fn:
+        "ray.data._internal.stats.StatsManager.update_iteration_metrics"
+    ) as update_fn, patch(
+        "ray.data._internal.stats.StatsManager.clear_iteration_metrics"
+    ):
         yield update_fn
 
 
@@ -563,6 +570,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      bytes_inputs_received: N,\n"
         "      num_inputs_processed: N,\n"
         "      bytes_inputs_processed: N,\n"
+        "      bytes_inputs_of_submitted_tasks: N,\n"
         "      num_outputs_generated: N,\n"
         "      bytes_outputs_generated: N,\n"
         "      rows_outputs_generated: N,\n"
@@ -574,6 +582,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
+        "      num_tasks_failed: Z,\n"
         "      obj_store_mem_alloc: N,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_cur: Z,\n"
@@ -1183,7 +1192,7 @@ def test_stats_actor_metrics():
         ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
     # last emitted metrics from map operator
-    final_metric = update_fn.call_args_list[-1].args[0][-1]
+    final_metric = update_fn.call_args_list[-1].args[1][-1]
 
     assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
     assert (
@@ -1199,10 +1208,10 @@ def test_stats_actor_metrics():
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
 
-    tags = update_fn.call_args_list[-1].args[1]
-    assert all([tag["dataset"] == "dataset" + ds._uuid for tag in tags])
-    assert tags[0]["operator"] == "Input0"
-    assert tags[1]["operator"] == "ReadRange->MapBatches(<lambda>)1"
+    args = update_fn.call_args_list[-1].args
+    assert args[0] == f"dataset_{ds._uuid}"
+    assert args[2][0] == "Input0"
+    assert args[2][1] == "ReadRange->MapBatches(<lambda>)1"
 
     def sleep_three(x):
         import time
@@ -1213,7 +1222,7 @@ def test_stats_actor_metrics():
     with patch_update_stats_actor() as update_fn:
         ds = ray.data.range(3).map_batches(sleep_three, batch_size=1).materialize()
 
-    final_metric = update_fn.call_args_list[-1].args[0][-1]
+    final_metric = update_fn.call_args_list[-1].args[1][-1]
     assert final_metric.block_generation_time >= 9
 
 
@@ -1226,7 +1235,7 @@ def test_stats_actor_iter_metrics():
     final_stats = update_fn.call_args_list[-1].args[0]
 
     assert final_stats == ds_stats
-    assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+    assert f"dataset_{ds._uuid}" == update_fn.call_args_list[-1].args[1]
 
 
 def test_dataset_name():
@@ -1241,7 +1250,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1][0]["dataset"] == "test_ds" + mds._uuid
+    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
 
     # Names persist after an execution
     ds = ds.random_shuffle()
@@ -1249,7 +1258,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1][0]["dataset"] == "test_ds" + mds._uuid
+    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
 
     ds._set_name("test_ds_two")
     ds = ds.map_batches(lambda x: x)
@@ -1257,9 +1266,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert (
-        update_fn.call_args_list[-1].args[1][0]["dataset"] == "test_ds_two" + mds._uuid
-    )
+    assert update_fn.call_args_list[-1].args[0] == f"test_ds_two_{mds._uuid}"
 
     ds._set_name(None)
     ds = ds.map_batches(lambda x: x)
@@ -1267,7 +1274,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1][0]["dataset"] == "dataset" + mds._uuid
+    assert update_fn.call_args_list[-1].args[0] == f"dataset_{mds._uuid}"
 
     ds = ray.data.range(100, parallelism=20)
     ds._set_name("very_loooooooong_name")
@@ -1345,6 +1352,56 @@ def test_stats_actor_datasets(ray_start_cluster):
         assert value["progress"] == 20
         assert value["total"] == 20
         assert value["state"] == "FINISHED"
+
+
+@patch.object(StatsManager, "STATS_ACTOR_UPDATE_INTERVAL_SECONDS", new=0.5)
+@patch.object(StatsManager, "_stats_actor_handle")
+@patch.object(StatsManager, "UPDATE_THREAD_INACTIVITY_LIMIT", new=1)
+def test_stats_manager(shutdown_only):
+    ray.init()
+    num_threads = 10
+
+    datasets = [None] * num_threads
+    # Mock clear methods so that _last_execution_stats and _last_iteration_stats
+    # are not cleared. We will assert on them afterwards.
+    with patch.object(StatsManager, "clear_execution_metrics"), patch.object(
+        StatsManager, "clear_iteration_metrics"
+    ):
+
+        def update_stats_manager(i):
+            datasets[i] = ray.data.range(10).map_batches(lambda x: x)
+            for _ in datasets[i].iter_batches(batch_size=1):
+                pass
+
+        threads = [
+            threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
+            for i in range(num_threads)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+    assert len(StatsManager._last_execution_stats) == num_threads
+    assert len(StatsManager._last_iteration_stats) == num_threads
+
+    # Clear dataset tags manually.
+    for dataset in datasets:
+        dataset_tag = create_dataset_tag(dataset._name, dataset._uuid)
+        assert dataset_tag in StatsManager._last_execution_stats
+        assert dataset_tag in StatsManager._last_iteration_stats
+        StatsManager.clear_execution_metrics(
+            dataset_tag, ["Input0", "ReadRange->MapBatches(<lambda>)1"]
+        )
+        StatsManager.clear_iteration_metrics(dataset_tag)
+
+    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+    prev_thread = StatsManager._update_thread
+
+    ray.data.range(100).map_batches(lambda x: x).materialize()
+    # Check that a new different thread is spawned.
+    assert StatsManager._update_thread != prev_thread
+    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
 
 
 if __name__ == "__main__":

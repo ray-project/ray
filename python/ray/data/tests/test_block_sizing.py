@@ -4,36 +4,91 @@ import ray
 from ray.data import Dataset
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import (
+    assert_blocks_expected_in_plasma,
+    get_initial_core_execution_metrics_snapshot,
+)
 from ray.tests.conftest import *  # noqa
 
 
-def test_map(ray_start_regular_shared, restore_data_context):
+def test_map(shutdown_only, restore_data_context):
+    ray.init(
+        _system_config={
+            "max_direct_call_object_size": 10_000,
+        },
+        num_cpus=2,
+        object_store_memory=int(100e6),
+    )
+
     ctx = DataContext.get_current()
-    ctx.target_min_block_size = 100 * 8
+    ctx.target_min_block_size = 10_000 * 8
+    ctx.target_max_block_size = 10_000 * 8
+    num_blocks_expected = 10
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
 
-    # NOTE(swang): For some reason BlockBuilder's estimated
-    # memory usage is 2x the actual memory usage.
-    num_blocks_expected = 20
-    ctx.target_max_block_size = 100 * 8
+    # Test read.
+    ds = ray.data.range(100_000, parallelism=1).materialize()
+    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected + 1
+    last_snapshot = assert_blocks_expected_in_plasma(
+        last_snapshot,
+        num_blocks_expected,
+        block_size_expected=ctx.target_max_block_size,
+    )
 
-    ds = ray.data.range(1000).map(lambda row: row)
-    assert ds.materialize().num_blocks() == num_blocks_expected
-    ds = ray.data.range(1000).map(lambda row: row).map(lambda row: row)
-    assert ds.materialize().num_blocks() == num_blocks_expected
+    # Test read -> map.
+    # NOTE(swang): For some reason BlockBuilder's estimated memory usage when a
+    # map fn is used is 2x the actual memory usage.
+    ds = ray.data.range(100_000, parallelism=1).map(lambda row: row).materialize()
+    assert num_blocks_expected * 2 <= ds.num_blocks() <= num_blocks_expected * 2 + 1
+    last_snapshot = assert_blocks_expected_in_plasma(
+        last_snapshot,
+        num_blocks_expected * 2,
+        block_size_expected=ctx.target_max_block_size // 2,
+    )
 
+    # Test adjusted block size.
     ctx.target_max_block_size *= 2
-    ds = ray.data.range(1000).map(lambda row: row)
-    assert ds.materialize().num_blocks() * 2 == num_blocks_expected
-    ds = ray.data.range(1000).map(lambda row: row).map(lambda row: row)
-    assert ds.materialize().num_blocks() * 2 == num_blocks_expected
+    num_blocks_expected //= 2
+
+    # Test read.
+    ds = ray.data.range(100_000, parallelism=1).materialize()
+    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected + 1
+    last_snapshot = assert_blocks_expected_in_plasma(
+        last_snapshot,
+        num_blocks_expected,
+        block_size_expected=ctx.target_max_block_size,
+    )
+
+    # Test read -> map.
+    ds = ray.data.range(100_000, parallelism=1).map(lambda row: row).materialize()
+    assert num_blocks_expected * 2 <= ds.num_blocks() <= num_blocks_expected * 2 + 1
+    last_snapshot = assert_blocks_expected_in_plasma(
+        last_snapshot,
+        num_blocks_expected * 2,
+        block_size_expected=ctx.target_max_block_size // 2,
+    )
 
     # Setting the shuffle block size doesn't do anything for
     # map-only Datasets.
-    ctx.target_shuffle_max_block_size = 100 * 8
-    ds = ray.data.range(1000).map(lambda row: row)
-    assert ds.materialize().num_blocks() * 2 == num_blocks_expected
-    ds = ray.data.range(1000).map(lambda row: row).map(lambda row: row)
-    assert ds.materialize().num_blocks() * 2 == num_blocks_expected
+    ctx.target_shuffle_max_block_size = ctx.target_max_block_size / 2
+
+    # Test read.
+    ds = ray.data.range(100_000, parallelism=1).materialize()
+    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected + 1
+    last_snapshot = assert_blocks_expected_in_plasma(
+        last_snapshot,
+        num_blocks_expected,
+        block_size_expected=ctx.target_max_block_size,
+    )
+
+    # Test read -> map.
+    ds = ray.data.range(100_000, parallelism=1).map(lambda row: row).materialize()
+    assert num_blocks_expected * 2 <= ds.num_blocks() <= num_blocks_expected * 2 + 1
+    last_snapshot = assert_blocks_expected_in_plasma(
+        last_snapshot,
+        num_blocks_expected * 2,
+        block_size_expected=ctx.target_max_block_size // 2,
+    )
 
 
 # TODO: Test that map stage output blocks are the correct size for groupby and
@@ -69,7 +124,7 @@ def test_shuffle(ray_start_regular_shared, restore_data_context, shuffle_op):
         num_blocks_expected *= 2
     assert ds.materialize().num_blocks() == num_blocks_expected
 
-    ctx.target_shuffle_max_block_size /= 2
+    ctx.target_shuffle_max_block_size //= 2
     num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
     ds = shuffle_fn(ray.data.range(1000), **kwargs)
     assert ds.materialize().num_blocks() == num_blocks_expected

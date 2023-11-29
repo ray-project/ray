@@ -45,10 +45,9 @@ def test_dag_building():
 def test_nested_building():
     with InputNode() as inp:
         out = func.bind(inp)
-        out = Driver.bind().__call__.bind(out)
-        out = func.bind(out)
-    dag = Driver.bind(out, func.bind())
-    assert len(pipeline_build(dag)) == 5
+        out = Driver.bind(func.bind())
+        dag = Driver.bind(out)
+    assert len(pipeline_build(dag)) == 3
 
 
 def test_environment_end():

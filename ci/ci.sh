@@ -118,6 +118,7 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/anyscale-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
@@ -128,8 +129,7 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
-    "${WORKSPACE_DIR}/doc/requirements-doc.txt"
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
@@ -243,7 +243,6 @@ test_python() {
   if [ "${OSTYPE}" = msys ]; then
     args+=(
       python/ray/tests/...
-      python/ray/train:test_windows
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -268,6 +267,33 @@ test_python() {
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
+    )
+  fi
+  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
+    install_ray
+
+    # Shard the args.
+    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
+    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
+    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+
+    # shellcheck disable=SC2046,SC2086
+    bazel test --config=ci \
+      --build_tests_only $(./ci/run/bazel_export_options) \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
+      --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_output=streamed \
+      -- \
+      ${test_shard_selection};
+  fi
+}
+
+# For running Python tests on Windows (excluding Serve).
+test_train_windows() {
+  if [ "${OSTYPE}" = msys ]; then
+    args+=(
+      python/ray/train:test_windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
