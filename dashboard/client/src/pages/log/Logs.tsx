@@ -104,7 +104,8 @@ export const StateApiLogsListPage = () => {
 export const StateApiLogsNodesList = () => {
   const { data: nodes, error } = useSWR(["/api/v0/nodes"], async () => {
     const resp = await getNodeList();
-    return resp.data.data.summary;
+    const nodes = resp.data.data.summary;
+    return nodes.filter((node) => node.state === "ALIVE");
   });
 
   const isLoading = nodes === undefined && error === undefined;
