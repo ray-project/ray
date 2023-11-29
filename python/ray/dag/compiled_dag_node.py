@@ -85,6 +85,7 @@ class CompiledDAG:
         self.dag_input_max_readers = None
         self.dag_output_refs = None
         self.worker_task_refs = []
+        self.actor_refs = set()
 
     def add_node(self, node):
         idx = self.counter
@@ -144,6 +145,7 @@ class CompiledDAG:
             if isinstance(task.dag_node, ClassMethodNode):
                 fn = task.dag_node._get_remote_method("__ray_apply__")
                 task.output_ref = ray.get(fn.remote(do_allocate_shared_output_buffer))
+                self.actor_refs.add(task.dag_node._get_actor())
             elif isinstance(task.dag_node, InputNode):
                 task.output_ref = allocate_shared_output_buffer()
             else:
@@ -214,8 +216,18 @@ class CompiledDAG:
                     ray.get(outer.worker_task_refs)
                 except Exception as e:
                     print("Worker task exception", e)
-                    # TODO: put to output refs
-                    # TODO: kill worker actors
+                    for output_ref in outer.dag_output_refs:
+                        print("Putting error", output_ref)
+                        # TODO this hangs since we're not the creator?
+                        # TODO set metadata to error type?
+                        ray.worker.global_worker.put_object(
+                            e,
+                            object_ref=output_ref,
+                            max_readers=1,  # TODO: only put if nonblocking?
+                        )
+                    for actor in outer.actor_refs:
+                        print("Killing actor", actor)
+                        ray.kill(actor)
 
         Monitor().start()
 
