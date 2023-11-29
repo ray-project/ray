@@ -150,8 +150,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         rewards = []
         actions = []
         infos = []
-        is_terminateds = []
-        is_truncateds = []
+        terminateds = []
+        truncateds = []
         extra_model_outputs = []
         # Initialize observation and info.
         obs, info = env.reset(seed=0)
@@ -166,26 +166,26 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 if agent_id in env._agents_alive
             }
             # action = env.action_space_sample(agents_stepped)
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             observations.append(obs)
             actions.append(action)
             rewards.append(reward)
             infos.append(info)
-            is_terminateds.append(is_terminated)
-            is_truncateds.append(is_truncated)
+            terminateds.append(terminated)
+            truncateds.append(truncated)
             extra_model_outputs.append(
                 {agent_id: {"extra_1": 10.5} for agent_id in agents_stepped}
             )
 
         # Now create the episode from the recorded data.
         episode = MultiAgentEpisode(
-            agent_ids=env.get_agent_ids(),
+            agent_ids=list(env.get_agent_ids()),
             observations=observations,
             actions=actions,
             rewards=rewards,
             infos=infos,
-            terminateds=is_terminateds,
-            truncateds=is_truncateds,
+            terminateds=terminateds,
+            truncateds=truncateds,
             extra_model_outputs=extra_model_outputs,
         )
 
@@ -214,8 +214,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             rewards=rewards[-10:],
             infos=infos[-11:],
             t_started=100,
-            is_terminated=is_terminateds[-10:],
-            is_truncated=is_truncateds[-10:],
+            terminateds=terminateds[-10:],
+            truncateds=truncateds[-10:],
             extra_model_outputs=extra_model_outputs[-10:],
         )
 
@@ -239,8 +239,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             observations,
             actions,
             rewards,
-            is_terminated,
-            is_truncated,
+            terminateds,
+            truncateds,
             infos,
         ) = self._mock_multi_agent_records()
 
@@ -251,8 +251,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             actions=actions,
             rewards=rewards,
             infos=infos,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
+            terminateds=terminateds,
+            truncateds=truncateds,
         )
 
         # Assert that the length of `SingleAgentEpisode`s are all correct.

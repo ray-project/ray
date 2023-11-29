@@ -276,9 +276,9 @@ class SingleAgentEnvRunner(EnvRunner):
                         actions[i],
                         rewards[i],
                         info=infos[i]["final_info"],
-                        is_terminated=terminateds[i],
-                        is_truncated=truncateds[i],
-                        extra_model_output=extra_model_output,
+                        terminated=terminateds[i],
+                        truncated=truncateds[i],
+                        extra_model_outputs=extra_model_output,
                     )
                     self._states[i] = s
 
@@ -300,7 +300,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         actions[i],
                         rewards[i],
                         info=infos[i],
-                        extra_model_output=extra_model_output,
+                        extra_model_outputs=extra_model_output,
                     )
                     self._states[i] = s
 
@@ -431,9 +431,9 @@ class SingleAgentEnvRunner(EnvRunner):
                         actions[i],
                         rewards[i],
                         info=infos[i]["final_info"],
-                        is_terminated=terminateds[i],
-                        is_truncated=truncateds[i],
-                        extra_model_output=extra_model_output,
+                        terminated=terminateds[i],
+                        truncated=truncateds[i],
+                        extra_model_outputs=extra_model_output,
                     )
 
                     done_episodes_to_return.append(episodes[i])
@@ -464,7 +464,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         rewards[i],
                         info=infos[i],
                         render_image=render_images[i],
-                        extra_model_output=extra_model_output,
+                        extra_model_outputs=extra_model_output,
                     )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)

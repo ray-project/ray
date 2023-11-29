@@ -65,8 +65,8 @@ class SingleAgentEpisode:
                 observation=obs,
                 action=action,
                 reward=reward,
-                is_terminated=term,
-                is_truncated=trunc,
+                terminated=term,
+                truncated=trunc,
                 infos=infos,
             )
         assert len(episode) == 10
@@ -161,24 +161,24 @@ class SingleAgentEpisode:
                 provided the constructor generates a hexadecimal code for the id.
             observations: Optional. A list of observations from a rollout. If
                 data is provided it should be complete (i.e. observations, actions,
-                rewards, is_terminated, is_truncated, and all necessary
+                rewards, terminated, truncated, and all necessary
                 `extra_model_outputs`). The length of the `observations` defines
                 the default starting value. See the parameter `t_started`.
             actions: Optional. A list of actions from a rollout. If data is
                 provided it should be complete (i.e. observations, actions,
-                rewards, is_terminated, is_truncated, and all necessary
+                rewards, terminated, truncated, and all necessary
                 `extra_model_outputs`).
             rewards: Optional. A list of rewards from a rollout. If data is
                 provided it should be complete (i.e. observations, actions,
-                rewards, is_terminated, is_truncated, and all necessary
+                rewards, terminated, truncated, and all necessary
                 `extra_model_outputs`).
             infos: Optional. A list of infos from a rollout. If data is
                 provided it should be complete (i.e. observations, actions,
-                rewards, is_terminated, is_truncated, and all necessary
+                rewards, terminated, truncated, and all necessary
                 `extra_model_outputs`).
             states: Optional. The hidden model states from a rollout. If
                 data is provided it should be complete (i.e. observations, actions,
-                rewards, is_terminated, is_truncated, and all necessary
+                rewards, terminated, truncated, and all necessary
                 `extra_model_outputs`). States are only avasilable if a stateful
                 model (`RLModule`) is used.
             terminated: Optional. A boolean indicating, if the episode is already
@@ -190,7 +190,7 @@ class SingleAgentEpisode:
             extra_model_outputs: Optional. A list of dictionaries containing specific
                 model outputs for the algorithm used (e.g. `vf_preds` and `action_logp`
                 for PPO) from a rollout. If data is provided it should be complete
-                (i.e. observations, actions, rewards, is_terminated, is_truncated,
+                (i.e. observations, actions, rewards, terminated, truncated,
                 and all necessary `extra_model_outputs`).
             render_images: Optional. A list of RGB uint8 images from rendering
                 the environment.
@@ -284,8 +284,8 @@ class SingleAgentEpisode:
         together. This is checked by the IDs (must be identical), the time step counters
         (`self.t` must be the same as `episode_chunk.t_started`), as well as the
         observations/infos at the concatenation boundaries (`self.observations[-1]`
-        must match `episode_chunk.observations[0]`). Also, `self` must not be done yet,
-        meaning `is_terminal` and `is_truncated` are both False.
+        must match `episode_chunk.observations[0]`). Also, `self.is_done` must not be
+        True, meaning `self.is_terminated` and `self.is_truncated` are both False.
 
         Args:
             episode_chunk: Another `SingleAgentEpisode` to be concatenated.
@@ -508,21 +508,21 @@ class SingleAgentEpisode:
                 observations=[0, 1, 2, 3],
                 actions=[1, 2, 3],
                 rewards=[1, 2, 3],
-                # Note: is_terminal/is_truncated have nothing to do with an episode
-                # being finalized or not!
-                is_terminal=False,
+                # Note: terminated/truncated have nothing to do with an episode
+                # being `finalized` or not (via the `self.finalize()` method)!
+                terminated=False,
             )
             # Episode has not been finalized (numpy'ized) yet.
             assert not episode.is_finalized
             # We are still operating on lists.
             assert episode.get_observations([1]) == [1]
             assert episode.get_observations(slice(None, 2)) == [0, 1]
-            # We can still add data (and even add the is_terminated=True flag).
+            # We can still add data (and even add the terminated=True flag).
             episode.add_env_step(
                 observation=4,
                 action=4,
                 reward=4,
-                is_terminated=True,
+                terminated=True,
             )
             # Still NOT finalized.
             assert not episode.is_finalized
@@ -1053,7 +1053,7 @@ class SingleAgentEpisode:
             The new SingleAgentEpisode representing the requested slice.
         """
         # Figure out, whether slicing stops at the very end of this episode to know
-        # whether is_terminated/truncated should be kept as-is.
+        # whether `self.is_terminated/is_truncated` should be kept as-is.
         keep_done = slice_.stop is None or slice_.stop == len(self)
         start = slice_.start or 0
         t_started = self.t_started + start + (0 if start >= 0 else len(self))
@@ -1097,8 +1097,8 @@ class SingleAgentEpisode:
                 )
                 for k in self.extra_model_outputs
             },
-            is_terminated=(self.is_terminated if keep_done else False),
-            is_truncated=(self.is_truncated if keep_done else False),
+            terminated=(self.is_terminated if keep_done else False),
+            truncated=(self.is_truncated if keep_done else False),
             # Provide correct timestep- and pre-buffer information.
             t_started=t_started,
             len_lookback_buffer=self._len_lookback_buffer,

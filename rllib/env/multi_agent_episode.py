@@ -893,9 +893,7 @@ class MultiAgentEpisode:
             if self.agent_episodes[agent_id].is_done:
                 continue
 
-            agent_is_terminated = (
-                terminateds.get(agent_id, False) or self.is_terminated
-            )
+            agent_is_terminated = terminateds.get(agent_id, False) or self.is_terminated
             agent_is_truncated = truncateds.get(agent_id, False) or self.is_truncated
 
             # CASE 1: observation, no action.
@@ -1019,7 +1017,9 @@ class MultiAgentEpisode:
                     # original action timestep (global one). Right now the
                     # `global_reward_t` might serve here.
                     # Buffer the action.
-                    self.agent_buffers[agent_id]["actions"].put_nowait(actions[agent_id])
+                    self.agent_buffers[agent_id]["actions"].put_nowait(
+                        actions[agent_id]
+                    )
                     # Record the timestep for the action.
                     self.global_actions_t[agent_id].append(self.t)
                     # If available, buffer also reward. Note, if the agent is terminated

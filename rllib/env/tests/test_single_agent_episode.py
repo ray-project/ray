@@ -124,6 +124,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         episode.add_env_reset(observation=obs, info=info)
 
         # Sample 100 timesteps and add them to the episode.
+        terminated = truncated = False
         for i in range(100):
             action = env.action_space.sample()
             obs, reward, terminated, truncated, info = env.step(action)
@@ -152,9 +153,9 @@ class TestSingelAgentEpisode(unittest.TestCase):
             == i + 1
         )
         # Assert that the flags are set correctly.
-        self.assertTrue(episode.is_terminated == is_terminated)
-        self.assertTrue(episode.is_truncated == is_truncated)
-        self.assertTrue(episode.is_done == is_terminated or is_truncated)
+        self.assertTrue(episode.is_terminated == terminated)
+        self.assertTrue(episode.is_truncated == truncated)
+        self.assertTrue(episode.is_done == terminated or truncated)
 
     def test_cut(self):
         """Tests creation of a scucessor of a `SingleAgentEpisode`.
@@ -340,15 +341,15 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Sample 100 timesteps.
         for i in range(100):
             action = i
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             episode_1.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
                 info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={"extra": np.random.random(1)},
+                terminated=terminated,
+                truncated=truncated,
+                extra_model_outputs={"extra": np.random.random(1)},
             )
 
         # Create a successor.
@@ -357,15 +358,15 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Now, sample 100 more timesteps.
         for i in range(100, 200):
             action = i
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             episode_2.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
                 info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={"extra": np.random.random(1)},
+                terminated=terminated,
+                truncated=truncated,
+                extra_model_outputs={"extra": np.random.random(1)},
             )
 
         # Assert that the second episode's `t_started` is at the first episode's

@@ -327,8 +327,8 @@ class DreamerV3EnvRunner(EnvRunner):
                         observation=infos["final_observation"][i],
                         action=actions[i],
                         reward=rewards[i],
-                        is_terminated=terminateds[i],
-                        is_truncated=truncateds[i],
+                        terminated=terminateds[i],
+                        truncated=truncateds[i],
                     )
                     self._states[i] = s
                     # Reset h-states to the model's initial ones b/c we are starting a
@@ -395,7 +395,6 @@ class DreamerV3EnvRunner(EnvRunner):
                 observation=obs[i],
                 render_image=render_images[i],
             )
-            self._states[i] = {k: s[i] for k, s in states.items()}
 
         eps = 0
         while eps < num_episodes:
@@ -425,7 +424,6 @@ class DreamerV3EnvRunner(EnvRunner):
                 render_images = [e.render() for e in self.env.envs]
 
             for i in range(self.num_envs):
-                s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
                 if terminateds[i] or truncateds[i]:
@@ -435,10 +433,9 @@ class DreamerV3EnvRunner(EnvRunner):
                         observation=infos["final_observation"][i],
                         action=actions[i],
                         reward=rewards[i],
-                        is_terminated=terminateds[i],
-                        is_truncated=truncateds[i],
+                        terminated=terminateds[i],
+                        truncated=truncateds[i],
                     )
-                    self._states[i] = s
                     done_episodes_to_return.append(episodes[i])
 
                     # Also early-out if we reach the number of episodes within this
@@ -454,8 +451,9 @@ class DreamerV3EnvRunner(EnvRunner):
 
                     episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]],
-                        states=s,
-                        render_images=[render_images[i]],
+                        render_images=(
+                            [render_images[i]] if with_render_data else None
+                        ),
                     )
                 else:
                     episodes[i].add_env_step(
@@ -464,7 +462,6 @@ class DreamerV3EnvRunner(EnvRunner):
                         reward=rewards[i],
                         render_image=render_images[i],
                     )
-                    self._states[i] = s
                     is_first[i] = False
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
