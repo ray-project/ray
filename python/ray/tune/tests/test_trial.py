@@ -29,13 +29,13 @@ def test_handle_preemption_error(
     if count_preemption_errors:
         monkeypatch.setenv(RAY_TRAIN_COUNT_PREEMPTION_ERRORS, "1")
 
-    num_errors_before = trial.run_metadata.num_failures
+    num_errors_before = trial.num_failures
 
     # Case 1: Directly raised (preemption) RayActorError
     err = RayActorError()
     err.preempted = True
     trial.handle_error(err)
-    assert trial.run_metadata.num_failures == num_errors_before + (
+    assert trial.num_failures == num_errors_before + (
         1 if count_preemption_errors else 0
     )
 
@@ -44,7 +44,7 @@ def test_handle_preemption_error(
         function_name="test", traceback_str="traceback_str", cause=err
     )
     trial.handle_error(wrapped_err)
-    assert trial.run_metadata.num_failures == num_errors_before + (
+    assert trial.num_failures == num_errors_before + (
         2 if count_preemption_errors else 0
     )
 
@@ -52,7 +52,7 @@ def test_handle_preemption_error(
     non_preempted_err = RayActorError()
     non_preempted_err.preempted = False
     trial.handle_error(non_preempted_err)
-    assert trial.run_metadata.num_failures == num_errors_before + (
+    assert trial.num_failures == num_errors_before + (
         3 if count_preemption_errors else 1
     )
 
