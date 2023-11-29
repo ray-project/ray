@@ -765,9 +765,10 @@ class Trial:
             self.run_metadata.num_failures += 1
 
     def _handle_ray_task_error(self, exc: RayTaskError):
-        if isinstance(exc.cause, RayActorError):
+        cause = exc.as_instanceof_cause()
+        if isinstance(cause, RayActorError):
             # Handle the RayActorError directly (ex: Ray Train worker actor errors)
-            return self._handle_ray_actor_error(exc.cause)
+            return self._handle_ray_actor_error(cause)
 
         # Increment failures for all user errors (which get raised as RayTaskError)
         self.run_metadata.num_failures += 1
