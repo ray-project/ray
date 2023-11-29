@@ -4,6 +4,7 @@ import time
 import numpy as np
 import os
 from ray._private.test_utils import skip_flaky_core_test_premerge
+from ray.exceptions import OwnerDiedError
 
 
 # https://github.com/ray-project/ray/issues/19659
@@ -98,7 +99,7 @@ def test_owner_assign_when_put(ray_start_cluster, actor_resources):
     time.sleep(2)
     with pytest.raises(ray.exceptions.RayTaskError) as error:
         ray.get(borrower.get_object.remote(object_ref), timeout=2)
-    assert "OwnerDiedError" in error.value.args[1]
+    assert isinstance(error.value.as_instanceof_cause(), OwnerDiedError)
 
 
 def test_multiple_objects(ray_start_cluster):
