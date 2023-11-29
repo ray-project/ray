@@ -251,6 +251,7 @@ py_test_module_list(
     "test_component_failures.py",
     "test_cross_language.py",
     "test_debug_tools.py",
+    "test_dependencies.py",
     "test_distributed_sort.py",
     "test_environ.py",
     "test_get_or_create_actor.py",
