@@ -43,7 +43,7 @@ class Benchmark:
 
     # Writes a JSON with metrics of the form:
     # {"case-1": {...}, "case-2": {...}, "case-3": {...}}
-    benchmark.write_result("output.json")
+    benchmark.write_result()
 
     See example usage in ``aggregate_benchmark.py``.
     """
@@ -155,8 +155,8 @@ class Benchmark:
         if isinstance(fn_output, dict):
             extra_metrics = {}
             for metric_key, metric_val in fn_output.items():
-                if metric_key in BenchmarkMetric.__members__:
-                    curr_case_metrics[metric_key] = metric_val
+                if isinstance(metric_key, BenchmarkMetric):
+                    curr_case_metrics[metric_key.value] = metric_val
                 else:
                     extra_metrics[metric_key] = metric_val
             curr_case_metrics[BenchmarkMetric.EXTRA_METRICS.value] = extra_metrics

@@ -1,5 +1,5 @@
 from typing import Dict
-import click
+import argparse
 import time
 
 import numpy as np
@@ -11,19 +11,33 @@ import ray
 from ray.data import ActorPoolStrategy
 
 
-@click.command(help="Run Batch prediction on Pytorch ResNet models.")
-@click.option(
-    "--data-directory",
-    type=str,
-    help="Name of the S3 directory in the air-example-data-2 bucket to load data from.",
-)
-@click.option(
-    "--data-format",
-    type=click.Choice(["parquet", "raw"], case_sensitive=False),
-    help="The format of the data. Can be either parquet or raw.",
-)
-@click.option("--smoke-test", is_flag=True, default=False)
-def main(data_directory: str, data_format: str, smoke_test: bool):
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--data-directory",
+        help=(
+            "Name of the S3 directory in the air-example-data-2 "
+            "bucket to load data from."
+        ),
+    )
+    parser.add_argument(
+        "--data-format",
+        choices=["parquet", "raw"],
+        help="The format of the data. Can be either parquet or raw.",
+    )
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        default=False,
+    )
+    return parser.parse_args()
+
+
+def main(args):
+    data_directory: str = args.data_directory
+    data_format: str = args.data_format
+    smoke_test: bool = args.smoke_test
     data_url = f"s3://anonymous@air-example-data-2/{data_directory}"
 
     print(f"Running GPU batch prediction with data from {data_url}")
@@ -112,8 +126,8 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
 
     # For structured output integration with internal tooling
     results = {
-        BenchmarkMetric.RUNTIME.value: total_time,
-        BenchmarkMetric.THROUGHPUT.value: throughput,
+        BenchmarkMetric.RUNTIME: total_time,
+        BenchmarkMetric.THROUGHPUT: throughput,
         "data_directory": data_directory,
         "data_format": data_format,
         "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
@@ -124,6 +138,8 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
 
 
 if __name__ == "__main__":
+    args = parse_args()
+
     benchmark = Benchmark("gpu-batch-inference")
-    benchmark.run_fn("batch-inference", main)
+    benchmark.run_fn("batch-inference", main, args)
     benchmark.write_result()
