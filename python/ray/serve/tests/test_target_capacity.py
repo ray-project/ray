@@ -501,13 +501,20 @@ class TestTargetCapacityUpdateAndServeStatus:
                 DeploymentStatusTrigger.AUTOSCALING,
             ]
 
-    def start_replicas_and_check_status(self, signal, app_name: str):
-        ray.get(signal.send.remote())
+    def unblock_replica_initialization(self, lifecycle_signal, app_name: str):
+        """Unblocks initialization for ControlledLifecycleDeployment replicas.
+
+        These replicas can't initialize until the "lifecycle_signal" actor runs
+        send, so this method runs send, waits until the replicas start running,
+        and then resets the signal.
+        """
+
+        ray.get(lifecycle_signal.send.remote())
         wait_for_condition(
             lambda: serve.status().applications[app_name].status
             == ApplicationStatus.RUNNING
         )
-        ray.get(signal.send.remote(clear=True))
+        ray.get(lifecycle_signal.send.remote(clear=True))
 
     def test_static_num_replicas_target_capacity_update(
         self, shutdown_ray_and_serve, client: ServeControllerClient
@@ -543,7 +550,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             deployment_name=deployment_name,
         )
         self.check_num_running_replicas(0, app_name, deployment_name)
-        self.start_replicas_and_check_status(signal, app_name)
+        self.unblock_replica_initialization(signal, app_name)
         self.check_num_running_replicas(0, app_name, deployment_name)
 
         # Increase the target_capacity, and check again.
@@ -555,7 +562,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             deployment_name=deployment_name,
         )
         self.check_num_running_replicas(0, app_name, deployment_name)
-        self.start_replicas_and_check_status(signal, app_name)
+        self.unblock_replica_initialization(signal, app_name)
         self.check_num_running_replicas(
             int(0.5 * num_replicas), app_name, deployment_name
         )
@@ -571,7 +578,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         self.check_num_running_replicas(
             int(0.5 * num_replicas), app_name, deployment_name
         )
-        self.start_replicas_and_check_status(signal, app_name)
+        self.unblock_replica_initialization(signal, app_name)
         self.check_num_running_replicas(
             int(0.1 * num_replicas), app_name, deployment_name
         )
@@ -620,7 +627,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             deployment_name=deployment_name,
         )
         self.check_num_running_replicas(0, app_name, deployment_name)
-        self.start_replicas_and_check_status(lifecycle_signal, app_name)
+        self.unblock_replica_initialization(lifecycle_signal, app_name)
         self.check_num_running_replicas(0, app_name, deployment_name)
 
         # Increase the target_capacity, and check again.
@@ -632,7 +639,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             deployment_name=deployment_name,
         )
         self.check_num_running_replicas(0, app_name, deployment_name)
-        self.start_replicas_and_check_status(lifecycle_signal, app_name)
+        self.unblock_replica_initialization(lifecycle_signal, app_name)
         self.check_num_running_replicas(
             int(0.5 * initial_replicas), app_name, deployment_name
         )
@@ -679,7 +686,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         self.check_num_running_replicas(
             int(0.5 * initial_replicas), app_name, deployment_name
         )
-        self.start_replicas_and_check_status(lifecycle_signal, app_name)
+        self.unblock_replica_initialization(lifecycle_signal, app_name)
         self.check_num_running_replicas(
             int(0.1 * min_replicas), app_name, deployment_name
         )
@@ -727,7 +734,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         self.check_num_running_replicas(
             int(0.1 * min_replicas), app_name, deployment_name
         )
-        self.start_replicas_and_check_status(lifecycle_signal, app_name)
+        self.unblock_replica_initialization(lifecycle_signal, app_name)
         self.check_num_running_replicas(initial_replicas, app_name, deployment_name)
 
         # Scaling up to no target_capacity should make Serve use
@@ -743,7 +750,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             deployment_name=deployment_name,
             check_statuses=False,
         )
-        self.start_replicas_and_check_status(lifecycle_signal, app_name)
+        self.unblock_replica_initialization(lifecycle_signal, app_name)
         wait_for_condition(
             self.check_num_running_replicas,
             expected_num_running_replicas=min_replicas,
