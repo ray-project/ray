@@ -431,7 +431,6 @@ py_test_module_list(
     "test_runtime_env_working_dir_4.py",
     "test_runtime_env_working_dir_remote_uri.py",
     "test_runtime_env_profiler.py",
-    "test_deployment_in_container.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_2", "team:core"],
@@ -459,6 +458,14 @@ py_test(
   tags = ["exclusive", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["//python/ray/experimental/packaging/example_pkg"],
+)
+
+py_test(
+  name = "test_runtime_env_container",
+  size = "large",
+  srcs = ["test_runtime_env_container.py"],
+  tags = ["exclusive", "team:core", "container"],
+  deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
