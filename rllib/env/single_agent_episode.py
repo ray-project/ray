@@ -233,7 +233,9 @@ class SingleAgentEpisode:
         )
         # Rewards: t1 to T.
         self.rewards = BufferWithInfiniteLookback(
-            data=rewards, lookback=self._len_lookback_buffer
+            data=rewards,
+            lookback=self._len_lookback_buffer,
+            space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
         )
         # Infos: t0 (initial info) to T.
         self.infos = BufferWithInfiniteLookback(
@@ -331,7 +333,7 @@ class SingleAgentEpisode:
     def add_env_reset(
         self,
         observation: ObsType,
-        info: Optional[Dict] = None,
+        infos: Optional[Dict] = None,
         *,
         render_image: Optional[np.ndarray] = None,
     ) -> None:
@@ -342,7 +344,7 @@ class SingleAgentEpisode:
 
         Args:
             observation: The initial observation returned by `env.reset()`.
-            info: An (optional) info dict returned by `env.reset()`.
+            infos: An (optional) info dict returned by `env.reset()`.
             render_image: Optional. An RGB uint8 image from rendering
                 the environment right after the reset.
         """
@@ -352,7 +354,7 @@ class SingleAgentEpisode:
         # Leave self.t (and self.t_started) at 0.
         assert self.t == self.t_started == 0
 
-        info = info or {}
+        infos = infos or {}
 
         if self.observation_space is not None:
             assert self.observation_space.contains(observation), (
@@ -361,7 +363,7 @@ class SingleAgentEpisode:
             )
 
         self.observations.append(observation)
-        self.infos.append(info)
+        self.infos.append(infos)
         if render_image is not None:
             self.render_images.append(render_image)
 
@@ -373,7 +375,7 @@ class SingleAgentEpisode:
         observation: ObsType,
         action: ActType,
         reward: SupportsFloat,
-        info: Optional[Dict[str, Any]] = None,
+        infos: Optional[Dict[str, Any]] = None,
         *,
         terminated: bool = False,
         truncated: bool = False,
@@ -391,7 +393,7 @@ class SingleAgentEpisode:
                 `action`.
             action: The last action used by the agent during the call to `env.step()`.
             reward: The last reward received by the agent after taking `action`.
-            info: The last info recevied from the environment after taking `action`.
+            infos: The last info received from the environment after taking `action`.
             terminated: A boolean indicating, if the environment has been
                 terminated (after taking `action`).
             truncated: A boolean indicating, if the environment has been
@@ -410,8 +412,8 @@ class SingleAgentEpisode:
         self.observations.append(observation)
         self.actions.append(action)
         self.rewards.append(reward)
-        info = info or {}
-        self.infos.append(info)
+        infos = infos or {}
+        self.infos.append(infos)
         self.t += 1
         if render_image is not None:
             self.render_images.append(render_image)

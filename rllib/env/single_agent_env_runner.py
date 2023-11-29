@@ -187,7 +187,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # (even if automated).
                 self._episodes[i].add_env_reset(
                     observation=obs[i],
-                    info=infos[i],
+                    infos=infos[i],
                 )
                 self._states[i] = {k: s[i] for k, s in states.items()}
         # Do not reset envs, but instead continue in already started episodes.
@@ -275,7 +275,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
-                        info=infos[i]["final_info"],
+                        infos=infos[i]["final_info"],
                         terminated=terminateds[i],
                         truncated=truncateds[i],
                         extra_model_outputs=extra_model_output,
@@ -299,7 +299,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         obs[i],
                         actions[i],
                         rewards[i],
-                        info=infos[i],
+                        infos=infos[i],
                         extra_model_outputs=extra_model_output,
                     )
                     self._states[i] = s
@@ -367,7 +367,7 @@ class SingleAgentEnvRunner(EnvRunner):
         for i in range(self.num_envs):
             episodes[i].add_env_reset(
                 observation=obs[i],
-                info=infos[i],
+                infos=infos[i],
                 render_image=render_images[i],
             )
 
@@ -430,7 +430,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
-                        info=infos[i]["final_info"],
+                        infos=infos[i]["final_info"],
                         terminated=terminateds[i],
                         truncated=truncateds[i],
                         extra_model_outputs=extra_model_output,
@@ -462,7 +462,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         obs[i],
                         actions[i],
                         rewards[i],
-                        info=infos[i],
+                        infos=infos[i],
                         render_image=render_images[i],
                         extra_model_outputs=extra_model_output,
                     )

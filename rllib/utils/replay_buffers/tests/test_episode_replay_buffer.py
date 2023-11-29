@@ -17,7 +17,7 @@ class TestEpisodeReplayBuffer(unittest.TestCase):
                 observation=float(t + 1),
                 action=int(t),
                 reward=0.1 * (t + 1),
-                info={},
+                infos={},
             )
         eps.is_terminated = np.random.random() > 0.5
         eps.is_truncated = False if eps.is_terminated else np.random.random() > 0.8
