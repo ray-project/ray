@@ -17,7 +17,7 @@ const mockUseStateApiLogs = jest.mocked(useStateApiLogs);
 
 describe("LogsPage", () => {
   it("renders a nodes view", async () => {
-    expect.assertions(4);
+    expect.assertions(5);
 
     mockGetNodeList.mockResolvedValueOnce({
       data: {
@@ -27,12 +27,21 @@ describe("LogsPage", () => {
               ip: "127.0.0.1",
               raylet: {
                 nodeId: "node-id-1",
+                state: "ALIVE",
               },
             },
             {
               ip: "127.0.0.2",
               raylet: {
                 nodeId: "node-id-2",
+                state: "ALIVE",
+              },
+            },
+            {
+              ip: "127.0.0.3",
+              raylet: {
+                nodeId: "node-id-3",
+                state: "DEAD",
               },
             },
           ],
@@ -66,6 +75,9 @@ describe("LogsPage", () => {
     expect(
       screen.getByRole("link", { name: /Node ID: node-id-2/ }),
     ).toHaveAttribute("href", "/?nodeId=node-id-2");
+    expect(
+      screen.queryByText("Node ID: node-id-3 (IP: 127.0.0.3)"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a list view of files", async () => {
