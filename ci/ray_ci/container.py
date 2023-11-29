@@ -82,6 +82,8 @@ class Container:
             "run",
             "-i",
             "--rm",
+            "--env",
+            "NVIDIA_DISABLE_REQUIRE=1",
             "--volume",
             "/tmp/artifacts:/artifact-mount",
         ]
