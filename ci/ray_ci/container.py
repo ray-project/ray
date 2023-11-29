@@ -99,8 +99,6 @@ class Container:
             "NVIDIA_DISABLE_REQUIRE=1",
             "--volume",
             "/tmp/artifacts:/artifact-mount",
-            "--volume",
-            "/var/lib/containers:/var/lib/containers",
             "--add-host",
             "rayci.localhost:host-gateway",
         ]

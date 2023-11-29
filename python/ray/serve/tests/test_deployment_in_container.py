@@ -82,7 +82,9 @@ def test_shared_memory(shutdown_only):
     ray.init()
     ref = ray.get(f.remote())
     val = ray.get(ref)
-    assert sys.getsizeof(val) < 4 * 5000 * 5000
+    size = sys.getsizeof(val)
+    assert size < sys.getsizeof(np.random.rand(5000, 5000))
+    print(f"Size of result fetched from ray.put: {size}")
     assert val.shape == (5000, 5000)
 
 

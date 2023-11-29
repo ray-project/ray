@@ -36,6 +36,8 @@ class TesterContainer(Container):
             volumes=[
                 f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
                 "/var/run/docker.sock:/var/run/docker.sock",
+                # This mount is needed for podman to work in the CI container
+                "/var/lib/containers:/var/lib/containers",
             ],
             privileged=privileged,
         )
