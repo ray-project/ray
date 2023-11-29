@@ -402,7 +402,6 @@ class TestLoggingAPI:
         check_log_file(resp["log_file"], expected_log_regex)
 
     def test_logs_dir(self, serve_and_ray_shutdown):
-
         logger = logging.getLogger("ray.serve")
 
         @serve.deployment

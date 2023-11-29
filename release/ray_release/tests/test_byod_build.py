@@ -88,7 +88,10 @@ def test_build_anyscale_custom_byod_image() -> None:
     with patch("ray_release.byod.build._image_exist", return_value=False), patch.dict(
         "os.environ",
         {"BUILDKITE_COMMIT": "abc123", "BUILDKITE_BRANCH": "master"},
-    ), patch("subprocess.check_call", side_effect=_mock_check_call,), patch(
+    ), patch(
+        "subprocess.check_call",
+        side_effect=_mock_check_call,
+    ), patch(
         "subprocess.check_output",
         return_value=b"abc123",
     ):

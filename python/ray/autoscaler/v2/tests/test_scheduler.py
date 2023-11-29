@@ -31,7 +31,6 @@ def sched_request(
     current_nodes: Optional[List[NodeState]] = None,
     current_instances: Optional[List[Instance]] = None,
 ) -> SchedulingRequest:
-
     if resource_requests is None:
         resource_requests = []
     if gang_resource_requests is None:

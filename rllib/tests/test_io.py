@@ -282,7 +282,6 @@ class AgentIOTest(unittest.TestCase):
         ]
 
         for input_procedure in test_input_procedure:
-
             config = (
                 PPOConfig()
                 .environment("CartPole-v1")

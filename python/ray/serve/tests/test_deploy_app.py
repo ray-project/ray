@@ -1350,7 +1350,6 @@ class TestDeploywithLoggingConfig:
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
     def test_logs_dir(self, client: ServeControllerClient):
-
         config_dict = self.get_deploy_config()
         config_dict["applications"][0]["logging_config"] = {
             "log_level": "DEBUG",
@@ -1385,7 +1384,6 @@ class TestDeploywithLoggingConfig:
 
     @pytest.mark.parametrize("enable_access_log", [True, False])
     def test_access_log(self, client: ServeControllerClient, enable_access_log: bool):
-
         config_dict = self.get_deploy_config()
         config_dict["applications"][0]["logging_config"] = {
             "enable_access_log": enable_access_log,

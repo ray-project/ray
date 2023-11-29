@@ -375,7 +375,6 @@ class PPO(Algorithm):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-
             from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 
             return PPOTorchPolicy
@@ -505,7 +504,6 @@ class PPO(Algorithm):
                 self.workers.local_worker().set_weights(weights)
 
         if self.config._enable_new_api_stack:
-
             kl_dict = {}
             if self.config.use_kl_loss:
                 for pid in policies_to_update:

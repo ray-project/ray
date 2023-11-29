@@ -264,7 +264,6 @@ def _pack_dir(
 
     stream = io.BytesIO()
     with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as tar:
-
         if not files_stats and not exclude:
             # If no `files_stats` is passed, pack whole directory
             tar.add(source_dir, arcname="", recursive=True)

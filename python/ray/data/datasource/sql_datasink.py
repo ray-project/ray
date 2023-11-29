@@ -7,7 +7,6 @@ from ray.data.datasource.sql_datasource import Connection, _connect
 
 
 class _SQLDatasink(Datasink):
-
     _MAX_ROWS_PER_WRITE = 128
 
     def __init__(self, sql: str, connection_factory: Callable[[], Connection]):

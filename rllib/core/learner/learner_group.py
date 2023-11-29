@@ -608,7 +608,6 @@ class LearnerGroup:
         modules_to_load: Optional[Set[str]] = None,
         rl_module_ckpt_dirs: Optional[Mapping[ModuleID, str]] = None,
     ) -> None:
-
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
         `load_module_state` can be used 3 ways:

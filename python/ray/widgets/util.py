@@ -78,7 +78,7 @@ def _has_missing(
         A list of dependencies which can't be found, if any
     """
     missing = []
-    for (lib, _) in deps:
+    for lib, _ in deps:
         if importlib.util.find_spec(lib) is None:
             missing.append(lib)
 
@@ -97,9 +97,8 @@ def _has_outdated(
     *deps: Iterable[Union[str, Optional[str]]], message: Optional[str] = None
 ):
     outdated = []
-    for (lib, version) in deps:
+    for lib, version in deps:
         try:
-
             module = importlib.import_module(lib)
             if version and Version(module.__version__) < Version(version):
                 outdated.append([lib, version, module.__version__])

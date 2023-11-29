@@ -176,7 +176,6 @@ class VTraceOptimizer:
     def optimizer(
         self,
     ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
-
         if self.config["_separate_vf_optimizer"]:
             # Figure out, which parameters of the model belong to the value
             # function (and which to the policy net).
