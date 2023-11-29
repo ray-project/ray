@@ -384,8 +384,8 @@ class CustomScalingPolicy(AutoscalingPolicy):
                         "Custom scaling policy must return an integer. Received type "
                         f"{type(decision_num_replicas)}, for {decision_num_replicas}"
                     )
-        except ray.exceptions.RayTaskError as e:
-            logger.error(f"Error in custom scaling policy: {e}")
+        except Exception as e:
+            logger.error(f"Error in custom scaling policy:\n{e}")
             self.custom_config_ref = None
 
         return None
