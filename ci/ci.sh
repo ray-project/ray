@@ -129,8 +129,7 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
-    "${WORKSPACE_DIR}/doc/requirements-doc.txt"
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn

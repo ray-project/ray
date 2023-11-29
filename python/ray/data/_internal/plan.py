@@ -33,7 +33,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
-from ray.data._internal.logical.rules.split_read_output_blocks import (
+from ray.data._internal.logical.rules.set_read_parallelism import (
     compute_additional_split_factor,
 )
 from ray.data._internal.planner.plan_read_op import (

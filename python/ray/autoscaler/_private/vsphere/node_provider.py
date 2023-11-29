@@ -32,7 +32,7 @@ from ray.autoscaler._private.vsphere.gpu_utils import (
 )
 from ray.autoscaler._private.vsphere.pyvmomi_sdk_provider import PyvmomiSdkProvider
 from ray.autoscaler._private.vsphere.scheduler import SchedulerFactory
-from ray.autoscaler._private.vsphere.utils import Constants, is_ipv4
+from ray.autoscaler._private.vsphere.utils import Constants, is_ipv4, now_ts
 from ray.autoscaler._private.vsphere.vsphere_sdk_provider import VsphereSdkProvider
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
@@ -471,7 +471,7 @@ class VsphereNodeProvider(NodeProvider):
                 node_config_frozen_vm = copy.deepcopy(node_config)
                 node_config_frozen_vm["host_id"] = host.host
 
-                frozen_vm_name = "{}-{}".format(name, host.name)
+                frozen_vm_name = "{}-{}-{}".format(name, host.name, now_ts())
                 vm_names.append(frozen_vm_name)
 
                 futures_frozen_vms.append(
