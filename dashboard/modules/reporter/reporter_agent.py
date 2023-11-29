@@ -20,7 +20,10 @@ from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     COMPONENT_METRICS_TAG_KEYS,
 )
-from ray.dashboard.modules.reporter.profile_manager import CpuProfilingManager
+from ray.dashboard.modules.reporter.profile_manager import (
+    CpuProfilingManager,
+    MemoryProfilingManager,
+)
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
@@ -368,6 +371,24 @@ class ReporterAgent(
             pid, format=format, duration=duration, native=native
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
+
+    async def GetMemoryProfile(self, request, context):
+        pid = request.pid
+        format = request.format
+        p = MemoryProfilingManager(self._log_dir)
+        success, output = await p.get_profile_result(
+            pid,
+            format=format,
+        )
+        return reporter_pb2.GetMemoryProfileReply(output=output, success=success)
+
+    async def RunMemoryProfile(self, request, context):
+        pid = request.pid
+        duration = request.duration
+        native = request.native
+        p = MemoryProfilingManager(self._log_dir)
+        success, output = await p.memory_profile(pid, duration=duration, native=native)
+        return reporter_pb2.MemoryProfilingReply(output=output, success=success)
 
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.

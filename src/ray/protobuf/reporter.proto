@@ -62,6 +62,30 @@ message CpuProfilingReply {
   string output = 2;
 }
 
+message GetMemoryProfileRequest {
+  // PID of the worker process.
+  uint32 pid = 1;
+  bool leaks = 2;
+  string format = 3;
+}
+
+message GetMemoryProfileReply {
+  bool success = 1;
+  string output = 2;
+}
+
+message MemoryProfilingRequest {
+  uint32 pid = 1;
+  optional uint32 duration = 3;
+  // If using native flag for memray
+  optional bool native = 4;
+}
+
+message MemoryProfilingReply {
+  bool success = 1;
+  string output = 2;
+}
+
 message ReportMetricsRequest {
   repeated MetricPoint metrics_points = 1;
 }
@@ -87,6 +111,8 @@ service ReporterService {
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
   rpc GetTraceback(GetTracebackRequest) returns (GetTracebackReply);
   rpc CpuProfiling(CpuProfilingRequest) returns (CpuProfilingReply);
+  rpc RunMemoryProfile(MemoryProfilingRequest) returns (MemoryProfilingReply);
+  rpc GetMemoryProfile(GetMemoryProfileRequest) returns (GetMemoryProfileReply);
 }
 
 message StreamLogRequest {

@@ -3,47 +3,56 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-DARWIN_SET_CHOWN_CMD = "sudo chown root: `which py-spy`"
-LINUX_SET_CHOWN_CMD = "sudo chown root:root `which py-spy`"
+DARWIN_SET_CHOWN_CMD = "sudo chown root: `which {profiler}`"
+LINUX_SET_CHOWN_CMD = "sudo chown root:root `which {profiler}`"
 
 PYSPY_PERMISSIONS_ERROR_MESSAGE = """
-Note that this command requires `py-spy` to be installed with root permissions. You
-can install `py-spy` and give it root permissions as follows:
-  $ pip install py-spy
+Note that this command requires `{profiler}` to be installed with root permissions. You
+can install `{profiler}` and give it root permissions as follows:
+  $ pip install {profiler}
   $ {set_chown_command}
-  $ sudo chmod u+s `which py-spy`
+  $ sudo chmod u+s `which {profiler}`
 
 Alternatively, you can start Ray with passwordless sudo / root permissions.
 
 """
 
 
-def _format_failed_pyspy_command(cmd, stdout, stderr) -> str:
-    stderr_str = stderr.decode("utf-8")
+def decode(string):
+    if isinstance(string, bytes):
+        return string.decode("utf-8")
+    return string
+
+
+def _format_failed_profiler_command(cmd, profiler, stdout, stderr) -> str:
+    stderr_str = decode(stderr)
     extra_message = ""
 
     # If some sort of permission error returned, show a message about how
     # to set up permissions correctly.
     if "permission" in stderr_str.lower():
         set_chown_command = (
-            DARWIN_SET_CHOWN_CMD if sys.platform == "darwin" else LINUX_SET_CHOWN_CMD
+            DARWIN_SET_CHOWN_CMD.format(profiler=profiler)
+            if sys.platform == "darwin"
+            else LINUX_SET_CHOWN_CMD.format(profiler=profiler)
         )
         extra_message = PYSPY_PERMISSIONS_ERROR_MESSAGE.format(
-            set_chown_command=set_chown_command
+            profiler=profiler, set_chown_command=set_chown_command
         )
 
     return f"""Failed to execute `{cmd}`.
 {extra_message}
 === stderr ===
-{stderr.decode("utf-8")}
+{decode(stderr)}
 
 === stdout ===
-{stdout.decode("utf-8")}
+{decode(stdout)}
 """
 
 
@@ -65,9 +74,10 @@ class CpuProfilingManager:
     def __init__(self, profile_dir_path: str):
         self.profile_dir_path = Path(profile_dir_path)
         self.profile_dir_path.mkdir(exist_ok=True)
+        self.profiler = "py-spy"
 
     async def trace_dump(self, pid: int, native: bool = False) -> (bool, str):
-        pyspy = shutil.which("py-spy")
+        pyspy = shutil.which(self.profiler)
         if pyspy is None:
             return False, "py-spy is not installed"
 
@@ -84,14 +94,16 @@ class CpuProfilingManager:
         )
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
-            return False, _format_failed_pyspy_command(cmd, stdout, stderr)
+            return False, _format_failed_profiler_command(
+                cmd, self.profiler, stdout, stderr
+            )
         else:
-            return True, stdout.decode("utf-8")
+            return True, decode(stdout)
 
     async def cpu_profile(
         self, pid: int, format="flamegraph", duration: float = 5, native: bool = False
     ) -> (bool, str):
-        pyspy = shutil.which("py-spy")
+        pyspy = shutil.which(self.profiler)
         if pyspy is None:
             return False, "py-spy is not installed"
 
@@ -131,6 +143,88 @@ class CpuProfilingManager:
         )
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
-            return False, _format_failed_pyspy_command(cmd, stdout, stderr)
+            return False, _format_failed_profiler_command(
+                cmd, self.profiler, stdout, stderr
+            )
         else:
             return True, open(profile_file_path, "rb").read()
+
+
+class MemoryProfilingManager:
+    def __init__(self, profile_dir_path: str):
+        self.profile_dir_path = Path(profile_dir_path)
+        self.profile_dir_path.mkdir(exist_ok=True)
+        self.profiler = "memray"
+
+    async def get_profile_result(self, pid: int, format="flamegraph") -> (bool, str):
+        memray = shutil.which(self.profiler)
+        if memray is None:
+            return False, "memray is not installed"
+
+        cmd = [memray, "detach", str(pid)]
+        profile_file_path = self.profile_dir_path / f"{pid}_memory_profiling.bin"
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            if Path(profile_file_path).is_file():
+                # try to detach from finished process or finished attach with duration
+                # return last recorded profile
+                pass
+            else:
+                return False, _format_failed_profiler_command(
+                    cmd, self.profiler, stdout, stderr
+                )
+
+        profile_visualize_path = self.profile_dir_path / f"{pid}_memory_profiling.html"
+        visualize_cmd = [
+            memray,
+            "flamegraph",
+            "-o",
+            profile_visualize_path,
+            "-f",
+            profile_file_path,
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *visualize_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            return False, _format_failed_profiler_command(
+                cmd, self.profiler, stdout, stderr
+            )
+
+        return True, open(profile_visualize_path, "rb").read()
+
+    async def memory_profile(
+        self, pid: int, duration: Optional[float] = None, native: bool = False
+    ) -> (bool, str):
+        memray = shutil.which(self.profiler)
+        if memray is None:
+            return False, "memray is not installed"
+
+        profile_file_path = self.profile_dir_path / f"{pid}_memory_profiling.bin"
+        cmd = [memray, "attach", "-o", profile_file_path, str(pid), "-f"]
+        if native:
+            cmd.append("--native")
+        if await _can_passwordless_sudo():
+            cmd = ["sudo", "-n"] + cmd
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            return False, _format_failed_profiler_command(
+                cmd, self.profiler, stdout, stderr
+            )
+        else:
+            return True, "success"
