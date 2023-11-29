@@ -3580,6 +3580,7 @@ def test_prom_null_metric_inc_fix():
 
 
 if __name__ == "__main__":
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

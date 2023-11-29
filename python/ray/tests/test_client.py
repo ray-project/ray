@@ -514,6 +514,7 @@ def test_serializing_exceptions(call_ray_start_shared):
 
 def test_invalid_task(call_ray_start_shared):
     with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+
         with pytest.raises(TypeError):
 
             @ray.remote(runtime_env="invalid value")

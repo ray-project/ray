@@ -255,6 +255,7 @@ class MLflowLoggerCallback(LoggerCallback):
         tracking_token: Optional[str] = None,
         save_artifact: bool = False,
     ):
+
         self.tracking_uri = tracking_uri
         self.registry_uri = registry_uri
         self.experiment_name = experiment_name

@@ -517,6 +517,7 @@ class ServeController:
 
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
+
             (
                 deployment_time,
                 target_capacity,

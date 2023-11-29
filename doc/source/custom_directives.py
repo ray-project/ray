@@ -377,6 +377,7 @@ def setup_context(app, pagename, templatename, context, doctree):
         )
 
         for item in obj:
+
             if "file" in item:
                 ref_node = make_refnode(
                     app.builder,

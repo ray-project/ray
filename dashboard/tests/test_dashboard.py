@@ -665,6 +665,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
     indirect=True,
 )
 def test_get_nodes_summary(call_ray_start):
+
     # The sleep is needed since it seems a previous shutdown could be not yet
     # done when the next test starts. This prevents a previous cluster to be
     # connected the current test session.

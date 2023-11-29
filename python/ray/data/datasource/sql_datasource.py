@@ -74,6 +74,7 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
 
 @PublicAPI(stability="alpha")
 class SQLDatasource(Datasource):
+
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
 

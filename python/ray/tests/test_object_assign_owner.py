@@ -157,6 +157,7 @@ def test_multiple_objects(ray_start_cluster):
 
 @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41175")
 def test_owner_assign_inner_object(shutdown_only):
+
     ray.init()
 
     @ray.remote

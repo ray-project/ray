@@ -61,6 +61,7 @@ REDIS_EXECUTABLE = os.path.join(
 try:
     from prometheus_client.parser import text_string_to_metric_families, Sample
 except (ImportError, ModuleNotFoundError):
+
     Sample = None
 
     def text_string_to_metric_families(*args, **kwargs):

@@ -120,6 +120,7 @@ def _pyarrow_fs_copy_files(
 
 
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
+
     is_dir = _is_directory(fs, fs_path)
 
     try:
