@@ -1,4 +1,5 @@
 import time
+import threading
 from typing import List
 from collections import defaultdict
 
@@ -83,6 +84,7 @@ class CompiledDAG:
         self.dag_input_ref = None
         self.dag_input_max_readers = None
         self.dag_output_refs = None
+        self.worker_task_refs = []
 
     def add_node(self, node):
         idx = self.counter
@@ -114,7 +116,7 @@ class CompiledDAG:
                 ), "More than one output node found, make sure only one node has 0 dependent tasks"
                 self.output_task_idx = idx
 
-    def compile(self):
+    def compiled(self):
         from ray.dag import DAGNode, InputNode, OutputNode, ClassMethodNode
 
         if self.dag_input_ref is not None and self.dag_output_refs is not None:
@@ -155,6 +157,7 @@ class CompiledDAG:
         # it's not already there.
         assert isinstance(output_node, OutputNode)
 
+        work_refs = []
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
                 # We don't need to assign an actual task for the input node.
@@ -174,12 +177,14 @@ class CompiledDAG:
                 resolved_args.append(arg_buffer)
 
             # TODO: Assign the task with the correct input and output buffers.
-            apply_fn = task.dag_node._get_remote_method("__ray_apply__")
-            apply_fn.remote(
-                do_exec_compiled_task,
-                resolved_args,
-                task.dag_node.get_method_name(),
-                task.max_readers,
+            worker_fn = task.dag_node._get_remote_method("__ray_apply__")
+            self.worker_task_refs.append(
+                worker_fn.remote(
+                    do_exec_compiled_task,
+                    resolved_args,
+                    task.dag_node.get_method_name(),
+                    task.max_readers,
+                )
             )
 
         self.dag_input_ref = self.idx_to_task[self.input_task_idx].output_ref
@@ -194,7 +199,25 @@ class CompiledDAG:
         assert self.dag_input_ref
         assert self.dag_output_refs
         # Driver should ray.put on input, ray.get/release on output
+        self.monitor_failures()
         return (self.dag_input_ref, self.dag_input_max_readers, self.dag_output_refs)
+
+    def monitor_failures(self):
+        outer = self
+
+        class Monitor(threading.Thread):
+            def __init__(self):
+                super().__init__(daemon=True)
+
+            def run(self):
+                try:
+                    ray.get(outer.worker_task_refs)
+                except Exception as e:
+                    print("Worker task exception", e)
+                    # TODO: put to output refs
+                    # TODO: kill worker actors
+
+        Monitor().start()
 
 
 def build_compiled_dag(dag: "DAGNode"):

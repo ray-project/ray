@@ -107,11 +107,11 @@ class DAGNode(DAGNodeBase):
     def clear_cache(self):
         self.cache_from_last_execute = {}
 
-    def compile(self) -> Tuple[ray.ObjectRef]:
+    def compiled(self) -> Tuple[ray.ObjectRef]:
         if self._compiled_dag is None:
             self._compiled_dag = build_compiled_dag(self)
 
-        return self._compiled_dag.compile()
+        return self._compiled_dag.compiled()
 
     def execute(
         self,
@@ -132,7 +132,7 @@ class DAGNode(DAGNodeBase):
         """
         if compiled:
             assert len(args) == 1, "Compiled DAGs support exactly one InputNode arg"
-            input_ref, input_max_readers, output_ref = self.compile()
+            input_ref, input_max_readers, output_ref = self.compiled()
             ray.worker.global_worker.put_object(
                 args[0], object_ref=input_ref, max_readers=input_max_readers
             )
