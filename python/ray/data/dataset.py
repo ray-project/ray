@@ -30,12 +30,7 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import (
-    ActorPoolStrategy,
-    CallableClass,
-    ComputeStrategy,
-    TaskPoolStrategy,
-)
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
@@ -89,7 +84,6 @@ from ray.data._internal.util import (
     ConsumptionAPI,
     _is_local_scheme,
     get_compute_strategy,
-    validate_compute,
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
@@ -341,10 +335,10 @@ class Dataset:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
-            concurrency: The number of Ray actors to use. For a fixed-sized actors pool
-                of size ``n``, specify ``concurrency=n``. For a autoscaling actors pool
-                from ``m`` to ``n`` actors, specify ``concurrency=(m, n)``.
-                ``None`` by default to use Ray tasks.
+            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
+                workers pool of size ``n``, specify ``concurrency=n``. For a autoscaling
+                workers pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+                ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker.
 
@@ -358,8 +352,12 @@ class Dataset:
             :meth:`~Dataset.map_batches`
                 Call this method to transform batches of data.
         """  # noqa: E501
-        compute = get_compute_strategy(compute, concurrency)
-        validate_compute(fn, compute, fn_constructor_args)
+        compute = get_compute_strategy(
+            fn,
+            fn_constructor_args=fn_constructor_args,
+            compute=compute,
+            concurrency=concurrency,
+        )
 
         transform_fn = generate_map_rows_fn(
             DataContext.get_current().target_max_block_size
@@ -531,10 +529,10 @@ class Dataset:
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
-            concurrency: The number of Ray actors to use. For a fixed-sized actors pool
-                of size ``n``, specify ``concurrency=n``. For a autoscaling actors pool
-                from ``m`` to ``n`` actors, specify ``concurrency=(m, n)``.
-                ``None`` by default to use Ray tasks.
+            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
+                workers pool of size ``n``, specify ``concurrency=n``. For a autoscaling
+                workers pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+                ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -558,7 +556,12 @@ class Dataset:
                 Call this method to transform one record at time.
 
         """  # noqa: E501
-        compute = get_compute_strategy(compute, concurrency)
+        compute = get_compute_strategy(
+            fn,
+            fn_constructor_args=fn_constructor_args,
+            compute=compute,
+            concurrency=concurrency,
+        )
 
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
@@ -586,22 +589,6 @@ class Dataset:
                 f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
                 f"{batch_format}"
             )
-
-        validate_compute(fn, compute, fn_constructor_args)
-
-        if fn_constructor_kwargs is not None:
-            if compute is None or (
-                compute != "actors" and not isinstance(compute, ActorPoolStrategy)
-            ):
-                raise ValueError(
-                    "fn_constructor_kwargs can only be specified if using the actor "
-                    f"pool compute strategy, but got: {compute}"
-                )
-            if not isinstance(fn, CallableClass):
-                raise ValueError(
-                    "fn_constructor_kwargs can only be specified if providing a "
-                    f"CallableClass instance for fn, but got: {fn}"
-                )
 
         ctx = DataContext.get_current()
         transform_fn = generate_map_batches_fn(
@@ -703,14 +690,18 @@ class Dataset:
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool. This argument is deprecated. Please use
                 ``concurrency`` argument instead.
-            concurrency: The number of Ray actors to use. For a fixed-sized actors pool
-                of size ``n``, specify ``concurrency=n``. For a autoscaling actors pool
-                from ``m`` to ``n`` actors, specify ``concurrency=(m, n)``.
-                ``None`` by default to use Ray tasks.
+            concurrency: The number of Ray workers to use concurrently. For a
+                fixed-sized workers pool of size ``n``, specify ``concurrency=n``.
+                For a autoscaling workers pool from ``m`` to ``n`` workers, specify
+                ``concurrency=(m, n)``. ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        compute = get_compute_strategy(compute, concurrency)
+        compute = get_compute_strategy(
+            fn,
+            compute=compute,
+            concurrency=concurrency,
+        )
 
         def process_batch(batch: "pandas.DataFrame") -> "pandas.DataFrame":
             batch.loc[:, col] = fn(batch)
@@ -767,16 +758,24 @@ class Dataset:
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool. This argument is deprecated. Please use
                 ``concurrency`` argument instead.
-            concurrency: The number of Ray actors to use. For a fixed-sized actors pool
-                of size ``n``, specify ``concurrency=n``. For a autoscaling actors pool
-                from ``m`` to ``n`` actors, specify ``concurrency=(m, n)``.
-                ``None`` by default to use Ray tasks.
+            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
+                workers pool of size ``n``, specify ``concurrency=n``. For a autoscaling
+                workers pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+                ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
-        compute = get_compute_strategy(compute, concurrency)
+
+        def fn(batch):
+            return batch.drop(columns=cols)
+
+        compute = get_compute_strategy(
+            fn,
+            compute=compute,
+            concurrency=concurrency,
+        )
         return self.map_batches(
-            lambda batch: batch.drop(columns=cols),
+            fn,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
@@ -823,16 +822,24 @@ class Dataset:
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool. This argument is deprecated. Please use
                 ``concurrency`` argument instead.
-            concurrency: The number of Ray actors to use. For a fixed-sized actors pool
-                of size ``n``, specify ``concurrency=n``. For a autoscaling actors pool
-                from ``m`` to ``n`` actors, specify ``concurrency=(m, n)``.
-                ``None`` by default to use Ray tasks.
+            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
+                workers pool of size ``n``, specify ``concurrency=n``. For a autoscaling
+                workers pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+                ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
-        compute = get_compute_strategy(compute, concurrency)
+
+        def fn(batch):
+            return BlockAccessor.for_block(batch).select(columns=cols)
+
+        compute = get_compute_strategy(
+            fn,
+            compute=compute,
+            concurrency=concurrency,
+        )
         return self.map_batches(
-            lambda batch: BlockAccessor.for_block(batch).select(columns=cols),
+            fn,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
@@ -908,10 +915,10 @@ class Dataset:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
-            concurrency: The number of Ray actors to use. For a fixed-sized actors pool
-                of size ``n``, specify ``concurrency=n``. For a autoscaling actors pool
-                from ``m`` to ``n`` actors, specify ``concurrency=(m, n)``.
-                ``None`` by default to use Ray tasks.
+            concurrency: The number of Ray workers to use concurrently. For a
+                fixed-sized workers pool of size ``n``, specify ``concurrency=n``.
+                For a autoscaling workers pool from ``m`` to ``n`` workers, specify
+                ``concurrency=(m, n)``. ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -923,8 +930,12 @@ class Dataset:
             :meth:`~Dataset.map`
                 Call this method to transform one row at time.
         """
-        compute = get_compute_strategy(compute, concurrency)
-        validate_compute(fn, compute, fn_constructor_args)
+        compute = get_compute_strategy(
+            fn,
+            fn_constructor_args=fn_constructor_args,
+            compute=compute,
+            concurrency=concurrency,
+        )
 
         transform_fn = generate_flat_map_fn(
             DataContext.get_current().target_max_block_size
@@ -998,15 +1009,18 @@ class Dataset:
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool. This argument is deprecated. Please use
                 ``concurrency`` argument instead.
-            concurrency: The number of Ray actors to use. For a fixed-sized actors pool
-                of size ``n``, specify ``concurrency=n``. For a autoscaling actors pool
-                from ``m`` to ``n`` actors, specify ``concurrency=(m, n)``.
-                ``None`` by default to use Ray tasks.
+            concurrency: The number of Ray workers to use concurrently. For a
+                fixed-sized workers pool of size ``n``, specify ``concurrency=n``.
+                For a autoscaling workers pool from ``m`` to ``n`` workers, specify
+                ``concurrency=(m, n)``. ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        compute = get_compute_strategy(compute, concurrency)
-        validate_compute(fn, compute)
+        compute = get_compute_strategy(
+            fn,
+            compute=compute,
+            concurrency=concurrency,
+        )
 
         transform_fn = generate_filter_fn(
             DataContext.get_current().target_max_block_size

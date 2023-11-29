@@ -17,7 +17,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import column_udf, extract_values
+from ray.data.tests.util import column_udf, column_udf_class, extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -29,7 +29,8 @@ def test_basic_actors(shutdown_only):
         extract_values(
             "id",
             ds.map(
-                column_udf("id", lambda x: x + 1), compute=ray.data.ActorPoolStrategy()
+                column_udf_class("id", lambda x: x + 1),
+                compute=ray.data.ActorPoolStrategy(),
             ).take(),
         )
     ) == list(range(1, n + 1))
@@ -40,7 +41,7 @@ def test_basic_actors(shutdown_only):
         extract_values(
             "id",
             ds.map(
-                column_udf("id", lambda x: x + 1),
+                column_udf_class("id", lambda x: x + 1),
                 compute=ray.data.ActorPoolStrategy(size=4),
             ).take(),
         )
@@ -52,7 +53,7 @@ def test_basic_actors(shutdown_only):
         extract_values(
             "id",
             ds.map(
-                column_udf("id", lambda x: x + 1),
+                column_udf_class("id", lambda x: x + 1),
                 compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
             ).take(),
         )
@@ -61,21 +62,21 @@ def test_basic_actors(shutdown_only):
     # Test invalid max tasks inflight arg.
     with pytest.raises(ValueError):
         ray.data.range(10).map(
-            column_udf("id", lambda x: x),
+            column_udf_class("id", lambda x: x),
             compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=0),
         )
 
     # Test min no more than max check.
     with pytest.raises(ValueError):
         ray.data.range(10).map(
-            column_udf("id", lambda x: x),
+            column_udf_class("id", lambda x: x),
             compute=ray.data.ActorPoolStrategy(min_size=8, max_size=4),
         )
 
     # Test conflicting args.
     with pytest.raises(ValueError):
         ray.data.range(10).map(
-            column_udf("id", lambda x: x),
+            column_udf_class("id", lambda x: x),
             compute=ray.data.ActorPoolStrategy(min_size=8, size=4),
         )
 
@@ -92,30 +93,6 @@ def test_callable_classes(shutdown_only):
             r = self.num_reuses
             self.num_reuses += 1
             return {"id": np.array([r])}
-
-    # Need to specify compute explicitly.
-    with pytest.raises(ValueError):
-        ds.map(StatefulFn).take()
-
-    # Need to specify actor compute strategy.
-    with pytest.raises(ValueError):
-        ds.map(StatefulFn).take()
-
-    # Need to specify compute explicitly.
-    with pytest.raises(ValueError):
-        ds.flat_map(StatefulFn).take()
-
-    # Need to specify actor compute strategy.
-    with pytest.raises(ValueError):
-        ds.flat_map(StatefulFn)
-
-    # Need to specify compute explicitly.
-    with pytest.raises(ValueError):
-        ds.filter(StatefulFn).take()
-
-    # Need to specify actor compute strategy.
-    with pytest.raises(ValueError):
-        ds.filter(StatefulFn)
 
     # map
     actor_reuse = ds.map(StatefulFn, compute=ray.data.ActorPoolStrategy()).take()
@@ -424,14 +401,6 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
             return df
 
     with pytest.raises(ValueError):
-        # CallableClass not supported for task compute strategy, which is the default.
-        ds.map_batches(Foo)
-
-    with pytest.raises(ValueError):
-        # CallableClass not supported for task compute strategy.
-        ds.map_batches(Foo)
-
-    with pytest.raises(ValueError):
         # fn_constructor_args and fn_constructor_kwargs only supported for actor
         # compute strategy.
         ds.map_batches(
@@ -618,7 +587,6 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         lambda df, a, b=None: b * df + a,
         batch_size=1,
         batch_format="pandas",
-        compute=ray.data.ActorPoolStrategy(),
         fn_args=(put(1),),
         fn_kwargs={"b": put(2)},
     ).map_batches(
@@ -667,12 +635,16 @@ def test_map_batches_generator(ray_start_regular_shared, tmp_path):
 
 
 def test_map_batches_actors_preserves_order(shutdown_only):
+    class UDFClass:
+        def __call__(self, x):
+            return x
+
     ray.shutdown()
     ray.init(num_cpus=2)
     # Test that actor compute model preserves block order.
     ds = ray.data.range(10, parallelism=5)
     assert extract_values(
-        "id", ds.map_batches(lambda x: x, compute=ray.data.ActorPoolStrategy()).take()
+        "id", ds.map_batches(UDFClass, compute=ray.data.ActorPoolStrategy()).take()
     ) == list(range(10))
 
 
@@ -974,17 +946,18 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
 
 
 def test_actor_pool_strategy_default_num_actors(shutdown_only):
-    def f(x):
-        import time
+    import time
 
-        time.sleep(1)
-        return x
+    class UDFClass:
+        def __call__(self, x):
+            time.sleep(1)
+            return x
 
     num_cpus = 5
     ray.init(num_cpus=num_cpus)
     compute_strategy = ray.data.ActorPoolStrategy()
     ray.data.range(10, parallelism=10).map_batches(
-        f, batch_size=1, compute=compute_strategy
+        UDFClass, batch_size=1, compute=compute_strategy
     ).materialize()
 
     # The new execution backend is not using the ActorPoolStrategy under
@@ -1004,14 +977,15 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
 def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
     """Tests that blocks are bundled up to the specified max number of actors."""
 
-    def f(x):
-        return x
+    class UDFClass:
+        def __call__(self, x):
+            return x
 
     max_size = 2
     compute_strategy = ray.data.ActorPoolStrategy(max_size=max_size)
     ds = (
         ray.data.range(10, parallelism=10)
-        .map_batches(f, batch_size=None, compute=compute_strategy)
+        .map_batches(UDFClass, batch_size=None, compute=compute_strategy)
         .materialize()
     )
 
@@ -1023,7 +997,7 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
     # Check batch size is still respected.
     ds = (
         ray.data.range(10, parallelism=10)
-        .map_batches(f, batch_size=10, compute=compute_strategy)
+        .map_batches(UDFClass, batch_size=10, compute=compute_strategy)
         .materialize()
     )
 

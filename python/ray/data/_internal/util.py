@@ -505,66 +505,94 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
     return splits
 
 
-def validate_compute(
+def get_compute_strategy(
     fn: "UserDefinedFunction",
-    compute: Optional[Union[str, "ComputeStrategy"]],
     fn_constructor_args: Optional[Iterable[Any]] = None,
-) -> None:
+    compute: Optional[Union[str, "ComputeStrategy"]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+) -> "ComputeStrategy":
+    """Get `ComputeStrategy` based on the function or class, and concurrency
+    information.
+
+    Args:
+        fn: The function or generator to apply to a record batch, or a class type
+            that can be instantiated to create such a callable.
+        fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+        compute: Either "tasks" (default) to use Ray Tasks or an
+                :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
+        concurrency: The number of Ray workers to use concurrently.
+
+    Returns:
+       The `ComputeStrategy` for execution.
+    """
     # Lazily import these objects to avoid circular imports.
     from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
     from ray.data.block import CallableClass
 
-    if isinstance(fn, CallableClass) and (
-        compute is None or compute == "tasks" or isinstance(compute, TaskPoolStrategy)
-    ):
-        raise ValueError(
-            "``compute`` must be specified when using a CallableClass, and must "
-            f"specify the actor compute strategy, but got: {compute}. "
-            "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
-        )
-
-    if fn_constructor_args is not None:
-        if compute is None or (
-            compute != "actors" and not isinstance(compute, ActorPoolStrategy)
-        ):
+    if isinstance(fn, CallableClass):
+        is_callable_class = True
+    else:
+        is_callable_class = False
+        if fn_constructor_args is not None:
             raise ValueError(
-                "fn_constructor_args can only be specified if using the actor "
-                f"pool compute strategy, but got: {compute}"
+                "``fn_constructor_args`` can only be specified if providing a "
+                f"CallableClass instance for ``fn``, but got: {fn}"
             )
-        if not isinstance(fn, CallableClass):
-            raise ValueError(
-                "fn_constructor_args can only be specified if providing a "
-                f"CallableClass instance for fn, but got: {fn}"
-            )
-
-
-def get_compute_strategy(
-    compute: Optional[Union[str, "ComputeStrategy"]] = None,
-    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
-) -> "ComputeStrategy":
-    # Lazily import these objects to avoid circular imports.
-    from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 
     if compute is not None:
+        # Legacy code path to support `compute` argument.
         logger.warning(
             "The argument `compute` is deprecated in Ray 2.9. Please specify "
             "argument `concurrency` instead. For more information, see "
             "https://docs.ray.io/en/master/data/transforming-data.html#"
             "transforming-batches-with-actors."
         )
+        if is_callable_class and (
+            compute == "tasks" or isinstance(compute, TaskPoolStrategy)
+        ):
+            raise ValueError(
+                "``compute`` must be specified when using a CallableClass, and must "
+                f"specify the actor compute strategy, but got: {compute}. "
+                "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
+            )
+        elif not is_callable_class and (
+            compute == "actors" or isinstance(compute, ActorPoolStrategy)
+        ):
+            raise ValueError(
+                "``compute`` is specified as the actor compute strategy: {compute}, "
+                "but ``fn`` is not a CallableClass: {fn}. Please remove the setting "
+                "of ``compute``."
+            )
         return compute
     else:
-        if isinstance(concurrency, tuple):
-            assert (
-                len(concurrency) == 2
-                and isinstance(concurrency[0], int)
-                and isinstance(concurrency[1], int)
-            )
-            return ActorPoolStrategy(min_size=concurrency[0], max_size=concurrency[1])
-        elif isinstance(concurrency, int):
-            return ActorPoolStrategy(size=concurrency)
+        if concurrency is not None:
+            if not is_callable_class:
+                # Currently do not support concurrency control with function,
+                # i.e., running with Ray Tasks (`TaskPoolMapOperator`).
+                logger.warning(
+                    "``concurrency`` is specified as: {concurrency}, "
+                    "but ``fn`` is not a CallableClass: {fn}. The setting of "
+                    "``concurrency`` is only supported when ``fn`` is a CallableClass."
+                )
+                return TaskPoolStrategy()
+
+            if isinstance(concurrency, tuple):
+                assert (
+                    len(concurrency) == 2
+                    and isinstance(concurrency[0], int)
+                    and isinstance(concurrency[1], int)
+                )
+                return ActorPoolStrategy(
+                    min_size=concurrency[0], max_size=concurrency[1]
+                )
+            else:
+                assert isinstance(concurrency, int)
+                return ActorPoolStrategy(size=concurrency)
         else:
-            return TaskPoolStrategy()
+            if is_callable_class:
+                return ActorPoolStrategy()
+            else:
+                return TaskPoolStrategy()
 
 
 def capfirst(s: str):
