@@ -385,14 +385,14 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
         time.sleep(3)
         try:
             # Starting and getting jobs should be fine from API clients
-            response = requests.post(webui_url + "/api/jobs", json={"entrypoint": "ls"})
+            response = requests.post(webui_url + "/api/jobs/", json={"entrypoint": "ls"})
             response.raise_for_status()
-            response = requests.get(webui_url + "/api/jobs")
+            response = requests.get(webui_url + "/api/jobs/")
             response.raise_for_status()
 
             # Starting job should be blocked for browsers
             response = requests.post(
-                webui_url + "/api/jobs",
+                webui_url + "/api/jobs/",
                 json={"entrypoint": "ls"},
                 headers={
                     "User-Agent": (
@@ -406,7 +406,7 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
                 response.raise_for_status()
 
             # Getting jobs should be fine for browsers
-            response = requests.get(webui_url + "/api/jobs")
+            response = requests.get(webui_url + "/api/jobs/")
             response.raise_for_status()
             break
         except (AssertionError, requests.exceptions.ConnectionError) as e:
