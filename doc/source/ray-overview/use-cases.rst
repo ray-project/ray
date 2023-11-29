@@ -3,6 +3,13 @@
 Ray Use Cases
 =============
 
+.. toctree::
+    :hidden:
+
+    ../ray-air/getting-started
+
+
+
 .. raw:: html
 
     <link rel="stylesheet" type="text/css" href="../_static/css/use_cases.css">
@@ -83,6 +90,8 @@ Alternative solutions exist for less common cases:
 
     Explore model training examples
 
+.. _ref-use-cases-model-serving:
+
 Model Serving
 -------------
 
@@ -103,6 +112,8 @@ Learn more about model serving with the following resources.
 - :doc:`[Gallery] Serve Examples Gallery </serve/tutorials/index>`
 - `[Gallery] More Serve Use Cases on the Blog <https://www.anyscale.com/blog?tag=ray_serve>`_
 
+.. _ref-use-cases-hyperparameter-tuning:
+
 Hyperparameter Tuning
 ---------------------
 
@@ -122,6 +133,8 @@ Learn more about the Tune library with the following talks and user guides.
 - `[Blog] Hyperparameter Search with 🤗 Transformers <https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune>`_
 - :doc:`[Gallery] Ray Tune Examples Gallery </tune/examples/index>`
 - `More Tune use cases on the Blog <https://www.anyscale.com/blog?tag=ray-tune>`_
+
+.. _ref-use-cases-distributed-training:
 
 Distributed Training
 --------------------
@@ -144,6 +157,8 @@ Learn more about the Train library with the following talks and user guides.
 - :doc:`[Gallery] Ray Train Examples Gallery </train/examples>`
 - `[Gallery] More Train Use Cases on the Blog <https://www.anyscale.com/blog?tag=ray_train>`_
 
+.. _ref-use-cases-reinforcement-learning:
+
 Reinforcement Learning
 ----------------------
 
@@ -161,6 +176,8 @@ Learn more about reinforcement learning with the following resources.
 - `[Talk] Deep reinforcement learning at Riot Games <https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games>`_
 - :doc:`[Gallery] RLlib Examples Gallery </rllib/rllib-examples>`
 - `[Gallery] More RL Use Cases on the Blog <https://www.anyscale.com/blog?tag=rllib>`_
+
+.. _ref-use-cases-ml-platform:
 
 ML Platform
 -----------

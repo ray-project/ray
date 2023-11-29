@@ -12,6 +12,7 @@ Getting Involved / Contributing
     development
     docs
     writing-code-snippets
+    how-to-use-vale
     fake-autoscaler
     ../ray-core/examples/testing-tips
     debugging

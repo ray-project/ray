@@ -37,12 +37,6 @@ class _DAGNodeNameGenerator(object):
         # serve components are not included in Ray Core.
         elif type(node).__name__ in ("DeploymentNode", "DeploymentFunctionNode"):
             node_name = node.get_deployment_name()
-        elif type(node).__name__ == "DeploymentMethodNode":
-            node_name = node.get_deployment_method_name()
-        elif type(node).__name__ == "DeploymentExecutorNode":
-            node_name = node._deployment_handle.deployment_name
-        elif type(node).__name__ == "DeploymentMethodExecutorNode":
-            node_name = node._deployment_method_name
         elif type(node).__name__ == "DeploymentFunctionExecutorNode":
             node_name = node._deployment_function_handle.deployment_name
         else:
