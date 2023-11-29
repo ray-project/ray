@@ -1004,12 +1004,10 @@ def setup_ray_cluster(
                ``ray.init()`` without specifying its address, it will discover the
                global cluster automatically if it is up.
 
-            If global mode is enabled, calling `setup_ray_cluster` will be blocking,
-            once the call is interrupted, the global Ray on spark cluster is shut down.
-            For global mode, the ``ray_temp_root_dir`` argument is not supported. Global
-            model Ray cluster always use the default Ray temporary directory path.
+            For global mode, the ``ray_temp_root_dir`` argument is not supported.
+            Global model Ray cluster always use the default Ray temporary directory
+            path.
     Returns:
-        If ``is_global`` argument is False,
         returns a tuple of (address, remote_connection_address)
         "address" is in format of "<ray_head_node_ip>:<port>"
         "remote_connection_address" is in format of
@@ -1018,7 +1016,6 @@ def setup_ray_cluster(
         you can connect to the Ray cluster via ``ray.init(address)``,
         otherwise you can connect to the Ray cluster via
         ``ray.init(remote_connection_address)``.
-        If ``is_global`` argument is True, returns None.
     """
     global _active_ray_cluster
 
@@ -1301,24 +1298,49 @@ def setup_ray_cluster(
         # started cluster.
         _active_ray_cluster = cluster
 
-    if is_global:
-        # If in global mode, `setup_ray_cluster` API is blocking, once the API call
-        # is interrupted, it shuts down the Ray cluster.
-        global _global_ray_cluster_cancel_event
-        try:
-            _global_ray_cluster_cancel_event = Event()
-            # serve forever until user cancel the command.
-            _global_ray_cluster_cancel_event.wait()
-        finally:
-            _global_ray_cluster_cancel_event = None
-            # once the program is interrupted,
-            # or the corresponding databricks notebook command is interrupted
-            # shut down the Ray cluster.
-            shutdown_ray_cluster()
-    else:
-        head_ip = cluster.address.split(":")[0]
-        remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
-        return cluster.address, remote_connection_address
+    head_ip = cluster.address.split(":")[0]
+    remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
+    return cluster.address, remote_connection_address
+
+
+def serve_global_ray_cluster(*args, **kwargs):
+    """
+    Create a global mode cluster by calling ``setup_ray_cluster`` with
+    ``is_global=True``,
+    then keep the call blocking until it is interrupted.
+    once the call is interrupted, the global Ray on spark cluster is shut down and
+    `serve_global_ray_cluster` call terminates.
+
+    Args:
+        All arguments are the same with ``setup_ray_cluster`` API except that
+        the ``ray_temp_root_dir`` argument is not supported.
+        Global model Ray cluster always use the default Ray temporary directory
+        path.
+    """
+
+    if "ray_temp_root_dir" in kwargs:
+        raise ValueError(
+            "'ray_temp_root_dir' argument is not supported in global mode"
+        )
+
+    if "is_global" in kwargs:
+        raise ValueError(
+            "You can't set 'is_global' argument in 'serve_global_ray_cluster' call."
+        )
+
+    setup_ray_cluster(*args, **kwargs)
+
+    global _global_ray_cluster_cancel_event
+    try:
+        _global_ray_cluster_cancel_event = Event()
+        # serve forever until user cancel the command.
+        _global_ray_cluster_cancel_event.wait()
+    finally:
+        _global_ray_cluster_cancel_event = None
+        # once the program is interrupted,
+        # or the corresponding databricks notebook command is interrupted
+        # shut down the Ray cluster.
+        shutdown_ray_cluster()
 
 
 def _start_ray_worker_nodes(
