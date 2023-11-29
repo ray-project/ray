@@ -6,7 +6,7 @@ from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
 from ray.serve.generated.serve_pb2 import (
-    TargetCapacityDirection as TargetCapacityDirectionProtoEnum,
+    TargetCapacityDirection as TargetCapacityDirectionProto,
 )
 
 # Concurrency group used for operations that cannot be blocked by user code
@@ -14,20 +14,6 @@ from ray.serve.generated.serve_pb2 import (
 CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
 REPLICA_DEFAULT_ACTOR_OPTIONS = {
     "concurrency_groups": {CONTROL_PLANE_CONCURRENCY_GROUP: 1}
-}
-
-
-TARGET_CAPACITY_DIRECTION_TO_PROTO = {
-    None: TargetCapacityDirectionProtoEnum.UNSET,
-    TargetCapacityDirection.UP: TargetCapacityDirectionProtoEnum.UP,
-    TargetCapacityDirection.DOWN: TargetCapacityDirectionProtoEnum.DOWN,
-}
-
-
-TARGET_CAPACITY_DIRECTION_FROM_PROTO = {
-    TargetCapacityDirectionProtoEnum.UNSET: None,
-    TargetCapacityDirectionProtoEnum.UP: TargetCapacityDirection.UP,
-    TargetCapacityDirectionProtoEnum.DOWN: TargetCapacityDirection.DOWN,
 }
 
 
@@ -144,6 +130,19 @@ class DeploymentInfo:
             if proto.deployment_config
             else None
         )
+
+        target_capacity = proto.target_capacity if proto.target_capacity != -1 else None
+
+        target_capacity_direction = TargetCapacityDirectionProto.Name(
+            proto.target_capacity_direction
+        )
+        if target_capacity_direction == "UNSET":
+            target_capacity_direction = None
+        else:
+            target_capacity_direction = TargetCapacityDirection(
+                target_capacity_direction
+            )
+
         data = {
             "deployment_config": deployment_config,
             "replica_config": ReplicaConfig.from_proto(
@@ -155,12 +154,8 @@ class DeploymentInfo:
             "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
-            "target_capacity": proto.target_capacity
-            if proto.target_capacity != -1
-            else None,
-            "target_capacity_direction": TARGET_CAPACITY_DIRECTION_FROM_PROTO[
-                proto.target_capacity_direction
-            ],
+            "target_capacity": target_capacity,
+            "target_capacity_direction": target_capacity_direction,
         }
 
         return cls(**data)
@@ -180,7 +175,8 @@ class DeploymentInfo:
             data["target_capacity"] = -1
         else:
             data["target_capacity"] = self.target_capacity
-        data["target_capacity_direction"] = TARGET_CAPACITY_DIRECTION_TO_PROTO[
-            self.target_capacity_direction
-        ]
+        if self.target_capacity_direction is None:
+            data["target_capacity_direction"] = TargetCapacityDirectionProto.UNSET
+        else:
+            data["target_capacity_direction"] = self.target_capacity_direction.name
         return DeploymentInfoProto(**data)
