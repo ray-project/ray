@@ -12,7 +12,7 @@ import ray
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
 from ray._private.test_utils import chdir, check_local_files_gced, wait_for_condition
-from ray._private.test_utils import skip_flaky_test
+from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray._private.utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -250,10 +250,7 @@ class TestGC:
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
     )
-    @pytest.mark.skipif(
-        skip_flaky_test(),
-        reason="https://github.com/ray-project/ray/issues/40781",
-    )
+    @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
     def test_detached_actor_gc(
         self,
         start_cluster,
@@ -348,6 +345,7 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
+    @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
     def test_hit_cache_size_limit(
         self, start_cluster, URI_cache_10_MB, disable_temporary_uri_pinning
     ):
