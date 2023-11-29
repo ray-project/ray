@@ -617,7 +617,7 @@ def benchmark_code(
     # Report the average of per-epoch throughput, excluding the first epoch.
     epoch_tputs = []
     num_rows_per_epoch = sum(result.metrics["num_rows"])
-    for i in range(1, args.num_epochs + 1):
+    for i in range(0, args.num_epochs):
         time_start_epoch_i, time_end_epoch_i = zip(*result.metrics[f"epoch_{i}_times"])
         runtime_epoch_i = max(time_end_epoch_i) - min(time_start_epoch_i)
         tput_epoch_i = num_rows_per_epoch / runtime_epoch_i
