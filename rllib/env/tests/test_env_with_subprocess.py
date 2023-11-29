@@ -22,6 +22,7 @@ def leaked_processes():
 
 
 if __name__ == "__main__":
+
     # Create 4 temp files, which the Env has to clean up after it's done.
     _, tmp1 = tempfile.mkstemp("test_env_with_subprocess")
     _, tmp2 = tempfile.mkstemp("test_env_with_subprocess")

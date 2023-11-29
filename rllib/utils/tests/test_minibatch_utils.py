@@ -31,6 +31,7 @@ CONFIGS = [
 
 class TestMinibatchUtils(unittest.TestCase):
     def test_minibatch_cyclic_iterator(self):
+
         for config in CONFIGS:
             mini_batch_size = config["mini_batch_size"]
             num_sgd_iter = config["num_sgd_iter"]

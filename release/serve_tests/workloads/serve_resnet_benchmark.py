@@ -54,6 +54,7 @@ class ImageObjectioner:
         self.handle = handle
 
     async def predict(self, uris: List[str]):
+
         preprocessing_tasks = []
         for uri in uris:
             preprocessing_tasks.append(self.handle.remote([uri]))

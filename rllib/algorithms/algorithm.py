@@ -551,6 +551,7 @@ class Algorithm(Trainable, AlgorithmBase):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
     def setup(self, config: AlgorithmConfig) -> None:
+
         # Setup our config: Merge the user-supplied config dict (which could
         # be a partial config dict) with the class' default.
         if not isinstance(config, AlgorithmConfig):

@@ -78,7 +78,7 @@ def _has_missing(
         A list of dependencies which can't be found, if any
     """
     missing = []
-    for lib, _ in deps:
+    for (lib, _) in deps:
         if importlib.util.find_spec(lib) is None:
             missing.append(lib)
 

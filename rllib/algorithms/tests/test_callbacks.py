@@ -180,6 +180,7 @@ class TestCallbacks(unittest.TestCase):
             algo.stop()
 
     def test_on_sub_environment_created(self):
+
         config = (
             dqn.DQNConfig().environment("CartPole-v1")
             # Create 4 sub-environments per remote worker.
