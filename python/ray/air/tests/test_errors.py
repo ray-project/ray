@@ -37,7 +37,7 @@ from ray.tests.conftest import *  # noqa
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4, configure_logging=False)
     yield address_info
