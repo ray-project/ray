@@ -376,14 +376,6 @@ py_test(
 )
 
 py_test(
-    name = "test_tune_server",
-    size = "medium",
-    srcs = ["tests/test_tune_server.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_tuner",
     size = "large",
     srcs = ["tests/test_tuner.py"],
