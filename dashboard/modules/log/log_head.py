@@ -1,6 +1,6 @@
 import logging
 
-import aiohttp.web
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils

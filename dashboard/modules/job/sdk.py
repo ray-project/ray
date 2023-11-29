@@ -5,16 +5,12 @@ import ray
 from pkg_resources import packaging
 from ray.dashboard.utils import get_address_for_submission_client
 from ray.dashboard.modules.job.utils import strip_keys_with_value_none
-from ray.dashboard.modules.job.pydantic_models import (
-    JobDetails,
-)
-
+from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 
 try:
-    import aiohttp
     import requests
 except ImportError:
-    aiohttp = None
     requests = None
 
 from ray.dashboard.modules.job.common import (

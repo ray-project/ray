@@ -1,7 +1,7 @@
 import json
 import logging
 import asyncio
-import aiohttp.web
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 from typing import Optional, Tuple, List
 
 
