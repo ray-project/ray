@@ -85,11 +85,6 @@ Compare a PyTorch Lightning training script with and without Ray Train.
             trainer = pl.Trainer(max_epochs=10)
             trainer.fit(model, train_dataloaders=train_dataloader)
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 2a6c6ee032701e49bcebd1df1a400f70fddb0cc7
-
 
     .. tab-item:: PyTorch Lightning + Ray Train
 
@@ -161,7 +156,6 @@ Compare a PyTorch Lightning training script with and without Ray Train.
             scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 
             # [3] Launch distributed training job.
-<<<<<<< HEAD
             trainer = TorchTrainer(
                 train_func,
                 scaling_config=scaling_config,
@@ -176,10 +170,6 @@ Compare a PyTorch Lightning training script with and without Ray Train.
                 model = ImageClassifier.load_from_checkpoint(
                     os.path.join(checkpoint_dir, "checkpoint.ckpt"),
                 )
-=======
-            trainer = TorchTrainer(train_func, scaling_config=scaling_config)
-            result = trainer.fit()
->>>>>>> 2a6c6ee032701e49bcebd1df1a400f70fddb0cc7
 
 
 Set up a training function
@@ -213,7 +203,7 @@ make a few changes to your Lightning Trainer definition.
          datamodule = MyLightningDataModule(...)
 
          trainer = pl.Trainer(
-    -        devices=[0,1,2,3],
+    -        devices=[0, 1, 2, 3],
     -        strategy=DDPStrategy(),
     -        plugins=[LightningEnvironment()],
     +        devices="auto",
