@@ -115,6 +115,7 @@ def get_capacity_adjusted_num_replicas(
 
 
 class AutoscalingContext:
+    # TODO (genesu): move to public file
     """Contains the context for an autoscaling policy.
 
     This context includes the current number of replicas, the current number
@@ -176,6 +177,7 @@ class AutoscalingContext:
 
 
 class AutoscalingPolicy:
+    # TODO (genesu): move to public file
     """Defines the interface for an autoscaling policy.
 
     To add a new autoscaling policy, a class should be defined that provides
@@ -358,12 +360,12 @@ class CustomScalingPolicy(AutoscalingPolicy):
                 autoscaling_context
             )
 
-        return ray.remote(self.custom_scaling_remote_func).remote(autoscaling_context)
+        return self.custom_scaling_remote_func.remote(autoscaling_context)
 
     def _setup_remote_callable(self):
         autoscaling_policy_callable = self.config.get_autoscaling_policy()
         if isclass(autoscaling_policy_callable):
-            assert isinstance(autoscaling_policy_callable, AutoscalingPolicy)
+            assert issubclass(autoscaling_policy_callable, AutoscalingPolicy)
 
             self.custom_scaling_actor_handle = ray.remote(
                 autoscaling_policy_callable
