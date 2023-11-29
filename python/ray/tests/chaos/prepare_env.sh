@@ -12,7 +12,7 @@ PYTHON=3.8 ./ci/env/install-dependencies.sh
 # Specifying above somehow messes up the Ray install.
 # Uninstall and re-install Ray so that we can use Ray Client.
 # (Remove thirdparty_files to sidestep an issue with psutil.)
-pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
+pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files && rm -rf /ray/python/ray/_private/internal_thirdparty_files
 pip install -e /ray/python
 echo "--Setting up local kind cluster."
 
