@@ -140,6 +140,9 @@ class SplitCoordinator:
             dataset.context.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
 
+        # Set current DataContext.
+        ray.data.DataContext._set_current(dataset.context)
+
         self._base_dataset = dataset
         self._n = n
         self._equal = equal
@@ -151,8 +154,6 @@ class SplitCoordinator:
         self._next_bundle: Dict[int, RefBundle] = {}
         self._unfinished_clients_in_epoch = n
         self._cur_epoch = -1
-
-        ray.data.DataContext._set_current(dataset.context)
 
         def gen_epochs():
             while True:
