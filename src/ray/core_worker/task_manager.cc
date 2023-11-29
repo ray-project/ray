@@ -997,9 +997,6 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       last_log_time_ms_ = current_time_ms();
       if (status != nullptr) {
         RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
-        RAY_LOG(INFO) << "ryw Task failed: " << *status << ": " << spec.DebugString()
-                      << " proto " << spec.GetMessage().DebugString();
-
       } else {
         RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
       }
@@ -1313,18 +1310,8 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   if (it == submissible_tasks_.end()) {
     return;
   }
-  // TODO: change this to PENDING || FAILED || SUCC
-  // TODO: write actor out of order
-  // send 10s
-  // send 2s and complete
-  // send 5s and exit ((so we have out of order completed ones))
-  // send 10s
-  // and restarts=1 -> restarting should resend and check fail
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)
-      << ", task ID = " << it->first << ", status = "
-      << it->second.GetStatus()
-      // DO NOT SUBMIT remove this
-      << ", " << it->second.spec.GetMessage().DebugString();
+      << ", task ID = " << it->first << ", status = " << it->second.GetStatus();
   it->second.SetNodeId(node_id);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
   RecordTaskStatusEvent(it->second.spec.AttemptNumber(),

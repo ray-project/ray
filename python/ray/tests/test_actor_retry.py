@@ -63,122 +63,101 @@ class TroubleMaker:
             return c
 
 
-# def test_method_raise_5_times(shutdown_only):
-#     counter = Counter.remote()
-#     trouble_maker = TroubleMaker.remote()
-#     assert ray.get(trouble_maker.may_raise_n_times.remote(counter, 5)) == 5
-#     assert ray.get(counter.get_count.remote()) == 6
+def test_method_raise_5_times(shutdown_only):
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.remote()
+    assert ray.get(trouble_maker.may_raise_n_times.remote(counter, 5)) == 5
+    assert ray.get(counter.get_count.remote()) == 6
 
 
-# def test_method_raise_no_over_retry(shutdown_only):
-#     counter = Counter.remote()
-#     trouble_maker = TroubleMaker.remote()
-#     with pytest.raises(MyError):
-#         ray.get(trouble_maker.may_raise_n_times.remote(counter, 6))
-#     assert ray.get(counter.get_count.remote()) == 6
+def test_method_raise_no_over_retry(shutdown_only):
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.remote()
+    with pytest.raises(MyError):
+        ray.get(trouble_maker.may_raise_n_times.remote(counter, 6))
+    assert ray.get(counter.get_count.remote()) == 6
 
 
-# def test_options_takes_precedence(shutdown_only):
-#     counter = Counter.remote()
-#     trouble_maker = TroubleMaker.remote()
-#     assert (
-#         ray.get(
-#             trouble_maker.may_raise_n_times.options(max_retries=10).remote(counter, 10)
-#         )
-#         == 10
-#     )
-#     assert ray.get(counter.get_count.remote()) == 11
+def test_options_takes_precedence(shutdown_only):
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.remote()
+    assert (
+        ray.get(
+            trouble_maker.may_raise_n_times.options(max_retries=10).remote(counter, 10)
+        )
+        == 10
+    )
+    assert ray.get(counter.get_count.remote()) == 11
 
 
-# def test_options_takes_precedence_no_over_retry(shutdown_only):
-#     counter = Counter.remote()
-#     trouble_maker = TroubleMaker.remote()
+def test_options_takes_precedence_no_over_retry(shutdown_only):
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.remote()
 
-#     with pytest.raises(MyError):
-#         ray.get(
-#             trouble_maker.may_raise_n_times.options(max_retries=10).remote(counter, 11)
-#         )
-#     assert ray.get(counter.get_count.remote()) == 11
-
-
-# @pytest.mark.parametrize(
-#     "actions",
-#     [
-#         ["exit", "raise", "raise"],
-#         ["raise", "exit", "raise"],
-#         ["raise", "raise", "exit"],
-#         ["raise", "raise", "raise"],
-#     ],
-# )
-# def test_method_raise_and_exit(actions, shutdown_only):
-#     """
-#     Test we can endure a mix of raises and exits. Note the number of exits we can endure
-#     is subject to max_restarts.
-#     """
-#     counter = Counter.remote()
-#     trouble_maker = TroubleMaker.options(max_restarts=1).remote()
-#     assert (
-#         ray.get(
-#             trouble_maker.raise_or_exit.options(max_retries=4).remote(counter, actions)
-#         )
-#         == 3
-#     )
-#     assert ray.get(counter.get_count.remote()) == 4
+    with pytest.raises(MyError):
+        ray.get(
+            trouble_maker.may_raise_n_times.options(max_retries=10).remote(counter, 11)
+        )
+    assert ray.get(counter.get_count.remote()) == 11
 
 
-# def test_method_exit_and_raise_no_over_retry(shutdown_only):
-#     """
-#     Test we can endure a mix of raises and exits. Note the number of exits we can endure
-#     is subject to max_restarts.
-#     """
-#     counter = Counter.remote()
-#     trouble_maker = TroubleMaker.options(max_restarts=1).remote()
-#     with pytest.raises(MyError):
-#         assert ray.get(
-#             trouble_maker.raise_or_exit.options(max_retries=2).remote(
-#                 counter, ["exit", "raise", "raise"]
-#             )
-#         )
-#     assert ray.get(counter.get_count.remote()) == 3
-
-
-# def test_method_exit_no_over_retry(shutdown_only):
-#     """
-#     Test we can endure a mix of raises and exits. Note the number of exits we can endure
-#     is subject to max_restarts.
-
-#     TODO: does not work
-#     [2023-11-22 18:35:11,494 C 3253 34529770] task_manager.cc:1306:  Check failed: it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT
-#     """
-#     counter = Counter.remote()
-#     trouble_maker = TroubleMaker.options(max_restarts=1).remote()
-#     with pytest.raises(ray.exceptions.RayActorError):
-#         assert ray.get(
-#             trouble_maker.raise_or_exit.options(max_retries=2).remote(
-#                 counter, ["exit", "exit", "exit"]
-#             )
-#         )
-#     assert ray.get(counter.get_count.remote()) == 2
-
-
-def test_method_raise_and_exit_no_over_retry(shutdown_only):
+@pytest.mark.parametrize(
+    "actions",
+    [
+        ["exit", "raise", "raise"],
+        ["raise", "exit", "raise"],
+        ["raise", "raise", "exit"],
+        ["raise", "raise", "raise"],
+    ],
+    ids=lambda lst: ','.join(lst)  # test case show name
+)
+def test_method_raise_and_exit(actions, shutdown_only):
     """
     Test we can endure a mix of raises and exits. Note the number of exits we can endure
     is subject to max_restarts.
+    """
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.options(max_restarts=1).remote()
+    assert (
+        ray.get(
+            trouble_maker.raise_or_exit.options(max_retries=4).remote(counter, actions)
+        )
+        == 3
+    )
+    # 4 = 1 initial + 3 retries (with the 1 restart included)
+    assert ray.get(counter.get_count.remote()) == 4
 
-    TODO: does not work
-    [2023-11-22 18:35:11,494 C 3253 34529770] task_manager.cc:1306:  Check failed: it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT
+
+def test_method_exit_and_raise_no_over_retry(shutdown_only):
+    """
+    Test we can endure a mix of raises and exits. Note the number of exits we can endure
+    is subject to max_restarts.
+    """
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.options(max_restarts=1).remote()
+    with pytest.raises(MyError):
+        assert ray.get(
+            trouble_maker.raise_or_exit.options(max_retries=2).remote(
+                counter, ["exit", "raise", "raise"]
+            )
+        )
+    assert ray.get(counter.get_count.remote()) == 3
+
+
+def test_method_exit_no_over_retry_max_restarts(shutdown_only):
+    """
+    Even if we have enough max_retries, we may still raise due to max_restarts.
     """
     counter = Counter.remote()
     trouble_maker = TroubleMaker.options(max_restarts=1).remote()
     with pytest.raises(ray.exceptions.RayActorError):
         assert ray.get(
-            trouble_maker.raise_or_exit.options(max_retries=2).remote(
-                counter, ["raise", "raise", "exit"]
+            trouble_maker.raise_or_exit.options(max_retries=4).remote(
+                counter, ["raise", "exit", "exit"]
             )
         )
-    assert ray.get(counter.get_count.remote()) == 2
-
+    # 2 calls: 1 initial + 1 exception-retry + 1 exit-retry (then no more)
+    assert ray.get(counter.get_count.remote()) == 3
 
 
 if __name__ == "__main__":
