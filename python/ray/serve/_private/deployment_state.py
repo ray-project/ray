@@ -698,6 +698,7 @@ class ActorReplicaWrapper:
         except ValueError:
             # ValueError thrown from ray.get_actor means actor has already been deleted.
             pass
+
         return self.graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:
