@@ -2,12 +2,59 @@ import os
 import sys
 import pytest
 
+from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint
+from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_ERRORS
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.tune.experiment import Trial
 
 from ray.train.tests.util import mock_storage_context
+
+
+@pytest.fixture
+def trial(tmp_path):
+    yield Trial(
+        "mock",
+        stub=True,
+        storage=mock_storage_context(storage_path=str(tmp_path)),
+    )
+
+
+@pytest.mark.parametrize("count_preemption_errors", [False, True])
+def test_handle_preemption_error(
+    trial: Trial, count_preemption_errors: bool, monkeypatch
+):
+    """Check that the Trial counts preemption errors correctly."""
+    if count_preemption_errors:
+        monkeypatch.setenv(RAY_TRAIN_COUNT_PREEMPTION_ERRORS, "1")
+
+    num_errors_before = trial.run_metadata.num_failures
+
+    # Case 1: Directly raised (preemption) RayActorError
+    err = RayActorError()
+    err.preempted = True
+    trial.handle_error(err)
+    assert trial.run_metadata.num_failures == num_errors_before + (
+        1 if count_preemption_errors else 0
+    )
+
+    # Case 2: RayTaskError, where the cause is a (preemption) RayActorError
+    wrapped_err = RayTaskError(
+        function_name="test", traceback_str="traceback_str", cause=err
+    )
+    trial.handle_error(wrapped_err)
+    assert trial.run_metadata.num_failures == num_errors_before + (
+        2 if count_preemption_errors else 0
+    )
+
+    # Case 3: Non-preemption error
+    non_preempted_err = RayActorError()
+    non_preempted_err.preempted = False
+    trial.handle_error(non_preempted_err)
+    assert trial.run_metadata.num_failures == num_errors_before + (
+        3 if count_preemption_errors else 1
+    )
 
 
 def test_load_trial_from_json_state():
