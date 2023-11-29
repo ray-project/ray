@@ -89,7 +89,6 @@ const ActorTable = ({
   });
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
-  const { ipLogMap } = useContext(GlobalContext);
 
   //We get a filtered and sorted actor list to render from prop actors
   const sortedActors = useMemo(() => {
@@ -427,32 +426,30 @@ const ActorTable = ({
                     <StatusChip type="actor" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    {ipLogMap[address?.ipAddress] && (
-                      <React.Fragment>
-                        <ActorLink
-                          actorId={actorId}
-                          to={
-                            detailPathPrefix
-                              ? `${detailPathPrefix}/${actorId}`
-                              : actorId
-                          }
-                        >
-                          Log
-                        </ActorLink>
-                        <br />
-                        <CpuProfilingLink
-                          pid={pid}
-                          ip={address?.ipAddress}
-                          type=""
-                        />
-                        <br />
-                        <CpuStackTraceLink
-                          pid={pid}
-                          ip={address?.ipAddress}
-                          type=""
-                        />
-                      </React.Fragment>
-                    )}
+                    <React.Fragment>
+                      <ActorLink
+                        actorId={actorId}
+                        to={
+                          detailPathPrefix
+                            ? `${detailPathPrefix}/${actorId}`
+                            : actorId
+                        }
+                      >
+                        Log
+                      </ActorLink>
+                      <br />
+                      <CpuProfilingLink
+                        pid={pid}
+                        ip={address?.ipAddress}
+                        type=""
+                      />
+                      <br />
+                      <CpuStackTraceLink
+                        pid={pid}
+                        ip={address?.ipAddress}
+                        type=""
+                      />
+                    </React.Fragment>
                   </TableCell>
                   <TableCell align="center">
                     {startTime && startTime > 0 ? (

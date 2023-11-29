@@ -59,7 +59,6 @@ const CMDResult = React.lazy(() => import("./pages/cmd/CMDResult"));
 export type GlobalContextType = {
   nodeMap: { [key: string]: string };
   nodeMapByIp: { [key: string]: string };
-  ipLogMap: { [key: string]: string };
   namespaceMap: { [key: string]: string[] };
   /**
    * Whether the initial metrics context has been fetched or not.
@@ -92,7 +91,6 @@ export type GlobalContextType = {
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
   nodeMapByIp: {},
-  ipLogMap: {},
   namespaceMap: {},
   metricsContextLoaded: false,
   grafanaHost: undefined,
@@ -106,7 +104,6 @@ const App = () => {
   const [context, setContext] = useState<GlobalContextType>({
     nodeMap: {},
     nodeMapByIp: {},
-    ipLogMap: {},
     namespaceMap: {},
     metricsContextLoaded: false,
     grafanaHost: undefined,
@@ -120,17 +117,14 @@ const App = () => {
       if (res?.data?.data?.summary) {
         const nodeMap = {} as { [key: string]: string };
         const nodeMapByIp = {} as { [key: string]: string };
-        const ipLogMap = {} as { [key: string]: string };
-        res.data.data.summary.forEach(({ hostname, raylet, ip, logUrl }) => {
+        res.data.data.summary.forEach(({ hostname, raylet, ip }) => {
           nodeMap[hostname] = raylet.nodeId;
           nodeMapByIp[ip] = raylet.nodeId;
-          ipLogMap[ip] = logUrl;
         });
         setContext((existingContext) => ({
           ...existingContext,
           nodeMap,
           nodeMapByIp,
-          ipLogMap,
           namespaceMap: {},
         }));
       }

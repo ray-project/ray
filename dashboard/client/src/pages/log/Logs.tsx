@@ -39,7 +39,8 @@ export const StateApiLogsListPage = () => {
   const [searchParams] = useSearchParams();
   const nodeId = searchParams.get("nodeId");
   const folder = searchParams.get("folder");
-  const [fileName, setFileName] = useState("");
+  const fileNameParam = searchParams.get("fileName");
+  const [fileName, setFileName] = useState(fileNameParam || "");
 
   const backFolder = folder
     ? [...folder.split("/").slice(0, -1)].join("/")
