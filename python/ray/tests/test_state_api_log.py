@@ -417,7 +417,7 @@ def test_log_agent_resolve_filename(temp_dir):
     2. Not able to resolve files outside of the temp dir root.
         - with a absolute path.
         - with a relative path recursive up.
-    3. Permits a file in a directory that's symlinked into the temp dir.
+    3. Permits a file in a directory that's symlinked into the root dir.
     """
     root = Path(temp_dir)
     # Create a file in the temp dir.
