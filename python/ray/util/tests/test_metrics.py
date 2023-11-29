@@ -3,7 +3,7 @@ import pytest
 from ray.util.metrics import Metric
 
 
-def test_invalid_metric_name(self):
+def test_invalid_metric_name():
     with pytest.raises(ValueError) as e:
         Metric("faulty-metric", "Test metric")
     assert (
@@ -12,7 +12,7 @@ def test_invalid_metric_name(self):
     )
 
 
-def test_empty_metric_name(self):
+def test_empty_metric_name():
     with pytest.raises(ValueError) as e:
         Metric("", "Test metric")
     assert str(e.value) == "Empty name is not allowed. Please provide a metric name."
