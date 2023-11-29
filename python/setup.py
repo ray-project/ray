@@ -536,7 +536,7 @@ def build(build_python, build_java, build_cpp):
         )
 
     # runtime env agent dependenceis
-    runtime_env_agent_pip_packages = [
+    internal_pip_packages = [
         "aiohttp >= 3.7",  # for runtime env agent and the dashboard http server
         "aiohttp_cors",  # for dashboard
         "aiosignal",  # for dashboard
@@ -550,7 +550,7 @@ def build(build_python, build_java, build_cpp):
             "-q",
             "--target=" + os.path.join(ROOT_DIR, INTERNAL_THIRDPARTY_SUBDIR),
         ]
-        + runtime_env_agent_pip_packages
+        + internal_pip_packages
     )
 
     bazel_flags = ["--verbose_failures"]

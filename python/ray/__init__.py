@@ -44,8 +44,8 @@ def _configure_system():
                 "previous versions may leak memory."
             )
 
-    # Importing third party files including psutil & setproctitle. Must be before
-    # ray._raylet is initialized.
+    # Importing psutil & setproctitle. Must be before ray._raylet is
+    # initialized.
     thirdparty_files = os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "thirdparty_files"
     )
