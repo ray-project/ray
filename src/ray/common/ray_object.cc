@@ -17,6 +17,10 @@
 #include "msgpack.hpp"
 
 namespace {
+
+static const std::string kObjectInPlasmaStr =
+    std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA);
+
 std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
                                                              size_t data_size) {
   auto metadata = const_cast<uint8_t *>(data);
@@ -110,9 +114,7 @@ bool RayObject::IsException(rpc::ErrorType *error_type) const {
   // TODO (kfstorm): metadata should be structured.
   const std::string_view metadata(reinterpret_cast<const char *>(metadata_->Data()),
                                   metadata_->Size());
-  // Keep in sync with common.proto.
-  static_assert(ray::rpc::ErrorType::OBJECT_IN_PLASMA == 4);
-  if (metadata == "4") {
+  if (metadata == kObjectInPlasmaStr) {
     if (error_type) {
       *error_type = rpc::ErrorType::OBJECT_IN_PLASMA;
     }
@@ -137,9 +139,7 @@ bool RayObject::IsInPlasmaError() const {
   }
   const std::string_view metadata(reinterpret_cast<const char *>(metadata_->Data()),
                                   metadata_->Size());
-  // Keep in sync with common.proto.
-  static_assert(ray::rpc::ErrorType::OBJECT_IN_PLASMA == 4);
-  return metadata == "4";
+  return metadata == kObjectInPlasmaStr;
 }
 
 }  // namespace ray
