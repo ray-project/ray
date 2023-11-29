@@ -203,6 +203,7 @@ import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
+from ray.util.annotations import PublicAPI
 
 cimport cpython
 
@@ -266,6 +267,7 @@ class DynamicObjectRefGenerator:
         return len(self._refs)
 
 
+PublicAPI(stability="beta")
 class ObjectRefGenerator:
     """A generator to obtain object references
     from a task in a streaming manner.

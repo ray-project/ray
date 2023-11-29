@@ -1,6 +1,6 @@
 # __program_start__
 import ray
-from ray import DynamicDynamicObjectRefGenerator
+from ray import DynamicObjectRefGenerator
 
 # fmt: off
 # __dynamic_generator_start__
@@ -60,13 +60,15 @@ def get_size(ref_generator : DynamicObjectRefGenerator):
 # Returns an ObjectRef[DynamicObjectRefGenerator].
 dynamic_ref = split.remote(array_ref, block_size)
 assert array_size == ray.get(get_size.remote(dynamic_ref))
-# (get_size pid=1504184) <ray._raylet.DynamicObjectRefGenerator object at 0x7f81c4250ad0>
+# (get_size pid=1504184)
+# <ray._raylet.DynamicObjectRefGenerator object at 0x7f81c4250ad0>
 
 # This also works, but should be avoided because you have to call an additional
 # `ray.get`, which blocks the driver.
 ref_generator = ray.get(dynamic_ref)
 assert array_size == ray.get(get_size.remote(ref_generator))
-# (get_size pid=1504184) <ray._raylet.DynamicObjectRefGenerator object at 0x7f81c4251b50>
+# (get_size pid=1504184)
+# <ray._raylet.DynamicObjectRefGenerator object at 0x7f81c4251b50>
 # __dynamic_generator_pass_end__
 # fmt: on
 

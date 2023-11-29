@@ -60,7 +60,7 @@ to create a Ray generator.
     :start-after: __streaming_generator_define_start__
     :end-before: __streaming_generator_define_end__
 
-The Ray generator task returns ``ObjectRefGenerator`` (the API is subject to change), which is
+The Ray generator task returns :ref:`ObjectRefGenerator <generator-api>`., which is
 compatible to generator and async generator APIs. You can access the
 ``next``, ``__iter__``, ``__anext__``, ``__aiter__`` APIs from the class.
 
