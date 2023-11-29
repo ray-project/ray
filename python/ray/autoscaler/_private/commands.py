@@ -781,7 +781,7 @@ def get_or_create_head_node(
     global_event_system.execute_callback(CreateClusterEvent.head_node_acquired)
 
     with cli_logger.group(
-        "Setting up head node and streaming output from head node",
+        "Setting up head node",
         _numbered=("<>", 1, 1),
         # cf.bold(provider.node_tags(head_node)[TAG_RAY_NODE_NAME]),
         _tags=dict(),
@@ -857,6 +857,8 @@ def get_or_create_head_node(
             cli_logger.abort("Failed to setup head node.")
             sys.exit(1)
 
+    cli_logger.info("Successfully set up head node. Ended output stream from head node.")
+
     global_event_system.execute_callback(
         CreateClusterEvent.cluster_booting_completed,
         {
@@ -869,7 +871,6 @@ def get_or_create_head_node(
         modifiers = " --cluster-name={}".format(quote(override_cluster_name))
     else:
         modifiers = ""
-    cli_logger.info("Successfully set up head node. Ended output stream from head node.")
 
     cli_logger.newline()
     with cli_logger.group("Useful commands to run from your local machine"):
