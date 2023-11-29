@@ -12,7 +12,7 @@ import requests
 
 import ray
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
-from ray.serve.config import DEFAULT_AUTOSCALING_POLICY, AutoscalingConfig
+from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
