@@ -394,7 +394,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         else:
             filepath = Path(filename)
 
-        filepath = filepath.resolve()
+        filepath = os.path.abspath(filepath)
 
         if not filepath.is_file():
             raise FileNotFoundError(f"A file is not found at: {filepath}")
