@@ -5,7 +5,8 @@ from collections import defaultdict
 import ray
 
 
-MAX_BUFFER_SIZE = int(100 * 1e6) # 100MB
+MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
+
 
 def allocate_shared_output_buffer(buffer_size_bytes: int = MAX_BUFFER_SIZE):
     assert isinstance(MAX_BUFFER_SIZE, int)
@@ -18,8 +19,33 @@ def allocate_shared_output_buffer(buffer_size_bytes: int = MAX_BUFFER_SIZE):
     return ref
 
 
+def do_allocate_shared_output_buffer(self, buffer_size_bytes: int = MAX_BUFFER_SIZE):
+    self._output_ref = allocate_shared_output_buffer(buffer_size_bytes)
+    return self._output_ref
+
+
+def do_exec_compiled_task(
+    self,
+    input_refs: List[ray.ObjectRef],
+    actor_method_name: str,
+    output_max_readers: int,
+):
+    method = getattr(self, actor_method_name)
+    while True:
+        inputs = ray.get(input_refs)
+        output_val = method(*inputs)
+        ray.worker.global_worker.put_object(
+            output_val,
+            object_ref=self._output_ref,
+            max_readers=output_max_readers,
+        )
+        for input_ref in input_refs:
+            ray.release(input_ref)
+
+
 class CompiledTask:
-    """ Wraps the normal Ray DAGNode with some metadata."""
+    """Wraps the normal Ray DAGNode with some metadata."""
+
     def __init__(self, idx, dag_node: "DAGNode"):
         self.idx = idx
         self.dag_node = dag_node
@@ -77,11 +103,15 @@ class CompiledDAG:
                 assert self.input_task_idx is None, "more than one InputNode found"
                 self.input_task_idx = idx
         # TODO: Support no-input DAGs (use an empty object to signal).
-        assert self.input_task_idx is not None, "no InputNode found, require exactly one"
+        assert (
+            self.input_task_idx is not None
+        ), "no InputNode found, require exactly one"
 
         for idx, task in self.idx_to_task.items():
             if len(task.dependent_node_idxs) == 0:
-                assert self.output_task_idx is None, "More than one output node found, make sure only one node has 0 dependent tasks"
+                assert (
+                    self.output_task_idx is None
+                ), "More than one output node found, make sure only one node has 0 dependent tasks"
                 self.output_task_idx = idx
 
     def compile(self):
@@ -90,9 +120,10 @@ class CompiledDAG:
         if self.dag_input_ref is not None and self.dag_output_refs is not None:
             # Driver should ray.put on input, ray.get/release on output
             return (
-                    self.dag_input_ref,
-                    self.dag_input_max_readers,
-                    self.dag_output_refs)
+                self.dag_input_ref,
+                self.dag_input_max_readers,
+                self.dag_output_refs,
+            )
 
         queue = [self.input_task_idx]
         visited = set()
@@ -109,8 +140,8 @@ class CompiledDAG:
             # Create an output buffer on the actor.
             assert task.output_ref is None
             if isinstance(task.dag_node, ClassMethodNode):
-                fn = task.dag_node._get_remote_method("_allocate_shared_output_buffer")
-                task.output_ref = ray.get(fn.remote())
+                fn = task.dag_node._get_remote_method("__ray_apply__")
+                task.output_ref = ray.get(fn.remote(do_allocate_shared_output_buffer))
             elif isinstance(task.dag_node, InputNode):
                 task.output_ref = allocate_shared_output_buffer()
             else:
@@ -143,11 +174,13 @@ class CompiledDAG:
                 resolved_args.append(arg_buffer)
 
             # TODO: Assign the task with the correct input and output buffers.
-            exec_fn = task.dag_node._get_remote_method("_exec_compiled_task")
-            exec_fn.remote(
-                    resolved_args,
-                    task.dag_node.get_method_name(),
-                    task.max_readers)
+            apply_fn = task.dag_node._get_remote_method("__ray_apply__")
+            apply_fn.remote(
+                do_exec_compiled_task,
+                resolved_args,
+                task.dag_node.get_method_name(),
+                task.max_readers,
+            )
 
         self.dag_input_ref = self.idx_to_task[self.input_task_idx].output_ref
         self.dag_input_max_readers = self.idx_to_task[self.input_task_idx].max_readers
@@ -161,10 +194,7 @@ class CompiledDAG:
         assert self.dag_input_ref
         assert self.dag_output_refs
         # Driver should ray.put on input, ray.get/release on output
-        return (
-                self.dag_input_ref,
-                self.dag_input_max_readers,
-                self.dag_output_refs)
+        return (self.dag_input_ref, self.dag_input_max_readers, self.dag_output_refs)
 
 
 def build_compiled_dag(dag: "DAGNode"):
@@ -177,28 +207,3 @@ def build_compiled_dag(dag: "DAGNode"):
     dag.apply_recursive(build_compiled_dag)
     compiled_dag.preprocess()
     return compiled_dag
-
-
-class RayCompiledExecutor:
-    def _allocate_shared_output_buffer(
-            self,
-            buffer_size_bytes: int = MAX_BUFFER_SIZE):
-        self._output_ref = allocate_shared_output_buffer(buffer_size_bytes)
-        return self._output_ref
-
-    def _exec_compiled_task(self,
-            input_refs: List[ray.ObjectRef],
-            actor_method_name: str,
-            output_max_readers: int,
-            ):
-        method = getattr(self, actor_method_name)
-        while True:
-            inputs = ray.get(input_refs)
-            output_val = method(*inputs)
-            ray.worker.global_worker.put_object(
-                output_val,
-                object_ref=self._output_ref,
-                max_readers=output_max_readers,
-            )
-            for input_ref in input_refs:
-                ray.release(input_ref)

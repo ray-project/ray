@@ -2,18 +2,19 @@ import os
 import time
 
 import ray
-
 from ray.dag import InputNode, OutputNode
-from ray.dag.compiled_dag_node import RayCompiledExecutor
 
 
 @ray.remote
-class Actor(RayCompiledExecutor):
+class Actor:
     def __init__(self, init_value):
         print("__init__ PID", os.getpid())
         self.i = init_value
 
     def inc(self, x):
+        self.i += 1
+        if self.i > 2500:
+            raise Exception("oops")
         return x
 
     def get(self):

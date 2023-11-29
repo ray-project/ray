@@ -1,15 +1,19 @@
-import ray
 import time
+
+import ray
 
 """
 Verify put in 2 different processes work.
 """
 ray.init(num_cpus=1)
 
-print("Test Write input from driver -> Read & Write from worker -> Read output from driver")
+print(
+    "Test Write input from driver -> Read & Write from worker -> Read output from driver"
+)
 expected_input = b"000000000000"
 ref = ray.put(expected_input, max_readers=1)
 print(ref)
+
 
 @ray.remote
 class A:
@@ -30,7 +34,9 @@ val = ray.get(ref)
 assert output_val == val
 ray.release(ref)
 
-print("Test Write input from driver twice -> Read & Write from worker -> Read output from driver")
+print(
+    "Test Write input from driver twice -> Read & Write from worker -> Read output from driver"
+)
 # Test write twice.
 ref = ray.put(b"000000000000", max_readers=1)
 assert b"000000000000" == ray.get(ref)

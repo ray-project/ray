@@ -3,7 +3,6 @@ import time
 
 import ray
 from ray.dag import InputNode, OutputNode
-from ray.dag.compiled_dag_node import RayCompiledExecutor
 
 verbose = os.environ.get("VERBOSE", "1") == "1"
 compiled_dag = os.environ.get("COMPILED_DAG", "1") == "1"
@@ -13,8 +12,8 @@ fused_worker_tasks = os.environ.get("FUSED_WORKER_TASKS", "0") == "1"
 @ray.remote
 def work():
     @ray.remote
-    class A(RayCompiledExecutor):
-        def __init__(self, input_ref = None):
+    class A:
+        def __init__(self, input_ref=None):
             if input_ref is not None:
                 self.input_ref = input_ref[0]
                 time.sleep(1)

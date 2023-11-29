@@ -1,5 +1,6 @@
-import ray
 import time
+
+import ray
 
 # Basic case
 ray.init(num_cpus=1)
