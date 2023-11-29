@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Dict, Optional
 
 import pytest
+from pydantic import BaseModel
 
 import ray
 from ray import serve
@@ -388,15 +389,20 @@ class ControlledLifecycleDeployment:
         )
         await self.lifecycle_signal.wait.remote()
 
-        self.request_signal = ray.get_actor(
-            name="request_signal", namespace=SERVE_NAMESPACE
-        )
+        try:
+            self.request_signal = ray.get_actor(
+                name="request_signal", namespace=SERVE_NAMESPACE
+            )
+        except ValueError:
+            # No request signal actor was launched.
+            self.request_signal = None
 
     async def __call__(self) -> str:
-        try:
-            await self.request_signal.wait.remote()
-        except RayActorError:
-            print("Request signal actor already dead. Running request.")
+        if self.request_signal is not None:
+            try:
+                await self.request_signal.wait.remote()
+            except RayActorError:
+                print("Request signal actor already dead. Running request.")
         return "Hello world!"
 
     async def __del__(self):
@@ -408,18 +414,30 @@ class ControlledLifecycleDeployment:
             print("Lifecycle signal actor already dead. Replica exiting.")
 
 
-def create_controlled_app(config: Dict) -> Application:
-    num_replicas = config["num_replicas"]
+class ControllerAppConfig(BaseModel):
+    num_replicas: int
+
+
+def create_controlled_app(config: ControllerAppConfig) -> Application:
+    num_replicas = config.num_replicas
     return ControlledLifecycleDeployment.options(
         name="controlled",
         num_replicas=num_replicas,
     ).bind()
 
 
-def create_autoscaling_controlled_app(config: Dict) -> Application:
-    min_replicas = config["min_replicas"]
-    initial_replicas = config["initial_replicas"]
-    max_replicas = config["max_replicas"]
+class AutoscalingControllerAppConfig(BaseModel):
+    min_replicas: int
+    initial_replicas: Optional[int]
+    max_replicas: int
+
+
+def create_autoscaling_controlled_app(
+    config: AutoscalingControllerAppConfig,
+) -> Application:
+    min_replicas = config.min_replicas
+    initial_replicas = config.initial_replicas
+    max_replicas = config.max_replicas
     return ControlledLifecycleDeployment.options(
         name="controlled",
         autoscaling_config=dict(
@@ -456,6 +474,7 @@ class TestTargetCapacityUpdateAndServeStatus:
     ):
         """Applies config with specified target_capacity."""
 
+        config = deepcopy(config)
         config.target_capacity = target_capacity
         client.deploy_apps(config)
         wait_for_condition(lambda: serve.status().target_capacity == target_capacity)
@@ -501,9 +520,6 @@ class TestTargetCapacityUpdateAndServeStatus:
 
         signal = SignalActor.options(
             name="lifecycle_signal", namespace=SERVE_NAMESPACE
-        ).remote()
-        _ = SignalActor.options(
-            name="request_signal", namespace=SERVE_NAMESPACE
         ).remote()
 
         config = ServeDeploySchema(
