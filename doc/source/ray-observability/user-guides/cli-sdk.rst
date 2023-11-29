@@ -6,7 +6,7 @@ Monitoring with the CLI or SDK
 Monitoring and debugging capabilities in Ray are available through a CLI or SDK.
 
 
-CLI command ``ray status`` 
+CLI command ``ray status``
 ----------------------------
 You can monitor node status and resource usage by running the CLI command, ``ray status``, on the head node. It displays
 
@@ -102,9 +102,10 @@ This example uses the following script that runs two Tasks and creates two Actor
 
 See the summarized states of tasks. If it doesn't return the output immediately, retry the command.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
@@ -126,7 +127,8 @@ See the summarized states of tasks. If it doesn't return the output immediately,
             0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
             1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -139,9 +141,10 @@ See the summarized states of tasks. If it doesn't return the output immediately,
 
 List all Actors.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
@@ -160,7 +163,8 @@ List all Actors.
             0  31405554844820381c2f0f8501000000  Actor                 96956  ALIVE
             1  f36758a9f8871a9ca993b1d201000000  Actor                 96955  ALIVE
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -174,9 +178,10 @@ List all Actors.
 
 Get the state of a single Task using the get API.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
@@ -196,7 +201,8 @@ Get the state of a single Task using the get API.
             serialized_runtime_env: '{}'
             state: ALIVE
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
             :skipif: True
@@ -207,9 +213,10 @@ Get the state of a single Task using the get API.
 
 Access logs through the ``ray logs`` API.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
@@ -224,7 +231,8 @@ Access logs through the ``ray logs`` API.
             :actor_name:Actor
             Actor created
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
             :skipif: True
@@ -260,15 +268,17 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 
 **Summarize all actors**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray summary actors
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -281,15 +291,17 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 
 **Summarize all tasks**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray summary tasks
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -308,15 +320,17 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
     To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the Ray Cluster
     RAY_record_ref_creation_sites=1 ray start --head
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray summary objects
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -346,15 +360,17 @@ Get a list of resources. Possible resources include:
 
 **List all nodes**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray list nodes
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -363,15 +379,17 @@ Get a list of resources. Possible resources include:
 
 **List all placement groups**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray list placement-groups
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -383,15 +401,17 @@ Get a list of resources. Possible resources include:
 
 .. tip:: You can list resources with one or multiple filters: using `--filter` or `-f`
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray list objects -f pid=<PID> -f reference_type=LOCAL_REFERENCE
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -400,15 +420,17 @@ Get a list of resources. Possible resources include:
 
 **List alive actors**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray list actors -f state=ALIVE
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -417,15 +439,17 @@ Get a list of resources. Possible resources include:
 
 **List running tasks**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray list tasks -f state=RUNNING
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -434,15 +458,17 @@ Get a list of resources. Possible resources include:
 
 **List non-running tasks**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray list tasks -f state!=RUNNING
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -451,15 +477,17 @@ Get a list of resources. Possible resources include:
 
 **List running tasks that have a name func**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray list tasks -f state=RUNNING -f name="task_running_300_seconds()"
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -470,15 +498,17 @@ Get a list of resources. Possible resources include:
 
 .. tip:: When ``--detail`` is specified, the API can query more data sources to obtain state information in details.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray list tasks --detail
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
 
@@ -493,15 +523,17 @@ Get the states of a particular entity (task, actor, etc.)
 
 **Get a task's states**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray get tasks <TASK_ID>
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
             :skipif: True
@@ -511,15 +543,17 @@ Get the states of a particular entity (task, actor, etc.)
 
 **Get a node's states**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray get nodes <NODE_ID>
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
             :skipif: True
@@ -540,15 +574,17 @@ By default, the API prints logs from a head node.
 
 **Get all retrievable log file names from a head node in a cluster**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray logs cluster
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
             :skipif: True
@@ -562,9 +598,10 @@ By default, the API prints logs from a head node.
 
 **Get a particular log file from a node**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
@@ -573,7 +610,8 @@ By default, the API prints logs from a head node.
             # `ray logs cluster` is alias to `ray logs` when querying with globs.
             ray logs gcs_server.out --node-id <NODE_ID>
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
             :skipif: True
@@ -586,9 +624,10 @@ By default, the API prints logs from a head node.
 
 **Stream a log file from a node**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
@@ -598,7 +637,8 @@ By default, the API prints logs from a head node.
             ray logs cluster raylet.out --node-ip <NODE_IP> --follow
 
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
             :skipif: True
@@ -612,15 +652,17 @@ By default, the API prints logs from a head node.
 
 **Stream log from an actor with actor id**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray logs actor --id=<ACTOR_ID> --follow
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
             :skipif: True
@@ -634,15 +676,17 @@ By default, the API prints logs from a head node.
 
 **Stream log from a pid**
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: CLI (Recommended)
+    .. tab-item:: CLI (Recommended)
+        :sync: CLI (Recommended)
 
         .. code-block:: bash
 
             ray logs worker --pid=<PID> --follow
 
-    .. group-tab:: Python SDK (Internal Developer API)
+    .. tab-item:: Python SDK (Internal Developer API)
+        :sync: Python SDK (Internal Developer API)
 
         .. testcode::
             :skipif: True

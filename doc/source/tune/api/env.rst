@@ -108,6 +108,5 @@ These are the environment variables Ray Tune currently considers:
 
 There are some environment variables that are mostly relevant for integrated libraries:
 
-* **SIGOPT_KEY**: SigOpt API access key.
 * **WANDB_API_KEY**: Weights and Biases API key. You can also use ``wandb login``
   instead.
