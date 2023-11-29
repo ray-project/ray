@@ -138,7 +138,6 @@ def get_pretrained_path(model_id: str):
 
 
 def get_tokenizer(model_name, special_tokens):
-
     pretrained_path = get_pretrained_path(model_name)
     # Context for legacy=True: https://github.com/huggingface/transformers/issues/25176
     tokenizer = AutoTokenizer.from_pretrained(pretrained_path, legacy=True)

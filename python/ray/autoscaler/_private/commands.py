@@ -530,7 +530,6 @@ def teardown_cluster(
 
     container_name = config.get("docker", {}).get("container_name")
     if container_name:
-
         # This is to ensure that the parallel SSH calls below do not mess with
         # the users terminal.
         output_redir = cmd_output_util.is_output_redirected()

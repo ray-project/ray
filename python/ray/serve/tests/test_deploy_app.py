@@ -1350,7 +1350,6 @@ class TestDeploywithLoggingConfig:
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
     def test_logs_dir(self, client: ServeControllerClient):
-
         config_dict = self.get_deploy_config()
         config_dict["applications"][0]["logging_config"] = {
             "log_level": "DEBUG",
