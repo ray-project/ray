@@ -34,7 +34,7 @@ nvm use "$NODE_VERSION"
 
 # Install bazel
 npm install -g @bazel/bazelisk
-ln -s "$(which bazelisk)" /usr/local/bin/bazel
+ln -sf "$(which bazelisk)" /usr/local/bin/bazel
 
 {
   echo "build --config=ci"
