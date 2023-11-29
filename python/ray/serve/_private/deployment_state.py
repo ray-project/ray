@@ -1470,36 +1470,48 @@ class DeploymentState:
             bool: Whether or not the deployment is being updated.
         """
 
-        # Exit early if the deployment info hasn't changed. Ensures this method
-        # is idempotent.
         curr_deployment_info = self._target_state.info
         if curr_deployment_info is not None:
             # Redeploying should not reset the deployment's start time.
             if not self._target_state.deleting:
                 deployment_info.start_time_ms = curr_deployment_info.start_time_ms
 
-            if (
-                not self._target_state.deleting
-                and curr_deployment_info.deployment_config
-                == deployment_info.deployment_config
-                and curr_deployment_info.replica_config.ray_actor_options
-                == deployment_info.replica_config.ray_actor_options
-                and deployment_info.version is not None
-                and curr_deployment_info.version == deployment_info.version
-                and curr_deployment_info.target_capacity
-                == deployment_info.target_capacity
-                and curr_deployment_info.target_capacity_direction
-                == deployment_info.target_capacity_direction
-            ):
-                return False
+            deployment_settings_changed = (
+                self._target_state.deleting
+                or curr_deployment_info.deployment_config
+                != deployment_info.deployment_config
+                or curr_deployment_info.replica_config.ray_actor_options
+                != deployment_info.replica_config.ray_actor_options
+                or deployment_info.version is None
+                or curr_deployment_info.version != deployment_info.version
+            )
+            target_capacity_changed = (
+                curr_deployment_info.target_capacity != deployment_info.target_capacity
+                or curr_deployment_info.target_capacity_direction
+                != deployment_info.target_capacity_direction
+            )
+        else:
+            deployment_settings_changed = True
+            target_capacity_changed = True
+
+        # Exit early if the deployment info hasn't changed. Ensures this method
+        # is idempotent.
+        if not deployment_settings_changed and not target_capacity_changed:
+            return False
 
         # Decide new target num_replicas.
         autoscaling_policy = deployment_info.autoscaling_policy
         if autoscaling_policy is not None:
-            if curr_deployment_info is None:
-                target_num_replicas = autoscaling_policy.apply_deployment_time_bounds(-1)
+            if (
+                deployment_settings_changed
+                and autoscaling_policy.get_capacity_adjusted_initial_replicas()
+                is not None
+            ):
+                target_num_replicas = (
+                    autoscaling_policy.get_capacity_adjusted_initial_replicas()
+                )
             else:
-                target_num_replicas = autoscaling_policy.apply_deployment_time_bounds(
+                target_num_replicas = autoscaling_policy.apply_bounds(
                     self._target_state.target_num_replicas
                 )
         else:
