@@ -1662,7 +1662,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<raylet::RayletClient> local_raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
-  std::thread io_thread_;
+  boost::thread io_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounter> reference_counter_;

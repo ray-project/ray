@@ -24,13 +24,15 @@ import traceback
 import _thread
 import typing
 from typing import (
-    Union,
+    Any,
+    AsyncGenerator,
     Awaitable,
     Callable,
-    Any,
-    Optional,
+    Dict,
     Generator,
-    AsyncGenerator,
+    Optional,
+    Tuple,
+    Union,
 )
 
 import contextvars
@@ -1721,8 +1723,8 @@ cdef void execute_task(
                 else:
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
-                        name_of_concurrency_group_to_execute, task_id, actor,
-                        *arguments, **kwarguments)
+                        name_of_concurrency_group_to_execute, task_id=task_id,
+                        func_args=(actor, *arguments), func_kwargs=kwarguments)
 
             return function(actor, *arguments, **kwarguments)
 
@@ -1747,7 +1749,7 @@ cdef void execute_task(
                                         metadata_pairs, object_refs))
                         args = core_worker.run_async_func_or_coro_in_event_loop(
                             deserialize_args, function_descriptor,
-                            name_of_concurrency_group_to_execute, None)
+                            name_of_concurrency_group_to_execute)
                     else:
                         # Defer task cancellation (SIGINT) until after the task argument
                         # deserialization context has been left.
@@ -1835,7 +1837,7 @@ cdef void execute_task(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
-                                task_id)
+                                task_id=task_id)
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -4463,10 +4465,13 @@ cdef class CoreWorker:
           func_or_coro: Union[Callable[[Any, Any], Awaitable[Any]], Awaitable],
           function_descriptor: FunctionDescriptor,
           specified_cgname: str,
-          task_id: Optional[TaskID],
-          *args,
-          **kwargs):
+          *,
+          task_id: Optional[TaskID] = None,
+          func_args: Optional[Tuple] = None,
+          func_kwargs: Optional[Dict] = None,
+    ):
         """Run the async function or coroutine to the event loop.
+
         The event loop is running in a separate thread.
 
         Args:
@@ -4477,11 +4482,20 @@ cdef class CoreWorker:
                 the future is not tracked with a task ID.
                 (e.g., When we deserialize the arguments, we don't want to
                 track the task_id -> future mapping).
-            args: The arguments for the async function.
-            kwargs: The keyword arguments for the async function.
+            func_args: The arguments for the async function.
+            func_kwargs: The keyword arguments for the async function.
+
+        NOTE: func_args and func_kwargs are intentionally passed as a tuple/dict and
+        not unpacked to avoid collisions between system arguments and user-provided
+        arguments. See https://github.com/ray-project/ray/issues/41272.
         """
         cdef:
             CFiberEvent event
+
+        if func_args is None:
+            func_args = tuple()
+        if func_kwargs is None:
+            func_kwargs = dict()
 
         # Increase recursion limit if necessary. In asyncio mode,
         # we have many parallel callstacks (represented in fibers)
@@ -4503,7 +4517,7 @@ cdef class CoreWorker:
                 if inspect.isawaitable(func_or_coro):
                     coroutine = func_or_coro
                 else:
-                    coroutine = func_or_coro(*args, **kwargs)
+                    coroutine = func_or_coro(*func_args, **func_kwargs)
 
                 return await coroutine
             finally:
