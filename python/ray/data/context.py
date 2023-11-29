@@ -238,6 +238,14 @@ class DataContext:
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
+        # Max number of blocks that are allowed to have errors, unlimited if negative.
+        # This option allows application-level exceptions in block processing tasks.
+        # These exceptions may be caused by UDFs (e.g., due to corrupted data samples)
+        # or IO errors.
+        # Data in the failed blocks will be dropped.
+        # This option can be useful to prevent a long-running job from failing due to
+        # a small number of bad blocks.
+        self.max_errored_blocks = 0
         # The extra key-value style configs.
         # These configs are managed by individual components or plugins via
         # `set_config`, `get_config` and `remove_config`.

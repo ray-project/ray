@@ -48,6 +48,7 @@ def gen_expected_metrics(
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
+            "'num_tasks_failed': Z",
             "'obj_store_mem_alloc': N",
             "'obj_store_mem_freed': N",
             "'obj_store_mem_cur': Z",
@@ -581,6 +582,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
+        "      num_tasks_failed: Z,\n"
         "      obj_store_mem_alloc: N,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_cur: Z,\n"

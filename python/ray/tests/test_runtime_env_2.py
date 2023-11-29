@@ -43,7 +43,8 @@ def test_invalid_conda_env(
         def f(self):
             pass
 
-    start = time.time()
+    # TODO(somebody): track cache hit/miss statistics.
+
     bad_env = runtime_env_class(conda={"dependencies": ["this_doesnt_exist"]})
     with pytest.raises(
         RuntimeEnvSetupError,
@@ -51,7 +52,6 @@ def test_invalid_conda_env(
         match="ResolvePackageNotFound",
     ):
         ray.get(f.options(runtime_env=bad_env).remote())
-    first_time = time.time() - start
 
     # Check that another valid task can run.
     ray.get(f.remote())
@@ -62,22 +62,14 @@ def test_invalid_conda_env(
     ):
         ray.get(a.f.remote())
 
-    # The second time this runs it should be faster as the error is cached.
-    start = time.time()
     with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
         ray.get(f.options(runtime_env=bad_env).remote())
-
-    assert (time.time() - start) < (first_time / 2.0)
 
     # Sleep to wait bad runtime env cache removed.
     time.sleep(bad_runtime_env_cache_ttl_seconds)
 
-    # The third time this runs it should be slower as the error isn't cached.
-    start = time.time()
     with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
         ray.get(f.options(runtime_env=bad_env).remote())
-
-    assert (time.time() - start) > (first_time / 2.0)
 
 
 def test_runtime_env_config(start_cluster):

@@ -344,6 +344,11 @@ class _StatsActor:
         return tags
 
 
+# Creating/getting an actor from multiple threads is not safe.
+# https://github.com/ray-project/ray/issues/41324
+_stats_actor_lock: threading.RLock = threading.RLock()
+
+
 def _get_or_create_stats_actor():
     ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
@@ -354,13 +359,14 @@ def _get_or_create_stats_actor():
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-    return _StatsActor.options(
-        name=STATS_ACTOR_NAME,
-        namespace=STATS_ACTOR_NAMESPACE,
-        get_if_exists=True,
-        lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
-    ).remote()
+    with _stats_actor_lock:
+        return _StatsActor.options(
+            name=STATS_ACTOR_NAME,
+            namespace=STATS_ACTOR_NAMESPACE,
+            get_if_exists=True,
+            lifetime="detached",
+            scheduling_strategy=scheduling_strategy,
+        ).remote()
 
 
 class _StatsManager:
@@ -411,13 +417,13 @@ class _StatsManager:
             self._stats_actor_handle is None
             or self._stats_actor_cluster_id != current_cluster_id
         ):
-            self._stats_actor_cluster_id = current_cluster_id
             if create_if_not_exists:
                 self._stats_actor_handle = _get_or_create_stats_actor()
             else:
                 self._stat_actor_handle = ray.get_actor(
                     name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
                 )
+            self._stats_actor_cluster_id = current_cluster_id
         return self._stats_actor_handle
 
     def _start_thread_if_not_running(self):
@@ -491,7 +497,13 @@ class _StatsManager:
             if dataset_tag in self._last_execution_stats:
                 del self._last_execution_stats[dataset_tag]
 
-        self._stats_actor().clear_execution_metrics.remote(dataset_tag, operator_tags)
+        try:
+            self._stats_actor(
+                create_if_not_exists=False
+            ).clear_execution_metrics.remote(dataset_tag, operator_tags)
+        except Exception:
+            # Cluster may be shut down.
+            pass
 
     # Iteration methods
 
@@ -505,7 +517,13 @@ class _StatsManager:
             if dataset_tag in self._last_iteration_stats:
                 del self._last_iteration_stats[dataset_tag]
 
-        self._stats_actor().clear_iteration_metrics.remote(dataset_tag)
+        try:
+            self._stats_actor(
+                create_if_not_exists=False
+            ).clear_iteration_metrics.remote(dataset_tag)
+        except Exception:
+            # Cluster may be shut down.
+            pass
 
     # Other methods
 

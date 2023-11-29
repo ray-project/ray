@@ -6,11 +6,12 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 import math
 import threading
 import time
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import ray
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -34,6 +35,8 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data.context import DataContext
+
+logger = DatasetLogger(__name__)
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -172,10 +175,12 @@ class OpState:
         # Tracks whether `input_done` is called for each input op.
         self.input_done_called = [False] * len(op.input_dependencies)
         self.dependents_completed_called = False
-
         # Used for StreamingExecutor to signal exception or end of execution
         self._finished: bool = False
         self._exception: Optional[Exception] = None
+
+    def __repr__(self):
+        return f"OpState({self.op.name})"
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
@@ -369,9 +374,19 @@ def build_streaming_topology(
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
-) -> None:
+    max_errored_blocks: int,
+) -> int:
     """Process any newly completed tasks. To update operator
-    states, call `update_operator_states()` afterwards."""
+    states, call `update_operator_states()` afterwards.
+
+    Args:
+        topology: The toplogy of operators.
+        backpressure_policies: The backpressure policies to use.
+        max_errored_blocks: Max number of errored blocks to allow,
+            unlimited if negative.
+    Returns:
+        The number of errored blocks.
+    """
 
     # All active tasks, keyed by their waitables.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
@@ -381,15 +396,18 @@ def process_completed_tasks(
 
     max_blocks_to_read_per_op: Dict[OpState, int] = {}
     for policy in backpressure_policies:
-        non_empty = len(max_blocks_to_read_per_op) > 0
-        max_blocks_to_read_per_op = policy.calculate_max_blocks_to_read_per_op(topology)
-        if non_empty and len(max_blocks_to_read_per_op) > 0:
-            raise ValueError(
-                "At most one backpressure policy that implements "
-                "calculate_max_blocks_to_read_per_op() can be used at a time."
-            )
+        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        if len(res) > 0:
+            if len(max_blocks_to_read_per_op) > 0:
+                raise ValueError(
+                    "At most one backpressure policy that implements "
+                    "calculate_max_blocks_to_read_per_op() can be used at a time."
+                )
+            else:
+                max_blocks_to_read_per_op = res
 
     # Process completed Ray tasks and notify operators.
+    num_errored_blocks = 0
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
@@ -397,22 +415,67 @@ def process_completed_tasks(
             fetch_local=False,
             timeout=0.1,
         )
+
+        # Organize tasks by the operator they belong to, and sort them by task index.
+        # So that we'll process them in a deterministic order.
+        # This is because some backpressure policies (e.g.,
+        # StreamingOutputBackpressurePolicy) may limit the number of blocks to read
+        # per operator. In this case, we want to have fewer tasks finish quickly and
+        # yield resources, instead of having all tasks output blocks together.
+        ready_tasks_by_op = defaultdict(list)
         for ref in ready:
-            state, task = active_tasks.pop(ref)
-            if isinstance(task, DataOpTask):
-                num_blocks_read = task.on_data_ready(
-                    max_blocks_to_read_per_op.get(state, None)
-                )
-                if state in max_blocks_to_read_per_op:
-                    max_blocks_to_read_per_op[state] -= num_blocks_read
-            else:
-                assert isinstance(task, MetadataOpTask)
-                task.on_task_finished()
+            state, task = active_tasks[ref]
+            ready_tasks_by_op[state].append(task)
+
+        for state, ready_tasks in ready_tasks_by_op.items():
+            ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
+            for task in ready_tasks:
+                if isinstance(task, DataOpTask):
+                    try:
+                        num_blocks_read = task.on_data_ready(
+                            max_blocks_to_read_per_op.get(state, None)
+                        )
+                        if state in max_blocks_to_read_per_op:
+                            max_blocks_to_read_per_op[state] -= num_blocks_read
+                    except Exception as e:
+                        num_errored_blocks += 1
+                        should_ignore = (
+                            max_errored_blocks < 0
+                            or max_errored_blocks >= num_errored_blocks
+                        )
+                        error_message = (
+                            "An exception was raised from a task of "
+                            f'operator "{state.op.name}".'
+                        )
+                        if should_ignore:
+                            remaining = (
+                                max_errored_blocks - num_errored_blocks
+                                if max_errored_blocks >= 0
+                                else "unlimited"
+                            )
+                            error_message += (
+                                " Ignoring this exception with remaining"
+                                f" max_errored_blocks={remaining}."
+                            )
+                            logger.get_logger().warning(error_message, exc_info=e)
+                        else:
+                            error_message += (
+                                " Dataset execution will now abort."
+                                " To ignore this exception and continue, set"
+                                " DataContext.max_errored_blocks."
+                            )
+                            logger.get_logger().error(error_message)
+                            raise e from None
+                else:
+                    assert isinstance(task, MetadataOpTask)
+                    task.on_task_finished()
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
         while op.has_next():
             op_state.add_output(op.get_next())
+
+    return num_errored_blocks
 
 
 def update_operator_states(topology: Topology) -> None:
