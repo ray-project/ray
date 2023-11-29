@@ -152,6 +152,8 @@ class SplitCoordinator:
         self._unfinished_clients_in_epoch = n
         self._cur_epoch = -1
 
+        ray.data.DataContext._set_current(dataset.context)
+
         def gen_epochs():
             while True:
                 executor = StreamingExecutor(
