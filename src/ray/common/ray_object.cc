@@ -113,7 +113,9 @@ bool RayObject::IsException(rpc::ErrorType *error_type) const {
   // Keep in sync with common.proto.
   static_assert(ray::rpc::ErrorType::OBJECT_IN_PLASMA == 4);
   if (metadata == "4") {
-    *error_type = rpc::ErrorType::OBJECT_IN_PLASMA;
+    if (error_type) {
+      *error_type = rpc::ErrorType::OBJECT_IN_PLASMA;
+    }
     return true;
   }
   const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
