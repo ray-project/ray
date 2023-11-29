@@ -118,6 +118,7 @@ from ray._private.worker import (  # noqa: E402,F401
     get,
     get_actor,
     get_gpu_ids,
+    release,
     init,
     is_initialized,
     put,

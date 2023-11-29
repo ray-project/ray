@@ -153,8 +153,9 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   return status;
 }
 
-Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
-  return store_client_.Seal(object_id);
+Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id,
+                                           int64_t max_readers) {
+  return store_client_.Seal(object_id, max_readers);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
@@ -171,12 +172,13 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
-  RAY_RETURN_NOT_OK(
-      raylet_client_->FetchOrReconstruct(batch_ids,
-                                         owner_addresses,
-                                         fetch_only,
-                                         /*mark_worker_blocked*/ !in_direct_call,
-                                         task_id));
+  // TODO this IPC needs to be skipped in shared mode
+  //  RAY_RETURN_NOT_OK(
+  //      raylet_client_->FetchOrReconstruct(batch_ids,
+  //                                         owner_addresses,
+  //                                         fetch_only,
+  //                                         /*mark_worker_blocked*/ !in_direct_call,
+  //                                         task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   RAY_RETURN_NOT_OK(store_client_.Get(batch_ids,
@@ -213,6 +215,10 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   }
 
   return Status::OK();
+}
+
+Status CoreWorkerPlasmaStoreProvider::GetRelease(const ObjectID &object_id) {
+  return store_client_.GetRelease(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::GetIfLocal(

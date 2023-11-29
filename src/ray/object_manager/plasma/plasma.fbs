@@ -96,6 +96,8 @@ struct PlasmaObjectSpec {
   segment_index: int;
   // The unique id of the segment fd in case of fd reuse.
   unique_fd_id: long;
+  // The offset in bytes in the memory mapped file of the plasma object header.
+  header_offset: ulong;
   // The offset in bytes in the memory mapped file of the data.
   data_offset: ulong;
   // The size in bytes of the data.

@@ -37,6 +37,9 @@ struct PlasmaObject {
   /// a unique identifier of the file in the client to look up the corresponding
   /// file descriptor on the client's side.
   MEMFD_TYPE store_fd;
+  /// The offset in bytes in the memory mapped file of the plasma object
+  /// header.
+  ptrdiff_t header_offset;
   /// The offset in bytes in the memory mapped file of the data.
   ptrdiff_t data_offset;
   /// The offset in bytes in the memory mapped file of the metadata.

@@ -31,7 +31,9 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/eventfd.h>
 
+#include <boost/asio/spawn.hpp>
 #include <boost/bind/bind.hpp>
 #include <chrono>
 #include <ctime>
@@ -525,9 +527,63 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
         error == PlasmaError::OK && result.device_num == 0) {
       static_cast<void>(client->SendFd(result.store_fd));
     }
+
+    WaitForSeal(object_id, client);
   } else {
     static_cast<void>(SendUnfinishedCreateReply(client, object_id, req_id));
   }
+}
+
+void PlasmaStore::WaitForSeal(const ObjectID &object_id,
+                              const std::shared_ptr<Client> &client) {
+  auto entry = object_lifecycle_mgr_.GetObject(object_id);
+  RAY_CHECK(entry);
+  auto plasma_header = entry->GetPlasmaObjectHeader();
+
+  int event_fd = eventfd(0, EFD_CLOEXEC);
+  RAY_CHECK(event_fd != -1);
+
+  auto wait_fn = [event_fd, plasma_header]() {
+    plasma_header->ReadAcquire(/*read_version=*/1);
+
+    uint64_t data = 1;
+    auto num_bytes_written = write(event_fd, &data, sizeof(data));
+    // TODO(swang): Need proper error checking here.
+    if (num_bytes_written != sizeof(data)) {
+      RAY_LOG(WARNING) << num_bytes_written << " bytes written on fd " << event_fd
+                       << "  err: " << strerror(errno);
+    }
+  };
+
+  auto wait_thread = std::make_shared<std::thread>(wait_fn);
+
+  boost::asio::spawn(
+      io_context_,
+      [this, event_fd, object_id, plasma_header, wait_thread, client](
+          boost::asio::yield_context yield) {
+        auto event_stream = std::make_shared<boost::asio::posix::stream_descriptor>(
+            io_context_, event_fd);
+        auto data = std::make_shared<uint64_t>(0);
+        auto buf = boost::asio::buffer(data.get(), sizeof(*data));
+        boost::asio::async_read(
+            *event_stream,
+            buf,
+            [this, event_stream, data, object_id, event_fd, wait_thread](
+                const boost::system::error_code &ec, size_t bytes_transferred) {
+              RAY_CHECK(bytes_transferred == sizeof(*data)) << ec.message();
+
+              // RAY_CHECK(plasma_header->num_readers == -1) <<
+              // plasma_header->num_readers;
+
+              {
+                absl::MutexLock lock(&mutex_);
+                SealObjects({object_id});
+              }
+
+              wait_thread->join();
+              close(event_fd);
+            });
+      });
 }
 
 int64_t PlasmaStore::GetConsumedBytes() { return total_consumed_bytes_; }

@@ -656,7 +656,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealOwned(const ObjectID &object_id,
                    bool pin_object,
-                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+                   const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+                   int64_t max_readers = -1);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -673,7 +674,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status SealExisting(const ObjectID &object_id,
                       bool pin_object,
                       const ObjectID &generator_id = ObjectID::Nil(),
-                      const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+                      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+                      int64_t max_readers = -1);
+
+  Status GetRelease(const std::vector<ObjectID> &object_ids);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.

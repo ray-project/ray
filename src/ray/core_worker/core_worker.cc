@@ -1326,9 +1326,10 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 
 Status CoreWorker::SealOwned(const ObjectID &object_id,
                              bool pin_object,
-                             const std::unique_ptr<rpc::Address> &owner_address) {
-  auto status =
-      SealExisting(object_id, pin_object, ObjectID::Nil(), std::move(owner_address));
+                             const std::unique_ptr<rpc::Address> &owner_address,
+                             int64_t max_readers) {
+  auto status = SealExisting(
+      object_id, pin_object, ObjectID::Nil(), std::move(owner_address), max_readers);
   if (status.ok()) return status;
   RemoveLocalReference(object_id);
   if (reference_counter_->HasReference(object_id)) {
@@ -1342,8 +1343,9 @@ Status CoreWorker::SealOwned(const ObjectID &object_id,
 Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 bool pin_object,
                                 const ObjectID &generator_id,
-                                const std::unique_ptr<rpc::Address> &owner_address) {
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
+                                const std::unique_ptr<rpc::Address> &owner_address,
+                                int64_t max_readers) {
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id, max_readers));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
@@ -1365,6 +1367,11 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   return Status::OK();
+}
+
+Status CoreWorker::GetRelease(const std::vector<ObjectID> &object_ids) {
+  RAY_CHECK(object_ids.size() == 1);
+  return plasma_store_provider_->GetRelease(object_ids[0]);
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
