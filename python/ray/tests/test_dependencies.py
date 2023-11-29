@@ -13,15 +13,15 @@ def test_no_accidental_dependenies(ray_start_regular):
 
     def has_any_internal_deps():
         try:
-            import aiohttp
+            import aiohttp  # noqa: F401
         except ImportError:
             return True
         try:
-            import aiosignal
+            import aiosignal  # noqa: F401
         except ImportError:
             return True
         try:
-            import aiohttp_cors
+            import aiohttp_cors  # noqa: F401
         except ImportError:
             return True
         return False
