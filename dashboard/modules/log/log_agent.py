@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 import concurrent.futures
 import ray.dashboard.modules.log.log_utils as log_utils
@@ -275,10 +275,6 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         if server:
             reporter_pb2_grpc.add_LogServiceServicer_to_server(self, server)
 
-    @property
-    def node_id(self) -> Optional[str]:
-        return self._dashboard_agent.get_node_id()
-
     @staticmethod
     def is_minimal_module():
         # Dashboard is only available with non-minimal install now.
@@ -374,38 +370,6 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
 
         return start_offset, end_offset
 
-    @classmethod
-    def _resolve_filename(cls, root_log_dir: Path, filename: str) -> Path:
-        """
-        Resolves the file path relative to the root log directory.
-
-        Args:
-            root_log_dir: Root log directory.
-            filename: File path relative to the root log directory.
-
-        Raises:
-            FileNotFoundError: If the file path is invalid.
-
-        Returns:
-            The absolute file path resolved from the root log directory.
-        """
-        if not Path(filename).is_absolute():
-            filepath = root_log_dir / filename
-        else:
-            filepath = Path(filename)
-
-        filepath = filepath.resolve()
-
-        if not filepath.is_file():
-            raise FileNotFoundError(f"A file is not found at: {filepath}")
-
-        try:
-            filepath.relative_to(root_log_dir)
-        except ValueError as e:
-            raise FileNotFoundError(f"{filepath} not in {root_log_dir}: {e}")
-
-        return filepath
-
     async def StreamLog(self, request, context):
         """
         Streams the log in real time starting from `request.lines` number of lines from
@@ -420,12 +384,15 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         # be automatically terminated.
         lines = request.lines if request.lines else 1000
 
-        try:
-            filepath = self._resolve_filename(
-                Path(self._dashboard_agent.log_dir), request.log_file_name
+        if not Path(request.log_file_name).is_absolute():
+            filepath = Path(self._dashboard_agent.log_dir) / request.log_file_name
+        else:
+            filepath = Path(request.log_file_name)
+
+        if not filepath.is_file():
+            await context.send_initial_metadata(
+                [[log_consts.LOG_GRPC_ERROR, log_consts.FILE_NOT_FOUND]]
             )
-        except FileNotFoundError as e:
-            await context.send_initial_metadata([[log_consts.LOG_GRPC_ERROR, str(e)]])
         else:
             with open(filepath, "rb") as f:
                 await context.send_initial_metadata([])

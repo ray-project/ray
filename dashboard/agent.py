@@ -180,9 +180,6 @@ class DashboardAgent:
         ), "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
         return self.aio_publisher
 
-    def get_node_id(self) -> str:
-        return self.node_id
-
     async def run(self):
         # Start a grpc asyncio server.
         if self.server:

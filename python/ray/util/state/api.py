@@ -1355,7 +1355,6 @@ def list_logs(
     r = requests.get(
         f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}"
     )
-    # TODO(rickyx): we could do better at error handling here.
     r.raise_for_status()
 
     response = r.json()
