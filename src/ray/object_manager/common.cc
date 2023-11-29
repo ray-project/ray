@@ -49,9 +49,16 @@ uint64_t PlasmaObjectHeader::GetMetadataSize() const {
   return metadata_size;
 }
 
-void PlasmaObjectHeader::WriteAcquire(int64_t write_version, uint64_t new_size, uint64_t new_metadata_size) {
+bool PlasmaObjectHeader::WriteAcquire(int64_t write_version, uint64_t new_size, uint64_t new_metadata_size, bool try_acquire) {
   RAY_LOG(DEBUG) << "WriteAcquire Waiting. version: " << write_version;
-  sem_wait(&rw_semaphore);
+  if (try_acquire) {
+    if (sem_trywait(&rw_semaphore)) {
+      /* abort */
+      return false;
+    }
+  } else {
+    sem_wait(&rw_semaphore);
+  }
   RAY_LOG(DEBUG) << "WriteAcquire " << write_version;
   RAY_CHECK(pthread_mutex_lock(&mut) == 0);
   PrintPlasmaObjectHeader(this);
@@ -72,6 +79,7 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version, uint64_t new_size, 
   RAY_LOG(DEBUG) << "WriteAcquire done";
   PrintPlasmaObjectHeader(this);
   RAY_CHECK(pthread_mutex_unlock(&mut) == 0);
+  return true;
 }
 
 void PlasmaObjectHeader::WriteRelease(int64_t write_version, int64_t write_max_readers) {

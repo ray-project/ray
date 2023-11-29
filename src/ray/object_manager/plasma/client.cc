@@ -396,6 +396,8 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                                   fb::ObjectSource source,
                                                   int device_num) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  // TODO set this flag from python instead of for exception objects only.
+  bool try_wait = metadata_size == 1;
   auto object_entry = objects_in_use_.find(object_id);
   if (object_entry != objects_in_use_.end()) {
     auto &entry = object_entry->second;
@@ -408,7 +410,9 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
       // When the object is shared, we can have object size smaller than the data buffer.
       RAY_LOG(DEBUG) << "SANG-TODO Update the data size of " << object_id << ". Size: " << data_size;
       auto next_version_to_write = plasma_header->version + 1;
-      plasma_header->WriteAcquire(next_version_to_write, data_size, metadata_size);
+      if (!plasma_header->WriteAcquire(next_version_to_write, data_size, metadata_size, try_wait)) {
+        return Status::IOError("write acquire failed");
+      }
 
       // Prepare the data buffer and return to the client instead of sending
       // the IPC to object store.
@@ -467,7 +471,9 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
     // When an object is first created, the data size is equivalent to
     // buffer size.
     // The first creation's version is always 1.
-    plasma_header->WriteAcquire(/*next_version_to_write*/1, entry->object.data_size, metadata_size);
+    if (!plasma_header->WriteAcquire(/*next_version_to_write*/1, entry->object.data_size, metadata_size, try_wait)) {
+      return Status::IOError("write acquire failed");
+    }
   }
 
   return status;

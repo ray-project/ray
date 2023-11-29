@@ -220,11 +220,14 @@ class CompiledDAG:
                         print("Putting error", output_ref)
                         # TODO this hangs since we're not the creator?
                         # TODO set metadata to error type?
-                        ray.worker.global_worker.put_object(
-                            e,
-                            object_ref=output_ref,
-                            max_readers=1,  # TODO: only put if nonblocking?
-                        )
+                        try:
+                            ray.worker.global_worker.put_object(
+                                e,
+                                object_ref=output_ref,
+                                max_readers=1,  # TODO: only put if nonblocking?
+                            )
+                        except:
+                            print("Ignore failed put")
                     for actor in outer.actor_refs:
                         print("Killing actor", actor)
                         ray.kill(actor)

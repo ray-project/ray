@@ -1,4 +1,5 @@
 import os
+import random
 import time
 
 import ray
@@ -14,7 +15,8 @@ class Actor:
     def inc(self, x):
         self.i += 1
         if self.i > 1100:
-            raise Exception("oops")
+            if random.random() > 0.9:
+                raise Exception("oops")
         return x
 
     def get(self):
@@ -38,11 +40,14 @@ def run_benchmark(num_actors, num_trials):
 
     print("Starting...")
     start = time.time()
-    for _ in range(num_trials):
-        refs = dag.execute(b"hello", compiled=True)
-        ray.get(refs)
-        for ref in refs:
-            ray.release(ref)
+    try:
+        for _ in range(num_trials):
+            refs = dag.execute(b"hello", compiled=True)
+            ray.get(refs)
+            for ref in refs:
+                ray.release(ref)
+    except Exception as e:
+        print("Trial ended in error", e)
     end = time.time()
     print(f"{num_trials} executed in {end - start}s.")
     print(f"Throughput: {num_trials / (end - start)} rounds/s.")

@@ -74,7 +74,8 @@ struct PlasmaObjectHeader {
   // NOTE: This does not protect against multiple writers.
   /// \param write_version The new version for write.
   /// \param new_size The new data size of the object.
-  void WriteAcquire(int64_t write_version, uint64_t new_size, uint64_t new_metadata_size);
+  /// \return whether the acquire was successful.
+  bool WriteAcquire(int64_t write_version, uint64_t new_size, uint64_t new_metadata_size, bool try_acquire);
   // Call after completing a write to signal to max_readers many readers.
   void WriteRelease(int64_t write_version, int64_t max_readers);
   // Blocks until the given version is ready to read.
