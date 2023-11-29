@@ -6,7 +6,8 @@ import {
   NodeStatusCard,
   ResourceStatusCard,
 } from "../../components/AutoscalerStatusCards";
-import EventTable from "../../components/EventTable";
+import { SeverityLevel } from "../../components/event";
+import NewEventTable from "../../components/NewEventTable";
 import { useRayStatus } from "../job/hook/useClusterStatus";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";
@@ -99,7 +100,9 @@ export const OverviewPage = () => {
         title="Events"
         startExpanded
       >
-        <EventTable />
+        <NewEventTable
+          defaultSeverityLevels={[SeverityLevel.WARNING, SeverityLevel.ERROR]}
+        />
       </CollapsibleSection>
     </div>
   );

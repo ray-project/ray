@@ -2,12 +2,13 @@ import asyncio
 import logging
 from dataclasses import asdict
 from datetime import datetime
-from typing import Callable, List, Tuple, Optional
+from typing import Callable, List, Tuple, Optional, Dict, Any, Union
 
 import aiohttp.web
 from aiohttp.web import Response
 from abc import ABC, abstractmethod
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.dashboard.modules.state.state_utils import filter_events
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import (
@@ -168,9 +169,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     def _get_filters_from_req(
         self, req: aiohttp.web.Request
     ) -> List[Tuple[str, PredicateType, SupportedFilterType]]:
-        filter_keys = req.query.getall("filter_keys", [])
+        filter_keys = req.query.getall("filter_keys", []) 
         filter_predicates = req.query.getall("filter_predicates", [])
-        filter_values = req.query.getall("filter_values", [])
+        filter_values = req.query.getall("filter_values", [])  
         assert len(filter_keys) == len(filter_values)
         filters = []
         for key, predicate, val in zip(filter_keys, filter_predicates, filter_values):
@@ -346,6 +347,45 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     ) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
         return await self._handle_list_api(self._state_api.list_cluster_events, req)
+
+    @routes.get("/api/v1/cluster_events")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def list_events(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
+
+        job_id = req.query.get("job_id", None)
+        source_types = req.query.getall("sourceType", [])
+        severity_levels = req.query.getall("severityLevel", [])
+        count = int(req.query.get("count", 200))
+
+        # Filtering out specified keys from the query parameters and
+        # get {entity_name: entity_id}, for example, serve_app_name: "app"
+        excluded_keys = ["job_id", "sourceType", "severityLevel", "count"]
+        rest_of_query = {
+            key: value for key, value in req.query.items() if key not in excluded_keys
+        }
+
+        # Extracted entity_name and entity_id here:
+        entity_name, entity_id = (
+            list(rest_of_query.items())[0] if rest_of_query else (None, None)
+        )
+
+        all_events = await self._state_api_data_source_client.get_all_events_as_list(
+            job_id
+        )
+
+        all_events = filter_events(
+            all_events, severity_levels, source_types, entity_name, entity_id
+        )
+
+        all_events.sort(key=lambda entry: entry["timestamp"], reverse=True)
+        all_events = all_events[:count]
+
+        return self._reply(
+            success=True,
+            error_message="",
+            result=all_events,
+        )
 
     @routes.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls
