@@ -111,16 +111,23 @@ RayServerBidiReactor::RayServerBidiReactor(
 }
 
 void RayServerBidiReactor::DoDisconnect() {
-  io_context_.dispatch([this]() { Finish(grpc::Status::OK); }, "");
+  io_context_.dispatch([this]() {
+    RAY_LOG(ERROR) << "DBG: Finish " << NodeID::FromBinary(remote_node_id_);
+    Finish(grpc::Status::OK); }, "");
 }
 
 void RayServerBidiReactor::OnCancel() {
-  io_context_.dispatch([this]() { Disconnect(); }, "");
+  io_context_.dispatch([this]() {
+    RAY_LOG(ERROR) << "DBG: Canceled " << NodeID::FromBinary(remote_node_id_);
+    Disconnect();
+  }, "");
 }
 
 void RayServerBidiReactor::OnDone() {
+  RAY_LOG(ERROR) << "DBG: OnDoneServer " << NodeID::FromBinary(remote_node_id_);
   io_context_.dispatch(
       [this]() {
+        RAY_LOG(ERROR) << "DBG: DONE " << NodeID::FromBinary(remote_node_id_);
         cleanup_cb_(GetRemoteNodeID(), false);
         delete this;
       },
@@ -148,6 +155,7 @@ RayClientBidiReactor::RayClientBidiReactor(
 }
 
 void RayClientBidiReactor::OnDone(const grpc::Status &status) {
+  RAY_LOG(ERROR) << "DBG: OnDoneClient " << NodeID::FromBinary(remote_node_id_);
   io_context_.dispatch(
       [this, status]() {
         cleanup_cb_(GetRemoteNodeID(), !status.ok());
@@ -159,6 +167,7 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
 void RayClientBidiReactor::DoDisconnect() {
   io_context_.dispatch(
       [this]() {
+        RAY_LOG(ERROR) << "DBG: StartWriteDone " << NodeID::FromBinary(remote_node_id_);
         StartWritesDone();
         // Free the hold to allow OnDone being called.
         RemoveHold();

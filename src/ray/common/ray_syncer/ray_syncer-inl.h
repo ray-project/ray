@@ -141,6 +141,7 @@ class RaySyncerBidiReactor {
   /// Disconnect will terminate the communication between local and remote node.
   /// It also needs to do proper cleanup.
   void Disconnect() {
+    RAY_LOG(ERROR) << "DBG: Disconnect";
     if (!IsDisconnected()) {
       disconnected_ = true;
       DoDisconnect();
@@ -150,9 +151,9 @@ class RaySyncerBidiReactor {
   /// Return true if it's disconnected.
   bool IsDisconnected() const { return disconnected_; }
 
+  std::string remote_node_id_;
  private:
   virtual void DoDisconnect() = 0;
-  std::string remote_node_id_;
   bool disconnected_ = false;
 
   FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
@@ -205,7 +206,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     return false;
   }
 
-  virtual ~RaySyncerBidiReactorBase() {}
+  virtual ~RaySyncerBidiReactorBase() {
+    RAY_LOG(ERROR) << "~RaySyncerBidiReactorBase: " << NodeID::FromBinary(GetRemoteNodeID());
+  }
 
   void StartPull() {
     receiving_message_ = std::make_shared<RaySyncMessage>();
@@ -218,7 +221,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   instrumented_io_context &io_context_;
 
  private:
-  /// Handle the udpates sent from the remote node.
+  /// Handle the updates sent from the remote node.
   ///
   /// \param messages The message received.
   void ReceiveUpdate(std::shared_ptr<const RaySyncMessage> message) {
