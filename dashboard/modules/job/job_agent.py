@@ -1,4 +1,4 @@
-import aiohttp
+from ray._private.internal_third_party import aiohttp
 from aiohttp.web import Request, Response
 import dataclasses
 import json

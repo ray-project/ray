@@ -535,7 +535,7 @@ def build(build_python, build_java, build_cpp):
             env=dict(os.environ, CC="gcc"),
         )
 
-    # runtime env agent dependenceis
+    # internal dependenceis
     internal_pip_packages = [
         "aiohttp >= 3.7",  # for runtime env agent and the dashboard http server
         "aiohttp_cors",  # for dashboard

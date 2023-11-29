@@ -17,8 +17,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._raylet import GcsClient
 from ray._private.utils import split_address
-
-import aiosignal  # noqa: F401
+from ray._private.internal_third_party import aiosignal
 
 from google.protobuf.json_format import MessageToDict
 from frozenlist import FrozenList  # noqa: F401

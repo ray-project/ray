@@ -6,14 +6,8 @@ import traceback
 from dataclasses import dataclass
 from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
 
-try:
-    # package `aiohttp` is not in ray's minimal dependencies
-    import aiohttp
-    from aiohttp.web import Request, Response
-except Exception:
-    aiohttp = None
-    Request = None
-    Response = None
+from ray._private.internal_third_party import aiohttp
+from aiohttp.web import Request, Response
 
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient

@@ -6,7 +6,7 @@ import traceback
 from random import sample
 from typing import Iterator, Optional
 
-import aiohttp.web
+from ray._private.internal_third_party import aiohttp
 from aiohttp.web import Request, Response
 from aiohttp.client import ClientResponse
 
