@@ -293,6 +293,7 @@ class MLflowLoggerCallback(LoggerCallback):
     def log_trial_start(self, trial: "Trial"):
         # Create run if not already exists.
         if trial not in self._trial_runs:
+
             # Set trial name in tags
             tags = self.tags.copy()
             tags["trial_name"] = str(trial)
