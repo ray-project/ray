@@ -633,6 +633,7 @@ class TestAutoscalingPolicy:
     def test_start_actor_timeout(ray_start_regular_shared):
         """Tests that ActorPoolMapOperator raises an exception on
         timeout while waiting for actors."""
+
         class UDFClass:
             def __call__(self, x):
                 return x
