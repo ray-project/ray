@@ -470,6 +470,9 @@ class Worker:
         self._filter_logs_by_job = True
         # the debugger port for this worker
         self._debugger_port = None
+        # Cache the job id from initialize_job_config() to optimize lookups.
+        # This is on the critical path of ray.get()/put() calls.
+        self._cached_job_id = None
 
     @property
     def connected(self):
@@ -488,7 +491,9 @@ class Worker:
 
     @property
     def current_job_id(self):
-        if hasattr(self, "core_worker"):
+        if self._cached_job_id is not None:
+            return self._cached_job_id
+        elif hasattr(self, "core_worker"):
             return self.core_worker.get_current_job_id()
         return JobID.nil()
 
@@ -553,6 +558,10 @@ class Worker:
     def set_debugger_port(self, port):
         worker_id = self.core_worker.get_worker_id()
         ray._private.state.update_worker_debugger_port(worker_id, port)
+
+    def set_cached_job_id(self, job_id):
+        """Set the cached job id to speed `current_job_id()`."""
+        self._cached_job_id = job_id
 
     @contextmanager
     def task_paused_by_debugger(self):
@@ -1805,6 +1814,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
+    global_worker.set_cached_job_id(None)
 
 
 atexit.register(shutdown, True)
