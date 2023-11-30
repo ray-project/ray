@@ -13,7 +13,6 @@ from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import ApplicationStatus
-from ray.serve.drivers import DAGDriver
 
 
 @pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
@@ -28,11 +27,11 @@ def test_deploy_nullify_route_prefix(serve_instance, prefixes):
         return "got me"
 
     for prefix in prefixes:
-        dag = DAGDriver.options(route_prefix=prefix).bind(f.bind())
+        dag = f.options(route_prefix=prefix).bind()
         handle = serve.run(dag)
         assert requests.get("http://localhost:8000/f").status_code == 200
-        assert requests.get("http://localhost:8000/f").text == '"got me"'
-        assert handle.predict.remote().result() == "got me"
+        assert requests.get("http://localhost:8000/f").text == "got me"
+        assert handle.remote().result() == "got me"
 
 
 @pytest.mark.timeout(10, method="thread")

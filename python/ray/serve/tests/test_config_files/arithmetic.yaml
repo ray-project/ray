@@ -4,11 +4,9 @@ applications:
 
     runtime_env:
       # Keep these pinned remote URIs in sync with tests/common/remote_uris.py.
-      working_dir: "https://github.com/ray-project/test_dag/archive/1a0ca74268de85affc6ead99121e2de7a01fa360.zip"
+      working_dir: "https://github.com/ray-project/test_dag/archive/203140040e4ab50b9d35b4773ec5c22615c034b3.zip"
 
     deployments:
-      - name: "DAGDriver"
-        graceful_shutdown_timeout_s: 0.0001
       - name: "Router"
         graceful_shutdown_timeout_s: 0.0001
       - name: "Add"

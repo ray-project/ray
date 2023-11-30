@@ -34,7 +34,6 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-class GcsMonitorServerTest;
 namespace gcs {
 
 class GcsAutoscalerStateManagerTest;
@@ -200,7 +199,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                    boost::bimaps::unordered_multiset_of<std::string>>;
   NodeIDAddrBiMap node_map_;
 
-  friend GcsMonitorServerTest;
   friend GcsAutoscalerStateManagerTest;
 };
 

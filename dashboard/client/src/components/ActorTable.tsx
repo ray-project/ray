@@ -16,8 +16,7 @@ import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import _ from "lodash";
-import React, { useContext, useMemo, useState } from "react";
-import { GlobalContext } from "../App";
+import React, { useMemo, useState } from "react";
 import { DurationText } from "../common/DurationText";
 import { ActorLink } from "../common/links";
 import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
@@ -89,7 +88,6 @@ const ActorTable = ({
   });
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
-  const { ipLogMap } = useContext(GlobalContext);
 
   //We get a filtered and sorted actor list to render from prop actors
   const sortedActors = useMemo(() => {
@@ -427,32 +425,30 @@ const ActorTable = ({
                     <StatusChip type="actor" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    {ipLogMap[address?.ipAddress] && (
-                      <React.Fragment>
-                        <ActorLink
-                          actorId={actorId}
-                          to={
-                            detailPathPrefix
-                              ? `${detailPathPrefix}/${actorId}`
-                              : actorId
-                          }
-                        >
-                          Log
-                        </ActorLink>
-                        <br />
-                        <CpuProfilingLink
-                          pid={pid}
-                          ip={address?.ipAddress}
-                          type=""
-                        />
-                        <br />
-                        <CpuStackTraceLink
-                          pid={pid}
-                          ip={address?.ipAddress}
-                          type=""
-                        />
-                      </React.Fragment>
-                    )}
+                    <React.Fragment>
+                      <ActorLink
+                        actorId={actorId}
+                        to={
+                          detailPathPrefix
+                            ? `${detailPathPrefix}/${actorId}`
+                            : actorId
+                        }
+                      >
+                        Log
+                      </ActorLink>
+                      <br />
+                      <CpuProfilingLink
+                        pid={pid}
+                        ip={address?.ipAddress}
+                        type=""
+                      />
+                      <br />
+                      <CpuStackTraceLink
+                        pid={pid}
+                        ip={address?.ipAddress}
+                        type=""
+                      />
+                    </React.Fragment>
                   </TableCell>
                   <TableCell align="center">
                     {startTime && startTime > 0 ? (

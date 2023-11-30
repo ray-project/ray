@@ -545,6 +545,32 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
         ds2.take_all()
 
 
+def test_streaming_split_with_custom_data_context(
+    ray_start_10_cpus_shared, restore_data_context
+):
+    # Tests that custom DataContext can be properly propagated
+    # when using `streaming_split()`.
+    block_size = 123 * 1024 * 1024
+    data_context = DataContext.get_current()
+    data_context.target_max_block_size = block_size
+    data_context.set_config("foo", "bar")
+
+    def f(x):
+        assert DataContext.get_current().target_max_block_size == block_size
+        assert DataContext.get_current().get_config("foo") == "bar"
+        return x
+
+    num_splits = 2
+    splits = ray.data.range(10, parallelism=10).map(f).streaming_split(num_splits)
+
+    @ray.remote
+    def consume(split):
+        for _ in split.iter_rows():
+            pass
+
+    assert ray.get([consume.remote(split) for split in splits]) == [None] * num_splits
+
+
 if __name__ == "__main__":
     import sys
 
