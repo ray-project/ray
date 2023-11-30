@@ -8,6 +8,7 @@ import ray._private.prometheus_exporter as prometheus_exporter
 
 from typing import List
 
+from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
 from opencensus.stats.view_manager import ViewManager
 from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats import execution_context
@@ -28,6 +29,7 @@ from ray._private.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
     wait_for_condition,
+    fetch_prometeus_metrics_type,
 )
 
 
@@ -237,6 +239,54 @@ def test_metrics_agent_proxy_record_and_export_basic(get_agent):
     # Newly added metric has different tags and values.
     assert samples[1].labels == {"a": "a", "b": "c"}
     assert samples[1].value == 5
+
+
+def test_metrics_agent_proxy_record_type(get_agent):
+    namespace = "test"
+    agent, agent_port = get_agent
+    metrics_page = "localhost:{}".format(agent_port)
+
+    # Test different types of metrics.
+    gauge = generate_protobuf_metric(
+        "test_gauge",
+        "desc",
+        "",
+        type=MetricDescriptorType.GAUGE_DOUBLE,
+        label_keys=["a", "b"],
+        timeseries=[],
+    )
+    gauge.timeseries.append(generate_timeseries(["a", "b"], [1, 2, 3]))
+    counter = generate_protobuf_metric(
+        "test_counter",
+        "desc",
+        "",
+        type=MetricDescriptorType.CUMULATIVE_INT64,
+        label_keys=["a", "b"],
+        timeseries=[],
+    )
+    counter.timeseries.append(generate_timeseries(["a", "b"], [1, 2, 3]))
+    sum_metric = generate_protobuf_metric(
+        "test_sum",
+        "desc",
+        "",
+        type=MetricDescriptorType.CUMULATIVE_DOUBLE,
+        label_keys=["a", "b"],
+        timeseries=[],
+    )
+    sum_metric.timeseries.append(generate_timeseries(["a", "b"], [1, 2, 3]))
+    agent.proxy_export_metrics([gauge, counter, sum_metric])
+
+    expected_metric_types = {
+        "test_gauge": "gauge",
+        "test_counter": "counter",
+        "test_sum": "counter",
+    }
+
+    metric_types = fetch_prometeus_metrics_type([metrics_page])
+    for metric in expected_metric_types:
+        metric_name = f"{namespace}_{metric}"
+        assert metric_name in metric_types
+        assert metric_types[metric_name] == expected_metric_types[metric]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")

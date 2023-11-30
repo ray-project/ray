@@ -40,6 +40,10 @@ import ray._private.services
 import ray._private.utils
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
+from ray._private.thirdparty.prometheus_client.parser import (
+    text_string_to_metric_families,
+    Sample,
+)
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
@@ -57,18 +61,6 @@ RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX
 )
-
-try:
-    from ray._private.thirdparty.prometheus_client.parser import (
-        text_string_to_metric_families,
-        Sample,
-    )
-except (ImportError, ModuleNotFoundError):
-
-    Sample = None
-
-    def text_string_to_metric_families(*args, **kwargs):
-        raise ModuleNotFoundError("`prometheus_client` not found")
 
 
 class RayTestTimeoutException(Exception):
@@ -1092,6 +1084,26 @@ def fetch_prometheus(prom_addresses):
                     if "Component" in sample.labels:
                         components_dict[address].add(sample.labels["Component"])
     return components_dict, metric_names, metric_samples
+
+
+def fetch_prometeus_metrics_type(prom_addresses: List[str]) -> Dict[str, str]:
+    """Return prometheus metrics type from the given addresses.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+
+    Returns:
+        Dict mapping from metric name to type (counter, histogram, gauge, unknown).
+    """
+    types_dict = {}
+    for _, response in fetch_raw_prometheus(prom_addresses):
+        for line in response.split("\n"):
+            if "TYPE" in line:
+                metric = list(text_string_to_metric_families(line))
+                assert len(metric) == 1
+                metric = metric[0]
+                types_dict[metric.name] = metric.type
+    return types_dict
 
 
 def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
