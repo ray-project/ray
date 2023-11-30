@@ -59,6 +59,12 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Number of concurrent test jobs to run per worker."),
 )
 @click.option(
+    "--operating-system",
+    default="linux",
+    type=click.Choice(["linux", "windows"]),
+    help=("Operating system to run tests on"),
+)
+@click.option(
     "--except-tags",
     default="",
     type=str,
@@ -140,6 +146,7 @@ def main(
     workers: int,
     worker_id: int,
     parallelism_per_worker: int,
+    operating_system: str,
     except_tags: str,
     only_tags: str,
     run_flaky_tests: bool,
@@ -154,7 +161,9 @@ def main(
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
-    docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    # TODO: remove the if condition when wanda is supported for windows
+    if operating_system == "linux":
+        docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
@@ -165,6 +174,7 @@ def main(
         workers,
         worker_id,
         parallelism_per_worker,
+        operating_system,
         gpus,
         test_env=list(test_env),
         build_name=build_name,
@@ -197,6 +207,7 @@ def _get_container(
     workers: int,
     worker_id: int,
     parallelism_per_worker: int,
+    operating_system: str,
     gpus: int,
     test_env: Optional[List[str]] = None,
     build_name: Optional[str] = None,
@@ -209,6 +220,7 @@ def _get_container(
 
     return TesterContainer(
         build_name or f"{team}build",
+        operating_system,
         test_envs=test_env,
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
@@ -276,7 +288,7 @@ def _get_test_targets(
     Get test targets that are owned by a particular team
     """
     query = _get_all_test_query(targets, team, except_tags, only_tags)
-    test_targets = set(
+    test_targets = (
         container.run_script_with_output(
             [
                 f'bazel query "{query}"',
@@ -288,6 +300,8 @@ def _get_test_targets(
         .strip()
         .split("\n")
     )
+    # remove additional trailing whitespace on windows OS
+    test_targets = {t.rstrip() for t in test_targets}
     flaky_tests = set(_get_flaky_test_targets(team, yaml_dir))
 
     if get_flaky_tests:
