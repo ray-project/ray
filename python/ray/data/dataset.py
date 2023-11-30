@@ -2220,7 +2220,6 @@ class Dataset:
             The `descending` parameter must be a boolean, or a list of booleans.
             If it is a list, all items in the list must share the same direction.
             Multi-directional sort is not supported yet.
-            The type of element in boundaries should be int or float currently.
 
         Examples:
             >>> import ray
