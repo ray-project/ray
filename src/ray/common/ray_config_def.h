@@ -892,3 +892,8 @@ RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 // trasfer it'll be, but it'll also user more sockets and
 // more CPU resources.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)
+
+// The number of object manager thread. By default, it's
+//     std::min(std::max(2, num_cpus / 4), 8)
+// Update this to overwrite it.
+RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
