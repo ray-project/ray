@@ -3,6 +3,7 @@ import os
 import re
 import sys
 from pathlib import Path
+import subprocess
 
 import numpy as np
 import pytest
@@ -28,10 +29,14 @@ CONTAINER_SPEC = {
 CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
 
 
-def test_a(ha_docker_cluster):
-    head, worker = ha_docker_cluster
-    print(head.exec_run(cmd="ls -l"))
-    print(worker.exec_run(cmd="ls -l"))
+# def test_a(ha_docker_cluster):
+def test_a(shutdown_only):
+    # head, worker = ha_docker_cluster
+    # print(head.exec_run(cmd="ls -l"))
+    # print(worker.exec_run(cmd="ls -l"))
+    output = subprocess.check_output(["docker", "image", "ls"])
+    print(output)
+    assert False, output
 
 
 @pytest.mark.skip
