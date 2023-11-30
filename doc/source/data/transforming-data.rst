@@ -179,7 +179,8 @@ To transform data with Python class, complete these steps:
 
 2. Configure ``concurrency`` with the number of concurrent workers. Each worker
    transforms a partition of data in parallel. You can also pass a tuple of
-   ``(min, max)`` to allow Ray Data to autoscale the number of concurrent workers.
+   ``(min, max)`` to allow Ray Data to automatically scale the number of concurrent
+   workers.
 
 3. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
    :meth:`~ray.data.Dataset.flat_map`.
