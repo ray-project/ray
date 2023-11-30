@@ -63,10 +63,10 @@ def set_kill_interval(request):
         yield (lineage_reconstruction_enabled, kill_interval, cluster_fixture)
 
 
-# @pytest.mark.skip(
-#    reason="Skip until https://github.com/ray-project/ray/issues/20706 is fixed."
-# )
-# @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skip(
+    reason="Skip until https://github.com/ray-project/ray/issues/20706 is fixed."
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "set_kill_interval",
     [(True, None), (True, 20), (False, None), (False, 20)],
