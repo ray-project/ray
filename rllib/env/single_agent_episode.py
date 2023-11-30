@@ -113,7 +113,7 @@ class SingleAgentEpisode:
         # ... from a few steps.
         episode.add_env_step(
             observation=1,
-            action={"a": 0, "b": np.array([1, 2]), "c": np.array([0.5, -0.5])},
+            action={"a":0, "b":np.array([1, 2]), "c":np.array([.5, -.5], np.float32)},
             reward=1.0,
         )
 
@@ -755,6 +755,8 @@ class SingleAgentEpisode:
                 size of 2 (meaning infos {"l":10}, {"l":11} are part of the lookback
                 buffer) will respond to `get_infos(slice(-7, -2), fill={"o": 0.0})`
                 with `[{"o":0.0}, {"o":0.0}, {"l":10}, {"l":11}, {"a":12}]`.
+                TODO (sven): This would require a space being provided. Maybe we can
+                 skip this check for infos, which don't have a space anyways.
 
         Examples:
 
@@ -775,8 +777,10 @@ class SingleAgentEpisode:
             episode.get_infos(slice(None, 2))  # [{"a":0},{"b":1}]
             episode.get_infos(slice(-2, None))  # [{"c":2},{"d":3}]
             # Using `fill=...` (requesting slices beyond the boundaries).
-            episode.get_infos(slice(-5, -3), fill={"o":-1})  # [{"o":-1},{"a":0}]
-            episode.get_infos(slice(3, 5), fill={"o":-2})  # [{"d":3},{"o":-2}]
+            # TODO (sven): This would require a space being provided. Maybe we can
+            #  skip this check for infos, which don't have a space anyways.
+            # episode.get_infos(slice(-5, -3), fill={"o":-1})  # [{"o":-1},{"a":0}]
+            # episode.get_infos(slice(3, 5), fill={"o":-2})  # [{"d":3},{"o":-2}]
 
         Returns:
             The collected info dicts.
@@ -836,6 +840,7 @@ class SingleAgentEpisode:
 
         .. testcode::
 
+            import gymnasium as gym
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
             episode = SingleAgentEpisode(
@@ -991,6 +996,8 @@ class SingleAgentEpisode:
                 respond to
                 `get_extra_model_outputs("b", slice(-7, -2), fill=0.0)` with
                 `[0.0, 0.0, 10, 11, 12]`.
+                TODO (sven): This would require a space being provided. Maybe we can
+                 automatically infer the space from existing data?
 
         Examples:
 
@@ -1012,8 +1019,10 @@ class SingleAgentEpisode:
             episode.get_extra_model_outputs("mo", slice(None, 2))  # [1, 2]
             episode.get_extra_model_outputs("mo", slice(-2, None))  # [2, 3]
             # Using `fill=...` (requesting slices beyond the boundaries).
-            episode.get_extra_model_outputs("mo", slice(-5, -2), fill=0)  # [0, 0, 1]
-            episode.get_extra_model_outputs("mo", slice(2, 5), fill=-1)  # [3, -1, -1]
+            # TODO (sven): This would require a space being provided. Maybe we can
+            #  automatically infer the space from existing data?
+            # episode.get_extra_model_outputs("mo", slice(-5, -2), fill=0)  # [0, 0, 1]
+            # episode.get_extra_model_outputs("mo", slice(2, 5), fill=-1)  # [3, -1, -1]
 
         Returns:
             The collected extra_model_outputs[`key`].
