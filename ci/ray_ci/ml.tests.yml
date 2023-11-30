@@ -3,4 +3,4 @@ flaky_tests:
   - //python/ray/train:horovod_cifar_pbt_example
   # doc tests
   # gpu tests
-  - //python/ray/train:test_torch_lightning_train
+  - //doc/source/ray-air/examples:gptj_serving

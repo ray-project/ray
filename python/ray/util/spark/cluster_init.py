@@ -1059,12 +1059,6 @@ def setup_ray_cluster(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
 
-    if num_gpus_worker_node is not None and num_spark_task_gpus == 0:
-        raise ValueError(
-            "The spark cluster worker nodes are not configured with 'gpu' resources, "
-            "so that you cannot specify the `num_gpus_worker_node` argument."
-        )
-
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
         raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
 
@@ -1192,8 +1186,8 @@ def setup_ray_cluster(
         # head node, and user does not set `object_store_memory_head_node` explicitly,
         # limit the heap memory and object store memory allocation to the
         # head node, in order to save spark driver memory.
-        heap_memory_head_node = 128 * 1024 * 1024
-        object_store_memory_head_node = 128 * 1024 * 1024
+        heap_memory_head_node = 1024 * 1024 * 1024
+        object_store_memory_head_node = 1024 * 1024 * 1024
     else:
         heap_memory_head_node, object_store_memory_head_node = calc_mem_ray_head_node(
             object_store_memory_head_node
