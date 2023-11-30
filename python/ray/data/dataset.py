@@ -2220,7 +2220,6 @@ class Dataset:
             The `descending` parameter must be a boolean, or a list of booleans.
             If it is a list, all items in the list must share the same direction.
             Multi-directional sort is not supported yet.
-            The type of element in boundaries should be int or float currently.
 
         Examples:
             >>> import ray
@@ -2258,7 +2257,7 @@ class Dataset:
                 than 10 will be divided into the first block, rows with values greater
                 than or equal to 10 and less than 20 will be divided into the second block,
                 and rows with values greater than or equal to 20 will be divided into into
-                the third block.
+                the third block. If not provided, the boundaries will be sampled from the input blocks.
 
 
         Returns:
