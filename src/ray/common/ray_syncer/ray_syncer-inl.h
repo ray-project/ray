@@ -141,7 +141,6 @@ class RaySyncerBidiReactor {
   /// Disconnect will terminate the communication between local and remote node.
   /// It also needs to do proper cleanup.
   void Disconnect() {
-    RAY_LOG(ERROR) << "DBG: Disconnect";
     if (!*disconnected_) {
       *disconnected_ = true;
       DoDisconnect();
@@ -152,6 +151,7 @@ class RaySyncerBidiReactor {
   std::shared_ptr<bool> IsDisconnected() const { return disconnected_; }
 
   std::string remote_node_id_;
+
  private:
   virtual void DoDisconnect() = 0;
   std::shared_ptr<bool> disconnected_ = std::make_shared<bool>(false);
@@ -206,9 +206,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     return false;
   }
 
-  virtual ~RaySyncerBidiReactorBase() {
-    RAY_LOG(ERROR) << "~RaySyncerBidiReactorBase: " << NodeID::FromBinary(GetRemoteNodeID());
-  }
+  virtual ~RaySyncerBidiReactorBase() = default;
 
   void StartPull() {
     receiving_message_ = std::make_shared<RaySyncMessage>();
@@ -289,7 +287,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   void OnWriteDone(bool ok) override {
     io_context_.dispatch(
         [this, disconnected = IsDisconnected(), ok]() {
-          if(*disconnected) {
+          if (*disconnected) {
             return;
           }
           if (ok) {
@@ -305,9 +303,11 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   void OnReadDone(bool ok) override {
     io_context_.dispatch(
-        [this, ok, disconnected = IsDisconnected(),
+        [this,
+         ok,
+         disconnected = IsDisconnected(),
          msg = std::move(receiving_message_)]() mutable {
-          if(*disconnected) {
+          if (*disconnected) {
             return;
           }
           if (ok) {
