@@ -137,27 +137,25 @@ def execute_read_only_to_legacy_lazy_block_list(
         allow_clear_input_blocks,
         preserve_order,
     )
+    # For a Read-only plan, the logical plan is: Read.
+    # The corresponding PhysicalPlan is: InputDataBuffer -> MapOperator.
+    # Execute the InputDataBuffer operator in isolation
+    # in order to initialize known metadata from its ReadTasks.
     assert isinstance(read_map_op, MapOperator), read_map_op
     input_data_buffer = read_map_op.input_dependency
     assert isinstance(input_data_buffer, InputDataBuffer), input_data_buffer
-    # Execute the InputDataBuffer op only, to
-    # initialize known metadata from ReadTasks.
     bundles = executor.execute(input_data_buffer, initial_stats=stats)
 
     read_tasks = []
-    metadata = []
     owns_blocks = True
     for bundle in bundles:
         if not bundle.owns_blocks:
             owns_blocks = False
-        bundle_md = []
-        for read_task_ref, meta in bundle.blocks:
+        for read_task_ref, _ in bundle.blocks:
             read_tasks.append(ray.get(read_task_ref))
-            bundle_md.append(meta)
-        metadata.append(bundle_md)
-
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
 
+    # Get the read stage name from the logical Read operator.
     assert isinstance(plan._logical_plan, LogicalPlan)
     read_logical_op = plan._logical_plan.dag
     assert isinstance(read_logical_op, Read)
@@ -169,9 +167,9 @@ def execute_read_only_to_legacy_lazy_block_list(
         ray_remote_args=read_logical_op._ray_remote_args,
         owned_by_consumer=owns_blocks,
     )
+    # Update the estimated number of blocks after fetching metadata
+    # and applying optimizations (e.g. SplitReadOutputBlocksRule).
     block_list._estimated_num_blocks = read_map_op._estimated_output_blocks
-    # TODO(scottjlee): remove this after confirming alternative workaround.
-    # input_data_buffer._set_num_output_blocks(read_map_op._estimated_output_blocks)
     return block_list
 
 

@@ -25,12 +25,10 @@ TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 # Defensively compute the size of the block as the max size reported by the
 # datasource and the actual read task size. This is to guard against issues
 # with bad metadata reporting.
-def cleaned_metadata(read_task, is_read_only):
+def cleaned_metadata(read_task: ReadTask):
     block_meta = read_task.get_metadata()
     task_size = len(cloudpickle.dumps(read_task))
-    if not is_read_only and (
-        block_meta.size_bytes is None or task_size > block_meta.size_bytes
-    ):
+    if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
         if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
             print(
                 f"WARNING: the read task size ({task_size} bytes) is larger "
@@ -49,8 +47,6 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     See Planner.plan() for more details.
     """
 
-    is_read_only = op._input_dependencies == [] and op._output_dependencies == []
-
     def get_input_data(target_max_block_size) -> List[RefBundle]:
         parallelism = op.get_detected_parallelism()
         assert (
@@ -66,7 +62,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
                         # TODO(chengsu): figure out a better way to pass read
                         # tasks other than ray.put().
                         ray.put(read_task),
-                        cleaned_metadata(read_task, is_read_only),
+                        cleaned_metadata(read_task),
                     )
                 ],
                 # `owns_blocks` is False, because these refs are the root of the

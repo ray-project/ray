@@ -586,8 +586,7 @@ class ExecutionPlan:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            # if self._run_with_new_execution_backend():
-            if True:
+            if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.legacy_compat import (
                     execute_read_only_to_legacy_lazy_block_list,
                     execute_to_legacy_block_list,
@@ -602,7 +601,6 @@ class ExecutionPlan:
                     metrics_tag,
                 )
                 if self.is_read_only():
-                    # get lazy block list
                     blocks = execute_read_only_to_legacy_lazy_block_list(
                         executor,
                         self,
@@ -881,35 +879,10 @@ class ExecutionPlan:
         )
 
     def _run_with_new_execution_backend(self) -> bool:
-        """Whether this plan should run with new backend."""
-        from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-        # The read-equivalent stage is handled in the following way:
-        # - Read only: handle with legacy backend
-        # - Read->randomize_block_order: handle with new backend
-        # Note that both are considered read equivalent, hence this extra check.
-        context = self._context
-        trailing_randomize_block_order_stage = (
-            self._stages_after_snapshot
-            and len(self._stages_after_snapshot) == 1
-            and isinstance(self._stages_after_snapshot[0], RandomizeBlocksStage)
-        )
-        return (
-            context.new_execution_backend
-            and (
-                not self.is_read_stage_equivalent()
-                or trailing_randomize_block_order_stage
-            )
-            and (
-                self._stages_after_snapshot
-                # If snapshot is cleared, we'll need to recompute from the source.
-                or (
-                    self._snapshot_blocks is not None
-                    and self._snapshot_blocks.is_cleared()
-                    and self._stages_before_snapshot
-                )
-            )
-        )
+        """Whether this plan should run with new backend.
+        By default, the new execution backend is now fully enabled
+        unless configured otherwise by the user."""
+        return self._context.new_execution_backend
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order when running with new
