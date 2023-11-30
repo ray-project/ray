@@ -470,7 +470,9 @@ class TestTargetCapacityUpdateAndServeStatus:
         config: ServeDeploySchema,
         app_name: str,
         deployment_name: str,
-        check_statuses: bool = True,
+        expected_app_status: Optional[ApplicationStatus] = None,
+        expected_deployment_status: Optional[DeploymentStatus] = None,
+        expected_deployment_status_trigger: Optional[DeploymentStatusTrigger] = None,
         timeout=10,
     ):
         """Applies config with specified target_capacity."""
@@ -481,37 +483,34 @@ class TestTargetCapacityUpdateAndServeStatus:
         wait_for_condition(
             lambda: serve.status().target_capacity == target_capacity, timeout=timeout
         )
-        if check_statuses:
+
+        if expected_app_status is not None:
             wait_for_condition(
                 lambda: serve.status().applications[app_name].status
-                == ApplicationStatus.DEPLOYING,
+                == expected_app_status,
                 timeout=timeout,
             )
+        
+        if expected_deployment_status is not None:
             wait_for_condition(
                 lambda: serve.status()
                 .applications[app_name]
                 .deployments[deployment_name]
-                .status
-                in [
-                    DeploymentStatus.UPDATING,
-                    DeploymentStatus.UPSCALING,
-                    DeploymentStatus.DOWNSCALING,
-                ],
+                .status == expected_deployment_status,
                 timeout=timeout,
             )
+        
+        if expected_deployment_status_trigger is not None:
             assert serve.status().applications[app_name].deployments[
                 deployment_name
-            ].status_trigger in [
-                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                DeploymentStatusTrigger.AUTOSCALING,
-            ]
+            ].status_trigger == expected_deployment_status_trigger
 
-    def unblock_replica_initialization(self, lifecycle_signal, app_name: str):
-        """Unblocks initialization for ControlledLifecycleDeployment replicas.
+    def unblock_replica_creation_and_deletion(self, lifecycle_signal, app_name: str):
+        """Unblocks creating and deleting ControlledLifecycleDeployment replicas.
 
-        These replicas can't initialize until the "lifecycle_signal" actor runs
-        send, so this method runs send, waits until the replicas start running,
-        and then resets the signal.
+        These replicas can't initialize or be deleted until the
+        "lifecycle_signal" actor runs send, so this method runs send, waits
+        until the replicas start or stop running, and then resets the signal.
         """
 
         ray.get(lifecycle_signal.send.remote())
@@ -553,9 +552,12 @@ class TestTargetCapacityUpdateAndServeStatus:
             config=config,
             app_name=app_name,
             deployment_name=deployment_name,
+            expected_app_status=ApplicationStatus.DEPLOYING,
+            expected_deployment_status=DeploymentStatus.UPDATING,
+            expected_deployment_status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
         self.check_num_running_replicas(0, app_name, deployment_name)
-        self.unblock_replica_initialization(signal, app_name)
+        self.unblock_replica_creation_and_deletion(signal, app_name)
         self.check_num_running_replicas(0, app_name, deployment_name)
 
         # Increase the target_capacity, and check again.
@@ -565,9 +567,12 @@ class TestTargetCapacityUpdateAndServeStatus:
             config=config,
             app_name=app_name,
             deployment_name=deployment_name,
+            expected_app_status=ApplicationStatus.DEPLOYING,
+            expected_deployment_status=DeploymentStatus.UPSCALING,
+            expected_deployment_status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
         self.check_num_running_replicas(0, app_name, deployment_name)
-        self.unblock_replica_initialization(signal, app_name)
+        self.unblock_replica_creation_and_deletion(signal, app_name)
         self.check_num_running_replicas(
             int(0.5 * num_replicas), app_name, deployment_name
         )
@@ -579,11 +584,14 @@ class TestTargetCapacityUpdateAndServeStatus:
             config=config,
             app_name=app_name,
             deployment_name=deployment_name,
+            expected_app_status=ApplicationStatus.DEPLOYING,
+            expected_deployment_status=DeploymentStatus.DOWNSCALING,
+            expected_deployment_status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
         self.check_num_running_replicas(
             int(0.5 * num_replicas), app_name, deployment_name
         )
-        self.unblock_replica_initialization(signal, app_name)
+        self.unblock_replica_creation_and_deletion(signal, app_name)
         self.check_num_running_replicas(
             int(0.1 * num_replicas), app_name, deployment_name
         )
@@ -631,9 +639,12 @@ class TestTargetCapacityUpdateAndServeStatus:
             app_name=app_name,
             deployment_name=deployment_name,
             timeout=20,
+            expected_app_status=ApplicationStatus.DEPLOYING,
+            expected_deployment_status=DeploymentStatus.UPDATING,
+            expected_deployment_status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
         self.check_num_running_replicas(0, app_name, deployment_name)
-        self.unblock_replica_initialization(lifecycle_signal, app_name)
+        self.unblock_replica_creation_and_deletion(lifecycle_signal, app_name)
         self.check_num_running_replicas(0, app_name, deployment_name)
 
         # Increase the target_capacity, and check again.
@@ -643,9 +654,12 @@ class TestTargetCapacityUpdateAndServeStatus:
             config=config,
             app_name=app_name,
             deployment_name=deployment_name,
+            expected_app_status=ApplicationStatus.DEPLOYING,
+            expected_deployment_status=DeploymentStatus.UPSCALING,
+            expected_deployment_status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
         self.check_num_running_replicas(0, app_name, deployment_name)
-        self.unblock_replica_initialization(lifecycle_signal, app_name)
+        self.unblock_replica_creation_and_deletion(lifecycle_signal, app_name)
         self.check_num_running_replicas(
             int(0.5 * initial_replicas), app_name, deployment_name
         )
@@ -688,11 +702,14 @@ class TestTargetCapacityUpdateAndServeStatus:
             config=config,
             app_name=app_name,
             deployment_name=deployment_name,
+            expected_app_status=ApplicationStatus.DEPLOYING,
+            expected_deployment_status=DeploymentStatus.DOWNSCALING,
+            expected_deployment_status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
         self.check_num_running_replicas(
             int(0.5 * initial_replicas), app_name, deployment_name
         )
-        self.unblock_replica_initialization(lifecycle_signal, app_name)
+        self.unblock_replica_creation_and_deletion(lifecycle_signal, app_name)
         self.check_num_running_replicas(
             int(0.1 * min_replicas), app_name, deployment_name
         )
@@ -736,11 +753,14 @@ class TestTargetCapacityUpdateAndServeStatus:
             config=config,
             app_name=app_name,
             deployment_name=deployment_name,
+            expected_app_status=ApplicationStatus.DEPLOYING,
+            expected_deployment_status=DeploymentStatus.UPSCALING,
+            expected_deployment_status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
         self.check_num_running_replicas(
             int(0.1 * min_replicas), app_name, deployment_name
         )
-        self.unblock_replica_initialization(lifecycle_signal, app_name)
+        self.unblock_replica_creation_and_deletion(lifecycle_signal, app_name)
         self.check_num_running_replicas(initial_replicas, app_name, deployment_name)
 
         # Scaling up to no target_capacity should make Serve use
@@ -754,9 +774,11 @@ class TestTargetCapacityUpdateAndServeStatus:
             config=config,
             app_name=app_name,
             deployment_name=deployment_name,
-            check_statuses=False,
+            expected_app_status=ApplicationStatus.DEPLOYING,
+            expected_deployment_status=DeploymentStatus.UPSCALING,
+            expected_deployment_status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
-        self.unblock_replica_initialization(lifecycle_signal, app_name)
+        self.unblock_replica_creation_and_deletion(lifecycle_signal, app_name)
         wait_for_condition(
             self.check_num_running_replicas,
             expected_num_running_replicas=min_replicas,
