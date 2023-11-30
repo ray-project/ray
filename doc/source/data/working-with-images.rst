@@ -243,7 +243,7 @@ Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
 For more information on performing inference, see
 :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`
-and :ref:`Transforming with Python Class <transforming_with_python_class>`.
+and :ref:`Stateful Transformation <stateful_transformation>`.
 
 .. _saving_images:
 

@@ -14,7 +14,7 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
-* :ref:`Transform with Python Class <transforming_with_python_class>`
+* :ref:`Stateful Transformation <stateful_transformation>`
 * :ref:`Groupby and transform groups <transforming_groupby>`
 * :ref:`Shuffle rows <shuffling_rows>`
 * :ref:`Repartition data <repartitioning_data>`
@@ -159,14 +159,16 @@ program might run out of memory. If you encounter an out-of-memory error, decrea
     the default batch size is 4096. If you're using GPUs, you must specify an explicit
     batch size.
 
-.. _transforming_with_python_class:
+.. _stateful_transformation:
 
-Transforming with Python Class
+Stateful Transformation
 ==============================
 
-If your transformation requires expensive setup like downloading model weights, use
-Python class instead of function. Python class performs setup exactly once for all data.
-In contrast, function is stateless and doesn't have a way to perform setup.
+If your transformation is stateful to require expensive setup such as downloading
+model weights, use a callable Python class instead of a function. When a Python class
+is used, the `__init__` method will be called to perform setup exactly once on each
+worker. In contrast, function is stateless and doesn't have a way to perform setup
+before transforming data.
 
 Internally, Ray Data uses tasks to execute function, and uses actors to execute class.
 To learn more about tasks and actors, read the
@@ -177,10 +179,10 @@ To transform data with Python class, complete these steps:
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
 2. Configure ``concurrency`` with the number of concurrent workers. Each worker
-transforms a partition of data.
+   transforms a partition of data.
 
-3. Call :meth:`~ray.data.Dataset.map_batches`,
-:meth:`~ray.data.Dataset.map`, or :meth:`~ray.data.Dataset.flat_map`.
+3. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
+   :meth:`~ray.data.Dataset.flat_map`.
 
 .. tab-set::
 

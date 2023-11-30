@@ -225,25 +225,18 @@ def test_concurrency(shutdown_only):
         def __call__(self, x):
             return x
 
-    class UDFClass2:
-        def __init__(self, y):
-            self._y = y
-
-        def __call__(self, x):
-            return x
-
-    # Test function, class, and object of class.
-    for fn in [udf, UDFClass, UDFClass2(1)]:
+    # Test function and class.
+    for fn in [udf, UDFClass]:
         # Test concurrency with None, single integer and a tuple of integers.
         for concurrency in [None, 2, (2, 4)]:
             result = ds.map(fn, concurrency=concurrency).take_all()
             assert sorted(extract_values("id", result)) == list(range(10)), result
 
     # Test concurrency with an illegal value.
-    for fn in [UDFClass, UDFClass2(1)]:
-        for concurrency in ["dummy", (1, 3, 5)]:
-            with pytest.raises(ValueError):
-                ds.map(fn, concurrency=concurrency).take_all()
+    error_message = "``concurrency`` is expected to be set a"
+    for concurrency in ["dummy", (1, 3, 5)]:
+        with pytest.raises(ValueError, match=error_message):
+            ds.map(UDFClass, concurrency=concurrency).take_all()
 
 
 def test_flat_map_generator(ray_start_regular_shared):

@@ -528,19 +528,17 @@ def get_compute_strategy(
     """
     # Lazily import these objects to avoid circular imports.
     from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+    from ray.data.block import CallableClass
 
-    # Check if `fn` is a function or not.
-    # NOTE: use `inspect.isfunction(fn)` instead of `instanceof(fn, CallableClass)`,
-    # because latter returns False for an object instance of callable class.
-    if inspect.isfunction(fn):
+    if isinstance(fn, CallableClass):
+        is_callable_class = True
+    else:
         is_callable_class = False
         if fn_constructor_args is not None:
             raise ValueError(
                 "``fn_constructor_args`` can only be specified if providing a "
                 f"CallableClass instance for ``fn``, but got: {fn}"
             )
-    else:
-        is_callable_class = True
 
     if compute is not None:
         # Legacy code path to support `compute` argument.

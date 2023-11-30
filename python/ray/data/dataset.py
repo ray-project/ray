@@ -279,6 +279,11 @@ class Dataset:
         Use this method to transform your data. To learn more, see
         :ref:`Transforming rows <transforming_rows>`.
 
+        You can use either a function or a callable class to perform the transformation.
+        For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
+        stateful Ray actors. For more information, see
+        :ref:`Stateful Transformation <stateful_transformation>`.
+
         .. tip::
 
             If your transformation is vectorized like most NumPy or pandas operations,
@@ -314,8 +319,7 @@ class Dataset:
 
         Args:
             fn: The function to apply to each row, or a class type
-                that can be instantiated to create such a callable. Callable classes are
-                only supported for the actor compute strategy.
+                that can be instantiated to create such a callable.
             compute: The compute strategy, either None (default) to use Ray
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
@@ -432,10 +436,10 @@ class Dataset:
         This method is useful for preprocessing data and performing inference. To learn
         more, see :ref:`Transforming batches <transforming_batches>`.
 
-        You can use either function or class to perform the transformation. For
-        function, Ray Data uses Tasks. For class, Ray Data uses To use Actors.
-        For more information, see
-        :ref:`Transforming with Python Class <transforming_with_python_class>`.
+        You can use either a function or a callable class to perform the transformation.
+        For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
+        stateful Ray actors. For more information, see
+        :ref:`Stateful Transformation <stateful_transformation>`.
 
         .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
@@ -494,8 +498,7 @@ class Dataset:
 
         Args:
             fn: The function or generator to apply to a record batch, or a class type
-                that can be instantiated to create such a callable. Callable classes are
-                only supported for the actor compute strategy. Note ``fn`` must be
+                that can be instantiated to create such a callable. Note ``fn`` must be
                 pickle-able.
             batch_size: The desired number of rows in each batch, or ``None`` to use
                 entire blocks as batches (blocks may contain different numbers of rows).
@@ -866,6 +869,11 @@ class Dataset:
         Use this method if your transformation returns multiple rows for each input
         row.
 
+        You can use either a function or a callable class to perform the transformation.
+        For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
+        stateful Ray actors. For more information, see
+        :ref:`Stateful Transformation <stateful_transformation>`.
+
         .. tip::
             :meth:`~Dataset.map_batches` can also modify the number of rows. If your
             transformation is vectorized like most NumPy and pandas operations,
@@ -895,8 +903,7 @@ class Dataset:
 
         Args:
             fn: The function or generator to apply to each record, or a class type
-                that can be instantiated to create such a callable. Callable classes are
-                only supported for the actor compute strategy.
+                that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
@@ -987,6 +994,11 @@ class Dataset:
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
 
+        You can use either a function or a callable class to perform the transformation.
+        For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
+        stateful Ray actors. For more information, see
+        :ref:`Stateful Transformation <stateful_transformation>`.
+
         .. tip::
             If you can represent your predicate with NumPy or pandas operations,
             :meth:`Dataset.map_batches` might be faster. You can implement filter by
@@ -1003,8 +1015,7 @@ class Dataset:
 
         Args:
             fn: The predicate to apply to each row, or a class type
-                that can be instantiated to create such a callable. Callable classes are
-                only supported for the actor compute strategy.
+                that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
