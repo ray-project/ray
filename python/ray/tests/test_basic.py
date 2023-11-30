@@ -119,7 +119,7 @@ def test_grpc_message_size(shutdown_only):
     ray.get(bar.remote(*[f() for _ in range(200)]))
 
 
-def test_default_worker_import_dependency():
+def test_default_worker_import_dependency(shutdown_only):
     """
     Test ray's python worker import doesn't import the not-allowed dependencies.
     """
@@ -128,6 +128,11 @@ def test_default_worker_import_dependency():
     # is used by numpy when imported.
     # See https://github.com/ray-project/ray/issues/33891
     blocked_deps = ["numpy"]
+
+    # Ray should not be importing pydantic (used in serialization) eagerly.
+    # This introduces regression in worker start up time.
+    # https://github.com/ray-project/ray/issues/41338
+    blocked_deps += ["pydantic"]
 
     # Remove the ray module and the blocked deps from sys.modules.
     sys.modules.pop("ray", None)
@@ -145,6 +150,19 @@ def test_default_worker_import_dependency():
     # Check that the blocked deps are not imported.
     for dep in blocked_deps:
         assert dep not in sys.modules
+
+    # Test starting a ray workers should not see unwanted deps loaded eagerly.
+    ray.init()
+
+    @ray.remote
+    def f():
+        import ray  # noqa: F401
+
+        assert "ray" in sys.modules
+        for x in blocked_deps:
+            assert x not in sys.modules
+
+    ray.get(f.remote())
 
 
 # https://github.com/ray-project/ray/issues/7287
