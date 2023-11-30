@@ -782,36 +782,38 @@ def start(
         cli_logger.success(startup_msg)
         cli_logger.success("-" * len(startup_msg))
         cli_logger.newline()
-        with cli_logger.group("Next steps"):
-            dashboard_url = node.address_info["webui_url"]
-            if ray_constants.ENABLE_RAY_CLUSTER:
-                cli_logger.print(
-                    "To add another node to this Ray cluster, "
-                    "run the following from that node:"
-                )
-                # NOTE(kfstorm): Java driver rely on this line to get the address
-                # of the cluster. Please be careful when updating this line.
-                cli_logger.print(
-                    cf.bold(" {} ray start --address='{}'"),
-                    f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
-                    if ray_constants.IS_WINDOWS_OR_OSX
-                    else "",
-                    bootstrap_address,
-                )
 
-            cli_logger.newline()
-            cli_logger.print("To connect to this Ray cluster from this node:")
-            with cli_logger.indented():
-                cli_logger.print("{} ray", cf.magenta("import"))
-                cli_logger.print(
-                    "ray{}init({})",
-                    cf.magenta("."),
-                    "_node_ip_address{}{}".format(
-                        cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
+        if not ray_constants.RAY_START_SKIP_NEXT_STEPS_MESSAGE:
+            with cli_logger.group("Next steps"):
+                dashboard_url = node.address_info["webui_url"]
+                if ray_constants.ENABLE_RAY_CLUSTER:
+                    cli_logger.print(
+                        "To add another node to this Ray cluster, "
+                        "run the following from that node:"
                     )
-                    if include_node_ip_address
-                    else "",
-                )
+                    # NOTE(kfstorm): Java driver rely on this line to get the address
+                    # of the cluster. Please be careful when updating this line.
+                    cli_logger.print(
+                        cf.bold(" {} ray start --address='{}'"),
+                        f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
+                        if ray_constants.IS_WINDOWS_OR_OSX
+                        else "",
+                        bootstrap_address,
+                    )
+
+                cli_logger.newline()
+                cli_logger.print("To connect to this Ray cluster from this node:")
+                with cli_logger.indented():
+                    cli_logger.print("{} ray", cf.magenta("import"))
+                    cli_logger.print(
+                        "ray{}init({})",
+                        cf.magenta("."),
+                        "_node_ip_address{}{}".format(
+                            cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
+                        )
+                        if include_node_ip_address
+                        else "",
+                    )
 
                 if dashboard_url:
                     cli_logger.newline()
@@ -834,36 +836,36 @@ def start(
                         "Ray jobs to the Ray cluster."
                     )
 
-            cli_logger.newline()
-            cli_logger.print(
-                "To terminate the Ray runtime, run the following from this node:"
-            )
-            cli_logger.print(cf.bold("  ray stop"))
-
-            cli_logger.newline()
-            cli_logger.print(
-                "To view the status of the cluster, "
-                "run the following from any Ray node:"
-            )
-            cli_logger.print("  {}".format(cf.bold("ray status")))
-
-            if dashboard_url:
                 cli_logger.newline()
-                cli_logger.print("To monitor and debug Ray, view the dashboard at ")
                 cli_logger.print(
-                    "  {}".format(
-                        cf.bold(dashboard_url),
-                    )
+                    "To terminate the Ray runtime, run the following from this node:"
                 )
+                cli_logger.print(cf.bold("  ray stop"))
 
                 cli_logger.newline()
                 cli_logger.print(
-                    cf.underlined(
-                        "If connection to the dashboard fails, check your "
-                        "firewall settings and "
-                        "network configuration."
-                    )
+                    "To view the status of the cluster, "
+                    "run the following from any Ray node:"
                 )
+                cli_logger.print("  {}".format(cf.bold("ray status")))
+
+                if dashboard_url:
+                    cli_logger.newline()
+                    cli_logger.print("To monitor and debug Ray, view the dashboard at ")
+                    cli_logger.print(
+                        "  {}".format(
+                            cf.bold(dashboard_url),
+                        )
+                    )
+
+                    cli_logger.newline()
+                    cli_logger.print(
+                        cf.underlined(
+                            "If connection to the dashboard fails, check your "
+                            "firewall settings and "
+                            "network configuration."
+                        )
+                    )
         ray_params.gcs_address = bootstrap_address
     else:
         # Start worker node.
