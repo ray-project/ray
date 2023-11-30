@@ -230,10 +230,17 @@ opencensus::proto::metrics::v1::Metric *addMetricProtoPayload(
   metric_descriptor_proto->set_name(measure_descriptor.name());
   metric_descriptor_proto->set_description(measure_descriptor.description());
   metric_descriptor_proto->set_unit(measure_descriptor.units());
-  metric_descriptor_proto->set_type(
-      view_descriptor.aggregation() == opencensus::stats::Aggregation::Sum()
-          ? opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_DOUBLE
-          : opencensus::proto::metrics::v1::MetricDescriptor::UNSPECIFIED);
+
+  auto descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::UNSPECIFIED;
+  if (view_descriptor.aggregation() == opencensus::stats::Aggregation::Count()) {
+    descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_INT64;
+  } else if (view_descriptor.aggregation() == opencensus::stats::Aggregation::Sum()) {
+    descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_DOUBLE;
+  } else if (view_descriptor.aggregation() ==
+             opencensus::stats::Aggregation::LastValue()) {
+    descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::GAUGE_DOUBLE;
+  }
+  metric_descriptor_proto->set_type(descriptor_type);
 
   for (const auto &tag_key : view_descriptor.columns()) {
     metric_descriptor_proto->add_label_keys()->set_key(tag_key.name());

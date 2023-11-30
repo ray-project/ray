@@ -8,10 +8,11 @@ import traceback
 from collections import namedtuple
 from typing import List, Tuple, Any, Dict
 
-from prometheus_client.core import (
+from ray._private.thirdparty.prometheus_client.core import (
     CounterMetricFamily,
     GaugeMetricFamily,
     HistogramMetricFamily,
+    SumMetricFamily,
 )
 from opencensus.metrics.export.value import ValueDouble
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
@@ -20,7 +21,7 @@ from opencensus.stats import measure as measure_module
 from opencensus.stats.view_manager import ViewManager
 from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats.base_exporter import StatsExporter
-from prometheus_client.core import Metric as PrometheusMetric
+from ray._private.thirdparty.prometheus_client.core import Metric as PrometheusMetric
 from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
@@ -163,16 +164,18 @@ class OpencensusProxyMetric:
 
             # Aggregate points.
             for point in series.points:
-                if point.HasField("int64_value"):
+                if (
+                    metric.metric_descriptor.type
+                    == MetricDescriptorType.CUMULATIVE_INT64
+                ):
                     data = CountAggregationData(point.int64_value)
-                elif point.HasField("double_value"):
-                    if (
-                        metric.metric_descriptor.type
-                        == MetricDescriptorType.CUMULATIVE_DOUBLE
-                    ):
-                        data = SumAggregationData(ValueDouble, point.double_value)
-                    else:
-                        data = LastValueAggregationData(ValueDouble, point.double_value)
+                elif (
+                    metric.metric_descriptor.type
+                    == MetricDescriptorType.CUMULATIVE_DOUBLE
+                ):
+                    data = SumAggregationData(ValueDouble, point.double_value)
+                elif metric.metric_descriptor.type == MetricDescriptorType.GAUGE_DOUBLE:
+                    data = LastValueAggregationData(ValueDouble, point.double_value)
                 elif point.HasField("distribution_value"):
                     dist_value = point.distribution_value
                     counts_per_bucket = [bucket.count for bucket in dist_value.buckets]
@@ -382,7 +385,9 @@ class OpenCensusProxyCollector:
         elif isinstance(agg_data, SumAggregationData):
             metric = metrics_map.get(metric_name)
             if not metric:
-                metric = CounterMetricFamily(
+                # TODO: Revert this back to CounterMetricFamily
+                # once metric name breaking change resolved
+                metric = SumMetricFamily(
                     name=metric_name,
                     documentation=metric_description,
                     labels=label_keys,

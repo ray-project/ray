@@ -20,10 +20,7 @@ from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 from typing import Optional, Set
 
-try:
-    import prometheus_client
-except ImportError:
-    prometheus_client = None
+import ray._private.thirdparty.prometheus_client as prometheus_client
 
 
 logger = logging.getLogger(__name__)

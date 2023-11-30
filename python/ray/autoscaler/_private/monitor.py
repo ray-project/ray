@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
+import ray._private.thirdparty.prometheus_client as prometheus_client
 import ray._private.utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
@@ -38,12 +39,6 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
 )
-
-try:
-    import prometheus_client
-except ImportError:
-    prometheus_client = None
-
 
 logger = logging.getLogger(__name__)
 

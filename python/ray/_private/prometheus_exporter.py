@@ -5,12 +5,13 @@
 
 import re
 
-from prometheus_client import start_http_server
-from prometheus_client.core import (
+from ray._private.thirdparty.prometheus_client import start_http_server
+from ray._private.thirdparty.prometheus_client.core import (
     REGISTRY,
     CounterMetricFamily,
     GaugeMetricFamily,
     HistogramMetricFamily,
+    SumMetricFamily,
 )
 
 from opencensus.common.transports import sync
@@ -195,7 +196,7 @@ class Collector(object):
         elif isinstance(agg_data, aggregation_data_module.SumAggregationData):
             metric = metrics_map.get(metric_name)
             if not metric:
-                metric = CounterMetricFamily(
+                metric = SumMetricFamily(
                     name=metric_name,
                     documentation=metric_description,
                     labels=label_keys,

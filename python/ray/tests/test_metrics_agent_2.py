@@ -61,6 +61,7 @@ def generate_protobuf_metric(
     name: str,
     desc: str,
     unit: str,
+    type: int = 0,
     label_keys: List[str] = None,
     timeseries: List[TimeSeries] = None,
 ):
@@ -74,6 +75,7 @@ def generate_protobuf_metric(
             name=name,
             description=desc,
             unit=unit,
+            type=type,
             label_keys=[LabelKey(key="a"), LabelKey(key="b")],
         ),
         timeseries=timeseries,
