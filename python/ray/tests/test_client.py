@@ -5,7 +5,7 @@ import queue
 import sys
 import threading
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from typing import Type
 
 import numpy as np
@@ -671,7 +671,7 @@ def test_dataclient_server_drop(call_ray_start_shared):
     time.sleep(3)
 
 
-@patch.dict(os.environ, {"RAY_ENABLE_AUTO_CONNECT": "0"})
+@pytest.mark.parametrize("set_enable_auto_connect", [True], indirect=True)
 def test_client_gpu_ids(call_ray_start_shared):
     import ray
 
