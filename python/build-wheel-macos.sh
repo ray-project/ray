@@ -17,8 +17,7 @@ if [ "$(uname -m)" = "arm64" ]; then
           "3.10"
           "3.11")
 else
-  PY_MMS=("3.7"
-          "3.8"
+  PY_MMS=("3.8"
           "3.9"
           "3.10"
           "3.11")
@@ -94,6 +93,8 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
       echo "TRAVIS_COMMIT variable is not set, getting the current commit from git."
       TRAVIS_COMMIT=$(git rev-parse HEAD)
     fi
+    # Pin the commit to the last commit.
+    TRAVIS_COMMIT="82a8df138fe7fcc5c42536ebf26e8c3665704fee"
 
     sed -i .bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
 
