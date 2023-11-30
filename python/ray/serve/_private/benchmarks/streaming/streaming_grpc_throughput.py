@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from concurrent import futures
 from tempfile import TemporaryDirectory
 
@@ -79,8 +80,11 @@ class GrpcCallerActor(Caller):
 
 
     async def _consume_single_stream(self):
-        async for r in self._h.ServerStreaming(test_server_pb2.Request()):
-            self.sink(r)
+        try:
+            async for r in self._h.ServerStreaming(test_server_pb2.Request()):
+                self.sink(r)
+        except Exception as e:
+            print(str(e))
 
 
 def _gen_addr_creds(socket_type, tempdir):
@@ -125,6 +129,8 @@ async def run_grpc_benchmark(
                 num_trials=num_trials,
                 trial_runtime=trial_runtime,
             )
+            # TODO make starting server a method (to make synchronization explicit)
+            time.sleep(5)
 
             mean, stddev = await ca.run_benchmark.remote()
 
