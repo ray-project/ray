@@ -777,7 +777,7 @@ def start(
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
         cli_logger.newline()
-        startup_msg = "Ray runtime started (head node)."
+        startup_msg = "Ray runtime started."
         cli_logger.success("-" * len(startup_msg))
         cli_logger.success(startup_msg)
         cli_logger.success("-" * len(startup_msg))
@@ -946,7 +946,7 @@ def start(
         node.check_version_info()
 
         cli_logger.newline()
-        startup_msg = "Ray runtime started (worker node)."
+        startup_msg = "Ray runtime started."
         cli_logger.success("-" * len(startup_msg))
         cli_logger.success(startup_msg)
         cli_logger.success("-" * len(startup_msg))
