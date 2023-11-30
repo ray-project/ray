@@ -1611,6 +1611,37 @@ class DeploymentState:
             allow_scaling_statuses=has_reached_steady_state,
         )
 
+    def _has_reached_steady_state(self) -> bool:
+        """Whether or not this deployment has reached steady-state.
+
+        This method should only be used for autoscaling deployments. It raises
+        an assertion error otherwise.
+        """
+
+        target_version = self._target_state.version
+        num_replicas_running_at_target_version = self._replicas.count(
+            states=[ReplicaState.RUNNING], version=target_version
+        )
+
+        autoscaling_policy = self._target_state.info.autoscaling_policy
+        assert autoscaling_policy is not None
+
+        lower_bound = autoscaling_policy.get_current_lower_bound(
+            self._target_state.info.target_capacity,
+            self._target_state.info.target_capacity_direction,
+        )
+        upper_bound = get_capacity_adjusted_num_replicas(
+            autoscaling_policy.config.max_replicas,
+            self._target_state.info.target_capacity,
+        )
+        has_reached_steady_state = (
+            self.curr_status_info.status_trigger
+            != DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+            or lower_bound <= num_replicas_running_at_target_version <= upper_bound
+        )
+
+        return has_reached_steady_state
+
     def delete(self) -> None:
         if not self._target_state.deleting:
             self._set_target_state_deleting()
@@ -1930,39 +1961,6 @@ class DeploymentState:
                 return False, any_replicas_recovering
 
         return False, any_replicas_recovering
-
-    def _has_reached_steady_state(self) -> bool:
-        """Whether or not this deployment has reached steady-state."""
-
-        target_version = self._target_state.version
-        num_replicas_running_at_target_version = self._replicas.count(
-            states=[ReplicaState.RUNNING], version=target_version
-        )
-
-        autoscaling_policy = self._target_state.info.autoscaling_policy
-        if autoscaling_policy is None:
-            has_reached_steady_state = (
-                self.curr_status_info.status_trigger
-                != DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-                or num_replicas_running_at_target_version
-                == self._target_state.target_num_replicas
-            )
-        else:
-            lower_bound = autoscaling_policy.get_current_lower_bound(
-                self._target_state.info.target_capacity,
-                self._target_state.info.target_capacity_direction,
-            )
-            upper_bound = get_capacity_adjusted_num_replicas(
-                autoscaling_policy.config.max_replicas,
-                self._target_state.info.target_capacity,
-            )
-            has_reached_steady_state = (
-                self.curr_status_info.status_trigger
-                != DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-                or lower_bound <= num_replicas_running_at_target_version <= upper_bound
-            )
-
-        return has_reached_steady_state
 
     def _check_startup_replicas(
         self, original_state: ReplicaState, stop_on_slow=False
