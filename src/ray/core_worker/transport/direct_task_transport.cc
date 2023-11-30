@@ -234,7 +234,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       task_spec.EmitTaskMetrics();
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
-      PushNormalTask(addr, *client, scheduling_key, task_spec, assigned_resources);
+      PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
       current_queue.pop_front();
     }
 
@@ -591,7 +591,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
     const rpc::WorkerAddress &addr,
-    rpc::CoreWorkerClientInterface &client,
+    shared_ptr<rpc::CoreWorkerClientInterface> client,
     const SchedulingKey &scheduling_key,
     const TaskSpecification &task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
@@ -609,7 +609,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
   task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id, addr.worker_id);
-  client.PushNormalTask(
+  client->PushNormalTask(
       std::move(request),
       [this,
        task_spec,
