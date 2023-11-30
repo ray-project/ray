@@ -217,7 +217,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       ReturnWorker(addr, was_error, error_detail, worker_exiting, scheduling_key);
     }
   } else {
-    auto &client = *client_cache_->GetOrConnect(addr.ToProto());
+    auto client = client_cache_->GetOrConnect(addr.ToProto());
 
     while (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = current_queue.front();
@@ -234,7 +234,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       task_spec.EmitTaskMetrics();
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
-      PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
+      PushNormalTask(addr, *client, scheduling_key, task_spec, assigned_resources);
       current_queue.pop_front();
     }
 
@@ -788,13 +788,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return Status::OK();
     }
     // Looks for an RPC handle for the worker executing the task.
-    auto maybe_client = client_cache_->GetByID(rpc_client->second.worker_id);
-    if (!maybe_client.has_value()) {
-      // If we don't have a connection to that worker, we can't cancel it.
-      // This case is reached for tasks that have unresolved dependencies.
-      return Status::OK();
-    }
-    client = maybe_client.value();
+    client = client_cache_->GetOrConnect(rpc_client->second.ToProto());
   }
 
   RAY_CHECK(client != nullptr);
@@ -852,12 +846,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
                                                        const rpc::Address &worker_addr,
                                                        bool force_kill,
                                                        bool recursive) {
-  auto maybe_client = client_cache_->GetByID(rpc::WorkerAddress(worker_addr).worker_id);
+  auto client = client_cache_->GetOrConnect(worker_addr);
 
-  if (!maybe_client.has_value()) {
-    return Status::Invalid("No remote worker found");
-  }
-  auto client = maybe_client.value();
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
