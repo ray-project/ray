@@ -672,7 +672,7 @@ def test_dataclient_server_drop(call_ray_start_shared):
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True], indirect=True)
-def test_client_gpu_ids(call_ray_start_shared):
+def test_client_gpu_ids(call_ray_start_shared, set_enable_auto_connect):
     import ray
 
     with enable_client_mode():
