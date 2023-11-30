@@ -1248,6 +1248,12 @@ def temp_file(request):
         yield fp
 
 
+@pytest.fixture(scope="function")
+def temp_dir(request):
+    with tempfile.TemporaryDirectory("r+b") as d:
+        yield d
+
+
 @pytest.fixture(scope="module")
 def random_ascii_file(request):
     import random

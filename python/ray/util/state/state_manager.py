@@ -477,6 +477,6 @@ class StateDataSourceClient:
             timeout=timeout,
         )
         metadata = await stream.initial_metadata()
-        if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
-            raise ValueError(f'File "{log_file_name}" not found on node {node_id}')
+        if metadata.get(log_consts.LOG_GRPC_ERROR) is not None:
+            raise ValueError(metadata.get(log_consts.LOG_GRPC_ERROR))
         return stream
