@@ -1401,12 +1401,17 @@ class DeploymentState:
         target_info: DeploymentInfo,
         target_num_replicas: int,
         status_trigger: DeploymentStatusTrigger,
+        allow_scaling_statuses: bool,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
         Args:
             target_info: The info with which to set the target state.
+            target_num_replicas: The number of replicas that this deployment
+                should attempt to run.
             status_trigger: The driver that triggered this change of state.
+            allow_scaling_statuses: Whether to allow this method
+                to set the status to UPSCALING/DOWNSCALING or not.
         """
 
         # We must write ahead the target state in case of GCS failure (we don't
@@ -1431,13 +1436,14 @@ class DeploymentState:
 
         # Determine if the updated target state simply scales the current state.
         if new_target_state.is_scaled_copy_of(self._target_state):
-            not_updating = self._curr_status_info.status != DeploymentStatus.UPDATING
+            # not_updating = self._curr_status_info.status != DeploymentStatus.UPDATING
 
             curr_num_replicas = self._target_state.target_num_replicas
             new_num_replicas = new_target_state.target_num_replicas
             num_replicas_changed = curr_num_replicas != new_num_replicas
 
-            if not_updating and num_replicas_changed:
+            # if not_updating and num_replicas_changed:
+            if allow_scaling_statuses and num_replicas_changed:
                 scaling_direction = (
                     DeploymentStatus.UPSCALING
                     if new_num_replicas > curr_num_replicas
@@ -1522,10 +1528,17 @@ class DeploymentState:
                 deployment_info.target_capacity,
             )
 
+        # Only allow the deployment status to become UPSCALING or DOWNSCALING
+        # if the deployment is not currently UPDATING.
+        allow_scaling_statuses = (
+            self.curr_status_info.status is not DeploymentStatus.UPDATING
+        )
+
         self._set_target_state(
             deployment_info,
             target_num_replicas=target_num_replicas,
             status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+            allow_scaling_statuses=allow_scaling_statuses,
         )
 
         logger.info(
@@ -1586,10 +1599,18 @@ class DeploymentState:
 
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
+
+        has_reached_steady_state = self._has_reached_steady_state()
+        if has_reached_steady_state:
+            new_status_trigger = DeploymentStatusTrigger.AUTOSCALING
+        else:
+            new_status_trigger = self.curr_status_info.status_trigger
+
         self._set_target_state(
             new_info,
             decision_num_replicas,
-            status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+            status_trigger=new_status_trigger,
+            allow_scaling_statuses=has_reached_steady_state,
         )
 
     def delete(self) -> None:
@@ -1911,6 +1932,39 @@ class DeploymentState:
                 return False, any_replicas_recovering
 
         return False, any_replicas_recovering
+
+    def _has_reached_steady_state(self) -> bool:
+        """Whether or not this deployment has reached steady-state."""
+
+        target_version = self._target_state.version
+        num_replicas_running_at_target_version = self._replicas.count(
+            states=[ReplicaState.RUNNING], version=target_version
+        )
+
+        autoscaling_policy = self._target_state.info.autoscaling_policy
+        if autoscaling_policy is None:
+            has_reached_steady_state = (
+                self.curr_status_info.status_trigger
+                != DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+                or num_replicas_running_at_target_version
+                == self._target_state.target_num_replicas
+            )
+        else:
+            lower_bound = autoscaling_policy.get_current_lower_bound(
+                self._target_state.info.target_capacity,
+                self._target_state.info.target_capacity_direction,
+            )
+            upper_bound = get_capacity_adjusted_num_replicas(
+                autoscaling_policy.config.max_replicas,
+                self._target_state.info.target_capacity,
+            )
+            has_reached_steady_state = (
+                self.curr_status_info.status_trigger
+                != DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+                or lower_bound <= num_replicas_running_at_target_version <= upper_bound
+            )
+
+        return has_reached_steady_state
 
     def _check_startup_replicas(
         self, original_state: ReplicaState, stop_on_slow=False
