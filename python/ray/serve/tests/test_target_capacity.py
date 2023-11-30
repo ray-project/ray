@@ -471,17 +471,21 @@ class TestTargetCapacityUpdateAndServeStatus:
         app_name: str,
         deployment_name: str,
         check_statuses: bool = True,
+        timeout=10,
     ):
         """Applies config with specified target_capacity."""
 
         config = deepcopy(config)
         config.target_capacity = target_capacity
         client.deploy_apps(config)
-        wait_for_condition(lambda: serve.status().target_capacity == target_capacity)
+        wait_for_condition(
+            lambda: serve.status().target_capacity == target_capacity, timeout=timeout
+        )
         if check_statuses:
             wait_for_condition(
                 lambda: serve.status().applications[app_name].status
-                == ApplicationStatus.DEPLOYING
+                == ApplicationStatus.DEPLOYING,
+                timeout=timeout,
             )
             wait_for_condition(
                 lambda: serve.status()
@@ -492,7 +496,8 @@ class TestTargetCapacityUpdateAndServeStatus:
                     DeploymentStatus.UPDATING,
                     DeploymentStatus.UPSCALING,
                     DeploymentStatus.DOWNSCALING,
-                ]
+                ],
+                timeout=timeout,
             )
             assert serve.status().applications[app_name].deployments[
                 deployment_name
@@ -625,6 +630,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             config=config,
             app_name=app_name,
             deployment_name=deployment_name,
+            timeout=20,
         )
         self.check_num_running_replicas(0, app_name, deployment_name)
         self.unblock_replica_initialization(lifecycle_signal, app_name)
