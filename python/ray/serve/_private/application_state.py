@@ -259,10 +259,12 @@ class ApplicationState:
         """
         self._set_target_state(dict(), None, None, None, None, True)
 
-    def _clear_target_state(self):
-        """Clears the target state but doesn't delete the application."""
+    def _clear_target_state_and_store_config(
+        self, target_config: Optional[ServeApplicationSchema]
+    ):
+        """Clears the target state and stores the config."""
 
-        self._set_target_state(None, None, None, None, None, False)
+        self._set_target_state(None, None, target_config, None, None, False)
 
     def _delete_deployment(self, name):
         id = EndpointTag(name, self._name)
@@ -378,12 +380,12 @@ class ApplicationState:
                     target_capacity_direction=target_capacity_direction,
                 )
             except (TypeError, ValueError, RayServeException):
-                self._clear_target_state()
+                self._clear_target_state_and_store_config(config)
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED, traceback.format_exc()
                 )
             except Exception:
-                self._clear_target_state()
+                self._clear_target_state_and_store_config(config)
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED,
                     (
@@ -402,7 +404,7 @@ class ApplicationState:
 
             # Halt reconciliation of target deployments. A new target state
             # will be set once the new app has finished building.
-            self._clear_target_state()
+            self._clear_target_state_and_store_config(config)
 
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")
