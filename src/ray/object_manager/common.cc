@@ -40,7 +40,7 @@ void PlasmaObjectHeader::Destroy() {
 // This has to be called only when reader lock is acquired
 // via ReadAcquire.
 uint64_t PlasmaObjectHeader::GetDataSize() const {
-  RAY_CHECK_GE(num_read_releases_remaining, 0)
+  RAY_CHECK_NE(num_read_releases_remaining, 0)
       << "ReadAcquire has to be called before calling this method.";
   return data_size;
 }
