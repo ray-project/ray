@@ -12,6 +12,7 @@ from ray.rllib.utils.typing import MultiAgentDict
 
 class MultiAgentTestEnv(MultiAgentEnv):
     def __init__(self, truncate=True):
+        super().__init__()
         self.t = 0
         self._agent_ids = {"agent_" + str(i) for i in range(10)}
 
