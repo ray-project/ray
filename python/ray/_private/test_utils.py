@@ -2095,15 +2095,18 @@ def reset_autoscaler_v2_enabled_cache():
     u.cached_is_autoscaler_v2 = None
 
 
-def skip_flaky_test() -> bool:
+def skip_flaky_core_test_premerge(reason: str):
     """
-    Skip a test if it is flaky (e.g. in premerge)
+    Decorator to skip a test if it is flaky (e.g. in premerge)
 
     Default we will skip the flaky test if not specified otherwise in
     CI with CI_SKIP_FLAKY_TEST="0"
-
-
-    Returns:
-        bool: True if the test should be skipped
     """
-    return os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1"
+    import pytest
+
+    def wrapper(func):
+        return pytest.mark.skipif(
+            os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1", reason=reason
+        )(func)
+
+    return wrapper

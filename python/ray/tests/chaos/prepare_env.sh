@@ -46,4 +46,4 @@ echo "--Installing chaos-mesh operator and CR."
 helm repo add chaos-mesh https://charts.chaos-mesh.org
 kubectl create ns chaos-mesh
 helm install chaos-mesh chaos-mesh/chaos-mesh -n=chaos-mesh --set chaosDaemon.runtime=containerd --set chaosDaemon.socketPath=/run/containerd/containerd.sock --version 2.6.1
-kubectl wait pod  --namespace chaos-mesh  -l app.kubernetes.io/instance=chaos-mesh --for=condition=Ready=True
+kubectl wait pod --namespace chaos-mesh -l app.kubernetes.io/instance=chaos-mesh --for=condition=Ready=True

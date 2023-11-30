@@ -2,6 +2,18 @@
 
 # Production Guide
 
+```{toctree}
+:hidden:
+
+config
+kubernetes
+docker
+fault-tolerance
+handling-dependencies
+best-practices
+```
+
+
 The recommended way to run Ray Serve in production is on Kubernetes using the [KubeRay](kuberay-quickstart) [RayService](kuberay-rayservice-quickstart) custom resource.
 The RayService custom resource automatically handles important production requirements such as health checking, status reporting, failure recovery, and upgrades.
 If you're not running on Kubernetes, you can also run Ray Serve on a Ray cluster directly using the Serve CLI.

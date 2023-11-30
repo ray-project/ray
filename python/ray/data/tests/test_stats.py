@@ -36,6 +36,7 @@ def gen_expected_metrics(
             "'bytes_inputs_received': N",
             "'num_inputs_processed': N",
             "'bytes_inputs_processed': N",
+            "'bytes_inputs_of_submitted_tasks': N",
             "'num_outputs_generated': N",
             "'bytes_outputs_generated': N",
             "'rows_outputs_generated': N",
@@ -47,6 +48,7 @@ def gen_expected_metrics(
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
+            "'num_tasks_failed': Z",
             "'obj_store_mem_alloc': N",
             "'obj_store_mem_freed': N",
             "'obj_store_mem_cur': Z",
@@ -568,6 +570,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      bytes_inputs_received: N,\n"
         "      num_inputs_processed: N,\n"
         "      bytes_inputs_processed: N,\n"
+        "      bytes_inputs_of_submitted_tasks: N,\n"
         "      num_outputs_generated: N,\n"
         "      bytes_outputs_generated: N,\n"
         "      rows_outputs_generated: N,\n"
@@ -579,6 +582,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
+        "      num_tasks_failed: Z,\n"
         "      obj_store_mem_alloc: N,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_cur: Z,\n"

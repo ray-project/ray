@@ -81,9 +81,9 @@ def run_storage_cp(source: str, target: str):
             "bucket-owner-full-control",
         ]
     elif storage_service == "gs":
-        install_pip("gsutil")
         cp_cmd_args = [
-            "gsutil",
+            "gcloud",
+            "storage",
             "cp",
             source,
             target,
