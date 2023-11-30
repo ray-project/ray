@@ -3,6 +3,7 @@ from .metrics_core import (
     CounterMetricFamily, GaugeHistogramMetricFamily, GaugeMetricFamily,
     HistogramMetricFamily, InfoMetricFamily, Metric, StateSetMetricFamily,
     SummaryMetricFamily, UnknownMetricFamily, UntypedMetricFamily,
+    SumMetricFamily
 )
 from .registry import CollectorRegistry, REGISTRY
 from .samples import Exemplar, Sample, Timestamp
@@ -29,4 +30,5 @@ __all__ = (
     'Timestamp',
     'UnknownMetricFamily',
     'UntypedMetricFamily',
+    'SumMetricFamily',
 )

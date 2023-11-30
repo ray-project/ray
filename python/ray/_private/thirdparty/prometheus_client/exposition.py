@@ -210,6 +210,10 @@ def generate_latest(registry: CollectorRegistry = REGISTRY) -> bytes:
                 # A gauge histogram is really a gauge,
                 # but this captures the structure better.
                 mtype = 'histogram'
+            elif mtype == 'sum_counter':
+                # breaking change prevention from #37768 issue
+                # TODO: remove this once the breaking change is resolved + notify users.
+                mtype = 'counter'
             elif mtype == 'unknown':
                 mtype = 'untyped'
 
