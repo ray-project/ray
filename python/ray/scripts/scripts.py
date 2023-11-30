@@ -813,25 +813,26 @@ def start(
                     else "",
                 )
 
-            if dashboard_url:
-                cli_logger.newline()
-                cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
-                cli_logger.print(
-                    cf.bold(
-                        "  RAY_ADDRESS='http://{}' ray job submit "
-                        "--working-dir . "
-                        "-- python my_script.py"
-                    ),
-                    dashboard_url,
-                )
-                cli_logger.newline()
-                cli_logger.print(
-                    "See https://docs.ray.io/en/latest/cluster/running-applications"
-                    "/job-submission/index.html "
-                )
-                cli_logger.print(
-                    "for more information on submitting Ray jobs to the Ray cluster."
-                )
+                if dashboard_url:
+                    cli_logger.newline()
+                    cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
+                    cli_logger.print(
+                        cf.bold(
+                            "  RAY_ADDRESS='http://{}' ray job submit "
+                            "--working-dir . "
+                            "-- python my_script.py"
+                        ),
+                        dashboard_url,
+                    )
+                    cli_logger.newline()
+                    cli_logger.print(
+                        "See https://docs.ray.io/en/latest/cluster/running-applications"
+                        "/job-submission/index.html "
+                    )
+                    cli_logger.print(
+                        "for more information on submitting "
+                        "Ray jobs to the Ray cluster."
+                    )
 
             cli_logger.newline()
             cli_logger.print(

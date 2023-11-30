@@ -904,7 +904,7 @@ def get_or_create_head_node(
         )
         cli_logger.newline()
 
-        cli_logger.print("To connect to a terminal on the cluster head for debugging:")
+        cli_logger.print("To connect to a terminal on the head node:")
         cli_logger.print(cf.bold(f"  ray attach {printable_config_file}{modifiers}"))
         cli_logger.newline()
 

@@ -102,6 +102,8 @@ RAY_RUNTIME_ENV_HOOK = "RAY_RUNTIME_ENV_HOOK"
 # whether we are the head node as arguments. The function can modify the params class,
 # but otherwise returns void. Example: "your.module.ray_start_hook".
 RAY_START_HOOK = "RAY_START_HOOK"
+# If set to 1, then the "Next steps" message will not be printed after `ray start`.
+RAY_START_SKIP_NEXT_STEPS_MESSAGE = env_bool("RAY_START_SKIP_NEXT_STEPS_MESSAGE", False)
 # Hook that is invoked on `ray job submit`. It will be given all the same args as the
 # job.cli.submit() function gets, passed as kwargs to this function.
 RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
