@@ -28,6 +28,11 @@ fi
 echo "Creating var/ artifact directory..."
 docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'chown -R 2000 /artifact-mount/' || true
 
+if [ "${OSTYPE}" = msys ]; then
+  # Disable Windows Defender real-time monitoring. This is neccessary to avoid
+  # docker build significant slow down
+  powershell -Command "Set-MpPreference -DisableRealtimeMonitoring 1"
+fi
 
 RAYCI_CHECKOUT_DIR="$(pwd)"
 export RAYCI_CHECKOUT_DIR

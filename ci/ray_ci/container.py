@@ -36,10 +36,12 @@ class Container:
     def __init__(
         self,
         docker_tag: str,
+        operating_system: str = "linux",
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
     ) -> None:
         self.docker_tag = docker_tag
+        self.operating_system = operating_system
         self.volumes = volumes or []
         self.envs = envs or []
         self.envs += _DOCKER_ENV
@@ -62,9 +64,9 @@ class Container:
 
     def install_ray(self, build_type: Optional[str] = None) -> None:
         env = os.environ.copy()
-        env["DOCKER_BUILDKIT"] = "1"
-        subprocess.check_call(
-            [
+        if self.operating_system == "linux":
+            env["DOCKER_BUILDKIT"] = "1"
+            build_script = [
                 "docker",
                 "build",
                 "--pull",
@@ -77,7 +79,22 @@ class Container:
                 "-f",
                 "/ray/ci/ray_ci/tests.env.Dockerfile",
                 "/ray",
-            ],
+            ]
+        elif self.operating_system == "windows":
+            build_script = [
+                "docker",
+                "build",
+                "-t",
+                self._get_docker_image(),
+                "-f",
+                "c:\\workdir\\ci\\ray_ci\\tests.windows.env.Dockerfile",
+                "c:\\workdir",
+            ]
+        else:
+            assert False, f"Unsupported operating system: {self.operating_system}"
+
+        subprocess.check_call(
+            build_script,
             env=env,
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -93,13 +110,25 @@ class Container:
             "run",
             "-i",
             "--rm",
-            "--env",
-            "NVIDIA_DISABLE_REQUIRE=1",
-            "--volume",
-            "/tmp/artifacts:/artifact-mount",
-            "--add-host",
-            "rayci.localhost:host-gateway",
+            "--shm-size=2.5gb",
+            "--workdir",
+            "/rayci",
         ]
+        if self.operating_system == "linux":
+            command += [
+                "--env",
+                "NVIDIA_DISABLE_REQUIRE=1",
+                "--volume",
+                "/tmp/artifacts:/artifact-mount",
+                "--add-host",
+                "rayci.localhost:host-gateway",
+            ]
+            shell = ["/bin/bash", "-iecuo", "pipefail", "--"]
+        elif self.operating_system == "windows":
+            shell = ["bash", "-c"]
+        else:
+            assert False, f"Unsupported operating system: {self.operating_system}"
+
         for volume in self.volumes:
             command += ["--volume", volume]
         for env in self.envs:
@@ -108,17 +137,7 @@ class Container:
             command += ["--cap-add", cap]
         if gpu_ids:
             command += ["--gpus", f'"device={",".join(map(str, gpu_ids))}"']
-        command += [
-            "--workdir",
-            "/rayci",
-            "--shm-size=2.5gb",
-            self._get_docker_image(),
-            "/bin/bash",
-            "-iecuo",
-            "pipefail",
-            "--",
-            "\n".join(script),
-        ]
+        command += [self._get_docker_image()] + shell + ["\n".join(script)]
 
         return command
 

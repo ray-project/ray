@@ -35,7 +35,7 @@ def test_get_container() -> None:
         "ci.ray_ci.tester_container.TesterContainer.install_ray",
         return_value=None,
     ):
-        container = _get_container("core", 3, 1, 2, 0)
+        container = _get_container("core", 3, 1, 2, "linux", 0)
         assert container.docker_tag == "corebuild"
         assert container.shard_count == 6
         assert container.shard_ids == [2, 3]

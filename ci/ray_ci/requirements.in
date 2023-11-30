@@ -1,3 +1,4 @@
 click
+colorama
 pytest
 pyyaml

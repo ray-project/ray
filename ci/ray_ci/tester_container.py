@@ -15,6 +15,7 @@ class TesterContainer(Container):
     def __init__(
         self,
         docker_tag: str,
+        operating_system: str = "linux",
         shard_count: int = 1,
         gpus: int = 0,
         test_envs: Optional[List[str]] = None,
@@ -32,10 +33,13 @@ class TesterContainer(Container):
         super().__init__(
             docker_tag,
             envs=test_envs,
+            operating_system=operating_system,
             volumes=[
                 f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
                 "/var/run/docker.sock:/var/run/docker.sock",
-            ],
+            ]
+            if operating_system == "linux"
+            else [],
         )
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
