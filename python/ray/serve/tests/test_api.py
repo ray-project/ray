@@ -773,7 +773,7 @@ class TestAppBuilder:
             call_app_builder_with_args_if_necessary(
                 check_missing_required, {"num_replicas": "10"}
             )
-    
+
     def test_pydantic_version_compatibility(self):
         """Check compatibility with different pydantic versions."""
 

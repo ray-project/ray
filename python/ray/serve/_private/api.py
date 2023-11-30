@@ -4,7 +4,7 @@ from types import FunctionType
 from typing import Any, Dict, Tuple, Union
 
 import ray
-from ray._private.pydantic_compat import BaseModel
+from ray._private.pydantic_compat import is_subclass_of_base_model
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.usage import usage_lib
 from ray.actor import ActorHandle
@@ -340,7 +340,9 @@ def call_app_builder_with_args_if_necessary(
     # that model. This will perform standard pydantic validation (e.g., raise an
     # exception if required fields are missing).
     param = signature.parameters[list(signature.parameters.keys())[0]]
-    if inspect.isclass(param.annotation) and issubclass(param.annotation, BaseModel):
+    if inspect.isclass(param.annotation) and is_subclass_of_base_model(
+        param.annotation
+    ):
         args = param.annotation.parse_obj(args)
 
     app = builder(args)
