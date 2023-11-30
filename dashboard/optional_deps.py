@@ -7,7 +7,7 @@
 # for opencensus, too, and raises a different error otherwise.
 import opencensus  # noqa: F401
 
-import prometheus_client  # noqa: F401
+import ray._private.thirdparty.prometheus_client  # noqa: F401
 
 import aiohttp  # noqa: F401
 import aiohttp.web  # noqa: F401

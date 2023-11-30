@@ -61,7 +61,7 @@ def generate_protobuf_metric(
     name: str,
     desc: str,
     unit: str,
-    type: int = 2, # default GaugeDouble
+    type: int = 2,  # default GaugeDouble
     label_keys: List[str] = None,
     timeseries: List[TimeSeries] = None,
 ):

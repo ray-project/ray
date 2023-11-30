@@ -13,6 +13,7 @@ import pytest
 
 import ray
 from ray.util.state import list_nodes
+import ray._private.thirdparty.prometheus_client as prometheus_client
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
@@ -29,10 +30,6 @@ from ray.util.metrics import Counter, Gauge, Histogram
 
 os.environ["RAY_event_stats"] = "1"
 
-try:
-    import prometheus_client
-except ImportError:
-    prometheus_client = None
 
 # This list of metrics should be kept in sync with src/ray/stats/metric_defs.h
 # NOTE: Commented out metrics are not available in this test.

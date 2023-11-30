@@ -59,7 +59,10 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 try:
-    from prometheus_client.parser import text_string_to_metric_families, Sample
+    from ray._private.thirdparty.prometheus_client.parser import (
+        text_string_to_metric_families,
+        Sample,
+    )
 except (ImportError, ModuleNotFoundError):
 
     Sample = None

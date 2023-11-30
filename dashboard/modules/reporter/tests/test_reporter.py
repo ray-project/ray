@@ -28,10 +28,7 @@ from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 from ray.core.generated.metrics_pb2 import Metric
 
-try:
-    import prometheus_client
-except ImportError:
-    prometheus_client = None
+import ray._private.thirdparty.prometheus_client as prometheus_client
 
 logger = logging.getLogger(__name__)
 

@@ -22,7 +22,12 @@ class NullMetric:
 
 try:
 
-    from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
+    from ray._private.thirdparty.prometheus_client import (
+        CollectorRegistry,
+        Counter,
+        Gauge,
+        Histogram,
+    )
 
     # The metrics in this class should be kept in sync with
     # python/ray/tests/test_metrics_agent.py
