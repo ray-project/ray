@@ -765,7 +765,7 @@ class Algorithm(Trainable, AlgorithmBase):
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 
-            # check if there are modules to load from the module_spec
+            # Check if there are modules to load from the `module_spec`.
             rl_module_ckpt_dirs = {}
             marl_module_ckpt_dir = module_spec.load_state_path
             modules_to_load = module_spec.modules_to_load
@@ -778,7 +778,12 @@ class Algorithm(Trainable, AlgorithmBase):
                     modules_to_load=modules_to_load,
                     rl_module_ckpt_dirs=rl_module_ckpt_dirs,
                 )
-            # sync the weights from the learner group to the rollout workers
+            # Update the LearnerGroup's `is_module_trainable` function
+            # (analogous to is_policy_to_train).
+            is_module_trainable = self.workers.local_worker().is_policy_to_train
+            self.learner_group.set_is_module_trainable(is_module_trainable)
+
+            # Sync the weights from the learner group to the rollout workers.
             weights = self.learner_group.get_weights()
             local_worker.set_weights(weights)
             self.workers.sync_weights()
@@ -2173,7 +2178,14 @@ class Algorithm(Trainable, AlgorithmBase):
                 policies_to_train=policies_to_train,
             )
 
+        # Update all EnvRunner workers.
         self.workers.foreach_worker(fn, local_worker=True, healthy_only=True)
+
+        # Update the LearnerGroup's `is_module_trainable` function.
+        is_module_trainable = self.workers.local_worker().is_policy_to_train
+        self.learner_group.set_is_module_trainable(is_module_trainable)
+
+        # Update the evaluation worker set's workers, if required.
         if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(
                 fn,

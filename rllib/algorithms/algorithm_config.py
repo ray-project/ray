@@ -951,10 +951,8 @@ class AlgorithmConfig(_Config):
             )
 
         # TODO (sven): Remove this hack. We should not have env-var dependent logic
-        #  in the codebase.
+        #  this deep in the codebase (should only be used in example/testing scripts).
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
-            # Enable RLModule API and connectors if env variable is set
-            # (to be used in unittesting)
             self.experimental(_enable_new_api_stack=True)
             self.enable_connectors = True
 
