@@ -34,7 +34,7 @@ class ContainerManager:
             "--network=host",
             "--pid=host",
             "--ipc=host",
-            "--user=root",
+            "--userns=keep-id",
         ]
 
         container_command.append("--env")
