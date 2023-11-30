@@ -115,9 +115,9 @@ def test_process_completed_tasks():
     assert len(topo[o1].outqueue) == 20, topo
 
     # Test processing completed work items.
-    sleep_task = MetadataOpTask(sleep.remote(), lambda: None)
+    sleep_task = MetadataOpTask(0, sleep.remote(), lambda: None)
     done_task_callback = MagicMock()
-    done_task = MetadataOpTask(ray.put("done"), done_task_callback)
+    done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
@@ -129,7 +129,7 @@ def test_process_completed_tasks():
 
     # Test input finalization.
     done_task_callback = MagicMock()
-    done_task = MetadataOpTask(ray.put("done"), done_task_callback)
+    done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()

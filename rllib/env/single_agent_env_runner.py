@@ -73,7 +73,9 @@ class SingleAgentEnvRunner(EnvRunner):
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
         try:
-            module_spec: SingleAgentRLModuleSpec = self.config.get_default_rl_module_spec()
+            module_spec: SingleAgentRLModuleSpec = (
+                self.config.get_default_rl_module_spec()
+            )
             module_spec.observation_space = self.env.envs[0].observation_space
             # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
             #  actually hold the spaces for a single env, but for boxes the
@@ -102,6 +104,11 @@ class SingleAgentEnvRunner(EnvRunner):
         self._ongoing_episodes_for_metrics: Dict[List] = defaultdict(list)
         self._ts_since_last_metrics: int = 0
         self._weights_seq_no: int = 0
+
+        # TODO (sven): This is a temporary solution. STATE_OUTs
+        #  will be resolved entirely as `extra_model_outputs` and
+        #  not be stored separately inside Episodes.
+        self._states = [None for _ in range(self.num_envs)]
 
     @override(EnvRunner)
     def sample(
@@ -178,7 +185,10 @@ class SingleAgentEnvRunner(EnvRunner):
             for i in range(self.num_envs):
                 # TODO (sven): Maybe move this into connector pipeline
                 # (even if automated).
-                self._episodes[i].add_env_reset(observation=obs[i], info=infos[i])
+                self._episodes[i].add_env_reset(
+                    observation=obs[i],
+                    infos=infos[i],
+                )
 
         # Loop through env in enumerate.(self._episodes):
         ts = 0
@@ -238,30 +248,31 @@ class SingleAgentEnvRunner(EnvRunner):
                         infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
-                        info=infos[i]["final_info"],
+                        infos=infos[i]["final_info"],
                         terminated=terminateds[i],
                         truncated=truncateds[i],
                         extra_model_outputs=extra_model_output,
                     )
+                    self._states[i] = s
 
-                    done_episodes_to_return.append(
-                        self._episodes[i].finalize()
-                    )
-                    # Create a new episode object.
+                    done_episodes_to_return.append(self._episodes[i].finalize())
+                    # Create a new episode object with already the reset data in it.
                     self._episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]],
                         infos=[infos[i]],
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )
+                    self._states[i] = s
                 else:
                     self._episodes[i].add_env_step(
                         obs[i],
                         actions[i],
                         rewards[i],
-                        info=infos[i],
+                        infos=infos[i],
                         extra_model_outputs=extra_model_output,
                     )
+                    self._states[i] = s
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
@@ -308,6 +319,10 @@ class SingleAgentEnvRunner(EnvRunner):
         # at the beginning.
         self._needs_initial_reset = True
 
+        # If user calls sample(num_timesteps=..) after this, we must reset again
+        # at the beginning.
+        self._needs_initial_reset = True
+
         done_episodes_to_return: List["SingleAgentEpisode"] = []
 
         obs, infos = self.env.reset()
@@ -325,7 +340,7 @@ class SingleAgentEnvRunner(EnvRunner):
         for i in range(self.num_envs):
             episodes[i].add_env_reset(
                 observation=obs[i],
-                info=infos[i],
+                infos=infos[i],
                 render_image=render_images[i],
             )
 
@@ -370,7 +385,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
-                        info=infos[i]["final_info"],
+                        infos=infos[i]["final_info"],
                         terminated=terminateds[i],
                         truncated=truncateds[i],
                         extra_model_outputs=extra_model_output,
@@ -398,7 +413,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         obs[i],
                         actions[i],
                         rewards[i],
-                        info=infos[i],
+                        infos=infos[i],
                         render_image=render_images[i],
                         extra_model_outputs=extra_model_output,
                     )

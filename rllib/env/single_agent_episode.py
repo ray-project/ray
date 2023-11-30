@@ -65,8 +65,8 @@ class SingleAgentEpisode:
                 observation=obs,
                 action=action,
                 reward=reward,
-                is_terminated=term,
-                is_truncated=trunc,
+                terminated=term,
+                truncated=trunc,
                 infos=infos,
             )
         assert len(episode) == 10
@@ -108,7 +108,14 @@ class SingleAgentEpisode:
             "c": gym.spaces.Box(-1.0, 1.0, (2,)),
         }))
 
-        # ... fill episode with data
+        # ... fill episode with data ...
+        episode.add_env_reset(observation=0)
+        # ... from a few steps.
+        episode.add_env_step(
+            observation=1,
+            action={"a":0, "b":np.array([1, 2]), "c":np.array([.5, -.5], np.float32)},
+            reward=1.0,
+        )
 
         # In your connector
         prev_4_a = []
@@ -161,24 +168,24 @@ class SingleAgentEpisode:
                 provided the constructor generates a hexadecimal code for the id.
             observations: Optional. A list of observations from a rollout. If
                 data is provided it should be complete (i.e. observations, actions,
-                rewards, is_terminated, is_truncated, and all necessary
+                rewards, terminated, truncated, and all necessary
                 `extra_model_outputs`). The length of the `observations` defines
                 the default starting value. See the parameter `t_started`.
             actions: Optional. A list of actions from a rollout. If data is
                 provided it should be complete (i.e. observations, actions,
-                rewards, is_terminated, is_truncated, and all necessary
+                rewards, terminated, truncated, and all necessary
                 `extra_model_outputs`).
             rewards: Optional. A list of rewards from a rollout. If data is
                 provided it should be complete (i.e. observations, actions,
-                rewards, is_terminated, is_truncated, and all necessary
+                rewards, terminated, truncated, and all necessary
                 `extra_model_outputs`).
             infos: Optional. A list of infos from a rollout. If data is
                 provided it should be complete (i.e. observations, actions,
-                rewards, is_terminated, is_truncated, and all necessary
+                rewards, terminated, truncated, and all necessary
                 `extra_model_outputs`).
             states: Optional. The hidden model states from a rollout. If
                 data is provided it should be complete (i.e. observations, actions,
-                rewards, is_terminated, is_truncated, and all necessary
+                rewards, terminated, truncated, and all necessary
                 `extra_model_outputs`). States are only avasilable if a stateful
                 model (`RLModule`) is used.
             terminated: Optional. A boolean indicating, if the episode is already
@@ -190,7 +197,7 @@ class SingleAgentEpisode:
             extra_model_outputs: Optional. A list of dictionaries containing specific
                 model outputs for the algorithm used (e.g. `vf_preds` and `action_logp`
                 for PPO) from a rollout. If data is provided it should be complete
-                (i.e. observations, actions, rewards, is_terminated, is_truncated,
+                (i.e. observations, actions, rewards, terminated, truncated,
                 and all necessary `extra_model_outputs`).
             render_images: Optional. A list of RGB uint8 images from rendering
                 the environment.
@@ -235,7 +242,7 @@ class SingleAgentEpisode:
         self.rewards = BufferWithInfiniteLookback(
             data=rewards,
             lookback=self._len_lookback_buffer,
-            space=gym.spaces.Box(float("-inf"), float("inf"), (), dtype=np.float32),
+            space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
         )
         # Infos: t0 (initial info) to T.
         self.infos = BufferWithInfiniteLookback(
@@ -286,8 +293,8 @@ class SingleAgentEpisode:
         together. This is checked by the IDs (must be identical), the time step counters
         (`self.t` must be the same as `episode_chunk.t_started`), as well as the
         observations/infos at the concatenation boundaries (`self.observations[-1]`
-        must match `episode_chunk.observations[0]`). Also, `self` must not be done yet,
-        meaning `is_terminal` and `is_truncated` are both False.
+        must match `episode_chunk.observations[0]`). Also, `self.is_done` must not be
+        True, meaning `self.is_terminated` and `self.is_truncated` are both False.
 
         Args:
             episode_chunk: Another `SingleAgentEpisode` to be concatenated.
@@ -333,7 +340,7 @@ class SingleAgentEpisode:
     def add_env_reset(
         self,
         observation: ObsType,
-        info: Optional[Dict] = None,
+        infos: Optional[Dict] = None,
         *,
         render_image: Optional[np.ndarray] = None,
     ) -> None:
@@ -344,7 +351,7 @@ class SingleAgentEpisode:
 
         Args:
             observation: The initial observation returned by `env.reset()`.
-            info: An (optional) info dict returned by `env.reset()`.
+            infos: An (optional) info dict returned by `env.reset()`.
             render_image: Optional. An RGB uint8 image from rendering
                 the environment right after the reset.
         """
@@ -354,7 +361,7 @@ class SingleAgentEpisode:
         # Leave self.t (and self.t_started) at 0.
         assert self.t == self.t_started == 0
 
-        info = info or {}
+        infos = infos or {}
 
         if self.observation_space is not None:
             assert self.observation_space.contains(observation), (
@@ -363,7 +370,7 @@ class SingleAgentEpisode:
             )
 
         self.observations.append(observation)
-        self.infos.append(info)
+        self.infos.append(infos)
         if render_image is not None:
             self.render_images.append(render_image)
 
@@ -375,7 +382,7 @@ class SingleAgentEpisode:
         observation: ObsType,
         action: ActType,
         reward: SupportsFloat,
-        info: Optional[Dict[str, Any]] = None,
+        infos: Optional[Dict[str, Any]] = None,
         *,
         terminated: bool = False,
         truncated: bool = False,
@@ -393,7 +400,7 @@ class SingleAgentEpisode:
                 `action`.
             action: The last action used by the agent during the call to `env.step()`.
             reward: The last reward received by the agent after taking `action`.
-            info: The last info recevied from the environment after taking `action`.
+            infos: The last info received from the environment after taking `action`.
             terminated: A boolean indicating, if the environment has been
                 terminated (after taking `action`).
             truncated: A boolean indicating, if the environment has been
@@ -412,8 +419,8 @@ class SingleAgentEpisode:
         self.observations.append(observation)
         self.actions.append(action)
         self.rewards.append(reward)
-        info = info or {}
-        self.infos.append(info)
+        infos = infos or {}
+        self.infos.append(infos)
         self.t += 1
         if render_image is not None:
             self.render_images.append(render_image)
@@ -510,27 +517,27 @@ class SingleAgentEpisode:
                 observations=[0, 1, 2, 3],
                 actions=[1, 2, 3],
                 rewards=[1, 2, 3],
-                # Note: is_terminal/is_truncated have nothing to do with an episode
-                # being finalized or not!
-                is_terminal=False,
+                # Note: terminated/truncated have nothing to do with an episode
+                # being `finalized` or not (via the `self.finalize()` method)!
+                terminated=False,
             )
             # Episode has not been finalized (numpy'ized) yet.
             assert not episode.is_finalized
             # We are still operating on lists.
             assert episode.get_observations([1]) == [1]
             assert episode.get_observations(slice(None, 2)) == [0, 1]
-            # We can still add data (and even add the is_terminated=True flag).
+            # We can still add data (and even add the terminated=True flag).
             episode.add_env_step(
                 observation=4,
                 action=4,
                 reward=4,
-                is_terminated=True,
+                terminated=True,
             )
             # Still NOT finalized.
             assert not episode.is_finalized
 
             # Let's finalize the episode.
-            episode.finalized()
+            episode.finalize()
             assert episode.is_finalized
 
             # We cannot add data anymore. The following would crash.
@@ -748,6 +755,8 @@ class SingleAgentEpisode:
                 size of 2 (meaning infos {"l":10}, {"l":11} are part of the lookback
                 buffer) will respond to `get_infos(slice(-7, -2), fill={"o": 0.0})`
                 with `[{"o":0.0}, {"o":0.0}, {"l":10}, {"l":11}, {"a":12}]`.
+                TODO (sven): This would require a space being provided. Maybe we can
+                 skip this check for infos, which don't have a space anyways.
 
         Examples:
 
@@ -756,7 +765,7 @@ class SingleAgentEpisode:
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
             episode = SingleAgentEpisode(
-                infos=[{"a":0}, {"b":1}, {"c":2}, {"d":3}]
+                infos=[{"a":0}, {"b":1}, {"c":2}, {"d":3}],
                 # The following is needed, but not relevant for this demo.
                 observations=[0, 1, 2, 3], actions=[1, 2, 3], rewards=[1, 2, 3],
             )
@@ -768,8 +777,10 @@ class SingleAgentEpisode:
             episode.get_infos(slice(None, 2))  # [{"a":0},{"b":1}]
             episode.get_infos(slice(-2, None))  # [{"c":2},{"d":3}]
             # Using `fill=...` (requesting slices beyond the boundaries).
-            episode.get_infos(slice(-5, -3), fill={"o":-1})  # [{"o":-1},{"a":0}]
-            episode.get_infos(slice(3, 5), fill={"o":-2})  # [{"d":3},{"o":-2}]
+            # TODO (sven): This would require a space being provided. Maybe we can
+            #  skip this check for infos, which don't have a space anyways.
+            # episode.get_infos(slice(-5, -3), fill={"o":-1})  # [{"o":-1},{"a":0}]
+            # episode.get_infos(slice(3, 5), fill={"o":-2})  # [{"d":3},{"o":-2}]
 
         Returns:
             The collected info dicts.
@@ -829,6 +840,7 @@ class SingleAgentEpisode:
 
         .. testcode::
 
+            import gymnasium as gym
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
             episode = SingleAgentEpisode(
@@ -984,6 +996,8 @@ class SingleAgentEpisode:
                 respond to
                 `get_extra_model_outputs("b", slice(-7, -2), fill=0.0)` with
                 `[0.0, 0.0, 10, 11, 12]`.
+                TODO (sven): This would require a space being provided. Maybe we can
+                 automatically infer the space from existing data?
 
         Examples:
 
@@ -998,15 +1012,17 @@ class SingleAgentEpisode:
             )
 
             # Plain usage (`indices` arg only).
-            episode.extra_model_outputs("mo", -1)  # 3
-            episode.extra_model_outputs("mo", 1)  # 0
-            episode.extra_model_outputs("mo", [0, 2])  # [1, 3]
-            episode.extra_model_outputs("mo", [-1, 0])  # [3, 1]
-            episode.extra_model_outputs("mo", slice(None, 2))  # [1, 2]
-            episode.extra_model_outputs("mo", slice(-2, None))  # [2, 3]
+            episode.get_extra_model_outputs("mo", -1)  # 3
+            episode.get_extra_model_outputs("mo", 1)  # 0
+            episode.get_extra_model_outputs("mo", [0, 2])  # [1, 3]
+            episode.get_extra_model_outputs("mo", [-1, 0])  # [3, 1]
+            episode.get_extra_model_outputs("mo", slice(None, 2))  # [1, 2]
+            episode.get_extra_model_outputs("mo", slice(-2, None))  # [2, 3]
             # Using `fill=...` (requesting slices beyond the boundaries).
-            episode.extra_model_outputs("mo", slice(-5, -2), fill=0)  # [0, 0, 1]
-            episode.extra_model_outputs("mo", slice(2, 5), fill=-1)  # [3, -1, -1]
+            # TODO (sven): This would require a space being provided. Maybe we can
+            #  automatically infer the space from existing data?
+            # episode.get_extra_model_outputs("mo", slice(-5, -2), fill=0)  # [0, 0, 1]
+            # episode.get_extra_model_outputs("mo", slice(2, 5), fill=-1)  # [3, -1, -1]
 
         Returns:
             The collected extra_model_outputs[`key`].
@@ -1055,7 +1071,7 @@ class SingleAgentEpisode:
             The new SingleAgentEpisode representing the requested slice.
         """
         # Figure out, whether slicing stops at the very end of this episode to know
-        # whether is_terminated/truncated should be kept as-is.
+        # whether `self.is_terminated/is_truncated` should be kept as-is.
         keep_done = slice_.stop is None or slice_.stop == len(self)
         start = slice_.start or 0
         t_started = self.t_started + start + (0 if start >= 0 else len(self))
@@ -1099,8 +1115,8 @@ class SingleAgentEpisode:
                 )
                 for k in self.extra_model_outputs
             },
-            is_terminated=(self.is_terminated if keep_done else False),
-            is_truncated=(self.is_truncated if keep_done else False),
+            terminated=(self.is_terminated if keep_done else False),
+            truncated=(self.is_truncated if keep_done else False),
             # Provide correct timestep- and pre-buffer information.
             t_started=t_started,
             len_lookback_buffer=self._len_lookback_buffer,
@@ -1137,7 +1153,7 @@ class SingleAgentEpisode:
                 # Retrieve obs, infos, actions, rewards using our get_... APIs,
                 # which return all relevant timesteps (excluding the lookback
                 # buffer!).
-                SampleBatch.OBS: self.get_observations(),
+                SampleBatch.OBS: self.get_observations(slice(None, -1)),
                 SampleBatch.INFOS: self.get_infos(),
                 SampleBatch.ACTIONS: self.get_actions(),
                 SampleBatch.REWARDS: self.get_rewards(),

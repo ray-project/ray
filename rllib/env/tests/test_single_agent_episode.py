@@ -99,7 +99,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
 
         # Add initial observations.
         obs, info = env.reset()
-        episode.add_env_reset(observation=obs, info=info)
+        episode.add_env_reset(observation=obs, infos=info)
 
         # Assert that the observations are added to their list.
         self.assertTrue(len(episode.observations) == 1)
@@ -121,9 +121,10 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Set the random seed (otherwise the episode will terminate at
         # different points in each test run).
         obs, info = env.reset(seed=0)
-        episode.add_env_reset(observation=obs, info=info)
+        episode.add_env_reset(observation=obs, infos=info)
 
         # Sample 100 timesteps and add them to the episode.
+        terminated = truncated = False
         for i in range(100):
             action = env.action_space.sample()
             obs, reward, terminated, truncated, info = env.step(action)
@@ -131,7 +132,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
                 observation=obs,
                 action=action,
                 reward=reward,
-                info=info,
+                infos=info,
                 terminated=terminated,
                 truncated=truncated,
                 extra_model_outputs={"extra": np.random.random(1)},
@@ -152,9 +153,9 @@ class TestSingelAgentEpisode(unittest.TestCase):
             == i + 1
         )
         # Assert that the flags are set correctly.
-        self.assertTrue(episode.is_terminated == is_terminated)
-        self.assertTrue(episode.is_truncated == is_truncated)
-        self.assertTrue(episode.is_done == is_terminated or is_truncated)
+        self.assertTrue(episode.is_terminated == terminated)
+        self.assertTrue(episode.is_truncated == truncated)
+        self.assertTrue(episode.is_done == terminated or truncated)
 
     def test_cut(self):
         """Tests creation of a scucessor of a `SingleAgentEpisode`.
@@ -171,7 +172,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         env = TestEnv()
         # Add initial observation.
         init_obs, init_info = env.reset()
-        episode_1.add_env_reset(observation=init_obs, info=init_info)
+        episode_1.add_env_reset(observation=init_obs, infos=init_info)
         # Sample 100 steps.
         for i in range(100):
             action = i
@@ -180,7 +181,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
                 observation=obs,
                 action=action,
                 reward=reward,
-                info=info,
+                infos=info,
                 terminated=terminated,
                 truncated=truncated,
                 extra_model_outputs={"extra": np.random.random(1)},
@@ -208,7 +209,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
             observation=obs,
             action=action,
             reward=reward,
-            info=info,
+            infos=info,
             terminated=terminated,
             truncated=truncated,
             extra_model_outputs={"extra": np.random.random(1)},
@@ -336,19 +337,19 @@ class TestSingelAgentEpisode(unittest.TestCase):
         env = TestEnv()
         init_obs, init_info = env.reset()
         episode_1 = SingleAgentEpisode()
-        episode_1.add_env_reset(observation=init_obs, info=init_info)
+        episode_1.add_env_reset(observation=init_obs, infos=init_info)
         # Sample 100 timesteps.
         for i in range(100):
             action = i
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             episode_1.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
-                info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={"extra": np.random.random(1)},
+                infos=info,
+                terminated=terminated,
+                truncated=truncated,
+                extra_model_outputs={"extra": np.random.random(1)},
             )
 
         # Create a successor.
@@ -357,15 +358,15 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Now, sample 100 more timesteps.
         for i in range(100, 200):
             action = i
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             episode_2.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
-                info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={"extra": np.random.random(1)},
+                infos=info,
+                terminated=terminated,
+                truncated=truncated,
+                extra_model_outputs={"extra": np.random.random(1)},
             )
 
         # Assert that the second episode's `t_started` is at the first episode's
