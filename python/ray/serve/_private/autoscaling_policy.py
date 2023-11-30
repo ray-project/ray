@@ -246,25 +246,21 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
 
 class CustomScalingPolicy(AutoscalingPolicy):
-    """A custom autoscaling policy that can be specified by the user."""
+    """A custom autoscaling policy to handle user specified scaling logic."""
 
     def __init__(self, config: AutoscalingConfig):
         self.config = config
         self.custom_scaling_actor_handle = None
         self.custom_scaling_remote_func = None
-        self.custom_config_ref = None
+        self.custom_scaling_ref = None
         self._setup_remote_callable()
 
-    def get_custom_config_ref(self, autoscaling_context: AutoscalingContext):
-        """Get the custom config reference."""
-        if self.custom_scaling_actor_handle:
-            return self.custom_scaling_actor_handle.get_decision_num_replicas.remote(
-                autoscaling_context
-            )
-
-        return self.custom_scaling_remote_func.remote(autoscaling_context)
-
     def _setup_remote_callable(self):
+        """Set up the remote callable for the custom scaling policy.
+
+        If the custom scaling policy is a class, then create an actor handle for it.
+        Else, create a remote function for it.
+        """
         autoscaling_policy_callable = self.config.get_autoscaling_policy()
         if isclass(autoscaling_policy_callable):
             assert issubclass(autoscaling_policy_callable, AutoscalingPolicy)
@@ -275,26 +271,38 @@ class CustomScalingPolicy(AutoscalingPolicy):
         else:
             self.custom_scaling_remote_func = ray.remote(autoscaling_policy_callable)
 
+    def get_custom_scaling_ref(self, autoscaling_context: AutoscalingContext):
+        """Get the custom scaling reference.
+
+        If the custom scaling policy is a class, then call get_decision_num_replicas().
+        Else, call the remote function.
+        """
+        if self.custom_scaling_actor_handle:
+            return self.custom_scaling_actor_handle.get_decision_num_replicas.remote(
+                autoscaling_context
+            )
+
+        return self.custom_scaling_remote_func.remote(autoscaling_context)
+
     def get_decision_num_replicas(
         self, autoscaling_context: AutoscalingContext
     ) -> Optional[int]:
         """Make a decision to scale replicas.
 
         Returns the new number of replicas to scale to. Or None if the custom scaling
-        function call is not finished yet, finished but not returning an integer, or
-        errored out.
+        function call is not finished yet, finished but not returning an integer or
+        None, or throw exception.
         """
-        # return self.custom_scaling_callable(autoscaling_context)
 
-        if self.custom_config_ref is None:
+        if self.custom_scaling_ref is None:
             # TODO (genesu): add a timeout for this
-            self.custom_config_ref = self.get_custom_config_ref(autoscaling_context)
+            self.custom_scaling_ref = self.get_custom_scaling_ref(autoscaling_context)
 
-        finished, _ = ray.wait([self.custom_config_ref], timeout=0)
+        finished, _ = ray.wait([self.custom_scaling_ref], timeout=0)
         try:
-            if self.custom_config_ref in finished:
-                decision_num_replicas = ray.get(self.custom_config_ref)
-                self.custom_config_ref = None
+            if self.custom_scaling_ref in finished:
+                decision_num_replicas = ray.get(self.custom_scaling_ref)
+                self.custom_scaling_ref = None
                 if (
                     isinstance(decision_num_replicas, int)
                     and decision_num_replicas
@@ -308,9 +316,9 @@ class CustomScalingPolicy(AutoscalingPolicy):
                         f"for {decision_num_replicas}."
                     )
         except Exception as e:
-            # TODO (genesu): add expential backoff for this
+            # TODO (genesu): add exponential backoff for this
             logger.error(f"Error in custom scaling policy:\n{e}")
-            self.custom_config_ref = None
+            self.custom_scaling_ref = None
 
         return None
 
@@ -321,58 +329,28 @@ class AutoscalingPolicyManager:
     def __init__(self, config: Optional[AutoscalingConfig]):
         self.config = config
         self.autoscaling_policy = None
-        # self.replica_decision_call_ref = None
         self._create_policy()
-
-    #     self._import_autoscaling_policy()
-    #
-    # def _import_autoscaling_policy(self):
-    #     """Get the replica decision callable."""
-    #     if self.config:
-    #         if isinstance(self.config.autoscaling_policy, str):
-    #             imported_autoscaling_policy = import_attr(
-    #                 self.config.autoscaling_policy
-    #             )
-    #         else:
-    #             imported_autoscaling_policy = self.config.autoscaling_policy
-    #
-    #         if isclass(imported_autoscaling_policy):
-    #             self.autoscaling_policy = self.autoscaling_policy(self.config)
-    #         else:
-    #             self.autoscaling_policy = imported_autoscaling_policy
-    #
-    # def _get_replica_decision_call_ref(self, autoscaling_context: AutoscalingContext):
-    #     return self.autoscaling_policy.get_decision_num_replicas.remote(
-    #         autoscaling_context
-    #     )
-
-    def should_autoscale(self) -> bool:
-        """Returns whether autoscaling should be performed."""
-        return self.config is not None
 
     def _create_policy(self):
         """Creates an autoscaling policy based on the given config."""
         if self.config:
-            # autoscaling_policy_callable = self.config.get_autoscaling_policy()
-            # if isclass(autoscaling_policy_callable):
-            #     self.autoscaling_policy = ray.remote(
-            #         autoscaling_policy_callable
-            #     ).remote(self.config)
-            # else:
-            #     self.autoscaling_policy = ray.remote(CustomScalingPolicy).remote(
-            #         self.config
-            #     )
-            # print("_create_policy", self.autoscaling_policy)
-
             if self.config.get_autoscaling_policy() != BasicAutoscalingPolicy:
                 self.autoscaling_policy = CustomScalingPolicy(self.config)
             else:
                 self.autoscaling_policy = BasicAutoscalingPolicy(self.config)
 
+    def should_autoscale(self) -> bool:
+        """Returns whether autoscaling should be performed."""
+        return self.config is not None
+
     def get_decision_num_replicas(
         self, autoscaling_context: AutoscalingContext
     ) -> Optional[int]:
-        # print("AutoscalingPolicyManager called!!!!", autoscaling_context.__dict__)
+        """Interface with the autoscaling policy to get a decision to scale replicas.
+
+        If the autoscaling policy is not ready or returning the same number as the
+        current replica number, return None to not execute autoscaling.
+        """
         decision_num_replicas = self.autoscaling_policy.get_decision_num_replicas(
             autoscaling_context
         )
@@ -380,33 +358,3 @@ class AutoscalingPolicyManager:
             return None
 
         return decision_num_replicas
-
-        # if self.replica_decision_call_ref is None:
-        #     self.replica_decision_call_ref = self._get_replica_decision_call_ref(
-        #         autoscaling_context
-        #     )
-        #
-        # finished, _ = ray.wait([self.replica_decision_call_ref], timeout=0)
-        # try:
-        #     if self.replica_decision_call_ref in finished:
-        #         decision_num_replicas = ray.get(self.replica_decision_call_ref)
-        #         print("decision_num_replicas", decision_num_replicas)
-        #         self.replica_decision_call_ref = None
-        #         if (
-        #             isinstance(decision_num_replicas, int)
-        #             and decision_num_replicas
-        #             != autoscaling_context.curr_target_num_replicas
-        #         ):
-        #             return decision_num_replicas
-        #         elif not isinstance(decision_num_replicas, (int, type(None))):
-        #             logger.error(
-        #                 "Custom scaling policy must return an integer or None. "
-        #                 f"Received type {type(decision_num_replicas)}, "
-        #                 f"for {decision_num_replicas}."
-        #             )
-        # except ray.exceptions.RayTaskError as e:
-        #     # TODO (genesu): add expential backoff for this
-        #     logger.error(f"Error in custom scaling policy: {e}")
-        #     self.replica_decision_call_ref = None
-        #
-        # return None

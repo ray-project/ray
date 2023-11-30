@@ -6,6 +6,7 @@ from typing import Any, List, Optional
 import requests
 
 from ray.serve.config import AutoscalingConfig
+
 PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
 
 
