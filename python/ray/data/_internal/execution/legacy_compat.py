@@ -25,6 +25,8 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.memory_tracing import trace_allocation
@@ -155,13 +157,22 @@ def execute_read_only_to_legacy_lazy_block_list(
         metadata.append(bundle_md)
 
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
-    return LazyBlockList(
+
+    assert isinstance(plan._logical_plan, LogicalPlan)
+    read_logical_op = plan._logical_plan.dag
+    assert isinstance(read_logical_op, Read)
+    read_stage_name = f"Read{read_logical_op._datasource.get_name()}"
+
+    block_list = LazyBlockList(
         read_tasks,
-        # TODO(scottjlee): update the stage name
-        "test_read_stage_name",
-        cached_metadata=metadata,
+        read_stage_name,
+        ray_remote_args=read_logical_op._ray_remote_args,
         owned_by_consumer=owns_blocks,
     )
+    block_list._estimated_num_blocks = read_map_op._estimated_output_blocks
+    # TODO(scottjlee): remove this after confirming alternative workaround.
+    # input_data_buffer._set_num_output_blocks(read_map_op._estimated_output_blocks)
+    return block_list
 
 
 def _get_execution_dag(

@@ -30,7 +30,6 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
 from ray.data._internal.logical.rules.set_read_parallelism import (
@@ -425,38 +424,6 @@ class ExecutionPlan:
                 self.execute()
             else:
                 return None
-        context = self._context
-        if self.is_read_only():
-            # TODO(scottjlee): move this logic into self.execute() instead?
-            assert isinstance(self._logical_plan, LogicalPlan)
-            allow_clear_input_blocks: bool = True
-            preserve_order: bool = False
-            metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-            from ray.data._internal.execution.streaming_executor import (
-                StreamingExecutor,
-            )
-
-            executor = StreamingExecutor(
-                copy.deepcopy(context.execution_options),
-                metrics_tag,
-            )
-            from ray.data._internal.execution.legacy_compat import (
-                execute_read_only_to_legacy_lazy_block_list,
-            )
-
-            self._snapshot_blocks = execute_read_only_to_legacy_lazy_block_list(
-                executor,
-                self,
-                allow_clear_input_blocks,
-                self._dataset_uuid,
-                preserve_order,
-            )
-            flattened_metadata = self._snapshot_blocks._flatten_metadata(
-                self._snapshot_blocks._cached_metadata
-            )
-            self._schema = unify_block_metadata_schema(flattened_metadata)
-            return self._schema
-
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
             # This applies to newly created dataset. For example, initial dataset
@@ -718,6 +685,12 @@ class ExecutionPlan:
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
             self._stages_after_snapshot = []
+
+            # In the case of a read-only dataset, we replace the
+            # input LazyBlockList with a copy that includes the
+            # calculated metadata from initializing the InputDataBuffer.
+            if self.is_read_only():
+                self._in_blocks = blocks
         if _is_lazy(self._snapshot_blocks) and force_read:
             self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
         return self._snapshot_blocks
