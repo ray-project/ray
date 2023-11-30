@@ -6,7 +6,6 @@ site packages.
 import sys
 
 from ray.util.annotations import DeveloperAPI
-from ray._private.pydantic_compat import register_pydantic_serializers
 
 
 @DeveloperAPI
@@ -27,6 +26,8 @@ def register_starlette_serializer(serialization_context):
 
 @DeveloperAPI
 def apply(serialization_context):
+    from ray._private.pydantic_compat import register_pydantic_serializers
+
     register_pydantic_serializers(serialization_context)
     register_starlette_serializer(serialization_context)
 
