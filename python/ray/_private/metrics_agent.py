@@ -176,7 +176,10 @@ class OpencensusProxyMetric:
                     data = SumAggregationData(ValueDouble, point.double_value)
                 elif metric.metric_descriptor.type == MetricDescriptorType.GAUGE_DOUBLE:
                     data = LastValueAggregationData(ValueDouble, point.double_value)
-                elif point.HasField("distribution_value"):
+                elif (
+                    metric.metric_descriptor.type
+                    == MetricDescriptorType.CUMULATIVE_DISTRIBUTION
+                ):
                     dist_value = point.distribution_value
                     counts_per_bucket = [bucket.count for bucket in dist_value.buckets]
                     bucket_bounds = dist_value.bucket_options.explicit.bounds

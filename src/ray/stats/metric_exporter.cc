@@ -232,13 +232,23 @@ opencensus::proto::metrics::v1::Metric *addMetricProtoPayload(
   metric_descriptor_proto->set_unit(measure_descriptor.units());
 
   auto descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::UNSPECIFIED;
-  if (view_descriptor.aggregation() == opencensus::stats::Aggregation::Count()) {
+  auto view_aggregation = view_descriptor.aggregation();
+  switch (view_aggregation.type()) {
+  case opencensus::stats::Aggregation::Type::kCount:
     descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_INT64;
-  } else if (view_descriptor.aggregation() == opencensus::stats::Aggregation::Sum()) {
+    break;
+  case opencensus::stats::Aggregation::Type::kSum:
     descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_DOUBLE;
-  } else if (view_descriptor.aggregation() ==
-             opencensus::stats::Aggregation::LastValue()) {
+    break;
+  case opencensus::stats::Aggregation::Type::kDistribution:
+    descriptor_type =
+        opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_DISTRIBUTION;
+    break;
+  case opencensus::stats::Aggregation::Type::kLastValue:
     descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::GAUGE_DOUBLE;
+    break;
+  default:
+    break;
   }
   metric_descriptor_proto->set_type(descriptor_type);
 
