@@ -246,9 +246,6 @@ class AlgorithmConfig(_Config):
         # applied to.
         self.algo_class = algo_class
 
-        # Module ID specific config overrides
-        self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
-
         # `self.python_environment()`
         self.extra_python_environs_for_driver = {}
         self.extra_python_environs_for_worker = {}
@@ -288,7 +285,6 @@ class AlgorithmConfig(_Config):
             "intra_op_parallelism_threads": 8,
             "inter_op_parallelism_threads": 8,
         }
-
         # Torch compile settings
         self.torch_compile_learner = False
         self.torch_compile_learner_what_to_compile = (
@@ -393,7 +389,11 @@ class AlgorithmConfig(_Config):
 
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
+        # Module ID specific config overrides.
         self.algorithm_config_overrides_per_module = {}
+        # Cached, actual AlgorithmConfig objects derived from
+        # `self.algorithm_config_overrides_per_module`.
+        self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
         self.policy_map_capacity = 100
         self.policy_mapping_fn = self.DEFAULT_POLICY_MAPPING_FN
         self.policies_to_train = None
@@ -1198,22 +1198,20 @@ class AlgorithmConfig(_Config):
         Returns:
             A new AlgorithmConfig object for the specific module ID.
         """
-        # ModuleID found in our overrides dict. Return module specific config.
+        # ModuleID NOT found in cached ModuleID, but in overrides dict.
+        # Create new algo config object and cache it.
         if (
-            self._per_module_overrides is not None
-            and module_id in self._per_module_overrides
+            module_id not in self._per_module_overrides
+            and module_id in self.algorithm_config_overrides_per_module
         ):
-            # In case, the per-module sub-config object is still a dict, convert
-            # it to a fully qualified AlgorithmConfig object here first.
-            if isinstance(self._per_module_overrides[module_id], dict):
-                self._per_module_overrides[module_id] = self.copy().update_from_dict(
-                    self._per_module_overrides[module_id]
-                )
-            # Return the module specific version of self.
-            return self._per_module_overrides[module_id]
+            self._per_module_overrides[module_id] = self.copy().update_from_dict(
+                self.algorithm_config_overrides_per_module[module_id]
+            )
 
-        # ModuleID not found in overrides or the overrides dict is None
-        # -> return self.
+        # Return the module specific algo config object.
+        if module_id in self._per_module_overrides:
+            return self._per_module_overrides[module_id]
+        # No overrides for ModuleID -> return self.
         else:
             return self
 
@@ -2360,6 +2358,12 @@ class AlgorithmConfig(_Config):
             self.policies = policies
 
         if algorithm_config_overrides_per_module is not NotProvided:
+            if not isinstance(algorithm_config_overrides_per_module, dict):
+                raise ValueError(
+                    "`algorithm_config_overrides_per_module` must be a dict mapping "
+                    "module IDs to config override dicts! You provided "
+                    f"{algorithm_config_overrides_per_module}."
+                )
             self.algorithm_config_overrides_per_module = (
                 algorithm_config_overrides_per_module
             )

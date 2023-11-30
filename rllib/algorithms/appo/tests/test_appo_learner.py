@@ -90,8 +90,8 @@ class TestAPPOTfLearner(unittest.TestCase):
                 )
 
             algo_config = config.copy(copy_frozen=False)
+            algo_config.resources(num_learner_workers=0)
             algo_config.validate()
-            algo_config.freeze()
 
             learner_group = algo_config.build_learner_group(
                 env=algo.workers.local_worker().env
