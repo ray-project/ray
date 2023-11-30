@@ -50,12 +50,8 @@ Environments and Adapters
 Custom- and Complex Models
 --------------------------
 
-- `LSTM model learning the "repeat-after-me" environment <https://github.com/ray-project/ray/blob/master/rllib/examples/lstm_auto_wrapping.py>`__:
-   Example showing how to use the auto-LSTM wrapper for your default- and custom models in RLlib.
 - `Custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_keras_model.py>`__:
    Example of using a custom Keras model.
-- `Custom Keras/PyTorch RNN model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_rnn_model.py>`__:
-   Example of using a custom Keras- or PyTorch RNN model.
 - `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
    Example of defining and registering a custom model with a supervised loss.
 - `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__:

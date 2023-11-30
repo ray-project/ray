@@ -641,18 +641,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/lstm_auto_wrapping.py
-
-        Example showing how to use the auto-LSTM wrapper for your default- and custom models in RLlib.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib pytorch tensorflow
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_rnn_model.py
-
-        Example of using a custom Keras- or PyTorch RNN model.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py
 
         Example of defining and registering a custom model with a supervised loss.
