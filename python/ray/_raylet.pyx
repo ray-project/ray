@@ -278,8 +278,8 @@ class ObjectRefGenerator:
 
     The class is not thread-safe.
 
-    The class is not supposed to be initialized directly
-    and only should be created by `.remote`.
+    Do not initialize the class and create an instance directly.
+    The instance should be created by `.remote`.
 
     >>> gen = generator_task.remote()
     >>> next(gen)
@@ -4305,7 +4305,7 @@ cdef class CoreWorker:
                 # NOTE(swang): returns could also be empty if the task returned
                 # an empty generator and was re-executed. However, this should
                 # not happen because we never reconstruct empty
-                # DynamicObjectRefGenerators (since these are not stored in plasma).
+                # DynamicObjectRefGenerators (since these aren't stored in plasma).
                 num_returns = -1
         else:
             # The task specified how many return values it should have.

@@ -7,7 +7,7 @@ Ray Generators
 that behave like iterators, yielding one value per iteration. Ray also supports the generators API.
 
 Any generator function decorated with ``ray.remote`` becomes a Ray generator task.
-Generator tasks stream outputs back to the caller before task finishes.
+Generator tasks stream outputs back to the caller before the task finishes.
 
 .. code-block:: diff
 
@@ -60,8 +60,8 @@ to create a Ray generator.
     :start-after: __streaming_generator_define_start__
     :end-before: __streaming_generator_define_end__
 
-The Ray generator task returns :ref:`ObjectRefGenerator <generator-api>`., which is
-compatible to generator and async generator APIs. You can access the
+The Ray generator task returns an :ref:`ObjectRefGenerator <generator-api>` object, which is
+compatible with generator and async generator APIs. You can access the
 ``next``, ``__iter__``, ``__anext__``, ``__aiter__`` APIs from the class.
 
 Whenever a task invokes ``yield``, a corresponding output is ready and availabale from a generator as a Ray object reference. 
@@ -70,7 +70,7 @@ If ``next`` has no more items to generate, it raises ``StopIteration``. If ``__a
 ``StopAsyncIteration``
 
 The ``next`` API blocks the thread until the task generates a next object reference with ``yield``.
-Since the ``ObjectRefGenerator`` is just a Python generator, you can also simply use a for loop to
+Since the ``ObjectRefGenerator`` is just a Python generator, you can also use a for loop to
 iterate object references. 
 
 If you want to avoid blocking a thread, you can either use asyncio or :ref:`ray.wait API <generators-wait>`.
@@ -165,8 +165,8 @@ Unblocking wait is possible with the Ray generator in the following ways:
 
 **Wait until a generator task completes**
 
-``ObjectRefGenerator.completed()`` returns an object reference that is available when a generator task finishes or errors.
-For example, you can do ``ray.get(gen.compelted())`` to wait until a task completes. Note that using ``ray.get`` to ``ObjectRefGenerator`` isn't allowed.
+``ObjectRefGenerator`` has an API ``completed``. It returns an object reference that is available when a generator task finishes or errors.
+For example, you can do ``ray.get(<generator_instance>.compelted())`` to wait until a task completes. Note that using ``ray.get`` to ``ObjectRefGenerator`` isn't allowed.
 
 **Use asyncio and await**
 
@@ -181,7 +181,7 @@ and wait for it to avoid blocking a thread.
 **Use ray.wait**
 
 You can pass ``ObjectRefGenerator`` as an input to ``ray.wait``. The generator is "ready" if a `next item`
-is available. Once a generator is found from a ready list, ``next(gen)`` returns the next object reference immediately without blocking. See the example below example for more details.
+is available. Once Ray finds from a ready list, ``next(gen)`` returns the next object reference immediately without blocking. See the example below for more details.
 
 .. literalinclude:: doc_code/streaming_generator.py
     :language: python
