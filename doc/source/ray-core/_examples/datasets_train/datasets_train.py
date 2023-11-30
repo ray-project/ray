@@ -268,7 +268,7 @@ def inference(
     model_cls: type,
     batch_size: int,
     result_path: str,
-    use_gpu: bool
+    use_gpu: bool,
 ):
     print("inferencing...")
     num_gpus = 1 if use_gpu else 0

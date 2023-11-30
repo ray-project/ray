@@ -342,7 +342,8 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                ``None`` to use the default value of system.
+                ``None`` by default autoscales from 1 to maximum number of workers allowed
+                in cluster.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker.
 
@@ -492,7 +493,40 @@ class Dataset:
                     .map_batches(map_fn_with_large_output)
                 )
 
-            You can also use :meth:`~Dataset.map_batches` to perform offline inference.
+            If you require stateful transfomation such as offline model inference,
+            use Python callable class.
+
+            .. testcode::
+
+                from typing import Dict
+                import numpy as np
+                import torch
+                import ray
+
+                class TorchPredictor:
+
+                    def __init__(self):
+                        self.model = torch.nn.Identity().cuda()
+                        self.model.eval()
+
+                    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+                        inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
+                        with torch.inference_mode():
+                            batch["output"] = self.model(inputs).detach().cpu().numpy()
+                        return batch
+
+                ds = (
+                    ray.data.from_numpy(np.ones((32, 100)))
+                    .map_batches(
+                        TorchPredictor,
+                        # Two workers with one GPU each
+                        concurrency=2,
+                        # Batch size is required if you're using GPUs.
+                        batch_size=4,
+                        num_gpus=1
+                    )
+                )
+
             To learn more, see
             :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
 
@@ -536,7 +570,9 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                ``None`` to use the default value of system.
+                ``None`` by default autoscales from 1 to maximum number of workers allowed
+                in cluster.
+
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -697,7 +733,8 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
                 an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``. ``None`` to use the default value of system.
+                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to maximum
+                number of workers allowed in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -765,7 +802,8 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                ``None`` to use the default value of system.
+                `None`` by default autoscales from 1 to maximum number of workers allowed
+                in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
@@ -829,7 +867,8 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                ``None`` to use the default value of system.
+                `None`` by default autoscales from 1 to maximum number of workers allowed
+                in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
@@ -926,7 +965,8 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``. ``None`` to use the default value of system.
+                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to maximum
+                number of workers allowed in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -1024,7 +1064,8 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``. ``None`` to use the default value of system.
+                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to maximum
+                number of workers allowed in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """

@@ -166,11 +166,10 @@ Stateful Transformation
 
 If your transformation is stateful to require expensive setup such as downloading
 model weights, use a callable Python class instead of a function. When a Python class
-is used, the `__init__` method will be called to perform setup exactly once on each
-worker. In contrast, function is stateless and doesn't have a way to perform setup
-before transforming data.
+is used, the `__init__` method is called to perform setup exactly once on each worker.
+In contrast, function is stateless, so any setup must be performed for each data item..
 
-Internally, Ray Data uses tasks to execute function, and uses actors to execute class.
+Internally, Ray Data uses tasks to execute functions, and uses actors to execute classes.
 To learn more about tasks and actors, read the
 :ref:`Ray Core Key Concepts <core-key-concepts>`.
 
@@ -179,7 +178,8 @@ To transform data with Python class, complete these steps:
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
 2. Configure ``concurrency`` with the number of concurrent workers. Each worker
-   transforms a partition of data.
+   transforms a partition of data in parallel. You can also pass a tuple of
+   ``(min, max)`` to allow Ray Data to autoscale the number of concurrent workers.
 
 3. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
    :meth:`~ray.data.Dataset.flat_map`.
