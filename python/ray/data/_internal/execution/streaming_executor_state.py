@@ -34,6 +34,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
+from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 
@@ -679,14 +680,16 @@ def _execution_allowed(
             "Operator incremental resource usage cannot specify both CPU "
             "and GPU at the same time, since it may cause deadlock."
         )
-    elif inc.object_store_memory:
-        raise NotImplementedError(
-            "Operator incremental resource usage must not include memory."
-        )
+
+    # Ignore the scale of CPU and GPU requests, i.e., treating them as either 1 or 0.
+    # This ensures operators don't get starved due to the shape of their resource
+    # requests.
     inc_indicator = ExecutionResources(
         cpu=1 if inc.cpu else 0,
         gpu=1 if inc.gpu else 0,
-        object_store_memory=1 if inc.object_store_memory else 0,
+        object_store_memory=inc.object_store_memory
+        if DataContext.get_current().use_runtime_metrics_scheduling
+        else None,
     )
 
     # Under global limits; always allow.
@@ -707,5 +710,15 @@ def _execution_allowed(
     downstream_memory_ok = ExecutionResources(
         object_store_memory=downstream_usage.object_store_memory
     ).satisfies_limit(downstream_limit)
+
+    # If completing a task decreases the overall object store memory usage, allow it
+    # even if we're over the global limit.
+    if (
+        DataContext.get_current().use_runtime_metrics_scheduling
+        and global_ok_sans_memory
+        and op.metrics.average_bytes_change_per_task is not None
+        and op.metrics.average_bytes_change_per_task <= 0
+    ):
+        return True
 
     return global_ok_sans_memory and downstream_memory_ok
