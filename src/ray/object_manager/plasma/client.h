@@ -134,7 +134,8 @@ class PlasmaClientInterface {
                                         int64_t metadata_size,
                                         std::shared_ptr<Buffer> *data,
                                         plasma::flatbuf::ObjectSource source,
-                                        int device_num = 0) = 0;
+                                        int device_num = 0,
+                                        bool try_wait = false) = 0;
 
   /// Delete a list of objects from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,
@@ -200,7 +201,8 @@ class PlasmaClient : public PlasmaClientInterface {
                                 int64_t metadata_size,
                                 std::shared_ptr<Buffer> *data,
                                 plasma::flatbuf::ObjectSource source,
-                                int device_num = 0);
+                                int device_num = 0,
+                                bool try_wait = false);
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.

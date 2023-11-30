@@ -218,13 +218,12 @@ class CompiledDAG:
                     print("Worker task exception", e)
                     for output_ref in outer.dag_output_refs:
                         print("Putting error", output_ref)
-                        # TODO this hangs since we're not the creator?
-                        # TODO set metadata to error type?
                         try:
                             ray.worker.global_worker.put_object(
                                 e,
                                 object_ref=output_ref,
-                                max_readers=1,  # TODO: only put if nonblocking?
+                                max_readers=1,
+                                try_wait=True,
                             )
                         except:
                             print("Ignore failed put")

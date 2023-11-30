@@ -630,7 +630,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                         const ObjectID &object_id,
                         const rpc::Address &owner_address,
                         std::shared_ptr<Buffer> *data,
-                        bool created_by_worker);
+                        bool created_by_worker,
+                        bool try_wait = false);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateOwned()` call and then writing into the returned buffer.

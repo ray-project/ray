@@ -124,7 +124,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                                 int64_t metadata_size,
                                 std::shared_ptr<Buffer> *data,
                                 fb::ObjectSource source,
-                                int device_num = 0);
+                                int device_num = 0,
+                                bool try_wait = false);
 
   Status RetryCreate(const ObjectID &object_id,
                      uint64_t request_id,
@@ -394,10 +395,9 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                                   int64_t metadata_size,
                                                   std::shared_ptr<Buffer> *data,
                                                   fb::ObjectSource source,
-                                                  int device_num) {
+                                                  int device_num,
+                                                  bool try_wait) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
-  // TODO set this flag from python instead of for exception objects only.
-  bool try_wait = metadata_size == 1;
   auto object_entry = objects_in_use_.find(object_id);
   if (object_entry != objects_in_use_.end()) {
     auto &entry = object_entry->second;
@@ -956,7 +956,8 @@ Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             int64_t metadata_size,
                                             std::shared_ptr<Buffer> *data,
                                             fb::ObjectSource source,
-                                            int device_num) {
+                                            int device_num,
+                                            bool try_wait) {
   return impl_->CreateAndSpillIfNeeded(object_id,
                                        owner_address,
                                        data_size,
@@ -964,7 +965,8 @@ Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                        metadata_size,
                                        data,
                                        source,
-                                       device_num);
+                                       device_num,
+                                       try_wait);
 }
 
 Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,

@@ -1301,14 +1301,16 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
                                   const ObjectID &object_id,
                                   const rpc::Address &owner_address,
                                   std::shared_ptr<Buffer> *data,
-                                  bool created_by_worker) {
+                                  bool created_by_worker,
+                                  bool try_wait) {
   if (options_.is_local_mode) {
     return Status::NotImplemented(
         "Creating an object with a pre-existing ObjectID is not supported in local "
         "mode");
   } else {
     return plasma_store_provider_->Create(
-        metadata, data_size, object_id, owner_address, data, created_by_worker);
+        metadata, data_size, object_id, owner_address, data, created_by_worker,
+        try_wait);
   }
 }
 

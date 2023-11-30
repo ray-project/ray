@@ -3252,7 +3252,8 @@ cdef class CoreWorker:
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
                             owner_address=None,
-                            c_bool inline_small_object=True):
+                            c_bool inline_small_object=True,
+                            c_bool try_wait=False):
         cdef:
             unique_ptr[CAddress] c_owner_address
 
@@ -3277,7 +3278,7 @@ cdef class CoreWorker:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
                             metadata, data_size, c_object_id[0],
                             dereference(c_owner_address), data,
-                            created_by_worker))
+                            created_by_worker, try_wait))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.
@@ -3328,7 +3329,7 @@ cdef class CoreWorker:
         status = CCoreWorkerProcess.GetCoreWorker().CreateExisting(
                     metadata_buf, data_size, object_ref.native(),
                     dereference(c_owner_address), &data_buf,
-                    False)
+                    False, False)
         if not status.ok():
             logger.debug("Error putting restored object into plasma.")
             return
@@ -3357,7 +3358,8 @@ cdef class CoreWorker:
                                                       c_bool pin_object=True,
                                                       owner_address=None,
                                                       c_bool inline_small_object=True,
-                                                      max_readers=-1):
+                                                      max_readers=-1,
+                                                      c_bool try_wait=False):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -3374,7 +3376,8 @@ cdef class CoreWorker:
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
             contained_object_ids,
-            &c_object_id, &data, True, owner_address, inline_small_object)
+            &c_object_id, &data, True, owner_address, inline_small_object,
+            try_wait)
 
         logger.debug(
             f"Serialized object size of {c_object_id.Hex()} is {total_bytes} bytes")

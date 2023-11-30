@@ -679,7 +679,9 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None, max_readers=-1):
+    def put_object(
+        self, value, object_ref=None, owner_address=None, max_readers=-1, try_wait=False
+    ):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -739,6 +741,7 @@ class Worker:
                 object_ref=object_ref,
                 owner_address=owner_address,
                 max_readers=max_readers,
+                try_wait=try_wait,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
