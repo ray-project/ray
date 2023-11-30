@@ -105,11 +105,6 @@ class SingleAgentEnvRunner(EnvRunner):
         self._ts_since_last_metrics: int = 0
         self._weights_seq_no: int = 0
 
-        # TODO (sven): This is a temporary solution. STATE_OUTs
-        #  will be resolved entirely as `extra_model_outputs` and
-        #  not be stored separately inside Episodes.
-        self._states = [None for _ in range(self.num_envs)]
-
     @override(EnvRunner)
     def sample(
         self,
@@ -253,7 +248,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         truncated=truncateds[i],
                         extra_model_outputs=extra_model_output,
                     )
-                    self._states[i] = s
 
                     done_episodes_to_return.append(self._episodes[i].finalize())
                     # Create a new episode object with already the reset data in it.
@@ -263,7 +257,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )
-                    self._states[i] = s
                 else:
                     self._episodes[i].add_env_step(
                         obs[i],
@@ -272,7 +265,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         infos=infos[i],
                         extra_model_outputs=extra_model_output,
                     )
-                    self._states[i] = s
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)

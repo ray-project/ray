@@ -7,7 +7,8 @@ import tree  # pip install dm_tree
 
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
-from ray.rllib.evaluation.postprocessing_v2 import compute_advantages, Postprocessing
+from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.postprocessing_v2 import compute_advantages_and_value_targets
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
@@ -87,7 +88,7 @@ class PPOLearner(Learner):
         old_path = "/Users/sven/ray_results/PPO_2023-11-14_14-55-07/PPO_CartPole-v1_6b976_00000_0_2023-11-14_14-55-07/"
         with open(os.path.join(old_path, "batch_data.pkl"), "rb") as file:
             old_batch = pickle.load(file)
-        old_advantages, old_value_targets = compute_advantages(
+        old_advantages, old_value_targets = compute_advantages_and_value_targets(
             values=old_batch["vf_preds"],
             rewards=old_batch[SampleBatch.REWARDS],
             terminateds=old_batch[SampleBatch.TERMINATEDS],
@@ -143,7 +144,7 @@ class PPOLearner(Learner):
         # Perform the value model's forward pass.
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
         # Compute advantages.
-        advantages, value_targets = compute_advantages(
+        advantages, value_targets = compute_advantages_and_value_targets(
             values=vf_preds,
             rewards=batch_for_vf[SampleBatch.REWARDS],
             terminateds=batch_for_vf[SampleBatch.TERMINATEDS],
