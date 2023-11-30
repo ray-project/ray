@@ -528,7 +528,9 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
       static_cast<void>(client->SendFd(result.store_fd));
     }
 
-    WaitForSeal(object_id, client);
+    if (RayConfig::instance().plasma_use_shared_memory_seal()) {
+      WaitForSeal(object_id, client);
+    }
   } else {
     static_cast<void>(SendUnfinishedCreateReply(client, object_id, req_id));
   }
@@ -540,6 +542,9 @@ void PlasmaStore::WaitForSeal(const ObjectID &object_id,
   RAY_CHECK(entry);
   auto plasma_header = entry->GetPlasmaObjectHeader();
 
+  // Read acquire is blocking, so put it on a background thread and use an
+  // async timer as a signal. The main thread is signaled when the timer is
+  // cancelled.
   auto seal_signal = std::make_shared<boost::asio::deadline_timer>(io_context_);
   seal_signal->expires_at(boost::posix_time::pos_infin);
 

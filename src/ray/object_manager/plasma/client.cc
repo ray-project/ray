@@ -97,9 +97,17 @@ struct ObjectInUseEntry {
   bool is_sealed;
   bool is_mutable = false;
   /// For shared objects only.
-  /// The last version that we read or wrote. To read or write again, we must
-  /// pass a newer version than this.
+  /// The last version that we read. To read again, we must pass a newer
+  /// version than this.
   int64_t next_version_to_read = 1;
+  /// Whether we currently have a read lock on the object. If this is true,
+  /// then it is safe to read the value of the object. For immutable objects,
+  /// this will always be true once the object has been sealed. For immutable
+  /// objects, ReadRelease resets this to false, and ReadAcquire resets to
+  /// true.
+  bool read_acquired = false;
+  /// The last version that we wrote. To write again, we must pass a newer
+  /// version than this.
   int64_t next_version_to_write = 1;
 };
 
@@ -159,6 +167,9 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
              int64_t timeout_ms,
              ObjectBuffer *object_buffers,
              bool is_from_worker);
+
+  ray::PlasmaObjectHeader *EnsureGetAcquired(
+      std::unique_ptr<ObjectInUseEntry> &object_entry);
 
   Status GetRelease(const ObjectID &object_id);
 
@@ -562,18 +573,10 @@ Status PlasmaClient::Impl::GetBuffers(
           << "Attempting to get an object that this client created but hasn't sealed.";
       all_present = false;
     } else {
-      PlasmaObject *object = &object_entry->second->object;
-
       // Wait for the object to become ready to read.
-      auto plasma_header = GetPlasmaObjectHeader(*object);
-      int64_t version_read =
-          plasma_header->ReadAcquire(object_entry->second->next_version_to_read);
-      auto data_size = plasma_header->GetDataSize();
-      RAY_LOG(DEBUG) << "SANG-TODO data size is " << data_size;
-      if (version_read > 0) {
-        object_entry->second->is_mutable = true;
-        object_entry->second->next_version_to_read = version_read;
-      }
+      auto plasma_header = EnsureGetAcquired(object_entry->second);
+
+      PlasmaObject *object = &object_entry->second->object;
 
       std::shared_ptr<Buffer> physical_buf;
       if (object->device_num == 0) {
@@ -584,6 +587,7 @@ Status PlasmaClient::Impl::GetBuffers(
         RAY_LOG(FATAL) << "GPU library is not enabled.";
       }
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
+      auto data_size = plasma_header->GetDataSize();
       object_buffers[i].data = SharedMemoryBuffer::Slice(physical_buf, 0, data_size);
       object_buffers[i].metadata = SharedMemoryBuffer::Slice(
           physical_buf, object->data_size, object->metadata_size);
@@ -645,15 +649,11 @@ Status PlasmaClient::Impl::GetBuffers(
       // client is using. Cache the reference to the object.
       IncrementObjectCount(received_object_ids[i], object, true);
       auto &object_entry = objects_in_use_[received_object_ids[i]];
-      // Wait for the object to become ready to read.
-      auto plasma_header = GetPlasmaObjectHeader(*object);
-      int64_t version_read = plasma_header->ReadAcquire(/*version=*/1);
-      auto data_size = plasma_header->GetDataSize();
-      if (version_read > 0) {
-        object_entry->is_mutable = true;
-        object_entry->next_version_to_read = version_read;
-      }
 
+      // Wait for the object to become ready to read.
+      RAY_CHECK(!object_entry->read_acquired);
+      auto plasma_header = EnsureGetAcquired(object_entry);
+      auto data_size = plasma_header->GetDataSize();
       std::shared_ptr<Buffer> physical_buf;
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
@@ -694,9 +694,27 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
       &object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0], is_from_worker);
 }
 
+ray::PlasmaObjectHeader *PlasmaClient::Impl::EnsureGetAcquired(
+    std::unique_ptr<ObjectInUseEntry> &object_entry) {
+  PlasmaObject *object = &object_entry->object;
+  auto plasma_header = GetPlasmaObjectHeader(*object);
+  if (object_entry->read_acquired) {
+    return plasma_header;
+  }
+
+  int64_t version_read = plasma_header->ReadAcquire(object_entry->next_version_to_read);
+  object_entry->read_acquired = true;
+  if (version_read > 0) {
+    object_entry->is_mutable = true;
+    object_entry->next_version_to_read = version_read;
+  }
+  return plasma_header;
+}
+
 Status PlasmaClient::Impl::GetRelease(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Try to release Get for object " << object_id;
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+
   auto object_entry = objects_in_use_.find(object_id);
   if (object_entry == objects_in_use_.end()) {
     return Status::ObjectNotFound(
@@ -712,8 +730,8 @@ Status PlasmaClient::Impl::GetRelease(const ObjectID &object_id) {
         "ray.release() called on an object that is not mutable");
   }
 
+  auto plasma_header = EnsureGetAcquired(entry);
   RAY_LOG(DEBUG) << "Release shared object " << object_id;
-  auto plasma_header = GetPlasmaObjectHeader(entry->object);
   plasma_header->ReadRelease(entry->next_version_to_read);
   // The next read needs to read at least this version.
   entry->next_version_to_read++;
@@ -741,11 +759,14 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   const auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
 
-  object_entry->second->count -= 1;
-  RAY_CHECK(object_entry->second->count >= 0);
-  // Check if the client is no longer using this object.
-  // TODO(swang): Nicer way to pin shared objects.
-  if (object_entry->second->count == 0 && !object_entry->second->is_mutable) {
+  if (!object_entry->second->is_mutable) {
+    // Release only applies to immutable objects.
+    // TODO(swang): Add a delete call to properly clean up mutable objects.
+    object_entry->second->count -= 1;
+    RAY_CHECK(object_entry->second->count >= 0);
+  }
+
+  if (object_entry->second->count == 0) {
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
     MEMFD_TYPE fd = object_entry->second->object.store_fd;
     // Tell the store that the client no longer needs the object.
@@ -821,22 +842,27 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   // The next Write must pass a higher version.
   object_entry->second->next_version_to_write++;
   object_entry->second->is_sealed = true;
-  //// Send the seal request to Plasma.
-  // RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
-  // std::vector<uint8_t> buffer;
-  // RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
-  // ObjectID sealed_id;
-  // RAY_RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
-  // RAY_CHECK(sealed_id == object_id);
-  //// We call PlasmaClient::Release to decrement the number of instances of this
-  //// object
-  //// that are currently being used by this client. The corresponding increment
-  //// happened in plasma_create and was used to ensure that the object was not
-  //// released before the call to PlasmaClient::Seal.
-  // return Release(object_id);
 
-  // TODO(swang): Release the object if the ref count == 0.
-  return Status::OK();
+  if (RayConfig::instance().plasma_use_shared_memory_seal()) {
+    // If using shared-memory based Seal, then we don't need to do anything
+    // further because the object store will learn that the object has been
+    // sealed when ReadAcquire returns.
+    return Status::OK();
+  }
+
+  /// Send the seal request to Plasma.
+  RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
+  std::vector<uint8_t> buffer;
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
+  ObjectID sealed_id;
+  RAY_RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
+  RAY_CHECK(sealed_id == object_id);
+  // We call PlasmaClient::Release to decrement the number of instances of this
+  // object
+  // that are currently being used by this client. The corresponding increment
+  // happened in plasma_create and was used to ensure that the object was not
+  // released before the call to PlasmaClient::Seal.
+  return Release(object_id);
 }
 
 Status PlasmaClient::Impl::Abort(const ObjectID &object_id) {
