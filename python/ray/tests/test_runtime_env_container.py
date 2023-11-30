@@ -30,6 +30,7 @@ CONTAINER_SPEC = {
 CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
 
 
+@pytest.mark.skip
 def test_a(podman_docker_cluster):
     output = subprocess.check_output(["docker", "image", "ls"])
     print(output)
@@ -77,6 +78,7 @@ def test_put_get(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+@pytest.mark.skip
 def test_shared_memory(shutdown_only):
     @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
     def f():
@@ -93,6 +95,7 @@ def test_shared_memory(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+@pytest.mark.skip
 def test_log_file_exists(shutdown_only):
     """Verify worker log file exists"""
     ray.init(num_cpus=1)

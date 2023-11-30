@@ -64,6 +64,11 @@ from ci.ray_ci.utils import logger, docker_login
     default=False,
     help=("Upload the build artifacts"),
 )
+@click.option(
+    "--dockerfile",
+    default="docker/ray/Dockerfile",
+    help=("Dockerfile to use for building the image"),
+)
 def main(
     artifact_type: str,
     image_type: str,
@@ -73,6 +78,7 @@ def main(
     architecture: str,
     canonical_tag: str,
     upload: bool,
+    dockerfile: str,
 ) -> None:
     """
     Build a wheel or jar artifact
@@ -93,6 +99,7 @@ def main(
             architecture,
             canonical_tag,
             upload,
+            dockerfile,
         )
         return
 
@@ -135,6 +142,7 @@ def build_docker(
     architecture: str,
     canonical_tag: str,
     upload: bool,
+    dockerfile: str,
 ) -> None:
     """
     Build a container artifact.
@@ -142,7 +150,13 @@ def build_docker(
     BuilderContainer(python_version, build_type, architecture).run()
     for p in platform:
         RayDockerContainer(
-            python_version, p, image_type, architecture, canonical_tag, upload
+            python_version,
+            p,
+            image_type,
+            architecture,
+            canonical_tag,
+            upload,
+            dockerfile,
         ).run()
 
 

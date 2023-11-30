@@ -41,7 +41,8 @@ class RayDockerContainer(DockerContainer):
 
         cmds = [
             "./ci/build/build-ray-docker.sh "
-            f"{wheel_name} {base_image} {constraints_file} {ray_image} {pip_freeze}"
+            f"{wheel_name} {base_image} {constraints_file} {ray_image} {pip_freeze} "
+            f"{self.dockerfile}"
         ]
         if self._should_upload():
             cmds += [

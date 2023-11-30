@@ -257,7 +257,8 @@ steps:
       - docker
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu --canonical-tag container_runtime
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu
+        --canonical-tag container_runtime --dockerfile docker/runtime_env_container/Dockerfile
       # - docker tag rayproject/ray:container_runtime ray_ci:v1
       # - podman pull docker-daemon:rayproject/ray:container_runtime
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags container --privileged

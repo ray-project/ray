@@ -6,11 +6,12 @@ SOURCE_IMAGE="$2"
 CONSTRAINTS_FILE="$3"
 DEST_IMAGE="$4"
 PIP_FREEZE_FILE="$5"
+DOCKERFILE="$6"
 
 CPU_TMP="$(mktemp -d)"
 
 cp -r .whl "${CPU_TMP}/.whl"
-cp docker/ray/Dockerfile "${CPU_TMP}/Dockerfile"
+cp "${DOCKERFILE}" "${CPU_TMP}/Dockerfile"
 cp python/requirements_compiled.txt "${CPU_TMP}/."
 
 # Build the image.
