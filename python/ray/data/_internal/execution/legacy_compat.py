@@ -167,8 +167,8 @@ def execute_read_only_to_legacy_lazy_block_list(
         ray_remote_args=read_logical_op._ray_remote_args,
         owned_by_consumer=owns_blocks,
     )
-    # Update the estimated number of blocks after fetching metadata
-    # and applying optimizations (e.g. SplitReadOutputBlocksRule).
+    # Update the estimated number of blocks after applying optimizations
+    # and fetching metadata (e.g. SetReadParallelismRule).
     block_list._estimated_num_blocks = read_map_op._estimated_output_blocks
     return block_list
 

@@ -107,10 +107,6 @@ DEFAULT_USE_RUNTIME_METRICS_SCHEDULING = bool(
     int(os.environ.get("DEFAULT_USE_RUNTIME_METRICS_SCHEDULING", "0"))
 )
 
-DEFAULT_USE_NEW_READ_ONLY_PATH = bool(
-    int(os.environ.get("RAY_DATA_USE_NEW_READ_ONLY_PATH", "0"))
-)
-
 # Whether to eagerly free memory (new backend only).
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
@@ -188,7 +184,6 @@ class DataContext:
         use_polars: bool,
         new_execution_backend: bool,
         use_streaming_executor: bool,
-        use_new_read_only_path: bool,
         eager_free: bool,
         decoding_size_estimation: bool,
         min_parallelism: bool,
@@ -224,7 +219,6 @@ class DataContext:
         self.use_polars = use_polars
         self.new_execution_backend = new_execution_backend
         self.use_streaming_executor = use_streaming_executor
-        self.use_new_read_only_path = use_new_read_only_path
         self.eager_free = eager_free
         self.decoding_size_estimation = decoding_size_estimation
         self.min_parallelism = min_parallelism
@@ -296,7 +290,6 @@ class DataContext:
                     use_polars=DEFAULT_USE_POLARS,
                     new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
                     use_streaming_executor=DEFAULT_USE_STREAMING_EXECUTOR,
-                    use_new_read_only_path=DEFAULT_USE_NEW_READ_ONLY_PATH,
                     eager_free=DEFAULT_EAGER_FREE,
                     decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
                     min_parallelism=DEFAULT_MIN_PARALLELISM,

@@ -19,7 +19,7 @@ class LogicalOperator(Operator):
         super().__init__(
             name,
             # Create a deep copy of the input operators
-            # to avoid modifying their output dependencies.
+            # to avoid modifying their original dependencies.
             [copy.deepcopy(in_op) for in_op in input_dependencies],
         )
         for x in input_dependencies:

@@ -691,6 +691,9 @@ class ExecutionPlan:
                 self._in_blocks = blocks
         if _is_lazy(self._snapshot_blocks) and force_read:
             self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
+            # When force-read is enabled, we similarly update self._in_blocks.
+            if self.is_read_only():
+                self._in_blocks = self._snapshot_blocks
         return self._snapshot_blocks
 
     def clear_block_refs(self) -> None:
@@ -756,7 +759,7 @@ class ExecutionPlan:
             # TODO(swang): Currently the legacy backend is used to execute
             # Datasets that only contain a Read. Handle read task parallelism
             # and output block splitting here. This duplicates logic in
-            # SplitReadOutputBlocksRule and can be removed once legacy backend
+            # SetReadParallelismRule and can be removed once legacy backend
             # is deprecated.
             ctx = DataContext.get_current()
             (
