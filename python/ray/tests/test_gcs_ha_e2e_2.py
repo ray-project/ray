@@ -7,7 +7,6 @@ from ray.tests.conftest_docker import *  # noqa
 
 # TODO(sang): Also check temp dir
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-@pytest.mark.parametrize("docker_cluster", ["ray_ci:v1"], indirect=True)
 def test_ray_session_name_preserved(docker_cluster):
     get_nodes_script = """
 import ray

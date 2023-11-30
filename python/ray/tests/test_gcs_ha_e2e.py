@@ -8,7 +8,6 @@ from ray.tests.conftest_docker import *  # noqa
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-@pytest.mark.parametrize("docker_cluster", ["ray_ci:v1"], indirect=True)
 def test_ray_nodes_liveness(docker_cluster):
     get_nodes_script = """
 import ray

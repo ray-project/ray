@@ -50,7 +50,6 @@ print(ray.nodes())
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-@pytest.mark.parametrize("docker_cluster", ["ray_ci:v1"], indirect=True)
 def test_ray_serve_basic(docker_cluster):
     # This test covers the basic cases for serve ha
     # - It starts the serve on worker nodes.

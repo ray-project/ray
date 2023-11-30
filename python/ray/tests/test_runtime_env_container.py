@@ -30,16 +30,12 @@ CONTAINER_SPEC = {
 CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
 
 
-@pytest.mark.parametrize(
-    "docker_cluster", ["rayproject/ray:container_runtime"], indirect=True
-)
-def test_a(docker_cluster):
+def test_a(podman_docker_cluster):
     output = subprocess.check_output(["docker", "image", "ls"])
     print(output)
 
-    head, worker = docker_cluster
+    head = podman_docker_cluster
     print(head.exec_run(cmd="ls -l"))
-    print(worker.exec_run(cmd="ls -l"))
     print(head.exec_run(cmd="python --version"))
     print(head.exec_run(cmd="podman --version"))
 
