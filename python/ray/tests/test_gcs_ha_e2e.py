@@ -8,13 +8,13 @@ from ray.tests.conftest_docker import *  # noqa
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-def test_ray_nodes_liveness(docker_cluster):
+def test_ray_nodes_liveness(ha_docker_cluster):
     get_nodes_script = """
 import ray
 ray.init("auto")
 print("Num Alive Nodes: ", sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
 """
-    head, worker = docker_cluster
+    head, worker = ha_docker_cluster
 
     def check_alive(n):
         output = worker.exec_run(cmd=f"python -c '{get_nodes_script}'")

@@ -2,7 +2,6 @@ import asyncio
 import os
 import re
 import sys
-from copy import copy
 from pathlib import Path
 
 import numpy as np
@@ -22,12 +21,17 @@ from ray.util.state import list_tasks, list_workers
 # - downgrades python version to 3.8.16 to match that of the Ray CI environment
 # - contains a custom file that a Serve deployment can read when executing requests
 # See `docker/container-runtime-env-tests/Dockerfile`
-CONTAINER_RUNTIME_ENV = {
-    "container": {
-        "image": "zcin/runtime-env-prototype:ci",
-        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
-    }
+CONTAINER_SPEC = {
+    "image": "zcin/runtime-env-prototype:ci",
+    "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
 }
+CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
+
+
+def test_a(ha_docker_cluster):
+    head, worker = ha_docker_cluster
+    print(head.exec_run(cmd="ls -l"))
+    print(worker.exec_run(cmd="ls -l"))
 
 
 @pytest.mark.skip
@@ -78,21 +82,6 @@ def test_shared_memory(shutdown_only):
     assert size < sys.getsizeof(np.random.rand(5000, 5000))
     print(f"Size of result fetched from ray.put: {size}")
     assert val.shape == (5000, 5000)
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_runtime_env_container_with_env_var(shutdown_only):
-    """Test container and env var work together in runtime env."""
-    runtime_env = copy(CONTAINER_RUNTIME_ENV)
-    runtime_env["env_vars"] = {"TEST1": "alice"}
-
-    @ray.remote(runtime_env=runtime_env)
-    def f():
-        return os.environ.get("TEST1")
-
-    ray.init()
-    res = ray.get(f.remote())
-    assert res == "alice"
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
@@ -252,6 +241,73 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
         )
 
     wait_for_condition(verify_exit_by_actor_init_failure)
+
+
+class TestValidation:
+    def test_container_with_env_vars(self):
+        with pytest.raises(ValueError):
+
+            @ray.remote(
+                runtime_env={
+                    "container": CONTAINER_SPEC,
+                    "env_vars": {"HELLO": "WORLD"},
+                }
+            )
+            def f():
+                array = np.random.rand(5000, 5000)
+                return ray.put(array)
+
+    def test_container_with_pip(self):
+        with pytest.raises(ValueError):
+
+            @ray.remote(
+                runtime_env={
+                    "container": CONTAINER_SPEC,
+                    "pip": ["requests"],
+                }
+            )
+            def f():
+                array = np.random.rand(5000, 5000)
+                return ray.put(array)
+
+    def test_container_with_conda(self):
+        with pytest.raises(ValueError):
+
+            @ray.remote(
+                runtime_env={
+                    "container": CONTAINER_SPEC,
+                    "conda": ["requests"],
+                }
+            )
+            def f():
+                array = np.random.rand(5000, 5000)
+                return ray.put(array)
+
+    def test_container_with_py_modules(self):
+        with pytest.raises(ValueError):
+
+            @ray.remote(
+                runtime_env={
+                    "container": CONTAINER_SPEC,
+                    "py_modules": ["requests"],
+                }
+            )
+            def f():
+                array = np.random.rand(5000, 5000)
+                return ray.put(array)
+
+    def test_container_with_working_dir(self):
+        with pytest.raises(ValueError):
+
+            @ray.remote(
+                runtime_env={
+                    "container": CONTAINER_SPEC,
+                    "working_dir": ".",
+                }
+            )
+            def f():
+                array = np.random.rand(5000, 5000)
+                return ray.put(array)
 
 
 if __name__ == "__main__":

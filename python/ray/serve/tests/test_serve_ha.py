@@ -50,7 +50,7 @@ print(ray.nodes())
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-def test_ray_serve_basic(docker_cluster):
+def test_ray_serve_basic(ha_docker_cluster):
     # This test covers the basic cases for serve ha
     # - It starts the serve on worker nodes.
     # - Check the deployment is OK
@@ -63,7 +63,7 @@ def test_ray_serve_basic(docker_cluster):
     # TODO(iycheng): Update serve to better integrate with GCS HA:
     #   - Make sure no task can run in the raylet where GCS is deployed.
 
-    head, worker = docker_cluster
+    head, worker = ha_docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0, output.output
     assert b"Adding 1 replica to deployment " in output.output
