@@ -196,6 +196,12 @@ class StateAPIManager:
                         match = datum[filter_column] == convert_string_to_type(
                             filter_value, bool
                         )
+                    elif isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], int
+                    ):
+                        match = datum[filter_column] == convert_string_to_type(
+                            filter_value, int
+                        )
                     else:
                         match = datum[filter_column] == filter_value
                 elif filter_predicate == "!=":
