@@ -1153,7 +1153,7 @@ class SingleAgentEpisode:
                 # Retrieve obs, infos, actions, rewards using our get_... APIs,
                 # which return all relevant timesteps (excluding the lookback
                 # buffer!).
-                SampleBatch.OBS: self.get_observations(),
+                SampleBatch.OBS: self.get_observations(slice(None, -1)),
                 SampleBatch.INFOS: self.get_infos(),
                 SampleBatch.ACTIONS: self.get_actions(),
                 SampleBatch.REWARDS: self.get_rewards(),
