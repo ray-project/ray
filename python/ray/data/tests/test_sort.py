@@ -19,9 +19,13 @@ from ray.tests.conftest import *  # noqa
 
 
 @pytest.mark.parametrize("new_backend", [True, False])
-@pytest.mark.parametrize("descending,boundaries", [(True, list(range(100,1000,200))), (False, list(range(100,1000,200))), (True, [1,998]), (False, [1,998])])
+@pytest.mark.parametrize("descending,boundaries", [(True, list(range(100,1000,200))),
+                                                   (False, list(range(100,1000,200))),
+                                                   (True, [1,998]), (False, [1,998])])
 def test_sort_with_specified_boundaries(descending, boundaries, new_backend):
-    def check_id_in_block(dataset, boundaries_, ordered_id, descending):
+    # This function is used to build expected sorted result, and the returned result will
+    # be compared with the result of ray.data.Dataset.sort().
+    def expected_sorted_result_in_blocks(boundaries_, ordered_id):
         id_exp = []
         for i in range(len(boundaries_)):
             if boundaries_[i] > ordered_id[0] and boundaries_[i] <= ordered_id[-1]:
@@ -45,15 +49,15 @@ def test_sort_with_specified_boundaries(descending, boundaries, new_backend):
                             id_exp.append(list(range(ordered_id[-1][-1] + 1, ordered_id[-1] + 1)))
                     else:
                         id_exp.append([])
-
         if boundaries_[-1] <= ordered_id[0]:
             id_exp.append(ordered_id)
         elif boundaries_[0] > ordered_id[-1]:
             id_exp.insert(0, ordered_id)
         else:
             id_exp.append(list(range(boundaries_[-1], ordered_id[-1] + 1)))
+        return id_exp
 
-
+    def check_sort_result_in_blocks(dataset, id_exp, descending):
         dfs = ray.get(dataset.to_pandas_refs())
         if descending:
             for i in range(len(dfs)):
@@ -71,8 +75,6 @@ def test_sort_with_specified_boundaries(descending, boundaries, new_backend):
                     idx = dfs[i]["id"].values.tolist()
                     #print(idx,  id_exp[i])
                     assert idx == id_exp[i]
-
-
     x = np.random.randn(1000, 2)
     idx = np.asarray(range(1000)).reshape(-1, 1)
     np.random.shuffle(idx)
@@ -82,9 +84,11 @@ def test_sort_with_specified_boundaries(descending, boundaries, new_backend):
     if new_backend:
         DataContext.get_current().new_execution_backend = False
     ds = ds.sort("id", descending, boundaries)
-    ordered_ids = x["id"].values.tolist()
-    ordered_ids.sort()
-    check_id_in_block(ds, boundaries, list(range(1000)), descending)
+    # Get the expected value in each block
+    id_exp = expected_sorted_result_in_blocks(boundaries, list(range(1000)))
+    # After sorting, check whether the number of blocks, the number of samples
+    # in each block, and the sorting of IDs in the blocks are as expected.
+    check_sort_result_in_blocks(ds, id_exp, descending)
     print("GOOD!")
 
 
@@ -99,6 +103,12 @@ def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     )
     # Make sure we have rows in each block.
     assert len([n for n in ds.sort("item")._block_num_rows() if n > 0]) == parallelism
+    # Make sure that the number of samples in each block is as expected,
+    # when boundaries is given.
+    boundaries = [25, 50, 75]
+    for n in ds.sort("item", boundaries=boundaries)._block_num_rows():
+        assert n == 25
+
     assert extract_values(
         "item", ds.sort("item", descending=True).take(num_items)
     ) == list(reversed(range(num_items)))
