@@ -2498,7 +2498,13 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
 blocking_get_inside_async_warned = False
 
 
-def _release_mutable_object(object_refs):
+def _end_read_channel(object_refs):
+    """
+    Signal to the writer that the channel is ready to write again. The read
+    begins when the caller calls ray.get and a written value is available. If
+    ray.get is not called first, then this call will block until a value is
+    written, then drop the value.
+    """
     worker = global_worker
     worker.check_connected()
     if isinstance(object_refs, ObjectRef):
@@ -2638,7 +2644,7 @@ def get(
 
 
 @PublicAPI
-def _put_mutable_object(value: Any, object_ref: ObjectRef, num_readers: int):
+def _write_channel(value: Any, object_ref: ObjectRef, num_readers: int):
     worker = global_worker
     worker.check_connected()
 
@@ -2663,7 +2669,7 @@ def _put_mutable_object(value: Any, object_ref: ObjectRef, num_readers: int):
 
 
 @PublicAPI
-def _create_mutable_object(
+def _create_channel(
     buffer_size: int,
 ) -> "ray.ObjectRef":
     worker = global_worker
