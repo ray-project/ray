@@ -67,12 +67,38 @@ def test_basic(ray_start_stop):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_put_get(shutdown_only):
+    ray.init()
+
+    print("output of id:", subprocess.check_output(["id"]))
+    print("output of ls -l:", subprocess.check_output(["ls", "-l", "/tmp/ray"]))
+    command = [
+        "podman",
+        "run",
+        "-v",
+        "/tmp/ray:/tmp/ray",
+        "--userns=keep-id",
+        "docker.io/zcin/runtime-env-prototype:nested",
+        "ls",
+        "-l",
+        "/tmp/ray",
+    ]
+    print("output of podman run ls -l /tmp/ray:", subprocess.check_output(command))
+    command = [
+        "podman",
+        "run",
+        "-v",
+        "/tmp/ray:/tmp/ray",
+        "--userns=keep-id",
+        "docker.io/zcin/runtime-env-prototype:nested",
+        "id",
+    ]
+    print("output of podman run id:", subprocess.check_output(command))
+
     @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
     def create_ref():
         ref = ray.put(np.zeros(100_000_000))
         return ref
 
-    ray.init()
     wrapped_ref = create_ref.remote()
     ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
 

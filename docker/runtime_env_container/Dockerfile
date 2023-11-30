@@ -17,7 +17,8 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -c $CONSTRAINTS_FILE \
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 # Install podman
-RUN sudo apt install software-properties-common uidmap -y && \
+RUN sudo apt-get update && \
+    sudo apt install software-properties-common uidmap -y && \
     sudo sh -c "echo 'deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list" && \
     sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 4D64390375060AA4 && \
     sudo apt-get update && \
