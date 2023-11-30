@@ -11,7 +11,7 @@ from typing import List
 from opencensus.stats.view_manager import ViewManager
 from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats import execution_context
-from prometheus_client.core import REGISTRY
+from ray._private.thirdparty.prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record, RAY_WORKER_TIMEOUT_S
 from ray._private.services import new_port
 from ray.core.generated.metrics_pb2 import (
@@ -61,7 +61,7 @@ def generate_protobuf_metric(
     name: str,
     desc: str,
     unit: str,
-    type: int = 0,
+    type: int = 2, # default GaugeDouble
     label_keys: List[str] = None,
     timeseries: List[TimeSeries] = None,
 ):
