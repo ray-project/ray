@@ -4,7 +4,7 @@ from copy import deepcopy
 from typing import Dict, Optional
 
 import pytest
-from pydantic import BaseModel
+from ray._private.pydantic_compat import BaseModel
 
 import ray
 from ray import serve
