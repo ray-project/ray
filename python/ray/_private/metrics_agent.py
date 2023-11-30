@@ -181,7 +181,11 @@ class OpencensusProxyMetric:
                     == MetricDescriptorType.CUMULATIVE_DISTRIBUTION
                 ):
                     dist_value = point.distribution_value
-                    counts_per_bucket = [bucket.count for bucket in dist_value.buckets]
+                    counts_per_bucket = (
+                        [bucket.count for bucket in dist_value.buckets]
+                        if len(dist_value.buckets) > 0
+                        else None
+                    )
                     bucket_bounds = dist_value.bucket_options.explicit.bounds
                     data = DistributionAggregationData(
                         dist_value.sum / dist_value.count,

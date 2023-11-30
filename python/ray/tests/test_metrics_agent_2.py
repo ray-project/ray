@@ -22,6 +22,8 @@ from ray.core.generated.metrics_pb2 import (
     LabelKey,
     TimeSeries,
     LabelValue,
+    DistributionValue,
+    _DISTRIBUTIONVALUE_BUCKET,
 )
 from ray._raylet import WorkerID
 
@@ -274,12 +276,31 @@ def test_metrics_agent_proxy_record_type(get_agent):
         timeseries=[],
     )
     sum_metric.timeseries.append(generate_timeseries(["a", "b"], [1, 2, 3]))
-    agent.proxy_export_metrics([gauge, counter, sum_metric])
+    histogram = generate_protobuf_metric(
+        "test_histogram",
+        "desc",
+        "",
+        type=MetricDescriptorType.CUMULATIVE_DISTRIBUTION,
+        label_keys=["a,b"],
+        timeseries=[],
+    )
+    distribution_value = DistributionValue()
+    distribution_value.count = 2
+    distribution_value.sum = 250
+    distribution_value.sum_of_squared_deviation = 125
+    histogram.timeseries.append(
+        TimeSeries(
+            label_values=[LabelValue(value="a"), LabelValue(value="b")],
+            points=[Point(distribution_value=distribution_value)],
+        )
+    )
+    agent.proxy_export_metrics([gauge, counter, sum_metric, histogram])
 
     expected_metric_types = {
         "test_gauge": "gauge",
         "test_counter": "counter",
         "test_sum": "counter",
+        "test_histogram": "histogram",
     }
 
     metric_types = fetch_prometeus_metrics_type([metrics_page])

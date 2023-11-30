@@ -23,6 +23,7 @@ from ray._private.test_utils import (
     get_log_batch,
     wait_for_condition,
     raw_metrics,
+    fetch_prometeus_metrics_type,
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
@@ -352,6 +353,45 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
     except RuntimeError:
         print(f"The components are {pformat(fetch_prometheus(prom_addresses))}")
         test_cases()  # Should fail assert
+
+
+def test_metrics_export_types(shutdown_only):
+    ray.init()
+    node_info_list = ray.nodes()
+    prom_addresses = []
+    for node_info in node_info_list:
+        metrics_export_port = node_info["MetricsExportPort"]
+        addr = node_info["NodeManagerAddress"]
+        prom_addresses.append(f"{addr}:{metrics_export_port}")
+
+    # Test utils.metrics
+    histogram = Histogram("test_histogram", description="desc", boundaries=[0.1, 1.6])
+    histogram.observe(1.2)
+    gauge = Gauge("test_gauge", description="gauge")
+    gauge.set(1)
+    counter = Counter("test_counter")
+    counter.inc(1.2)
+    expected_metric_types = {
+        metric.info["name"]: metric.info["name"].split("_")[-1]
+        for metric in [histogram, gauge, counter]
+    }
+
+    def test_metrics_type():
+        try:
+            metric_types = fetch_prometeus_metrics_type(prom_addresses)
+            for metric in expected_metric_types:
+                metric_name = f"ray_{metric}"
+                assert metric_name in metric_types
+                assert metric_types[metric_name] == expected_metric_types[metric]
+            return True
+        except AssertionError:
+            return False
+
+    wait_for_condition(
+        test_metrics_type,
+        timeout=30,
+        retry_interval_ms=1000,  # Yield resource for other processes
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
