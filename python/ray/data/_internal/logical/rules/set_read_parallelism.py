@@ -71,19 +71,32 @@ def compute_additional_split_factor(
     return parallelism, reason, estimated_num_blocks, None
 
 
-class SplitReadOutputBlocksRule(Rule):
+class SetReadParallelismRule(Rule):
+    """
+    This rule sets the read op's task parallelism based on the target block
+    size, the requested parallelism, the number of read files, and the
+    available resources in the cluster.
+
+    If the parallelism is lower than requested, this rule also sets a split
+    factor to split the output blocks of the read task, so that the following
+    stage will have the desired parallelism.
+    """
+
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         ops = [plan.dag]
 
-        while len(ops) == 1 and not isinstance(ops[0], InputDataBuffer):
-            logical_op = plan.op_map[ops[0]]
+        while len(ops) > 0:
+            op = ops.pop(0)
+            if isinstance(op, InputDataBuffer):
+                continue
+            logical_op = plan.op_map[op]
             if isinstance(logical_op, Read):
-                self._split_read_op_if_needed(ops[0], logical_op)
-            ops = ops[0].input_dependencies
+                self._apply(op, logical_op)
+            ops += op.input_dependencies
 
         return plan
 
-    def _split_read_op_if_needed(self, op: PhysicalOperator, logical_op: Read):
+    def _apply(self, op: PhysicalOperator, logical_op: Read):
         (
             detected_parallelism,
             reason,
@@ -96,12 +109,15 @@ class SplitReadOutputBlocksRule(Rule):
             op.actual_target_max_block_size,
             op._additional_split_factor,
         )
+
         if logical_op._parallelism == -1:
             assert reason != ""
             logger.get_logger().info(
                 f"Using autodetected parallelism={detected_parallelism} "
                 f"for stage {logical_op.name} to satisfy {reason}."
             )
+        logical_op.set_detected_parallelism(detected_parallelism)
+
         if k is not None:
             logger.get_logger().info(
                 f"To satisfy the requested parallelism of {detected_parallelism}, "

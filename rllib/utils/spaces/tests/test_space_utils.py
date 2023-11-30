@@ -76,6 +76,12 @@ class TestSpaceUtils(unittest.TestCase):
 
     def test_batch_and_unbatch(self):
         """Tests the two utility functions `batch` and `unbatch`."""
+        # Test, whether simple structs are batch/unbatch'able as well.
+        # B=8
+        simple_struct = [0, 1, 2, 3, 4, 5, 6, 7]
+        simple_struct_batched = batch(simple_struct)
+        check(unbatch(simple_struct_batched), simple_struct)
+
         # Create a complex struct of individual batches (B=2).
         complex_struct = {
             "a": (
