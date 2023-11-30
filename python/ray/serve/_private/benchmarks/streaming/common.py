@@ -8,9 +8,17 @@ from typing import Tuple, Union
 import numpy as np
 
 from ray.actor import ActorHandle
+from ray.runtime_env import RuntimeEnv
 from ray.serve._private.benchmarks.common import Blackhole, run_throughput_benchmark
 from ray.serve.handle import DeploymentHandle
 
+
+GRPC_DEBUG_RUNTIME_ENV = RuntimeEnv(
+    env_vars={
+        "GRPC_TRACE": "http",
+        "GRPC_VERBOSITY": "debug"
+    },
+)
 
 class IOMode(enum.Enum):
     SYNC = "SYNC"

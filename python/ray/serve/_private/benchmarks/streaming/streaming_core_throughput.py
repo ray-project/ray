@@ -1,14 +1,16 @@
 import click
 
 import ray
-from ray.serve._private.benchmarks.streaming.common import Caller, Endpoint, IOMode
+from ray.serve._private.benchmarks.streaming.common import Caller, Endpoint, IOMode, GRPC_DEBUG_RUNTIME_ENV
 
 
+# @ray.remote(runtime_env=GRPC_DEBUG_RUNTIME_ENV)
 @ray.remote
 class EndpointActor(Endpoint):
     pass
 
 
+# @ray.remote(runtime_env=GRPC_DEBUG_RUNTIME_ENV)
 @ray.remote
 class CallerActor(Caller):
     async def _consume_single_stream(self):
