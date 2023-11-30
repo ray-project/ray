@@ -579,14 +579,12 @@ class TestTargetCapacityUpdateAndServeStatus:
             config=config,
             app_name=app_name,
             deployment_name=deployment_name,
-            expected_app_status=ApplicationStatus.DEPLOYING,
-            expected_deployment_status=DeploymentStatus.UPDATING,
+            expected_app_status=ApplicationStatus.RUNNING,
+            expected_deployment_status=DeploymentStatus.HEALTHY,
             expected_deployment_status_trigger=(
-                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+                DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
             ),
         )
-        self.check_num_replicas(0, app_name, deployment_name)
-        self.unblock_replica_creation_and_deletion(signal, app_name)
         self.check_num_replicas(0, app_name, deployment_name)
 
         # Increase the target_capacity, and check again.
@@ -666,14 +664,12 @@ class TestTargetCapacityUpdateAndServeStatus:
             app_name=app_name,
             deployment_name=deployment_name,
             timeout=20,
-            expected_app_status=ApplicationStatus.DEPLOYING,
-            expected_deployment_status=DeploymentStatus.UPDATING,
+            expected_app_status=ApplicationStatus.RUNNING,
+            expected_deployment_status=DeploymentStatus.HEALTHY,
             expected_deployment_status_trigger=(
-                DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+                DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
             ),
         )
-        self.check_num_replicas(0, app_name, deployment_name)
-        self.unblock_replica_creation_and_deletion(lifecycle_signal, app_name)
         self.check_num_replicas(0, app_name, deployment_name)
 
         # Increase the target_capacity, and check again.
