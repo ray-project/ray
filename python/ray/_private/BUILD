@@ -5,7 +5,7 @@ doctest(
         ["**/*.py"],
         exclude = [
             "**/internal_thirdparty_files/**",
-            "**/_private/internal_third_party.py",
+            "internal_third_party.py",
         ],
     ),
     tags = ["team:core"],
