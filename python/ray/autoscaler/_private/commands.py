@@ -857,7 +857,6 @@ def get_or_create_head_node(
             cli_logger.abort("Failed to setup head node.")
             sys.exit(1)
 
-
     global_event_system.execute_callback(
         CreateClusterEvent.cluster_booting_completed,
         {
