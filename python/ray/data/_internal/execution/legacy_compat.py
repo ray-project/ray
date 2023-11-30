@@ -28,9 +28,15 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import get_execution_plan
+from ray.data._internal.logical.rules.set_read_parallelism import (
+    compute_additional_split_factor,
+)
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage, Stage
+from ray.data._internal.planner.plan_read_op import (
+    apply_output_blocks_handling_to_read_task,
+)
 from ray.data._internal.stage_impl import LimitStage, RandomizeBlocksStage
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data._internal.util import validate_compute
@@ -131,6 +137,7 @@ def execute_read_only_to_legacy_lazy_block_list(
     dataset_uuid: str,
     preserve_order: bool,
 ) -> LazyBlockList:
+    ctx = DataContext.get_current()
     read_map_op, stats = _get_execution_dag(
         executor,
         plan,
@@ -146,30 +153,44 @@ def execute_read_only_to_legacy_lazy_block_list(
     assert isinstance(input_data_buffer, InputDataBuffer), input_data_buffer
     bundles = executor.execute(input_data_buffer, initial_stats=stats)
 
+    # In the full dataset execution, the logic in ApplyAdditionalSplitToOutputBlocks
+    # is normally executed as part of the MapOperator created in the
+    # LogicalPlan -> PhysicalPlan plan translation. In this case, since the
+    # InputDataBuffer operator is executed in isolation, we need to
+    # manually apply this logic in order to update the ReadTasks.
+    assert isinstance(plan._logical_plan, LogicalPlan)
+    read_logical_op = plan._logical_plan.dag
+    assert isinstance(read_logical_op, Read)
+    (_, _, estimated_num_blocks, k,) = compute_additional_split_factor(
+        read_logical_op._datasource_or_legacy_reader,
+        read_logical_op._parallelism,
+        read_logical_op._mem_size,
+        ctx.target_max_block_size,
+        cur_additional_split_factor=None,
+    )
+
     read_tasks = []
     owns_blocks = True
     for bundle in bundles:
         if not bundle.owns_blocks:
             owns_blocks = False
         for read_task_ref, _ in bundle.blocks:
-            read_tasks.append(ray.get(read_task_ref))
+            read_task = ray.get(read_task_ref)
+            # Manually apply the ApplyAdditionalSplitToOutputBlocks
+            # logic to update ReadTasks.
+            apply_output_blocks_handling_to_read_task(read_task, k)
+            read_tasks.append(read_task)
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
-
-    # Get the read stage name from the logical Read operator.
-    assert isinstance(plan._logical_plan, LogicalPlan)
-    read_logical_op = plan._logical_plan.dag
-    assert isinstance(read_logical_op, Read)
-    read_stage_name = f"Read{read_logical_op._datasource.get_name()}"
 
     block_list = LazyBlockList(
         read_tasks,
-        read_stage_name,
+        read_logical_op.name,
         ray_remote_args=read_logical_op._ray_remote_args,
         owned_by_consumer=owns_blocks,
     )
     # Update the estimated number of blocks after applying optimizations
     # and fetching metadata (e.g. SetReadParallelismRule).
-    block_list._estimated_num_blocks = read_map_op._estimated_output_blocks
+    block_list._estimated_num_blocks = estimated_num_blocks
     return block_list
 
 

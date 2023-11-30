@@ -126,7 +126,5 @@ class SetReadParallelismRule(Rule):
 
         if k is not None:
             op.set_additional_split_factor(k)
-            # Used to update the output LazyBlockList's _estimated_num_blocks.
-            op._estimated_output_blocks = estimated_num_blocks
 
         logger.get_logger().debug(f"Estimated num output blocks {estimated_num_blocks}")
