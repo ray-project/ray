@@ -92,7 +92,7 @@ Compare a PyTorch training script with and without Ray Train.
     .. tab-item:: PyTorch + Ray Train
 
         .. code-block:: python
-            :emphasize-lines: 12, 20, 22, 32, 37, 48, 53-56, 57
+            :emphasize-lines: 12, 15, 21, 23, 35, 50, 54-57, 58, 63, 66-73
 
             import os
             import tempfile
@@ -130,7 +130,8 @@ Compare a PyTorch training script with and without Ray Train.
                 # Training
                 for epoch in range(10):
                     for images, labels in train_loader:
-                        # images, labels = images.to("cuda"), labels.to("cuda")  # This is done by `prepare_data_loader`!
+                        # This is done by `prepare_data_loader`!
+                        # images, labels = images.to("cuda"), labels.to("cuda")
                         outputs = model(images)
                         loss = criterion(outputs, labels)
                         optimizer.zero_grad()
