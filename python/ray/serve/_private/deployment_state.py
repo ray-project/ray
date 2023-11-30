@@ -1436,13 +1436,11 @@ class DeploymentState:
 
         # Determine if the updated target state simply scales the current state.
         if new_target_state.is_scaled_copy_of(self._target_state):
-            # not_updating = self._curr_status_info.status != DeploymentStatus.UPDATING
 
             curr_num_replicas = self._target_state.target_num_replicas
             new_num_replicas = new_target_state.target_num_replicas
             num_replicas_changed = curr_num_replicas != new_num_replicas
 
-            # if not_updating and num_replicas_changed:
             if allow_scaling_statuses and num_replicas_changed:
                 scaling_direction = (
                     DeploymentStatus.UPSCALING
