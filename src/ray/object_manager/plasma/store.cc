@@ -31,9 +31,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/eventfd.h>
 
-#include <boost/asio/spawn.hpp>
 #include <boost/bind/bind.hpp>
 #include <chrono>
 #include <ctime>

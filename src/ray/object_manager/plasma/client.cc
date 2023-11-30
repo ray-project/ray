@@ -493,17 +493,13 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
     entry->is_mutable = is_mutable;
 
     auto plasma_header = GetPlasmaObjectHeader(entry->object);
-    // The corresponding WriteRelease takes place in Seal.
-    // When an object is first created, the data size is equivalent to
-    // buffer size.
-    // The first creation's version is always 1.
-    RAY_CHECK(entry->next_version_to_write == 1);
-    plasma_header->WriteAcquire(/*next_version_to_write*/ entry->next_version_to_write,
-                                entry->object.data_size);
-    if (entry->is_mutable) {
-      // When the object is first created, it is in writeable state.
-      plasma_header->num_readers = 0;
-    } else {
+    if (!entry->is_mutable) {
+      // The first creation's version is always 1.
+      RAY_CHECK(entry->next_version_to_write == 1);
+      // The corresponding WriteRelease takes place in Seal.
+      // When an object is first created, the data size is equivalent to
+      // buffer size.
+      plasma_header->WriteAcquire(entry->next_version_to_write, data_size);
       // Anyone may read.
       plasma_header->num_readers = -1;
     }
@@ -836,26 +832,31 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
     return Status::ObjectAlreadySealed("Seal() called on an already sealed object");
   }
 
-  auto plasma_header = GetPlasmaObjectHeader(object_entry->second->object);
-  plasma_header->WriteRelease(
-      /*write_version=*/object_entry->second->next_version_to_write);
-  // The next Write must pass a higher version.
-  object_entry->second->next_version_to_write++;
   object_entry->second->is_sealed = true;
+  auto plasma_header = GetPlasmaObjectHeader(object_entry->second->object);
+  if (plasma_header->num_readers != 0) {
+    plasma_header->WriteRelease(
+        /*write_version=*/object_entry->second->next_version_to_write);
+    // The next Write must pass a higher version.
+    object_entry->second->next_version_to_write++;
+  } else {
+    // Send the seal request to Plasma. This is the normal Seal path, used for
+    // immutable objects and the initial Create call for mutable objects.
+    RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
+    std::vector<uint8_t> buffer;
+    RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
+    ObjectID sealed_id;
+    RAY_RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
+    RAY_CHECK(sealed_id == object_id);
+    // We call PlasmaClient::Release to decrement the number of instances of this
+    // object
+    // that are currently being used by this client. The corresponding increment
+    // happened in plasma_create and was used to ensure that the object was not
+    // released before the call to PlasmaClient::Seal.
+    RAY_RETURN_NOT_OK(Release(object_id));
+  }
 
-  /// Send the seal request to Plasma.
-  RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
-  ObjectID sealed_id;
-  RAY_RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
-  RAY_CHECK(sealed_id == object_id);
-  // We call PlasmaClient::Release to decrement the number of instances of this
-  // object
-  // that are currently being used by this client. The corresponding increment
-  // happened in plasma_create and was used to ensure that the object was not
-  // released before the call to PlasmaClient::Seal.
-  return Release(object_id);
+  return Status::OK();
 }
 
 Status PlasmaClient::Impl::Abort(const ObjectID &object_id) {

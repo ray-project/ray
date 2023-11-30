@@ -2498,10 +2498,12 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
 blocking_get_inside_async_warned = False
 
 
-def _release_mutable_object(object_ref):
+def _release_mutable_object(object_refs):
     worker = global_worker
     worker.check_connected()
-    worker.core_worker.get_release([object_ref])
+    if isinstance(object_refs, ObjectRef):
+        object_refs = [object_refs]
+    worker.core_worker.get_release(object_refs)
 
 
 @overload
