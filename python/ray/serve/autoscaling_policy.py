@@ -6,10 +6,12 @@ from typing import Any, List, Optional
 import requests
 
 from ray.serve.config import AutoscalingConfig
+from ray.util.annotations import PublicAPI
 
 PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
 
 
+@PublicAPI(stability="beta")
 class TargetCapacityScaleDirection(str, Enum):
     """Determines what direction the target capacity is scaling."""
 
@@ -17,6 +19,7 @@ class TargetCapacityScaleDirection(str, Enum):
     DOWN = "DOWN"
 
 
+@PublicAPI(stability="beta")
 class AutoscalingContext:
     """Contains the context for an autoscaling policy.
 
@@ -79,6 +82,7 @@ class AutoscalingContext:
         return self.prometheus_metrics("ray_node_gpus_utilization")
 
 
+@PublicAPI(stability="beta")
 class AutoscalingPolicy:
     """Defines the interface for an autoscaling policy.
 
