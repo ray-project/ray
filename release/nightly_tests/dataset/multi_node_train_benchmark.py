@@ -615,7 +615,8 @@ def benchmark_code(
     data_benchmark_metrics = {}
 
     # Report the average of per-epoch throughput, excluding the first epoch.
-    # Unless there is only one epoch.
+    # Unless there is only one epoch, in which case we report the epoch
+    # throughput directly.
     start_epoch_tput = 0 if args.num_epochs == 1 else 1
     epoch_tputs = []
     num_rows_per_epoch = sum(result.metrics["num_rows"])
