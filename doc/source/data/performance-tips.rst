@@ -538,25 +538,5 @@ Deterministic execution
 
 To enable deterministic execution, set the preceding to True. This setting may decrease performance, but ensures block ordering is preserved through execution. This flag defaults to False.
 
-Monitoring your application
----------------------------
-
-View the Ray Data dashboard located in the :ref:`Metrics tab <dash-metrics-view>` of the Ray Dashboard to monitor your application and troubleshoot issues. Ray Data emits Prometheus metrics in real-time while a Dataset is executing, and the Ray Data dashboard displays these metrics grouped by Dataset. Datasets can also be assigned a name using :meth:`Dataset._set_name`, which prefixes the dataset ID for a more identifiable label.
-
-The metrics recorded are:
-
-* Bytes spilled by objects from object store to disk
-* Bytes of objects allocated in object store
-* Bytes of objects freed in object store
-* Current total bytes of objects in object store
-* Logical CPUs allocated to dataset operators
-* Logical GPUs allocated to dataset operators
-* Bytes outputted by dataset operators
-
-.. image:: images/data-dashboard.png
-   :align: center
-
-To learn more about the Ray dashboard, including detailed setup instructions, see :ref:`Ray Dashboard <observability-getting-started>`.
-
 
 .. _`file a Ray Data issue on GitHub`: https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+
