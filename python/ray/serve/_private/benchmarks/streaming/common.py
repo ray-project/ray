@@ -3,7 +3,7 @@ import asyncio
 import enum
 import logging
 import time
-from typing import Tuple, Union
+from typing import Tuple, Union, Coroutine
 
 import numpy as np
 
@@ -23,6 +23,18 @@ GRPC_DEBUG_RUNTIME_ENV = RuntimeEnv(
 class IOMode(enum.Enum):
     SYNC = "SYNC"
     ASYNC = "ASYNC"
+
+
+async def trace(coro: Coroutine):
+    from viztracer import VizTracer
+
+    tracer = VizTracer()
+    tracer.start()
+
+    await coro
+
+    tracer.stop()
+    tracer.save()
 
 
 class Endpoint:
