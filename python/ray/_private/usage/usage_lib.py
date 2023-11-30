@@ -580,20 +580,23 @@ def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
         gcs_client: The GCS client.
 
     Returns:
-        The current cluster status or empty ClusterStatusToReport 
+        The current cluster status or empty ClusterStatusToReport
         if it fails to get that information.
     """
     from ray.autoscaler.v2.sdk import get_cluster_status
+
     result = ClusterStatusToReport()
     try:
         cluster_status = get_cluster_status(gcs_client.address)
-        total_resources = cluster_status.total_resources() 
+        total_resources = cluster_status.total_resources()
         result.total_num_cpus = total_resources.get("CPU", 0)
         result.total_num_gpus = total_resources.get("GPU", 0)
 
-        to_GiB = 1 / 2*30
+        to_GiB = 1 / 2 * 30
         result.total_memory_gb = total_resources.get("memory", 0) * to_GiB
-        result.total_object_store_memory_gb = total_resources.get("object_store_memory", 0) * to_GiB
+        result.total_object_store_memory_gb = (
+            total_resources.get("object_store_memory", 0) * to_GiB
+        )
     except Exception as e:
         logger.info(f"Failed to get cluster status to report {e}")
     finally:
@@ -626,7 +629,7 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
             return ClusterStatusToReport()
 
         result = ClusterStatusToReport()
-        to_GiB = 1 / 2*30
+        to_GiB = 1 / 2 * 30
         cluster_status = json.loads(cluster_status.decode("utf-8"))
         if (
             "load_metrics_report" not in cluster_status
