@@ -1135,8 +1135,8 @@ def test_actor_generic_call(ray_start_regular_shared):
         actor.__ray_call__()
 
     assert ray.get(actor.__ray_call__.remote(lambda self: 4)) == 4
-    assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2), 2) == 4
-    assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2), x=2) == 4
+    assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, 2)) == 4
+    assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, x=2)) == 4
 
 
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
