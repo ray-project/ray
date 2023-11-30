@@ -19,9 +19,7 @@ from ray.serve import metrics
 from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.autoscaling_policy import (
-    AutoscalingContext,
     AutoscalingPolicyManager,
-    TargetCapacityScaleDirection,
     get_capacity_adjusted_num_replicas,
 )
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
@@ -63,6 +61,10 @@ from ray.serve._private.utils import (
     msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
+from ray.serve.autoscaling_policy import (
+    AutoscalingContext,
+    TargetCapacityScaleDirection,
+)
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,
