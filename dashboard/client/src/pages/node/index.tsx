@@ -141,7 +141,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
     return null;
   }
 
-  const { raylet, hostname, ip, cpu, mem, networkSpeed, disk, logUrl } = node;
+  const { raylet, hostname, ip, cpu, mem, networkSpeed, disk } = node;
   const { nodeId, state, objectStoreUsedMemory, objectStoreAvailableMemory } =
     raylet;
 
@@ -214,7 +214,9 @@ export const NodeCard = (props: { node: NodeDetail }) => {
       <Grid container justify="flex-end" spacing={1} style={{ margin: 8 }}>
         <Grid>
           <Button>
-            <Link to={`/logs/${encodeURIComponent(logUrl)}`}>log</Link>
+            <Link to={`/logs/?nodeId${encodeURIComponent(raylet.nodeId)}`}>
+              log
+            </Link>
           </Button>
         </Grid>
       </Grid>

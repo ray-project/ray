@@ -131,7 +131,7 @@ py_test(
 
 py_test(
     name = "test_block_sizing",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_block_sizing.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],

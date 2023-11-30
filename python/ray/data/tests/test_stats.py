@@ -36,6 +36,7 @@ def gen_expected_metrics(
             "'bytes_inputs_received': N",
             "'num_inputs_processed': N",
             "'bytes_inputs_processed': N",
+            "'bytes_inputs_of_submitted_tasks': N",
             "'num_outputs_generated': N",
             "'bytes_outputs_generated': N",
             "'rows_outputs_generated': N",
@@ -569,6 +570,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      bytes_inputs_received: N,\n"
         "      num_inputs_processed: N,\n"
         "      bytes_inputs_processed: N,\n"
+        "      bytes_inputs_of_submitted_tasks: N,\n"
         "      num_outputs_generated: N,\n"
         "      bytes_outputs_generated: N,\n"
         "      rows_outputs_generated: N,\n"

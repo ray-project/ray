@@ -102,6 +102,11 @@ DEFAULT_USE_STREAMING_EXECUTOR = bool(
     int(os.environ.get("RAY_DATA_USE_STREAMING_EXECUTOR", "1"))
 )
 
+# Whether to use the runtime object store memory metrics for scheduling.
+DEFAULT_USE_RUNTIME_METRICS_SCHEDULING = bool(
+    int(os.environ.get("DEFAULT_USE_RUNTIME_METRICS_SCHEDULING", "0"))
+)
+
 # Whether to eagerly free memory (new backend only).
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
@@ -190,6 +195,7 @@ class DataContext:
         use_ray_tqdm: bool,
         enable_progress_bars: bool,
         enable_get_object_locations_for_metrics: bool,
+        use_runtime_metrics_scheduling: bool,
         write_file_retry_on_errors: List[str],
     ):
         """Private constructor (use get_current() instead)."""
@@ -227,6 +233,7 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
+        self.use_runtime_metrics_scheduling = use_runtime_metrics_scheduling
         self.write_file_retry_on_errors = write_file_retry_on_errors
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
@@ -296,6 +303,7 @@ class DataContext:
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
+                    use_runtime_metrics_scheduling=DEFAULT_USE_RUNTIME_METRICS_SCHEDULING,  # noqa: E501
                     write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
                 )
 
