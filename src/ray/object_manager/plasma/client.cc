@@ -735,6 +735,7 @@ Status PlasmaClient::Impl::GetRelease(const ObjectID &object_id) {
   plasma_header->ReadRelease(entry->next_version_to_read);
   // The next read needs to read at least this version.
   entry->next_version_to_read++;
+  entry->read_acquired = false;
 
   return Status::OK();
 }

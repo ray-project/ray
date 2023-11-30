@@ -11,11 +11,19 @@ import ray.cluster_utils
 logger = logging.getLogger(__name__)
 
 
-def test_put_mutable_object(ray_start_cluster):
-    ray.init()
+def test_put_get(ray_start_cluster):
+    ray.init(
+        _system_config={
+            "plasma_use_shared_memory_seal": True,
+        }
+    )
     ref = ray._create_mutable_object(1000)
-    ray._put_mutable_object(b"hello", ref, num_readers=1)
-    assert ray.get(ref) == b"hello"
+
+    for i in range(100):
+        val = i.to_bytes(8, "little")
+        ray._put_mutable_object(val, ref, num_readers=1)
+        assert ray.get(ref) == val
+        ray._release_mutable_object(ref)
 
 
 if __name__ == "__main__":
