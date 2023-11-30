@@ -336,8 +336,8 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
-                workers pool of size ``n``, specify ``concurrency=n``. For a autoscaling
-                workers pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
+                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
                 ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker.
@@ -692,8 +692,8 @@ class Dataset:
                 autoscaling actor pool. This argument is deprecated. Please use
                 ``concurrency`` argument instead.
             concurrency: The number of Ray workers to use concurrently. For a
-                fixed-sized workers pool of size ``n``, specify ``concurrency=n``.
-                For a autoscaling workers pool from ``m`` to ``n`` workers, specify
+                fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
+                an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``. ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -760,8 +760,8 @@ class Dataset:
                 autoscaling actor pool. This argument is deprecated. Please use
                 ``concurrency`` argument instead.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
-                workers pool of size ``n``, specify ``concurrency=n``. For a autoscaling
-                workers pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
+                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
                 ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -824,8 +824,8 @@ class Dataset:
                 autoscaling actor pool. This argument is deprecated. Please use
                 ``concurrency`` argument instead.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
-                workers pool of size ``n``, specify ``concurrency=n``. For a autoscaling
-                workers pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
+                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
                 ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -917,8 +917,8 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             concurrency: The number of Ray workers to use concurrently. For a
-                fixed-sized workers pool of size ``n``, specify ``concurrency=n``.
-                For a autoscaling workers pool from ``m`` to ``n`` workers, specify
+                fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
+                For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``. ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
@@ -1011,8 +1011,8 @@ class Dataset:
                 autoscaling actor pool. This argument is deprecated. Please use
                 ``concurrency`` argument instead.
             concurrency: The number of Ray workers to use concurrently. For a
-                fixed-sized workers pool of size ``n``, specify ``concurrency=n``.
-                For a autoscaling workers pool from ``m`` to ``n`` workers, specify
+                fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
+                For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``. ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).

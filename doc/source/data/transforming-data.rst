@@ -166,7 +166,7 @@ Transforming with Python Class
 
 If your transformation requires expensive setup like downloading model weights, use
 Python class instead of function. Python class performs setup exactly once for all data.
-In contrast, function is stateless and does not have a way to perform setup.
+In contrast, function is stateless and doesn't have a way to perform setup.
 
 Internally, Ray Data uses tasks to execute function, and uses actors to execute class.
 To learn more about tasks and actors, read the

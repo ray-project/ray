@@ -574,6 +574,7 @@ def get_compute_strategy(
                     f"{fn}. Non-default values of ``concurrency`` are currently only "
                     "supported when ``fn`` is a CallableClass."
                 )
+                return TaskPoolStrategy()
 
             if isinstance(concurrency, tuple):
                 if (
