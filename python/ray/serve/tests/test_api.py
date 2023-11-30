@@ -773,6 +773,49 @@ class TestAppBuilder:
             call_app_builder_with_args_if_necessary(
                 check_missing_required, {"num_replicas": "10"}
             )
+    
+    def test_pydantic_version_compatibility(self):
+        """Check compatibility with different pydantic versions."""
+
+        cat_dict = {"color": "orange", "age": 10}
+
+        from pydantic import BaseModel
+
+        class Cat(BaseModel):
+            color: str
+            age: int
+
+        def build(args: Cat):
+            """Builder with Pydantic model type hint."""
+
+            assert isinstance(args, Cat), f"args type: {type(args)}"
+            assert args.color == cat_dict["color"]
+            assert args.age == cat_dict["age"]
+            return self.A.bind(f"My {args.color} cat is {args.age} years old.")
+
+        app = call_app_builder_with_args_if_necessary(build, cat_dict)
+        assert isinstance(app, Application)
+
+        try:
+            # Only runs if pydantic version is >=2.5.0
+            from pydantic.v1 import BaseModel
+
+            class Cat(BaseModel):
+                color: str
+                age: int
+
+            def build(args: Cat):
+                """Builder with Pydantic model type hint."""
+
+                assert isinstance(args, Cat)
+                assert args.color == cat_dict["color"]
+                assert args.age == cat_dict["age"]
+                return self.A.bind(f"My {args.color} cat is {args.age} years old.")
+
+            app = call_app_builder_with_args_if_necessary(build, cat_dict)
+            assert isinstance(app, Application)
+        except ImportError:
+            pass
 
 
 def test_no_slash_route_prefix(serve_instance):
