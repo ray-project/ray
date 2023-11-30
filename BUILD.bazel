@@ -399,6 +399,7 @@ ray_cc_library(
     linkopts = PLASMA_LINKOPTS,
     deps = [
         ":plasma_client",
+        "//src/ray/common:network",
         ":stats_lib",
     ],
 )
@@ -918,6 +919,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -929,6 +931,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )

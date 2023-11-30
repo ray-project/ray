@@ -133,6 +133,8 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
 
   int64_t GetNumBytesInUse() const;
 
+  int64_t GetNumObjectsCreatedTotal() const;
+
   int64_t GetNumBytesCreatedTotal() const;
 
   int64_t GetNumBytesUnsealed() const;

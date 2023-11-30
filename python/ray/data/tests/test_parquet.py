@@ -39,6 +39,17 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
         assert ds._plan.execute()._num_computed() == streaming_expected
 
 
+def test_include_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test.txt")
+    table = pa.Table.from_pydict({"animals": ["cat", "dog"]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_paths=True)
+
+    paths = [row["path"] for row in ds.take_all()]
+    assert paths == [path, path]
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -565,6 +576,107 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     check_num_computed(ds, 2, 0)
     assert sorted(values) == [[1, "a"], [1, "a"]]
     assert ds.count() == 2
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
+    ],
+)
+def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, data_path):
+    data = {
+        "x": [0, 0, 1, 1, 2, 2],
+        "y": ["a", "b", "a", "b", "a", "b"],
+        "z": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+    }
+    table = pa.Table.from_pydict(data)
+
+    pq.write_to_dataset(
+        table,
+        root_path=_unwrap_protocol(data_path),
+        filesystem=fs,
+        use_legacy_dataset=False,
+        partition_cols=["x", "y"],
+    )
+
+    ds = ray.data.read_parquet(
+        _unwrap_protocol(data_path),
+        columns=["y", "z"],
+        filesystem=fs,
+    )
+    assert ds.columns() == ["y", "z"]
+    values = [[s["y"], s["z"]] for s in ds.take()]
+    check_num_computed(ds, 2, 0)
+    assert sorted(values) == [
+        ["a", 0.1],
+        ["a", 0.3],
+        ["a", 0.5],
+        ["b", 0.2],
+        ["b", 0.4],
+        ["b", 0.6],
+    ]
+
+
+# Skip this test if pyarrow is below version 7. As the old
+# pyarrow does not support single path with partitioning,
+# this issue cannot be resolved by Ray data itself.
+@pytest.mark.skipif(
+    tuple(pa.__version__.split(".")) < ("7",),
+    reason="Old pyarrow behavior cannot be fixed.",
+)
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
+    ],
+)
+def test_parquet_read_partitioned_with_partition_filter(
+    ray_start_regular_shared, fs, data_path
+):
+    # This test is to make sure when only one file remains
+    # after partition filtering, Ray data can still parse the
+    # partitions correctly.
+    data = {
+        "x": [0, 0, 1, 1, 2, 2],
+        "y": ["a", "b", "a", "b", "a", "b"],
+        "z": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+    }
+    table = pa.Table.from_pydict(data)
+
+    pq.write_to_dataset(
+        table,
+        root_path=_unwrap_protocol(data_path),
+        filesystem=fs,
+        use_legacy_dataset=False,
+        partition_cols=["x", "y"],
+    )
+
+    ds = ray.data.read_parquet(
+        _unwrap_protocol(data_path),
+        filesystem=fs,
+        columns=["x", "y", "z"],
+        partition_filter=ray.data.datasource.partitioning.PathPartitionFilter.of(
+            filter_fn=lambda x: (x["x"] == "0") and (x["y"] == "a"), style="hive"
+        ),
+    )
+
+    assert ds.columns() == ["x", "y", "z"]
+    values = [[s["x"], s["y"], s["z"]] for s in ds.take()]
+    check_num_computed(ds, 2, 0)
+    assert sorted(values) == [[0, "a", 0.1]]
 
 
 def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):

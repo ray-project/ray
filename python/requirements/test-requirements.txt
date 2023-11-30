@@ -45,7 +45,7 @@ proxy.py==2.4.3
 pydantic==2.5.0
 pydot==1.4.2
 # Keep in sync with `ci/build/upload_build_info.sh`
-PyOpenSSL==22.1.0
+PyOpenSSL==23.0.0
 pygame==2.1.2; python_version < '3.11'
 Pygments==2.13.0
 pymongo==4.3.2
@@ -104,6 +104,7 @@ typing-extensions==4.8.0
 # which conflicts with the opentelemetry-api 1.1.0.
 segment-analytics-python==2.2.0
 httpcore==0.15.0
+httpx==0.24.1
 backoff==1.10
 
 # For test_basic.py::test_omp_threads_set

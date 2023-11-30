@@ -14,7 +14,6 @@ import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
-from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -258,13 +257,6 @@ class APPOConfig(ImpalaConfig):
         return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
 
 
-# Still used by one of the old checkpoints in tests.
-# Keep a shim version of this around.
-class UpdateTargetAndKL:
-    def __init__(self, workers, config):
-        pass
-
-
 class APPO(Impala):
     def __init__(self, config, *args, **kwargs):
         """Initializes an APPO instance."""
@@ -278,16 +270,6 @@ class APPO(Impala):
             self.workers.local_worker().foreach_policy_to_train(
                 lambda p, _: p.update_target()
             )
-
-    @override(Impala)
-    def setup(self, config: AlgorithmConfig):
-        super().setup(config)
-
-        # TODO(avnishn):
-        # this attribute isn't used anywhere else in the code. I think we can safely
-        # delete it.
-        if not self.config._enable_new_api_stack:
-            self.update_kl = UpdateKL(self.workers)
 
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.

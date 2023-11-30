@@ -5,7 +5,7 @@ from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_AGENT_STEPS_SAMPLED,
@@ -135,9 +135,9 @@ class BC(MARWIL):
     def get_default_config(cls) -> AlgorithmConfig:
         return BCConfig()
 
-    @ExperimentalAPI
+    @override(MARWIL)
     def training_step(self) -> ResultDict:
-        if not self.config["_enable_new_api_stack"]:
+        if not self.config._enable_new_api_stack:
             # Using ModelV2.
             return super().training_step()
         else:

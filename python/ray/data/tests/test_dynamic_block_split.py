@@ -15,6 +15,12 @@ from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Reader, ReadTask
+from ray.data.tests.conftest import (
+    CoreExecutionMetrics,
+    assert_blocks_expected_in_plasma,
+    assert_core_execution_metrics_equals,
+    get_initial_core_execution_metrics_snapshot,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -141,38 +147,81 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
 )
 def test_dataset(
     shutdown_only,
-    target_max_block_size,
+    restore_data_context,
     compute,
 ):
+    ctx = ray.data.DataContext.get_current()
+    # 1MiB.
+    ctx.target_max_block_size = 1024 * 1024
+
     if compute == "tasks":
         compute = ray.data._internal.compute.TaskPoolStrategy()
     else:
         compute = ray.data.ActorPoolStrategy()
     ray.shutdown()
     # We need at least 2 CPUs to run a actorpool streaming
-    ray.init(num_cpus=2)
+    ray.init(num_cpus=2, object_store_memory=1e9)
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
-    block_size = target_max_block_size
     num_tasks = 10
 
+    @ray.remote
+    def warmup():
+        return np.zeros(ctx.target_max_block_size, dtype=np.uint8)
+
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
         parallelism=num_tasks,
         num_batches_per_task=num_blocks_per_task,
-        row_size=block_size,
+        row_size=ctx.target_max_block_size,
     )
     # Note the following calls to ds will not fully execute it.
     assert ds.schema() is not None
     assert ds.count() == num_blocks_per_task * num_tasks
     assert ds.num_blocks() == num_tasks
-    assert ds.size_bytes() >= 0.7 * block_size * num_blocks_per_task * num_tasks
+    assert (
+        ds.size_bytes()
+        >= 0.7 * ctx.target_max_block_size * num_blocks_per_task * num_tasks
+    )
+    last_snapshot = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={
+                "_get_datasource_or_legacy_reader": 1,
+                "_execute_read_task_split": 1,
+            },
+            object_store_stats={
+                "cumulative_created_plasma_bytes": lambda count: True,
+                "cumulative_created_plasma_objects": lambda count: True,
+            },
+        ),
+        last_snapshot,
+    )
 
     # Too-large blocks will get split to respect target max block size.
     map_ds = ds.map_batches(lambda x: x, compute=compute)
     map_ds = map_ds.materialize()
-    assert map_ds.num_blocks() == num_tasks * num_blocks_per_task
+    num_blocks_expected = num_tasks * num_blocks_per_task
+    assert map_ds.num_blocks() == num_blocks_expected
+    assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={
+                "MapWorker(ReadRandomBytes->MapBatches"
+                "(<lambda>)).get_location": lambda count: True,
+                "_MapWorker.__init__": lambda count: True,
+                "_MapWorker.get_location": lambda count: True,
+                "ReadRandomBytes->MapBatches(<lambda>)": num_tasks,
+            },
+        ),
+        last_snapshot,
+    )
+    assert_blocks_expected_in_plasma(
+        last_snapshot,
+        num_blocks_expected,
+        block_size_expected=ctx.target_max_block_size,
+    )
+
     # Blocks smaller than requested batch size will get coalesced.
     map_ds = ds.map_batches(
         lambda x: {},
