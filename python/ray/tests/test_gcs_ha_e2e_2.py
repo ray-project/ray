@@ -7,13 +7,14 @@ from ray.tests.conftest_docker import *  # noqa
 
 # TODO(sang): Also check temp dir
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-def test_ray_session_name_preserved(ha_docker_cluster):
+@pytest.mark.parametrize("docker_cluster", ["ray_ci:v1"], indirect=True)
+def test_ray_session_name_preserved(docker_cluster):
     get_nodes_script = """
 import ray
 ray.init("auto")
 print(ray._private.worker._global_node.session_name)
 """
-    head, worker = ha_docker_cluster
+    head, worker = docker_cluster
 
     def get_session_name(to_head=True):
         if to_head:

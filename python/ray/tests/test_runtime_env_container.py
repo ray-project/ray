@@ -14,6 +14,7 @@ from ray._private.state_api_test_utils import verify_failed_task
 from ray._private.test_utils import wait_for_condition
 from ray.serve.handle import DeploymentHandle
 from ray.tests.conftest import *  # noqa
+from ray.tests.conftest_docker import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks, list_workers
 
@@ -29,14 +30,20 @@ CONTAINER_SPEC = {
 CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
 
 
-# def test_a(ha_docker_cluster):
-def test_a(shutdown_only):
-    # head, worker = ha_docker_cluster
-    # print(head.exec_run(cmd="ls -l"))
-    # print(worker.exec_run(cmd="ls -l"))
+@pytest.mark.parametrize(
+    "docker_cluster", ["rayproject/ray:container_runtime"], indirect=True
+)
+def test_a(docker_cluster):
     output = subprocess.check_output(["docker", "image", "ls"])
     print(output)
-    assert False, output
+
+    head, worker = docker_cluster
+    print(head.exec_run(cmd="ls -l"))
+    print(worker.exec_run(cmd="ls -l"))
+    print(head.exec_run(cmd="python --version"))
+    print(head.exec_run(cmd="podman --version"))
+
+    assert False
 
 
 @pytest.mark.skip
