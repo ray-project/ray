@@ -845,9 +845,9 @@ class LearnerGroup:
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""
-        if not self._is_local:
+        if not self._is_local and hasattr(self, "_backend_executor"):
             self._backend_executor.shutdown()
-            self._is_shut_down = True
+        self._is_shut_down = True
 
     def __del__(self):
         if not self._is_shut_down:
