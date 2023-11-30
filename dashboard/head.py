@@ -246,27 +246,20 @@ class DashboardHead:
         await gcs_aio_client.internal_kv_put(
             "DashboardMetricsAddress".encode(), address.encode(), True, namespace=None
         )
-        if prometheus_client:
-            try:
-                logger.info(
-                    "Starting dashboard metrics server on port {}".format(
-                        DASHBOARD_METRIC_PORT
-                    )
+        try:
+            logger.info(
+                "Starting dashboard metrics server on port {}".format(
+                    DASHBOARD_METRIC_PORT
                 )
-                kwargs = {"addr": "127.0.0.1"} if self.ip == "127.0.0.1" else {}
-                prometheus_client.start_http_server(
-                    port=DASHBOARD_METRIC_PORT,
-                    registry=metrics.registry,
-                    **kwargs,
-                )
-            except Exception:
-                logger.exception(
-                    "An exception occurred while starting the metrics server."
-                )
-        elif not prometheus_client:
-            logger.warning(
-                "`prometheus_client` not found, so metrics will not be exported."
             )
+            kwargs = {"addr": "127.0.0.1"} if self.ip == "127.0.0.1" else {}
+            prometheus_client.start_http_server(
+                port=DASHBOARD_METRIC_PORT,
+                registry=metrics.registry,
+                **kwargs,
+            )
+        except Exception:
+            logger.exception("An exception occurred while starting the metrics server.")
 
         return metrics
 

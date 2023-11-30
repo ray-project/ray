@@ -20,7 +20,6 @@ DEFAULT_BLACKLIST = [
     "py-spy",
     "gpustat",
     "opencensus",
-    "prometheus_client",
     "smart_open",
     "virtualenv",
     "torch",

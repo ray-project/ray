@@ -23,7 +23,6 @@ from ray.core.generated.metrics_pb2 import (
     TimeSeries,
     LabelValue,
     DistributionValue,
-    _DISTRIBUTIONVALUE_BUCKET,
 )
 from ray._raylet import WorkerID
 

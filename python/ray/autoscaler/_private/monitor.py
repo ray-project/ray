@@ -178,7 +178,7 @@ class Monitor:
 
         self.prom_metrics = AutoscalerPrometheusMetrics(session_name=self._session_name)
 
-        if monitor_ip and prometheus_client:
+        if monitor_ip:
             # If monitor_ip wasn't passed in, then don't attempt to start the
             # metric server to keep behavior identical to before metrics were
             # introduced
@@ -203,10 +203,6 @@ class Monitor:
                 logger.exception(
                     "An exception occurred while starting the metrics server."
                 )
-        elif not prometheus_client:
-            logger.warning(
-                "`prometheus_client` not found, so metrics will not be exported."
-            )
 
         logger.info("Monitor: Started")
 
