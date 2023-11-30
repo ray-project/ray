@@ -360,6 +360,11 @@ class RuntimeEnv(dict):
                     "The 'container' field cannot be used together with "
                     "the 'working_dir' field of runtime_env."
                 )
+            if self.get("env_vars"):
+                raise ValueError(
+                    "The 'container' field cannot be used together with "
+                    "the 'env_vars' field of runtime_env."
+                )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = self.get(option)

@@ -41,9 +41,6 @@ class ContainerManager:
         container_command.append("RAY_RAYLET_PID=" + os.getenv("RAY_RAYLET_PID"))
         container_command.append("--env")
         container_command.append("RAY_JOB_ID=$RAY_JOB_ID")
-        for env_var_key, env_var_value in context.env_vars:
-            container_command.append("--env")
-            container_command.append(f"{env_var_key}={env_var_value}")
         if runtime_env.py_container_run_options():
             container_command.extend(runtime_env.py_container_run_options())
         # TODO(chenk008): add resource limit
