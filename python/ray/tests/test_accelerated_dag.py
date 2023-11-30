@@ -12,11 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 def test_put_get(ray_start_cluster):
-    ray.init(
-        _system_config={
-            "plasma_use_shared_memory_seal": True,
-        }
-    )
+    ray.init()
+
     ref = ray._create_mutable_object(1000)
 
     for i in range(100):

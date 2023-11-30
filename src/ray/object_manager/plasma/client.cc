@@ -501,9 +501,8 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
     plasma_header->WriteAcquire(/*next_version_to_write*/ entry->next_version_to_write,
                                 entry->object.data_size);
     if (entry->is_mutable) {
-      // The plasma store is the first reader. Once it read-releases, the
-      // writer may write an actual value.
-      plasma_header->num_readers = 1;
+      // When the object is first created, it is in writeable state.
+      plasma_header->num_readers = 0;
     } else {
       // Anyone may read.
       plasma_header->num_readers = -1;
@@ -843,13 +842,6 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   // The next Write must pass a higher version.
   object_entry->second->next_version_to_write++;
   object_entry->second->is_sealed = true;
-
-  if (RayConfig::instance().plasma_use_shared_memory_seal()) {
-    // If using shared-memory based Seal, then we don't need to do anything
-    // further because the object store will learn that the object has been
-    // sealed when ReadAcquire returns.
-    return Status::OK();
-  }
 
   /// Send the seal request to Plasma.
   RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));

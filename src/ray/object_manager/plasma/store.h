@@ -118,8 +118,6 @@ class PlasmaStore {
     return available;
   }
 
-  void WaitForSeal(const ObjectID &object_id, const std::shared_ptr<Client> &client);
-
  private:
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.
@@ -309,8 +307,6 @@ class PlasmaStore {
   bool dumped_on_oom_ ABSL_GUARDED_BY(mutex_) = false;
 
   GetRequestQueue get_request_queue_ ABSL_GUARDED_BY(mutex_);
-
-  absl::Mutex seal_deadline_timer_mutex_;
 };
 
 }  // namespace plasma

@@ -71,10 +71,7 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
   entry->state = ObjectState::PLASMA_SEALED;
   entry->construct_duration = std::time(nullptr) - entry->create_time;
   auto plasma_header = entry->GetPlasmaObjectHeader();
-  if (entry->object_info.is_mutable) {
-    // Register the sealed object before allowing the writer to write.
-    plasma_header->ReadRelease(/*read_version=*/1);
-  } else {
+  if (!entry->object_info.is_mutable) {
     RAY_CHECK(plasma_header->num_readers == -1) << plasma_header->num_readers;
   }
   return entry;

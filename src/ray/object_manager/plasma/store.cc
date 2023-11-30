@@ -527,49 +527,8 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
         error == PlasmaError::OK && result.device_num == 0) {
       static_cast<void>(client->SendFd(result.store_fd));
     }
-
-    if (RayConfig::instance().plasma_use_shared_memory_seal()) {
-      WaitForSeal(object_id, client);
-    }
   } else {
     static_cast<void>(SendUnfinishedCreateReply(client, object_id, req_id));
-  }
-}
-
-void PlasmaStore::WaitForSeal(const ObjectID &object_id,
-                              const std::shared_ptr<Client> &client) {
-  auto entry = object_lifecycle_mgr_.GetObject(object_id);
-  RAY_CHECK(entry);
-  auto plasma_header = entry->GetPlasmaObjectHeader();
-
-  // Read acquire is blocking, so put it on a background thread and use an
-  // async timer as a signal. The main thread is signaled when the timer is
-  // cancelled.
-  auto seal_signal = std::make_shared<boost::asio::deadline_timer>(io_context_);
-  seal_signal->expires_at(boost::posix_time::pos_infin);
-
-  auto wait_fn = [this, seal_signal, plasma_header]() {
-    plasma_header->ReadAcquire(/*read_version=*/1);
-
-    {
-      absl::MutexLock lock(&seal_deadline_timer_mutex_);
-      seal_signal->cancel();
-    }
-  };
-
-  auto wait_thread = std::make_shared<std::thread>(wait_fn);
-
-  {
-    absl::MutexLock lock(&seal_deadline_timer_mutex_);
-    seal_signal->async_wait([this, object_id, plasma_header, wait_thread, client](
-                                const boost::system::error_code &ec) {
-      {
-        absl::MutexLock lock(&mutex_);
-        SealObjects({object_id});
-      }
-
-      wait_thread->join();
-    });
   }
 }
 

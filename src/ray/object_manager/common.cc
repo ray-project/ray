@@ -78,7 +78,6 @@ void PlasmaObjectHeader::WriteRelease(int64_t write_version) {
       << version << ". Are you sure this is the only writer?";
 
   version = write_version;
-  RAY_CHECK(num_readers != 0);
   num_read_acquires_remaining = num_readers;
   num_read_releases_remaining = num_readers;
 
