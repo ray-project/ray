@@ -14,6 +14,7 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
+* :ref:`Transform with Python Class <transforming_with_python_class>`
 * :ref:`Groupby and transform groups <transforming_groupby>`
 * :ref:`Shuffle rows <shuffling_rows>`
 * :ref:`Repartition data <repartitioning_data>`
@@ -84,22 +85,6 @@ Transforming batches
 If your transformation is vectorized like most NumPy or pandas operations, transforming
 batches is more performant than transforming rows.
 
-Choosing between tasks and actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ray Data transforms batches with either tasks or actors. Actors perform setup exactly
-once. In contrast, tasks require setup every batch. So, if your transformation involves
-expensive setup like downloading model weights, use actors. Otherwise, use tasks.
-
-To learn more about tasks and actors, read the
-:ref:`Ray Core Key Concepts <core-key-concepts>`.
-
-Transforming batches with tasks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To transform batches with tasks, call :meth:`~ray.data.Dataset.map_batches`. Ray Data
-uses tasks by default.
-
 .. testcode::
 
     from typing import Dict
@@ -115,19 +100,87 @@ uses tasks by default.
         .map_batches(increase_brightness)
     )
 
-.. _transforming_data_actors:
+.. _configure_batch_format:
 
-Transforming batches with actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Configuring batch format
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-To transform batches with actors, complete these steps:
+Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
+default, Ray Data represents batches as dicts of NumPy ndarrays.
+
+To configure the batch type, specify ``batch_format`` in
+:meth:`~ray.data.Dataset.map_batches`. You can return either format from your function.
+
+.. tab-set::
+
+    .. tab-item:: NumPy
+
+        .. testcode::
+
+            from typing import Dict
+            import numpy as np
+            import ray
+
+            def increase_brightness(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+                batch["image"] = np.clip(batch["image"] + 4, 0, 255)
+                return batch
+
+            ds = (
+                ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+                .map_batches(increase_brightness, batch_format="numpy")
+            )
+
+    .. tab-item:: pandas
+
+        .. testcode::
+
+            import pandas as pd
+            import ray
+
+            def drop_nas(batch: pd.DataFrame) -> pd.DataFrame:
+                return batch.dropna()
+
+            ds = (
+                ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+                .map_batches(drop_nas, batch_format="pandas")
+            )
+
+Configuring batch size
+~~~~~~~~~~~~~~~~~~~~~~
+
+Increasing ``batch_size`` improves the performance of vectorized transformations like
+NumPy functions and model inference. However, if your batch size is too large, your
+program might run out of memory. If you encounter an out-of-memory error, decrease your
+``batch_size``.
+
+.. note::
+
+    The default batch size depends on your resource type. If you're using CPUs,
+    the default batch size is 4096. If you're using GPUs, you must specify an explicit
+    batch size.
+
+.. _transforming_with_python_class:
+
+Transforming with Python Class
+==============================
+
+If your transformation requires expensive setup like downloading model weights, use
+Python class instead of function. Python class performs setup exactly once for all data.
+In contrast, function is stateless and does not have a way to perform setup.
+
+Internally, Ray Data uses tasks to execute function, and uses actors to execute class.
+To learn more about tasks and actors, read the
+:ref:`Ray Core Key Concepts <core-key-concepts>`.
+
+To transform data with Python class, complete these steps:
 
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
 2. Configure ``concurrency`` with the number of concurrent workers. Each worker
 transforms a partition of data.
 
-3. Call :meth:`~ray.data.Dataset.map_batches`.
+3. Call :meth:`~ray.data.Dataset.map_batches`,
+:meth:`~ray.data.Dataset.map`, or :meth:`~ray.data.Dataset.flat_map`.
 
 .. tab-set::
 
@@ -199,65 +252,6 @@ transforms a partition of data.
             :hide:
 
             ds.materialize()
-
-.. _configure_batch_format:
-
-Configuring batch format
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
-default, Ray Data represents batches as dicts of NumPy ndarrays.
-
-To configure the batch type, specify ``batch_format`` in
-:meth:`~ray.data.Dataset.map_batches`. You can return either format from your function.
-
-.. tab-set::
-
-    .. tab-item:: NumPy
-
-        .. testcode::
-
-            from typing import Dict
-            import numpy as np
-            import ray
-
-            def increase_brightness(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                batch["image"] = np.clip(batch["image"] + 4, 0, 255)
-                return batch
-
-            ds = (
-                ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
-                .map_batches(increase_brightness, batch_format="numpy")
-            )
-
-    .. tab-item:: pandas
-
-        .. testcode::
-
-            import pandas as pd
-            import ray
-
-            def drop_nas(batch: pd.DataFrame) -> pd.DataFrame:
-                return batch.dropna()
-
-            ds = (
-                ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-                .map_batches(drop_nas, batch_format="pandas")
-            )
-
-Configuring batch size
-~~~~~~~~~~~~~~~~~~~~~~
-
-Increasing ``batch_size`` improves the performance of vectorized transformations like
-NumPy functions and model inference. However, if your batch size is too large, your
-program might run out of memory. If you encounter an out-of-memory error, decrease your
-``batch_size``.
-
-.. note::
-
-    The default batch size depends on your resource type. If you're using CPUs,
-    the default batch size is 4096. If you're using GPUs, you must specify an explicit
-    batch size.
 
 .. _transforming_groupby:
 

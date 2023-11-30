@@ -432,9 +432,10 @@ class Dataset:
         This method is useful for preprocessing data and performing inference. To learn
         more, see :ref:`Transforming batches <transforming_batches>`.
 
-        You can use either Ray Tasks or Ray Actors to perform the transformation. By
-        default, Ray Data uses Tasks. To use Actors, see
-        :ref:`Transforming batches with actors <transforming_data_actors>`.
+        You can use either function or class to perform the transformation. For
+        function, Ray Data uses Tasks. For class, Ray Data uses To use Actors.
+        For more information, see
+        :ref:`Transforming with Python Class <transforming_with_python_class>`.
 
         .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
@@ -530,8 +531,8 @@ class Dataset:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
-                workers pool of size ``n``, specify ``concurrency=n``. For a autoscaling
-                workers pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
+                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
                 ``None`` to use the default value of system.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.

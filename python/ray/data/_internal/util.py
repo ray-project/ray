@@ -542,26 +542,26 @@ def get_compute_strategy(
     if compute is not None:
         # Legacy code path to support `compute` argument.
         logger.warning(
-            "The argument `compute` is deprecated in Ray 2.9. Please specify "
-            "argument `concurrency` instead. For more information, see "
+            "The argument ``compute`` is deprecated in Ray 2.9. Please specify "
+            "argument ``concurrency`` instead. For more information, see "
             "https://docs.ray.io/en/master/data/transforming-data.html#"
-            "transforming-batches-with-actors."
+            "transforming-with-python-class."
         )
         if is_callable_class and (
             compute == "tasks" or isinstance(compute, TaskPoolStrategy)
         ):
             raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
+                "``compute`` must specify an actor compute strategy when using a "
+                f"CallableClass, but got: {compute}. For example, use "
+                "``compute=ray.data.ActorPoolStrategy(size=n)``."
             )
         elif not is_callable_class and (
             compute == "actors" or isinstance(compute, ActorPoolStrategy)
         ):
             raise ValueError(
-                "``compute`` is specified as the actor compute strategy: {compute}, "
-                "but ``fn`` is not a CallableClass: {fn}. Please remove the setting "
-                "of ``compute``."
+                f"``compute`` is specified as the actor compute strategy: {compute}, "
+                f"but ``fn`` is not a CallableClass: {fn}. Pass a CallableClass or "
+                "use the default ``compute`` strategy."
             )
         return compute
     else:
@@ -569,25 +569,33 @@ def get_compute_strategy(
             if not is_callable_class:
                 # Currently do not support concurrency control with function,
                 # i.e., running with Ray Tasks (`TaskPoolMapOperator`).
-                raise ValueError(
-                    "``concurrency`` is specified as: {concurrency}, "
-                    "but ``fn`` is not a CallableClass: {fn}. The setting of "
-                    "``concurrency`` is only supported when ``fn`` is a CallableClass. "
-                    "This can be supported in future releases."
+                logger.warning(
+                    "``concurrency`` is set, but ``fn`` is not a CallableClass: "
+                    f"{fn}. Non-default values of ``concurrency`` are currently only "
+                    "supported when ``fn`` is a CallableClass."
                 )
 
             if isinstance(concurrency, tuple):
-                assert (
+                if (
                     len(concurrency) == 2
                     and isinstance(concurrency[0], int)
                     and isinstance(concurrency[1], int)
-                )
-                return ActorPoolStrategy(
-                    min_size=concurrency[0], max_size=concurrency[1]
-                )
-            else:
-                assert isinstance(concurrency, int)
+                ):
+                    return ActorPoolStrategy(
+                        min_size=concurrency[0], max_size=concurrency[1]
+                    )
+                else:
+                    raise ValueError(
+                        "``concurrency`` is expected to be set as a tuple of "
+                        f"integers, but got: {concurrency}."
+                    )
+            elif isinstance(concurrency, int):
                 return ActorPoolStrategy(size=concurrency)
+            else:
+                raise ValueError(
+                    "``concurrency`` is expected to be set as an integer or a "
+                    f"tuple of integers, but got: {concurrency}."
+                )
         else:
             if is_callable_class:
                 return ActorPoolStrategy()
