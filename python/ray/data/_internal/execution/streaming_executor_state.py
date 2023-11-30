@@ -6,7 +6,7 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 import math
 import threading
 import time
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -34,6 +34,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
+from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 
@@ -395,13 +396,15 @@ def process_completed_tasks(
 
     max_blocks_to_read_per_op: Dict[OpState, int] = {}
     for policy in backpressure_policies:
-        non_empty = len(max_blocks_to_read_per_op) > 0
-        max_blocks_to_read_per_op = policy.calculate_max_blocks_to_read_per_op(topology)
-        if non_empty and len(max_blocks_to_read_per_op) > 0:
-            raise ValueError(
-                "At most one backpressure policy that implements "
-                "calculate_max_blocks_to_read_per_op() can be used at a time."
-            )
+        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        if len(res) > 0:
+            if len(max_blocks_to_read_per_op) > 0:
+                raise ValueError(
+                    "At most one backpressure policy that implements "
+                    "calculate_max_blocks_to_read_per_op() can be used at a time."
+                )
+            else:
+                max_blocks_to_read_per_op = res
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
@@ -412,47 +415,60 @@ def process_completed_tasks(
             fetch_local=False,
             timeout=0.1,
         )
+
+        # Organize tasks by the operator they belong to, and sort them by task index.
+        # So that we'll process them in a deterministic order.
+        # This is because some backpressure policies (e.g.,
+        # StreamingOutputBackpressurePolicy) may limit the number of blocks to read
+        # per operator. In this case, we want to have fewer tasks finish quickly and
+        # yield resources, instead of having all tasks output blocks together.
+        ready_tasks_by_op = defaultdict(list)
         for ref in ready:
-            state, task = active_tasks.pop(ref)
-            if isinstance(task, DataOpTask):
-                try:
-                    num_blocks_read = task.on_data_ready(
-                        max_blocks_to_read_per_op.get(state, None)
-                    )
-                    if state in max_blocks_to_read_per_op:
-                        max_blocks_to_read_per_op[state] -= num_blocks_read
-                except Exception as e:
-                    num_errored_blocks += 1
-                    should_ignore = (
-                        max_errored_blocks < 0
-                        or max_errored_blocks >= num_errored_blocks
-                    )
-                    error_message = (
-                        "An exception was raised from a task of "
-                        f'operator "{state.op.name}".'
-                    )
-                    if should_ignore:
-                        remaining = (
-                            max_errored_blocks - num_errored_blocks
-                            if max_errored_blocks >= 0
-                            else "unlimited"
+            state, task = active_tasks[ref]
+            ready_tasks_by_op[state].append(task)
+
+        for state, ready_tasks in ready_tasks_by_op.items():
+            ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
+            for task in ready_tasks:
+                if isinstance(task, DataOpTask):
+                    try:
+                        num_blocks_read = task.on_data_ready(
+                            max_blocks_to_read_per_op.get(state, None)
                         )
-                        error_message += (
-                            " Ignoring this exception with remaining"
-                            f" max_errored_blocks={remaining}."
+                        if state in max_blocks_to_read_per_op:
+                            max_blocks_to_read_per_op[state] -= num_blocks_read
+                    except Exception as e:
+                        num_errored_blocks += 1
+                        should_ignore = (
+                            max_errored_blocks < 0
+                            or max_errored_blocks >= num_errored_blocks
                         )
-                        logger.get_logger().warning(error_message, exc_info=e)
-                    else:
-                        error_message += (
-                            " Dataset execution will now abort."
-                            " To ignore this exception and continue, set"
-                            " DataContext.max_errored_blocks."
+                        error_message = (
+                            "An exception was raised from a task of "
+                            f'operator "{state.op.name}".'
                         )
-                        logger.get_logger().error(error_message)
-                        raise e from None
-            else:
-                assert isinstance(task, MetadataOpTask)
-                task.on_task_finished()
+                        if should_ignore:
+                            remaining = (
+                                max_errored_blocks - num_errored_blocks
+                                if max_errored_blocks >= 0
+                                else "unlimited"
+                            )
+                            error_message += (
+                                " Ignoring this exception with remaining"
+                                f" max_errored_blocks={remaining}."
+                            )
+                            logger.get_logger().warning(error_message, exc_info=e)
+                        else:
+                            error_message += (
+                                " Dataset execution will now abort."
+                                " To ignore this exception and continue, set"
+                                " DataContext.max_errored_blocks."
+                            )
+                            logger.get_logger().error(error_message)
+                            raise e from None
+                else:
+                    assert isinstance(task, MetadataOpTask)
+                    task.on_task_finished()
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
@@ -664,14 +680,16 @@ def _execution_allowed(
             "Operator incremental resource usage cannot specify both CPU "
             "and GPU at the same time, since it may cause deadlock."
         )
-    elif inc.object_store_memory:
-        raise NotImplementedError(
-            "Operator incremental resource usage must not include memory."
-        )
+
+    # Ignore the scale of CPU and GPU requests, i.e., treating them as either 1 or 0.
+    # This ensures operators don't get starved due to the shape of their resource
+    # requests.
     inc_indicator = ExecutionResources(
         cpu=1 if inc.cpu else 0,
         gpu=1 if inc.gpu else 0,
-        object_store_memory=1 if inc.object_store_memory else 0,
+        object_store_memory=inc.object_store_memory
+        if DataContext.get_current().use_runtime_metrics_scheduling
+        else None,
     )
 
     # Under global limits; always allow.
@@ -692,5 +710,15 @@ def _execution_allowed(
     downstream_memory_ok = ExecutionResources(
         object_store_memory=downstream_usage.object_store_memory
     ).satisfies_limit(downstream_limit)
+
+    # If completing a task decreases the overall object store memory usage, allow it
+    # even if we're over the global limit.
+    if (
+        DataContext.get_current().use_runtime_metrics_scheduling
+        and global_ok_sans_memory
+        and op.metrics.average_bytes_change_per_task is not None
+        and op.metrics.average_bytes_change_per_task <= 0
+    ):
+        return True
 
     return global_ok_sans_memory and downstream_memory_ok

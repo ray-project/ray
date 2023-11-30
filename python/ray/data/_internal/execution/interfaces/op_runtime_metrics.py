@@ -42,6 +42,8 @@ class OpRuntimeMetrics:
     num_inputs_processed: int = field(default=0, metadata={"map_only": True})
     # Total size in bytes of processed input blocks.
     bytes_inputs_processed: int = field(default=0, metadata={"map_only": True})
+    # Size in bytes of input blocks passed to submitted tasks.
+    bytes_inputs_of_submitted_tasks: int = field(default=0, metadata={"map_only": True})
 
     # === Outputs-related metrics ===
 
@@ -160,6 +162,15 @@ class OpRuntimeMetrics:
             return self.num_outputs_of_finished_tasks / self.num_tasks_finished
 
     @property
+    def average_bytes_inputs_per_task(self) -> Optional[float]:
+        """Average size in bytes of ref bundles passed to tasks, or ``None`` if no
+        tasks have been submitted."""
+        if self.num_tasks_submitted == 0:
+            return None
+        else:
+            return self.bytes_inputs_of_submitted_tasks / self.num_tasks_submitted
+
+    @property
     def average_bytes_outputs_per_task(self) -> Optional[float]:
         """Average size in bytes of output blocks per task,
         or None if no task has finished."""
@@ -167,6 +178,18 @@ class OpRuntimeMetrics:
             return None
         else:
             return self.bytes_outputs_of_finished_tasks / self.num_tasks_finished
+
+    @property
+    def average_bytes_change_per_task(self) -> Optional[float]:
+        """Average size difference in bytes of input ref bundles and output ref
+        bundles per task."""
+        if (
+            self.average_bytes_inputs_per_task is None
+            or self.average_bytes_outputs_per_task is None
+        ):
+            return None
+
+        return self.average_bytes_outputs_per_task - self.average_bytes_inputs_per_task
 
     @property
     def input_buffer_bytes(self) -> int:
@@ -199,6 +222,7 @@ class OpRuntimeMetrics:
         """Callback when the operator submits a task."""
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
+        self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
 
     def on_output_generated(self, task_index: int, output: RefBundle):

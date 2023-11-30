@@ -31,6 +31,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/buildflow.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/launchflow/buildflow?style=social)]
+                :target: https://github.com/launchflow/buildflow
+
+            BuildFlow is a backend framework that allows you to build and manage complex cloud infrastructure using pure python. With BuildFlow's decorator pattern you can turn any function into a component of your backend system.
+
+        +++
+        .. button-link:: https://docs.launchflow.com/buildflow/introduction
+            :color: primary
+            :outline:
+            :expand:
+
+            BuildFlow Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/classyvision.png
             :class: card-figure
 
