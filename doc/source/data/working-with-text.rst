@@ -169,7 +169,7 @@ that sets up and invokes a model. Then, call
 
 For more information on performing inference, see
 :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`
-and :ref:`Transforming with Python Class <transforming_with_python_class>`.
+and :ref:`Stateful Transformation <stateful_transformation>`.
 
 .. _saving-text:
 
