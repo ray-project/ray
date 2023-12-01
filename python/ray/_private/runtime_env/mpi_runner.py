@@ -23,6 +23,9 @@ if __name__ == "__main__":
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
     else:
+        from ray.runtime_env import mpi_init
+
+        mpi_init()
         module, func = args.worker_entry.rsplit(".", 1)
         m = importlib.import_module(module)
         f = getattr(m, func)
