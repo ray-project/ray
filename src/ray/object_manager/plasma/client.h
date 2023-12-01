@@ -82,7 +82,34 @@ class PlasmaClientInterface {
                      std::vector<ObjectBuffer> *object_buffers,
                      bool is_from_worker) = 0;
 
-  virtual Status GetRelease(const ObjectID &object_id) = 0;
+  /// Experimental method for mutable objects. Acquires a write lock on the
+  /// object that prevents readers from reading until we are done writing. Does
+  /// not protect against concurrent writers.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] data_size The size of the object to write. This overwrites the
+  /// current data size.
+  /// \param[in] metadata A pointer to the object metadata buffer to copy. This
+  /// will overwrite the current metadata.
+  /// \param[in] metadata_size The number of bytes to copy from the metadata
+  /// pointer.
+  /// \param[in] num_readers The number of readers that must read and release
+  /// the object before the caller can write again.
+  /// \param[out] data The mutable object buffer in plasma that can be written to.
+  virtual Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
+                                                       int64_t data_size,
+                                                       const uint8_t *metadata,
+                                                       int64_t metadata_size,
+                                                       int64_t num_readers,
+                                                       std::shared_ptr<Buffer> *data) = 0;
+
+  /// Experimental method for mutable objects. Releases the objects, allowing them
+  /// to be written again. If the caller did not previously Get the objects,
+  /// then this first blocks until the latest value is available to read, then
+  /// releases the value.
+  ///
+  /// \param[in] object_id The ID of the object.
+  virtual Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id) = 0;
 
   /// Seal an object in the object store. The object will be immutable after
   /// this
@@ -136,13 +163,6 @@ class PlasmaClientInterface {
                                         std::shared_ptr<Buffer> *data,
                                         plasma::flatbuf::ObjectSource source,
                                         int device_num = 0) = 0;
-
-  virtual Status WriteAcquireMutableObject(const ObjectID &object_id,
-                                           int64_t data_size,
-                                           const uint8_t *metadata,
-                                           int64_t metadata_size,
-                                           int64_t num_readers,
-                                           std::shared_ptr<Buffer> *data) = 0;
 
   /// Delete a list of objects from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,
@@ -211,12 +231,12 @@ class PlasmaClient : public PlasmaClientInterface {
                                 plasma::flatbuf::ObjectSource source,
                                 int device_num = 0);
 
-  Status WriteAcquireMutableObject(const ObjectID &object_id,
-                                   int64_t data_size,
-                                   const uint8_t *metadata,
-                                   int64_t metadata_size,
-                                   int64_t num_readers,
-                                   std::shared_ptr<Buffer> *data);
+  Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
+                                               int64_t data_size,
+                                               const uint8_t *metadata,
+                                               int64_t metadata_size,
+                                               int64_t num_readers,
+                                               std::shared_ptr<Buffer> *data);
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
@@ -273,7 +293,7 @@ class PlasmaClient : public PlasmaClientInterface {
              std::vector<ObjectBuffer> *object_buffers,
              bool is_from_worker);
 
-  Status GetRelease(const ObjectID &object_id);
+  Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.

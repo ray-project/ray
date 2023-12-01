@@ -688,7 +688,13 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None, is_mutable=False):
+    def put_object(
+        self,
+        value: Any,
+        object_ref: Optional["ray.ObjectRef"] = None,
+        owner_address: Optional[str] = None,
+        _is_experimental_mutable_object: bool = False,
+    ):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -703,6 +709,10 @@ class Worker:
             object_ref: The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
+            _is_experimental_mutable_object: An experimental flag for mutable
+                objects. If True, then the returned object will not have a
+                valid value. The object must be written to using the
+                ray.experimental.channel API before readers can read.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -739,7 +749,7 @@ class Worker:
 
         # If the object is mutable, then the raylet should never read the
         # object. Instead, clients will keep the object pinned.
-        pin_object = not is_mutable
+        pin_object = not _is_experimental_mutable_object
 
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
@@ -753,7 +763,7 @@ class Worker:
                 object_ref=object_ref,
                 pin_object=pin_object,
                 owner_address=owner_address,
-                is_mutable=is_mutable,
+                _is_experimental_mutable_object=_is_experimental_mutable_object,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -775,7 +785,12 @@ class Worker:
             context = self.get_serialization_context()
             return context.deserialize_objects(data_metadata_pairs, object_refs)
 
-    def get_objects(self, object_refs: list, timeout: Optional[float] = None):
+    def get_objects(
+        self,
+        object_refs: list,
+        timeout: Optional[float] = None,
+        _is_experimental_mutable_object: bool = False,
+    ):
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_refs. This
@@ -791,6 +806,10 @@ class Worker:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop
                 into or b"" if there is no breakpoint.
+            _is_experimental_mutable_object: An experimental flag for mutable
+                objects. If True, then wait until there is a value available to
+                read. The object must also already be local, or else the get
+                call will hang.
         """
         # Make sure that the values are object refs.
         for object_ref in object_refs:
@@ -802,7 +821,10 @@ class Worker:
 
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_refs, self.current_task_id, timeout_ms
+            object_refs,
+            self.current_task_id,
+            timeout_ms,
+            _is_experimental_mutable_object,
         )
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
@@ -2498,20 +2520,6 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
 blocking_get_inside_async_warned = False
 
 
-def _end_read_channel(object_refs):
-    """
-    Signal to the writer that the channel is ready to write again. The read
-    begins when the caller calls ray.get and a written value is available. If
-    ray.get is not called first, then this call will block until a value is
-    written, then drop the value.
-    """
-    worker = global_worker
-    worker.check_connected()
-    if isinstance(object_refs, ObjectRef):
-        object_refs = [object_refs]
-    worker.core_worker.get_release(object_refs)
-
-
 @overload
 def get(
     object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
@@ -2641,51 +2649,6 @@ def get(
             rdb.set_trace(frame=frame)
 
         return values
-
-
-@PublicAPI
-def _write_channel(value: Any, object_ref: ObjectRef, num_readers: int):
-    worker = global_worker
-    worker.check_connected()
-
-    if num_readers <= 0:
-        raise ValueError("``num_readers`` must be a positive integer.")
-
-    try:
-        serialized_value = worker.get_serialization_context().serialize(value)
-    except TypeError as e:
-        sio = io.StringIO()
-        ray.util.inspect_serializability(value, print_file=sio)
-        msg = (
-            "Could not serialize the put value " f"{repr(value)}:\n" f"{sio.getvalue()}"
-        )
-        raise TypeError(msg) from e
-
-    worker.core_worker.put_serialized_object_to_mutable_plasma_object(
-        serialized_value,
-        object_ref,
-        num_readers,
-    )
-
-
-@PublicAPI
-def _create_channel(
-    buffer_size: int,
-) -> "ray.ObjectRef":
-    worker = global_worker
-    worker.check_connected()
-
-    value = b"0" * buffer_size
-
-    try:
-        object_ref = worker.put_object(value, owner_address=None, is_mutable=True)
-    except ObjectStoreFullError:
-        logger.info(
-            "Put failed since the value was either too large or the "
-            "store was full of pinned objects."
-        )
-        raise
-    return object_ref
 
 
 @PublicAPI

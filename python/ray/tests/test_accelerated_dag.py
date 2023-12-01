@@ -8,31 +8,34 @@ import pytest
 
 import ray
 import ray.cluster_utils
+import ray.experimental.channel as ray_channel
 
 logger = logging.getLogger(__name__)
 
 
 def test_put_local_get(ray_start_regular):
-    ref = ray._create_channel(1000)
+    chan = ray_channel.Channel(1000)
 
     num_writes = 1000
     for i in range(num_writes):
         val = i.to_bytes(8, "little")
-        ray._write_channel(val, ref, num_readers=1)
-        assert ray.get(ref) == val
-        ray._end_read_channel(ref)
+        chan.write(val, num_readers=1)
+        assert chan.begin_read() == val
+        chan.end_read()
 
 
 def test_put_different_meta(ray_start_regular):
-    ref = ray._create_channel(1000)
+    chan = ray_channel.Channel(1000)
 
     def _test(val):
-        ray._write_channel(val, ref, num_readers=1)
+        chan.write(val, num_readers=1)
+
+        read_val = chan.begin_read()
         if isinstance(val, np.ndarray):
-            assert np.array_equal(ray.get(ref), val)
+            assert np.array_equal(read_val, val)
         else:
-            assert ray.get(ref) == val
-        ray._end_read_channel(ref)
+            assert read_val == val
+        chan.end_read()
 
     _test(b"hello")
     _test("hello")
@@ -47,25 +50,25 @@ def test_put_different_meta(ray_start_regular):
 
 @pytest.mark.parametrize("num_readers", [1, 4])
 def test_put_remote_get(ray_start_regular, num_readers):
-    ref = ray._create_channel(1000)
+    chan = ray_channel.Channel(1000)
 
     @ray.remote(num_cpus=0)
     class Reader:
         def __init__(self):
             pass
 
-        def read(self, ref, num_writes):
+        def read(self, chan, num_writes):
             for i in range(num_writes):
                 val = i.to_bytes(8, "little")
-                assert ray.get(ref[0]) == val
-                ray._end_read_channel(ref)
+                assert chan.begin_read() == val
+                chan.end_read()
 
     num_writes = 1000
     readers = [Reader.remote() for _ in range(num_readers)]
-    done = [reader.read.remote([ref], num_writes) for reader in readers]
+    done = [reader.read.remote(chan, num_writes) for reader in readers]
     for i in range(num_writes):
         val = i.to_bytes(8, "little")
-        ray._write_channel(val, ref, num_readers=num_readers)
+        chan.write(val, num_readers=num_readers)
 
     ray.get(done)
 

@@ -240,7 +240,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const CAddress &owner_address,
                                   shared_ptr[CBuffer] *data,
                                   c_bool created_by_worker)
-        CRayStatus WriteAcquireMutableObject(
+        CRayStatus ExperimentalMutableObjectWriteAcquire(
                                   const CObjectID &object_id,
                                   const shared_ptr[CBuffer] &metadata,
                                   uint64_t data_size,
@@ -251,8 +251,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
-        CRayStatus GetRelease(const c_vector[CObjectID] &object_ids)
+        CRayStatus ExperimentalMutableObjectReadRelease(
+                    const c_vector[CObjectID] &object_ids)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
+                       c_bool is_experimental_mutable_object,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus GetIfLocal(
             const c_vector[CObjectID] &ids,

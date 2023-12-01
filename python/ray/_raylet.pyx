@@ -3324,24 +3324,18 @@ cdef class CoreWorker:
         return self.plasma_event_handler
 
     def get_objects(self, object_refs, TaskID current_task_id,
-                    int64_t timeout_ms=-1):
+                    int64_t timeout_ms=-1,
+                    c_bool _is_experimental_mutable_object=False):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results)
+                c_object_ids, timeout_ms, _is_experimental_mutable_object, &results)
         check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
-
-    def get_release(self, object_refs):
-        cdef:
-            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
-        with nogil:
-            op_status = CCoreWorkerProcess.GetCoreWorker().GetRelease(c_object_ids)
-        check_status(op_status)
 
     def get_if_local(self, object_refs):
         """Get objects from local plasma store directly
@@ -3374,7 +3368,7 @@ cdef class CoreWorker:
                             c_bool created_by_worker,
                             owner_address=None,
                             c_bool inline_small_object=True,
-                            c_bool is_mutable=False,
+                            c_bool is_experimental_mutable_object=False,
                             ):
         cdef:
             unique_ptr[CAddress] c_owner_address
@@ -3385,7 +3379,8 @@ cdef class CoreWorker:
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker()
                              .CreateOwnedAndIncrementLocalRef(
-                             is_mutable, metadata, data_size, contained_ids,
+                             is_experimental_mutable_object, metadata,
+                             data_size, contained_ids,
                              c_object_id, data, created_by_worker,
                              move(c_owner_address),
                              inline_small_object))
@@ -3474,10 +3469,10 @@ cdef class CoreWorker:
                             generator_id=CObjectID.Nil(),
                             owner_address=c_owner_address))
 
-    def put_serialized_object_to_mutable_plasma_object(self, serialized_object,
-                                                       ObjectRef object_ref,
-                                                       num_readers,
-                                                       ):
+    def experimental_mutable_object_put_serialized(self, serialized_object,
+                                                   ObjectRef object_ref,
+                                                   num_readers,
+                                                   ):
         cdef:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
@@ -3485,13 +3480,14 @@ cdef class CoreWorker:
 
         metadata = string_to_buffer(serialized_object.metadata)
         data_size = serialized_object.total_bytes
-        check_status(CCoreWorkerProcess.GetCoreWorker().WriteAcquireMutableObject(
-                c_object_id,
-                metadata,
-                data_size,
-                num_readers,
-                &data,
-                ))
+        check_status(CCoreWorkerProcess.GetCoreWorker()
+                     .ExperimentalMutableObjectWriteAcquire(
+                         c_object_id,
+                         metadata,
+                         data_size,
+                         num_readers,
+                         &data,
+                         ))
         if data_size > 0:
             (<SerializedObject>serialized_object).write_to(
                 Buffer.make(data))
@@ -3501,13 +3497,30 @@ cdef class CoreWorker:
                         generator_id=CObjectID.Nil(),
                         owner_address=null_owner_address))
 
-    def put_serialized_object_and_increment_local_ref(self, serialized_object,
-                                                      ObjectRef object_ref=None,
-                                                      c_bool pin_object=True,
-                                                      owner_address=None,
-                                                      c_bool inline_small_object=True,
-                                                      c_bool is_mutable=False,
-                                                      ):
+    def experimental_mutable_object_read_release(self, object_refs):
+        """
+        For experimental.channel.Channel.
+
+        Signal to the writer that the channel is ready to write again. The read
+        began when the caller calls ray.get and a written value is available. If
+        ray.get is not called first, then this call will block until a value is
+        written, then drop the value.
+        """
+        cdef:
+            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
+        with nogil:
+            op_status = (CCoreWorkerProcess.GetCoreWorker()
+                         .ExperimentalMutableObjectReadRelease(c_object_ids))
+        check_status(op_status)
+
+    def put_serialized_object_and_increment_local_ref(
+            self, serialized_object,
+            ObjectRef object_ref=None,
+            c_bool pin_object=True,
+            owner_address=None,
+            c_bool inline_small_object=True,
+            c_bool _is_experimental_mutable_object=False,
+            ):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -3524,7 +3537,7 @@ cdef class CoreWorker:
             metadata, total_bytes, object_ref,
             contained_object_ids,
             &c_object_id, &data, True, owner_address, inline_small_object,
-            is_mutable)
+            _is_experimental_mutable_object)
 
         logger.debug(
             f"Serialized object size of {c_object_id.Hex()} is {total_bytes} bytes")

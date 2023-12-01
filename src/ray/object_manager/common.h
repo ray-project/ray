@@ -39,6 +39,12 @@ using RestoreSpilledObjectCallback =
                        const std::string &,
                        std::function<void(const ray::Status &)>)>;
 
+/// A header for all plasma objects that is allocated and stored in shared
+/// memory. Therefore, it can be accessed across processes.
+///
+/// For normal immutable objects, no synchronization between processes is
+/// needed once the object has been Sealed. For experimental mutable objects,
+/// we use the header to synchronize between writer and readers.
 struct PlasmaObjectHeader {
   // Used to signal to the writer when all readers are done.
   sem_t rw_semaphore;
@@ -77,8 +83,10 @@ struct PlasmaObjectHeader {
 
   void Destroy();
 
-  // Blocks until there are no more readers.
-  // NOTE: Caller should ensure there is one writer at a time.
+  /// Blocks until all readers for the previous write have ReadRelease'd the value.
+  /// Caller must ensure there is one writer at a time. Caller must pass
+  /// consecutive versions on each new write, starting with write_version=1.
+  ///
   /// \param write_version The new version for write.
   /// \param data_size The new data size of the object.
   /// \param metadata_size The new metadata size of the object.
@@ -90,23 +98,28 @@ struct PlasmaObjectHeader {
 
   // Call after completing a write to signal that readers may read.
   // num_readers should be set before calling this.
+  ///
+  /// \param write_version The new version for write. This must match the
+  /// version previously passed to WriteAcquire.
   void WriteRelease(int64_t write_version);
 
   // Blocks until the given version or a more recent version is ready to read.
+  // If num_readers have already read this version, then this call will hang.
   //
   // \param read_version The minimum version to wait for.
   // \return The version that was read. This should be passed to ReadRelease
-  // when the reader is done.
+  // when the reader is done. Returns 0 if the object is a normal immutable
+  // object, meaning no ReadRelease is needed.
+  ///
+  /// \param read_version Read at least this version.
   int64_t ReadAcquire(int64_t read_version);
 
-  // Finishes the read. If all reads are done, signals to the
-  // writer. This is not necessary to call for objects that have
-  // num_readers=-1.
+  // Finishes the read. If all reads are done, signals to the writer. This is
+  // not necessary to call for objects that have num_readers=-1.
+  ///
+  /// \param read_version This must match the version previously passed in
+  /// ReadAcquire.
   void ReadRelease(int64_t read_version);
-
-  // Get the data size of the plasma object.
-  // The reader must first ReadAcquire.
-  uint64_t GetDataSize() const;
 };
 
 /// A struct that includes info about the object.

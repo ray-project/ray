@@ -37,15 +37,6 @@ void PlasmaObjectHeader::Destroy() {
   RAY_CHECK(sem_destroy(&rw_semaphore) == 0);
 }
 
-// Get the data size of the plasma object.
-// This has to be called only when reader lock is acquired
-// via ReadAcquire.
-uint64_t PlasmaObjectHeader::GetDataSize() const {
-  RAY_CHECK_NE(num_read_releases_remaining, 0)
-      << "ReadAcquire has to be called before calling this method.";
-  return data_size;
-}
-
 void PlasmaObjectHeader::WriteAcquire(int64_t write_version,
                                       uint64_t write_data_size,
                                       uint64_t write_metadata_size,

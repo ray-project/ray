@@ -8,6 +8,8 @@ import numpy as np
 import multiprocessing
 import ray
 
+import ray.experimental.channel as ray_channel
+
 logger = logging.getLogger(__name__)
 
 
@@ -296,11 +298,11 @@ def main(results=None):
 
     def put_channel_small(chans, num_readers=1, do_get=False, do_release=False):
         for chan in chans:
-            ray._write_channel(b"0", chan, num_readers=num_readers)
+            chan.write(b"0", num_readers=num_readers)
             if do_get:
-                ray.get(chan)
+                chan.begin_read()
             if do_release:
-                ray._end_read_channel(chan)
+                chan.end_read()
 
     @ray.remote
     class ChannelReader:
@@ -310,10 +312,10 @@ def main(results=None):
         def read(self, chans):
             while True:
                 for chan in chans:
-                    ray.get(chan)
-                    ray._end_read_channel(chan)
+                    chan.begin_read()
+                    chan.end_read()
 
-    chans = [ray._create_channel(1000)]
+    chans = [ray_channel.Channel(1000)]
     results += timeit(
         "local put, single channel calls",
         lambda: put_channel_small(chans, do_release=True),
@@ -323,7 +325,7 @@ def main(results=None):
         lambda: put_channel_small(chans, do_get=True, do_release=True),
     )
 
-    chans = [ray._create_channel(1000)]
+    chans = [ray_channel.Channel(1000)]
     reader = ChannelReader.remote()
     ray.get(reader.ready.remote())
     reader.read.remote(chans)
@@ -335,7 +337,7 @@ def main(results=None):
     n_cpu = multiprocessing.cpu_count() // 2
     print(f"Testing multiple readers/channels, n={n_cpu}")
 
-    chans = [ray._create_channel(1000)]
+    chans = [ray_channel.Channel(1000)]
     readers = [ChannelReader.remote() for _ in range(n_cpu)]
     ray.get([reader.ready.remote() for reader in readers])
     for reader in readers:
@@ -347,7 +349,7 @@ def main(results=None):
     for reader in readers:
         ray.kill(reader)
 
-    chans = [ray._create_channel(1000) for _ in range(n_cpu)]
+    chans = [ray_channel.Channel(1000) for _ in range(n_cpu)]
     reader = ChannelReader.remote()
     ray.get(reader.ready.remote())
     reader.read.remote(chans)
@@ -356,7 +358,7 @@ def main(results=None):
     )
     ray.kill(reader)
 
-    chans = [ray._create_channel(1000) for _ in range(n_cpu)]
+    chans = [ray_channel.Channel(1000) for _ in range(n_cpu)]
     readers = [ChannelReader.remote() for _ in range(n_cpu)]
     ray.get([reader.ready.remote() for reader in readers])
     for chan, reader in zip(chans, readers):
