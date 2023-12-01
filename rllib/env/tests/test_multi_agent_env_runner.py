@@ -19,8 +19,8 @@ class MultiAgentTestEnvWithBox(MultiAgentTestEnv):
         super().__init__(truncate=env_config.get("truncate", True))
 
         # The preferred format for `MultiAgentEnv` spaces is a dictionary
-        # mapping agent ids to their spaces. The alternative is to use 
-        # the same space for each agent and only set this single agent 
+        # mapping agent ids to their spaces. The alternative is to use
+        # the same space for each agent and only set this single agent
         # space.
         with_preferred_format = env_config.get("with_preferred_format", False)
 
@@ -123,9 +123,6 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         for agent_id, agent_eps in episodes[0].agent_episodes.items():
             self.assertTrue("action_logps" in agent_eps.extra_model_outputs)
             self.assertEqual(len(agent_eps.actions), len(agent_eps.extra_model_outputs))
-
-
-
 
     def _build_config(self, with_preferred_format: bool = False):
         # Create an environment to retrieve the agent ids.
