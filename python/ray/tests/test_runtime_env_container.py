@@ -59,7 +59,7 @@ def run_in_docker_container(cmd: str, container_id: str):
     docker_cmd = ["docker", "exec", container_id]
     docker_cmd.extend(cmd.split())
     print(f"executing command: {docker_cmd}")
-    resp = subprocess.check_output(docker_cmd)
+    resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
     output = resp.decode("utf-8").strip()
     print(f"output: {output}")
     return output
@@ -93,7 +93,9 @@ def test_b(shutdown_only):
 
     run_in_docker_container("id", container_id)
     run_in_docker_container("cat /etc/group", container_id)
+    run_in_docker_container("sudo groupadd docker", container_id)
     run_in_docker_container("sudo usermod -aG daemon ray", container_id)
+    run_in_docker_container("sudo usermod -aG docker ray", container_id)
     run_in_docker_container("cat /etc/group", container_id)
     run_in_docker_container("podman image ls", container_id)
     run_in_docker_container(f"podman pull docker-daemon:{image_name}", container_id)
