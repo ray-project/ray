@@ -360,7 +360,6 @@ void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(const TaskInfo &task_
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
-  // The bool here indicates whether the task is the first for the raylet address.
   auto task_info_list = std::make_shared<std::vector<TaskInfo>>();
   {
     absl::MutexLock lock(&mu_);

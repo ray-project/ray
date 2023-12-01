@@ -27,14 +27,12 @@ namespace gcs {
 
 class MockGcsActorManager : public GcsActorManager {
  public:
-  MockGcsActorManager(GcsNodeManager &gcs_node_manager,
-                      RuntimeEnvManager &runtime_env_manager,
+  MockGcsActorManager(RuntimeEnvManager &runtime_env_manager,
                       GcsFunctionManager &function_manager)
       : GcsActorManager(
             nullptr,
             nullptr,
             nullptr,
-            gcs_node_manager,
             runtime_env_manager,
             function_manager,
             [](const ActorID &) {},

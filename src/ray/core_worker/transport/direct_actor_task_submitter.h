@@ -338,7 +338,7 @@ class CoreWorkerDirectActorTaskSubmitter
     }
   };
 
-  /// Check the death reason is because of drain.
+  /// Fail the task with a constructed ActorDiedError, with preemption info.
   void FailTaskWithError(const TaskInfo &task_info);
 
   /// Push a task to a remote actor via the given client.

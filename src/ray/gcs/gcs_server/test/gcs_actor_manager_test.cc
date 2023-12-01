@@ -143,7 +143,6 @@ class GcsActorManagerTest : public ::testing::Test {
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(std::move(publisher));
-    gcs_node_manager_ = std::make_shared<gcs::MockGcsNodeManager>();
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
@@ -152,7 +151,6 @@ class GcsActorManagerTest : public ::testing::Test {
         mock_actor_scheduler_,
         gcs_table_storage_,
         gcs_publisher_,
-        *gcs_node_manager_,
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
@@ -282,7 +280,6 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
-  std::shared_ptr<gcs::MockGcsNodeManager> gcs_node_manager_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   absl::Mutex mutex_;

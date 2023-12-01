@@ -94,7 +94,6 @@ class GcsStateTest : public ::testing::Test {
         gcs_actor_scheduler_,
         gcs_table_storage_,
         gcs_publisher_,
-        *gcs_node_manager_,
         *runtime_env_manager_,
         *function_manager_,
         [](const ActorID &actor_id) {},
@@ -102,8 +101,12 @@ class GcsStateTest : public ::testing::Test {
 
     gcs_placement_group_manager_ =
         std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
-    gcs_autoscaler_state_manager_.reset(new GcsAutoscalerStateManager(
-        "fake_cluster", *gcs_node_manager_, *gcs_actor_manager_, *gcs_placement_group_manager_, client_pool_));
+    gcs_autoscaler_state_manager_.reset(
+        new GcsAutoscalerStateManager("fake_cluster",
+                                      *gcs_node_manager_,
+                                      *gcs_actor_manager_,
+                                      *gcs_placement_group_manager_,
+                                      client_pool_));
   }
 
  public:
@@ -117,15 +120,16 @@ class GcsStateTest : public ::testing::Test {
 MATCHER(IsPreemptedActor, "") {
   if (!arg.death_cause().has_actor_died_error_context()) {
     return false;
-  } 
+  }
   return arg.death_cause().actor_died_error_context().preempted();
 }
 
 MATCHER(IsPreemptedNode, "") {
   if (arg.death_info().reason() != rpc::NodeDeathInfo::AUTOSCALER_DRAIN) {
     return false;
-  } 
-  return arg.death_info().drain_reason() == rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION;
+  }
+  return arg.death_info().drain_reason() ==
+         rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION;
 }
 
 /*
@@ -231,12 +235,12 @@ TEST_F(GcsStateTest, TestDrainNode) {
   ON_CALL(*gcs_publisher_, PublishError).WillByDefault(Return(Status::OK()));
 
   // Simulate raylet failure
-  gcs_node_manager_->OnNodeFailure(node_id, [](Status){});
+  gcs_node_manager_->OnNodeFailure(node_id, [](Status) {});
 
   MockGcsNodeTable node_table;
   EXPECT_CALL(*gcs_table_storage_, NodeTable()).WillOnce(ReturnRef(node_table));
-  EXPECT_CALL(node_table, Put(node_id, IsPreemptedNode(), _)).WillOnce(
-    Return(Status::OK()));
+  EXPECT_CALL(node_table, Put(node_id, IsPreemptedNode(), _))
+      .WillOnce(Return(Status::OK()));
 }
 
 }  // namespace gcs

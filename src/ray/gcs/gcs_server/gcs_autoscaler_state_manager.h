@@ -145,7 +145,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// Gcs node manager that provides node status information.
   const GcsNodeManager &gcs_node_manager_;
 
-  /// Gcs node manager that provides node status information.
+  /// Gcs actor manager that provides actor information.
   GcsActorManager &gcs_actor_manager_;
 
   /// GCS placement group manager reference.

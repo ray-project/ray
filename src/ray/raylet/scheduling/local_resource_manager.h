@@ -223,9 +223,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   // Whether the local node is being drained or not.
   bool is_local_node_draining_ = false;
-  // Reason for drain, if draining.
-  DrainNodeReason drain_reason_ =
-      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_UNSPECIFIED;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

@@ -478,7 +478,6 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       std::move(scheduler),
       gcs_table_storage_,
       gcs_publisher_,
-      *gcs_node_manager_,
       *runtime_env_manager_,
       *function_manager_,
       [this](const ActorID &actor_id) {

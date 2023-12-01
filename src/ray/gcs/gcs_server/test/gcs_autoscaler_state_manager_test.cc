@@ -69,8 +69,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});
-    gcs_actor_manager_ = std::make_unique<MockGcsActorManager>(
-        *gcs_node_manager_, *runtime_env_manager_, *function_manager_);
+    gcs_actor_manager_ =
+        std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
     gcs_resource_manager_ =
         std::make_shared<GcsResourceManager>(io_service_,
                                              *cluster_resource_manager_,
