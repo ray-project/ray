@@ -35,7 +35,6 @@ export type NodeDetail = {
   actors: { [id: string]: Actor };
   cmdline: string[];
   state: string;
-  logUrl: string;
   logicalResources?: str;
 };
 

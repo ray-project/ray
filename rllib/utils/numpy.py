@@ -235,7 +235,8 @@ def flatten_inputs_to_1d_tensor(
 
     Args:
         inputs: The inputs to be flattened.
-        spaces_struct: The structure of the spaces that behind the input
+        spaces_struct: The (possibly nested) structure of the spaces that `inputs`
+            belongs to.
         time_axis: Whether all inputs have a time-axis (after the batch axis).
             If True, will keep not only the batch axis (0th), but the time axis
             (1st) as-is and flatten everything from the 2nd axis up.
@@ -501,10 +502,7 @@ def one_hot(
     )
     shape = x.shape
 
-    # Python 2.7 compatibility, (*shape, depth) is not allowed.
-    shape_list = list(shape[:])
-    shape_list.append(depth)
-    out = np.ones(shape_list) * off_value
+    out = np.ones(shape=(*shape, depth)) * off_value
     indices = []
     for i in range(x.ndim):
         tiles = [1] * x.ndim
@@ -518,6 +516,22 @@ def one_hot(
     indices.append(x)
     out[tuple(indices)] = on_value
     return out.astype(dtype)
+
+
+@PublicAPI
+def one_hot_multidiscrete(x, depths=List[int]):
+    # Handle torch arrays properly.
+    if torch and isinstance(x, torch.Tensor):
+        x = x.numpy()
+
+    shape = x.shape
+    return np.concatenate(
+        [
+            one_hot(x[i] if len(shape) == 1 else x[:, i], depth=n).astype(np.float32)
+            for i, n in enumerate(depths)
+        ],
+        axis=-1,
+    )
 
 
 @PublicAPI

@@ -25,6 +25,7 @@ flaky_tests:
   - //rllib:examples/action_masking_tf2
   - //rllib:examples/learner/train_w_bc_finetune_w_ppo
   - //rllib:examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_torch
+  - //rllib:examples/rock_paper_scissors_multiagent_torch
   # memory leak tf2-eager-tracing
   - //rllib:test_memory_leak_ppo
   - //rllib:test_memory_leak_appo
