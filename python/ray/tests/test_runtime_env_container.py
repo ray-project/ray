@@ -40,24 +40,48 @@ def test_a(podman_docker_cluster):
     print(head.exec_run(cmd="python --version"))
     print(head.exec_run(cmd="podman --version"))
     print(head.exec_run(cmd="id"))
-    print(head.exec_run(cmd="docker image ls"))
+    print(
+        head.exec_run(
+            cmd="podman pull docker-daemon:rayproject/ray:runtime_env_container"
+        )
+    )
 
     assert False
+
+
+def run_in_docker_container(cmd: str, container_id: str):
+    docker_cmd = ["docker", "exec", container_id].extend(cmd.split())
+    resp = subprocess.check_output(docker_cmd)
+    return resp.decode("utf-8").strip()
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_b(podman_docker_cluster_b):
+def test_b(shutdown_only):
     print(subprocess.check_output(["docker", "image", "ls"]))
     print("id:", subprocess.check_output(["id"]))
 
-    head = podman_docker_cluster_b
-    print(head.exec_run(cmd="ls -l"))
-    print(head.exec_run(cmd="python --version"))
-    print(head.exec_run(cmd="podman --version"))
-    print(head.exec_run(cmd="id"))
-    print(head.exec_run(cmd="docker image ls"))
+    start_container_command = [
+        "docker",
+        "run",
+        "-d",
+        "--privileged",
+        "-v",
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "-v",
+        "/var/lib/containers:/var/lib/containers",
+        "rayproject/ray:runtime_env_container",
+        "tail",
+        "-f",
+        "/dev/null",
+    ]
+    container_id = subprocess.check_output(start_container_command).decode("utf-8")
+    container_id = container_id.strip()
 
-    assert False
+    run_in_docker_container("sudo usermod -aG daemon ray", container_id)
+    run_in_docker_container(
+        "podman pull docker-daemon:rayproject/ray:runtime_env_container", container_id
+    )
+    run_in_docker_container("podman ps", container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
