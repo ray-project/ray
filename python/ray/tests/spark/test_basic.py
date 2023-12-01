@@ -7,7 +7,6 @@ import re
 import pytest
 import sys
 from unittest import mock
-
 from abc import ABC
 
 import ray

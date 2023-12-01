@@ -10,7 +10,6 @@ import logging
 import uuid
 import warnings
 import requests
-import fcntl
 from packaging.version import Version
 from typing import Optional, Dict, Tuple, Type
 
@@ -214,6 +213,8 @@ class RayClusterOnSpark:
         raise unexpected error, its exception handler will also call this method, in
         the case, it will set cancel_background_job=False to avoid recursive call.
         """
+        import fcntl
+
         if not self.is_shutdown:
             self.disconnect()
             os.environ.pop("RAY_ADDRESS", None)
@@ -479,6 +480,7 @@ def _setup_ray_cluster(
     instrumentation logging patching.
     """
     from pyspark.util import inheritable_thread_target
+    import fcntl
 
     if RAY_ON_SPARK_START_HOOK in os.environ:
         start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
