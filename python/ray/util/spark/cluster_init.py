@@ -891,7 +891,7 @@ def setup_ray_cluster(
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
     is_global: bool = False,
     **kwargs,
-) -> Optional[Tuple[str, str]]:
+) -> Tuple[str, str]:
     """
     Set up a ray cluster on the spark cluster by starting a ray head node in the
     spark application's driver side node.
@@ -1303,7 +1303,7 @@ def setup_ray_cluster(
     return cluster.address, remote_connection_address
 
 
-def serve_global_ray_cluster(*args, **kwargs):
+def setup_global_ray_cluster(*args, **kwargs):
     """
     Create a global mode cluster by calling ``setup_ray_cluster`` with
     ``is_global=True``,

@@ -16,7 +16,7 @@ import ray.util.spark.cluster_init
 from ray.util.spark import (
     setup_ray_cluster,
     shutdown_ray_cluster,
-    serve_global_ray_cluster,
+    setup_global_ray_cluster,
     MAX_NUM_WORKER_NODES,
 )
 from ray.util.spark.utils import (
@@ -368,7 +368,7 @@ class TestSparkLocalCluster:
                         "ray.util.spark.cluster_init.get_spark_session",
                         return_value=self.spark,
                     ):
-                        serve_global_ray_cluster(
+                        setup_global_ray_cluster(
                             num_worker_nodes=1,
                             autoscale=autoscale,
                         )
@@ -404,7 +404,7 @@ class TestSparkLocalCluster:
                     "Ray on spark cluster"
                 ),
             ):
-                serve_global_ray_cluster(
+                setup_global_ray_cluster(
                     num_worker_nodes=1,
                     autoscale=autoscale,
                 )
