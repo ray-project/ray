@@ -92,8 +92,9 @@ def test_b(shutdown_only):
     print("docker ps:", subprocess.check_output(["docker", "ps"]))
 
     run_in_docker_container("id", container_id)
+    run_in_docker_container("ls -l /var/run/docker.sock", container_id)
     run_in_docker_container("cat /etc/group", container_id)
-    run_in_docker_container("sudo groupadd docker", container_id)
+    run_in_docker_container("sudo groupadd -g 998 docker", container_id)
     run_in_docker_container("sudo usermod -aG daemon ray", container_id)
     run_in_docker_container("sudo usermod -aG docker ray", container_id)
     run_in_docker_container("cat /etc/group", container_id)
