@@ -1071,7 +1071,7 @@ class Learner:
     def additional_update(
         self,
         *,
-        module_ids_to_update: Sequence[ModuleID] = None,
+        module_ids_to_update: Sequence[ModuleID],
         timestep: int,
         **kwargs,
     ) -> Mapping[ModuleID, Any]:
@@ -1163,8 +1163,7 @@ class Learner:
                     )
 
         Args:
-            module_ids_to_update: The ids of the modules to update. If None, all
-                modules will be updated.
+            module_ids_to_update: The ids of the modules to update.
             timestep: The current timestep.
             **kwargs: Keyword arguments to use for the additional update.
 
@@ -1172,8 +1171,7 @@ class Learner:
             A dictionary of results from the update
         """
         results_all_modules = {}
-        module_ids = module_ids_to_update or self.module.keys()
-        for module_id in module_ids:
+        for module_id in module_ids_to_update:
             module_results = self.additional_update_for_module(
                 module_id=module_id,
                 hps=self.hps.get_hps_for_module(module_id),
@@ -1434,11 +1432,14 @@ class Learner:
         """
 
         for pid, policy_batch in batch.policy_batches.items():
-            if self.module[pid].is_stateful():
-                # We assume that arriving batches for recurrent modules are already
-                # padded to the max sequence length and have tensors of shape
-                # [B, T, ...]. Therefore, we slice sequence lengths in B. See
-                # SampleBatch for more information.
+            # We assume that arriving batches for recurrent modules OR batches that
+            # have a SEQ_LENS column are already zero-padded to the max sequence length
+            # and have tensors of shape [B, T, ...]. Therefore, we slice sequence
+            # lengths in B. See SampleBatch for more information.
+            if (
+                self.module[pid].is_stateful()
+                or policy_batch.get("seq_lens") is not None
+            ):
                 if value:
                     policy_batch.enable_slicing_by_batch_id()
                 else:

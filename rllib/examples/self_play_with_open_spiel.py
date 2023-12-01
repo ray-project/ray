@@ -119,10 +119,10 @@ def get_cli_args():
         type=float,
         default=3,
         help="Minimum number of policies/RLModules to consider the test passed. "
-             "The initial league size is 2: `main` and `random`. "
-             "`--min-league-size=3` thus means that one new policy/RLModule has been "
-             "added so far (b/c the `main` one has reached the `--win-rate-threshold "
-             "against the `random` Policy/RLModule).",
+        "The initial league size is 2: `main` and `random`. "
+        "`--min-league-size=3` thus means that one new policy/RLModule has been "
+        "added so far (b/c the `main` one has reached the `--win-rate-threshold "
+        "against the `random` Policy/RLModule).",
     )
     parser.add_argument(
         "--local-mode",
@@ -235,9 +235,8 @@ class SelfPlayCallback(DefaultCallbacks):
 if __name__ == "__main__":
 
     args = get_cli_args()
-    enable_new_api_stack = (
-        args.enable_new_api_stack
-        or bool(int(os.environ.get("RLLIB_ENABLE_NEW_API_STACK", 0)))
+    enable_new_api_stack = args.enable_new_api_stack or bool(
+        int(os.environ.get("RLLIB_ENABLE_NEW_API_STACK", 0))
     )
 
     ray.init(
