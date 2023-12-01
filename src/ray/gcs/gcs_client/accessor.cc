@@ -887,6 +887,26 @@ Status WorkerInfoAccessor::AsyncUpdateDebuggerPort(const WorkerID &worker_id,
   return Status::OK();
 }
 
+Status WorkerInfoAccessor::AsyncUpdateWorkerNumPausedThreads(
+    const WorkerID &worker_id,
+    const int num_paused_threads_delta,
+    const StatusCallback &callback) {
+  rpc::UpdateWorkerNumPausedThreadsRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.set_num_paused_threads_delta(num_paused_threads_delta);
+  RAY_LOG(DEBUG) << "Update the num paused threads on worker id = " << worker_id
+                 << " by delta = " << num_paused_threads_delta << ".";
+  client_impl_->GetGcsRpcClient().UpdateWorkerNumPausedThreads(
+      request,
+      [callback](const Status &status,
+                 const rpc::UpdateWorkerNumPausedThreadsReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
 PlacementGroupInfoAccessor::PlacementGroupInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 

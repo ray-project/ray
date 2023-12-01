@@ -35,7 +35,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
@@ -363,37 +363,6 @@ class PPOConfig(AlgorithmConfig):
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
 
-class UpdateKL:
-    """Callback to update the KL based on optimization info.
-
-    This is used inside the execution_plan function. The Policy must define
-    a `update_kl` method for this to work. This is achieved for PPO via a
-    Policy mixin class (which adds the `update_kl` method),
-    defined in ppo_[tf|torch]_policy.py.
-    """
-
-    def __init__(self, workers):
-        self.workers = workers
-
-    def __call__(self, fetches):
-        def update(pi, pi_id):
-            assert LEARNER_STATS_KEY not in fetches, (
-                "{} should be nested under policy id key".format(LEARNER_STATS_KEY),
-                fetches,
-            )
-            if pi_id in fetches:
-                kl = fetches[pi_id][LEARNER_STATS_KEY].get("kl")
-                assert kl is not None, (fetches, pi_id)
-                # Make the actual `Policy.update_kl()` call.
-                pi.update_kl(kl)
-            else:
-                logger.warning("No data for {}, not updating kl".format(pi_id))
-
-        # Update KL on all trainable policies within the local (training)
-        # Worker.
-        self.workers.local_worker().foreach_policy_to_train(update)
-
-
 class PPO(Algorithm):
     @classmethod
     @override(Algorithm)
@@ -419,7 +388,7 @@ class PPO(Algorithm):
 
             return PPOTF2Policy
 
-    @ExperimentalAPI
+    @override(Algorithm)
     def training_step(self) -> ResultDict:
         use_rollout_worker = self.config.env_runner_cls is None or issubclass(
             self.config.env_runner_cls, RolloutWorker

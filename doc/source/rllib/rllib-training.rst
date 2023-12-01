@@ -32,7 +32,7 @@ You can train DQN with the following commands:
         <span data-ty="input">rllib train --algo DQN --env CartPole-v1 --stop  '{"training_iteration": 30}'</span>
     </div>
 
-.. margin::
+.. note::
 
     The ``rllib train`` command (same as the ``train.py`` script in the repo)
     has a number of options you can show by running `rllib train --help`.
@@ -85,7 +85,7 @@ Some good hyperparameters and settings are available in
 `the RLlib repository <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__
 (some of them are tuned to run on GPUs).
 
-.. margin::
+.. note::
 
     If you find better settings or tune an algorithm on a different domain,
     consider submitting a Pull Request!
@@ -160,7 +160,7 @@ of the training results and retrieving the checkpoint(s) of the trained agent.
     :start-after: rllib-tuner-begin
     :end-before: rllib-tuner-end
 
-.. margin::
+.. note::
 
     You can find your checkpoint's version by
     looking into the ``rllib_checkpoint.json`` file inside your checkpoint directory.
@@ -236,7 +236,7 @@ underlying neural network model being trained. For example, you may want to
 pre-train it separately, or otherwise update its weights outside of RLlib.
 This can be done by accessing the ``model`` of the policy.
 
-.. margin::
+.. note::
 
     To run these examples, you need to install a few extra dependencies, namely
     `pip install "gym[atari]" "gym[accept-rom-license]" atari_py`.
@@ -324,7 +324,7 @@ Let's discuss each category one by one, starting with training options.
 Specifying Training Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. margin::
+.. note::
 
     For instance, a `DQNConfig` takes a `double_q` `training` argument to specify whether
     to use a double-Q DQN, whereas in a `PPOConfig` this does not make sense.
@@ -611,4 +611,4 @@ hangs or performance issues.
 Next Steps
 ----------
 
-- To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`. 
+- To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`.

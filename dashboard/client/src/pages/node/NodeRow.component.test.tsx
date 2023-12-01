@@ -40,7 +40,6 @@ const NODE: NodeDetail = {
     objectStoreAvailableMemory: 40,
     objectStoreUsedMemory: 10,
   },
-  logUrl: "http://192.16.0.1/logs",
 } as NodeDetail;
 
 const WORKER: Worker = {

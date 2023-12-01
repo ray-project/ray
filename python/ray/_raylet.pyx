@@ -24,13 +24,15 @@ import traceback
 import _thread
 import typing
 from typing import (
-    Union,
+    Any,
+    AsyncGenerator,
     Awaitable,
     Callable,
-    Any,
-    Optional,
+    Dict,
     Generator,
-    AsyncGenerator
+    Optional,
+    Tuple,
+    Union,
 )
 
 import contextvars
@@ -267,11 +269,21 @@ class ObjectRefGenerator:
 
 
 class StreamingObjectRefGenerator:
+    """A generator to obtain object references
+    from a task in a streaming manner.
+
+    The class is compatible with generator and
+    async generator interface.
+
+    The class is not thread-safe.
+
+    >>> gen = generator_task.remote()
+    >>> next(gen)
+    >>> await gen.__anext__()
+    """
     def __init__(self, generator_ref: ObjectRef, worker: "Worker"):
         # The reference to a generator task.
         self._generator_ref = generator_ref
-        # The last time generator task has completed.
-        self._generator_task_completed_time = None
         # The exception raised from a generator task.
         self._generator_task_exception = None
         # Ray's worker class. ray._private.worker.global_worker
@@ -279,11 +291,9 @@ class StreamingObjectRefGenerator:
         self.worker.check_connected()
         assert hasattr(worker, "core_worker")
 
-    def get_next_ref(self) -> ObjectRef:
-        self.worker.check_connected()
-        core_worker = self.worker.core_worker
-        return core_worker.peek_object_ref_stream(
-            self._generator_ref)
+    """
+    Public APIs
+    """
 
     def __iter__(self) -> "StreamingObjectRefGenerator":
         return self
@@ -301,11 +311,114 @@ class StreamingObjectRefGenerator:
         """
         return self._next_sync()
 
-    def __aiter__(self):
+    def send(self, value):
+        raise NotImplementedError("`gen.send` is not supported.")
+
+    def throw(self, value):
+        raise NotImplementedError("`gen.throw` is not supported.")
+
+    def close(self):
+        raise NotImplementedError("`gen.close` is not supported.")
+
+    def __aiter__(self) -> "StreamingObjectRefGenerator":
         return self
 
     async def __anext__(self):
         return await self._next_async()
+
+    async def asend(self, value):
+        raise NotImplementedError("`gen.asend` is not supported.")
+
+    async def athrow(self, value):
+        raise NotImplementedError("`gen.athrow` is not supported.")
+
+    async def aclose(self):
+        raise NotImplementedError("`gen.aclose` is not supported.")
+
+    def completed(self) -> ObjectRef:
+        """Returns an object ref that is ready when
+        a generator task completes.
+
+        If the task is failed unexpectedly (e.g., worker failure),
+        the `ray.get(gen.completed())` raises an exception.
+
+        The function returns immediately.
+
+        >>> ray.get(gen.completed())
+        """
+        return self._generator_ref
+
+    def next_ready(self) -> bool:
+        """If True, it means the output of next(gen) is ready and
+        ray.get(next(gen)) returns immediately. False otherwise.
+
+        It returns False when next(gen) raises a StopIteration
+        (this condition should be checked using is_finished).
+
+        The function returns immediately.
+        """
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+
+        if self.is_finished():
+            return False
+
+        expected_ref, is_ready = core_worker.peek_object_ref_stream(
+            self._generator_ref)
+
+        if is_ready:
+            return True
+
+        ready, _ = ray.wait(
+            [expected_ref], timeout=0, fetch_local=False)
+        return len(ready) > 0
+
+    def is_finished(self) -> bool:
+        """If True, it means the generator is finished
+        and all output is taken. False otherwise.
+
+        When True, if next(gen) is called, it will raise StopIteration
+        or StopAsyncIteration
+
+        The function returns immediately.
+        """
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+
+        finished = core_worker.is_object_ref_stream_finished(
+            self._generator_ref)
+
+        if finished:
+            if self._generator_task_exception:
+                return True
+            else:
+                # We should try ray.get on a generator ref.
+                # If it raises an exception and
+                # _generator_task_exception is not set,
+                # this means the last ref is not taken yet.
+                try:
+                    ray.get(self._generator_ref)
+                except Exception:
+                    # The exception from _generator_ref
+                    # hasn't been taken yet.
+                    return False
+                else:
+                    return True
+
+    """
+    Private APIs
+    """
+
+    def _get_next_ref(self) -> ObjectRef:
+        """Return the next reference from a generator.
+
+        Note that the ObjectID generated from a generator
+        is always deterministic.
+        """
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        return core_worker.peek_object_ref_stream(
+            self._generator_ref)[0]
 
     def _next_sync(
         self,
@@ -332,16 +445,17 @@ class StreamingObjectRefGenerator:
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
         """
-        self.worker.check_connected()
         core_worker = self.worker.core_worker
 
         # Wait for the next ObjectRef to become ready.
-        expected_ref = core_worker.peek_object_ref_stream(
+        expected_ref, is_ready = core_worker.peek_object_ref_stream(
             self._generator_ref)
-        ready, unready = ray.wait(
-            [expected_ref], timeout=timeout_s, fetch_local=False)
-        if len(unready) > 0:
-            return ObjectRef.nil()
+
+        if not is_ready:
+            _, unready = ray.wait(
+                [expected_ref], timeout=timeout_s, fetch_local=False)
+            if len(unready) > 0:
+                return ObjectRef.nil()
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(
@@ -365,7 +479,7 @@ class StreamingObjectRefGenerator:
                 raise StopIteration
         return ref
 
-    async def suppress_exceptions(self, ref: ObjectRef):
+    async def _suppress_exceptions(self, ref: ObjectRef) -> None:
         # Wrap a streamed ref to avoid asyncio warnings about not retrieving
         # the exception when we are just waiting for the ref to become ready.
         # The exception will get returned (or warned) to the user once they
@@ -380,18 +494,18 @@ class StreamingObjectRefGenerator:
             timeout_s: Optional[float] = None
     ):
         """Same API as _next_sync, but it is for async context."""
-        self.worker.check_connected()
         core_worker = self.worker.core_worker
-
-        ref = core_worker.peek_object_ref_stream(
+        ref, is_ready = core_worker.peek_object_ref_stream(
             self._generator_ref)
-        # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait(
-            [asyncio.create_task(self.suppress_exceptions(ref))],
-            timeout=timeout_s
-        )
-        if len(unready) > 0:
-            return ObjectRef.nil()
+
+        if not is_ready:
+            # TODO(swang): Avoid fetching the value.
+            ready, unready = await asyncio.wait(
+                [asyncio.create_task(self._suppress_exceptions(ref))],
+                timeout=timeout_s
+            )
+            if len(unready) > 0:
+                return ObjectRef.nil()
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(
@@ -1609,8 +1723,8 @@ cdef void execute_task(
                 else:
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
-                        name_of_concurrency_group_to_execute, task_id, actor,
-                        *arguments, **kwarguments)
+                        name_of_concurrency_group_to_execute, task_id=task_id,
+                        func_args=(actor, *arguments), func_kwargs=kwarguments)
 
             return function(actor, *arguments, **kwarguments)
 
@@ -1635,7 +1749,7 @@ cdef void execute_task(
                                         metadata_pairs, object_refs))
                         args = core_worker.run_async_func_or_coro_in_event_loop(
                             deserialize_args, function_descriptor,
-                            name_of_concurrency_group_to_execute, None)
+                            name_of_concurrency_group_to_execute)
                     else:
                         # Defer task cancellation (SIGINT) until after the task argument
                         # deserialization context has been left.
@@ -1723,7 +1837,7 @@ cdef void execute_task(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
-                                task_id)
+                                task_id=task_id)
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -2355,10 +2469,14 @@ def maybe_initialize_job_config():
             for p in py_driver_sys_path:
                 sys.path.insert(0, p)
 
+        # Cache and set the current job id.
+        job_id = core_worker.get_current_job_id()
+        ray._private.worker.global_worker.set_cached_job_id(job_id)
+
         # Record the task name via :task_name: magic token in the log file.
         # This is used for the prefix in driver logs `(task_name pid=123) ...`
         job_id_magic_token = "{}{}\n".format(
-            ray_constants.LOG_PREFIX_JOB_ID, core_worker.get_current_job_id().hex())
+            ray_constants.LOG_PREFIX_JOB_ID, job_id.hex())
         # Print on both .out and .err
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
@@ -3433,7 +3551,7 @@ cdef class CoreWorker:
             if isinstance(ref_or_generator, StreamingObjectRefGenerator):
                 # Before calling wait,
                 # get the next reference from a generator.
-                object_refs.append(ref_or_generator.get_next_ref())
+                object_refs.append(ref_or_generator._get_next_ref())
             else:
                 object_refs.append(ref_or_generator)
 
@@ -3983,6 +4101,7 @@ cdef class CoreWorker:
             method_meta = ray.actor._ActorClassMethodMetadata.create(
                 actor_class, actor_creation_function_descriptor)
             return ray.actor.ActorHandle(language, actor_id,
+                                         method_meta.method_is_generator,
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_returns,
@@ -3992,6 +4111,7 @@ cdef class CoreWorker:
                                          worker.current_session_and_job)
         else:
             return ray.actor.ActorHandle(language, actor_id,
+                                         {},  # method is_generator
                                          {},  # method decorators
                                          {},  # method signatures
                                          {},  # method num_returns
@@ -4345,10 +4465,13 @@ cdef class CoreWorker:
           func_or_coro: Union[Callable[[Any, Any], Awaitable[Any]], Awaitable],
           function_descriptor: FunctionDescriptor,
           specified_cgname: str,
-          task_id: Optional[TaskID],
-          *args,
-          **kwargs):
+          *,
+          task_id: Optional[TaskID] = None,
+          func_args: Optional[Tuple] = None,
+          func_kwargs: Optional[Dict] = None,
+    ):
         """Run the async function or coroutine to the event loop.
+
         The event loop is running in a separate thread.
 
         Args:
@@ -4359,11 +4482,20 @@ cdef class CoreWorker:
                 the future is not tracked with a task ID.
                 (e.g., When we deserialize the arguments, we don't want to
                 track the task_id -> future mapping).
-            args: The arguments for the async function.
-            kwargs: The keyword arguments for the async function.
+            func_args: The arguments for the async function.
+            func_kwargs: The keyword arguments for the async function.
+
+        NOTE: func_args and func_kwargs are intentionally passed as a tuple/dict and
+        not unpacked to avoid collisions between system arguments and user-provided
+        arguments. See https://github.com/ray-project/ray/issues/41272.
         """
         cdef:
             CFiberEvent event
+
+        if func_args is None:
+            func_args = tuple()
+        if func_kwargs is None:
+            func_kwargs = dict()
 
         # Increase recursion limit if necessary. In asyncio mode,
         # we have many parallel callstacks (represented in fibers)
@@ -4385,7 +4517,7 @@ cdef class CoreWorker:
                 if inspect.isawaitable(func_or_coro):
                     coroutine = func_or_coro
                 else:
-                    coroutine = func_or_coro(*args, **kwargs)
+                    coroutine = func_or_coro(*func_args, **func_kwargs)
 
                 return await coroutine
             finally:
@@ -4661,19 +4793,30 @@ cdef class CoreWorker:
             # Already added when the ref is updated.
             skip_adding_local_ref=True)
 
+    def is_object_ref_stream_finished(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            c_bool finished
+
+        with nogil:
+            finished = CCoreWorkerProcess.GetCoreWorker().IsFinished(
+                c_generator_id)
+        return finished
+
     def peek_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
-            CObjectReference c_object_ref
+            pair[CObjectReference, c_bool] c_object_ref_and_is_ready_pair
 
         with nogil:
-            c_object_ref = (
+            c_object_ref_and_is_ready_pair = (
                     CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
                         c_generator_id))
 
-        return ObjectRef(
-            c_object_ref.object_id(),
-            c_object_ref.owner_address().SerializeAsString())
+        return (ObjectRef(
+                    c_object_ref_and_is_ready_pair.first.object_id(),
+                    c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
+                c_object_ref_and_is_ready_pair.second)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

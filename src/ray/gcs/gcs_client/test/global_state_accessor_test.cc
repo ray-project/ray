@@ -263,6 +263,37 @@ TEST_P(GlobalStateAccessorTest, TestUpdateWorkerDebuggerPort) {
   ASSERT_EQ(another_worker_table_data->debugger_port(), debugger_port);
 }
 
+TEST_P(GlobalStateAccessorTest, TestUpdateWorkerNumPausedThreads) {
+  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
+  // Add worker info
+  auto worker_table_data = Mocker::GenWorkerTableData();
+  worker_table_data->mutable_worker_address()->set_worker_id(
+      WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
+
+  // Get worker info
+  auto worker_id = WorkerID::FromBinary(worker_table_data->worker_address().worker_id());
+  ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
+
+  // Update the worker num paused threads
+  auto num_paused_threads_delta = 2;
+  ASSERT_TRUE(
+      global_state_->UpdateWorkerNumPausedThreads(worker_id, num_paused_threads_delta));
+
+  // Verify the num paused threads is equal to num_paused_threads_delta
+  auto another_worker_table_data = Mocker::GenWorkerTableData();
+  auto worker_info = global_state_->GetWorkerInfo(worker_id);
+  ASSERT_TRUE(another_worker_table_data->ParseFromString(*worker_info));
+  ASSERT_EQ(another_worker_table_data->num_paused_threads(), num_paused_threads_delta);
+
+  // Update the worker num paused threads again and verify it is equal to 0
+  ASSERT_TRUE(
+      global_state_->UpdateWorkerNumPausedThreads(worker_id, -num_paused_threads_delta));
+  worker_info = global_state_->GetWorkerInfo(worker_id);
+  ASSERT_TRUE(another_worker_table_data->ParseFromString(*worker_info));
+  ASSERT_EQ(another_worker_table_data->num_paused_threads(), 0);
+}
+
 // TODO(sang): Add tests after adding asyncAdd
 TEST_P(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);

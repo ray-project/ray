@@ -25,7 +25,7 @@ from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 
 from ray._private.test_utils import (
-    get_and_run_node_killer,
+    get_and_run_resource_killer,
     init_error_pubsub,
     init_log_pubsub,
     setup_tls,
@@ -37,6 +37,7 @@ from ray._private.test_utils import (
     find_available_port,
     wait_for_condition,
     find_free_port,
+    NodeKillerActor,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -702,12 +703,15 @@ def enable_pickle_debug():
 
 
 @pytest.fixture
-def set_enable_auto_connect(enable_auto_connect: str = "0"):
+def set_enable_auto_connect(enable_auto_connect: bool = False):
+    from ray._private import auto_init_hook
+
     try:
-        os.environ["RAY_ENABLE_AUTO_CONNECT"] = enable_auto_connect
+        old_value = auto_init_hook.enable_auto_connect
+        auto_init_hook.enable_auto_connect = enable_auto_connect
         yield enable_auto_connect
     finally:
-        del os.environ["RAY_ENABLE_AUTO_CONNECT"]
+        auto_init_hook.enable_auto_connect = old_value
 
 
 @pytest.fixture
@@ -909,13 +913,13 @@ def _ray_start_chaos_cluster(request):
     assert len(nodes) == 1
 
     if kill_interval is not None:
-        node_killer = get_and_run_node_killer(kill_interval)
+        node_killer = get_and_run_resource_killer(NodeKillerActor, kill_interval)
 
     yield cluster
 
     if kill_interval is not None:
         ray.get(node_killer.stop_run.remote())
-        killed = ray.get(node_killer.get_total_killed_nodes.remote())
+        killed = ray.get(node_killer.get_total_killed.remote())
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
         assert died.issubset(
@@ -1258,6 +1262,12 @@ def set_runtime_env_plugin_schemas(request):
 def temp_file(request):
     with tempfile.NamedTemporaryFile("r+b") as fp:
         yield fp
+
+
+@pytest.fixture(scope="function")
+def temp_dir(request):
+    with tempfile.TemporaryDirectory("r+b") as d:
+        yield d
 
 
 @pytest.fixture(scope="module")

@@ -5,10 +5,13 @@ import queue
 import sys
 import threading
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
+from typing import Type
 
 import numpy as np
 import pytest
+from pydantic import BaseModel as BaseModelV2
+from pydantic.v1 import BaseModel as BaseModelV1
 
 import ray.cloudpickle as cloudpickle
 import ray.util.client.server.server as ray_client_server
@@ -668,8 +671,8 @@ def test_dataclient_server_drop(call_ray_start_shared):
     time.sleep(3)
 
 
-@patch.dict(os.environ, {"RAY_ENABLE_AUTO_CONNECT": "0"})
-def test_client_gpu_ids(call_ray_start_shared):
+@pytest.mark.parametrize("set_enable_auto_connect", [True], indirect=True)
+def test_client_gpu_ids(call_ray_start_shared, set_enable_auto_connect):
     import ray
 
     with enable_client_mode():
@@ -686,10 +689,9 @@ def test_client_gpu_ids(call_ray_start_shared):
             assert ray.get_gpu_ids() == []
 
 
-def test_client_serialize_addon(call_ray_start_shared):
-    import pydantic
-
-    class User(pydantic.BaseModel):
+@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+def test_client_serialize_addon(call_ray_start_shared, BaseModel: Type):
+    class User(BaseModel):
         name: str
 
     with ray_start_client_server_for_address(call_ray_start_shared) as ray:
