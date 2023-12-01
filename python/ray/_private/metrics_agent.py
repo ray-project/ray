@@ -693,7 +693,8 @@ class ByteDanceMetricsAgent(MetricsAgent):
         self.proxy_exporter_collector = None
         self._actor_tags = {}
         self._global_tags = {
-            "RayClusterName": os.getenv("BYTED_RAY_CLUSTER", "ray-cluster-default-name")
+            "RayClusterName": os.getenv("BYTED_RAY_CLUSTER", "ray-cluster-default-name"),
+            "RayJobType" : os.getenv("BYTED_RAY_JOB_TYPE", "ray-default-job-type"),
         }
 
     def record_and_export(self, records: List[Record], global_tags=None):
