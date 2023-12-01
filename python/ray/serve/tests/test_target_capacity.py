@@ -464,7 +464,9 @@ class TestTargetCapacityUpdateAndServeStatus:
     ) -> bool:
         deployment = serve.status().applications[app_name].deployments[deployment_name]
         num_running_replicas = deployment.replica_states.get(replica_state, 0)
-        assert num_running_replicas == expected_num_replicas
+        assert (
+            num_running_replicas == expected_num_replicas
+        ), f"{serve.status().applications[app_name].deployments[deployment_name]}"
         return True
 
     def apply_config_and_check_status(
