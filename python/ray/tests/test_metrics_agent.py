@@ -17,7 +17,6 @@ from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
     SignalActor,
-    skip_flaky_core_test_premerge,
     fetch_prometheus,
     fetch_prometheus_metrics,
     get_log_batch,
@@ -581,7 +580,7 @@ def test_per_func_name_stats(shutdown_only):
             for sample in samples:
                 components.add(sample.labels["Component"])
 
-        # NOTE: when Actor.__init__ runs slow, it might also show up 
+        # NOTE: when Actor.__init__ runs slow, it might also show up
         # in the metrics.
         assert {
             "raylet",
