@@ -1598,8 +1598,8 @@ class DeploymentState:
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
 
-        has_reached_steady_state = self._has_reached_steady_state()
-        if has_reached_steady_state:
+        has_reached_autoscaling_bounds = self._has_reached_autoscaling_bounds()
+        if has_reached_autoscaling_bounds:
             new_status_trigger = DeploymentStatusTrigger.AUTOSCALING
         else:
             new_status_trigger = self.curr_status_info.status_trigger
@@ -1608,14 +1608,20 @@ class DeploymentState:
             new_info,
             decision_num_replicas,
             status_trigger=new_status_trigger,
-            allow_scaling_statuses=has_reached_steady_state,
+            allow_scaling_statuses=has_reached_autoscaling_bounds,
         )
 
-    def _has_reached_steady_state(self) -> bool:
-        """Whether or not this deployment has reached steady-state.
+    def _has_reached_autoscaling_bounds(self) -> bool:
+        """Whether or not this deployment has reached the autoscaling bounds.
 
         This method should only be used for autoscaling deployments. It raises
         an assertion error otherwise.
+
+        Returns: True if the number of running replicas for the current
+            deployment version has reached a point that's within the
+            autoscaling bounds. Note that if the deployment has already
+            reached such a point and then moves outside the bounds, this
+            method will still return True. False otherwise.
         """
 
         target_version = self._target_state.version
@@ -1634,13 +1640,13 @@ class DeploymentState:
             autoscaling_policy.config.max_replicas,
             self._target_state.info.target_capacity,
         )
-        has_reached_steady_state = (
+        has_reached_autoscaling_bounds = (
             self.curr_status_info.status_trigger
             != DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
             or lower_bound <= num_replicas_running_at_target_version <= upper_bound
         )
 
-        return has_reached_steady_state
+        return has_reached_autoscaling_bounds
 
     def delete(self) -> None:
         if not self._target_state.deleting:
