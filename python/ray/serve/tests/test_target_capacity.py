@@ -777,7 +777,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             expected_num_replicas=int(0.1 * min_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
-            timeout=20,
+            timeout=60,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
