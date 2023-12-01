@@ -36,23 +36,32 @@ def test_a(podman_docker_cluster):
     print("id:", subprocess.check_output(["id"]))
 
     head = podman_docker_cluster
+
+    image_name = "rayproject/ray:runtime_env_container"
+    nested_image_name = "rayproject/ray:runtime_env_container_nested"
     print(head.exec_run(cmd="ls -l"))
     print(head.exec_run(cmd="python --version"))
     print(head.exec_run(cmd="podman --version"))
     print(head.exec_run(cmd="id"))
-    print(
-        head.exec_run(
-            cmd="podman pull docker-daemon:rayproject/ray:runtime_env_container"
-        )
-    )
+    print(head.exec_run(cmd="sudo usermod -aG daemon ray"))
+    print(head.exec_run(cmd=f"podman pull docker-daemon:{image_name}"))
+    print(head.exec_run(cmd="podman ps"))
+    print(head.exec_run(cmd="bash -c 'echo helloworldalice' >> /tmp/file.txt"))
+    print(head.exec_run(cmd=f"podman create --name tmp_container {image_name}"))
+    print(head.exec_run(cmd="podman cp /tmp/file.txt tmp_container:/home/ray/file.txt"))
+    print(head.exec_run(cmd=f"podman commit tmp_container {nested_image_name}"))
+    print(head.exec_run(cmd="podman image ls"))
 
     assert False
 
 
 def run_in_docker_container(cmd: str, container_id: str):
     docker_cmd = ["docker", "exec", container_id].extend(cmd.split())
+    print(f"executing command: {docker_cmd}")
     resp = subprocess.check_output(docker_cmd)
-    return resp.decode("utf-8").strip()
+    output = resp.decode("utf-8").strip()
+    print(f"output: {output}")
+    return output
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
@@ -60,6 +69,8 @@ def test_b(shutdown_only):
     print(subprocess.check_output(["docker", "image", "ls"]))
     print("id:", subprocess.check_output(["id"]))
 
+    image_name = "rayproject/ray:runtime_env_container"
+    nested_image_name = "rayproject/ray:runtime_env_container_nested"
     start_container_command = [
         "docker",
         "run",
@@ -69,7 +80,7 @@ def test_b(shutdown_only):
         "/var/run/docker.sock:/var/run/docker.sock",
         "-v",
         "/var/lib/containers:/var/lib/containers",
-        "rayproject/ray:runtime_env_container",
+        image_name,
         "tail",
         "-f",
         "/dev/null",
@@ -78,47 +89,21 @@ def test_b(shutdown_only):
     container_id = container_id.strip()
 
     run_in_docker_container("sudo usermod -aG daemon ray", container_id)
-    run_in_docker_container(
-        "podman pull docker-daemon:rayproject/ray:runtime_env_container", container_id
-    )
+    run_in_docker_container(f"podman pull docker-daemon:{image_name}", container_id)
     run_in_docker_container("podman ps", container_id)
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_c(podman_docker_cluster):
-    print(subprocess.check_output(["docker", "image", "ls"]))
-    print("id:", subprocess.check_output(["id"]))
-
-    head = podman_docker_cluster
-    print(head.exec_run(cmd="ls -l"))
-    print(head.exec_run(cmd="python --version"))
-    print(head.exec_run(cmd="podman --version"))
-    print(head.exec_run(cmd="docker image ls"))
-    print(head.exec_run(cmd="echo 'Hello Alice' > /tmp/file.txt"))
-    print(
-        head.exec_run(
-            cmd="docker create --name temp_container rayproject/ray:runtime_env_container"  # noqa
-        )
+    run_in_docker_container(
+        "bash -c 'echo helloworldalice' >> /tmp/file.txt", container_id
     )
-    print(
-        head.exec_run(
-            cmd="docker cp /tmp/file.txt temp_container:/home/ray/file.txt"
-        )  # noqa
+    run_in_docker_container(
+        f"podman create --name tmp_container {image_name}", container_id
     )
-    print(
-        head.exec_run(
-            cmd="docker commit temp_container rayproject/ray:runtime_env_container_nested"  # noqa
-        )
+    run_in_docker_container(
+        "podman cp /tmp/file.txt tmp_container:/home/ray/file.txt", container_id
     )
-    print(
-        head.exec_run(
-            cmd="podman pull docker-daemon:rayproject/ray:runtime_env_container_nested"  # noqa
-        )
+    run_in_docker_container(
+        f"podman commit tmp_container {nested_image_name}", container_id
     )
-
-    head.exec_run(cmd="docker create --name temp_container ")
-
-    assert False
+    run_in_docker_container("podman image ls", container_id)
 
 
 @pytest.mark.skip
