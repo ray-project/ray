@@ -211,6 +211,7 @@ const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
       absl::StrCat("The actor is dead because its node has died. Node Id: ",
                    NodeID::FromBinary(node->node_id()).Hex()));
 
+  // TODO(vitsai): Publish this information as well
   if (auto death_info = node->death_info();
       death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN &&
       death_info.drain_reason() == DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
@@ -224,7 +225,6 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<GcsTableStorage> gcs_table_storage,
     std::shared_ptr<GcsPublisher> gcs_publisher,
-    GcsNodeManager &gcs_node_manager,
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
@@ -232,7 +232,6 @@ GcsActorManager::GcsActorManager(
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_publisher_(std::move(gcs_publisher)),
-      gcs_node_manager_(gcs_node_manager),
       worker_client_factory_(worker_client_factory),
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
       runtime_env_manager_(runtime_env_manager),
@@ -1109,7 +1108,9 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
 }
 
 void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
-  // The node is dead, so we need to mark all of its actors preempted.
+  // The node has received a drain request, so we mark all of its actors
+  // preempted. This state will be published to the raylets so that the
+  // preemption may be retrieved upon actor death.
   if (created_actors_.find(node_id) == created_actors_.end()) {
     return;
   }
@@ -1123,7 +1124,6 @@ void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
 
     const auto &actor_id = id_iter.second;
     const auto &actor_table_data = actor_iter->second->GetActorTableData();
-    RAY_CHECK(actor_table_data.state() == rpc::ActorTableData::DEAD);
 
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {

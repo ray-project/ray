@@ -286,12 +286,12 @@ def test_draining_reason(ray_start_cluster, graceful):
     assert is_accepted
 
     cluster.remove_node(n, graceful)
-    # time.sleep(2)
+    time.sleep(2)
     try:
         ray.get(actor.ping.remote())
         raise
     except ray.exceptions.RayActorError as e:
-        assert e.preempted
+        assert e._preempted
 
 
 if __name__ == "__main__":

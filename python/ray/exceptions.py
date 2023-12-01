@@ -281,7 +281,7 @@ class RayActorError(RayError):
         # -- The base actor error message. --
         self.base_error_msg = "The actor died unexpectedly before finishing this task."
         # Whether the node was preempted
-        self.preempted = False
+        self._preempted = False
 
         if not cause:
             self.error_msg = self.base_error_msg
@@ -314,7 +314,7 @@ class RayActorError(RayError):
                     "The actor never ran - it was cancelled before it started running."
                 )
             if cause.preempted:
-                self.preempted = True
+                self._preempted = True
                 error_msg_lines.append(
                     "\tThe actor's node was killed by a spot preemption."
                 )

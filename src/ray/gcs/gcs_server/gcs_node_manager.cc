@@ -96,10 +96,6 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
-void GcsNodeManager::SetNodePreempted(const NodeID &node_id) {
-  // TODO vitsai
-}
-
 void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::CheckAliveReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
@@ -229,6 +225,13 @@ absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
   return iter->second;
 }
 
+void GcsNodeManager::SetDeathInfo(const NodeID &node_id, rpc::NodeDeathInfo death_info) {
+  auto maybe_node = GetAliveNode(node_id);
+  RAY_CHECK(maybe_node.has_value());
+  auto node = std::move(maybe_node.value());
+  node->mutable_death_info()->CopyFrom(death_info);
+}
+
 void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
@@ -311,7 +314,9 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
       }
       RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     };
+    RAY_LOG(INFO) << "vct just check";
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
+    RAY_LOG(INFO) << "vct pqr";
   } else if (node_table_updated_callback != nullptr) {
     node_table_updated_callback(Status::OK());
   }
@@ -343,17 +348,6 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   sorted_dead_node_list_.sort(
       [](const std::pair<NodeID, int64_t> &left,
          const std::pair<NodeID, int64_t> &right) { return left.second < right.second; });
-}
-
-std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetDeadNode(
-    const ray::NodeID &node_id) const {
-  if (auto iter = dead_nodes_.find(node_id); iter != dead_nodes_.end()) {
-    return iter->second;
-  }
-  if (auto iter = alive_nodes_.find(node_id); iter != alive_nodes_.end()) {
-    return iter->second;
-  }
-  return std::nullopt;
 }
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {

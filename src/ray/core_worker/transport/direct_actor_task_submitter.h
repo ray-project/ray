@@ -63,6 +63,8 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
 
   virtual void CheckTimeoutTasks() = 0;
 
+  /// Mark that the corresponding actor is preempted (e.g., spot preemption).
+  /// If called, preempted = true will be set in the death cause upon actor death.
   virtual void SetPreempted(const ActorID &actor_id) = 0;
 
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
@@ -240,6 +242,12 @@ class CoreWorkerDirectActorTaskSubmitter
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
  private:
+  struct TaskInfo {
+    TaskSpecification specification;
+    Status status;
+    ActorID actor_id;
+    bool preempted;
+  };
   typedef std::vector<
       std::pair<std::pair<TaskSpecification, Status>, std::pair<ActorID, bool>>>
       TaskInfoList;
@@ -331,10 +339,7 @@ class CoreWorkerDirectActorTaskSubmitter
   };
 
   /// Check the death reason is because of drain.
-  void FailTaskWithError(const ray::ActorID &actor_id,
-                         const ray::TaskID &task_id,
-                         const Status status,
-                         const bool preempted);
+  void FailTaskWithError(const TaskInfo &task_info);
 
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while

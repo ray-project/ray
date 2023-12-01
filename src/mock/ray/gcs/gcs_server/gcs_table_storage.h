@@ -97,6 +97,14 @@ namespace gcs {
 
 class MockGcsNodeTable : public GcsNodeTable {
  public:
+  MockGcsNodeTable() : GcsNodeTable(nullptr){};
+
+  MOCK_METHOD(Status,
+              Put,
+              (const NodeID &key,
+               const GcsNodeInfo &value,
+               const StatusCallback &callback),
+              (override));
 };
 
 }  // namespace gcs
@@ -148,6 +156,8 @@ namespace gcs {
 class MockGcsTableStorage : public GcsTableStorage {
  public:
   MockGcsTableStorage() : GcsTableStorage(nullptr) {}
+
+  MOCK_METHOD((GcsNodeTable &), NodeTable, (), (override));
 };
 
 }  // namespace gcs

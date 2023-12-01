@@ -338,6 +338,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                        RegisterActorCallback success_callback);
 
   /// Set actors on the node as preempted and publish the actor information.
+  /// If the node is already dead, this method is a no-op.
   void SetPreemptedAndPublish(const NodeID &node_id);
 
   /// Create actor asynchronously.
@@ -652,8 +653,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<GcsPublisher> gcs_publisher_;
-  /// The NodeManager which contains node death information.
-  GcsNodeManager &gcs_node_manager_;
   /// Factory to produce clients to workers. This is used to communicate with
   /// actors and their owners.
   rpc::ClientFactoryFn worker_client_factory_;

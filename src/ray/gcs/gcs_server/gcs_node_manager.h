@@ -111,12 +111,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
 
-  /// Get a node that may be dead.
-  std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetDeadNode(
-      const NodeID &node_id) const;
-
-  /// Get mutable node from both alive and dead list
-  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetMutableNode(const NodeID &node_id);
+  /// Set the death info of the node.
+  void SetDeathInfo(const NodeID &node_id, rpc::NodeDeathInfo death_info);
 
   /// Get all alive nodes.
   ///
@@ -163,9 +159,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   virtual void DrainNode(const NodeID &node_id);
 
  private:
-  /// Set a node to be preempted.
-  void SetNodePreempted(const NodeID &node_id);
-
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
   ///
