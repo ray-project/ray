@@ -1156,14 +1156,35 @@ class AlgorithmConfig(_Config):
         self,
         *,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
+        spaces: Optional[Dict[ModuleID, Tuple[gym.Space, gym.Space]]] = None,
     ) -> "LearnerGroup":
+        """Builds and returns a new LearnerGroup object based on settings in `self`.
+
+        Args:
+            env: An optional EnvType object (e.g. a gym.Env) useful for extracting space
+                information for the to-be-constructed RLModule inside the LearnerGroup's
+                Learner workers. Note that if RLlib cannot infer any space information
+                either from this `env` arg, from the optional `spaces` arg or from
+                `self`, the LearnerGroup cannot be created.
+            spaces: An optional dict mapping ModuleIDs to
+                (observation-space, action-space)-tuples for the to-be-constructed
+                RLModule inside the LearnerGroup's Learner workers. Note that if RLlib
+                cannot infer any space information either from this `spces` arg,
+                from the optional `env` arg or from `self`, the LearnerGroup cannot
+                be created.
+
+        Returns:
+            The newly created LearnerGroup object.
+        """
+        # If `spaces` or `env` provided -> Create a MARL Module Spec first to be
+        # passed into the LearnerGroup constructor.
         rl_module_spec = None
         if env is not None or spaces is not None:
             rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
 
         from ray.rllib.core.learner.learner_group import LearnerGroup
 
+        # Construct the actual LearnerGroup.
         learner_group = LearnerGroup(config=self, module_spec=rl_module_spec)
 
         return learner_group
@@ -1174,11 +1195,36 @@ class AlgorithmConfig(_Config):
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
     ) -> "Learner":
+        """Builds and returns a new Learner object based on settings in `self`.
+
+        This Learner object will already have its `build()` method called, meaning
+        its RLModule will already be constructed.
+
+        Args:
+            env: An optional EnvType object (e.g. a gym.Env) useful for extracting space
+                information for the to-be-constructed RLModule inside the Learner.
+                Note that if RLlib cannot infer any space information
+                either from this `env` arg, from the optional `spaces` arg or from
+                `self`, the Learner cannot be created.
+            spaces: An optional dict mapping ModuleIDs to
+                (observation-space, action-space)-tuples for the to-be-constructed
+                RLModule inside the Learner. Note that if RLlib cannot infer any
+                space information either from this `spces` arg, from the optional
+                `env` arg or from `self`, the Learner cannot be created.
+
+        Returns:
+            The newly created (and already built) Learner object.
+        """
+        # If `spaces` or `env` provided -> Create a MARL Module Spec first to be
+        # passed into the LearnerGroup constructor.
         rl_module_spec = None
         if env is not None or spaces is not None:
             rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
+        # Construct the actual Learner object.
         learner = self.learner_class(config=self, module_spec=rl_module_spec)
+        # `build()` the Learner (internal structures such as RLModule, etc..).
         learner.build()
+
         return learner
 
     def get_config_for_module(self, module_id: ModuleID) -> "AlgorithmConfig":
@@ -3300,7 +3346,7 @@ class AlgorithmConfig(_Config):
                 from `self.observation_space` and `self.action_space`. If no
                 information on spaces can be inferred, will raise an error.
         """
-        # TODO (Kourosh): When we replace policy entirely there will be no need for
+        # TODO (Kourosh,sven): When we replace policy entirely there will be no need for
         #  this function to map policy_dict to marl_module_specs anymore. The module
         #  spec will be directly given by the user or inferred from env and spaces.
         if policy_dict is None:

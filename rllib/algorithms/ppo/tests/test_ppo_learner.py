@@ -1,13 +1,14 @@
-import ray
 import unittest
-import numpy as np
-import torch
 import tempfile
+
+import gymnasium as gym
+import numpy as np
 import tensorflow as tf
+import torch
 import tree  # pip install dm-tree
 
+import ray
 import ray.rllib.algorithms.ppo as ppo
-
 from ray.rllib.algorithms.ppo.ppo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -46,6 +47,8 @@ FAKE_BATCH = {
 
 
 class TestPPO(unittest.TestCase):
+    ENV = gym.make("CartPole-v1")
+
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -94,7 +97,7 @@ class TestPPO(unittest.TestCase):
             algo_config.validate()
             algo_config.freeze()
 
-            learner_group = algo_config.build_learner_group()
+            learner_group = algo_config.build_learner_group(env=self.ENV)
 
             # Load the algo weights onto the learner_group.
             learner_group.set_weights(algo.get_weights())
@@ -125,8 +128,8 @@ class TestPPO(unittest.TestCase):
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()
-            learner_group1 = algo_config.build_learner_group()
-            learner_group2 = algo_config.build_learner_group()
+            learner_group1 = algo_config.build_learner_group(env=self.ENV)
+            learner_group2 = algo_config.build_learner_group(env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner_group1.save_state(tmpdir)
                 learner_group2.load_state(tmpdir)

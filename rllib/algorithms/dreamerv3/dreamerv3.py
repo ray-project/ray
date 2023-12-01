@@ -122,6 +122,7 @@ class DreamerV3Config(AlgorithmConfig):
         self.actor_grad_clip_by_global_norm = 100.0
         self.symlog_obs = "auto"
         self.use_float16 = False
+        self.use_curiosity = False
 
         # Reporting.
         # DreamerV3 is super sample efficient and only needs very few episodes
@@ -151,6 +152,13 @@ class DreamerV3Config(AlgorithmConfig):
         self._enable_new_api_stack = True
         # __sphinx_doc_end__
         # fmt: on
+
+    @property
+    def batch_size_B_per_learner(self):
+        """Returns the batch_size_B per Learner worker.
+
+        Needed by some of the DreamerV3 loss math."""
+        return self.batch_size_B // (self.num_learner_workers or 1)
 
     @property
     def model(self):
@@ -192,6 +200,7 @@ class DreamerV3Config(AlgorithmConfig):
         symlog_obs: Optional[Union[bool, str]] = NotProvided,
         use_float16: Optional[bool] = NotProvided,
         replay_buffer_config: Optional[dict] = NotProvided,
+        use_curiosity: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "DreamerV3Config":
         """Sets the training related configuration.
@@ -270,6 +279,13 @@ class DreamerV3Config(AlgorithmConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
+        # Not fully supported/tested yet.
+        if use_curiosity is not NotProvided:
+            raise ValueError(
+                "`DreamerV3Config.curiosity` is not fully supported and tested yet! "
+                "It thus remains disabled for now."
+            )
+
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 

@@ -761,8 +761,6 @@ class Algorithm(Trainable, AlgorithmBase):
                     env=local_worker.env,
                     spaces=getattr(local_worker, "spaces", None),
                 )
-            # learner_group_config = self.config.get_learner_group_config(module_spec)
-            # self.learner_group = learner_group_config.build()
             self.learner_group = self.config.build_learner_group(
                 env=local_worker.env,
                 spaces=getattr(local_worker, "spaces", None),

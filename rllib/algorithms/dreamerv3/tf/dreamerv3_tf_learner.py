@@ -273,7 +273,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 module_id,
                 {
                     # Replace 'T' with '1'.
-                    "DREAM_DATA_" + key[:-1] + "1": value[:, config.batch_size_B]
+                    "DREAM_DATA_" + key[:-1] + "1": (
+                        value[:, config.batch_size_B_per_learner]
+                    )
                     for key, value in dream_data.items()
                     if key.endswith("H_BxT")
                 },
@@ -365,7 +367,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         # Unfold time rank back in.
         decoder_loss_B_T = tf.reshape(
-            decoder_loss_BxT, (config.batch_size_B, config.batch_length_T)
+            decoder_loss_BxT, (config.batch_size_B_per_learner, config.batch_length_T)
         )
         L_decoder = tf.reduce_mean(decoder_loss_B_T)
 
@@ -390,7 +392,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         )
         # Unfold time rank back in.
         reward_loss_two_hot_B_T = tf.reshape(
-            reward_loss_two_hot_BxT, (config.batch_size_B, config.batch_length_T)
+            reward_loss_two_hot_BxT, (config.batch_size_B_per_learner, config.batch_length_T)
         )
         L_reward_two_hot = tf.reduce_mean(reward_loss_two_hot_B_T)
 
@@ -403,7 +405,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         continue_loss_BxT = -continue_distr.log_prob(continues_BxT)
         # Unfold time rank back in.
         continue_loss_B_T = tf.reshape(
-            continue_loss_BxT, (config.batch_size_B, config.batch_length_T)
+            continue_loss_BxT, (config.batch_size_B_per_learner, config.batch_length_T)
         )
         L_continue = tf.reduce_mean(continue_loss_B_T)
 
@@ -482,7 +484,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             ),
         )
         # Unfold time rank back in.
-        L_dyn_B_T = tf.reshape(L_dyn_BxT, (config.batch_size_B, config.batch_length_T))
+        L_dyn_B_T = tf.reshape(L_dyn_BxT, (config.batch_size_B_per_learner, config.batch_length_T))
 
         L_rep_BxT = tf.math.maximum(
             1.0,
@@ -491,7 +493,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             ),
         )
         # Unfold time rank back in.
-        L_rep_B_T = tf.reshape(L_rep_BxT, (config.batch_size_B, config.batch_length_T))
+        L_rep_B_T = tf.reshape(L_rep_BxT, (config.batch_size_B_per_learner, config.batch_length_T))
 
         return L_dyn_B_T, L_rep_B_T
 

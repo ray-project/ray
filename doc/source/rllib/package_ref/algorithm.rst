@@ -50,10 +50,19 @@ Public methods
     :nosignatures:
     :toctree: doc/
 
-    ~AlgorithmConfig.build
-    ~AlgorithmConfig.freeze
     ~AlgorithmConfig.copy
     ~AlgorithmConfig.validate
+    ~AlgorithmConfig.freeze
+
+Builder methods
+~~~~~~~~~~~~~~~
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~AlgorithmConfig.build
+    ~AlgorithmConfig.build_learner_group
+    ~AlgorithmConfig.build_learner
 
 Configuration methods
 ~~~~~~~~~~~~~~~~~~~~~

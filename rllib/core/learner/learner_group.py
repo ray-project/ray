@@ -61,31 +61,59 @@ def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
 
 @PublicAPI(stability="alpha")
 class LearnerGroup:
-    """Coordinator of Learners.
-
-    Args:
-        learner_spec: The specification for constructing Learners.
-        max_queue_len: The maximum number of batches to queue up if doing async_update
-            If the queue is full itwill evict the oldest batch first.
-
+    """Coordinator of n (possibly remote) Learner workers.
+    
+    Each Learner worker 
     """
 
     def __init__(
         self,
         *,
-        config: AlgorithmConfig,
+        config: AlgorithmConfig = None,  # TODO (sven): Make this arg mandatory.
         module_spec: Optional[RLModuleSpec] = None,
         max_queue_len: int = 20,
-        # learner_spec: LearnerSpec,
+        # Deprecated args.
+        learner_spec=None,
     ):
+        """Initializes a LearnerGroup instance.
+        
+        Args:
+            config: The AlgorithmConfig object to use to configure this LearnerGroup.
+                Call the `resources(num_learner_workers=...)` method on your config to
+                specify the number of learner workers to use.
+                Call the same method with arguments `num_cpus_per_learner_worker` and/or
+                `num_gpus_per_learner_worker` to configure the compute used by each
+                Learner worker in this LearnerGroup.
+                Call the `training(learner_class=...)` method on your config to specify,
+                which exact Learner class to use.
+                Call the `rl_module(rl_module_spec=...)` method on your config to set up
+                the specifics for your RLModule to be used in each Learner.
+            module_spec: If not already specified in `config`, a separate overriding
+                RLModuleSpec may be provided via this argument.
+            max_queue_len: The maximum number of batches to queue up if doing async_update
+                If the queue is full itwill evict the oldest batch first.
+        """
+        if learner_spec is not None:
+            deprecation_warning(
+                old="LearnerGroup(learner_spec=...)",
+                new="config = AlgorithmConfig().[resources|training|rl_module](...); "
+                    "LearnerGroup(config=config)",
+                error=True,
+            )
+        if config is None:
+            raise ValueError(
+                "LearnerGroup constructor must be called with a `config` arg! "
+                "Pass in a `ray.rllib.algorithms.algorithm_config::AlgorithmConfig` "
+                "object with the proper settings configured."
+            )
+        
         # scaling_config = learner_spec.learner_group_scaling_config
         self.config = config
+        self._is_remote = self.config.num_learner_workers > 0
+
         learner_class = self.config.learner_class
         module_spec = module_spec or self.config.get_marl_module_spec()
 
-        # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
-        #  explicit.
-        self._is_local = self.config.num_learner_workers == 0
         self._learner = None
         self._workers = None
         # If a user calls self.shutdown() on their own then this flag is set to true.
@@ -99,11 +127,13 @@ class LearnerGroup:
         # How many timesteps had to be dropped due to a full input queue?
         self._in_queue_ts_dropped = 0
 
-        if self._is_local:
+        # A single local Learner.
+        if not self.is_remote:
             self._learner = learner_class(config=config, module_spec=module_spec)
             self._learner.build()
             self._worker_manager = None
             self._in_queue = []
+        # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
             backend_executor = BackendExecutor(
@@ -150,7 +180,11 @@ class LearnerGroup:
 
     @property
     def is_local(self) -> bool:
-        return self._is_local
+        return not self._is_remote
+
+    @property
+    def is_remote(self) -> bool:
+        return self._is_remote
 
     def update(
         self,
@@ -701,7 +735,7 @@ class LearnerGroup:
 
         # No need to do any file transfer operations if we are running training
         # on the experiment head node.
-        if self._is_local:
+        if self.is_local:
             if marl_module_ckpt_dir:
                 # load the MARLModule checkpoint if they were specified
                 self._learner.module.load_state(
@@ -845,7 +879,7 @@ class LearnerGroup:
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""
-        if not self._is_local and hasattr(self, "_backend_executor"):
+        if self.is_remote and hasattr(self, "_backend_executor"):
             self._backend_executor.shutdown()
         self._is_shut_down = True
 
