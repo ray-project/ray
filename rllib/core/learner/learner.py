@@ -1230,6 +1230,8 @@ class Learner:
     def update(
         self,
         *,
+        # TODO (sven): We should allow passing in a single agent batch here
+        #  as well for simplicity.
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
         reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
@@ -1247,10 +1249,10 @@ class Learner:
         will be used for all module ids in MultiAgentRLModule.
 
         Args:
-            batch: A batch of data.
-            minibatch_size: The size of the minibatch to use for each update.
-            num_iters: The number of complete passes over all the sub-batches
-                in the input multi-agent batch.
+            batch: An optional batch of training data. If None, the `episodes` arg
+                must be provided.
+            episodes: An optional list of episodes objects. If None, the `batch` arg
+                must be provided.
             reduce_fn: reduce_fn: A function to reduce the results from a list of
                 minibatch updates. This can be any arbitrary function that takes a
                 list of dictionaries and returns a single dictionary. For example you
@@ -1258,6 +1260,9 @@ class Learner:
                 example for metrics) or be more selective about you want to report back
                 to the algorithm's training_step. If None is passed, the results will
                 not get reduced.
+            minibatch_size: The size of the minibatch to use for each update.
+            num_iters: The number of complete passes over all the sub-batches
+                in the input multi-agent batch.
 
         Returns:
             A dictionary of results, in numpy format or a list of such dictionaries in
@@ -1265,6 +1270,8 @@ class Learner:
         """
         self._check_is_built()
 
+        # If a (multi-agent) batch is provided, check, whether our RLModule
+        # contains all ModuleIDs found in this batch. If not, throw an error.
         if batch is not None:
             unknown_module_ids = set(batch.policy_batches.keys()) - set(
                 self.module.keys()
@@ -1281,6 +1288,10 @@ class Learner:
 
         # Call the train data preprocessor.
         batch, episodes = self._preprocess_train_data(batch=batch, episodes=episodes)
+
+        # TODO (sven): Insert a call to the Learner ConnectorV2 pipeline here, providing
+        #  it both `batch` and `episode` for further custom processing before the
+        #  actual `Learner._update()` call.
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator
@@ -1342,7 +1353,12 @@ class Learner:
         return reduce_fn(results)
 
     @OverrideToImplementCustomLogic
-    def _preprocess_train_data(self, *, batch, episodes) -> Tuple[Any, Any]:
+    def _preprocess_train_data(
+        self,
+        *,
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+    ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
         """Allows custom preprocessing of batch/episode data before the actual update.
 
         The higher level order, in which this method is called from within
@@ -1360,8 +1376,8 @@ class Learner:
         (batch/episodes) for such extra forward calls.
 
         Args:
-            batch: A data batch to preprocess.
-            episodes: A list of episodes to preprocess.
+            batch: An optional batch of training data to preprocess.
+            episodes: An optional list of episodes objects to preprocess.
 
         Returns:
             A tuple consisting of the processed `batch` and the processed list of
