@@ -39,6 +39,11 @@ def test_put_different_meta(ray_start_regular):
     _test(1000)
     _test(np.random.rand(10))
 
+    with pytest.raises(ValueError):
+        _test(np.random.rand(100))
+
+    _test(np.random.rand(1))
+
 
 @pytest.mark.parametrize("num_readers", [1, 4])
 def test_put_remote_get(ray_start_regular, num_readers):

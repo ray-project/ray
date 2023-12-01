@@ -416,12 +416,14 @@ Status PlasmaClient::Impl::WriteAcquireMutableObject(const ObjectID &object_id,
 
   // Wait for no readers.
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  // TODO(swang): Better exception.
   // TODO(swang): Support data + metadata size larger than allocated buffer.
-  RAY_CHECK(data_size + metadata_size <= entry->object.allocated_size)
-      << "Cannot write mutable data size " << data_size << " + metadata size "
-      << metadata_size << " larger than allocated buffer size "
-      << entry->object.allocated_size;
+  if (data_size + metadata_size > entry->object.allocated_size) {
+    return Status::InvalidArgument("Serialized size of mutable data (" +
+                                   std::to_string(data_size) + ") + metadata size (" +
+                                   std::to_string(metadata_size) +
+                                   ") is larger than allocated buffer size " +
+                                   std::to_string(entry->object.allocated_size));
+  }
   plasma_header->WriteAcquire(
       entry->next_version_to_write, data_size, metadata_size, num_readers);
 
