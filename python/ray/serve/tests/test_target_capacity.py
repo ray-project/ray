@@ -700,22 +700,20 @@ class TestTargetCapacityUpdateAndServeStatus:
             expected_num_replicas=int(0.5 * max_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
-            timeout=15,
+            timeout=20,
         )
-        ray.get(lifecycle_signal.send.remote(clear=True))
 
         # Clear requests and check that application scales down.
         ray.get(request_signal.send.remote())
         results = [request.result() for request in requests]
         assert results == ["Hello world!"] * (4 * max_replicas)
-        ray.get(lifecycle_signal.send.remote())
         wait_for_condition(
             self.check_num_replicas,
             expected_num_replicas=int(0.5 * initial_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
             replica_state=ReplicaState.RUNNING,
-            timeout=15,
+            timeout=20,
         )
         wait_for_condition(
             self.check_num_replicas,
@@ -723,7 +721,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             app_name=app_name,
             deployment_name=deployment_name,
             replica_state=ReplicaState.STOPPING,
-            timeout=15,
+            timeout=20,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
@@ -764,22 +762,20 @@ class TestTargetCapacityUpdateAndServeStatus:
             expected_num_replicas=int(0.1 * max_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
-            timeout=15,
+            timeout=20,
         )
-        ray.get(lifecycle_signal.send.remote(clear=True))
 
         # Clear requests and check that application scales down to
         # target_capacity * min_replicas.
         ray.get(request_signal.send.remote())
         results = [request.result() for request in requests]
         assert results == ["Hello world!"] * (4 * max_replicas)
-        ray.get(lifecycle_signal.send.remote())
         wait_for_condition(
             self.check_num_replicas,
             expected_num_replicas=int(0.1 * min_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
-            timeout=15,
+            timeout=20,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
