@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 
+import numpy as np
 import pytest
 
 import ray
@@ -20,6 +21,23 @@ def test_put_local_get(ray_start_regular):
         ray._write_channel(val, ref, num_readers=1)
         assert ray.get(ref) == val
         ray._end_read_channel(ref)
+
+
+def test_put_different_meta(ray_start_regular):
+    ref = ray._create_channel(1000)
+
+    def _test(val):
+        ray._write_channel(val, ref, num_readers=1)
+        if isinstance(val, np.ndarray):
+            assert np.array_equal(ray.get(ref), val)
+        else:
+            assert ray.get(ref) == val
+        ray._end_read_channel(ref)
+
+    _test(b"hello")
+    _test("hello")
+    _test(1000)
+    _test(np.random.rand(10))
 
 
 @pytest.mark.parametrize("num_readers", [1, 4])

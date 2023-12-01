@@ -268,6 +268,7 @@ Status SendCreateReply(const std::shared_ptr<Client> &client,
                                  object.data_size,
                                  object.metadata_offset,
                                  object.metadata_size,
+                                 object.allocated_size,
                                  object.device_num);
   auto object_string = fbb.CreateString(object_id.Binary());
   fb::PlasmaCreateReplyBuilder crb(fbb);
@@ -309,6 +310,7 @@ Status ReadCreateReply(uint8_t *data,
   object->data_size = message->plasma_object()->data_size();
   object->metadata_offset = message->plasma_object()->metadata_offset();
   object->metadata_size = message->plasma_object()->metadata_size();
+  object->allocated_size = message->plasma_object()->allocated_size();
 
   store_fd->first = INT2FD(message->store_fd());
   store_fd->second = message->unique_fd_id();
@@ -624,6 +626,7 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                                        object.data_size,
                                        object.metadata_offset,
                                        object.metadata_size,
+                                       object.allocated_size,
                                        object.device_num));
   }
   std::vector<int> store_fds_as_int;
@@ -665,6 +668,7 @@ Status ReadGetReply(uint8_t *data,
     plasma_objects[i].data_size = object->data_size();
     plasma_objects[i].metadata_offset = object->metadata_offset();
     plasma_objects[i].metadata_size = object->metadata_size();
+    plasma_objects[i].allocated_size = object->allocated_size();
     plasma_objects[i].device_num = object->device_num();
   }
   RAY_CHECK(message->store_fds()->size() == message->mmap_sizes()->size());

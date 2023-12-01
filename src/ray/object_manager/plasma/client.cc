@@ -168,8 +168,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
              ObjectBuffer *object_buffers,
              bool is_from_worker);
 
-  ray::PlasmaObjectHeader *EnsureGetAcquired(
-      std::unique_ptr<ObjectInUseEntry> &object_entry);
+  void EnsureGetAcquired(std::unique_ptr<ObjectInUseEntry> &object_entry);
 
   Status GetRelease(const ObjectID &object_id);
 
@@ -417,18 +416,14 @@ Status PlasmaClient::Impl::WriteAcquireMutableObject(const ObjectID &object_id,
 
   // Wait for no readers.
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  // NOTE: entry->object.data_size is the size of the data buffer.
-  // When the object is shared, we can have object size smaller than the data buffer.
   // TODO(swang): Better exception.
-  // TODO(swang): Support data size larger than allocated buffer.
-  RAY_CHECK(data_size <= entry->object.data_size)
-      << "Cannot write mutable data size " << data_size
-      << " larger than allocated buffer size " << entry->object.data_size;
-  // TODO(swang): Support different metadata size.
-  RAY_CHECK(metadata_size == entry->object.metadata_size)
-      << "Metadata size must stay the same";
-  plasma_header->WriteAcquire(entry->next_version_to_write, data_size);
-  plasma_header->num_readers = num_readers;
+  // TODO(swang): Support data + metadata size larger than allocated buffer.
+  RAY_CHECK(data_size + metadata_size <= entry->object.allocated_size)
+      << "Cannot write mutable data size " << data_size << " + metadata size "
+      << metadata_size << " larger than allocated buffer size "
+      << entry->object.allocated_size;
+  plasma_header->WriteAcquire(
+      entry->next_version_to_write, data_size, metadata_size, num_readers);
 
   // Prepare the data buffer and return to the client instead of sending
   // the IPC to object store.
@@ -439,8 +434,7 @@ Status PlasmaClient::Impl::WriteAcquireMutableObject(const ObjectID &object_id,
       data_size);
   if (metadata != NULL) {
     // Copy the metadata to the buffer.
-    memcpy(
-        (*data)->Data() + entry->object.data_size, metadata, entry->object.metadata_size);
+    memcpy((*data)->Data() + data_size, metadata, metadata_size);
   }
 
   entry->is_sealed = false;
@@ -499,9 +493,11 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
       // The corresponding WriteRelease takes place in Seal.
       // When an object is first created, the data size is equivalent to
       // buffer size.
-      plasma_header->WriteAcquire(entry->next_version_to_write, data_size);
-      // Anyone may read.
-      plasma_header->num_readers = -1;
+      plasma_header->WriteAcquire(entry->next_version_to_write,
+                                  data_size,
+                                  metadata_size,
+                                  // Anyone may read an immutable object.
+                                  /*num_readers=*/-1);
     }
   }
 
@@ -569,11 +565,14 @@ Status PlasmaClient::Impl::GetBuffers(
       all_present = false;
     } else {
       // Wait for the object to become ready to read.
-      auto plasma_header = EnsureGetAcquired(object_entry->second);
+      EnsureGetAcquired(object_entry->second);
 
       PlasmaObject *object = &object_entry->second->object;
 
       std::shared_ptr<Buffer> physical_buf;
+      RAY_LOG(DEBUG) << "Plasma Get " << object_ids[i]
+                     << ", data size: " << object->data_size
+                     << ", metadata size: " << object->metadata_size;
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
         physical_buf = std::make_shared<SharedMemoryBuffer>(
@@ -582,8 +581,8 @@ Status PlasmaClient::Impl::GetBuffers(
         RAY_LOG(FATAL) << "GPU library is not enabled.";
       }
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
-      auto data_size = plasma_header->GetDataSize();
-      object_buffers[i].data = SharedMemoryBuffer::Slice(physical_buf, 0, data_size);
+      object_buffers[i].data =
+          SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
       object_buffers[i].metadata = SharedMemoryBuffer::Slice(
           physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
@@ -647,9 +646,11 @@ Status PlasmaClient::Impl::GetBuffers(
 
       // Wait for the object to become ready to read.
       RAY_CHECK(!object_entry->read_acquired);
-      auto plasma_header = EnsureGetAcquired(object_entry);
-      auto data_size = plasma_header->GetDataSize();
+      EnsureGetAcquired(object_entry);
       std::shared_ptr<Buffer> physical_buf;
+      RAY_LOG(DEBUG) << "Plasma Get " << received_object_ids[i]
+                     << ", data size: " << object->data_size
+                     << ", metadata size: " << object->metadata_size;
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
         physical_buf = std::make_shared<SharedMemoryBuffer>(
@@ -659,7 +660,8 @@ Status PlasmaClient::Impl::GetBuffers(
       }
       // Finish filling out the return values.
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
-      object_buffers[i].data = SharedMemoryBuffer::Slice(physical_buf, 0, data_size);
+      object_buffers[i].data =
+          SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
       object_buffers[i].metadata = SharedMemoryBuffer::Slice(
           physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
@@ -689,12 +691,12 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
       &object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0], is_from_worker);
 }
 
-ray::PlasmaObjectHeader *PlasmaClient::Impl::EnsureGetAcquired(
+void PlasmaClient::Impl::EnsureGetAcquired(
     std::unique_ptr<ObjectInUseEntry> &object_entry) {
   PlasmaObject *object = &object_entry->object;
   auto plasma_header = GetPlasmaObjectHeader(*object);
   if (object_entry->read_acquired) {
-    return plasma_header;
+    return;
   }
 
   int64_t version_read = plasma_header->ReadAcquire(object_entry->next_version_to_read);
@@ -702,8 +704,17 @@ ray::PlasmaObjectHeader *PlasmaClient::Impl::EnsureGetAcquired(
   if (version_read > 0) {
     object_entry->is_mutable = true;
     object_entry->next_version_to_read = version_read;
+
+    // The data and metadata size may have changed, so update here before we
+    // create the Get buffer to return.
+    object_entry->object.data_size = plasma_header->data_size;
+    object_entry->object.metadata_size = plasma_header->metadata_size;
+    object_entry->object.metadata_offset =
+        object_entry->object.data_offset + object_entry->object.data_size;
+    RAY_CHECK(object_entry->object.data_size + object_entry->object.metadata_size <=
+              object_entry->object.allocated_size);
   }
-  return plasma_header;
+  return;
 }
 
 Status PlasmaClient::Impl::GetRelease(const ObjectID &object_id) {
@@ -725,8 +736,9 @@ Status PlasmaClient::Impl::GetRelease(const ObjectID &object_id) {
         "ray.release() called on an object that is not mutable");
   }
 
-  auto plasma_header = EnsureGetAcquired(entry);
+  EnsureGetAcquired(entry);
   RAY_LOG(DEBUG) << "Release shared object " << object_id;
+  auto plasma_header = GetPlasmaObjectHeader(entry->object);
   plasma_header->ReadRelease(entry->next_version_to_read);
   // The next read needs to read at least this version.
   entry->next_version_to_read++;

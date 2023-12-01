@@ -10,7 +10,8 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
                  << "\n"
                  << "num_read_releases_remaining: " << header->num_read_releases_remaining
                  << "\n"
-                 << "data_size: " << header->data_size << "\n";
+                 << "data_size: " << header->data_size << "\n"
+                 << "metadata_size: " << header->metadata_size << "\n";
 }
 
 void PlasmaObjectHeader::Init() {
@@ -45,8 +46,13 @@ uint64_t PlasmaObjectHeader::GetDataSize() const {
   return data_size;
 }
 
-void PlasmaObjectHeader::WriteAcquire(int64_t write_version, uint64_t new_size) {
-  RAY_LOG(DEBUG) << "WriteAcquire. version: " << write_version;
+void PlasmaObjectHeader::WriteAcquire(int64_t write_version,
+                                      uint64_t write_data_size,
+                                      uint64_t write_metadata_size,
+                                      int64_t write_num_readers) {
+  RAY_LOG(DEBUG) << "WriteAcquire. version: " << write_version << ", data size "
+                 << write_data_size << ", metadata size " << write_metadata_size
+                 << ", num readers: " << write_num_readers;
   sem_wait(&rw_semaphore);
   RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
   PrintPlasmaObjectHeader(this);
@@ -58,9 +64,10 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version, uint64_t new_size) 
       << " is more than 1 greater than current version " << version
       << ". Are you sure this is the only writer?";
 
-  num_readers = 0;
   version = write_version;
-  data_size = new_size;
+  data_size = write_data_size;
+  metadata_size = write_metadata_size;
+  num_readers = write_num_readers;
 
   RAY_LOG(DEBUG) << "WriteAcquire done";
   PrintPlasmaObjectHeader(this);

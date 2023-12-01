@@ -140,6 +140,10 @@ class LocalObject {
                               GetObjectInfo().data_size;
     object->data_size = GetObjectInfo().data_size;
     object->metadata_size = GetObjectInfo().metadata_size;
+    // Senders and receivers of a channel may store different data and metadata
+    // sizes locally depending on what data is written to the channel, but the
+    // plasma store keeps the original data and metadata size.
+    object->allocated_size = object->data_size + object->metadata_size;
     object->device_num = GetAllocation().device_num;
     object->mmap_size = GetAllocation().mmap_size;
   }

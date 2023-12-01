@@ -80,8 +80,13 @@ struct PlasmaObjectHeader {
   // Blocks until there are no more readers.
   // NOTE: Caller should ensure there is one writer at a time.
   /// \param write_version The new version for write.
-  /// \param new_size The new data size of the object.
-  void WriteAcquire(int64_t write_version, uint64_t new_data_size);
+  /// \param data_size The new data size of the object.
+  /// \param metadata_size The new metadata size of the object.
+  /// \param num_readers The number of readers for the object.
+  void WriteAcquire(int64_t write_version,
+                    uint64_t data_size,
+                    uint64_t metadata_size,
+                    int64_t num_readers);
 
   // Call after completing a write to signal that readers may read.
   // num_readers should be set before calling this.

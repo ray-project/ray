@@ -48,6 +48,9 @@ struct PlasmaObject {
   int64_t data_size;
   /// The size in bytes of the metadata.
   int64_t metadata_size;
+  /// The size in bytes that was allocated. data_size + metadata_size must fit
+  /// within this.
+  int64_t allocated_size;
   /// Device number object is on.
   int device_num;
   /// Set if device_num is equal to 0.
