@@ -1,4 +1,5 @@
 import importlib
+import inspect
 import logging
 import os
 import pathlib
@@ -531,13 +532,17 @@ def get_compute_strategy(
 
     if isinstance(fn, CallableClass):
         is_callable_class = True
-    else:
+    elif inspect.isfunction(fn):
         is_callable_class = False
         if fn_constructor_args is not None:
             raise ValueError(
                 "``fn_constructor_args`` can only be specified if providing a "
-                f"CallableClass instance for ``fn``, but got: {fn}"
+                f"CallableClass instance for ``fn``, but got: {fn}."
             )
+    else:
+        raise ValueError(
+            "``fn`` can only be either function or callable class, but got: " f"{fn}."
+        )
 
     if compute is not None:
         # Legacy code path to support `compute` argument.

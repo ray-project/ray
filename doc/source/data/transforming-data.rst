@@ -14,7 +14,7 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
-* :ref:`Stateful Transformation <stateful_transformation>`
+* :ref:`Stateful Transforms <stateful_transforms>`
 * :ref:`Groupby and transform groups <transforming_groupby>`
 * :ref:`Shuffle rows <shuffling_rows>`
 * :ref:`Repartition data <repartitioning_data>`
@@ -159,15 +159,15 @@ program might run out of memory. If you encounter an out-of-memory error, decrea
     the default batch size is 4096. If you're using GPUs, you must specify an explicit
     batch size.
 
-.. _stateful_transformation:
+.. _stateful_transforms:
 
-Stateful Transformation
+Stateful Transforms
 ==============================
 
-If your transformation is stateful to require expensive setup such as downloading
+If your transform is stateful to require expensive setup such as downloading
 model weights, use a callable Python class instead of a function. When a Python class
-is used, the `__init__` method is called to perform setup exactly once on each worker.
-In contrast, function is stateless, so any setup must be performed for each data item..
+is used, the ``__init__`` method is called to perform setup exactly once on each worker.
+In contrast, function is stateless, so any setup must be performed for each data item.
 
 Internally, Ray Data uses tasks to execute functions, and uses actors to execute classes.
 To learn more about tasks and actors, read the
@@ -177,13 +177,11 @@ To transform data with Python class, complete these steps:
 
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
-2. Configure ``concurrency`` with the number of concurrent workers. Each worker
-   transforms a partition of data in parallel. You can also pass a tuple of
-   ``(min, max)`` to allow Ray Data to automatically scale the number of concurrent
-   workers.
-
-3. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
-   :meth:`~ray.data.Dataset.flat_map`.
+2. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
+   :meth:`~ray.data.Dataset.flat_map`. Configure ``concurrency`` with the number of
+   concurrent workers. Each worker transforms a partition of data in parallel.
+   You can also pass a tuple of ``(min, max)`` to allow Ray Data to automatically
+   scale the number of concurrent workers.
 
 .. tab-set::
 

@@ -282,7 +282,7 @@ class Dataset:
         You can use either a function or a callable class to perform the transformation.
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
         stateful Ray actors. For more information, see
-        :ref:`Stateful Transformation <stateful_transformation>`.
+        :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
 
@@ -320,11 +320,7 @@ class Dataset:
         Args:
             fn: The function to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            compute: The compute strategy, either None (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool. This argument is deprecated. Please use
-                ``concurrency`` argument instead.
+            compute: This argument is deprecated. Please use ``concurrency`` argument.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -342,7 +338,7 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                ``None`` by default autoscales from 1 to maximum number of workers allowed
+                ``None`` by default autoscales from 1 to the max number of workers allowed
                 in cluster.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker.
@@ -440,7 +436,7 @@ class Dataset:
         You can use either a function or a callable class to perform the transformation.
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
         stateful Ray actors. For more information, see
-        :ref:`Stateful Transformation <stateful_transformation>`.
+        :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
@@ -570,7 +566,7 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                ``None`` by default autoscales from 1 to maximum number of workers allowed
+                ``None`` by default autoscales from 1 to the max number of workers allowed
                 in cluster.
 
             ray_remote_args: Additional resource requirements to request from
@@ -725,15 +721,11 @@ class Dataset:
                 column is overwritten.
             fn: Map function generating the column values given a batch of
                 records in pandas format.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool. This argument is deprecated. Please use
-                ``concurrency`` argument instead.
+            compute: This argument is deprecated. Please use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
                 an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to maximum
+                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to the max
                 number of workers allowed in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -794,15 +786,11 @@ class Dataset:
         Args:
             cols: Names of the columns to drop. If any name does not exist,
                 an exception is raised.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool. This argument is deprecated. Please use
-                ``concurrency`` argument instead.
+            compute: This argument is deprecated. Please use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                `None`` by default autoscales from 1 to maximum number of workers allowed
+                `None`` by default autoscales from 1 to the max number of workers allowed
                 in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -859,15 +847,11 @@ class Dataset:
         Args:
             cols: Names of the columns to select. If a name isn't in the
                 dataset schema, an exception is raised.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool. This argument is deprecated. Please use
-                ``concurrency`` argument instead.
+            compute: This argument is deprecated. Please use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                `None`` by default autoscales from 1 to maximum number of workers allowed
+                `None`` by default autoscales from 1 to the max number of workers allowed
                 in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -911,7 +895,7 @@ class Dataset:
         You can use either a function or a callable class to perform the transformation.
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
         stateful Ray actors. For more information, see
-        :ref:`Stateful Transformation <stateful_transformation>`.
+        :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
             :meth:`~Dataset.map_batches` can also modify the number of rows. If your
@@ -943,11 +927,7 @@ class Dataset:
         Args:
             fn: The function or generator to apply to each record, or a class type
                 that can be instantiated to create such a callable.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool. This argument is deprecated. Please use
-                ``concurrency`` argument instead.
+            compute: This argument is deprecated. Please use ``concurrency`` argument.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -965,7 +945,7 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to maximum
+                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to the max
                 number of workers allowed in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
@@ -1037,7 +1017,7 @@ class Dataset:
         You can use either a function or a callable class to perform the transformation.
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
         stateful Ray actors. For more information, see
-        :ref:`Stateful Transformation <stateful_transformation>`.
+        :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
             If you can represent your predicate with NumPy or pandas operations,
@@ -1056,15 +1036,11 @@ class Dataset:
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool. This argument is deprecated. Please use
-                ``concurrency`` argument instead.
+            compute: This argument is deprecated. Please use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to maximum
+                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to the max
                 number of workers allowed in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).

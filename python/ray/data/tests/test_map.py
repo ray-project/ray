@@ -238,6 +238,11 @@ def test_concurrency(shutdown_only):
         with pytest.raises(ValueError, match=error_message):
             ds.map(UDFClass, concurrency=concurrency).take_all()
 
+    # Test an illegal value for fn.
+    error_message = "``fn`` can only be either function or callable class"
+    with pytest.raises(ValueError, match=error_message):
+        ds.map(UDFClass(), concurrency=concurrency).take_all()
+
 
 def test_flat_map_generator(ray_start_regular_shared):
     ds = ray.data.range(3)
