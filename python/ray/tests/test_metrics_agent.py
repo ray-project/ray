@@ -13,7 +13,6 @@ import pytest
 
 import ray
 from ray.util.state import list_nodes
-import ray._private.thirdparty.prometheus_client as prometheus_client
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
@@ -181,6 +180,8 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     # Generate a metric in the driver.
     counter = Counter("test_driver_counter", description="desc")
     counter.inc()
+    gauge = Gauge("test_gauge", description="gauge")
+    gauge.set(1)
 
     # Generate some metrics from actor & tasks.
     @ray.remote
@@ -235,7 +236,6 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     cluster.shutdown()
 
 
-@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 @pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 30
@@ -262,9 +262,17 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             "core_worker" in components for components in components_dict.values()
         )
 
-        # Make sure our user defined metrics exist
-        for metric_name in ["test_counter", "test_histogram", "test_driver_counter"]:
+        # Make sure our user defined metrics exist and has correct type
+        metric_types = fetch_prometeus_metrics_type(prom_addresses)
+        for metric_name in [
+            "test_counter",
+            "test_histogram",
+            "test_driver_counter",
+            "test_gauge",
+        ]:
             assert any(metric_name in full_name for full_name in metric_names)
+            ray_metric_name = f"ray_{metric_name}"
+            assert metric_types[ray_metric_name] == metric_name.split("_")[-1]
 
         # Make sure metrics are recorded.
         for metric in _METRICS:
@@ -355,47 +363,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         test_cases()  # Should fail assert
 
 
-def test_metrics_export_types(shutdown_only):
-    ray.init()
-    node_info_list = ray.nodes()
-    prom_addresses = []
-    for node_info in node_info_list:
-        metrics_export_port = node_info["MetricsExportPort"]
-        addr = node_info["NodeManagerAddress"]
-        prom_addresses.append(f"{addr}:{metrics_export_port}")
-
-    # Test utils.metrics
-    histogram = Histogram("test_histogram", description="desc", boundaries=[0.1, 1.6])
-    histogram.observe(1.2)
-    gauge = Gauge("test_gauge", description="gauge")
-    gauge.set(1)
-    counter = Counter("test_counter")
-    counter.inc(1.2)
-    expected_metric_types = {
-        metric.info["name"]: metric.info["name"].split("_")[-1]
-        for metric in [histogram, gauge, counter]
-    }
-
-    def test_metrics_type():
-        try:
-            metric_types = fetch_prometeus_metrics_type(prom_addresses)
-            for metric in expected_metric_types:
-                metric_name = f"ray_{metric}"
-                assert metric_name in metric_types
-                assert metric_types[metric_name] == expected_metric_types[metric]
-            return True
-        except AssertionError:
-            return False
-
-    wait_for_condition(
-        test_metrics_type,
-        timeout=30,
-        retry_interval_ms=1000,  # Yield resource for other processes
-    )
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_node_metrics(shutdown_only):
     # Verify node metrics are available.
     addr = ray.init()
