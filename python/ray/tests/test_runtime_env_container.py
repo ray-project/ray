@@ -30,15 +30,69 @@ CONTAINER_SPEC = {
 CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
 
 
-@pytest.mark.skip
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_a(podman_docker_cluster):
-    output = subprocess.check_output(["docker", "image", "ls"])
-    print(output)
+    print(subprocess.check_output(["docker", "image", "ls"]))
+    print("id:", subprocess.check_output(["id"]))
 
     head = podman_docker_cluster
     print(head.exec_run(cmd="ls -l"))
     print(head.exec_run(cmd="python --version"))
     print(head.exec_run(cmd="podman --version"))
+    print(head.exec_run(cmd="id"))
+    print(head.exec_run(cmd="docker image ls"))
+
+    assert False
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_b(podman_docker_cluster_b):
+    print(subprocess.check_output(["docker", "image", "ls"]))
+    print("id:", subprocess.check_output(["id"]))
+
+    head = podman_docker_cluster_b
+    print(head.exec_run(cmd="ls -l"))
+    print(head.exec_run(cmd="python --version"))
+    print(head.exec_run(cmd="podman --version"))
+    print(head.exec_run(cmd="id"))
+    print(head.exec_run(cmd="docker image ls"))
+
+    assert False
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_c(podman_docker_cluster):
+    print(subprocess.check_output(["docker", "image", "ls"]))
+    print("id:", subprocess.check_output(["id"]))
+
+    head = podman_docker_cluster
+    print(head.exec_run(cmd="ls -l"))
+    print(head.exec_run(cmd="python --version"))
+    print(head.exec_run(cmd="podman --version"))
+    print(head.exec_run(cmd="docker image ls"))
+    print(head.exec_run(cmd="echo 'Hello Alice' > /tmp/file.txt"))
+    print(
+        head.exec_run(
+            cmd="docker create --name temp_container rayproject/ray:runtime_env_container"  # noqa
+        )
+    )
+    print(
+        head.exec_run(
+            cmd="docker cp /tmp/file.txt temp_container:/home/ray/file.txt"
+        )  # noqa
+    )
+    print(
+        head.exec_run(
+            cmd="docker commit temp_container rayproject/ray:runtime_env_container_nested"  # noqa
+        )
+    )
+    print(
+        head.exec_run(
+            cmd="podman pull docker-daemon:rayproject/ray:runtime_env_container_nested"  # noqa
+        )
+    )
+
+    head.exec_run(cmd="docker create --name temp_container ")
 
     assert False
 

@@ -143,8 +143,10 @@ def docker_cluster(head_node, worker_node):
     yield (head_node, worker_node)
 
 
-node = container(
-    image="rayproject/ray:container_runtime",
+tmp_vol = volume()
+docker_socket_vol = volume()
+podman_node = container(
+    image="rayproject/ray:runtime_env_container",
     name=head_node_container_name,
     network="{gcs_network.name}",
     command=[
@@ -157,7 +159,10 @@ node = container(
         "--node-manager-port",
         "9379",
     ],
-    volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
+    volumes={
+        "{tmp_vol.name}": {"bind": "/tmp", "mode": "rw"},
+        "{docker_socket_vol.name}": {"bind": "/var/run/docker.sock"},
+    },
     environment={
         "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
         "RAY_raylet_client_num_connect_attempts": "10",
@@ -171,5 +176,39 @@ node = container(
 
 
 @pytest.fixture
-def podman_docker_cluster(node):
-    yield node
+def podman_docker_cluster(podman_node):
+    yield podman_node
+
+
+tmp_vol_b = volume()
+docker_socket_vol_b = volume()
+podman_node_b = container(
+    image="rayproject/ray:runtime_env_container",
+    name=head_node_container_name,
+    network="{gcs_network.name}",
+    command=[
+        "ray",
+        "start",
+        "--head",
+        "--block",
+        # Fix the port of raylet to make sure raylet restarts at the same
+        # ip:port is treated as a different raylet.
+        "--node-manager-port",
+        "9379",
+    ],
+    volumes={"{tmp_vol_b.name}": {"bind": "/tmp", "mode": "rw"}},
+    environment={
+        "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
+        "RAY_raylet_client_num_connect_attempts": "10",
+        "RAY_raylet_client_connect_timeout_milliseconds": "100",
+    },
+    wrapper_class=Container,
+    ports={
+        "8000/tcp": None,
+    },
+)
+
+
+@pytest.fixture
+def podman_docker_cluster_b(podman_node_b):
+    yield podman_node_b
