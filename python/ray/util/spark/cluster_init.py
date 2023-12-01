@@ -1329,7 +1329,7 @@ def setup_global_ray_cluster(*args, **kwargs):
             "You can't set 'is_global' argument in 'serve_global_ray_cluster' call."
         )
 
-    setup_ray_cluster(*args, **kwargs)
+    setup_ray_cluster(*args, **kwargs, is_global=True)
 
     global _global_ray_cluster_cancel_event
     try:

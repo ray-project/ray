@@ -394,6 +394,12 @@ class TestSparkLocalCluster:
         # assert it uses default temp directory
         assert os.path.exists("/tmp/ray")
 
+        # assert we can connect to it on client server port 10001
+        assert (
+            ray.util.spark.cluster_init._active_ray_cluster.ray_client_server_port
+            == 10001
+        )
+
         with mock.patch("ray.util.spark.cluster_init._active_ray_cluster", None):
             # assert we cannot create another global mode cluster at a time
             with pytest.raises(
