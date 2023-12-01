@@ -552,6 +552,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         def check_running():
             app_status = serve.status().applications[app_name].status
             assert app_status == ApplicationStatus.RUNNING, f"{app_status}"
+            return True
 
         ray.get(lifecycle_signal.send.remote())
         wait_for_condition(check_running)
