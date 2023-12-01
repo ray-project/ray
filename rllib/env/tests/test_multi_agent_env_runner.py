@@ -15,10 +15,16 @@ from ray.rllib.policy.policy import PolicySpec
 
 class MultiAgentTestEnvWithBox(MultiAgentTestEnv):
     def __init__(self, env_config: Dict[str, Any]):
-        super().__init__(truncate=env_config.get("truncate", False))
+        # We generally want to truncate at timestep 200.
+        super().__init__(truncate=env_config.get("truncate", True))
 
+        # The preferred format for `MultiAgentEnv` spaces is a dictionary
+        # mapping agent ids to their spaces. The alternative is to use 
+        # the same space for each agent and only set this single agent 
+        # space.
         with_preferred_format = env_config.get("with_preferred_format", False)
 
+        # If we want the preferred format we need to set it here.
         if with_preferred_format:
             self.action_space = gym.spaces.Dict(
                 {agent_id: self.action_space for agent_id in self._agent_ids}
@@ -33,6 +39,8 @@ class MultiAgentTestEnvWithBox(MultiAgentTestEnv):
             # `MultiAgentEnvRunner.__init__()`.
             self._action_space_in_preferred_format = True
             self._obs_space_in_preferred_format = True
+        # In the other case, set only the observation space to `gym.spaces.Box` as
+        # `RLlib` has at this time no encoder for `gym.spaces.Discrete`.
         else:
             self.observation_space = gym.spaces.Box(
                 0, 201, shape=(1,), dtype=np.float32
@@ -41,11 +49,13 @@ class MultiAgentTestEnvWithBox(MultiAgentTestEnv):
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict] = None):
         obs, info = super().reset(seed=seed, options=options)
 
+        # `gym.spaces.Box` encoder expects `numpy.array` for observations.
         return tree.map_structure(lambda s: np.array([s]), obs), info
 
     def step(self, action):
         obs, reward, is_terminated, is_truncated, info = super().step(action)
 
+        # `gym.spaces.Box` encoder expects `numpy.array` for observations.
         return (
             tree.map_structure(lambda s: np.array([s]), obs),
             reward,
@@ -71,7 +81,7 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         env_runner = MultiAgentEnvRunner(config=config)
 
         # Create an environment and compare the agent ids.
-        env = MultiAgentTestEnvWithBox()
+        env = MultiAgentTestEnv()
         self.assertEqual(env.get_agent_ids(), env_runner.agent_ids)
 
         # Next test that when using a single agent environment an
@@ -99,6 +109,23 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         episodes = env_runner.sample(num_timesteps=10)
         # Assert that we have 10 timesteps sampled.
         self.assertEqual(sum(len(episode) for episode in episodes), 10)
+
+        # Now sample 200 timesteps.
+        episodes = env_runner.sample(num_timesteps=200)
+        # Ensure that two episodes are returned.
+        # Note, after 200 timesteps the test environment truncates.
+        self.assertEqual(len(episodes), 2)
+        # Also ensure that the first episode was truncated.
+        self.assertTrue(episodes[0].is_truncated)
+        # Assert that indeed 200 timesteps were sampled.
+        self.assertEqual(episodes[0].t + episodes[1].t, 200)
+        # Assert that all agents extra model outputs are recorded.
+        for agent_id, agent_eps in episodes[0].agent_episodes.items():
+            self.assertTrue("action_logps" in agent_eps.extra_model_outputs)
+            self.assertEqual(len(agent_eps.actions), len(agent_eps.extra_model_outputs))
+
+
+
 
     def _build_config(self, with_preferred_format: bool = False):
         # Create an environment to retrieve the agent ids.

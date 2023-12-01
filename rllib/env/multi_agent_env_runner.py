@@ -129,7 +129,9 @@ class MultiAgentEnvRunner(EnvRunner):
         self._episode: "MultiAgentEpisode" = None
 
         self._done_episodes_for_metrics: List["MultiAgentEpisode"] = []
-        self._ongoing_episodes_for_metrics: Dict[List] = defaultdict(list)
+        self._ongoing_episode_for_metrics: Dict[
+            List["MultiAgentEpisode"]
+        ] = defaultdict(list)
         self._ts_since_last_metrics: int = 0
         self._weights_seq_no: int = 0
 
@@ -199,9 +201,10 @@ class MultiAgentEnvRunner(EnvRunner):
             for agent_id in self.module.keys()
         }
 
-        # Have to reset the env (on all vector sub-environments).
+        # Have to reset the env.
         if force_reset or self._needs_initial_reset:
             # Reset the environment.
+            # TODO (simon): CHeck, if we need here the seed from the config.
             obs, info = self.env.reset()
 
             # We just reset the environment. We do not have to force this again
@@ -220,13 +223,14 @@ class MultiAgentEnvRunner(EnvRunner):
         # Do not reset environments, but instead continue in already started episodes.
         else:
             # Pick up stored observations from previous timesteps.
-            obs = self._episode.get_observations()
+            obs = self._episode.get_observations(as_list=True)[0]
 
         # Get the states for all agents.
         states = initial_states
 
-        # TODO (simon): Include also agent_step sampling.
-        # Loop through `self.env` in `enumerate(self._episodes)`:
+        # Loop through timesteps.
+        env_steps = 0
+        agent_steps = 0
         ts = 0
 
         while ts < num_timesteps:
@@ -250,9 +254,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 # TODO (simon): This is not correct `forward()` expects
                 # `SampleBatchType`.
                 # Note, `RLModule`'s `forward()` methods expect `NestedDict`s.
-                # TODO (simon): Check, in which order this has to be: (1) (B, A, C)
-                # or (2) (A, B, C).
-                # Note, we only consider for states and obs the agents that step.
+                # Note, we only consider for states and obs of agents that step.
                 batch: MultiAgentDict = {
                     agent_id: {
                         STATE_IN: tree.map_structure(
@@ -278,24 +280,31 @@ class MultiAgentEnvRunner(EnvRunner):
                 else:
                     fwd_out = self.module.forward_inference(batch)
 
+                # Sample the actions or draw randomly.
                 actions, action_logps = self._sample_actions_if_necessary(
                     fwd_out,
                     explore=explore,
                 )
 
-                # Convert to numpy.
+                # Convert to numpy for recording later to the episode.
                 fwd_out = tree.map_structure(convert_to_numpy, fwd_out)
 
                 # Assign the new states for the agents that stepped.
-                # TODO (simon): These states are different in each timestep
-                # as different agents step - like this they get overriden.
                 if STATE_OUT in fwd_out:
                     states.update(tree.map_structure(lambda s: s[STATE_OUT], fwd_out))
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
 
-            # TODO (simon): If agent steps add len(obs).
-            ts += 1
+            env_steps += 1
+            agent_steps += len(obs)
+            # If we count by environment steps.
+            # TODO (sven, simon): We have to record these steps somewhere.
+            # TODO: Refactor into multiagent-episode sth. like `get_agent_steps()`.
+            if self.config.count_steps_by == "env_steps":
+                ts = env_steps
+            # Or by agent steps.
+            else:
+                ts = agent_steps
 
             extra_model_output = {
                 agent_id: {
@@ -303,66 +312,62 @@ class MultiAgentEnvRunner(EnvRunner):
                 }
                 for agent_id, agent_fwd_out in fwd_out.items()
             }
+            # TODO (sven, simon): There are algos that do not need ACTION_LOGP.
             for agent_id, agent_extra_model_output in extra_model_output.items():
                 agent_extra_model_output[SampleBatch.ACTION_LOGP] = action_logps[
                     agent_id
                 ]
 
-            # In inference we have only the action logits.
-            # TODO (simon): Refactor.
-            # TODO (simon): CHeck, if "__all__"  is always in `MultiAgentEnv`.
-            if not terminateds["__all__"]:
-                agents_terminated = {
-                    agent_id: agent_eps.is_terminated
-                    for agent_id, agent_eps in self._episode.agent_episodes.items()
-                }
-                agents_terminated.update(terminateds)
-                agents_terminated = agents_terminated.values()
-            else:
-                agents_terminated = [terminateds["__all__"]]
-            if not truncateds["__all__"]:
-                agents_truncated = {
-                    agent_id: agent_eps.is_truncated
-                    for agent_id, agent_eps in self._episode.agent_episodes.items()
-                }
-                agents_truncated.update(truncateds)
-                agents_truncated = agents_truncated.values()
-            else:
-                agents_truncated = [truncateds["__all__"]]
+            # Record the timestep in the episode instance.
+            self._episode.add_timestep(
+                obs,
+                actions,
+                rewards,
+                info=infos,
+                is_terminated=terminateds,
+                is_truncated=truncateds,
+                extra_model_output=extra_model_output,
+            )
 
-            if all(agents_terminated) or all(agents_truncated):
-                # Finish the episode with the actual terminal observation stored in
-                # the info dict.
-                self._episode.add_timestep(
-                    # Gym vector env provides the `"final_observation"`.
-                    infos["final_observation"],
-                    actions,
-                    rewards,
-                    info=infos["final_info"],
-                    is_terminated=terminateds,
-                    is_truncated=truncateds,
-                    extra_model_output=extra_model_output,
-                )
-
+            # TODO (sven, simon): We have to check, if we need this elaborate
+            # function here or if the `MultiAgentEnv` defines the cases that
+            # can happen.
+            # Right now we have:
+            #   1. Most times only agents that step get `terminated`, `truncated`
+            #       i.e. the rest we have to check in the episode.
+            #   2. There are edge cases like, some agents terminated, all others
+            #       truncated and vice versa.
+            # See also `MultiAgentEpisode` for handling the `__all__`.
+            if self._all_agents_done(terminateds, truncateds):
                 # Reset all h-states to the model's initial ones b/c we are starting
                 # a new episode.
                 states = initial_states
 
+                # Finish the episode.
                 done_episodes_to_return.append(self._episode)
                 # Create a new episode instance.
                 self._episode = MultiAgentEpisode(agent_ids=self.agent_ids)
-            else:
-                self._episode.add_timestep(
-                    obs,
-                    actions,
-                    rewards,
-                    info=infos,
-                    is_terminated=terminateds,
-                    is_truncated=truncateds,
-                    extra_model_output=extra_model_output,
-                )
 
-        return done_episodes_to_return + [self._episode]
+        # Return done episodes ...
+        self._done_episodes_for_metrics.extend(done_episodes_to_return)
+        # ... and the ongoing episode chunk. Exclude the ongoing episode if
+        # it is only initialized.
+        ongoing_episode: List["MultiAgentEpisode"] = (
+            [self._episode] if self._episode.t > 0 else []
+        )
+        # Also make sure, we return a copy and start new chunks so that callers
+        # of this function do not alter the ongoing and returned episode object.
+        self._episode = self._episode.create_successor()
+        if ongoing_episode:
+            self._ongoing_episode_for_metrics[ongoing_episode[0].id_].append(
+                ongoing_episode[0]
+            )
+
+        # Record last metrics collection.
+        self._ts_since_last_metrics += ts
+
+        # Return collected episode data.
+        return done_episodes_to_return + ongoing_episode
 
     def _sample_episodes(
         self,
@@ -458,3 +463,35 @@ class MultiAgentEnvRunner(EnvRunner):
             {agent_id: agent_action[i] for agent_id, agent_action in actions.items()}
             for i in range(self.num_envs)
         ]
+
+    def _all_agents_done(self, terminateds, truncateds):
+        """Determines, if all agents are either terminated or truncated
+
+        Note, this is not determined by the `__all__` in an `MultiAgentEnv`
+        as this does not cover the case, if some agents are truncated and
+        all the others are terminated and vice versa.
+        """
+
+        # CASE 1: all agents are terminated or all are truncated.
+        if terminateds["__all__"] or truncateds["__all__"]:
+            return True
+        # If not we have two further
+        else:
+            # TODO (simon): Refactor into `MultiAgentEpisode`.
+            # Find all agents that were done at prior timesteps.
+            agents_done = [
+                agent_id
+                for agent_id, agent_eps in self._episode.agent_episodes.items()
+                if agent_eps.is_done
+            ]
+            # Add the agents that are done at the present timestep.
+            agents_done += [
+                agent_id for agent_id in terminateds if terminateds[agent_id]
+            ]
+            agents_done += [agent_id for agent_id in truncateds if truncateds[agent_id]]
+            # CASE 2: some agents are truncated and the others are terminated.
+            if all(agent_id in set(agents_done) for agent_id in self.agent_ids):
+                return True
+            # CASE 3: there are still some agents alive.
+            else:
+                return False
