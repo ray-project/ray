@@ -28,8 +28,6 @@ def import_lightning():  # noqa: F402
 pl = import_lightning()
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
-_TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
-_TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_available()
 
 try:
     from lightning.pytorch.plugins.environments import LightningEnvironment
@@ -40,13 +38,6 @@ if _LIGHTNING_GREATER_EQUAL_2_0:
     FSDPStrategy = pl.strategies.FSDPStrategy
 else:
     FSDPStrategy = pl.strategies.DDPFullyShardedStrategy
-
-if _TORCH_FSDP_AVAILABLE:
-    from torch.distributed.fsdp import (
-        FullStateDictConfig,
-        FullyShardedDataParallel,
-        StateDictType,
-    )
 
 
 logger = logging.getLogger(__name__)
@@ -112,25 +103,6 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
             num_replicas=self.world_size,
             rank=self.global_rank,
         )
-
-    def lightning_module_state_dict(self) -> Dict[str, Any]:
-        """Gathers the full state dict to rank 0 on CPU."""
-        assert self.model is not None, "Failed to get the state dict for a None model!"
-
-        if _LIGHTNING_GREATER_EQUAL_2_0 and _TORCH_FSDP_AVAILABLE:
-            with FullyShardedDataParallel.state_dict_type(
-                module=self.model,
-                state_dict_type=StateDictType.FULL_STATE_DICT,
-                state_dict_config=FullStateDictConfig(
-                    offload_to_cpu=True, rank0_only=True
-                ),
-            ):
-                state_dict = self.model.state_dict()
-                prefix_len = len("_forward_module.")
-                return {k[prefix_len:]: v for k, v in state_dict.items()}
-        else:
-            # Otherwise Lightning uses Fairscale FSDP, no need to unshard by ourself.
-            return super().lightning_module_state_dict()
 
 
 @PublicAPI(stability="beta")
