@@ -610,6 +610,8 @@ class Worker:
             return
 
         self.core_worker.record_task_log_start(
+            ray.get_runtime_context()._get_current_task_id(),
+            self.core_worker.get_current_task_attempt_number(),
             self.get_out_file_path(),
             self.get_err_file_path(),
             self.get_current_out_offset(),
@@ -630,7 +632,10 @@ class Worker:
             return
 
         self.core_worker.record_task_log_end(
-            self.get_current_out_offset(), self.get_current_err_offset()
+            ray.get_runtime_context()._get_current_task_id(),
+            self.core_worker.get_current_task_attempt_number(),
+            self.get_current_out_offset(),
+            self.get_current_err_offset(),
         )
 
     def get_err_file_path(self) -> str:

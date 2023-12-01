@@ -1721,11 +1721,20 @@ cdef void execute_task(
                     # execute_dynamic_generator_and_store_task_outputs
                     return async_function(actor, *arguments, **kwarguments)
                 else:
+                    if task_id:
+                        print(f"rickyx setting async task log to {task_id}")
+                        async_task_id.set(task_id)
+
+                    # Record the log file offsets.
+                    worker.record_task_log_start()
+
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
                         name_of_concurrency_group_to_execute, task_id=task_id,
                         func_args=(actor, *arguments), func_kwargs=kwarguments)
 
+            # Record the log file offsets.
+            worker.record_task_log_start()
             return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
@@ -1775,9 +1784,6 @@ cdef void execute_task(
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
-
-            # Record the log file offsets if applicable.
-            worker.record_task_log_start()
 
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
@@ -4511,9 +4517,6 @@ cdef class CoreWorker:
 
         async def async_func():
             try:
-                if task_id:
-                    async_task_id.set(task_id)
-
                 if inspect.isawaitable(func_or_coro):
                     coroutine = func_or_coro
                 else:
@@ -4693,15 +4696,31 @@ cdef class CoreWorker:
 
         return (num_tasks_submitted, num_leases_requested)
 
-    def record_task_log_start(self, stdout_path, stderr_path,
-                              int64_t out_start_offset, int64_t err_start_offset):
-        CCoreWorkerProcess.GetCoreWorker() \
-            .RecordTaskLogStart(stdout_path, stderr_path,
-                                out_start_offset, err_start_offset)
+    def record_task_log_start(
+            self, task_id: TaskID, int attempt_number,
+            stdout_path, stderr_path,
+            int64_t out_start_offset, int64_t err_start_offset):
+        cdef:
+            CTaskID c_task_id = task_id.native()
+            c_string c_stdout_path = stdout_path.encode("utf-8")
+            c_string c_stderr_path = stderr_path.encode("utf-8")
 
-    def record_task_log_end(self, int64_t out_end_offset, int64_t err_end_offset):
-        CCoreWorkerProcess.GetCoreWorker() \
-            .RecordTaskLogEnd(out_end_offset, err_end_offset)
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker() \
+                .RecordTaskLogStart(c_task_id, attempt_number,
+                                    c_stdout_path, c_stderr_path,
+                                    out_start_offset, err_start_offset)
+
+    def record_task_log_end(
+            self, task_id: TaskID, int attempt_number,
+            int64_t out_end_offset, int64_t err_end_offset):
+        cdef:
+            CTaskID c_task_id = task_id.native()
+
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker() \
+                .RecordTaskLogEnd(c_task_id, attempt_number,
+                                  out_end_offset, err_end_offset)
 
     cdef CObjectID allocate_dynamic_return_id_for_generator(
             self,
