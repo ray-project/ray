@@ -9,7 +9,10 @@ from ray.data.datasource import Datasource, ReadTask
 from ray.tests.conftest import *  # noqa
 
 
-def test_context_saved_when_dataset_created(ray_start_regular_shared):
+def test_context_saved_when_dataset_created(
+    ray_start_regular_shared,
+    restore_data_context,
+):
     ctx = DataContext.get_current()
     ctx.set_config("foo", 1)
     d1 = ray.data.range(10)
@@ -45,7 +48,10 @@ def test_context_saved_when_dataset_created(ray_start_regular_shared):
     assert d2.context.get_config("foo") == 1
 
 
-def test_read(ray_start_regular_shared):
+def test_read(
+    ray_start_regular_shared,
+    restore_data_context,
+):
     class CustomDatasource(Datasource):
         def prepare_read(self, parallelism: int):
             value = DataContext.get_current().foo
@@ -59,21 +65,30 @@ def test_read(ray_start_regular_shared):
     assert ray.data.read_datasource(CustomDatasource()).take_all()[0]["id"] == 12345
 
 
-def test_map(ray_start_regular_shared):
+def test_map(
+    ray_start_regular_shared,
+    restore_data_context,
+):
     context = DataContext.get_current()
     context.foo = 70001
     ds = ray.data.range(1).map(lambda x: {"id": DataContext.get_current().foo})
     assert ds.take_all()[0]["id"] == 70001
 
 
-def test_flat_map(ray_start_regular_shared):
+def test_flat_map(
+    ray_start_regular_shared,
+    restore_data_context,
+):
     context = DataContext.get_current()
     context.foo = 70002
     ds = ray.data.range(1).flat_map(lambda x: [{"id": DataContext.get_current().foo}])
     assert ds.take_all()[0]["id"] == 70002
 
 
-def test_map_batches(ray_start_regular_shared):
+def test_map_batches(
+    ray_start_regular_shared,
+    restore_data_context,
+):
     context = DataContext.get_current()
     context.foo = 70003
     ds = ray.data.range(1).map_batches(
@@ -82,13 +97,43 @@ def test_map_batches(ray_start_regular_shared):
     assert ds.take_all()[0]["id"] == 70003
 
 
-def test_filter(shutdown_only):
+def test_filter(
+    ray_start_regular_shared,
+    restore_data_context,
+):
     context = DataContext.get_current()
     context.foo = 70004
     ds = ray.data.from_items([70004]).filter(
         lambda x: x["item"] == DataContext.get_current().foo
     )
     assert ds.take_all()[0]["item"] == 70004
+
+
+def test_streaming_split(
+    ray_start_regular_shared,
+    restore_data_context,
+):
+    # Tests that custom DataContext can be properly propagated
+    # when using `streaming_split()`.
+    block_size = 123 * 1024 * 1024
+    data_context = DataContext.get_current()
+    data_context.target_max_block_size = block_size
+    data_context.set_config("foo", "bar")
+
+    def f(x):
+        assert DataContext.get_current().target_max_block_size == block_size
+        assert DataContext.get_current().get_config("foo") == "bar"
+        return x
+
+    num_splits = 2
+    splits = ray.data.range(10, parallelism=10).map(f).streaming_split(num_splits)
+
+    @ray.remote(num_cpus=0)
+    def consume(split):
+        for _ in split.iter_rows():
+            pass
+
+    assert ray.get([consume.remote(split) for split in splits]) == [None] * num_splits
 
 
 def test_context_placement_group():
