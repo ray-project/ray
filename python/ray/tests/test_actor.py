@@ -29,7 +29,7 @@ except ImportError:
     pytest_timeout = None
 
 
-@pytest.mark.parametrize("set_enable_auto_connect", ["1", "0"], indirect=True)
+@pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
 def test_caching_actors(shutdown_only, set_enable_auto_connect):
     # Test defining actors before ray.init() has been called.
 
@@ -41,7 +41,7 @@ def test_caching_actors(shutdown_only, set_enable_auto_connect):
         def get_val(self):
             return 3
 
-    if set_enable_auto_connect == "0":
+    if not set_enable_auto_connect:
         # Check that we can't actually create actors before ray.init() has
         # been called.
         with pytest.raises(Exception):
