@@ -1123,6 +1123,22 @@ def test_actor_ready(ray_start_regular_shared):
     assert ray.get(actor.__ray_ready__.remote())
 
 
+def test_actor_generic_call(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        pass
+
+    actor = Actor.remote()
+
+    with pytest.raises(TypeError):
+        # Method can't be called directly
+        actor.__ray_call__()
+
+    assert ray.get(actor.__ray_call__.remote(lambda self: 4)) == 4
+    assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, 2)) == 4
+    assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, x=2)) == 4
+
+
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
     @ray.remote
     class Inner:
@@ -1167,6 +1183,7 @@ def test_actor_autocomplete(ray_start_regular_shared):
         "__init__",
         "method_one",
         "__ray_ready__",
+        "__ray_call__",
         "__ray_terminate__",
     }
 
