@@ -56,7 +56,8 @@ def test_a(podman_docker_cluster):
 
 
 def run_in_docker_container(cmd: str, container_id: str):
-    docker_cmd = ["docker", "exec", container_id].extend(cmd.split())
+    docker_cmd = ["docker", "exec", container_id]
+    docker_cmd.extend(cmd.split())
     print(f"executing command: {docker_cmd}")
     resp = subprocess.check_output(docker_cmd)
     output = resp.decode("utf-8").strip()
@@ -87,6 +88,7 @@ def test_b(shutdown_only):
     ]
     container_id = subprocess.check_output(start_container_command).decode("utf-8")
     container_id = container_id.strip()
+    print(f"container_id: {container_id}")
 
     run_in_docker_container("sudo usermod -aG daemon ray", container_id)
     run_in_docker_container(f"podman pull docker-daemon:{image_name}", container_id)
