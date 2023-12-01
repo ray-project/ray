@@ -273,9 +273,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 module_id,
                 {
                     # Replace 'T' with '1'.
-                    "DREAM_DATA_" + key[:-1] + "1": (
-                        value[:, config.batch_size_B_per_learner]
-                    )
+                    "DREAM_DATA_"
+                    + key[:-1]
+                    + "1": (value[:, config.batch_size_B_per_learner])
                     for key, value in dream_data.items()
                     if key.endswith("H_BxT")
                 },
@@ -306,7 +306,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         if config.train_actor:
             ACTOR_L_total = self._compute_actor_loss(
                 module_id=module_id,
-                hps=config,
+                config=config,
                 dream_data=dream_data,
                 value_targets_t0_to_Hm1_BxT=value_targets_t0_to_Hm1_BxT,
             )
@@ -392,7 +392,8 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         )
         # Unfold time rank back in.
         reward_loss_two_hot_B_T = tf.reshape(
-            reward_loss_two_hot_BxT, (config.batch_size_B_per_learner, config.batch_length_T)
+            reward_loss_two_hot_BxT,
+            (config.batch_size_B_per_learner, config.batch_length_T),
         )
         L_reward_two_hot = tf.reduce_mean(reward_loss_two_hot_B_T)
 
@@ -484,7 +485,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             ),
         )
         # Unfold time rank back in.
-        L_dyn_B_T = tf.reshape(L_dyn_BxT, (config.batch_size_B_per_learner, config.batch_length_T))
+        L_dyn_B_T = tf.reshape(
+            L_dyn_BxT, (config.batch_size_B_per_learner, config.batch_length_T)
+        )
 
         L_rep_BxT = tf.math.maximum(
             1.0,
@@ -493,7 +496,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             ),
         )
         # Unfold time rank back in.
-        L_rep_B_T = tf.reshape(L_rep_BxT, (config.batch_size_B_per_learner, config.batch_length_T))
+        L_rep_B_T = tf.reshape(
+            L_rep_BxT, (config.batch_size_B_per_learner, config.batch_length_T)
+        )
 
         return L_dyn_B_T, L_rep_B_T
 

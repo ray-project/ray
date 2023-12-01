@@ -24,6 +24,7 @@ from ray.rllib.core.rl_module.rl_module import (
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator
 from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -62,8 +63,8 @@ def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
 @PublicAPI(stability="alpha")
 class LearnerGroup:
     """Coordinator of n (possibly remote) Learner workers.
-    
-    Each Learner worker 
+
+    Each Learner worker
     """
 
     def __init__(
@@ -76,7 +77,7 @@ class LearnerGroup:
         learner_spec=None,
     ):
         """Initializes a LearnerGroup instance.
-        
+
         Args:
             config: The AlgorithmConfig object to use to configure this LearnerGroup.
                 Call the `resources(num_learner_workers=...)` method on your config to
@@ -90,14 +91,14 @@ class LearnerGroup:
                 the specifics for your RLModule to be used in each Learner.
             module_spec: If not already specified in `config`, a separate overriding
                 RLModuleSpec may be provided via this argument.
-            max_queue_len: The maximum number of batches to queue up if doing async_update
-                If the queue is full itwill evict the oldest batch first.
+            max_queue_len: The maximum number of batches to queue up if doing
+                async_update. If the queue is full it will evict the oldest batch first.
         """
         if learner_spec is not None:
             deprecation_warning(
                 old="LearnerGroup(learner_spec=...)",
                 new="config = AlgorithmConfig().[resources|training|rl_module](...); "
-                    "LearnerGroup(config=config)",
+                "LearnerGroup(config=config)",
                 error=True,
             )
         if config is None:
@@ -106,7 +107,7 @@ class LearnerGroup:
                 "Pass in a `ray.rllib.algorithms.algorithm_config::AlgorithmConfig` "
                 "object with the proper settings configured."
             )
-        
+
         # scaling_config = learner_spec.learner_group_scaling_config
         self.config = config
         self._is_remote = self.config.num_learner_workers > 0
