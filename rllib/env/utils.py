@@ -225,6 +225,7 @@ class BufferWithInfiniteLookback:
     def get(
         self,
         indices: Optional[Union[int, slice, List[int]]] = None,
+        *,
         neg_indices_left_of_zero: bool = False,
         fill: Optional[float] = None,
         one_hot_discrete: bool = False,
@@ -303,6 +304,71 @@ class BufferWithInfiniteLookback:
     def __getitem__(self, item):
         """Support squared bracket syntax, e.g. buffer[:5]."""
         return self.get(item)
+
+    def set(
+        self,
+        new_data,
+        *,
+        at_indices: Optional[Union[int, slice, List[int]]] = None,
+        neg_indices_left_of_zero: bool = False,
+    ) -> None:
+        """Overwrites all or some of the data in this buffer with the provided data.
+
+        Args:
+            new_data: The new data to overwrite existing records with.
+            at_indices: A single int is interpreted as an index, at which to overwrite
+                the individual record stored at this index with `new_data`.
+                A list of ints is interpreted as a list of indices, which to overwrite
+                with `new_data`, which must be a batch of size `len(at_indices)`.
+                A slice object is interpreted as a range, which to overwrite with
+                `new_data`. Thereby, negative indices by default are interpreted as
+                "before the end" unless the `neg_indices_left_of_zero=True` option is
+                used, in which case negative indices are interpreted as
+                "before ts=0", meaning going back into the lookback buffer.
+            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
+                where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
+                handle a call `set(99, at_indices=-1, neg_indices_left_of_zero=True)`
+                with `6` being replaced by 99 and to `set([98, 99, 100],
+                at_indices=slice(-2, 1), neg_indices_left_of_zero=True)` with
+                `[5, 6,  7]` being replaced by `[98, 99,  100]`.
+        """
+        # `at_indices` is None -> Override all our data (including or excluding the
+        # lookback buffer).
+        if at_indices is None:
+            # Make sure data matches.
+            assert
+            self.data = new_data
+
+        elif isinstance(indices, slice):
+            data = self._get_slice(
+                indices,
+                fill=fill,
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                one_hot_discrete=one_hot_discrete,
+            )
+        elif isinstance(indices, list):
+            data = [
+                self._get_int_index(
+                    idx,
+                    fill=fill,
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    one_hot_discrete=one_hot_discrete,
+                )
+                for idx in indices
+            ]
+            if self.finalized:
+                data = batch(data)
+        else:
+            assert isinstance(indices, int)
+            data = self._get_int_index(
+                indices,
+                fill=fill,
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                one_hot_discrete=one_hot_discrete,
+            )
+
 
     def __len__(self):
         """Return the length of our data, excluding the lookback buffer."""

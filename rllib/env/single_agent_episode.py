@@ -1038,6 +1038,10 @@ class SingleAgentEpisode:
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
                 fill=fill,
             )
+        # TODO (sven): This does not seem to be solid yet. Users should NOT be able
+        #  to just write directly into our buffers. Instead, use:
+        #  `self.set_extra_model_outputs(key, new_data, at_indices=...)` and if key
+        #  is not known, add a new buffer to the `extra_model_outputs` dict.
         # It might be that the user has added new key/value pairs in their custom
         # postprocessing/connector logic. The values are then most likely numpy
         # arrays. We convert them automatically to buffers and get the requested
@@ -1045,6 +1049,53 @@ class SingleAgentEpisode:
         return BufferWithInfiniteLookback(value).get(
             indices, fill=fill, neg_indices_left_of_zero=neg_indices_left_of_zero
         )
+
+    def set_observations(
+        self,
+        *,
+        new_data,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_indices_left_of_zero: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's observations with the provided data.
+
+        Note that an episode's observation data cannot be written to directly as it is
+        managed by a `BufferWithInfiniteLookback` object. Normally, individual, current
+        observations are added to the episode either by calling `self.add_env_step` or
+        more directly (and manually) via `self.observations.append|extend()`.
+        However, for certain postprocessing steps, the entirety (or a slice) of an
+        episode's observations might have to be rewritten, which is when
+        `self.set_observations()` should be used.
+
+        Args:
+            new_data: The new observation data to overwrite existing data with.
+                This may be a list of individual observation(s) in case this episode
+                is still not finalized yet. In case this episode has already been
+                finalized, this should be (possibly complex) struct matching the
+                observation space and with a batch size of its leafs exactly the size
+                of the to-be-overwritten slice or segment (provided by `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single observation).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                observations = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_observations(individual_observation, -1,
+                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                observations buffer with the provided "individual_observation".
+        """
+
 
     def slice(self, slice_: slice) -> "SingleAgentEpisode":
         """Returns a slice of this episode with the given slice object.
