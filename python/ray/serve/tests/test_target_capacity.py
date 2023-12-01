@@ -461,12 +461,19 @@ class TestTargetCapacityUpdateAndServeStatus:
         app_name: str,
         deployment_name: str,
         replica_state: ReplicaState = ReplicaState.RUNNING,
+        controller_handle=None,
     ) -> bool:
         deployment = serve.status().applications[app_name].deployments[deployment_name]
         num_running_replicas = deployment.replica_states.get(replica_state, 0)
-        assert (
-            num_running_replicas == expected_num_replicas
-        ), f"{serve.status().applications[app_name].deployments[deployment_name]}"
+        if controller_handle is None:
+            assert num_running_replicas == expected_num_replicas, f"{deployment}"
+        else:
+            autoscaling_metrics = ray.get(
+                controller_handle._dump_autoscaling_metrics_for_testing.remote()
+            )
+            assert num_running_replicas == expected_num_replicas, (
+                f"Status: {deployment}" f"\nAutoscaling metrics: {autoscaling_metrics}"
+            )
         return True
 
     def apply_config_and_check_status(
@@ -777,7 +784,8 @@ class TestTargetCapacityUpdateAndServeStatus:
             expected_num_replicas=int(0.1 * min_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
-            timeout=60,
+            controller_handle=client._controller,
+            timeout=20,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
