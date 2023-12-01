@@ -11,35 +11,38 @@ from ray.tests.conftest import *  # noqa
 
 def test_context_saved_when_dataset_created(ray_start_regular_shared):
     ctx = DataContext.get_current()
+    ctx.set_config("foo", 1)
     d1 = ray.data.range(10)
     d2 = ray.data.range(10)
-    assert ctx.eager_free
-    assert d1.context.eager_free
-    assert d2.context.eager_free
+    assert ctx.get_config("foo") == 1
+    assert d1.context.get_config("foo") == 1
+    assert d2.context.get_config("foo") == 1
 
-    d1.context.eager_free = False
-    assert not d1.context.eager_free
-    assert d2.context.eager_free
-    assert ctx.eager_free
+    # Changing `d1.context` should not affect `d2.context` or the global context.
+    d1.context.set_config("foo", 2)
+    assert d1.context.get_config("foo") == 2
+    assert d2.context.get_config("foo") == 1
+    assert ctx.get_config("foo") == 1
 
+    # Changed value can be propagated to remote tasks.
     @ray.remote(num_cpus=0)
     def check(d1, d2):
-        assert not d1.context.eager_free
-        assert d2.context.eager_free
+        assert d1.context.get_config("foo") == 2
+        assert d2.context.get_config("foo") == 1
 
     ray.get(check.remote(d1, d2))
 
-    @ray.remote(num_cpus=0)
-    def check2(d):
-        d.take()
+    # Changing the global context should not affect `d1.context` or `d2.context`.
+    ctx.set_config("foo", 3)
+    assert ctx.get_config("foo") == 3
+    assert d1.context.get_config("foo") == 2
+    assert d2.context.get_config("foo") == 1
 
-    @ray.remote(num_cpus=0)
-    def check3(d):
-        list(d.streaming_split(1)[0].iter_batches())
-
-    d1.context.execution_options.resource_limits.cpu = 0.1
-    ray.get(check2.remote(d2))
-    ray.get(check3.remote(d2))
+    # The global context has changed.
+    # Applying new operators to the existing datasets should use the new
+    # global context.
+    d2 = d2.map_batches(lambda batch: batch)
+    assert d2.context.get_config("foo") == 1
 
 
 def test_read(ray_start_regular_shared):
