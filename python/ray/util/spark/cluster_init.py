@@ -278,7 +278,7 @@ _RAY_WORKER_NODE_STARTUP_INTERVAL = int(
 _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT = 120
 
 
-def _prepare_for_ray_worker_node_startup():
+def _preallocate_ray_worker_port_range():
     """
     If we start multiple ray workers on a machine concurrently, some ray worker
     processes might fail due to ray port conflicts, this is because race condition
@@ -663,6 +663,11 @@ def _setup_ray_cluster(
         )
         ray_head_node_cmd = autoscaling_cluster.ray_head_node_cmd
     else:
+        (
+            worker_port_range_begin,
+            worker_port_range_end,
+        ) = _preallocate_ray_worker_port_range()
+
         ray_head_node_cmd = [
             sys.executable,
             "-m",
@@ -676,6 +681,8 @@ def _setup_ray_cluster(
             f"--num-gpus={num_gpus_head_node}",
             f"--memory={heap_memory_head_node}",
             f"--object-store-memory={object_store_memory_head_node}",
+            f"--min-worker-port={worker_port_range_begin}",
+            f"--max-worker-port={worker_port_range_end - 1}",
             *dashboard_options,
             *_convert_ray_node_options(head_node_options),
         ]
@@ -1132,12 +1139,6 @@ def setup_ray_cluster(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
 
-    if num_gpus_worker_node is not None and num_spark_task_gpus == 0:
-        raise ValueError(
-            "The spark cluster worker nodes are not configured with 'gpu' resources, "
-            "so that you cannot specify the `num_gpus_worker_node` argument."
-        )
-
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
         raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
 
@@ -1265,8 +1266,8 @@ def setup_ray_cluster(
         # head node, and user does not set `object_store_memory_head_node` explicitly,
         # limit the heap memory and object store memory allocation to the
         # head node, in order to save spark driver memory.
-        heap_memory_head_node = 128 * 1024 * 1024
-        object_store_memory_head_node = 128 * 1024 * 1024
+        heap_memory_head_node = 1024 * 1024 * 1024
+        object_store_memory_head_node = 1024 * 1024 * 1024
     else:
         heap_memory_head_node, object_store_memory_head_node = calc_mem_ray_head_node(
             object_store_memory_head_node
@@ -1391,7 +1392,7 @@ def _start_ray_worker_nodes(
         (
             worker_port_range_begin,
             worker_port_range_end,
-        ) = _prepare_for_ray_worker_node_startup()
+        ) = _preallocate_ray_worker_port_range()
 
         # 10001 is used as ray client server port of global mode ray cluster.
         ray_worker_node_dashboard_agent_port = get_random_unused_port(
@@ -1633,6 +1634,11 @@ class AutoscalingCluster:
         with open(autoscale_config, "w") as f:
             f.write(json.dumps(self._config))
 
+        (
+            worker_port_range_begin,
+            worker_port_range_end,
+        ) = _preallocate_ray_worker_port_range()
+
         ray_head_node_cmd = [
             sys.executable,
             "-m",
@@ -1643,6 +1649,8 @@ class AutoscalingCluster:
             f"--port={ray_head_port}",
             f"--ray-client-server-port={ray_client_server_port}",
             f"--autoscaling-config={autoscale_config}",
+            f"--min-worker-port={worker_port_range_begin}",
+            f"--max-worker-port={worker_port_range_end - 1}",
             *dashboard_options,
         ]
 
