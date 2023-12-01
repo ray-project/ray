@@ -1001,8 +1001,7 @@ def setup_ray_cluster(
             or referenced objects (either in-memory or spilled to disk). This parameter
             does not affect the head node.
             Default value is 1.0, minimum value is 0
-        is_global:
-            If True, set up and serve a global mode Ray on spark cluster.
+        is_global: If True, set up and serve a global mode Ray on spark cluster.
             The global Ray on spark cluster means:
              - You can only create one active global Ray on spark cluster at a time.
              - On databricks cluster, the global Ray cluster can be used by all users,
