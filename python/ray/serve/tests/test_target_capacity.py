@@ -549,11 +549,12 @@ class TestTargetCapacityUpdateAndServeStatus:
         until the replicas start or stop running, and then resets the signal.
         """
 
+        def check_running():
+            app_status = serve.status().applications[app_name].status
+            assert app_status == ApplicationStatus.RUNNING, f"{app_status}"
+
         ray.get(lifecycle_signal.send.remote())
-        wait_for_condition(
-            lambda: serve.status().applications[app_name].status
-            == ApplicationStatus.RUNNING
-        )
+        wait_for_condition(check_running)
         ray.get(lifecycle_signal.send.remote(clear=True))
 
     def test_static_num_replicas_target_capacity_update(
