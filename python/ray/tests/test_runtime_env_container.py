@@ -67,7 +67,7 @@ def run_in_docker_container(cmd: str, container_id: str):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_b(shutdown_only):
-    print(subprocess.check_output(["docker", "image", "ls"]))
+    print("docker image ls:", subprocess.check_output(["docker", "image", "ls"]))
     print("id:", subprocess.check_output(["id"]))
 
     image_name = "rayproject/ray:runtime_env_container"
@@ -89,8 +89,13 @@ def test_b(shutdown_only):
     container_id = subprocess.check_output(start_container_command).decode("utf-8")
     container_id = container_id.strip()
     print(f"container_id: {container_id}")
+    print("docker ps:", subprocess.check_output(["docker", "ps"]))
 
+    run_in_docker_container("id", container_id)
+    run_in_docker_container("cat /etc/group", container_id)
     run_in_docker_container("sudo usermod -aG daemon ray", container_id)
+    run_in_docker_container("cat /etc/group", container_id)
+    run_in_docker_container("podman image ls", container_id)
     run_in_docker_container(f"podman pull docker-daemon:{image_name}", container_id)
     run_in_docker_container("podman ps", container_id)
     run_in_docker_container(
