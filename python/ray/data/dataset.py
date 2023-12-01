@@ -338,8 +338,6 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                ``None`` by default autoscales from 1 to the max number of workers allowed
-                in cluster.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker.
 
@@ -566,9 +564,6 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                ``None`` by default autoscales from 1 to the max number of workers allowed
-                in cluster.
-
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -725,8 +720,7 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
                 an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to the max
-                number of workers allowed in cluster.
+                ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -790,8 +784,6 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                `None`` by default autoscales from 1 to the max number of workers allowed
-                in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
@@ -851,8 +843,6 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
-                `None`` by default autoscales from 1 to the max number of workers allowed
-                in cluster.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
@@ -945,8 +935,7 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to the max
-                number of workers allowed in cluster.
+                ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -1040,8 +1029,7 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``. `None`` by default autoscales from 1 to the max
-                number of workers allowed in cluster.
+                ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """

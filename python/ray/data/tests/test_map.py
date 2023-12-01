@@ -30,6 +30,7 @@ def test_basic_actors(shutdown_only):
             "id",
             ds.map(
                 column_udf_class("id", lambda x: x + 1),
+                concurrency=1,
             ).take(),
         )
     ) == list(range(1, n + 1))
@@ -87,7 +88,7 @@ def test_callable_classes(shutdown_only):
             return {"id": np.array([r])}
 
     # map
-    actor_reuse = ds.map(StatefulFn).take()
+    actor_reuse = ds.map(StatefulFn, concurrency=1).take()
     assert sorted(extract_values("id", actor_reuse)) == list(range(10)), actor_reuse
 
     class StatefulFn:
@@ -100,7 +101,7 @@ def test_callable_classes(shutdown_only):
             return [{"id": r}]
 
     # flat map
-    actor_reuse = extract_values("id", ds.flat_map(StatefulFn).take())
+    actor_reuse = extract_values("id", ds.flat_map(StatefulFn, concurrency=1).take())
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     class StatefulFn:
@@ -115,7 +116,7 @@ def test_callable_classes(shutdown_only):
     # map batches
     actor_reuse = extract_values(
         "id",
-        ds.map_batches(StatefulFn, batch_size=1).take(),
+        ds.map_batches(StatefulFn, batch_size=1, concurrency=1).take(),
     )
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
@@ -129,7 +130,7 @@ def test_callable_classes(shutdown_only):
             return r > 0
 
     # filter
-    actor_reuse = ds.filter(StatefulFn).take()
+    actor_reuse = ds.filter(StatefulFn, concurrency=1).take()
     assert len(actor_reuse) == 9, actor_reuse
 
     class StatefulFnWithArgs:
@@ -146,6 +147,7 @@ def test_callable_classes(shutdown_only):
     for ds_map in (ds.map_batches, ds.map):
         result = ds_map(
             StatefulFnWithArgs,
+            concurrency=1,
             fn_args=(1,),
             fn_kwargs={"kwarg": 2},
             fn_constructor_args=(1,),
@@ -167,6 +169,7 @@ def test_callable_classes(shutdown_only):
     # flat_map with args & kwargs
     result = ds.flat_map(
         StatefulFlatMapFnWithArgs,
+        concurrency=1,
         fn_args=(1,),
         fn_kwargs={"kwarg": 2},
         fn_constructor_args=(1,),
@@ -188,7 +191,7 @@ def test_concurrent_callable_classes(shutdown_only):
 
     thread_ids = extract_values(
         "tid",
-        ds.map_batches(StatefulFn, max_concurrency=2).take_all(),
+        ds.map_batches(StatefulFn, concurrency=1, max_concurrency=2).take_all(),
     )
     # Make sure user's UDF is not running concurrently.
     assert len(set(thread_ids)) == 1
@@ -198,7 +201,7 @@ def test_concurrent_callable_classes(shutdown_only):
             raise ValueError
 
     with pytest.raises(ValueError):
-        ds.map_batches(ErrorFn, max_concurrency=2).take_all()
+        ds.map_batches(ErrorFn, concurrency=1, max_concurrency=2).take_all()
 
 
 def test_transform_failure(shutdown_only):
@@ -228,7 +231,7 @@ def test_concurrency(shutdown_only):
     # Test function and class.
     for fn in [udf, UDFClass]:
         # Test concurrency with None, single integer and a tuple of integers.
-        for concurrency in [None, 2, (2, 4)]:
+        for concurrency in [2, (2, 4)]:
             result = ds.map(fn, concurrency=concurrency).take_all()
             assert sorted(extract_values("id", result)) == list(range(10)), result
 
@@ -238,10 +241,12 @@ def test_concurrency(shutdown_only):
         with pytest.raises(ValueError, match=error_message):
             ds.map(UDFClass, concurrency=concurrency).take_all()
 
-    # Test an illegal value for fn.
-    error_message = "``fn`` can only be either function or callable class"
+    # Test concurrency not set.
+    result = ds.map(udf).take_all()
+    assert sorted(extract_values("id", result)) == list(range(10)), result
+    error_message = "``concurrency`` must be specified when using a callable class."
     with pytest.raises(ValueError, match=error_message):
-        ds.map(UDFClass(), concurrency=concurrency).take_all()
+        ds.map(UDFClass).take_all()
 
 
 def test_flat_map_generator(ray_start_regular_shared):
@@ -505,6 +510,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(
         CallableFn,
+        concurrency=1,
         batch_size=1,
         batch_format="pandas",
         fn_constructor_args=(put(1),),
@@ -527,6 +533,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(
         CallableFn,
+        concurrency=1,
         batch_size=1,
         batch_format="pandas",
         fn_constructor_kwargs={"b": put(2)},
@@ -551,6 +558,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(
         CallableFn,
+        concurrency=1,
         batch_size=1,
         batch_format="pandas",
         fn_constructor_args=(put(1),),
@@ -568,12 +576,14 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     fn_constructor_kwargs = {"b": put(2)}
     ds2 = ds.map_batches(
         CallableFn,
+        concurrency=1,
         batch_size=1,
         batch_format="pandas",
         fn_constructor_args=fn_constructor_args,
         fn_constructor_kwargs=fn_constructor_kwargs,
     ).map_batches(
         CallableFn,
+        concurrency=1,
         batch_size=1,
         batch_format="pandas",
         fn_constructor_args=fn_constructor_args,
@@ -597,6 +607,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_kwargs={"b": put(2)},
     ).map_batches(
         CallableFn,
+        concurrency=1,
         batch_size=1,
         batch_format="pandas",
         fn_constructor_args=fn_constructor_args,
@@ -648,7 +659,9 @@ def test_map_batches_actors_preserves_order(shutdown_only):
     ray.init(num_cpus=2)
     # Test that actor compute model preserves block order.
     ds = ray.data.range(10, parallelism=5)
-    assert extract_values("id", ds.map_batches(UDFClass).take()) == list(range(10))
+    assert extract_values("id", ds.map_batches(UDFClass, concurrency=1).take()) == list(
+        range(10)
+    )
 
 
 @pytest.mark.parametrize(
@@ -959,7 +972,9 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     num_cpus = 5
     ray.init(num_cpus=num_cpus)
     compute_strategy = ray.data.ActorPoolStrategy()
-    ray.data.range(10, parallelism=10).map_batches(UDFClass, batch_size=1).materialize()
+    ray.data.range(10, parallelism=10).map_batches(
+        UDFClass, compute=compute_strategy, batch_size=1
+    ).materialize()
 
     # The new execution backend is not using the ActorPoolStrategy under
     # the hood, so the expectation here applies only to the old backend.

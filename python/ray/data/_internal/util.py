@@ -1,5 +1,4 @@
 import importlib
-import inspect
 import logging
 import os
 import pathlib
@@ -532,17 +531,15 @@ def get_compute_strategy(
 
     if isinstance(fn, CallableClass):
         is_callable_class = True
-    elif inspect.isfunction(fn):
+    else:
+        # TODO(chengsu): disallow object that is not a function. For example,
+        # An object instance of class often indicates a bug in user code.
         is_callable_class = False
         if fn_constructor_args is not None:
             raise ValueError(
                 "``fn_constructor_args`` can only be specified if providing a "
-                f"CallableClass instance for ``fn``, but got: {fn}."
+                f"callable class instance for ``fn``, but got: {fn}."
             )
-    else:
-        raise ValueError(
-            "``fn`` can only be either function or callable class, but got: " f"{fn}."
-        )
 
     if compute is not None:
         # Legacy code path to support `compute` argument.
@@ -557,7 +554,7 @@ def get_compute_strategy(
         ):
             raise ValueError(
                 "``compute`` must specify an actor compute strategy when using a "
-                f"CallableClass, but got: {compute}. For example, use "
+                f"callable class, but got: {compute}. For example, use "
                 "``compute=ray.data.ActorPoolStrategy(size=n)``."
             )
         elif not is_callable_class and (
@@ -565,48 +562,50 @@ def get_compute_strategy(
         ):
             raise ValueError(
                 f"``compute`` is specified as the actor compute strategy: {compute}, "
-                f"but ``fn`` is not a CallableClass: {fn}. Pass a CallableClass or "
+                f"but ``fn`` is not a callable class: {fn}. Pass a callable class or "
                 "use the default ``compute`` strategy."
             )
         return compute
-    else:
-        if concurrency is not None:
-            if not is_callable_class:
-                # Currently do not support concurrency control with function,
-                # i.e., running with Ray Tasks (`TaskPoolMapOperator`).
-                logger.warning(
-                    "``concurrency`` is set, but ``fn`` is not a CallableClass: "
-                    f"{fn}. Non-default values of ``concurrency`` are currently only "
-                    "supported when ``fn`` is a CallableClass."
-                )
-                return TaskPoolStrategy()
+    elif concurrency is not None:
+        if not is_callable_class:
+            # Currently do not support concurrency control with function,
+            # i.e., running with Ray Tasks (`TaskPoolMapOperator`).
+            logger.warning(
+                "``concurrency`` is set, but ``fn`` is not a callable class: "
+                f"{fn}. ``concurrency`` are currently only supported when "
+                "``fn`` is a callable class."
+            )
+            return TaskPoolStrategy()
 
-            if isinstance(concurrency, tuple):
-                if (
-                    len(concurrency) == 2
-                    and isinstance(concurrency[0], int)
-                    and isinstance(concurrency[1], int)
-                ):
-                    return ActorPoolStrategy(
-                        min_size=concurrency[0], max_size=concurrency[1]
-                    )
-                else:
-                    raise ValueError(
-                        "``concurrency`` is expected to be set as a tuple of "
-                        f"integers, but got: {concurrency}."
-                    )
-            elif isinstance(concurrency, int):
-                return ActorPoolStrategy(size=concurrency)
+        if isinstance(concurrency, tuple):
+            if (
+                len(concurrency) == 2
+                and isinstance(concurrency[0], int)
+                and isinstance(concurrency[1], int)
+            ):
+                return ActorPoolStrategy(
+                    min_size=concurrency[0], max_size=concurrency[1]
+                )
             else:
                 raise ValueError(
-                    "``concurrency`` is expected to be set as an integer or a "
-                    f"tuple of integers, but got: {concurrency}."
+                    "``concurrency`` is expected to be set as a tuple of "
+                    f"integers, but got: {concurrency}."
                 )
+        elif isinstance(concurrency, int):
+            return ActorPoolStrategy(size=concurrency)
         else:
-            if is_callable_class:
-                return ActorPoolStrategy()
-            else:
-                return TaskPoolStrategy()
+            raise ValueError(
+                "``concurrency`` is expected to be set as an integer or a "
+                f"tuple of integers, but got: {concurrency}."
+            )
+    else:
+        if is_callable_class:
+            raise ValueError(
+                "``concurrency`` must be specified when using a callable class. "
+                "For example, use ``concurrency=n`` for a pool of ``n`` workers."
+            )
+        else:
+            return TaskPoolStrategy()
 
 
 def capfirst(s: str):
