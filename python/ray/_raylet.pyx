@@ -1722,7 +1722,6 @@ cdef void execute_task(
                     return async_function(actor, *arguments, **kwarguments)
                 else:
                     if task_id:
-                        print(f"rickyx setting async task log to {task_id}")
                         async_task_id.set(task_id)
 
                     # Record the log file offsets.

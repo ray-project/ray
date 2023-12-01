@@ -4315,8 +4315,6 @@ void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
   task_log_info.set_stdout_start(stdout_start_offset);
   task_log_info.set_stderr_start(stderr_start_offset);
 
-  RAY_LOG(INFO) << "rickyx Recording task log start for task " << task_id;
-
   auto current_task = worker_context_.GetCurrentTask();
   RAY_CHECK(current_task)
       << "We should have set the current task spec while executing the task.";
@@ -4335,7 +4333,6 @@ void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
   if (options_.is_local_mode) {
     return;
   }
-  RAY_LOG(INFO) << "rickyx Recording task log end for task " << task_id;
   rpc::TaskLogInfo task_log_info;
   task_log_info.set_stdout_end(stdout_end_offset);
   task_log_info.set_stderr_end(stderr_end_offset);
