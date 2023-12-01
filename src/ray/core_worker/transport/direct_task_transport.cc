@@ -125,6 +125,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               OnWorkerIdle(active_worker_addr,
                            scheduling_key,
                            /*was_error*/ false,
+                           /*error_detail*/ "",
                            /*worker_exiting*/ false,
                            lease_entry.assigned_resources);
               break;
@@ -161,6 +162,7 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
 
 void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
                                                  bool was_error,
+                                                 const std::string &error_detail,
                                                  bool worker_exiting,
                                                  const SchedulingKey &scheduling_key) {
   RAY_LOG(DEBUG) << "Returning worker " << addr.worker_id << " to raylet "
@@ -181,7 +183,7 @@ void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
   }
 
   auto status = lease_entry.lease_client->ReturnWorker(
-      addr.port, addr.worker_id, was_error, worker_exiting);
+      addr.port, addr.worker_id, was_error, error_detail, worker_exiting);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
   }
@@ -192,6 +194,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     const rpc::WorkerAddress &addr,
     const SchedulingKey &scheduling_key,
     bool was_error,
+    const std::string &error_detail,
     bool worker_exiting,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   auto &lease_entry = worker_to_lease_entry_[addr];
@@ -211,7 +214,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
     // Return the worker only if there are no tasks to do.
     if (!lease_entry.is_busy) {
-      ReturnWorker(addr, was_error, worker_exiting, scheduling_key);
+      ReturnWorker(addr, was_error, error_detail, worker_exiting, scheduling_key);
     }
   } else {
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
@@ -487,6 +490,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               OnWorkerIdle(addr,
                            scheduling_key,
                            /*error=*/false,
+                           /*error_detail*/ "",
                            /*worker_exiting=*/false,
                            resources_copy);
             } else {
@@ -652,11 +656,14 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           }
 
           if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
+            bool was_error = !status.ok();
+            bool is_worker_exiting = reply.worker_exiting();
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr,
                          scheduling_key,
-                         /*error=*/!status.ok(),
-                         /*worker_exiting=*/reply.worker_exiting(),
+                         /*error=*/was_error,
+                         /*error_detail*/ status.message(),
+                         /*worker_exiting=*/is_worker_exiting,
                          assigned_resources);
           }
         }

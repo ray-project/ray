@@ -26,7 +26,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.utils import Timer, TimerBase, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
-from ray.serve.schema import ProxyDetails
+from ray.serve.schema import LoggingConfig, ProxyDetails
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -100,6 +100,7 @@ class ProxyWrapper(ABC):
 class ActorProxyWrapper(ProxyWrapper):
     def __init__(
         self,
+        logging_config: LoggingConfig,
         actor_handle: Optional[ActorHandle] = None,
         config: Optional[HTTPOptions] = None,
         grpc_options: Optional[gRPCOptions] = None,
@@ -120,6 +121,7 @@ class ActorProxyWrapper(ProxyWrapper):
             node_ip_address=node_ip_address,
             port=port,
             proxy_actor_class=proxy_actor_class,
+            logging_config=logging_config,
         )
         self._ready_obj_ref = None
         self._health_check_obj_ref = None
@@ -137,6 +139,7 @@ class ActorProxyWrapper(ProxyWrapper):
         node_id: str,
         node_ip_address: str,
         port: int,
+        logging_config: LoggingConfig,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
     ) -> ProxyWrapper:
         """Helper to start or reuse existing proxy.
@@ -173,6 +176,7 @@ class ActorProxyWrapper(ProxyWrapper):
             request_timeout_s=config.request_timeout_s,
             keep_alive_timeout_s=config.keep_alive_timeout_s,
             grpc_options=grpc_options,
+            logging_config=logging_config,
         )
         return proxy
 
@@ -590,11 +594,13 @@ class ProxyStateManager:
         config: HTTPOptions,
         head_node_id: str,
         cluster_node_info_cache: ClusterNodeInfoCache,
+        logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
         timer: TimerBase = Timer(),
     ):
+        self.logging_config = logging_config
         self._controller_name = controller_name
         if config is not None:
             self._config = config
@@ -611,6 +617,9 @@ class ProxyStateManager:
         self._cluster_node_info_cache = cluster_node_info_cache
 
         assert isinstance(head_node_id, str)
+
+    def reconfiture_logging_config(self, logging_config: LoggingConfig):
+        self.logging_config = logging_config
 
     def shutdown(self) -> None:
         for proxy_state in self._proxy_states.values():
@@ -740,6 +749,7 @@ class ProxyStateManager:
             grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
 
         return self._actor_proxy_wrapper_class(
+            logging_config=self.logging_config,
             config=self._config,
             grpc_options=grpc_options,
             controller_name=self._controller_name,

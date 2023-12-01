@@ -3,8 +3,7 @@ import warnings
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
-import pydantic
-from pydantic import (
+from ray._private.pydantic_compat import (
     BaseModel,
     NonNegativeFloat,
     NonNegativeInt,
@@ -12,7 +11,6 @@ from pydantic import (
     PositiveInt,
     validator,
 )
-
 from ray._private.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
@@ -140,7 +138,7 @@ class ProxyLocation(str, Enum):
 
 
 @PublicAPI(stability="stable")
-class HTTPOptions(pydantic.BaseModel):
+class HTTPOptions(BaseModel):
     """HTTP options for the proxies. Supported fields:
 
     - host: Host that the proxies listens for HTTP on. Defaults to

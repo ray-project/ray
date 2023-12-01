@@ -17,8 +17,10 @@ from ray.serve._private.common import (
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusTrigger,
     EndpointInfo,
     EndpointTag,
+    TargetCapacityScaleDirection,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -37,6 +39,7 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
 )
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
 from ray.types import ObjectRef
 
@@ -262,10 +265,11 @@ class ApplicationState:
 
     def delete(self):
         """Delete the application"""
-        logger.info(
-            f"Deleting application '{self._name}'",
-            extra={"log_to_stderr": False},
-        )
+        if self._status != ApplicationStatus.DELETING:
+            logger.info(
+                f"Deleting application '{self._name}'",
+                extra={"log_to_stderr": False},
+            )
         self._set_target_state_deleting()
 
     def is_deleted(self) -> bool:
@@ -277,7 +281,11 @@ class ApplicationState:
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
     def apply_deployment_info(
-        self, deployment_name: str, deployment_info: DeploymentInfo
+        self,
+        deployment_name: str,
+        deployment_info: DeploymentInfo,
+        target_capacity: Optional[float] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> None:
         """Deploys a deployment in the application."""
         route_prefix = deployment_info.route_prefix
@@ -287,15 +295,28 @@ class ApplicationState:
             )
 
         deployment_id = DeploymentID(deployment_name, self._name)
-        self._deployment_state_manager.deploy(deployment_id, deployment_info)
+
+        self._deployment_state_manager.deploy(
+            deployment_id,
+            deployment_info,
+            target_capacity=target_capacity,
+            target_capacity_scale_direction=target_capacity_scale_direction,
+        )
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
             self._endpoint_state.update_endpoint(
                 deployment_id,
+                # The current meaning of the "is_cross_language" field is ambiguous.
+                # We will work on optimizing and removing this field in the future.
+                # Instead of using the "is_cross_language" field, we will directly
+                # compare if the replica is Python, which will assist the Python
+                # router in determining if the replica invocation is a cross-language
+                # operation.
                 EndpointInfo(
                     route=deployment_info.route_prefix,
-                    app_is_cross_language=config.is_cross_language,
+                    app_is_cross_language=config.deployment_language
+                    != DeploymentLanguage.PYTHON,
                 ),
             )
         else:
@@ -345,12 +366,20 @@ class ApplicationState:
                 self._check_routes(overrided_infos)
                 self._set_target_state_deployment_infos(overrided_infos)
             except (TypeError, ValueError, RayServeException):
-                self._set_target_state_deployment_infos(None)
+                self._set_target_state(
+                    deployment_infos=None,
+                    code_version=None,
+                    target_config=self._target_state.config,
+                )
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED, traceback.format_exc()
                 )
             except Exception:
-                self._set_target_state_deployment_infos(None)
+                self._set_target_state(
+                    deployment_infos=None,
+                    code_version=None,
+                    target_config=self._target_state.config,
+                )
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED,
                     (
@@ -368,7 +397,11 @@ class ApplicationState:
                 ray.cancel(self._build_app_task_info.obj_ref)
 
             # Halt reconciliation of target deployments
-            self._set_target_state_deployment_infos(None)
+            self._set_target_state(
+                deployment_infos=None,
+                code_version=None,
+                target_config=self._target_state.config,
+            )
 
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")
@@ -394,7 +427,7 @@ class ApplicationState:
 
         Returns:
             Status (ApplicationStatus):
-                RUNNING: all deployments are healthy.
+                RUNNING: all deployments are healthy or autoscaling.
                 DEPLOYING: there is one or more updating deployments,
                     and there are no unhealthy deployments.
                 DEPLOY_FAILED: one or more deployments became unhealthy
@@ -410,17 +443,37 @@ class ApplicationState:
             return ApplicationStatus.DELETING, ""
 
         num_healthy_deployments = 0
+        num_autoscaling_deployments = 0
+        num_updating_deployments = 0
+        num_manually_scaling_deployments = 0
         unhealthy_deployment_names = []
 
         for deployment_status in self.get_deployments_statuses():
             if deployment_status.status == DeploymentStatus.UNHEALTHY:
                 unhealthy_deployment_names.append(deployment_status.name)
-            if deployment_status.status == DeploymentStatus.HEALTHY:
+            elif deployment_status.status == DeploymentStatus.HEALTHY:
                 num_healthy_deployments += 1
+            elif (
+                deployment_status.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+            ):
+                num_autoscaling_deployments += 1
+            elif deployment_status.status == DeploymentStatus.UPDATING:
+                num_updating_deployments += 1
+            elif (
+                deployment_status.status
+                in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
+                and deployment_status.status_trigger
+                == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+            ):
+                num_manually_scaling_deployments += 1
+            else:
+                raise RuntimeError(
+                    "Found deployment with unexpected status "
+                    f"{deployment_status.status} and status trigger "
+                    f"{deployment_status.status_trigger}."
+                )
 
-        if num_healthy_deployments == len(self.target_deployments):
-            return ApplicationStatus.RUNNING, ""
-        elif len(unhealthy_deployment_names):
+        if len(unhealthy_deployment_names):
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
             if self._status in [
                 ApplicationStatus.DEPLOYING,
@@ -429,8 +482,18 @@ class ApplicationState:
                 return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
-        else:
+        elif num_updating_deployments + num_manually_scaling_deployments > 0:
+            # If deployments are UPDATING or UPSCALING/DOWNSCALING
+            # with status trigger CONFIG_UPDATE_STARTED, then
+            # application is still DEPLOYING
             return ApplicationStatus.DEPLOYING, ""
+        else:
+            # If all deployments are HEALTHY or autoscaling, then
+            # application is RUNNING
+            assert num_healthy_deployments + num_autoscaling_deployments == len(
+                self.target_deployments
+            )
+            return ApplicationStatus.RUNNING, ""
 
     def _reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:
         """If necessary, reconcile the in-progress build task.
@@ -551,7 +614,11 @@ class ApplicationState:
 
         return route_prefix, docs_path
 
-    def _reconcile_target_deployments(self) -> None:
+    def _reconcile_target_deployments(
+        self,
+        target_capacity: Optional[float] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+    ) -> None:
         """Reconcile target deployments in application target state.
 
         Ensure each deployment is running on up-to-date info, and
@@ -560,14 +627,34 @@ class ApplicationState:
 
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
-            self.apply_deployment_info(deployment_name, info)
+            deploy_info = deepcopy(info)
+            # Apply the application logging config to the deployment logging config
+            # if it is not set.
+            if (
+                self._target_state.config
+                and self._target_state.config.logging_config
+                and deploy_info.deployment_config.logging_config is None
+            ):
+                deploy_info.deployment_config.logging_config = (
+                    self._target_state.config.logging_config
+                )
+            self.apply_deployment_info(
+                deployment_name,
+                deploy_info,
+                target_capacity=target_capacity,
+                target_capacity_scale_direction=target_capacity_scale_direction,
+            )
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
             if deployment_name not in self.target_deployments:
                 self._delete_deployment(deployment_name)
 
-    def update(self) -> bool:
+    def update(
+        self,
+        target_capacity: Optional[float] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+    ) -> bool:
         """Attempts to reconcile this application to match its target state.
 
         Updates the application status and status message based on the
@@ -592,7 +679,10 @@ class ApplicationState:
         # have info on what the target list of deployments is, so don't
         # perform reconciliation or check on deployment statuses
         if self._target_state.deployment_infos is not None:
-            self._reconcile_target_deployments()
+            self._reconcile_target_deployments(
+                target_capacity=target_capacity,
+                target_capacity_scale_direction=target_capacity_scale_direction,
+            )
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
 
@@ -807,11 +897,18 @@ class ApplicationStateManager:
             return {}
         return self._application_states[name].list_deployment_details()
 
-    def update(self):
+    def update(
+        self,
+        target_capacity: Optional[float] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+    ):
         """Update each application state"""
         apps_to_be_deleted = []
         for name, app in self._application_states.items():
-            ready_to_be_deleted = app.update()
+            ready_to_be_deleted = app.update(
+                target_capacity=target_capacity,
+                target_capacity_scale_direction=target_capacity_scale_direction,
+            )
             if ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
                 logger.debug(f"Application '{name}' deleted successfully.")
@@ -876,6 +973,9 @@ def build_serve_application(
         name: application name. If specified, application will be deployed
             without removing existing applications.
         args: Arguments to be passed to the application builder.
+        logging_config: The application logging config, if deployment logging
+            config is not set, application logging config will be applied to the
+            deployment logging config.
     Returns:
         Deploy arguments: a list of deployment arguments if application
             was built successfully, otherwise None.
@@ -893,10 +993,6 @@ def build_serve_application(
         deployments = pipeline_build(app._get_internal_dag_node(), name)
         ingress = get_and_validate_ingress_deployment(deployments)
 
-        # Set code version and runtime env for each deployment
-        for deployment in deployments:
-            deployment.set_options(version=code_version, _internal=True)
-
         deploy_args_list = []
         for deployment in deployments:
             is_ingress = deployment.name == ingress.name
@@ -906,7 +1002,7 @@ def build_serve_application(
                     replica_config=deployment._replica_config,
                     ingress=is_ingress,
                     deployment_config=deployment._deployment_config,
-                    version=deployment.version,
+                    version=code_version,
                     route_prefix=deployment.route_prefix,
                     docs_path=deployment._docs_path,
                 )
@@ -1010,7 +1106,6 @@ def override_deployment_info(
         options.pop("name", None)
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
-
         deployment_infos[deployment_name] = info.update(**override_options)
 
     # Overwrite ingress route prefix

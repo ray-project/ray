@@ -38,7 +38,9 @@ class OutputSplitter(PhysicalOperator):
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]] = None,
     ):
-        super().__init__(f"split({n}, equal={equal})", [input_op])
+        super().__init__(
+            f"split({n}, equal={equal})", [input_op], target_max_block_size=None
+        )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
         self._buffer: List[RefBundle] = []

@@ -46,6 +46,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/client_connection.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
 #include "ray/object_manager/plasma/malloc.h"
@@ -105,12 +106,15 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
           io_context_,
           object_lifecycle_mgr_,
           // absl failed to check thread safety for lambda
-          [this](const ObjectID &object_id, const auto &request)
-              ABSL_NO_THREAD_SAFETY_ANALYSIS {
-                mutex_.AssertHeld();
-                this->AddToClientObjectIds(object_id, request->client);
-              },
+          [this](const ObjectID &object_id,
+                 std::optional<MEMFD_TYPE> fallback_allocated_fd,
+                 const auto &request) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+            mutex_.AssertHeld();
+            this->AddToClientObjectIds(object_id, fallback_allocated_fd, request->client);
+          },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
+  ray::SetCloseOnFork(acceptor_);
+
   if (RayConfig::instance().event_stats_print_interval_ms() > 0 &&
       RayConfig::instance().event_stats()) {
     PrintAndRecordDebugDump();
@@ -134,6 +138,7 @@ void PlasmaStore::Stop() { acceptor_.close(); }
 // If this client is not already using the object, add the client to the
 // object's list of clients, otherwise do nothing.
 void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
+                                       std::optional<MEMFD_TYPE> fallback_allocated_fd,
                                        const std::shared_ptr<ClientInterface> &client) {
   // Check if this client is already using the object.
   auto &object_ids = client->GetObjectIDs();
@@ -142,7 +147,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
   }
   RAY_CHECK(object_lifecycle_mgr_.AddReference(object_id));
   // Add object id to the list of object ids that this client is using.
-  client->MarkObjectAsUsed(object_id);
+  client->MarkObjectAsUsed(object_id, fallback_allocated_fd);
 }
 
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
@@ -183,7 +188,11 @@ PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
   }
   entry->ToPlasmaObject(result, /* check sealed */ false);
   // Record that this client is using this object.
-  AddToClientObjectIds(object_info.object_id, client);
+  std::optional<MEMFD_TYPE> fallback_allocated_fd = std::nullopt;
+  if (entry->GetAllocation().fallback_allocated) {
+    fallback_allocated_fd = entry->GetAllocation().fd;
+  }
+  AddToClientObjectIds(object_info.object_id, fallback_allocated_fd, client);
   return PlasmaError::OK;
 }
 
@@ -240,30 +249,32 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
   get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker);
 }
 
-int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
-                                           const std::shared_ptr<Client> &client) {
+bool PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
+                                            const std::shared_ptr<Client> &client) {
   auto &object_ids = client->GetObjectIDs();
   auto it = object_ids.find(object_id);
   if (it != object_ids.end()) {
-    client->MarkObjectAsUnused(*it);
-    RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client";
+    bool should_unmap = client->MarkObjectAsUnused(object_id);
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << " no longer in use by client, should_unmap = " << should_unmap;
     // Decrease reference count.
     object_lifecycle_mgr_.RemoveReference(object_id);
-    // Return 1 to indicate that the client was removed.
-    return 1;
+    // Return true to indicate that the client should unmap the fd for this object_id.
+    return should_unmap;
   } else {
-    // Return 0 to indicate that the client was not removed.
-    return 0;
+    // No mmap sections applicable.
+    return false;
   }
 }
 
-void PlasmaStore::ReleaseObject(const ObjectID &object_id,
+bool PlasmaStore::ReleaseObject(const ObjectID &object_id,
                                 const std::shared_ptr<Client> &client) {
   auto entry = object_lifecycle_mgr_.GetObject(object_id);
   if (entry != nullptr) {
     // Remove the client from the object's array of clients.
-    RemoveFromClientObjectIds(object_id, client);
+    return RemoveFromClientObjectIds(object_id, client);
   }
+  return false;
 }
 
 void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
@@ -290,7 +301,7 @@ int PlasmaStore::AbortObject(const ObjectID &object_id,
   }
   // The client requesting the abort is the creator. Free the object.
   RAY_CHECK(object_lifecycle_mgr_.AbortObject(object_id) == PlasmaError::OK);
-  client->MarkObjectAsUnused(*it);
+  client->MarkObjectAsUnused(object_id);
   return 1;
 }
 
@@ -409,7 +420,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   } break;
   case fb::MessageType::PlasmaReleaseRequest: {
     RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id));
-    ReleaseObject(object_id, client);
+    bool should_unmap = ReleaseObject(object_id, client);
+    RAY_RETURN_NOT_OK(SendReleaseReply(client, object_id, should_unmap, PlasmaError::OK));
   } break;
   case fb::MessageType::PlasmaDeleteRequest: {
     std::vector<ObjectID> object_ids;

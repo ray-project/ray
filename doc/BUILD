@@ -25,7 +25,7 @@ py_test(
     name = "datasets_train",
     size = "medium",
     srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "datasets_train"],
+    tags = ["exclusive", "team:ml", "datasets_train", "gpu"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 
@@ -113,11 +113,20 @@ py_test(
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 
+py_test(
+    name = "doc_code_ray_oom_prevention",
+    size = "medium",
+    main = "source/ray-core/doc_code/ray_oom_prevention.py",
+    srcs = ["source/ray-core/doc_code/ray_oom_prevention.py"],
+    tags = ["exclusive", "xcommit", "team:core"]
+)
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
     exclude = ["source/ray-core/doc_code/runtime_env_example.py",
-               "source/ray-core/doc_code/cross_language.py"],
+               "source/ray-core/doc_code/cross_language.py",
+               "source/ray-core/doc_code/ray_oom_prevention.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:core"],
 )
@@ -284,23 +293,50 @@ doctest(
             "source/ray-core/tasks/nested-tasks.rst",
             "source/ray-observability/user-guides/ray-tracing.rst",
             "source/ray-observability/user-guides/cli-sdk.rst",
-            "source/rllib/rllib-env.rst",
-            "source/rllib/rllib-sample-collection.rst",
             "source/serve/advanced-guides/inplace-updates.md",
             "source/serve/deploy-many-models/multi-app.md",
             "source/serve/production-guide/deploy-vm.md",
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            "source/train/faq.rst",
-	    "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/**/*.rst",
+            "source/train/**/*.md",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
+            "source/rllib/**/*.rst",
+            "source/rllib/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
         ]
     ),
     size = "large",
     tags = ["team:none"]
+)
+
+
+doctest(
+    name="doctest[train]",
+    files = glob(
+        include=[
+            "source/train/**/*.rst",
+            "source/train/**/*.md"
+        ],
+        exclude=[
+            # GPU
+            "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/user-guides/using-gpus.rst"
+        ]
+    ),
+    tags = ["team:ml"]
+)
+
+doctest(
+    name="doctest[train]",
+    files = [
+        "source/train/user-guides/data-loading-preprocessing.rst",
+        "source/train/user-guides/using-gpus.rst"
+    ],
+    tags = ["team:ml"],
+    gpu = True,
 )
 
 
@@ -316,6 +352,22 @@ doctest(
 )
 
 doctest(
+    name="doctest[rllib]",
+    files = glob(
+        include=[
+            "source/rllib/**/*.rst",
+            "source/rllib/**/*.md"
+        ],
+        exclude=[
+            "source/rllib/rllib-env.rst",
+            "source/rllib/rllib-sample-collection.rst",
+        ]
+    ),
+    size = "enormous",
+    tags = ["team:rllib"]
+)
+
+doctest(
     files = [
         "source/data/batch_inference.rst",
         "source/data/transforming-data.rst"
@@ -324,10 +376,3 @@ doctest(
     gpu = True
 )
 
-doctest(
-    name="quarantine",
-    files = [
-	"source/train/user-guides/data-loading-preprocessing.rst",
-    ],
-    tags = ["team:data"],
-)

@@ -4,6 +4,7 @@ import gymnasium as gym
 from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
 from gymnasium.spaces import Dict as GymDict
 from gymnasium.spaces import Tuple as GymTuple
+import inspect
 import logging
 import numpy as np
 import os
@@ -93,6 +94,11 @@ def framework_iterator(
     frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
 
     for fw in frameworks:
+        # Skip tf if on new API stack.
+        if fw == "tf" and config.get("_enable_new_api_stack", False):
+            logger.warning("framework_iterator skipping tf (new API stack configured)!")
+            continue
+
         # Skip non-installed frameworks.
         if fw == "torch" and not torch:
             logger.warning("framework_iterator skipping torch (not installed)!")
@@ -344,7 +350,7 @@ def check_compute_single_action(
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
             if state_in:
-                if what.config.get("_enable_rl_module_api", False):
+                if what.config.get("_enable_new_api_stack", False):
                     input_dict["state_in"] = state_in
                 else:
                     for i, s in enumerate(state_in):
@@ -1139,7 +1145,7 @@ def check_reproducibilty(
             # iterations).
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
-            if algo_config._enable_learner_api:
+            if algo_config._enable_new_api_stack:
                 check(
                     results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
                     results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
@@ -1297,6 +1303,7 @@ def test_ckpt_restore(
     tf2=False,
     replay_buffer=False,
     run_restored_algorithm=True,
+    eval_workerset=False,
 ):
     """Test that after an algorithm is trained, its checkpoint can be restored.
 
@@ -1365,6 +1372,24 @@ def test_ckpt_restore(
                 "default_policy"
             ]._storage[42 : 42 + 42]
             check(data, new_data)
+
+        # Check, whether the eval worker sets have the same policies and
+        # `policy_mapping_fn`.
+        if eval_workerset:
+            eval_mapping_src = inspect.getsource(
+                alg1.evaluation_workers.local_worker().policy_mapping_fn
+            )
+            check(
+                eval_mapping_src,
+                inspect.getsource(
+                    alg2.evaluation_workers.local_worker().policy_mapping_fn
+                ),
+            )
+            check(
+                eval_mapping_src,
+                inspect.getsource(alg2.workers.local_worker().policy_mapping_fn),
+                false=True,
+            )
 
         for _ in range(1):
             obs = env.observation_space.sample()
@@ -1486,7 +1511,7 @@ def check_supported_spaces(
         config_copy = config.copy()
         config_copy.validate()
         # If RLModules are enabled, we need to skip a few tests for now:
-        if config_copy._enable_rl_module_api:
+        if config_copy._enable_new_api_stack:
             # Skip PPO cases in which RLModules don't support the given spaces yet.
             if o_name not in rlmodule_supported_observation_spaces:
                 logger.warning(
@@ -1535,7 +1560,7 @@ def check_supported_spaces(
         except UnsupportedSpaceException:
             stat = "unsupported"
         else:
-            if alg not in ["DDPG", "ES", "ARS", "SAC", "PPO"]:
+            if alg not in ["SAC", "PPO"]:
                 # 2D (image) input: Expect VisionNet.
                 if o_name in ["atari", "image"]:
                     if fw == "torch":
@@ -1565,7 +1590,7 @@ def check_supported_spaces(
     if not frameworks:
         frameworks = ("tf2", "tf", "torch")
 
-    if config._enable_rl_module_api:
+    if config._enable_new_api_stack:
         # Only test the frameworks that are supported by RLModules.
         frameworks = tuple(
             fw for fw in frameworks if fw in rlmodule_supported_frameworks

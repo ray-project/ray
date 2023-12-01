@@ -235,7 +235,8 @@ def flatten_inputs_to_1d_tensor(
 
     Args:
         inputs: The inputs to be flattened.
-        spaces_struct: The structure of the spaces that behind the input
+        spaces_struct: The (possibly nested) structure of the spaces that `inputs`
+            belongs to.
         time_axis: Whether all inputs have a time-axis (after the batch axis).
             If True, will keep not only the batch axis (0th), but the time axis
             (1st) as-is and flatten everything from the 2nd axis up.
@@ -245,26 +246,31 @@ def flatten_inputs_to_1d_tensor(
         flattened/one-hot'd input components. Depending on the time_axis flag,
         the shape is (B, n) or (B, T, n).
 
-    Examples:
-        >>> # B=2
-        >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gymnasium.spaces import Discrete, Box
-        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
-        ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
-        ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
-        ... ) # doctest: +SKIP
-        >>> print(out) # doctest: +SKIP
-        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+    .. testcode::
+        :skipif: True
 
-        >>> # B=2; T=2
-        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
-        ...     ([[1, 0], [0, 1]],
-        ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
-        ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
-        ...     time_axis=True
-        ... ) # doctest: +SKIP
-        >>> print(out) # doctest: +SKIP
-        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],\
+        # B=2
+        from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
+        from gymnasium.spaces import Discrete, Box
+        out = flatten_inputs_to_1d_tensor(
+            {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
+            spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
+        )
+        print(out)
+
+        # B=2; T=2
+        out = flatten_inputs_to_1d_tensor(
+            ([[1, 0], [0, 1]],
+             [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
+            spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
+            time_axis=True
+        )
+        print(out)
+
+    .. testoutput::
+
+        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
         [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
     """
 
@@ -339,13 +345,15 @@ def make_action_immutable(obj):
     Returns:
         The immutable object.
 
-    Examples:
-        >>> import tree
-        >>> import numpy as np
-        >>> from ray.rllib.utils.numpy import make_action_immutable
-        >>> arr = np.arange(1,10)
-        >>> d = dict(a = 1, b = (arr, arr))
-        >>> tree.traverse(make_action_immutable, d, top_down=False) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        import tree
+        import numpy as np
+        from ray.rllib.utils.numpy import make_action_immutable
+        arr = np.arange(1,10)
+        d = dict(a = 1, b = (arr, arr))
+        tree.traverse(make_action_immutable, d, top_down=False)
     """
     if isinstance(obj, np.ndarray):
         obj.setflags(write=False)
@@ -494,10 +502,7 @@ def one_hot(
     )
     shape = x.shape
 
-    # Python 2.7 compatibility, (*shape, depth) is not allowed.
-    shape_list = list(shape[:])
-    shape_list.append(depth)
-    out = np.ones(shape_list) * off_value
+    out = np.ones(shape=(*shape, depth)) * off_value
     indices = []
     for i in range(x.ndim):
         tiles = [1] * x.ndim
@@ -511,6 +516,22 @@ def one_hot(
     indices.append(x)
     out[tuple(indices)] = on_value
     return out.astype(dtype)
+
+
+@PublicAPI
+def one_hot_multidiscrete(x, depths=List[int]):
+    # Handle torch arrays properly.
+    if torch and isinstance(x, torch.Tensor):
+        x = x.numpy()
+
+    shape = x.shape
+    return np.concatenate(
+        [
+            one_hot(x[i] if len(shape) == 1 else x[:, i], depth=n).astype(np.float32)
+            for i, n in enumerate(depths)
+        ],
+        axis=-1,
+    )
 
 
 @PublicAPI

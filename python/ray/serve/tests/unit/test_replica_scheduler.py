@@ -101,14 +101,21 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     if not hasattr(request, "param"):
         request.param = {}
 
-    s = PowerOfTwoChoicesReplicaScheduler(
-        get_or_create_event_loop(),
-        DeploymentID("TEST_DEPLOYMENT", "TEST_APP"),
-        prefer_local_node_routing=request.param.get("prefer_local_node", False),
-        prefer_local_az_routing=request.param.get("prefer_local_az", False),
-        self_node_id=SCHEDULER_NODE_ID,
-        self_actor_id="fake-actor-id",
-        self_availability_zone=request.param.get("az", None),
+    # In order to prevent issues like https://github.com/ray-project/ray/issues/40631,
+    # construct the scheduler on a different loop to mimic the deployment handle path.
+    async def construct_scheduler(loop: asyncio.AbstractEventLoop):
+        return PowerOfTwoChoicesReplicaScheduler(
+            loop,
+            DeploymentID("TEST_DEPLOYMENT", "TEST_APP"),
+            prefer_local_node_routing=request.param.get("prefer_local_node", False),
+            prefer_local_az_routing=request.param.get("prefer_local_az", False),
+            self_node_id=SCHEDULER_NODE_ID,
+            self_actor_id="fake-actor-id",
+            self_availability_zone=request.param.get("az", None),
+        )
+
+    s = asyncio.new_event_loop().run_until_complete(
+        construct_scheduler(get_or_create_event_loop())
     )
 
     # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
@@ -1168,6 +1175,22 @@ async def test_get_queue_state_cancelled_on_timeout(pow_2_scheduler, fake_query)
 
     r1.set_queue_state_response(0, accepted=True)
     assert (await task) == r1
+
+
+@pytest.mark.asyncio
+async def test_replicas_updated_event_on_correct_loop(pow_2_scheduler):
+    """See https://github.com/ray-project/ray/issues/40631.
+
+    The `await` statements below would fail with
+    "RuntimeError: ... got Future <Future pending> attached to a different loop."
+    """
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(
+            pow_2_scheduler._replicas_updated_event.wait(), timeout=0.001
+        )
+
+    pow_2_scheduler._replicas_updated_event.set()
+    await pow_2_scheduler._replicas_updated_event.wait()
 
 
 if __name__ == "__main__":

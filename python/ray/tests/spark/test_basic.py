@@ -304,21 +304,24 @@ class TestSparkLocalCluster:
         cls.spark.stop()
 
     def test_basic(self):
-        setup_ray_cluster(
+        local_addr, remote_addr = setup_ray_cluster(
             num_worker_nodes=2,
             head_node_options={"include_dashboard": False},
             collect_log_to_path="/tmp/ray_log_collect",
         )
 
-        ray.init()
+        for cluster_addr in [local_addr, remote_addr]:
+            ray.init(address=cluster_addr)
 
-        @ray.remote
-        def f(x):
-            return x * x
+            @ray.remote
+            def f(x):
+                return x * x
 
-        futures = [f.remote(i) for i in range(32)]
-        results = ray.get(futures)
-        assert results == [i * i for i in range(32)]
+            futures = [f.remote(i) for i in range(32)]
+            results = ray.get(futures)
+            assert results == [i * i for i in range(32)]
+
+            ray.shutdown()
 
         shutdown_ray_cluster()
 
@@ -343,6 +346,67 @@ class TestSparkLocalCluster:
         assert head_resources.get("GPU", 0) == 2
 
         shutdown_ray_cluster()
+
+    def test_autoscaling_config_generation(self):
+        from ray.util.spark.cluster_init import AutoscalingCluster
+
+        autoscaling_cluster = AutoscalingCluster(
+            head_resources={
+                "CPU": 3,
+                "GPU": 4,
+                "memory": 10000000,
+                "object_store_memory": 20000000,
+            },
+            worker_node_types={
+                "ray.worker": {
+                    "resources": {
+                        "CPU": 5,
+                        "GPU": 6,
+                        "memory": 30000000,
+                        "object_store_memory": 40000000,
+                    },
+                    "node_config": {},
+                    "min_workers": 0,
+                    "max_workers": 100,
+                },
+            },
+            extra_provider_config={
+                "extra_aa": "abc",
+                "extra_bb": 789,
+            },
+            upscaling_speed=2.0,
+            idle_timeout_minutes=3.0,
+        )
+
+        config = autoscaling_cluster._config
+
+        assert config["max_workers"] == 100
+
+        assert config["available_node_types"]["ray.head.default"] == {
+            "resources": {
+                "CPU": 3,
+                "GPU": 4,
+                "memory": 10000000,
+                "object_store_memory": 20000000,
+            },
+            "node_config": {},
+            "max_workers": 0,
+        }
+        assert config["available_node_types"]["ray.worker"] == {
+            "resources": {
+                "CPU": 5,
+                "GPU": 6,
+                "memory": 30000000,
+                "object_store_memory": 40000000,
+            },
+            "node_config": {},
+            "min_workers": 0,
+            "max_workers": 100,
+        }
+        assert config["upscaling_speed"] == 2.0
+        assert config["idle_timeout_minutes"] == 3.0
+        assert config["provider"]["extra_aa"] == "abc"
+        assert config["provider"]["extra_bb"] == 789
 
 
 if __name__ == "__main__":

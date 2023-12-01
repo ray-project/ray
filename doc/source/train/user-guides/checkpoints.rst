@@ -146,7 +146,8 @@ Here are a few examples of saving checkpoints with different training frameworks
         evaluation. If users want to keep the best 3 checkpoints according to ``eval_loss``, they
         should align the saving and evaluation frequency. Below are two examples of valid configurations:
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             args = TrainingArguments(
                 ...,
@@ -276,6 +277,26 @@ are the two main APIs to interact with Train checkpoints:
     :language: python
     :start-after: __inspect_checkpoint_example_start__
     :end-before: __inspect_checkpoint_example_end__
+
+
+For Lightning and Transformers, if you are using the default `RayTrainReportCallback` for checkpoint saving in your training function, 
+you can retrieve the original checkpoint files as below:
+
+.. tab-set::
+
+    .. tab-item:: PyTorch Lightning
+
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __inspect_lightning_checkpoint_example_start__
+            :end-before: __inspect_lightning_checkpoint_example_end__
+    
+    .. tab-item:: Transformers
+
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __inspect_transformers_checkpoint_example_start__
+            :end-before: __inspect_transformers_checkpoint_example_end__
 
 
 .. _train-dl-loading-checkpoints:

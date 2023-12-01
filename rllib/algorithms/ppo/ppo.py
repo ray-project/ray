@@ -14,16 +14,18 @@ import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 import numpy as np
+import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.ppo_learner import (
     PPOLearnerHyperparameters,
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -33,11 +35,8 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -46,6 +45,8 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     ALL_MODULES,
 )
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -57,40 +58,49 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class PPOConfig(PGConfig):
+class PPOConfig(AlgorithmConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> config = PPOConfig()  # doctest: +SKIP
-        >>> config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3)  # doctest: +SKIP
-        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
-        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = PPOConfig()
-        >>> # Print out some default values.
-        >>> print(config.clip_param)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config.training(  # doctest: +SKIP
-        ... lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2
-        ... )
-        >>> # Set the config object's env.
-        >>> config = config.environment(env="CartPole-v1")   # doctest: +SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "PPO",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.ppo import PPOConfig
+        config = PPOConfig()
+        config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3,
+            train_batch_size=128)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build(env="CartPole-v1")
+        algo.train()
+
+    .. testcode::
+
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray import air
+        from ray import tune
+        config = PPOConfig()
+        # Print out some default values.
+
+        # Update the config object.
+        config.training(
+            lr=tune.grid_search([0.001 ]), clip_param=0.2
+        )
+        # Set the config object's env.
+        config = config.environment(env="CartPole-v1")
+
+        # Use to_dict() to get the old-style python config dict
+        # when running with tune.
+        tune.Tuner(
+            "PPO",
+            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            param_space=config.to_dict(),
+        ).fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
@@ -99,6 +109,11 @@ class PPOConfig(PGConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
+        self.lr_schedule = None
+        self.lr = 5e-5
+        self.rollout_fragment_length = "auto"
+        self.train_batch_size = 4000
+
         # PPO specific settings:
         self.use_critic = True
         self.use_gae = True
@@ -116,12 +131,9 @@ class PPOConfig(PGConfig):
         self.vf_clip_param = 10.0
         self.grad_clip = None
 
-        # Override some of PG/AlgorithmConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_rollout_workers = 2
-        self.train_batch_size = 4000
-        self.lr = 5e-5
         self.model["vf_share_layers"] = False
-        self._disable_preprocessor_api = False
         # __sphinx_doc_end__
         # fmt: on
 
@@ -137,10 +149,6 @@ class PPOConfig(PGConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
-
-        # enable the rl module api by default
-        self.rl_module(_enable_rl_module_api=True)
-        self.training(_enable_learner_api=True)
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -256,13 +264,6 @@ class PPOConfig(PGConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if vf_share_layers != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="PPOConfig().vf_share_layers",
-                new="PPOConfig().training(model={'vf_share_layers': ...})",
-                error=True,
-            )
-
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
@@ -306,13 +307,15 @@ class PPOConfig(PGConfig):
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
-        # Can not use Tf with learner api.
-        if self.framework_str == "tf":
-            self.rl_module(_enable_rl_module_api=False)
-            self.training(_enable_learner_api=False)
-
         # Call super's validation method.
         super().validate()
+
+        # Synchronous sampling, on-policy/PPO algos -> Check mismatches between
+        # `rollout_fragment_length` and `train_batch_size` to avoid user confusion.
+        # TODO (sven): Make rollout_fragment_length a property and create a private
+        #  attribute to store (possibly) user provided value (or "auto") in. Deprecate
+        #  `self.get_rollout_fragment_length()`.
+        self.validate_train_batch_size_vs_rollout_fragment_length()
 
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
@@ -345,7 +348,7 @@ class PPOConfig(PGConfig):
             )
 
         # Entropy coeff schedule checking.
-        if self._enable_learner_api:
+        if self._enable_new_api_stack:
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -358,37 +361,6 @@ class PPOConfig(PGConfig):
             )
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
-
-
-class UpdateKL:
-    """Callback to update the KL based on optimization info.
-
-    This is used inside the execution_plan function. The Policy must define
-    a `update_kl` method for this to work. This is achieved for PPO via a
-    Policy mixin class (which adds the `update_kl` method),
-    defined in ppo_[tf|torch]_policy.py.
-    """
-
-    def __init__(self, workers):
-        self.workers = workers
-
-    def __call__(self, fetches):
-        def update(pi, pi_id):
-            assert LEARNER_STATS_KEY not in fetches, (
-                "{} should be nested under policy id key".format(LEARNER_STATS_KEY),
-                fetches,
-            )
-            if pi_id in fetches:
-                kl = fetches[pi_id][LEARNER_STATS_KEY].get("kl")
-                assert kl is not None, (fetches, pi_id)
-                # Make the actual `Policy.update_kl()` call.
-                pi.update_kl(kl)
-            else:
-                logger.warning("No data for {}, not updating kl".format(pi_id))
-
-        # Update KL on all trainable policies within the local (training)
-        # Worker.
-        self.workers.local_worker().foreach_policy_to_train(update)
 
 
 class PPO(Algorithm):
@@ -416,35 +388,70 @@ class PPO(Algorithm):
 
             return PPOTF2Policy
 
-    @ExperimentalAPI
+    @override(Algorithm)
     def training_step(self) -> ResultDict:
+        use_rollout_worker = self.config.env_runner_cls is None or issubclass(
+            self.config.env_runner_cls, RolloutWorker
+        )
+
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
-            if self.config.count_steps_by == "agent_steps":
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers,
-                    max_agent_steps=self.config.train_batch_size,
-                )
+            # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
+            if use_rollout_worker:
+                if self.config.count_steps_by == "agent_steps":
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_agent_steps=self.config.train_batch_size,
+                    )
+                else:
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_env_steps=self.config.train_batch_size,
+                    )
+            # New Episode-returning EnvRunner API.
             else:
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers, max_env_steps=self.config.train_batch_size
+                if self.workers.num_remote_workers() <= 0:
+                    episodes: List[SingleAgentEpisode] = [
+                        self.workers.local_worker().sample()
+                    ]
+                else:
+                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
+                        lambda w: w.sample(), local_worker=False
+                    )
+                # Perform PPO postprocessing on a (flattened) list of Episodes.
+                postprocessed_episodes: List[
+                    SingleAgentEpisode
+                ] = self.postprocess_episodes(tree.flatten(episodes))
+                # Convert list of postprocessed Episodes into a single sample batch.
+                train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
+                    postprocessed_episodes
                 )
 
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
-        # Standardize advantages
+        # Standardize advantages.
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             # TODO (Kourosh) Clearly define what train_batch_size
             #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
             # TODO (Kourosh) Do this inside the Learner so that we don't have to do
             #  this back and forth communication between driver and the remote
             #  learner actors.
-            is_module_trainable = self.workers.local_worker().is_policy_to_train
-            self.learner_group.set_is_module_trainable(is_module_trainable)
+            # TODO (sven): What's the plan for multi-agent setups when the
+            #  policy is gone?
+            # TODO (simon): The default method has already this functionality,
+            #  but this serves simply as a placeholder until it is decided on
+            #  how to replace the functionalities of the policy.
+
+            if (
+                self.config.env_runner_cls is None
+                or self.config.env_runner_cls.__name__ == "RolloutWorker"
+            ):
+                is_module_trainable = self.workers.local_worker().is_policy_to_train
+                self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
@@ -456,7 +463,7 @@ class PPO(Algorithm):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             # The train results's loss keys are pids to their loss values. But we also
             # return a total_loss key at the same level as the pid keys. So we need to
             # subtract that to get the total set of pids to update.
@@ -468,21 +475,24 @@ class PPO(Algorithm):
             policies_to_update = list(train_results.keys())
 
         # TODO (Kourosh): num_grad_updates per each policy should be accessible via
-        # train_results
-        global_vars = {
-            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
-            "num_grad_updates_per_policy": {
-                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
-                for pid in policies_to_update
-            },
-        }
+        #  train_results.
+        if not use_rollout_worker:
+            global_vars = None
+        else:
+            global_vars = {
+                "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+                "num_grad_updates_per_policy": {
+                    pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                    for pid in policies_to_update
+                },
+            }
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
                 from_worker_or_learner_group = None
-                if self.config._enable_learner_api:
+                if self.config._enable_new_api_stack:
                     # sync weights from learner_group to all rollout workers
                     from_worker_or_learner_group = self.learner_group
                 self.workers.sync_weights(
@@ -490,11 +500,11 @@ class PPO(Algorithm):
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
-            elif self.config._enable_learner_api:
+            elif self.config._enable_new_api_stack:
                 weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
 
             kl_dict = {}
             if self.config.use_kl_loss:
@@ -563,6 +573,30 @@ class PPO(Algorithm):
                 )
 
         # Update global vars on local worker as well.
+        # TODO (simon): At least in RolloutWorker obsolete I guess as called in
+        #  `sync_weights()` called above if remote workers. Can we call this
+        #  where `set_weights()` is called on the local_worker?
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
+
+    def postprocess_episodes(
+        self, episodes: List[SingleAgentEpisode]
+    ) -> List[SingleAgentEpisode]:
+        """Calculate advantages and value targets."""
+        from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
+
+        # Bootstrap values.
+        postprocessed_episodes = []
+        # TODO (simon): Remove somehow the double list.
+        # episodes = [episode for episode_list in episodes for episode in episode_list]
+        for episode in episodes:
+            # TODO (sven): Calling 'module' on the 'EnvRunner' only works
+            #  for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
+            postprocessed_episodes.append(
+                compute_gae_for_episode(
+                    episode, self.config, self.workers.local_worker().module
+                )
+            )
+
+        return postprocessed_episodes

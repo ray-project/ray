@@ -18,14 +18,15 @@ Quickstart
 
 For reference, the final code is as follows:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
     def train_func(config):
         # Your PyTorch training code here.
-    
+
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
@@ -36,11 +37,14 @@ For reference, the final code is as follows:
 
 Compare a PyTorch training script with and without Ray Train.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: PyTorch
+    .. tab-item:: PyTorch
 
-        .. code-block:: python
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
+        .. testcode::
+            :skipif: True
 
             import tempfile
             import torch
@@ -70,20 +74,21 @@ Compare a PyTorch training script with and without Ray Train.
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                
-                checkpoint_dir = tempfile.gettempdir() 
+
+                checkpoint_dir = tempfile.gettempdir()
                 checkpoint_path = checkpoint_dir + "/model.checkpoint"
                 torch.save(model.state_dict(), checkpoint_path)
 
-                
 
-    .. group-tab:: PyTorch + Ray Train
+
+    .. tab-item:: PyTorch + Ray Train
 
         .. code-block:: python
-            :emphasize-lines: 9, 10, 12, 17, 18, 26, 27, 41, 42, 44-49
+            :emphasize-lines: 3, 10, 11, 13, 18, 19, 27, 28, 42, 43, 45-50
 
             import tempfile
             import torch
+            import ray
             from torchvision.models import resnet18
             from torchvision.datasets import FashionMNIST
             from torchvision.transforms import ToTensor, Normalize, Compose
@@ -118,13 +123,13 @@ Compare a PyTorch training script with and without Ray Train.
                         optimizer.zero_grad()
                         loss.backward()
                         optimizer.step()
-                    
-                    checkpoint_dir = tempfile.gettempdir() 
+
+                    checkpoint_dir = tempfile.gettempdir()
                     checkpoint_path = checkpoint_dir + "/model.checkpoint"
                     torch.save(model.state_dict(), checkpoint_path)
                     # [3] Report metrics and checkpoint.
                     ray.train.report({"loss": loss.item()}, checkpoint=Checkpoint.from_directory(checkpoint_dir))
-            
+
             # [4] Configure scaling and resource requirements.
             scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
 
@@ -135,10 +140,11 @@ Compare a PyTorch training script with and without Ray Train.
 Set up a training function
 --------------------------
 
-First, update your training code to support distributed training. 
+First, update your training code to support distributed training.
 Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     def train_func(config):
         # Your PyTorch training code here.
@@ -158,7 +164,7 @@ Use the :func:`ray.train.torch.prepare_model` utility function to:
     -from torch.nn.parallel import DistributedDataParallel
     +import ray.train.torch
 
-     def train_func(config): 
+     def train_func(config):
 
          ...
 
@@ -170,7 +176,7 @@ Use the :func:`ray.train.torch.prepare_model` utility function to:
     -    model = model.to(device_id or "cpu")
     -    model = DistributedDataParallel(model, device_ids=[device_id])
     +    model = ray.train.torch.prepare_model(model)
-         
+
          ...
 
 Set up a dataset
@@ -178,10 +184,10 @@ Set up a dataset
 
 .. TODO: Update this to use Ray Data.
 
-Use the :func:`ray.train.torch.prepare_data_loader` utility function, which: 
+Use the :func:`ray.train.torch.prepare_data_loader` utility function, which:
 
 1. Adds a ``DistributedSampler`` to your ``DataLoader``.
-2. Moves the batches to the right device. 
+2. Moves the batches to the right device.
 
 Note that this step isn't necessary if you're passing in Ray Data to your Trainer.
 See :ref:`data-ingest-torch`.
@@ -197,9 +203,9 @@ See :ref:`data-ingest-torch`.
          ...
 
          dataset = ...
-         
+
          data_loader = DataLoader(dataset, batch_size=worker_batch_size)
-    -    data_loader = DataLoader(dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset)) 
+    -    data_loader = DataLoader(dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
     +    data_loader = ray.train.torch.prepare_data_loader(data_loader)
 
          for X, y in data_loader:
@@ -212,7 +218,8 @@ See :ref:`data-ingest-torch`.
     Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
     The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 
@@ -248,7 +255,7 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 1. :class:`num_workers <ray.train.ScalingConfig>` - The number of distributed training worker processes.
 2. :class:`use_gpu <ray.train.ScalingConfig>` - Whether each worker should use a GPU (or CPU).
 
-.. code-block:: python
+.. testcode::
 
     from ray.train import ScalingConfig
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
@@ -259,10 +266,18 @@ For more details, see :ref:`train_scaling_config`.
 Launch a training job
 ---------------------
 
-Tying this all together, you can now launch a distributed training job 
+Tying this all together, you can now launch a distributed training job
 with a :class:`~ray.train.torch.TorchTrainer`.
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    from ray.train import ScalingConfig
+
+    train_func = lambda: None
+    scaling_config = ScalingConfig(num_workers=1)
+
+.. testcode::
 
     from ray.train.torch import TorchTrainer
 
@@ -275,7 +290,7 @@ Access training results
 After training completes, a :class:`~ray.train.Result` object is returned which contains
 information about the training run, including the metrics and checkpoints reported during training.
 
-.. code-block:: python
+.. testcode::
 
     result.metrics     # The metrics reported during training.
     result.checkpoint  # The latest checkpoint reported during training.

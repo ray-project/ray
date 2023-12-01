@@ -29,6 +29,9 @@ struct EventStats {
 
   // Execution stats.
   int64_t cum_execution_time = 0;
+  int64_t cum_queue_time = 0;
+  int64_t min_queue_time = std::numeric_limits<int64_t>::max();
+  int64_t max_queue_time = -1;
   int64_t running_count = 0;
 };
 
@@ -64,11 +67,12 @@ struct GuardedGlobalStats {
 
 /// An opaque stats handle, used to manually instrument event handlers.
 struct StatsHandle {
-  std::string event_name;
-  int64_t start_time;
-  std::shared_ptr<GuardedEventStats> handler_stats;
-  std::shared_ptr<GuardedGlobalStats> global_stats;
-  std::atomic<bool> execution_recorded;
+  const std::string event_name;
+  const int64_t start_time;
+  const std::shared_ptr<GuardedEventStats> handler_stats;
+  const std::shared_ptr<GuardedGlobalStats> global_stats;
+  // Whether RecordEnd or RecordExecution is called.
+  std::atomic<bool> end_or_execution_recorded;
 
   StatsHandle(std::string event_name_,
               int64_t start_time_,
@@ -78,12 +82,10 @@ struct StatsHandle {
         start_time(start_time_),
         handler_stats(std::move(handler_stats_)),
         global_stats(std::move(global_stats_)),
-        execution_recorded(false) {}
-
-  void ZeroAccumulatedQueuingDelay() { start_time = absl::GetCurrentTimeNanos(); }
+        end_or_execution_recorded(false) {}
 
   ~StatsHandle() {
-    if (!execution_recorded) {
+    if (!end_or_execution_recorded) {
       // If handler execution was never recorded, we need to clean up some queueing
       // stats in order to prevent those stats from leaking.
       absl::MutexLock lock(&(handler_stats->mutex));
@@ -99,26 +101,31 @@ class EventTracker {
 
   /// Sets the queueing start time, increments the current and cumulative counts and
   /// returns an opaque handle for these stats. This is used in conjunction with
-  /// RecordExecution() to manually instrument an event.
+  /// RecordExecution() or RecordEnd() to manually instrument an event.
   ///
-  /// The returned opaque stats handle should be given to a subsequent RecordExecution()
-  /// call.
+  /// The returned opaque stats handle MUST be given to a subsequent
+  /// RecordExecution() or RecordEnd() call.
   ///
   /// \param name A human-readable name to which collected stats will be associated.
   /// \param expected_queueing_delay_ns How much to pad the observed queueing start time,
   ///  in nanoseconds.
-  /// \return An opaque stats handle, to be given to RecordExecution().
+  /// \return An opaque stats handle, to be given to RecordExecution() or RecordEnd().
   std::shared_ptr<StatsHandle> RecordStart(const std::string &name,
                                            int64_t expected_queueing_delay_ns = 0);
 
   /// Records stats about the provided function's execution. This is used in conjunction
-  /// with RecordStart() to manually instrument an event loop handler that doesn't call
-  /// .post().
+  /// with RecordStart() to manually instrument an event loop handler that calls .post().
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
   static void RecordExecution(const std::function<void()> &fn,
                               std::shared_ptr<StatsHandle> handle);
+
+  /// Records the end of an event. This is used in conjunction
+  /// with RecordStart() to manually instrument an event.
+  ///
+  /// \param handle An opaque stats handle returned by RecordStart().
+  static void RecordEnd(std::shared_ptr<StatsHandle> handle);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
   /// across all handlers.

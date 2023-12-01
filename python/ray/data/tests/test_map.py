@@ -177,46 +177,37 @@ def test_callable_classes(shutdown_only):
             assert kwarg == 2
             return x
 
-    # map_batches with args & kwargs
-    result = ds.map_batches(
-        StatefulFnWithArgs,
+    # map_batches & map with args & kwargs
+    for ds_map in (ds.map_batches, ds.map):
+        result = ds_map(
+            StatefulFnWithArgs,
+            compute=ray.data.ActorPoolStrategy(),
+            fn_args=(1,),
+            fn_kwargs={"kwarg": 2},
+            fn_constructor_args=(1,),
+            fn_constructor_kwargs={"kwarg": 2},
+        ).take()
+        assert sorted(extract_values("id", result)) == list(range(10)), result
+
+    class StatefulFlatMapFnWithArgs:
+        def __init__(self, arg, kwarg):
+            self._arg = arg
+            assert arg == 1
+            assert kwarg == 2
+
+        def __call__(self, x, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+            return [x] * self._arg
+
+    # flat_map with args & kwargs
+    result = ds.flat_map(
+        StatefulFlatMapFnWithArgs,
         compute=ray.data.ActorPoolStrategy(),
         fn_args=(1,),
         fn_kwargs={"kwarg": 2},
         fn_constructor_args=(1,),
         fn_constructor_kwargs={"kwarg": 2},
-    ).take()
-    assert sorted(extract_values("id", result)) == list(range(10)), result
-
-    class StatefulFlatMapFnWithInitArg:
-        def __init__(self, arg):
-            self._arg = arg
-            assert arg == 1
-
-        def __call__(self, x):
-            return [x] * self._arg
-
-    # flat_map with args
-    result = ds.flat_map(
-        StatefulFlatMapFnWithInitArg,
-        compute=ray.data.ActorPoolStrategy(),
-        fn_constructor_args=(1,),
-    ).take()
-    assert sorted(extract_values("id", result)) == list(range(10)), result
-
-    class StatefulMapFnWithInitArg:
-        def __init__(self, arg):
-            self._arg = arg
-            assert arg == 1
-
-        def __call__(self, x):
-            return x
-
-    # map with args
-    result = ds.map(
-        StatefulMapFnWithInitArg,
-        compute=ray.data.ActorPoolStrategy(),
-        fn_constructor_args=(1,),
     ).take()
     assert sorted(extract_values("id", result)) == list(range(10)), result
 
@@ -598,24 +589,20 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path))
     fn_constructor_args = (put(1),)
     fn_constructor_kwargs = {"b": put(2)}
-    ds2 = (
-        ds.lazy()
-        .map_batches(
-            CallableFn,
-            batch_size=1,
-            batch_format="pandas",
-            compute=ray.data.ActorPoolStrategy(),
-            fn_constructor_args=fn_constructor_args,
-            fn_constructor_kwargs=fn_constructor_kwargs,
-        )
-        .map_batches(
-            CallableFn,
-            batch_size=1,
-            batch_format="pandas",
-            compute=ray.data.ActorPoolStrategy(),
-            fn_constructor_args=fn_constructor_args,
-            fn_constructor_kwargs=fn_constructor_kwargs,
-        )
+    ds2 = ds.map_batches(
+        CallableFn,
+        batch_size=1,
+        batch_format="pandas",
+        compute=ray.data.ActorPoolStrategy(),
+        fn_constructor_args=fn_constructor_args,
+        fn_constructor_kwargs=fn_constructor_kwargs,
+    ).map_batches(
+        CallableFn,
+        batch_size=1,
+        batch_format="pandas",
+        compute=ray.data.ActorPoolStrategy(),
+        fn_constructor_args=fn_constructor_args,
+        fn_constructor_kwargs=fn_constructor_kwargs,
     )
     ds_list = ds2.take()
     values = sorted([s["one"] for s in ds_list])
@@ -627,24 +614,20 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path))
     fn_constructor_args = (put(1),)
     fn_constructor_kwargs = {"b": put(2)}
-    ds2 = (
-        ds.lazy()
-        .map_batches(
-            lambda df, a, b=None: b * df + a,
-            batch_size=1,
-            batch_format="pandas",
-            compute=ray.data.ActorPoolStrategy(),
-            fn_args=(put(1),),
-            fn_kwargs={"b": put(2)},
-        )
-        .map_batches(
-            CallableFn,
-            batch_size=1,
-            batch_format="pandas",
-            compute=ray.data.ActorPoolStrategy(),
-            fn_constructor_args=fn_constructor_args,
-            fn_constructor_kwargs=fn_constructor_kwargs,
-        )
+    ds2 = ds.map_batches(
+        lambda df, a, b=None: b * df + a,
+        batch_size=1,
+        batch_format="pandas",
+        compute=ray.data.ActorPoolStrategy(),
+        fn_args=(put(1),),
+        fn_kwargs={"b": put(2)},
+    ).map_batches(
+        CallableFn,
+        batch_size=1,
+        batch_format="pandas",
+        compute=ray.data.ActorPoolStrategy(),
+        fn_constructor_args=fn_constructor_args,
+        fn_constructor_kwargs=fn_constructor_kwargs,
     )
     ds_list = ds2.take()
     values = sorted([s["one"] for s in ds_list])

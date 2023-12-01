@@ -20,9 +20,8 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-    FileExtensionFilter,
-    _unwrap_protocol,
 )
+from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
@@ -203,7 +202,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.read_csv(
         path,
         filesystem=fs,
-        partition_filter=FileExtensionFilter("csv"),
+        file_extensions=["csv"],
         partitioning=None,
     )
     assert ds.num_blocks() == 2
@@ -236,7 +235,7 @@ def test_csv_ignore_missing_paths(
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_csv(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.fully_executed()
+            ds.materialize()
 
 
 @pytest.mark.parametrize(
@@ -872,7 +871,7 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
     # Single non-CSV file with filter.
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path3, partition_filter=FileExtensionFilter("csv")).schema()
+        ray.data.read_csv(path3, file_extensions=["csv"]).schema()
 
     # Single CSV file without extension.
     ds = ray.data.read_csv(path2)
@@ -881,7 +880,7 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
     # Single CSV file without extension with filter.
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path2, partition_filter=FileExtensionFilter("csv")).schema()
+        ray.data.read_csv(path2, file_extensions=["csv"]).schema()
 
     # Directory of CSV and non-CSV files.
     error_message = "Failed to read CSV file"
@@ -889,7 +888,7 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
         ray.data.read_csv(tmp_path).schema()
 
     # Directory of CSV and non-CSV files with filter.
-    ds = ray.data.read_csv(tmp_path, partition_filter=FileExtensionFilter("csv"))
+    ds = ray.data.read_csv(tmp_path, file_extensions=["csv"])
     assert ds.to_pandas().equals(df)
 
 

@@ -1,24 +1,30 @@
 import asyncio
 import os
 import sys
-from typing import Optional
+from typing import Dict, Optional
 
 import pytest
 import requests
 import starlette.responses
 from fastapi import FastAPI
-from pydantic import BaseModel, ValidationError
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import BaseModel, ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.deployment import Application
-from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, RayServeHandle
+
+
+@pytest.fixture
+def serve_and_ray_shutdown():
+    yield
+    serve.shutdown()
+    ray.shutdown()
 
 
 @serve.deployment()
@@ -67,49 +73,64 @@ def test_e2e(serve_instance):
     assert resp == "POST"
 
 
-def test_starlette_response(serve_instance):
-    @serve.deployment(name="basic")
-    def basic(_):
+def test_starlette_response_basic(serve_instance):
+    @serve.deployment
+    def basic():
         return starlette.responses.Response("Hello, world!", media_type="text/plain")
 
-    basic.deploy()
-    assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
+    serve.run(basic.bind())
+    assert requests.get("http://127.0.0.1:8000/").text == "Hello, world!"
 
-    @serve.deployment(name="html")
-    def html(_):
+
+def test_starlette_response_html(serve_instance):
+    @serve.deployment
+    def html():
         return starlette.responses.HTMLResponse(
             "<html><body><h1>Hello, world!</h1></body></html>"
         )
 
-    html.deploy()
+    serve.run(html.bind())
     assert (
-        requests.get("http://127.0.0.1:8000/html").text
+        requests.get("http://127.0.0.1:8000/").text
         == "<html><body><h1>Hello, world!</h1></body></html>"
     )
 
-    @serve.deployment(name="plain_text")
-    def plain_text(_):
+
+def test_starlette_response_plain_text(serve_instance):
+    @serve.deployment
+    def plain_text():
         return starlette.responses.PlainTextResponse("Hello, world!")
 
-    plain_text.deploy()
-    assert requests.get("http://127.0.0.1:8000/plain_text").text == "Hello, world!"
+    serve.run(plain_text.bind())
+    assert requests.get("http://127.0.0.1:8000/").text == "Hello, world!"
 
-    @serve.deployment(name="json")
-    def json(_):
+
+def test_starlette_response_json(serve_instance):
+    @serve.deployment
+    def json():
         return starlette.responses.JSONResponse({"hello": "world"})
 
-    json.deploy()
+    serve.run(json.bind())
     assert requests.get("http://127.0.0.1:8000/json").json()["hello"] == "world"
 
-    @serve.deployment(name="redirect")
-    def redirect(_):
-        return starlette.responses.RedirectResponse(url="http://127.0.0.1:8000/basic")
 
-    redirect.deploy()
+def test_starlette_response_redirect(serve_instance):
+    @serve.deployment
+    def basic():
+        return starlette.responses.Response("Hello, world!", media_type="text/plain")
+
+    @serve.deployment(name="redirect")
+    def redirect():
+        return starlette.responses.RedirectResponse(url="http://127.0.0.1:8000/")
+
+    serve.run(basic.bind(), name="app1", route_prefix="/")
+    serve.run(redirect.bind(), name="app2", route_prefix="/redirect")
     assert requests.get("http://127.0.0.1:8000/redirect").text == "Hello, world!"
 
-    @serve.deployment(name="streaming")
-    def streaming(_):
+
+def test_starlette_response_streaming(serve_instance):
+    @serve.deployment
+    def streaming():
         async def slow_numbers():
             for number in range(1, 4):
                 yield str(number)
@@ -119,8 +140,8 @@ def test_starlette_response(serve_instance):
             slow_numbers(), media_type="text/plain", status_code=418
         )
 
-    streaming.deploy()
-    resp = requests.get("http://127.0.0.1:8000/streaming")
+    serve.run(streaming.bind())
+    resp = requests.get("http://127.0.0.1:8000/")
     assert resp.text == "123"
     assert resp.status_code == 418
 
@@ -275,69 +296,6 @@ def test_scaling_replicas(serve_instance):
     assert max(counter_result) - min(counter_result) > 6
 
 
-def test_delete_deployment(serve_instance):
-    @serve.deployment(name="delete")
-    def function(_):
-        return "hello"
-
-    function.deploy()
-
-    assert requests.get("http://127.0.0.1:8000/delete").text == "hello"
-
-    function.delete()
-
-    @serve.deployment(name="delete")
-    def function2(_):
-        return "olleh"
-
-    function2.deploy()
-
-    wait_for_condition(
-        lambda: requests.get("http://127.0.0.1:8000/delete").text == "olleh", timeout=6
-    )
-
-
-@pytest.mark.parametrize("blocking", [False, True])
-def test_delete_deployment_group(serve_instance, blocking):
-    @serve.deployment(num_replicas=1)
-    def f(*args):
-        return "got f"
-
-    @serve.deployment(num_replicas=2)
-    def g(*args):
-        return "got g"
-
-    # Check redeploying after deletion
-    for _ in range(2):
-        f.deploy()
-        g.deploy()
-
-        wait_for_condition(
-            lambda: requests.get("http://127.0.0.1:8000/f").text == "got f", timeout=5
-        )
-        wait_for_condition(
-            lambda: requests.get("http://127.0.0.1:8000/g").text == "got g", timeout=5
-        )
-
-        # Check idempotence
-        for _ in range(2):
-            serve_instance.delete_deployments(["f", "g"], blocking=blocking)
-
-            wait_for_condition(
-                lambda: requests.get("http://127.0.0.1:8000/f").status_code == 404,
-                timeout=5,
-            )
-            wait_for_condition(
-                lambda: requests.get("http://127.0.0.1:8000/g").status_code == 404,
-                timeout=5,
-            )
-
-            wait_for_condition(
-                lambda: len(serve_instance.list_deployments_v1()) == 0,
-                timeout=5,
-            )
-
-
 def test_starlette_request(serve_instance):
     @serve.deployment(name="api")
     async def echo_body(starlette_request):
@@ -352,18 +310,6 @@ def test_starlette_request(serve_instance):
 
     resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
     assert resp == long_string
-
-
-def test_start_idempotent(serve_instance):
-    @serve.deployment(name="start")
-    def func(*args):
-        pass
-
-    func.deploy()
-
-    assert "start" in serve.list_deployments()
-    serve.start()
-    assert "start" in serve.list_deployments()
 
 
 def test_shutdown_destructor(serve_instance):
@@ -466,35 +412,20 @@ def test_deploy_application_basic(serve_instance):
             return "Hello, world!"
 
     # Test function deployment with app name
-    f_handle = serve.run(f.bind(), name="app_f").options(
-        use_new_handle_api=True,
-    )
+    f_handle = serve.run(f.bind(), name="app_f")
     assert f_handle.remote().result() == "got f"
     assert requests.get("http://127.0.0.1:8000/").text == "got f"
 
     # Test function deployment with app name and route_prefix
-    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g").options(
-        use_new_handle_api=True,
-    )
+    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
     assert g_handle.remote().result() == "got g"
     assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
 
     # Test function deployment with app name and route_prefix set in deployment
     # decorator
-    h_handle = serve.run(h.bind(), name="app_h").options(
-        use_new_handle_api=True,
-    )
+    h_handle = serve.run(h.bind(), name="app_h")
     assert h_handle.remote().result() == "got h"
     assert requests.get("http://127.0.0.1:8000/my_prefix").text == "got h"
-
-    # Test deployment graph
-    graph_handle = serve.run(
-        DAGDriver.bind(Model1.bind()), name="graph", route_prefix="/my_graph"
-    ).options(
-        use_new_handle_api=True,
-    )
-    assert graph_handle.predict.remote().result() == "got model1"
-    assert requests.get("http://127.0.0.1:8000/my_graph").text == '"got model1"'
 
     # Test FastAPI
     serve.run(MyFastAPIDeployment.bind(), name="FastAPI")
@@ -779,7 +710,40 @@ class TestAppBuilder:
     def test_args_typed(self):
         args_dict = {"message": "hiya", "num_replicas": "3"}
 
+        def build(args):
+            """Builder with no type hint."""
+
+            return self.A.options(num_replicas=args["num_replicas"]).bind(
+                args["message"]
+            )
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
+        def build(args: Dict[str, str]):
+            """Builder with vanilla type hint."""
+
+            return self.A.options(num_replicas=args["num_replicas"]).bind(
+                args["message"]
+            )
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
+        class ForwardRef:
+            def build(args: "ForwardRef"):
+                """Builder with forward reference as type hint."""
+
+                return self.A.options(num_replicas=args["num_replicas"]).bind(
+                    args["message"]
+                )
+
+        app = call_app_builder_with_args_if_necessary(ForwardRef.build, args_dict)
+        assert isinstance(app, Application)
+
         def build(args: self.TypedArgs):
+            """Builder with Pydantic model type hint."""
+
             assert isinstance(args, self.TypedArgs)
             assert args.message == "hiya"
             assert args.num_replicas == 3
@@ -809,6 +773,36 @@ class TestAppBuilder:
             call_app_builder_with_args_if_necessary(
                 check_missing_required, {"num_replicas": "10"}
             )
+
+    @pytest.mark.parametrize("use_v1_patch", [True, False])
+    def test_pydantic_version_compatibility(self, use_v1_patch: bool):
+        """Check compatibility with different pydantic versions."""
+
+        if use_v1_patch:
+            try:
+                # Only runs if installed pydantic version is >=2.5.0
+                from pydantic.v1 import BaseModel
+            except ImportError:
+                return
+        else:
+            from pydantic import BaseModel
+
+        cat_dict = {"color": "orange", "age": 10}
+
+        class Cat(BaseModel):
+            color: str
+            age: int
+
+        def build(args: Cat):
+            """Builder with Pydantic model type hint."""
+
+            assert isinstance(args, Cat), f"args type: {type(args)}"
+            assert args.color == cat_dict["color"]
+            assert args.age == cat_dict["age"]
+            return self.A.bind(f"My {args.color} cat is {args.age} years old.")
+
+        app = call_app_builder_with_args_if_necessary(build, cat_dict)
+        assert isinstance(app, Application)
 
 
 def test_no_slash_route_prefix(serve_instance):

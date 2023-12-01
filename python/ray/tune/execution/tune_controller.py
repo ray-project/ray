@@ -61,7 +61,6 @@ from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
-from ray.tune.web_server import TuneServer
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
 
@@ -82,7 +81,6 @@ class TuneController:
         scheduler: Optional[TrialScheduler] = None,
         stopper: Optional[Stopper] = None,
         resume: Union[str, bool] = False,
-        server_port: Optional[int] = None,
         fail_fast: bool = False,
         checkpoint_period: Union[str, int] = None,
         callbacks: Optional[List[Callback]] = None,
@@ -204,11 +202,6 @@ class TuneController:
         self._print_trial_errors = bool(
             int(os.environ.get("TUNE_PRINT_ALL_TRIAL_ERRORS", "1"))
         )
-
-        self._server = None
-        self._server_port = server_port
-        if server_port is not None:
-            self._server = TuneServer(self, self._server_port)
 
         self._trials: List[Trial] = []
         self._live_trials: Set[Trial] = set()  # Set of non-terminated trials
@@ -437,9 +430,13 @@ class TuneController:
             # Ex: moved local/cloud experiment directory
 
             # Propagate updated storage ctx properties to the trial's restored copy.
-            # TODO(justinvyu): [handle_moved_storage_path]
-            trial.storage.storage_path = self._storage.storage_path
-            trial.storage.experiment_dir_name = self._storage.experiment_dir_name
+            new_storage = copy.copy(trial.storage)
+            new_storage.storage_filesystem = self._storage.storage_filesystem
+            new_storage.storage_fs_path = self._storage.storage_fs_path
+            new_storage.experiment_dir_name = self._storage.experiment_dir_name
+            # ATTN: `trial.set_storage` is used intentionally, since it
+            # also updates the absolute paths and filesystem of tracked checkpoints.
+            trial.set_storage(new_storage)
 
             # Avoid creating logdir in client mode for returned trial results,
             # since the dir might not be creatable locally.
@@ -747,13 +744,6 @@ class TuneController:
             raise e
 
         self._iteration += 1
-
-        if self._server:
-            with warn_if_slow("server"):
-                self._process_stop_requests()
-
-            if self.is_finished():
-                self._server.shutdown()
 
         with warn_if_slow("on_step_end"):
             self.on_step_end()
@@ -2036,7 +2026,6 @@ class TuneController:
             "_trials",
             "_live_trials",
             "_stop_queue",
-            "_server",
             "_search_alg",
             "_placeholder_resolvers",
             "_scheduler_alg",
@@ -2066,12 +2055,9 @@ class TuneController:
             "_actor_cache",
         ]:
             del state[k]
-        state["launch_web_server"] = bool(self._server)
         return state
 
     def __setstate__(self, state):
-        launch_web_server = state.pop("launch_web_server")
-
         # Use session_str from previous checkpoint if does not exist
         session_str = state.pop("_session_str")
         self.__dict__.setdefault("_session_str", session_str)
@@ -2081,9 +2067,6 @@ class TuneController:
 
         self.__dict__.update(state)
         self._checkpoint_manager = self._create_checkpoint_manager()
-
-        if launch_web_server:
-            self._server = TuneServer(self, self._server_port)
 
 
 class _TrialExecutorWrapper:

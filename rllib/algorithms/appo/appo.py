@@ -19,7 +19,6 @@ from ray.rllib.algorithms.appo.appo_learner import (
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
-from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -40,35 +39,44 @@ logger = logging.getLogger(__name__)
 class APPOConfig(ImpalaConfig):
     """Defines a configuration class from which an APPO Algorithm can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.appo import APPOConfig
-        >>> config = APPOConfig().training(lr=0.01, grad_clip=30.0)
-        >>> config = config.resources(num_gpus=1)
-        >>> config = config.rollouts(num_rollout_workers=16)
-        >>> config = config.environment("CartPole-v1")
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build an Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.appo import APPOConfig
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = APPOConfig()
-        >>> # Print out some default values.
-        >>> print(config.sample_async)   # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config = config.training(lr=tune.grid_search([0.001, 0.0001]))
-        >>> # Set the config object's env.
-        >>> config = config.environment(env="CartPole-v1")
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "APPO",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.appo import APPOConfig
+        config = APPOConfig().training(lr=0.01, grad_clip=30.0, train_batch_size=50)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+        config = config.environment("CartPole-v1")
+
+        # Build an Algorithm object from the config and run 1 training iteration.
+        algo = config.build()
+        algo.train()
+        del algo
+
+    .. testcode::
+
+        from ray.rllib.algorithms.appo import APPOConfig
+        from ray import air
+        from ray import tune
+
+        config = APPOConfig()
+        # Update the config object.
+        config = config.training(lr=tune.grid_search([0.001,]))
+        # Set the config object's env.
+        config = config.environment(env="CartPole-v1")
+        # Use to_dict() to get the old-style python config dict
+        # when running with tune.
+        tune.Tuner(
+            "APPO",
+            run_config=air.RunConfig(stop={"training_iteration": 1},
+                                     verbose=0),
+            param_space=config.to_dict(),
+
+        ).fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
@@ -106,7 +114,7 @@ class APPOConfig(ImpalaConfig):
         self.broadcast_interval = 1
 
         self.grad_clip = 40.0
-        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
         # configured by the user. On the old API stack, RLlib will always clip by
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
@@ -176,8 +184,8 @@ class APPOConfig(ImpalaConfig):
                 samples to be trained on by the learner group before updating the target
                 networks and tuned the kl loss coefficients that are used during
                 training.
-                NOTE: this parameter is only applicable when using the learner api
-                (_enable_learner_api=True and _enable_rl_module_api=True).
+                NOTE: This parameter is only applicable when using the Learner API
+                (_enable_new_api_stack=True).
 
 
         Returns:
@@ -263,13 +271,6 @@ class APPOConfig(ImpalaConfig):
         )
 
 
-# Still used by one of the old checkpoints in tests.
-# Keep a shim version of this around.
-class UpdateTargetAndKL:
-    def __init__(self, workers, config):
-        pass
-
-
 class APPO(Impala):
     def __init__(self, config, *args, **kwargs):
         """Initializes an APPO instance."""
@@ -279,20 +280,10 @@ class APPO(Impala):
 
         # TODO(avnishn):
         # does this need to happen in __init__? I think we can move it to setup()
-        if not self.config._enable_rl_module_api:
+        if not self.config._enable_new_api_stack:
             self.workers.local_worker().foreach_policy_to_train(
                 lambda p, _: p.update_target()
             )
-
-    @override(Impala)
-    def setup(self, config: AlgorithmConfig):
-        super().setup(config)
-
-        # TODO(avnishn):
-        # this attribute isn't used anywhere else in the code. I think we can safely
-        # delete it.
-        if not self.config._enable_rl_module_api:
-            self.update_kl = UpdateKL(self.workers)
 
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
@@ -307,7 +298,7 @@ class APPO(Impala):
                 training step.
         """
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             if NUM_TARGET_UPDATES in train_results:
                 self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
                 self._counters[LAST_TARGET_UPDATE_TS] = train_results[
@@ -391,7 +382,7 @@ class APPO(Impala):
 
             return APPOTorchPolicy
         elif config["framework"] == "tf":
-            if config._enable_rl_module_api:
+            if config._enable_new_api_stack:
                 raise ValueError(
                     "RLlib's RLModule and Learner API is not supported for"
                     " tf1. Use "
