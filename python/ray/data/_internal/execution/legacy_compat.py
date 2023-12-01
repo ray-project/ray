@@ -137,6 +137,23 @@ def execute_read_only_to_legacy_lazy_block_list(
     dataset_uuid: str,
     preserve_order: bool,
 ) -> LazyBlockList:
+    """Execute a read-only plan with the new executor and
+    translate it into a legacy LazyBlockList containing ReadTasks from the
+    InputDataBuffer operator. Note that the underlying ReadTasks are not executed,
+    only their known metadata is fetched from executing the InputDataBuffer operator.
+
+    Args:
+        executor: The executor to use.
+        plan: The legacy plan to execute.
+        allow_clear_input_blocks: Whether the executor may consider clearing blocks.
+        dataset_uuid: UUID of the dataset for this execution.
+        preserve_order: Whether to preserve order in execution.
+
+    Returns:
+        The output as a legacy LazyBlockList.
+    """
+    assert plan.is_read_only(), "This function only supports read-only plans."
+
     ctx = DataContext.get_current()
     read_map_op, stats = _get_execution_dag(
         executor,
@@ -161,6 +178,7 @@ def execute_read_only_to_legacy_lazy_block_list(
     assert isinstance(plan._logical_plan, LogicalPlan)
     read_logical_op = plan._logical_plan.dag
     assert isinstance(read_logical_op, Read)
+
     (_, _, estimated_num_blocks, k,) = compute_additional_split_factor(
         read_logical_op._datasource_or_legacy_reader,
         read_logical_op._parallelism,

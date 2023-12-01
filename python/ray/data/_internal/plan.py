@@ -843,11 +843,7 @@ class ExecutionPlan:
     def is_read_only(self) -> bool:
         """Return whether the underlying logical plan contains only a Read op."""
         root_op = self._logical_plan.dag
-        return (
-            isinstance(root_op, Read)
-            and len(root_op.output_dependencies) == 0
-            and len(root_op.input_dependencies) == 0
-        )
+        return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
 
     def is_read_stage_equivalent(self) -> bool:
         """Return whether this plan can be executed as only a read stage."""

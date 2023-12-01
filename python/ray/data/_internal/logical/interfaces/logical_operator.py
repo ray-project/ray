@@ -1,4 +1,3 @@
-import copy
 from typing import List
 
 from .operator import Operator
@@ -18,9 +17,7 @@ class LogicalOperator(Operator):
     ):
         super().__init__(
             name,
-            # Create a deep copy of the input operators
-            # to avoid modifying their original dependencies.
-            [copy.deepcopy(in_op) for in_op in input_dependencies],
+            input_dependencies,
         )
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x
