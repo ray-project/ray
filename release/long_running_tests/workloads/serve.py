@@ -67,7 +67,7 @@ class Echo:
         return await self.handle_batch(request)
 
 
-serve.run(Echo.bind(), route_prefix="/echo")
+Echo.deploy()
 
 print("Warming up")
 for _ in range(5):

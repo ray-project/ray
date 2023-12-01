@@ -15,21 +15,22 @@ replicas on CPUs.
 """
 
 import os
-from typing import List, Optional
-import asyncio
-import time
-
-import aiohttp
-import click
-import numpy as np
-import starlette.requests
-import torch
-from torchvision import models
-
+import ray
 from ray import serve
-from ray.serve.handle import DeploymentHandle
-
+from torchvision import models
+from typing import List
+import torch
+from ray.serve.drivers import DAGDriver
+from ray.dag.input_node import InputNode
+import asyncio
+import aiohttp
+import starlette
+import time
 from serve_test_utils import save_test_results
+import numpy as np
+import click
+from typing import Optional
+from ray.serve.handle import RayServeHandle
 
 
 # 8 images as input when batch size increase, we replica the input here
@@ -47,7 +48,7 @@ input_uris = [
 
 @serve.deployment
 class ImageObjectioner:
-    def __init__(self, handle: DeploymentHandle, device="cpu"):
+    def __init__(self, handle: RayServeHandle, device="cpu"):
         self.model = models.resnet50(pretrained=True)
         self.model.eval().to(device)
         self.device = device
@@ -57,7 +58,7 @@ class ImageObjectioner:
 
         preprocessing_tasks = []
         for uri in uris:
-            preprocessing_tasks.append(self.handle.remote([uri]))
+            preprocessing_tasks.append(await self.handle.remote([uri]))
         image_tensors_lists = await asyncio.gather(*preprocessing_tasks)
         image_tensors = [
             tensor for item_tensors in image_tensors_lists for tensor in item_tensors
@@ -67,10 +68,6 @@ class ImageObjectioner:
         res = self.model(data).to("cpu")
         end = time.time()
         return {"result": res, "model_inference_latency": end - start}
-
-    async def __call__(self, request: starlette.requests.Request):
-        uris = await request.json()
-        return await self.predict(uris)
 
 
 @serve.deployment(num_replicas=5)
@@ -152,6 +149,10 @@ async def trial(measure_func, data_size: int = 8, num_clients: int = 1):
     return throughput_mean, inference_latency_mean
 
 
+async def json_resolver(request: starlette.requests.Request):
+    return await request.json()
+
+
 @click.command()
 @click.option(
     "--gpu-env",
@@ -174,19 +175,20 @@ def main(gpu_env: Optional[bool], smoke_run: Optional[bool]):
     # batch size
     batch_sizes = [16, 32, 64]
 
-    io = ImageObjectioner.bind(DataDownloader.bind(), device=device)
-    handle = serve.run(io)
+    with InputNode() as user_input:
+        io = ImageObjectioner.bind(DataDownloader.bind(), device=device)
+        dag = DAGDriver.bind(io.predict.bind(user_input), http_adapter=json_resolver)
+        handle = serve.run(dag)
 
     if smoke_run:
         res = handle.predict.remote(input_uris)
-        print(res.result())
+        print(ray.get(res))
 
     else:
         result = {}
         print("warming up...")
         for _ in range(10):
-            handle.predict.remote([input_uris[0]]).result()
-
+            res = handle.predict.remote([input_uris[0]])
         print("start load testing...")
         for batch_size in batch_sizes:
             throughput_mean_tps, model_inference_latency_mean = asyncio.run(

@@ -25,7 +25,7 @@ class TestScenario(enum.Enum):
 
 if os.environ.get("RAY_IMAGE") is not None:
     ray_image = os.environ.get("RAY_IMAGE")
-elif ray.__version__ != "3.0.0.dev0":
+elif ray.__version__ != "2.7.2":
     ray_image = f"rayproject/ray:{ray.__version__}"
 elif ray.__commit__ == "{{RAY_COMMIT_SHA}}":
     ray_image = "rayproject/ray:nightly"
@@ -51,7 +51,7 @@ def generate_cluster_variable():
 
 def check_kuberay_installed():
     # Make sure the ray namespace exists
-    KUBERAY_VERSION = "v1.0.0"
+    KUBERAY_VERSION = "v0.6.0"
     uri = (
         "github.com/ray-project/kuberay/manifests"
         f"/base?ref={KUBERAY_VERSION}&timeout=90s"

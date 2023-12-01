@@ -17,7 +17,9 @@ import click
 
 from typing import Optional
 
+import ray
 from ray import serve
+from ray.serve.context import _get_global_client
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -41,29 +43,41 @@ class Node:
         prev_node=None,
         init_delay_secs=0,
         compute_delay_secs=0,
+        sync_handle=True,
     ):
         time.sleep(init_delay_secs)
         self.id = id
         self.prev_node = prev_node
         self.compute_delay_secs = compute_delay_secs
+        self.sync_handle = sync_handle
 
     async def predict(self, input_data: int):
         await asyncio.sleep(self.compute_delay_secs)
         if self.prev_node:
-            return await self.prev_node.predict.remote(input_data) + 1
+            if self.sync_handle:
+                return await self.prev_node.predict.remote(input_data) + 1
+            else:
+                return await (await self.prev_node.predict.remote(input_data)) + 1
         else:
             return input_data + 1
 
 
 def construct_long_chain_graph_with_pure_handle(
-    chain_length, init_delay_secs=0, compute_delay_secs=0
+    chain_length, sync_handle: bool, init_delay_secs=0, compute_delay_secs=0
 ):
-    prev_node = None
+    prev_handle = None
     for id in range(chain_length):
-        prev_node = Node.options(name=str(id)).bind(
-            id, prev_node, init_delay_secs, compute_delay_secs
+        Node.options(name=str(id)).deploy(
+            id, prev_handle, init_delay_secs, compute_delay_secs, sync_handle
         )
-    return serve.run(prev_node)
+        prev_handle = _get_global_client().get_handle(
+            str(id), app_name="", sync=sync_handle
+        )
+    return prev_handle
+
+
+async def sanity_check_graph_deployment_with_async_handle(handle, expected_result):
+    assert await (await handle.predict.remote(0)) == expected_result
 
 
 @click.command()
@@ -82,6 +96,7 @@ def construct_long_chain_graph_with_pure_handle(
     default=DEFAULT_THROUGHPUT_TRIAL_DURATION_SECS,
 )
 @click.option("--local-test", type=bool, default=True)
+@click.option("--sync-handle", type=bool, default=True)
 def main(
     chain_length: Optional[int],
     init_delay_secs: Optional[int],
@@ -90,6 +105,7 @@ def main(
     num_clients: Optional[int],
     throughput_trial_duration_secs: Optional[int],
     local_test: Optional[bool],
+    sync_handle: Optional[bool],
 ):
     if local_test:
         setup_local_single_node_cluster(1, num_cpu_per_node=8)
@@ -98,14 +114,18 @@ def main(
 
     handle = construct_long_chain_graph_with_pure_handle(
         chain_length,
+        sync_handle,
         init_delay_secs=init_delay_secs,
         compute_delay_secs=compute_delay_secs,
     )
-    assert handle.predict.remote(0).result() == chain_length
+    if sync_handle:
+        assert ray.get(handle.predict.remote(0)) == chain_length
+    else:
+        sanity_check_graph_deployment_with_async_handle(handle, chain_length)
 
     throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(
-            handle.predict.remote,
+            handle,
             chain_length,
             duration_secs=throughput_trial_duration_secs,
             num_clients=num_clients,
@@ -113,7 +133,7 @@ def main(
     )
     latency_mean_ms, latency_std_ms = asyncio.run(
         benchmark_latency_ms(
-            handle.predict.remote,
+            handle,
             chain_length,
             num_requests=num_requests_per_client,
             num_clients=num_clients,
@@ -132,6 +152,7 @@ def main(
         "init_delay_secs": init_delay_secs,
         "compute_delay_secs": compute_delay_secs,
         "local_test": local_test,
+        "sync_handle": sync_handle,
     }
     results["perf_metrics"] = [
         {

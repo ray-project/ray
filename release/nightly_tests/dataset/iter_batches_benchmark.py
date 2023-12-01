@@ -1,3 +1,4 @@
+import sys
 from typing import Optional
 
 import ray
@@ -5,7 +6,10 @@ from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
 
-from typing import Literal
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 
 def iter_batches(
@@ -58,7 +62,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
 
     # Test default args.
     test_name = "iter-batches-default"
-    benchmark.run_materialize_ds(
+    benchmark.run(
         test_name,
         iter_batches,
         ds=ds,
@@ -73,7 +77,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
         for new_format in ["pyarrow", "pandas", "numpy"]:
             for batch_size in batch_sizes:
                 test_name = f"iter-batches-conversion-{current_format}-to-{new_format}-{batch_size}"  # noqa: E501
-                benchmark.run_materialize_ds(
+                benchmark.run(
                     test_name,
                     iter_batches,
                     ds=new_ds,
@@ -87,7 +91,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
         for batch_size in batch_sizes:
             for shuffle_buffer_size in [batch_size, 2 * batch_size, 4 * batch_size]:
                 test_name = f"iter-batches-shuffle-{batch_format}-{batch_size}-{shuffle_buffer_size}"  # noqa: E501
-                benchmark.run_materialize_ds(
+                benchmark.run(
                     test_name,
                     iter_batches,
                     ds=ds,
@@ -105,7 +109,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
     ).materialize()
     for batch_size in [32 * 1024, 64 * 1024, 256 * 1024]:
         test_name = f"iter-batches-block-concat-to-batch-{batch_size}"
-        benchmark.run_materialize_ds(
+        benchmark.run(
             test_name,
             iter_batches,
             ds=new_ds,

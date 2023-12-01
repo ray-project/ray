@@ -1,0 +1,13 @@
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
+
+debian_packages:
+  - curl
+
+python:
+  pip_packages: []
+  conda_packages: []
+
+post_build_cmds:
+  - echo {{ env["TIMESTAMP"] }}
+  - pip uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

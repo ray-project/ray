@@ -71,7 +71,7 @@ def deploy_replicas(num_replicas, max_batch_size) -> List[str]:
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    serve.run(Echo.bind(), route_prefix=f"/{name}")
+    Echo.deploy()
     return [name]
 
 
