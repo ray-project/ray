@@ -91,10 +91,13 @@ def test_b(shutdown_only):
     print(f"container_id: {container_id}")
     print("docker ps:", subprocess.check_output(["docker", "ps"]))
 
+    output = run_in_docker_container("ls -l /var/run/docker.sock", container_id)
+    regex = ".{10} +\d+ +root +(\d+) \d+ [A-Za-z]+ +\d+ +.+ +\/var\/run\/docker\.sock"
+    docker_group_id = re.search(regex, output).group(1)
+
     run_in_docker_container("id", container_id)
-    run_in_docker_container("ls -l /var/run/docker.sock", container_id)
     run_in_docker_container("cat /etc/group", container_id)
-    run_in_docker_container("sudo groupadd -g 998 docker", container_id)
+    run_in_docker_container(f"sudo groupadd -g {docker_group_id} docker", container_id)
     run_in_docker_container("sudo usermod -aG daemon ray", container_id)
     run_in_docker_container("sudo usermod -aG docker ray", container_id)
     run_in_docker_container("cat /etc/group", container_id)
