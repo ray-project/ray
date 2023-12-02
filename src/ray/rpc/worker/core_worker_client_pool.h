@@ -73,14 +73,24 @@ class CoreWorkerClientPool {
 
   absl::Mutex mu_;
 
-  /// A pool of open connections by WorkerID. Clients can reuse the connection
-  /// objects in this pool by requesting them.
-  absl::flat_hash_map<ray::WorkerID,
-                      std::list<shared_ptr<CoreWorkerClientInterface>>::iterator>
-      client_map_ ABSL_GUARDED_BY(mu_);
+  struct CoreWorkerClientEntry {
+   public:
+    CoreWorkerClientEntry() {}
+    CoreWorkerClientEntry(ray::WorkerID worker_id,
+                          shared_ptr<CoreWorkerClientInterface> core_worker_client)
+        : worker_id(worker_id), core_worker_client(core_worker_client) {}
+
+    ray::WorkerID worker_id;
+    shared_ptr<CoreWorkerClientInterface> core_worker_client;
+  };
+
   /// A list of open connections from the most recent accessed to the least recent
   /// accessed. This is used to check and remove idle connections.
-  std::list<shared_ptr<CoreWorkerClientInterface>> client_list_ ABSL_GUARDED_BY(mu_);
+  std::list<CoreWorkerClientEntry> client_list_ ABSL_GUARDED_BY(mu_);
+  /// A pool of open connections by WorkerID. Clients can reuse the connection
+  /// objects in this pool by requesting them.
+  absl::flat_hash_map<ray::WorkerID, std::list<CoreWorkerClientEntry>::iterator>
+      client_map_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace rpc

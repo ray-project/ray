@@ -24,39 +24,36 @@ shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
 
   RemoveIdleClients();
 
-  shared_ptr<CoreWorkerClientInterface> connection;
+  CoreWorkerClientEntry entry;
   auto id = WorkerID::FromBinary(addr_proto.worker_id());
   auto it = client_map_.find(id);
   if (it != client_map_.end()) {
-    connection = *it->second;
+    entry = *it->second;
     client_list_.erase(it->second);
   } else {
-    connection = client_factory_(addr_proto);
+    entry = CoreWorkerClientEntry(id, client_factory_(addr_proto));
   }
-  client_list_.emplace_front(connection);
+  client_list_.emplace_front(entry);
   client_map_[id] = client_list_.begin();
 
   RAY_LOG(DEBUG) << "Connected to worker " << id << " with address "
                  << addr_proto.ip_address() << ":" << addr_proto.port();
-  return connection;
+  return entry.core_worker_client;
 }
 
 void CoreWorkerClientPool::RemoveIdleClients() {
   while (!client_list_.empty()) {
+    auto id = client_list_.back().worker_id;
     // The last client in the list is the least recent accessed client.
-    auto it = client_list_.end();
-    it--;
-    auto id = WorkerID::FromBinary((*it)->Addr().worker_id());
-    if ((*it)->GetRpcClient() != nullptr &&
-        (*it)->GetRpcClient()->IsChannelIdleAfterRPCs()) {
+    if (client_list_.back().core_worker_client->IsChannelIdleAfterRPCs()) {
       client_map_.erase(id);
-      client_list_.erase(it);
+      client_list_.pop_back();
       RAY_LOG(DEBUG) << "Remove idle client to worker " << id
                      << " , num of clients is now " << client_list_.size();
     } else {
-      auto connection = (*it);
-      client_list_.erase(it);
-      client_list_.emplace_front(connection);
+      auto entry = client_list_.back();
+      client_list_.pop_back();
+      client_list_.emplace_front(entry);
       client_map_[id] = client_list_.begin();
       break;
     }

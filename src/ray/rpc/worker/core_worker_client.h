@@ -102,7 +102,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
     return empty_addr_;
   }
 
-  virtual rpc::GrpcClient<CoreWorkerService> *GetRpcClient() { return nullptr; }
+  virtual bool IsChannelIdleAfterRPCs() const { return false; }
 
   /// Push an actor task directly from worker to worker.
   ///
@@ -236,8 +236,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   const rpc::Address &Addr() const override { return addr_; }
 
-  rpc::GrpcClient<CoreWorkerService> *GetRpcClient() override {
-    return grpc_client_.get();
+  bool IsChannelIdleAfterRPCs() const override {
+    return grpc_client_->IsChannelIdleAfterRPCs();
   }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
