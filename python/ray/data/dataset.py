@@ -487,8 +487,8 @@ class Dataset:
                     .map_batches(map_fn_with_large_output)
                 )
 
-            If you require stateful transfomation such as offline model inference,
-            use Python callable class.
+            If you require stateful transfomation,
+            use Python callable class. Here is an example showing how to use stateful transforms to create model inference workers, without having to reload the model on each call.
 
             .. testcode::
 
