@@ -1,10 +1,11 @@
+import asyncio
 import logging
 import os
 import sys
 import tempfile
 import time
 import zipfile
-from typing import Iterable, List
+from typing import Dict, Iterable, List
 from unittest import mock
 
 import numpy as np
@@ -28,7 +29,11 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     ReplicaState,
 )
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    CONTROL_LOOP_PERIOD_S,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.controller import ServeController
 from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import (
@@ -1396,124 +1401,160 @@ app = g.bind()
 def test_autoscaling_status_changes(serve_instance):
     """Test status changes when autoscaling deployments are deployed.
 
-    This test starts an autoscaling deployment and limits the number of
-    replicas by also running some dummy actors that consume CPU resources.
+    This test runs an autoscaling deployment and an actor called the
+    EventManager. During initialization, each replica creates an asyncio.Event
+    in the EventManager, and it waits on the event. Once the event is set, the
+    replica can finish initializing. The test uses this EventManager to control
+    the number of replicas that should be running at a given time.
+
     The test does the following:
 
-    1. Runs dummy actors that consume 6/8 CPUs on the cluster.
-    2. Deploys an autoscaling deployment with min_replicas 3. Each replica uses
-       1/8 CPUs on the cluster, so there's not enough resources to reach the
-       min.
-    3. Checks that the deployment remains in the UPDATING status.
-    4. Redeploys the deployment with min_replicas 4. Also removes 1 dummy actor.
-    5. Checks that the deployment remains in the UPDATING status.
-    6. Removes enough dummy actors, so that there's 4/8 CPUs available on the
-       cluster.
-    7. Checks that the deployment enters HEALTHY status.
-    8. Redeploys the deployment with min_replicas 5.
-    9. Checks that the deployment re-enters and remains in the UPDATING status.
-    10. Remove enough dummy actors, so that there's 5/8 CPUs available on the
-        cluster.
-    11. Checks that the deployment enters HEALTHY status.
+    1.  Starts an EventManager.
+    2.  Deploys an autoscaling deployment with min_replicas 3.
+    3.  Releases 2 replicas via the EventManager.
+    4.  Checks that the deployment remains in the UPDATING status.
+    5.  Redeploys the deployment with min_replicas 4.
+    6.  Releases 1 more replica via the EventManager.
+    7.  Checks that the deployment remains in the UPDATING status.
+    8.  Releases 1 more replica.
+    9.  Checks that the deployment enters HEALTHY status.
+    10. Redeploys the deployment with min_replicas 5.
+    11. Checks that the deployment re-enters and remains in the UPDATING status.
+    12. Releases 1 more replica.
+    13  Checks that the deployment enters HEALTHY status.
     """
 
-    # Locking implementation: the following logic is not directly related to
-    # the test. It implements the dummy actors that we use to limit the number
-    # of CPUs in the cluster and provides methods to manage the actors.
-    # Skip to `End of locking implementation.` comment for the test logic.
-    num_cpus_available_to_ray = ray.available_resources()["CPU"]
-    print(f"Number of CPUs available to Ray: {num_cpus_available_to_ray}")
-    print(f"Available Ray resources: {ray.available_resources()}")
+    @ray.remote
+    class EventManager:
+        """Manages events for each deployment replica.
 
-    # Create a unit, so all tasks/actors in this test act as though there are
-    # 8 CPUs.
-    NUM_TEST_CPUs = 8
-    TEST_CPU = num_cpus_available_to_ray / NUM_TEST_CPUs
-    print(f"Treating number of CPUs as {NUM_TEST_CPUs} for test.")
+        This actor uses a goal-state architecture. The test sets a max number
+        of replicas to run. Whenever this manager creates or removes an event,
+        it checks how many replicas are running and attempts to match the goal
+        state.
+        """
 
-    @ray.remote(num_cpus=1 * TEST_CPU)
-    class CPULock:
-        """Object that consumes CPUs and blocks them from being used."""
+        def __init__(self):
+            self._max_replicas_to_run = 0
 
-        def is_ready(self) -> bool:
-            return True
+            # This dictionary maps replica names -> asyncio.Event.
+            self._events: Dict[str, asyncio.Event] = dict()
 
-    _locks = []
+        def get_num_running_replicas(self):
+            running_replicas = [
+                actor_name
+                for actor_name, event in self._events.items()
+                if event.is_set()
+            ]
+            return len(running_replicas)
 
-    def _locks_ready(locks) -> bool:
-        for i, lock in enumerate(locks):
-            assert ray.get(
-                lock.is_ready.remote(), timeout=0.1
-            ), f"Lock {i} not ready, {ray.available_resources()}"
-        return True
+        def release_replicas(self):
+            """Releases replicas until self._max_replicas_to_run are released."""
 
-    def _locks_removed(locks) -> bool:
-        for i, lock in enumerate(locks):
-            try:
-                ray.get(lock.is_ready.remote(), timeout=0.1)
-                raise RuntimeError(
-                    f"Lock {i} still locked, {ray.available_resources()}"
-                )
-            except RayActorError:
-                pass
-        return True
+            num_replicas_released = 0
+            for _, event in self._events.items():
+                if self.get_num_running_replicas() < self._max_replicas_to_run:
+                    if not event.is_set():
+                        event.set()
+                        num_replicas_released += 1
+                else:
+                    break
 
-    def num_locked_cpus() -> int:
-        return len(_locks)
+            if num_replicas_released > 0:
+                print(f"Started running {num_replicas_released} replicas.")
 
-    def num_free_cpus() -> int:
-        return NUM_TEST_CPUs - len(_locks)
+        async def wait(self, actor_name):
+            print(f"Replica {actor_name} started waiting...")
+            event = asyncio.Event()
+            self._events[actor_name] = event
+            self.release_replicas()
+            await event.wait()
+            print(f"Replica {actor_name} finished waiting.")
 
-    def lock_cpus(num_cpus_to_lock: int):
-        nonlocal _locks
-        assert num_cpus_to_lock <= num_free_cpus()
-        print(f"Starting {num_cpus_to_lock} CPULock actors...")
-        new_locks = [CPULock.remote() for _ in range(num_cpus_to_lock)]
-        wait_for_condition(_locks_ready, locks=new_locks)
-        _locks.extend(new_locks)
-        print(
-            f"{num_cpus_to_lock} CPULock actors are ready. "
-            f"Total: {num_locked_cpus()}"
-        )
+        async def remove(self, actor_name):
+            print(f"Removing replica {actor_name}...")
+            if actor_name in self._events:
+                self._events.pop(actor_name)
+                print(f"Removed replica {actor_name}.")
+            else:
+                print(f"Replica {actor_name} had no corresponding event.")
 
-    def unlock_cpus(num_cpus_to_unlock: int):
-        nonlocal _locks
-        assert len(_locks) >= num_locked_cpus()
-        print(f"Stopping {num_cpus_to_unlock} CPULock actors...")
+            self.release_replicas()
 
-        unlocked_locks = []
-        for _ in range(num_cpus_to_unlock):
-            lock_to_unlock = _locks.pop()
-            ray.kill(lock_to_unlock)
-            unlocked_locks.append(lock_to_unlock)
+        async def set_max_replicas_to_run(self, max_num_replicas: int = 1):
+            print(f"Setting _max_replicas_to_run to {max_num_replicas}.")
+            self._max_replicas_to_run = max_num_replicas
+            self.release_replicas()
 
-        wait_for_condition(_locks_removed, locks=unlocked_locks)
-        print(
-            f"{num_cpus_to_unlock} CPULock actors have stopped. "
-            f"Total: {num_locked_cpus()}"
-        )
+        async def get_max_replicas_to_run(self) -> int:
+            return self._max_replicas_to_run
 
-    # End of locking implementation.
+        async def num_active_replicas(self) -> int:
+            """The number of replicas that are waiting or running."""
 
-    lock_cpus(6)
-    print("Starting Serve app.")
+            return len(self._events)
+
+        async def get_waiter_statuses(self) -> Dict[str, bool]:
+            return {
+                actor_name: event.is_set() for actor_name, event in self._events.items()
+            }
+
+        async def clear_dead_replicas(self):
+            """Clears dead replicas from internal _events list.
+
+            Sometimes replicas get killed or die without running __del__
+            and cleaning up their event. This method checks which actors are
+            still alive and cleans up the events for the ones that are dead.
+            """
+
+            actor_names = list(self._events.keys())
+            for name in actor_names:
+                try:
+                    ray.get_actor(name=name, namespace=SERVE_NAMESPACE)
+                except RayActorError:
+                    print(f"Actor {name} has died. Removing event.")
+                    self._events.pop(name)
+
+            self.release_replicas()
+
+    print("Starting EventManager actor...")
+
+    event_manager_actor_name = "event_manager_actor"
+    event_manager = EventManager.options(
+        name=event_manager_actor_name, namespace=SERVE_NAMESPACE
+    ).remote()
+
+    print("Starting Serve app...")
 
     deployment_name = "autoscaling_app"
     min_replicas = 3
-    assert min_replicas > num_free_cpus()
+    max_replicas = 15
 
     @serve.deployment(
         name=deployment_name,
         autoscaling_config=AutoscalingConfig(
             min_replicas=min_replicas,
-            max_replicas=NUM_TEST_CPUs,
+            max_replicas=max_replicas,
         ),
-        ray_actor_options=dict(num_cpus=1 * TEST_CPU),
+        ray_actor_options=dict(num_cpus=0),
+        graceful_shutdown_timeout_s=10,
     )
     class AutoscalingDeployment:
-        """Deployment that autoscales and consumes 1 CPU per replica."""
+        """Deployment that autoscales."""
 
-        pass
+        async def __init__(self):
+            self.name = ray.get_runtime_context().get_actor_name()
+            print(f"Replica {self.name} initializing...")
+            event_manager = ray.get_actor(
+                name=event_manager_actor_name, namespace=SERVE_NAMESPACE
+            )
+            await event_manager.wait.remote(self.name)
+            print(f"Replica {self.name} has initialized.")
+
+        async def __del__(self):
+            print(f"Replica {self.name} deleting...")
+            await event_manager.remove.remote(self.name)
+            print(f"Replica {self.name} deleted.")
 
     app_name = "autoscaling_app"
     app = AutoscalingDeployment.bind()
@@ -1521,10 +1562,24 @@ def test_autoscaling_status_changes(serve_instance):
     # Start the AutoscalingDeployment.
     serve.run(app, name=app_name, _blocking=False)
 
+    # Active replicas are replicas that are waiting or running.
+    expected_num_active_replicas: int = min_replicas
+
+    def check_num_active_replicas(expected: int) -> bool:
+        ray.get(event_manager.clear_dead_replicas.remote())
+        assert ray.get(event_manager.num_active_replicas.remote()) == expected
+        return True
+
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    print("Replicas have started waiting. Releasing some replicas...")
+
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas - 1))
+
     # Wait for replicas to start.
     print("Waiting for replicas to run.")
 
     def replicas_running(expected_num_running_replicas: int) -> bool:
+        ray.get(event_manager.clear_dead_replicas.remote())
         status = serve.status()
         app_status = status.applications[app_name]
         deployment_status = app_status.deployments[deployment_name]
@@ -1538,7 +1593,7 @@ def test_autoscaling_status_changes(serve_instance):
 
     wait_for_condition(
         replicas_running,
-        expected_num_running_replicas=num_free_cpus(),
+        expected_num_running_replicas=(min_replicas - 1),
         timeout=15,
     )
 
@@ -1584,15 +1639,19 @@ def test_autoscaling_status_changes(serve_instance):
     app = AutoscalingDeployment.options(
         autoscaling_config=AutoscalingConfig(
             min_replicas=min_replicas,
-            max_replicas=NUM_TEST_CPUs,
+            max_replicas=max_replicas,
         )
     ).bind()
     serve.run(app, name=app_name, _blocking=False)
+    expected_num_active_replicas = min_replicas
 
-    unlock_cpus(1)
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    print("Replicas have started waiting. Releasing some replicas...")
+
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas - 1))
     wait_for_condition(
         replicas_running,
-        expected_num_running_replicas=num_free_cpus(),
+        expected_num_running_replicas=(min_replicas - 1),
         timeout=15,
     )
 
@@ -1610,13 +1669,18 @@ def test_autoscaling_status_changes(serve_instance):
         DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
     )
 
-    print("Statuses are still as expected. Releasing some locks and checking again...")
+    print(
+        "Statuses are still as expected. "
+        "Releasing some replicas and checking again..."
+    )
 
-    # Release enough locks for deployment to enter autoscaling bounds.
-    unlock_cpus(min_replicas - num_free_cpus())
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+
+    # Release enough replicas for deployment to enter autoscaling bounds.
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas))
     wait_for_condition(
         replicas_running,
-        expected_num_running_replicas=num_free_cpus(),
+        expected_num_running_replicas=min_replicas,
         timeout=15,
     )
 
@@ -1631,10 +1695,14 @@ def test_autoscaling_status_changes(serve_instance):
     app = AutoscalingDeployment.options(
         autoscaling_config=AutoscalingConfig(
             min_replicas=min_replicas,
-            max_replicas=NUM_TEST_CPUs,
+            max_replicas=max_replicas,
         )
     ).bind()
     serve.run(app, name=app_name, _blocking=False)
+    expected_num_active_replicas = min_replicas
+
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    print("Replicas have started waiting. Checking statuses...")
 
     # DeploymentStatus should return to UPDATING because the
     # autoscaling_config changed.
@@ -1656,12 +1724,14 @@ def test_autoscaling_status_changes(serve_instance):
         DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
     )
 
-    print("Statuses are still as expected. Releasing some locks and checking again...")
+    print(
+        "Statuses are still as expected. Releasing some replicas and checking again..."
+    )
 
-    unlock_cpus(min_replicas - num_free_cpus())
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas))
     wait_for_condition(
         replicas_running,
-        expected_num_running_replicas=num_free_cpus(),
+        expected_num_running_replicas=min_replicas,
         timeout=15,
         retry_interval_ms=1000,
     )
@@ -1673,8 +1743,6 @@ def test_autoscaling_status_changes(serve_instance):
     )
 
     print("Statuses are as expected.")
-
-    unlock_cpus(num_locked_cpus())
 
 
 if __name__ == "__main__":
