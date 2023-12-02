@@ -57,6 +57,12 @@ struct PlasmaObjectHeader {
   // the first write and then should never be modified. For mutable objects,
   // each new write must increment the version before releasing to readers.
   int64_t version = 0;
+  // Indicates whether the current version has been written. is_sealed=false
+  // means that there is a writer who has WriteAcquire'd but not yet
+  // WriteRelease'd the current version. is_sealed=true means that `version`
+  // has been WriteRelease'd. A reader may read the actual object value if
+  // is_sealed=true and num_read_acquires_remaining != 0.
+  bool is_sealed = false;
   // The total number of reads allowed before the writer can write again. This
   // value should be set by the writer before releasing to readers.
   // For immutable objects, this is set to -1 and infinite reads are allowed.
@@ -66,6 +72,10 @@ struct PlasmaObjectHeader {
   // objects, readers must ensure this is > 0 and decrement before they read.
   // Once this value reaches 0, no more readers are allowed until the writer
   // writes a new version.
+  // NOTE(swang): Technically we do not need this because
+  // num_read_releases_remaining protects against too many readers. However,
+  // this allows us to throw an error as soon as the n+1-th reader begins,
+  // instead of waiting to error until the n+1-th reader is done reading.
   int64_t num_read_acquires_remaining = 0;
   // The number of readers who must release the current version before a new
   // version can be written. For mutable objects, readers must decrement this
@@ -79,13 +89,15 @@ struct PlasmaObjectHeader {
   uint64_t data_size = 0;
   uint64_t metadata_size = 0;
 
+  /// Setup synchronization primitives.
   void Init();
 
+  /// Destroy synchronization primitives.
   void Destroy();
 
-  /// Blocks until all readers for the previous write have ReadRelease'd the value.
-  /// Caller must ensure there is one writer at a time. Caller must pass
-  /// consecutive versions on each new write, starting with write_version=1.
+  /// Blocks until all readers for the previous write have ReadRelease'd the
+  /// value. Protects against concurrent writers. Caller must pass consecutive
+  /// versions on each new write, starting with write_version=1.
   ///
   /// \param write_version The new version for write.
   /// \param data_size The new data size of the object.
@@ -96,23 +108,22 @@ struct PlasmaObjectHeader {
                     uint64_t metadata_size,
                     int64_t num_readers);
 
-  // Call after completing a write to signal that readers may read.
-  // num_readers should be set before calling this.
+  /// Call after completing a write to signal that readers may read.
+  /// num_readers should be set before calling this.
   ///
   /// \param write_version The new version for write. This must match the
   /// version previously passed to WriteAcquire.
   void WriteRelease(int64_t write_version);
 
-  // Blocks until the given version or a more recent version is ready to read.
-  // If num_readers have already read this version, then this call will hang.
+  // Blocks until the given version is ready to read. Returns false if the
+  // maximum number of readers have already read the requested version.
   //
-  // \param read_version The minimum version to wait for.
-  // \return The version that was read. This should be passed to ReadRelease
-  // when the reader is done. Returns 0 if the object is a normal immutable
-  // object, meaning no ReadRelease is needed.
-  ///
-  /// \param read_version Read at least this version.
-  int64_t ReadAcquire(int64_t read_version);
+  // \param[in] read_version The version to read.
+  // \param[out] version_read For normal immutable objects, this will be set to
+  // 0. Otherwise, the current version.
+  // \return success Whether the correct version was read and there were still
+  // reads remaining.
+  bool ReadAcquire(int64_t version_to_read, int64_t *version_read);
 
   // Finishes the read. If all reads are done, signals to the writer. This is
   // not necessary to call for objects that have num_readers=-1.

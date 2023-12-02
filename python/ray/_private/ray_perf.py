@@ -296,9 +296,9 @@ def main(results=None):
 
     ray.init()
 
-    def put_channel_small(chans, num_readers=1, do_get=False, do_release=False):
+    def put_channel_small(chans, do_get=False, do_release=False):
         for chan in chans:
-            chan.write(b"0", num_readers=num_readers)
+            chan.write(b"0")
             if do_get:
                 chan.begin_read()
             if do_release:
@@ -337,14 +337,14 @@ def main(results=None):
     n_cpu = multiprocessing.cpu_count() // 2
     print(f"Testing multiple readers/channels, n={n_cpu}")
 
-    chans = [ray_channel.Channel(1000)]
+    chans = [ray_channel.Channel(1000, num_readers=n_cpu)]
     readers = [ChannelReader.remote() for _ in range(n_cpu)]
     ray.get([reader.ready.remote() for reader in readers])
     for reader in readers:
         reader.read.remote(chans)
     results += timeit(
         "local put:n remote get, single channel calls",
-        lambda: put_channel_small(chans, num_readers=n_cpu),
+        lambda: put_channel_small(chans),
     )
     for reader in readers:
         ray.kill(reader)
@@ -368,6 +368,8 @@ def main(results=None):
     )
     for reader in readers:
         ray.kill(reader)
+
+    ray.shutdown()
 
     ############################
     # End of channel perf tests.

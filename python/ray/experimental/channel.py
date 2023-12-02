@@ -52,7 +52,7 @@ class Channel:
     ray.wait.
     """
 
-    def __init__(self, buffer_size: Optional[int] = None):
+    def __init__(self, buffer_size: Optional[int] = None, num_readers: int = 1):
         """
         Create a channel that can be read and written by co-located Ray processes.
 
@@ -71,19 +71,20 @@ class Channel:
         else:
             self._base_ref = _create_channel_ref(buffer_size)
 
-        self.worker = ray._private.worker.global_worker
-        self.worker.check_connected()
+        self._num_readers = num_readers
+        self._worker = ray._private.worker.global_worker
+        self._worker.check_connected()
 
     @staticmethod
-    def _from_base_ref(base_ref: "ray.ObjectRef") -> "Channel":
-        chan = Channel()
+    def _from_base_ref(base_ref: "ray.ObjectRef", num_readers: int) -> "Channel":
+        chan = Channel(num_readers=num_readers)
         chan._base_ref = base_ref
         return chan
 
     def __reduce__(self):
-        return self._from_base_ref, (self._base_ref,)
+        return self._from_base_ref, (self._base_ref, self._num_readers)
 
-    def write(self, value: Any, num_readers: int):
+    def write(self, value: Any, num_readers: Optional[int] = None):
         """
         Write a value to the channel.
 
@@ -96,11 +97,13 @@ class Channel:
             num_readers: The number of readers that must read and release the value
                 before we can write again.
         """
+        if num_readers is None:
+            num_readers = self._num_readers
         if num_readers <= 0:
             raise ValueError("``num_readers`` must be a positive integer.")
 
         try:
-            serialized_value = self.worker.get_serialization_context().serialize(value)
+            serialized_value = self._worker.get_serialization_context().serialize(value)
         except TypeError as e:
             sio = io.StringIO()
             ray.util.inspect_serializability(value, print_file=sio)
@@ -111,7 +114,7 @@ class Channel:
             )
             raise TypeError(msg) from e
 
-        self.worker.core_worker.experimental_mutable_object_put_serialized(
+        self._worker.core_worker.experimental_mutable_object_put_serialized(
             serialized_value,
             self._base_ref,
             num_readers,
@@ -122,10 +125,14 @@ class Channel:
         Read the latest value from the channel. This call will block until a
         value is available to read.
 
+        Subsequent calls to begin_read() will return the same value, until
+        end_read() is called. Then, the client must begin_read() again to get
+        the next value.
+
         Returns:
             Any: The deserialized value.
         """
-        values, _ = self.worker.get_objects(
+        values, _ = self._worker.get_objects(
             [self._base_ref], _is_experimental_mutable_object=True
         )
         return values[0]
@@ -137,6 +144,6 @@ class Channel:
         If begin_read is not called first, then this call will block until a
         value is written, then drop the value.
         """
-        self.worker.core_worker.experimental_mutable_object_read_release(
+        self._worker.core_worker.experimental_mutable_object_read_release(
             [self._base_ref]
         )

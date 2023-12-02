@@ -21,7 +21,55 @@ def test_put_local_get(ray_start_regular):
         val = i.to_bytes(8, "little")
         chan.write(val, num_readers=1)
         assert chan.begin_read() == val
+
+        # Begin read multiple times will return the same value.
+        assert chan.begin_read() == val
+
         chan.end_read()
+
+
+def test_errors(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def make_chan(self, do_write=True):
+            self.chan = ray_channel.Channel(1000)
+            if do_write:
+                self.chan.write(b"hello", num_readers=1)
+            return self.chan
+
+    a = Actor.remote()
+    # Only original creator can write.
+    chan = ray.get(a.make_chan.remote(do_write=False))
+    with pytest.raises(ray.exceptions.RaySystemError):
+        chan.write(b"hi")
+
+    # Only original creator can write.
+    chan = ray.get(a.make_chan.remote(do_write=True))
+    assert chan.begin_read() == b"hello"
+    with pytest.raises(ray.exceptions.RaySystemError):
+        chan.write(b"hi")
+
+    # Multiple consecutive reads from the same process are fine.
+    chan = ray.get(a.make_chan.remote(do_write=True))
+    assert chan.begin_read() == b"hello"
+    assert chan.begin_read() == b"hello"
+    chan.end_read()
+
+    @ray.remote
+    class Reader:
+        def __init__(self):
+            pass
+
+        def read(self, chan):
+            return chan.begin_read()
+
+    # Multiple reads from n different processes, where n > num_readers, errors.
+    chan = ray.get(a.make_chan.remote(do_write=True))
+    readers = [Reader.remote(), Reader.remote()]
+    # At least 1 reader
+    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+        ray.get([reader.read.remote(chan) for reader in readers])
+    assert "ray.exceptions.RaySystemError" in str(exc_info.value)
 
 
 def test_put_different_meta(ray_start_regular):
@@ -42,6 +90,7 @@ def test_put_different_meta(ray_start_regular):
     _test(1000)
     _test(np.random.rand(10))
 
+    # Cannot put a serialized value larger than the allocated buffer.
     with pytest.raises(ValueError):
         _test(np.random.rand(100))
 

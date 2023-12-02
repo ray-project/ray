@@ -56,6 +56,7 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version,
       << ". Are you sure this is the only writer?";
 
   version = write_version;
+  is_sealed = false;
   data_size = write_data_size;
   metadata_size = write_metadata_size;
   num_readers = write_num_readers;
@@ -76,6 +77,7 @@ void PlasmaObjectHeader::WriteRelease(int64_t write_version) {
       << version << ". Are you sure this is the only writer?";
 
   version = write_version;
+  is_sealed = true;
   RAY_CHECK(num_readers != 0) << num_readers;
   num_read_acquires_remaining = num_readers;
   num_read_releases_remaining = num_readers;
@@ -87,30 +89,36 @@ void PlasmaObjectHeader::WriteRelease(int64_t write_version) {
   RAY_CHECK(pthread_cond_broadcast(&cond) == 0);
 }
 
-int64_t PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
-  RAY_LOG(DEBUG) << "ReadAcquire waiting version " << read_version;
+bool PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version_read) {
+  RAY_LOG(DEBUG) << "ReadAcquire waiting version " << version_to_read;
   RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
-  RAY_LOG(DEBUG) << "ReadAcquire " << read_version;
+  RAY_LOG(DEBUG) << "ReadAcquire " << version_to_read;
   PrintPlasmaObjectHeader(this);
 
-  while (version < read_version || num_read_acquires_remaining == 0) {
+  // Wait for the requested version (or a more recent one) to be sealed.
+  while (version < version_to_read || !is_sealed) {
     RAY_CHECK(pthread_cond_wait(&cond, &wr_mut) == 0);
   }
 
-  if (version > read_version) {
-    RAY_LOG(WARNING) << "Version " << version << " already exceeds version to read "
-                     << read_version << ". May have missed earlier reads.";
-  }
-
-  if (num_readers != -1) {
-    num_read_acquires_remaining--;
-    RAY_CHECK(num_read_acquires_remaining >= 0)
-        << "readers acquired exceeds max readers " << num_readers;
-    // This object can only be read a constant number of times. Tell the caller
-    // which version was read.
-    read_version = version;
+  bool success = false;
+  if (num_readers == -1) {
+    // Object is a normal immutable object. Read succeeds.
+    *version_read = 0;
+    success = true;
   } else {
-    read_version = 0;
+    *version_read = version;
+    if (version == version_to_read && num_read_acquires_remaining > 0) {
+      // This object is at the right version and still has reads remaining. Read
+      // succeeds.
+      num_read_acquires_remaining--;
+      success = true;
+    } else if (version > version_to_read) {
+      RAY_LOG(WARNING) << "Version " << version << " already exceeds version to read "
+                       << version_to_read;
+    } else {
+      RAY_LOG(WARNING) << "Version " << version << " already has " << num_readers
+                       << "readers";
+    }
   }
 
   RAY_LOG(DEBUG) << "ReadAcquire done";
@@ -119,7 +127,7 @@ int64_t PlasmaObjectHeader::ReadAcquire(int64_t read_version) {
   RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
   // Signal to other readers that they may read.
   RAY_CHECK(pthread_cond_signal(&cond) == 0);
-  return read_version;
+  return success;
 }
 
 void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
