@@ -725,6 +725,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             deployment_name=deployment_name,
             replica_state=ReplicaState.RUNNING,
             timeout=20,
+            retry_interval_ms=1000,
         )
         wait_for_condition(
             self.check_num_replicas,
@@ -733,6 +734,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             deployment_name=deployment_name,
             replica_state=ReplicaState.STOPPING,
             timeout=20,
+            retry_interval_ms=1000,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
@@ -774,6 +776,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             app_name=app_name,
             deployment_name=deployment_name,
             timeout=20,
+            retry_interval_ms=1000,
         )
 
         # Clear requests and check that application scales down to
@@ -788,6 +791,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             deployment_name=deployment_name,
             controller_handle=client._controller,
             timeout=20,
+            retry_interval_ms=1000,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
