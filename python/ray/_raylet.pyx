@@ -1258,7 +1258,9 @@ cdef report_streaming_generator_output(
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
         int64_t generator_index = context.generator_index
 
-    if isinstance(output_or_exception, Exception):
+    is_exception = isinstance(output_or_exception, Exception)
+
+    if is_exception:
         create_generator_error_object(
             output_or_exception,
             worker,
@@ -1279,22 +1281,6 @@ cdef report_streaming_generator_output(
             context.is_retryable_error,
             context.application_error
         )
-
-        context.streaming_generator_returns[0].push_back(
-            c_pair[CObjectID, c_bool](
-                return_obj.first,
-                is_plasma_object(return_obj.second)))
-
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-                return_obj,
-                context.generator_id,
-                context.caller_address,
-                generator_index,
-                context.attempt_number,
-                context.waiter))
-        context.generator_index += 1
-        return True
     else:
         # Report the intermediate result if there was no error.
         create_generator_return_obj(
@@ -1307,28 +1293,28 @@ cdef report_streaming_generator_output(
             context.generator_index,
             context.is_async,
             &return_obj)
-        # Del output here so that we can GC the memory
-        # usage asap.
-        del output_or_exception
 
-        context.streaming_generator_returns[0].push_back(
-            c_pair[CObjectID, c_bool](
-                return_obj.first,
-                is_plasma_object(return_obj.second)))
+    # Del output here so that we can GC the memory
+    # usage asap.
+    del output_or_exception
 
-        logger.debug(
-            "Writes to a ObjectRefStream of an "
-            "index {}".format(context.generator_index))
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-                return_obj,
-                context.generator_id,
-                context.caller_address,
-                generator_index,
-                context.attempt_number,
-                context.waiter))
-        context.generator_index += 1
-        return False
+    context.streaming_generator_returns[0].push_back(
+        c_pair[CObjectID, c_bool](
+            return_obj.first,
+            is_plasma_object(return_obj.second)))
+
+    with nogil:
+        check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+            return_obj,
+            context.generator_id,
+            context.caller_address,
+            generator_index,
+            context.attempt_number,
+            context.waiter))
+
+    context.generator_index += 1
+
+    return is_exception
 
 
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
