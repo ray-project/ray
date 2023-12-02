@@ -25,18 +25,6 @@ class IOMode(enum.Enum):
     ASYNC = "ASYNC"
 
 
-async def trace(coro: Coroutine):
-    from viztracer import VizTracer
-
-    tracer = VizTracer()
-    tracer.start()
-
-    await coro
-
-    tracer.stop()
-    tracer.save()
-
-
 class Endpoint:
     def __init__(self, tokens_per_request: int):
         self._tokens_per_request = tokens_per_request
