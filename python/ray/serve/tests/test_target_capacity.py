@@ -637,8 +637,6 @@ class TestTargetCapacityUpdateAndServeStatus:
     ):
         """Check Serve's status when target_capacity changes while autoscaling."""
 
-        print("asdfghjlksad", ray.available_resources())
-
         app_name = "controlled_app"
         deployment_name = "controlled"
         min_replicas = 10
@@ -741,6 +739,13 @@ class TestTargetCapacityUpdateAndServeStatus:
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
 
+        def get_autoscaling_metrics():
+            return ray.get(
+                client._controller._dump_autoscaling_metrics_for_testing.remote()
+            )
+
+        print(f"Autoscaling metrics: {get_autoscaling_metrics()}")
+
         # Decrease the target_capacity, and check that min_replicas is used
         # to create the lower bound.
         self.apply_config_and_check_status(
@@ -766,6 +771,8 @@ class TestTargetCapacityUpdateAndServeStatus:
             0, app_name, deployment_name, replica_state=ReplicaState.STOPPING
         )
 
+        print(f"Autoscaling metrics: {get_autoscaling_metrics()}")
+
         # Check that target_capacity * max_replicas is still the upper bound.
         requests = []
         handle = serve.get_app_handle(app_name)
@@ -777,23 +784,29 @@ class TestTargetCapacityUpdateAndServeStatus:
             expected_num_replicas=int(0.1 * max_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
-            timeout=20,
-            retry_interval_ms=1000,
+            controller_handle=client._controller,
+            timeout=25,
+            retry_interval_ms=800,
         )
+
+        print(f"Autoscaling metrics: {get_autoscaling_metrics()}")
 
         # Clear requests and check that application scales down to
         # target_capacity * min_replicas.
         ray.get(request_signal.send.remote())
         results = [request.result() for request in requests]
         assert results == ["Hello world!"] * (4 * max_replicas)
+
+        print(f"Autoscaling metrics: {get_autoscaling_metrics()}")
+
         wait_for_condition(
             self.check_num_replicas,
             expected_num_replicas=int(0.1 * min_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
             controller_handle=client._controller,
-            timeout=20,
-            retry_interval_ms=1000,
+            timeout=25,
+            retry_interval_ms=800,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
