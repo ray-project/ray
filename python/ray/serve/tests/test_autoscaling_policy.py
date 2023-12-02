@@ -1423,6 +1423,7 @@ def test_autoscaling_status_changes(serve_instance):
     # Skip to `End of locking implementation.` comment for the test logic.
     num_cpus_available_to_ray = ray.available_resources()["CPU"]
     print(f"Number of CPUs available to Ray: {num_cpus_available_to_ray}")
+    print(f"Available Ray resources: {ray.available_resources()}")
 
     # Create a unit, so all tasks/actors in this test act as though there are
     # 8 CPUs.
@@ -1530,7 +1531,9 @@ def test_autoscaling_status_changes(serve_instance):
         num_running_replicas = deployment_status.replica_states.get(
             ReplicaState.RUNNING, 0
         )
-        assert num_running_replicas == expected_num_running_replicas
+        assert (
+            num_running_replicas == expected_num_running_replicas
+        ), f"{app_status}, {ray.available_resources()}"
         return True
 
     wait_for_condition(

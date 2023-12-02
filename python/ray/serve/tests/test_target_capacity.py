@@ -637,6 +637,8 @@ class TestTargetCapacityUpdateAndServeStatus:
     ):
         """Check Serve's status when target_capacity changes while autoscaling."""
 
+        print("asdfghjlksad", ray.available_resources())
+
         app_name = "controlled_app"
         deployment_name = "controlled"
         min_replicas = 10
