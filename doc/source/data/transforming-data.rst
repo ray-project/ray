@@ -164,10 +164,10 @@ program might run out of memory. If you encounter an out-of-memory error, decrea
 Stateful Transforms
 ==============================
 
-If your transform is stateful to require expensive setup such as downloading
-model weights, use a callable Python class instead of a function. When a Python class
+If your transform requires expensive setup such as downloading
+model weights, use a callable Python class instead of a function to make the transform stateful. When a Python class
 is used, the ``__init__`` method is called to perform setup exactly once on each worker.
-In contrast, function is stateless, so any setup must be performed for each data item.
+In contrast, functions are stateless, so any setup must be performed for each data item.
 
 Internally, Ray Data uses tasks to execute functions, and uses actors to execute classes.
 To learn more about tasks and actors, read the
