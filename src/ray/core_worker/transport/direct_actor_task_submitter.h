@@ -248,9 +248,6 @@ class CoreWorkerDirectActorTaskSubmitter
     ActorID actor_id;
     bool preempted;
   };
-  typedef std::vector<
-      std::pair<std::pair<TaskSpecification, Status>, std::pair<ActorID, bool>>>
-      TaskInfoList;
 
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access

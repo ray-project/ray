@@ -370,10 +370,10 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
         auto &task_spec_status_pair = deque_itr->second;
         task_info_list->push_back(TaskInfo{
-            .specification = task_spec_status_pair.first,
-            .status = task_spec_status_pair.second,
-            .actor_id = queue_pair.first,
-            .preempted = queue.preempted,
+            task_spec_status_pair.first,
+            task_spec_status_pair.second,
+            queue_pair.first,
+            queue.preempted,
         });
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
       }
