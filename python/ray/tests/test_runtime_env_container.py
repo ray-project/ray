@@ -15,6 +15,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve.handle import DeploymentHandle
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest_docker import *  # noqa
+from ray.tests.conftest_docker import run_in_container
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks, list_workers
 
@@ -31,42 +32,7 @@ CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_a(podman_docker_cluster):
-    print(subprocess.check_output(["docker", "image", "ls"]))
-    print("id:", subprocess.check_output(["id"]))
-
-    head = podman_docker_cluster
-
-    image_name = "rayproject/ray:runtime_env_container"
-    nested_image_name = "rayproject/ray:runtime_env_container_nested"
-    print(head.exec_run(cmd="ls -l"))
-    print(head.exec_run(cmd="python --version"))
-    print(head.exec_run(cmd="podman --version"))
-    print(head.exec_run(cmd="id"))
-    print(head.exec_run(cmd="sudo usermod -aG daemon ray"))
-    print(head.exec_run(cmd=f"podman pull docker-daemon:{image_name}"))
-    print(head.exec_run(cmd="podman ps"))
-    print(head.exec_run(cmd="bash -c 'echo helloworldalice' >> /tmp/file.txt"))
-    print(head.exec_run(cmd=f"podman create --name tmp_container {image_name}"))
-    print(head.exec_run(cmd="podman cp /tmp/file.txt tmp_container:/home/ray/file.txt"))
-    print(head.exec_run(cmd=f"podman commit tmp_container {nested_image_name}"))
-    print(head.exec_run(cmd="podman image ls"))
-
-    assert False
-
-
-def run_in_docker_container(cmd: str, container_id: str):
-    docker_cmd = ["docker", "exec", container_id]
-    docker_cmd.extend(cmd.split())
-    print(f"executing command: {docker_cmd}")
-    resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
-    output = resp.decode("utf-8").strip()
-    print(f"output: {output}")
-    return output
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_b(shutdown_only):
+def test_a(shutdown_only):
     print("docker image ls:", subprocess.check_output(["docker", "image", "ls"]))
     print("id:", subprocess.check_output(["id"]))
 
@@ -91,32 +57,50 @@ def test_b(shutdown_only):
     print(f"container_id: {container_id}")
     print("docker ps:", subprocess.check_output(["docker", "ps"]))
 
-    output = run_in_docker_container("ls -l /var/run/docker.sock", container_id)
+    output = run_in_container("ls -l /var/run/docker.sock", container_id)
     regex = ".{10} +\d+ +root +(\d+) \d+ [A-Za-z]+ +\d+ +.+ +\/var\/run\/docker\.sock"
     docker_group_id = re.search(regex, output).group(1)
 
-    run_in_docker_container("id", container_id)
-    run_in_docker_container("cat /etc/group", container_id)
-    run_in_docker_container(f"sudo groupadd -g {docker_group_id} docker", container_id)
-    run_in_docker_container("sudo usermod -aG daemon ray", container_id)
-    run_in_docker_container("sudo usermod -aG docker ray", container_id)
-    run_in_docker_container("cat /etc/group", container_id)
-    run_in_docker_container("podman image ls", container_id)
-    run_in_docker_container(f"podman pull docker-daemon:{image_name}", container_id)
-    run_in_docker_container("podman ps", container_id)
-    run_in_docker_container(
-        "bash -c 'echo helloworldalice' >> /tmp/file.txt", container_id
-    )
-    run_in_docker_container(
-        f"podman create --name tmp_container {image_name}", container_id
-    )
-    run_in_docker_container(
+    run_in_container("id", container_id)
+    run_in_container("cat /etc/group", container_id)
+    run_in_container(f"sudo groupadd -g {docker_group_id} docker", container_id)
+    run_in_container("sudo usermod -aG daemon ray", container_id)
+    run_in_container("sudo usermod -aG docker ray", container_id)
+    run_in_container("cat /etc/group", container_id)
+    run_in_container("podman image ls", container_id)
+    run_in_container(f"podman pull docker-daemon:{image_name}", container_id)
+    run_in_container("podman ps", container_id)
+    run_in_container("bash -c 'echo helloworldalice' >> /tmp/file.txt", container_id)
+    run_in_container(f"podman create --name tmp_container {image_name}", container_id)
+    run_in_container(
         "podman cp /tmp/file.txt tmp_container:/home/ray/file.txt", container_id
     )
-    run_in_docker_container(
-        f"podman commit tmp_container {nested_image_name}", container_id
-    )
-    run_in_docker_container("podman image ls", container_id)
+    run_in_container(f"podman commit tmp_container {nested_image_name}", container_id)
+    run_in_container("podman image ls", container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_b(podman_docker_cluster):
+    container_id = podman_docker_cluster
+    print(f"container_id: {container_id}")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_c(podman_docker_cluster):
+    container_id = podman_docker_cluster
+
+    put_get_script = f"""
+@ray.remote(runtime_env={CONTAINER_RUNTIME_ENV})
+def create_ref():
+    ref = ray.put(np.zeros(100_000_000))
+    return ref
+
+wrapped_ref = create_ref.remote()
+assert ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
+"""
+    # with open("/home/ray/file.txt") as f:
+    #     assert f.read().strip() == "helloworldalice"
+    run_in_container(f"python -c '{put_get_script}'", container_id)
 
 
 @pytest.mark.skip

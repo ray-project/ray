@@ -2,6 +2,8 @@ import time
 import pytest
 from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
+import subprocess
+import re
 
 # If you need to debug tests using fixtures in this file,
 # comment in the volume
@@ -143,40 +145,61 @@ def docker_cluster(head_node, worker_node):
     yield (head_node, worker_node)
 
 
-tmp_vol = volume()
-docker_socket_vol = volume()
-var_lib_container_vol = volume()
-podman_node = container(
-    image="rayproject/ray:runtime_env_container",
-    name=head_node_container_name,
-    network="{gcs_network.name}",
-    command=[
-        "ray",
-        "start",
-        "--head",
-        "--block",
-        # Fix the port of raylet to make sure raylet restarts at the same
-        # ip:port is treated as a different raylet.
-        "--node-manager-port",
-        "9379",
-    ],
-    volumes={
-        "{tmp_vol.name}": {"bind": "/tmp", "mode": "rw"},
-        "{docker_socket_vol.name}": {"bind": "/var/run/docker.sock"},
-        "{var_lib_container_vol.name}": {"bind": "/var/lib/containers"},
-    },
-    environment={
-        "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
-        "RAY_raylet_client_num_connect_attempts": "10",
-        "RAY_raylet_client_connect_timeout_milliseconds": "100",
-    },
-    wrapper_class=Container,
-    ports={
-        "8000/tcp": None,
-    },
-)
+def run_in_container(cmd: str, container_id: str):
+    docker_cmd = ["docker", "exec", container_id]
+    docker_cmd.extend(cmd.split())
+    print(f"executing command: {docker_cmd}")
+    resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
+    output = resp.decode("utf-8").strip()
+    print(f"output: {output}")
+    return output
 
 
 @pytest.fixture
-def podman_docker_cluster(podman_node):
-    yield podman_node
+def podman_docker_cluster():
+    print("docker image ls:", subprocess.check_output(["docker", "image", "ls"]))
+    print("id:", subprocess.check_output(["id"]))
+
+    image_name = "rayproject/ray:runtime_env_container"
+    # nested_image_name = "rayproject/ray:runtime_env_container_nested"
+    start_container_command = [
+        "docker",
+        "run",
+        "-d",
+        "--privileged",
+        "-v",
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "-v",
+        "/var/lib/containers:/var/lib/containers",
+        image_name,
+        "tail",
+        "-f",
+        "/dev/null",
+    ]
+    container_id = subprocess.check_output(start_container_command).decode("utf-8")
+    container_id = container_id.strip()
+    print(f"container_id: {container_id}")
+    print("docker ps:", subprocess.check_output(["docker", "ps"]))
+
+    output = run_in_container("ls -l /var/run/docker.sock", container_id)
+    regex = ".{10} +\d+ +root +(\d+) \d+ [A-Za-z]+ +\d+ +.+ +\/var\/run\/docker\.sock"
+    docker_group_id = re.search(regex, output).group(1)
+
+    run_in_container("id", container_id)
+    run_in_container("cat /etc/group", container_id)
+    run_in_container(f"sudo groupadd -g {docker_group_id} docker", container_id)
+    run_in_container("sudo usermod -aG daemon ray", container_id)
+    run_in_container("sudo usermod -aG docker ray", container_id)
+    run_in_container("cat /etc/group", container_id)
+    run_in_container("podman image ls", container_id)
+    run_in_container(f"podman pull docker-daemon:{image_name}", container_id)
+    run_in_container("podman image ls", container_id)
+    # run_in_container("bash -c 'echo helloworldalice' >> /tmp/file.txt", container_id)
+    # run_in_container(f"podman create --name tmp_container {image_name}", container_id)
+    # run_in_container(
+    #     "podman cp /tmp/file.txt tmp_container:/home/ray/file.txt", container_id
+    # )
+    # run_in_container(f"podman commit tmp_container {nested_image_name}", container_id)
+    run_in_container("podman image ls", container_id)
+
+    yield container_id
