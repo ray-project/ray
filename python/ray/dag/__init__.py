@@ -6,9 +6,9 @@ from ray.dag.input_node import (
     InputAttributeNode,
     DAGInputData,
 )
+from ray.dag.output_node import OutputNode
 from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
-    PREV_CLASS_METHOD_CALL_KEY,
     DAGNODE_TYPE_KEY,
 )
 from ray.dag.vis_utils import plot
@@ -22,7 +22,7 @@ __all__ = [
     "InputAttributeNode",
     "DAGInputData",
     "PARENT_CLASS_NODE_KEY",
-    "PREV_CLASS_METHOD_CALL_KEY",
     "DAGNODE_TYPE_KEY",
     "plot",
+    "OutputNode",
 ]

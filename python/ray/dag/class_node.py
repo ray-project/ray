@@ -1,14 +1,13 @@
+from weakref import ReferenceType
+
 import ray
 from ray.dag.dag_node import DAGNode
 from ray.dag.input_node import InputNode
 from ray.dag.format_utils import get_dag_node_str
-from ray.dag.constants import (
-    PARENT_CLASS_NODE_KEY,
-    PREV_CLASS_METHOD_CALL_KEY,
-)
+from ray.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.util.annotations import DeveloperAPI
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Union, Tuple
 
 
 @DeveloperAPI
@@ -24,7 +23,6 @@ class ClassNode(DAGNode):
         other_args_to_resolve=None,
     ):
         self._body = cls
-        self._last_call: Optional["ClassMethodNode"] = None
         super().__init__(
             cls_args,
             cls_kwargs,
@@ -85,7 +83,7 @@ class ClassNode(DAGNode):
             raise AttributeError(f".bind() cannot be used again on {type(self)} ")
         # Raise an error if the method is invalid.
         getattr(self._body, method_name)
-        call_node = _UnboundClassMethodNode(self, method_name)
+        call_node = _UnboundClassMethodNode(self, method_name, {})
         return call_node
 
     def __str__(self) -> str:
@@ -93,15 +91,17 @@ class ClassNode(DAGNode):
 
 
 class _UnboundClassMethodNode(object):
-    def __init__(self, actor: ClassNode, method_name: str):
+    def __init__(self, actor: ClassNode, method_name: str, options: dict):
+        # TODO(sang): Theoretically, We should use weakref cuz it is
+        # a circular dependency but when I used weakref, it fails
+        # because we cannot serialize the weakref.
         self._actor = actor
         self._method_name = method_name
-        self._options = {}
+        self._options = options
 
     def bind(self, *args, **kwargs):
         other_args_to_resolve = {
             PARENT_CLASS_NODE_KEY: self._actor,
-            PREV_CLASS_METHOD_CALL_KEY: self._actor._last_call,
         }
 
         node = ClassMethodNode(
@@ -111,7 +111,6 @@ class _UnboundClassMethodNode(object):
             self._options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        self._actor._last_call = node
         return node
 
     def __getattr__(self, attr: str):
@@ -146,14 +145,9 @@ class ClassMethodNode(DAGNode):
         self._bound_options = method_options or {}
         self._method_name: str = method_name
         # Parse other_args_to_resolve and assign to variables
-        self._parent_class_node: ClassNode = other_args_to_resolve.get(
-            PARENT_CLASS_NODE_KEY
-        )
-        # Used to track lineage of ClassMethodCall to preserve deterministic
-        # submission and execution order.
-        self._prev_class_method_call: Optional[
-            ClassMethodNode
-        ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
+        self._parent_class_node: Union[
+            ClassNode, ReferenceType["ray._private.actor.ActorHandle"]
+        ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
         # executed prior to this node.
