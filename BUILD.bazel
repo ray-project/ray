@@ -402,9 +402,6 @@ ray_cc_library(
         ":plasma_client",
         "//src/ray/common:network",
         ":stats_lib",
-        "@boost//:asio",
-        "@boost//:context",
-        "@boost//:coroutine",
     ],
 )
 
