@@ -15,14 +15,17 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.exceptions import RayActorError
 from ray.serve._private.autoscaling_policy import (
     BasicAutoscalingPolicy,
     calculate_desired_num_replicas,
 )
 from ray.serve._private.common import (
+    ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusTrigger,
     ReplicaState,
 )
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_DEFAULT_APP_NAME
@@ -1387,6 +1390,260 @@ app = g.bind()
     for _ in range(15):
         pids.add(ray.get(send_request.remote()))
     assert existing_pid in pids
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_autoscaling_status_changes(serve_instance):
+    """Test status changes when autoscaling deployments are deployed."""
+
+    num_cpus_available_to_ray = ray.available_resources()["CPU"]
+    print(f"Number of CPUs available to Ray: {num_cpus_available_to_ray}")
+
+    # Create a unit, so all tasks/actors in this test act as though there are
+    # 8 CPUs.
+    NUM_TEST_CPUs = 8
+    TEST_CPU = num_cpus_available_to_ray / NUM_TEST_CPUs
+    print(f"Treating number of CPUs as {NUM_TEST_CPUs} for test.")
+
+    @ray.remote(num_cpus=1 * TEST_CPU)
+    class CPULock:
+        """Object that consumes CPUs and blocks them from being used."""
+
+        def is_ready(self) -> bool:
+            return True
+
+    locks = []
+
+    def _locks_ready(locks) -> bool:
+        for i, lock in enumerate(locks):
+            assert ray.get(
+                lock.is_ready.remote(), timeout=0.1
+            ), f"Lock {i} not ready, {ray.available_resources()}"
+        return True
+
+    def _locks_removed(locks) -> bool:
+        for i, lock in enumerate(locks):
+            try:
+                ray.get(lock.is_ready.remote(), timeout=0.1)
+                raise RuntimeError(
+                    f"Lock {i} still locked, {ray.available_resources()}"
+                )
+            except RayActorError:
+                pass
+        return True
+
+    def num_locked_cpus() -> int:
+        return len(locks)
+
+    def num_free_cpus() -> int:
+        return NUM_TEST_CPUs - len(locks)
+
+    def lock_cpus(num_cpus_to_lock: int):
+        nonlocal locks
+        assert num_cpus_to_lock <= num_free_cpus()
+        print(f"Starting {num_cpus_to_lock} CPULock actors...")
+        new_locks = [CPULock.remote() for _ in range(num_cpus_to_lock)]
+        wait_for_condition(_locks_ready, locks=new_locks)
+        locks.extend(new_locks)
+        print(
+            f"{num_cpus_to_lock} CPULock actors are ready. "
+            f"Total: {num_locked_cpus()}"
+        )
+
+    def unlock_cpus(num_cpus_to_unlock: int):
+        nonlocal locks
+        assert len(locks) >= num_locked_cpus()
+        print(f"Stopping {num_cpus_to_unlock} CPULock actors...")
+
+        unlocked_locks = []
+        for _ in range(num_cpus_to_unlock):
+            lock_to_unlock = locks.pop()
+            ray.kill(lock_to_unlock)
+            unlocked_locks.append(lock_to_unlock)
+
+        wait_for_condition(_locks_removed, locks=unlocked_locks)
+        print(
+            f"{num_cpus_to_unlock} CPULock actors have stopped. "
+            f"Total: {num_locked_cpus()}"
+        )
+
+    lock_cpus(6)
+    print("Starting Serve app.")
+
+    deployment_name = "autoscaling_app"
+    min_replicas = 3
+    assert min_replicas > num_free_cpus()
+
+    @serve.deployment(
+        name=deployment_name,
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=NUM_TEST_CPUs,
+        ),
+        ray_actor_options=dict(num_cpus=1 * TEST_CPU),
+    )
+    class AutoscalingDeployment:
+        """Deployment that autoscales and consumes 1 CPU per replica."""
+
+        pass
+
+    app_name = "autoscaling_app"
+    app = AutoscalingDeployment.bind()
+
+    # Start the AutoscalingDeployment.
+    serve.run(app, name=app_name, _blocking=False)
+
+    # Wait for replicas to start.
+    print("Waiting for replicas to run.")
+
+    def replicas_running(expected_num_running_replicas: int) -> bool:
+        status = serve.status()
+        app_status = status.applications[app_name]
+        deployment_status = app_status.deployments[deployment_name]
+        num_running_replicas = deployment_status.replica_states.get(
+            ReplicaState.RUNNING, 0
+        )
+        assert num_running_replicas == expected_num_running_replicas
+        return True
+
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=num_free_cpus(),
+        timeout=15,
+    )
+
+    def check_expected_statuses(
+        expected_app_status: ApplicationStatus,
+        expected_deployment_status: DeploymentStatus,
+        expected_deployment_status_trigger: DeploymentStatusTrigger,
+    ) -> bool:
+        status = serve.status()
+
+        app_status = status.applications[app_name]
+        assert app_status.status == expected_app_status, f"{app_status}"
+
+        deployment_status = app_status.deployments[deployment_name]
+        assert (
+            deployment_status.status == expected_deployment_status
+        ), f"{deployment_status}"
+        assert (
+            deployment_status.status_trigger == expected_deployment_status_trigger
+        ), f"{deployment_status}"
+
+        return True
+
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    # Check that these statuses don't change over time.
+    print("Statuses are as expected. Sleeping briefly and checking again...")
+    time.sleep(1.5)
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print("Statuses are still as expected. Redeploying...")
+
+    # Check the status after redeploying the deployment.
+    min_replicas += 1
+    app = AutoscalingDeployment.options(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=NUM_TEST_CPUs,
+        )
+    ).bind()
+    serve.run(app, name=app_name, _blocking=False)
+
+    unlock_cpus(1)
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=num_free_cpus(),
+        timeout=15,
+    )
+
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print("Statuses are as expected. Sleeping briefly and checking again...")
+    time.sleep(1.5)
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print("Statuses are still as expected. Releasing some locks and checking again...")
+
+    # Release enough locks for deployment to enter autoscaling bounds.
+    unlock_cpus(min_replicas - num_free_cpus())
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=num_free_cpus(),
+        timeout=15,
+    )
+
+    check_expected_statuses(
+        ApplicationStatus.RUNNING,
+        DeploymentStatus.HEALTHY,
+        DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
+    )
+
+    print("Statuses are as expected. Redeploying with higher min_replicas...")
+    min_replicas += 1
+    app = AutoscalingDeployment.options(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=NUM_TEST_CPUs,
+        )
+    ).bind()
+    serve.run(app, name=app_name, _blocking=False)
+
+    # DeploymentStatus should return to UPDATING because the
+    # autoscaling_config changed.
+    wait_for_condition(
+        check_expected_statuses,
+        expected_app_status=ApplicationStatus.DEPLOYING,
+        expected_deployment_status=DeploymentStatus.UPDATING,
+        expected_deployment_status_trigger=(
+            DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        ),
+        retry_interval_ms=500,
+    )
+
+    print("Statuses are as expected. Sleeping briefly and checking again...")
+    time.sleep(1.5)
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print("Statuses are still as expected. Releasing some locks and checking again...")
+
+    unlock_cpus(min_replicas - num_free_cpus())
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=num_free_cpus(),
+        timeout=15,
+    )
+
+    check_expected_statuses(
+        ApplicationStatus.RUNNING,
+        DeploymentStatus.HEALTHY,
+        DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
+    )
+
+    print("Statuses are as expected.")
+
+    unlock_cpus(num_locked_cpus())
 
 
 if __name__ == "__main__":
