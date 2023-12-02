@@ -588,8 +588,9 @@ class ExecutionPlan:
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.legacy_compat import (
-                    execute_read_only_to_legacy_lazy_block_list,
+                    _get_initial_stats_from_plan,
                     execute_to_legacy_block_list,
+                    get_legacy_lazy_block_list_read_only,
                 )
                 from ray.data._internal.execution.streaming_executor import (
                     StreamingExecutor,
@@ -601,13 +602,11 @@ class ExecutionPlan:
                     metrics_tag,
                 )
                 if self.is_read_only():
-                    blocks = execute_read_only_to_legacy_lazy_block_list(
-                        executor,
-                        self,
-                        allow_clear_input_blocks=allow_clear_input_blocks,
-                        dataset_uuid=self._dataset_uuid,
-                        preserve_order=preserve_order,
-                    )
+                    # If the Dataset is read-only, get the LazyBlockList without
+                    # executing the plan by only fetching metadata available from
+                    # the input Datasource or Reader without executing its ReadTasks.
+                    blocks = get_legacy_lazy_block_list_read_only(self)
+                    stats = _get_initial_stats_from_plan(self)
                 else:
                     blocks = execute_to_legacy_block_list(
                         executor,
@@ -616,19 +615,19 @@ class ExecutionPlan:
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
                     )
+                    stats = executor.get_stats()
+                    stats_summary_string = stats.to_summary().to_string(
+                        include_parent=False
+                    )
+                    logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                        stats_summary_string,
+                    )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
                 # to a fully lazy execution model, unless .materialize() is used. Th
                 # reason we need it right now is since the user may iterate over a
                 # Dataset multiple times after fully executing it once.
                 if not self._run_by_consumer:
                     blocks._owned_by_consumer = False
-                stats = executor.get_stats()
-                stats_summary_string = stats.to_summary().to_string(
-                    include_parent=False
-                )
-                logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                    stats_summary_string,
-                )
 
             else:
                 blocks, stats, stages = self._optimize()

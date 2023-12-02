@@ -130,81 +130,48 @@ def execute_to_legacy_block_list(
     return block_list
 
 
-def execute_read_only_to_legacy_lazy_block_list(
-    executor: Executor,
+def get_legacy_lazy_block_list_read_only(
     plan: ExecutionPlan,
-    allow_clear_input_blocks: bool,
-    dataset_uuid: str,
-    preserve_order: bool,
 ) -> LazyBlockList:
-    """Execute a read-only plan with the new executor and
-    translate it into a legacy LazyBlockList containing ReadTasks from the
-    InputDataBuffer operator. Note that the underlying ReadTasks are not executed,
-    only their known metadata is fetched from executing the InputDataBuffer operator.
+    """For a read-only plan, construct a LazyBlockList with ReadTasks from the
+    input Datasource or Reader. Note that the plan and the underlying ReadTasks
+    are not executed, only their known metadata is fetched.
 
     Args:
-        executor: The executor to use.
         plan: The legacy plan to execute.
-        allow_clear_input_blocks: Whether the executor may consider clearing blocks.
-        dataset_uuid: UUID of the dataset for this execution.
-        preserve_order: Whether to preserve order in execution.
 
     Returns:
         The output as a legacy LazyBlockList.
     """
     assert plan.is_read_only(), "This function only supports read-only plans."
-
-    ctx = DataContext.get_current()
-    read_map_op, stats = _get_execution_dag(
-        executor,
-        plan,
-        allow_clear_input_blocks,
-        preserve_order,
-    )
-    # For a Read-only plan, the logical plan is: Read.
-    # The corresponding PhysicalPlan is: InputDataBuffer -> MapOperator.
-    # Execute the InputDataBuffer operator in isolation
-    # in order to initialize known metadata from its ReadTasks.
-    assert isinstance(read_map_op, MapOperator), read_map_op
-    input_data_buffer = read_map_op.input_dependency
-    assert isinstance(input_data_buffer, InputDataBuffer), input_data_buffer
-    bundles = executor.execute(input_data_buffer, initial_stats=stats)
-
-    # In the full dataset execution, the logic in ApplyAdditionalSplitToOutputBlocks
-    # is normally executed as part of the MapOperator created in the
-    # LogicalPlan -> PhysicalPlan plan translation. In this case, since the
-    # InputDataBuffer operator is executed in isolation, we need to
-    # manually apply this logic in order to update the ReadTasks.
     assert isinstance(plan._logical_plan, LogicalPlan)
     read_logical_op = plan._logical_plan.dag
     assert isinstance(read_logical_op, Read)
 
-    (_, _, estimated_num_blocks, k,) = compute_additional_split_factor(
+    # In the full dataset execution, the logic in ApplyAdditionalSplitToOutputBlocks
+    # is normally executed as part of the MapOperator created in the
+    # LogicalPlan -> PhysicalPlan plan translation. In this case, since we
+    # get the ReadTasks directly from the Datasource or Reader,
+    # we need to manually apply this logic in order to update the ReadTasks.
+    ctx = DataContext.get_current()
+    (parallelism, _, estimated_num_blocks, k,) = compute_additional_split_factor(
         read_logical_op._datasource_or_legacy_reader,
         read_logical_op._parallelism,
         read_logical_op._mem_size,
         ctx.target_max_block_size,
         cur_additional_split_factor=None,
     )
-
-    read_tasks = []
-    owns_blocks = True
-    for bundle in bundles:
-        if not bundle.owns_blocks:
-            owns_blocks = False
-        for read_task_ref, _ in bundle.blocks:
-            read_task = ray.get(read_task_ref)
-            # Manually apply the ApplyAdditionalSplitToOutputBlocks
-            # logic to update ReadTasks.
-            apply_output_blocks_handling_to_read_task(read_task, k)
-            read_tasks.append(read_task)
-    _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
+    read_tasks = read_logical_op._datasource_or_legacy_reader.get_read_tasks(
+        parallelism
+    )
+    for read_task in read_tasks:
+        apply_output_blocks_handling_to_read_task(read_task, k)
 
     block_list = LazyBlockList(
         read_tasks,
         read_logical_op.name,
         ray_remote_args=read_logical_op._ray_remote_args,
-        owned_by_consumer=owns_blocks,
+        owned_by_consumer=False,
     )
     # Update the estimated number of blocks after applying optimizations
     # and fetching metadata (e.g. SetReadParallelismRule).
