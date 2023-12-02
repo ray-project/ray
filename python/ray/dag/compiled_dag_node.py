@@ -4,6 +4,7 @@ from typing import List
 from collections import defaultdict
 
 import ray
+from ray.exceptions import RayTaskError, TaskCancelledError
 
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
@@ -31,17 +32,44 @@ def do_exec_compiled_task(
     actor_method_name: str,
     output_max_readers: int,
 ):
-    method = getattr(self, actor_method_name)
-    while True:
-        inputs = ray.get(input_refs)
-        output_val = method(*inputs)
-        ray.worker.global_worker.put_object(
-            output_val,
-            object_ref=self._output_ref,
-            max_readers=output_max_readers,
-        )
-        for input_ref in input_refs:
-            ray.release(input_ref)
+    try:
+        self._input_refs = input_refs
+        method = getattr(self, actor_method_name)
+        while True:
+            inputs = ray.get(input_refs)
+            output_val = method(*inputs)
+            ray.worker.global_worker.put_object(
+                output_val,
+                object_ref=self._output_ref,
+                max_readers=output_max_readers,
+            )
+            for input_ref in input_refs:
+                ray.release(input_ref)
+    except Exception as e:
+        print("Task aborted", e)
+        raise
+
+
+def do_cancel_compiled_task(self):
+    input_refs = self._input_refs
+    e = RayTaskError(
+        function_name="do_exec_compiled_task",
+        traceback_str="",
+        cause=TaskCancelledError())
+    for input_ref in self._input_refs:
+        print("Putting cancellation token", input_ref)
+        try:
+            ray.worker.global_worker.put_object(
+                e,
+                object_ref=input_ref,
+                max_readers=1,
+                try_wait=True,
+            )
+        except Exception as e:
+            if "write acquire failed" in str(e):
+                pass
+            else:
+                raise
 
 
 class CompiledTask:
@@ -126,6 +154,7 @@ class CompiledDAG:
                 self.dag_input_ref,
                 self.dag_input_max_readers,
                 self.dag_output_refs,
+                self.monitor,
             )
 
         queue = [self.input_task_idx]
@@ -181,7 +210,7 @@ class CompiledDAG:
             # TODO: Assign the task with the correct input and output buffers.
             worker_fn = task.dag_node._get_remote_method("__ray_apply__")
             self.worker_task_refs.append(
-                worker_fn.remote(
+                worker_fn.options(concurrency_group="_ray_system").remote(
                     do_exec_compiled_task,
                     resolved_args,
                     task.dag_node.get_method_name(),
@@ -201,8 +230,8 @@ class CompiledDAG:
         assert self.dag_input_ref
         assert self.dag_output_refs
         # Driver should ray.put on input, ray.get/release on output
-        self.monitor_failures()
-        return (self.dag_input_ref, self.dag_input_max_readers, self.dag_output_refs)
+        self.monitor = self.monitor_failures()
+        return (self.dag_input_ref, self.dag_input_max_readers, self.dag_output_refs, self.monitor)
 
     def monitor_failures(self):
         outer = self
@@ -210,11 +239,26 @@ class CompiledDAG:
         class Monitor(threading.Thread):
             def __init__(self):
                 super().__init__(daemon=True)
+                self.in_destroy = False
+
+            def destroy(self):
+                if self.in_destroy:
+                    return
+                self.in_destroy = True
+                for actor in outer.actor_refs:
+                    print("Cancelling compiled worker on actor", actor)
+                    try:
+                        ray.get(actor.__ray_apply__.remote(do_cancel_compiled_task))
+                    except Exception as e:
+                        print("Error cancelling", e)
+                        pass
 
             def run(self):
                 try:
                     ray.get(outer.worker_task_refs)
                 except Exception as e:
+                    if self.in_destroy:
+                        return
                     print("Worker task exception", e)
                     for output_ref in outer.dag_output_refs:
                         print("Putting error", output_ref)
@@ -225,13 +269,16 @@ class CompiledDAG:
                                 max_readers=1,
                                 try_wait=True,
                             )
-                        except:
-                            print("Ignore failed put")
-                    for actor in outer.actor_refs:
-                        print("Killing actor", actor)
-                        ray.kill(actor)
+                        except Exception as f:
+                            if "write acquire failed" in str(f):
+                                pass
+                            else:
+                                raise
+                    self.destroy()
 
-        Monitor().start()
+        monitor = Monitor()
+        monitor.start()
+        return monitor
 
 
 def build_compiled_dag(dag: "DAGNode"):

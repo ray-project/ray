@@ -132,7 +132,7 @@ class DAGNode(DAGNodeBase):
         """
         if compiled:
             assert len(args) == 1, "Compiled DAGs support exactly one InputNode arg"
-            input_ref, input_max_readers, output_ref = self.compiled()
+            input_ref, input_max_readers, output_ref, _ = self.compiled()
             ray.worker.global_worker.put_object(
                 args[0], object_ref=input_ref, max_readers=input_max_readers
             )
@@ -152,6 +152,10 @@ class DAGNode(DAGNodeBase):
         if _ray_cache_refs or _ray_cache_actors:
             self.cache_from_last_execute = executor.cache
         return result
+
+    def destroy_compiled_dag(self):
+        _, _, _, monitor = self.compiled()
+        monitor.destroy()
 
     def _get_toplevel_child_nodes(self) -> List["DAGNode"]:
         """Return the list of nodes specified as top-level args.

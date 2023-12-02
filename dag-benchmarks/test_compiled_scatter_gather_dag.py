@@ -6,7 +6,8 @@ import ray
 from ray.dag import InputNode, OutputNode
 
 
-@ray.remote
+# TODO: auto create this concurrency group for compiled actors?
+@ray.remote(concurrency_groups={"_ray_system": 1})
 class Actor:
     def __init__(self, init_value):
         print("__init__ PID", os.getpid())
@@ -55,6 +56,7 @@ def run_benchmark(num_actors, num_trials):
         f"Throughput: {num_trials * (args.num_actors + 1) / (end - start)} "
         "total tasks/s."
     )
+    dag.destroy_compiled_dag()
 
 
 if __name__ == "__main__":
