@@ -204,6 +204,9 @@ class PhysicalOperator(Operator):
             target_max_block_size = DataContext.get_current().target_max_block_size
         return target_max_block_size
 
+    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
+        self._target_max_block_size = target_max_block_size
+
     def completed(self) -> bool:
         """Return True when this operator is completed.
 

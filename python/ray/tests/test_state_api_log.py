@@ -410,6 +410,56 @@ async def test_log_agent_find_task_log_offsets(temp_file):
     assert start_offset == expected_start + len(exclude_tail_content)
 
 
+def test_log_agent_resolve_filename(temp_dir):
+    """
+    Test that LogAgentV1Grpc.resolve_filename(root, filename) works:
+    1. Not possible to resolve a file that doesn't exist.
+    2. Not able to resolve files outside of the temp dir root.
+        - with a absolute path.
+        - with a relative path recursive up.
+    3. Permits a file in a directory that's symlinked into the root dir.
+    """
+    root = Path(temp_dir)
+    # Create a file in the temp dir.
+    file = root / "valid_file"
+    file.touch()
+    subdir = root / "subdir"
+    subdir.mkdir()
+
+    # Create a directory in the root that contains a valid file and
+    # is symlinked to by a path in the subdir.
+    symlinked_dir = root / "symlinked"
+    symlinked_dir.mkdir()
+    symlinked_file = symlinked_dir / "valid_file"
+    symlinked_file.touch()
+    symlinked_path_in_subdir = subdir / "symlink_to_outside_dir"
+    symlinked_path_in_subdir.symlink_to(symlinked_dir)
+
+    # Test file doesn't exist
+    with pytest.raises(FileNotFoundError):
+        LogAgentV1Grpc._resolve_filename(root, "non-exist-file")
+
+    # Test absolute path outside of root is not allowed
+    with pytest.raises(FileNotFoundError):
+        LogAgentV1Grpc._resolve_filename(subdir, root.resolve() / "valid_file")
+
+    # Test relative path recursive up is not allowed
+    with pytest.raises(FileNotFoundError):
+        LogAgentV1Grpc._resolve_filename(subdir, "../valid_file")
+
+    # Test relative path a valid file is allowed
+    assert (
+        LogAgentV1Grpc._resolve_filename(root, "valid_file")
+        == (root / "valid_file").resolve()
+    )
+
+    # Test relative path to a valid file following a symlink is allowed
+    assert (
+        LogAgentV1Grpc._resolve_filename(subdir, "symlink_to_outside_dir/valid_file")
+        == (root / "symlinked" / "valid_file").resolve()
+    )
+
+
 # Unit Tests (LogsManager)
 
 
@@ -1030,6 +1080,41 @@ def test_log_job(ray_start_with_dashboard):
         logs = "".join(get_log(submission_id=job_id, node_id=node_id))
         assert JOB_LOG + "\n" == logs
 
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_log_get_invalid_filenames(ray_start_with_dashboard, temp_file):
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = list_nodes()[0]["node_id"]
+
+    # log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
+
+    def verify():
+        # Kind of hack that we know the file node_ip_address.json exists in ray.
+        with pytest.raises(RayStateApiException) as e:
+            logs = "".join(get_log(node_id=node_id, filename="../node_ip_address.json"))
+            print(logs)
+            assert "does not start with " in str(e.value)
+        return True
+
+    wait_for_condition(verify)
+
+    # Verify that reading file outside of the log directory is not allowed
+    # with absolute path.
+    def verify():
+        # Kind of hack that we know the file node_ip_address.json exists in ray.
+        temp_file_abs_path = str(Path(temp_file.name).resolve())
+        with pytest.raises(RayStateApiException) as e:
+            logs = "".join(get_log(node_id=node_id, filename=temp_file_abs_path))
+            print(logs)
+            assert "does not start with " in str(e.value)
         return True
 
     wait_for_condition(verify)
