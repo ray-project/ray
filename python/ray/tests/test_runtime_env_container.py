@@ -89,8 +89,13 @@ def test_b(podman_docker_cluster):
 def test_c(podman_docker_cluster):
     container_id = podman_docker_cluster
 
-    put_get_script = f"""
-@ray.remote(runtime_env={CONTAINER_RUNTIME_ENV})
+    put_get_script = """
+@ray.remote(runtime_env={
+    "container": {
+        "image": "rayproject/ray:runtime_env_container",
+        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py", # noqa
+    }
+})
 def create_ref():
     ref = ray.put(np.zeros(100_000_000))
     return ref
@@ -102,6 +107,7 @@ assert ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
     # with open("/home/ray/file.txt") as f:
     #     assert f.read().strip() == "helloworldalice"
     ray_script = ["docker", "exec", container_id, "python", "-c", f"'{put_get_script}'"]
+    print("Executing", ray_script)
     print(subprocess.check_output(ray_script))
 
 
