@@ -1,6 +1,6 @@
 import inspect
 import time
-from typing import Callable, Tuple
+from typing import Callable, Coroutine, Tuple
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,20 @@ from tqdm import tqdm
 class Blackhole:
     def sink(self, o):
         pass
+
+
+async def collect_profile_events(coro: Coroutine):
+    """Collects profiling events using Viztracer"""
+
+    from viztracer import VizTracer
+
+    tracer = VizTracer()
+    tracer.start()
+
+    await coro
+
+    tracer.stop()
+    tracer.save()
 
 
 async def run_latency_benchmark(
@@ -24,7 +38,7 @@ async def run_latency_benchmark(
 
     latencies = []
     for i in tqdm(range(num_requests + num_warmup_requests)):
-        time.sleep(0.001)
+        # time.sleep(0.001)
         start = time.perf_counter()
         await to_call()
         end = time.perf_counter()
