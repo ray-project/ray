@@ -16,6 +16,8 @@ from typing import (
 import uuid
 import asyncio
 
+from ray.dag.compiled_dag_node import build_compiled_dag
+
 T = TypeVar("T")
 
 
@@ -58,6 +60,8 @@ class DAGNode(DAGNodeBase):
         self._stable_uuid = uuid.uuid4().hex
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
+
+        self._compiled_dag = None
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
@@ -103,8 +107,19 @@ class DAGNode(DAGNodeBase):
     def clear_cache(self):
         self.cache_from_last_execute = {}
 
+    def compiled(self) -> Tuple[ray.ObjectRef]:
+        if self._compiled_dag is None:
+            self._compiled_dag = build_compiled_dag(self)
+
+        return self._compiled_dag.compiled()
+
     def execute(
-        self, *args, _ray_cache_refs: bool = False, **kwargs
+        self,
+        *args,
+        _ray_cache_refs: bool = False,
+        _ray_cache_actors: bool = True,
+        compiled: bool = False,
+        **kwargs,
     ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this DAG using the Ray default executor _execute_impl().
 
@@ -115,14 +130,32 @@ class DAGNode(DAGNodeBase):
                 - Serve handles for class nodes
                 - resolved values representing user input at runtime
         """
+        if compiled:
+            assert len(args) == 1, "Compiled DAGs support exactly one InputNode arg"
+            input_ref, input_max_readers, output_ref, _ = self.compiled()
+            ray.worker.global_worker.put_object(
+                args[0], object_ref=input_ref, max_readers=input_max_readers
+            )
+            return output_ref
 
         def executor(node):
             return node._execute_impl(*args, **kwargs)
 
-        result = self.apply_recursive(executor)
+        cache = {}
         if _ray_cache_refs:
+            cache = self.cache_from_last_execute
+        elif _ray_cache_actors:
+            for key, ref in self.cache_from_last_execute.items():
+                if isinstance(ref, ray.actor.ActorHandle):
+                    cache[key] = ref
+        result = self.apply_recursive(executor, cache=cache)
+        if _ray_cache_refs or _ray_cache_actors:
             self.cache_from_last_execute = executor.cache
         return result
+
+    def destroy_compiled_dag(self):
+        _, _, _, monitor = self.compiled()
+        monitor.destroy()
 
     def _get_toplevel_child_nodes(self) -> List["DAGNode"]:
         """Return the list of nodes specified as top-level args.
@@ -218,7 +251,7 @@ class DAGNode(DAGNodeBase):
             new_args, new_kwargs, self.get_options(), new_other_args_to_resolve
         )
 
-    def apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
+    def apply_recursive(self, fn: "Callable[[DAGNode], T]", cache=None) -> T:
         """Apply callable on each node in this DAG in a bottom-up tree walk.
 
         Args:
@@ -231,8 +264,11 @@ class DAGNode(DAGNodeBase):
         """
 
         class _CachingFn:
-            def __init__(self, fn):
-                self.cache = {}
+            def __init__(self, fn, cache=None):
+                if cache is None:
+                    self.cache = {}
+                else:
+                    self.cache = cache
                 self.fn = fn
                 self.fn.cache = self.cache
                 self.input_node_uuid = None
@@ -250,7 +286,7 @@ class DAGNode(DAGNodeBase):
                 return self.cache[node._stable_uuid]
 
         if not type(fn).__name__ == "_CachingFn":
-            fn = _CachingFn(fn)
+            fn = _CachingFn(fn, cache)
 
         return fn(
             self._apply_and_replace_all_child_nodes(
