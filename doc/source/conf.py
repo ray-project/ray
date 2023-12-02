@@ -188,7 +188,9 @@ exclude_patterns = [
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
 
-all_toc_libs = [f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path]
+all_toc_libs = [
+    f.path.strip("./") for f in os.scandir(".") if f.is_dir() and "ray-" in f.path
+]
 all_toc_libs += [
     "cluster",
     "tune",

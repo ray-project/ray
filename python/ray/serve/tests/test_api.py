@@ -774,6 +774,36 @@ class TestAppBuilder:
                 check_missing_required, {"num_replicas": "10"}
             )
 
+    @pytest.mark.parametrize("use_v1_patch", [True, False])
+    def test_pydantic_version_compatibility(self, use_v1_patch: bool):
+        """Check compatibility with different pydantic versions."""
+
+        if use_v1_patch:
+            try:
+                # Only runs if installed pydantic version is >=2.5.0
+                from pydantic.v1 import BaseModel
+            except ImportError:
+                return
+        else:
+            from pydantic import BaseModel
+
+        cat_dict = {"color": "orange", "age": 10}
+
+        class Cat(BaseModel):
+            color: str
+            age: int
+
+        def build(args: Cat):
+            """Builder with Pydantic model type hint."""
+
+            assert isinstance(args, Cat), f"args type: {type(args)}"
+            assert args.color == cat_dict["color"]
+            assert args.age == cat_dict["age"]
+            return self.A.bind(f"My {args.color} cat is {args.age} years old.")
+
+        app = call_app_builder_with_args_if_necessary(build, cat_dict)
+        assert isinstance(app, Application)
+
 
 def test_no_slash_route_prefix(serve_instance):
     """Test serve run with no slash route_prefix.
