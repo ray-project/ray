@@ -1541,7 +1541,8 @@ class DeploymentState:
 
         logger.info(
             f"Deploying new version of deployment {self.deployment_name} in "
-            f"application '{self.app_name}'."
+            f"application '{self.app_name}'. Setting initial target number of "
+            f"replicas to {target_num_replicas}."
         )
         self._replica_constructor_retry_counter = 0
         self._backoff_time_s = 1
