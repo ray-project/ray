@@ -1938,8 +1938,6 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     if (bool is_idle =
             cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
         is_idle) {
-      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-          request.reason());
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
@@ -1947,8 +1945,6 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     break;
   case DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION:
     // Non-rejectable draining request.
-    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-        request.reason());
     reply->set_is_accepted(true);
     break;
   // Crash immediately.
