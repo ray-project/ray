@@ -112,11 +112,37 @@ def test_put_remote_get(ray_start_regular, num_readers):
                 assert chan.begin_read() == val
                 chan.end_read()
 
+            for i in range(num_writes):
+                val = i.to_bytes(100, "little")
+                assert chan.begin_read() == val
+                chan.end_read()
+
+            for val in [
+                b"hello world",
+                "hello again",
+                1000,
+            ]:
+                assert chan.begin_read() == val
+                chan.end_read()
+
     num_writes = 1000
     readers = [Reader.remote() for _ in range(num_readers)]
     done = [reader.read.remote(chan, num_writes) for reader in readers]
     for i in range(num_writes):
         val = i.to_bytes(8, "little")
+        chan.write(val, num_readers=num_readers)
+
+    # Test different data size.
+    for i in range(num_writes):
+        val = i.to_bytes(100, "little")
+        chan.write(val, num_readers=num_readers)
+
+    # Test different metadata.
+    for val in [
+        b"hello world",
+        "hello again",
+        1000,
+    ]:
         chan.write(val, num_readers=num_readers)
 
     ray.get(done)
