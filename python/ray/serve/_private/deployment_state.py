@@ -1600,15 +1600,11 @@ class DeploymentState:
         new_info.version = self._target_state.version.code_version
 
         has_reached_autoscaling_bounds = self._has_reached_autoscaling_bounds()
-        if has_reached_autoscaling_bounds:
-            new_status_trigger = DeploymentStatusTrigger.AUTOSCALING
-        else:
-            new_status_trigger = self.curr_status_info.status_trigger
 
         self._set_target_state(
             new_info,
             decision_num_replicas,
-            status_trigger=new_status_trigger,
+            status_trigger=DeploymentStatusTrigger.AUTOSCALING,
             allow_scaling_statuses=has_reached_autoscaling_bounds,
         )
 
