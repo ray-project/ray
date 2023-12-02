@@ -173,7 +173,7 @@ Internally, Ray Data uses tasks to execute functions, and uses actors to execute
 To learn more about tasks and actors, read the
 :ref:`Ray Core Key Concepts <core-key-concepts>`.
 
-To transform data with Python class, complete these steps:
+To transform data with a Python class, complete these steps:
 
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
