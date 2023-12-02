@@ -1615,7 +1615,7 @@ def test_autoscaling_status_changes(serve_instance):
         expected_deployment_status_trigger=(
             DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
         ),
-        retry_interval_ms=500,
+        retry_interval_ms=1000,
     )
 
     print("Statuses are as expected. Sleeping briefly and checking again...")
@@ -1633,6 +1633,7 @@ def test_autoscaling_status_changes(serve_instance):
         replicas_running,
         expected_num_running_replicas=num_free_cpus(),
         timeout=15,
+        retry_interval_ms=1000,
     )
 
     check_expected_statuses(
