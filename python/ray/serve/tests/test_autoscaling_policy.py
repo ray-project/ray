@@ -1394,8 +1394,33 @@ app = g.bind()
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaling_status_changes(serve_instance):
-    """Test status changes when autoscaling deployments are deployed."""
+    """Test status changes when autoscaling deployments are deployed.
 
+    This test starts an autoscaling deployment and limits the number of
+    replicas by also running some dummy actors that consume CPU resources.
+    The test does the following:
+
+    1. Runs dummy actors that consume 6/8 CPUs on the cluster.
+    2. Deploys an autoscaling deployment with min_replicas 3. Each replica uses
+       1/8 CPUs on the cluster, so there's not enough resources to reach the
+       min.
+    3. Checks that the deployment remains in the UPDATING status.
+    4. Redeploys the deployment with min_replicas 4. Also removes 1 dummy actor.
+    5. Checks that the deployment remains in the UPDATING status.
+    6. Removes enough dummy actors, so that there's 4/8 CPUs available on the
+       cluster.
+    7. Checks that the deployment enters HEALTHY status.
+    8. Redeploys the deployment with min_replicas 5.
+    9. Checks that the deployment re-enters and remains in the UPDATING status.
+    10. Remove enough dummy actors, so that there's 5/8 CPUs available on the
+        cluster.
+    11. Checks that the deployment enters HEALTHY status.
+    """
+
+    # Locking implementation: the following logic is not directly related to
+    # the test. It implements the dummy actors that we use to limit the number
+    # of CPUs in the cluster and provides methods to manage the actors.
+    # Skip to `End of locking implementation.` comment for the test logic.
     num_cpus_available_to_ray = ray.available_resources()["CPU"]
     print(f"Number of CPUs available to Ray: {num_cpus_available_to_ray}")
 
@@ -1412,7 +1437,7 @@ def test_autoscaling_status_changes(serve_instance):
         def is_ready(self) -> bool:
             return True
 
-    locks = []
+    _locks = []
 
     def _locks_ready(locks) -> bool:
         for i, lock in enumerate(locks):
@@ -1433,31 +1458,31 @@ def test_autoscaling_status_changes(serve_instance):
         return True
 
     def num_locked_cpus() -> int:
-        return len(locks)
+        return len(_locks)
 
     def num_free_cpus() -> int:
-        return NUM_TEST_CPUs - len(locks)
+        return NUM_TEST_CPUs - len(_locks)
 
     def lock_cpus(num_cpus_to_lock: int):
-        nonlocal locks
+        nonlocal _locks
         assert num_cpus_to_lock <= num_free_cpus()
         print(f"Starting {num_cpus_to_lock} CPULock actors...")
         new_locks = [CPULock.remote() for _ in range(num_cpus_to_lock)]
         wait_for_condition(_locks_ready, locks=new_locks)
-        locks.extend(new_locks)
+        _locks.extend(new_locks)
         print(
             f"{num_cpus_to_lock} CPULock actors are ready. "
             f"Total: {num_locked_cpus()}"
         )
 
     def unlock_cpus(num_cpus_to_unlock: int):
-        nonlocal locks
-        assert len(locks) >= num_locked_cpus()
+        nonlocal _locks
+        assert len(_locks) >= num_locked_cpus()
         print(f"Stopping {num_cpus_to_unlock} CPULock actors...")
 
         unlocked_locks = []
         for _ in range(num_cpus_to_unlock):
-            lock_to_unlock = locks.pop()
+            lock_to_unlock = _locks.pop()
             ray.kill(lock_to_unlock)
             unlocked_locks.append(lock_to_unlock)
 
@@ -1466,6 +1491,8 @@ def test_autoscaling_status_changes(serve_instance):
             f"{num_cpus_to_unlock} CPULock actors have stopped. "
             f"Total: {num_locked_cpus()}"
         )
+
+    # End of locking implementation.
 
     lock_cpus(6)
     print("Starting Serve app.")
