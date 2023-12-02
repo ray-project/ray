@@ -49,6 +49,13 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
 template <typename ExecutorType>
 std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetExecutor(
     const std::string &concurrency_group_name, const ray::FunctionDescriptor &fd) {
+  // XXX make this a option/config to create on-demand?
+  if (concurrency_group_name == "_ray_system" &&
+      name_to_executor_index_.find("_ray_system") == name_to_executor_index_.end()) {
+    auto executor = std::make_shared<ExecutorType>(1);
+    name_to_executor_index_["_ray_system"] = executor;
+  }
+
   if (!concurrency_group_name.empty()) {
     auto it = name_to_executor_index_.find(concurrency_group_name);
     /// TODO(qwang): Fail the user task.

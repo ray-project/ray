@@ -55,7 +55,8 @@ def do_cancel_compiled_task(self):
     e = RayTaskError(
         function_name="do_exec_compiled_task",
         traceback_str="",
-        cause=TaskCancelledError())
+        cause=TaskCancelledError(),
+    )
     for input_ref in self._input_refs:
         print("Putting cancellation token", input_ref)
         try:
@@ -231,7 +232,12 @@ class CompiledDAG:
         assert self.dag_output_refs
         # Driver should ray.put on input, ray.get/release on output
         self.monitor = self.monitor_failures()
-        return (self.dag_input_ref, self.dag_input_max_readers, self.dag_output_refs, self.monitor)
+        return (
+            self.dag_input_ref,
+            self.dag_input_max_readers,
+            self.dag_output_refs,
+            self.monitor,
+        )
 
     def monitor_failures(self):
         outer = self

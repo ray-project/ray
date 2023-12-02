@@ -7,7 +7,7 @@ from ray.dag import InputNode, OutputNode
 
 
 # TODO: auto create this concurrency group for compiled actors?
-@ray.remote(concurrency_groups={"_ray_system": 1})
+@ray.remote
 class Actor:
     def __init__(self, init_value):
         print("__init__ PID", os.getpid())
