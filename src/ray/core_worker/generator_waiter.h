@@ -42,7 +42,7 @@ class GeneratorBackpressureWaiter {
   absl::CondVar cond_var_;
   // If total_objects_generated_ - total_objects_consumed_ < this
   // the task will stop.
-  int64_t backpressure_threshold_;
+  const int64_t backpressure_threshold_;
   // Total number of objects generated from a generator.
   int64_t total_objects_generated_;
   // Total number of objects consumed from a generator.
