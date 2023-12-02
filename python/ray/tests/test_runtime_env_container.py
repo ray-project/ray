@@ -98,9 +98,11 @@ def create_ref():
 wrapped_ref = create_ref.remote()
 assert ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
 """
+    put_get_script = put_get_script.strip()
     # with open("/home/ray/file.txt") as f:
     #     assert f.read().strip() == "helloworldalice"
-    run_in_container(f"python -c '{put_get_script}'", container_id)
+    ray_script = ["docker", "exec", container_id, "python", "-c", f"'{put_get_script}'"]
+    print(subprocess.check_output(ray_script))
 
 
 @pytest.mark.skip
