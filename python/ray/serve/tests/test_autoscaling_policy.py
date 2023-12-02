@@ -1427,10 +1427,8 @@ def test_autoscaling_status_changes(serve_instance):
 
     # Create a unit, so all tasks/actors in this test act as though there are
     # 8 CPUs.
-    # NUM_TEST_CPUs = 8
-    # TEST_CPU = num_cpus_available_to_ray / NUM_TEST_CPUs
-    NUM_TEST_CPUs = int(num_cpus_available_to_ray)
-    TEST_CPU = 1
+    NUM_TEST_CPUs = 8
+    TEST_CPU = num_cpus_available_to_ray / NUM_TEST_CPUs
     print(f"Treating number of CPUs as {NUM_TEST_CPUs} for test.")
 
     @ray.remote(num_cpus=1 * TEST_CPU)
@@ -1483,24 +1481,13 @@ def test_autoscaling_status_changes(serve_instance):
         assert len(_locks) >= num_locked_cpus()
         print(f"Stopping {num_cpus_to_unlock} CPULock actors...")
 
-        curr_num_cpus = ray.available_resources().get("CPU", 0)
-
         unlocked_locks = []
         for _ in range(num_cpus_to_unlock):
             lock_to_unlock = _locks.pop()
-            ray.kill(lock_to_unlock, no_restart=True)
+            ray.kill(lock_to_unlock)
             unlocked_locks.append(lock_to_unlock)
 
         wait_for_condition(_locks_removed, locks=unlocked_locks)
-
-        def check_num_available_cpus():
-            num_available_cpus = ray.available_resources().get("CPU", 0)
-            assert num_available_cpus == curr_num_cpus + num_cpus_to_unlock, (
-                f"Available CPUs: {num_available_cpus}, "
-                f"Previously available CPUs: {curr_num_cpus}, "
-                f"CPULock actors stopped: {num_cpus_to_unlock}"
-            )
-
         print(
             f"{num_cpus_to_unlock} CPULock actors have stopped. "
             f"Total: {num_locked_cpus()}"
@@ -1508,11 +1495,12 @@ def test_autoscaling_status_changes(serve_instance):
 
     # End of locking implementation.
 
-    lock_cpus(int(0.75 * NUM_TEST_CPUs))
+    lock_cpus(6)
     print("Starting Serve app.")
 
     deployment_name = "autoscaling_app"
-    min_replicas = num_free_cpus() + 1
+    min_replicas = 3
+    assert min_replicas > num_free_cpus()
 
     @serve.deployment(
         name=deployment_name,
@@ -1602,12 +1590,10 @@ def test_autoscaling_status_changes(serve_instance):
     serve.run(app, name=app_name, _blocking=False)
 
     unlock_cpus(1)
-    time.sleep(2)
     wait_for_condition(
         replicas_running,
         expected_num_running_replicas=num_free_cpus(),
         timeout=15,
-        retry_interval_ms=10000
     )
 
     check_expected_statuses(
