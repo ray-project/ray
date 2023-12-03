@@ -12,7 +12,7 @@ more information.
 .. dropdown:: Adding Your Integration
 
     To add an integration, simply add an entry to the `projects` list of our
-    Gallery YAML on `GitHub <https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/eco-gallery.yml>`_.
+    Gallery yaml on `GitHub <https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/ray-libraries.rst>`_.
 
     .. code-block:: yaml
 
@@ -23,7 +23,27 @@ more information.
             repo: The URL of your project on GitHub
             image: The URL of a logo of your project
 
-    That's all!
+        .. grid-item-card::
+    
+            .. figure:: The link to an image for your library eg. ../images/<library name>.png
+                :class: card-figure
+    
+            .. div::
+    
+                .. image:: A Shields.io Badge for your libraries stars eg. https://img.shields.io/github/stars/<org>/<library>?style=social)]
+                    :target: https://github.com/<org>/<library name>
+    
+                A short description of your library eg. Ray is an open-source unified compute framework that makes it easy to scale AI and Python workloads.
+    
+            +++
+            .. button-link:: A link to your projects homepage or repository eg. https://www.ray.io/
+                :color: primary
+                :outline:
+                :expand:
+    
+                <Library name> Integration
+    
+        That's all!
 
 .. grid:: 1 2 2 3
     :gutter: 1
