@@ -349,6 +349,7 @@ def test_ensure_input_node_singleton(shared_ray_instance):
     ):
         _ = ray.get(dag.execute(2))
 
+
 def test_apply_recursive_caching(shared_ray_instance):
     @ray.remote
     def f(input):
@@ -376,7 +377,6 @@ def test_apply_recursive_caching(shared_ray_instance):
     # Prior to #40337; count was 2559
     assert counter == 40
     DAGNode.apply_recursive = original_apply_recursive
-
 
 
 if __name__ == "__main__":
