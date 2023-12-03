@@ -645,6 +645,9 @@ class TestTargetCapacityUpdateAndServeStatus:
         self.unblock_replica_creation_and_deletion(signal, app_name)
         self.check_num_replicas(int(0.1 * num_replicas), app_name, deployment_name)
 
+        # Send a signal so all replicas shut down quickly when the test finishes.
+        ray.get(signal.send.remote())
+
     def test_autoscaling_target_capacity_update(
         self, shutdown_ray_and_serve, client: ServeControllerClient
     ):
@@ -850,6 +853,10 @@ class TestTargetCapacityUpdateAndServeStatus:
             app_name=app_name,
             deployment_name=deployment_name,
         )
+
+        # Send a signal so all replicas shut down quickly when the test finishes.
+        ray.get(request_signal.send.remote())
+        ray.get(lifecycle_signal.send.remote())
 
 
 @serve.deployment(
