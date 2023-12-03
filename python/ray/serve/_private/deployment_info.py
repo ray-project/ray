@@ -57,10 +57,6 @@ class DeploymentInfo:
             self.autoscaling_policy = BasicAutoscalingPolicy(
                 deployment_config.autoscaling_config
             )
-            self.autoscaling_policy.set_target_capacity(
-                target_capacity,
-                target_capacity_direction,
-            )
         else:
             self.autoscaling_policy = None
 
@@ -102,12 +98,6 @@ class DeploymentInfo:
     ):
         self.target_capacity = new_target_capacity
         self.target_capacity_direction = new_target_capacity_direction
-
-        if self.autoscaling_policy is not None:
-            self.autoscaling_policy.set_target_capacity(
-                new_target_capacity,
-                new_target_capacity_direction,
-            )
 
     @property
     def actor_def(self):

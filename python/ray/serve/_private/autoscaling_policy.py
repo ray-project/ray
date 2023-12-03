@@ -163,16 +163,6 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         # scale_up_periods or scale_down_periods.
         self.decision_counter = 0
 
-        # Scales the min_replicas and max_replicas when calculating the final
-        # number of replicas.
-        self.target_capacity: Optional[float] = None
-
-        # Determines what lower bound to use when calculating num_replicas.
-        # When the target_capacity_direction is UP, the lower bound defaults
-        # to using initial_replicas and falls back to min_replicas if that value
-        # is None. Otherwise, the lower bound is based on min_replicas.
-        self.target_capacity_direction: Optional[TargetCapacityDirection] = None
-
     def get_decision_num_replicas(
         self,
         curr_target_num_replicas: int,
@@ -238,14 +228,6 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             self.decision_counter = 0
 
         return decision_num_replicas
-
-    def set_target_capacity(
-        self,
-        new_target_capacity: Optional[float],
-        new_target_capacity_direction: Optional[TargetCapacityDirection],
-    ):
-        self.target_capacity = new_target_capacity
-        self.target_capacity_direction = new_target_capacity_direction
 
     def apply_bounds(
         self,
