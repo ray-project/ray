@@ -1599,26 +1599,31 @@ class DeploymentState:
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
 
-        has_reached_autoscaling_bounds = self._has_reached_autoscaling_bounds()
+        # The deployment should only transition to UPSCALING/DOWNSCALING if
+        # it's within the autoscaling bounds, or if it's not currently
+        # performing a config update.
+        allow_scaling_statuses = (
+            self._is_within_autoscaling_bounds()
+            or self.curr_status_info.status_trigger
+            != DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         self._set_target_state(
             new_info,
             decision_num_replicas,
             status_trigger=DeploymentStatusTrigger.AUTOSCALING,
-            allow_scaling_statuses=has_reached_autoscaling_bounds,
+            allow_scaling_statuses=allow_scaling_statuses,
         )
 
-    def _has_reached_autoscaling_bounds(self) -> bool:
-        """Whether or not this deployment has reached the autoscaling bounds.
+    def _is_within_autoscaling_bounds(self) -> bool:
+        """Whether or not this deployment is within the autoscaling bounds.
 
         This method should only be used for autoscaling deployments. It raises
         an assertion error otherwise.
 
         Returns: True if the number of running replicas for the current
-            deployment version has reached a point that's within the
-            autoscaling bounds. Note that if the deployment has already
-            reached such a point and then moves outside the bounds, this
-            method will still return True. False otherwise.
+            deployment version is within the autoscaling bounds. False
+            otherwise.
         """
 
         target_version = self._target_state.version
@@ -1637,13 +1642,8 @@ class DeploymentState:
             autoscaling_policy.config.max_replicas,
             self._target_state.info.target_capacity,
         )
-        has_reached_autoscaling_bounds = (
-            self.curr_status_info.status_trigger
-            != DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-            or lower_bound <= num_replicas_running_at_target_version <= upper_bound
-        )
 
-        return has_reached_autoscaling_bounds
+        return lower_bound <= num_replicas_running_at_target_version <= upper_bound
 
     def delete(self) -> None:
         if not self._target_state.deleting:
