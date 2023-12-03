@@ -60,4 +60,3 @@ WORKDIR /ray
 COPY . .
 
 RUN ./ci/env/install-bazel.sh
-

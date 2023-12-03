@@ -118,7 +118,7 @@ class SumMetricFamily(Metric):
                  labels: Optional[Sequence[str]] = None,
                  unit: str = '',
                  ):
-        Metric.__init__(self, name, documentation, 'sum_counter', unit)
+        Metric.__init__(self, name, documentation, 'counter', unit)
         if labels is not None and value is not None:
             raise ValueError('Can only specify at most one of value and labels.')
         if labels is None:

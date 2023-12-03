@@ -20,6 +20,7 @@ from wsgiref.simple_server import make_server, WSGIRequestHandler, WSGIServer
 from .openmetrics import exposition as openmetrics
 from .registry import CollectorRegistry, REGISTRY
 from .utils import floatToGoString
+from .metrics_core import SumMetricFamily
 
 __all__ = (
     'CONTENT_TYPE_LATEST',
@@ -200,7 +201,10 @@ def generate_latest(registry: CollectorRegistry = REGISTRY) -> bytes:
             mtype = metric.type
             # Munging from OpenMetrics into Prometheus format.
             if mtype == 'counter':
-                mname = mname + '_total'
+                # breaking change prevention from #37768 issue
+                # TODO: remove this once the breaking change is resolved + notify users.
+                if not isinstance(metric, SumMetricFamily):
+                    mname = mname + '_total'
             elif mtype == 'info':
                 mname = mname + '_info'
                 mtype = 'gauge'
@@ -211,8 +215,6 @@ def generate_latest(registry: CollectorRegistry = REGISTRY) -> bytes:
                 # but this captures the structure better.
                 mtype = 'histogram'
             elif mtype == 'sum_counter':
-                # breaking change prevention from #37768 issue
-                # TODO: remove this once the breaking change is resolved + notify users.
                 mtype = 'counter'
             elif mtype == 'unknown':
                 mtype = 'untyped'
