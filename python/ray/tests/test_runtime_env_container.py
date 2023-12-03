@@ -90,6 +90,8 @@ def test_c(podman_docker_cluster):
     container_id = podman_docker_cluster
 
     put_get_script = """
+import ray
+
 @ray.remote(runtime_env={
     "container": {
         "image": "rayproject/ray:runtime_env_container",
@@ -106,7 +108,7 @@ assert ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
     put_get_script = put_get_script.strip()
     # with open("/home/ray/file.txt") as f:
     #     assert f.read().strip() == "helloworldalice"
-    ray_script = ["docker", "exec", container_id, "python", "-c", f"'{put_get_script}'"]
+    ray_script = ["docker", "exec", container_id, "python", "-c", put_get_script]
     print("Executing", ray_script)
     print(subprocess.check_output(ray_script))
 
