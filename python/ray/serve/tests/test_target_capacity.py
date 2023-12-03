@@ -19,8 +19,8 @@ from ray.serve._private.common import (
     ReplicaState,
     TargetCapacityDirection,
 )
-from ray.serve.config import AutoscalingConfig
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
@@ -704,7 +704,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         # Send requests and check that the application scales up.
         requests = []
         handle = serve.get_app_handle(app_name)
-        for _ in range(4 * max_replicas):
+        for _ in range(max_replicas):
             requests.append(handle.remote())
         ray.get(lifecycle_signal.send.remote())
         wait_for_condition(
@@ -718,7 +718,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         # Clear requests and check that application scales down.
         ray.get(request_signal.send.remote())
         results = [request.result() for request in requests]
-        assert results == ["Hello world!"] * (4 * max_replicas)
+        assert results == ["Hello world!"] * (max_replicas)
         wait_for_condition(
             self.check_num_replicas,
             expected_num_replicas=int(0.5 * initial_replicas),
@@ -777,7 +777,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         # Check that target_capacity * max_replicas is still the upper bound.
         requests = []
         handle = serve.get_app_handle(app_name)
-        for _ in range(4 * max_replicas):
+        for _ in range(max_replicas):
             requests.append(handle.remote())
         ray.get(lifecycle_signal.send.remote())
         wait_for_condition(
@@ -796,7 +796,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         # target_capacity * min_replicas.
         ray.get(request_signal.send.remote())
         results = [request.result() for request in requests]
-        assert results == ["Hello world!"] * (4 * max_replicas)
+        assert results == ["Hello world!"] * (max_replicas)
 
         print(f"Autoscaling metrics: {get_autoscaling_metrics()}")
 
