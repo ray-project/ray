@@ -551,12 +551,13 @@ class TestTargetCapacityUpdateAndServeStatus:
         """
 
         def check_running():
-            app_status = serve.status().applications[app_name].status
-            assert app_status == ApplicationStatus.RUNNING, f"{app_status}"
+            app_status_data = serve.status().applications[app_name]
+            app_status = app_status_data.status
+            assert app_status == ApplicationStatus.RUNNING, f"{app_status_data}"
             return True
 
         ray.get(lifecycle_signal.send.remote())
-        wait_for_condition(check_running)
+        wait_for_condition(check_running, timeout=20, retry_interval_ms=500)
         ray.get(lifecycle_signal.send.remote(clear=True))
 
     def test_static_num_replicas_target_capacity_update(
