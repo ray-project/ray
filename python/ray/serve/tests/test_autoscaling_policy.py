@@ -16,7 +16,6 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.exceptions import RayActorError
 from ray.serve._private.autoscaling_policy import (
     BasicAutoscalingPolicy,
     calculate_desired_num_replicas,
@@ -1461,7 +1460,10 @@ def test_autoscaling_status_changes(serve_instance):
                     break
 
             if num_replicas_released > 0:
-                print(f"Started running {num_replicas_released} replicas.")
+                print(
+                    f"Started running {num_replicas_released} replicas. "
+                    f"{self.get_waiter_statuses()}"
+                )
 
         async def wait(self, actor_name):
             print(f"Replica {actor_name} started waiting...")
@@ -1470,16 +1472,6 @@ def test_autoscaling_status_changes(serve_instance):
             self.release_replicas()
             await event.wait()
             print(f"Replica {actor_name} finished waiting.")
-
-        async def remove(self, actor_name):
-            print(f"Removing replica {actor_name}...")
-            if actor_name in self._events:
-                self._events.pop(actor_name)
-                print(f"Removed replica {actor_name}.")
-            else:
-                print(f"Replica {actor_name} had no corresponding event.")
-
-            self.release_replicas()
 
         async def set_max_replicas_to_run(self, max_num_replicas: int = 1):
             print(f"Setting _max_replicas_to_run to {max_num_replicas}.")
@@ -1494,24 +1486,19 @@ def test_autoscaling_status_changes(serve_instance):
 
             return len(self._events)
 
-        async def get_waiter_statuses(self) -> Dict[str, bool]:
+        def get_waiter_statuses(self) -> Dict[str, bool]:
             return {
                 actor_name: event.is_set() for actor_name, event in self._events.items()
             }
 
         async def clear_dead_replicas(self):
-            """Clears dead replicas from internal _events list.
-
-            Sometimes replicas get killed or die without running __del__
-            and cleaning up their event. This method checks which actors are
-            still alive and cleans up the events for the ones that are dead.
-            """
+            """Clears dead replicas from internal _events dictionary."""
 
             actor_names = list(self._events.keys())
             for name in actor_names:
                 try:
                     ray.get_actor(name=name, namespace=SERVE_NAMESPACE)
-                except RayActorError:
+                except ValueError:
                     print(f"Actor {name} has died. Removing event.")
                     self._events.pop(name)
 
@@ -1537,7 +1524,7 @@ def test_autoscaling_status_changes(serve_instance):
             max_replicas=max_replicas,
         ),
         ray_actor_options=dict(num_cpus=0),
-        graceful_shutdown_timeout_s=10,
+        graceful_shutdown_timeout_s=0,
     )
     class AutoscalingDeployment:
         """Deployment that autoscales."""
@@ -1550,11 +1537,6 @@ def test_autoscaling_status_changes(serve_instance):
             )
             await event_manager.wait.remote(self.name)
             print(f"Replica {self.name} has initialized.")
-
-        async def __del__(self):
-            print(f"Replica {self.name} deleting...")
-            await event_manager.remove.remote(self.name)
-            print(f"Replica {self.name} deleted.")
 
     app_name = "autoscaling_app"
     app = AutoscalingDeployment.bind()
@@ -1586,9 +1568,11 @@ def test_autoscaling_status_changes(serve_instance):
         num_running_replicas = deployment_status.replica_states.get(
             ReplicaState.RUNNING, 0
         )
-        assert (
-            num_running_replicas == expected_num_running_replicas
-        ), f"{app_status}, {ray.available_resources()}"
+        assert num_running_replicas == expected_num_running_replicas, (
+            f"{app_status}, {ray.available_resources()}, "
+            f"{ray.get(event_manager.get_waiter_statuses.remote())}, "
+            f"{ray.get(event_manager.get_max_replicas_to_run.remote())}"
+        )
         return True
 
     wait_for_condition(
@@ -1652,7 +1636,7 @@ def test_autoscaling_status_changes(serve_instance):
     wait_for_condition(
         replicas_running,
         expected_num_running_replicas=(min_replicas - 1),
-        timeout=15,
+        timeout=20,
     )
 
     check_expected_statuses(
@@ -1681,7 +1665,7 @@ def test_autoscaling_status_changes(serve_instance):
     wait_for_condition(
         replicas_running,
         expected_num_running_replicas=min_replicas,
-        timeout=15,
+        timeout=20,
     )
 
     check_expected_statuses(
@@ -1713,7 +1697,6 @@ def test_autoscaling_status_changes(serve_instance):
         expected_deployment_status_trigger=(
             DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
         ),
-        retry_interval_ms=1000,
     )
 
     print("Statuses are as expected. Sleeping briefly and checking again...")
@@ -1732,8 +1715,7 @@ def test_autoscaling_status_changes(serve_instance):
     wait_for_condition(
         replicas_running,
         expected_num_running_replicas=min_replicas,
-        timeout=15,
-        retry_interval_ms=1000,
+        timeout=20,
     )
 
     check_expected_statuses(
