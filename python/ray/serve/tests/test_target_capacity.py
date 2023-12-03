@@ -787,7 +787,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             deployment_name=deployment_name,
             controller_handle=client._controller,
             timeout=25,
-            retry_interval_ms=1000,
+            retry_interval_ms=2000,
         )
 
         print(f"Autoscaling metrics: {get_autoscaling_metrics()}")
@@ -807,7 +807,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             deployment_name=deployment_name,
             controller_handle=client._controller,
             timeout=25,
-            retry_interval_ms=1000,
+            retry_interval_ms=2000,
         )
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
