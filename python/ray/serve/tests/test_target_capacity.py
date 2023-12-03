@@ -464,6 +464,17 @@ class TestTargetCapacityUpdateAndServeStatus:
         replica_state: ReplicaState = ReplicaState.RUNNING,
         controller_handle=None,
     ) -> bool:
+        """Checks that the number of replicas are as expected.
+
+        Args:
+            expected_num_replicas: the expected number of replicas.
+            app_name: the deployment's application name.
+            deployment_name: the deployment's name.
+            replica_state: only replicas in this state are counted.
+            controller_handle: this is an optional argument. If provided, the
+                controller handle is used to get the current autoscaling
+                metrics and print them if the assertion fails.
+        """
         deployment = serve.status().applications[app_name].deployments[deployment_name]
         num_running_replicas = deployment.replica_states.get(replica_state, 0)
         if controller_handle is None:
@@ -741,13 +752,6 @@ class TestTargetCapacityUpdateAndServeStatus:
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
 
-        def get_autoscaling_metrics():
-            return ray.get(
-                client._controller._dump_autoscaling_metrics_for_testing.remote()
-            )
-
-        print(f"Autoscaling metrics: {get_autoscaling_metrics()}")
-
         # Decrease the target_capacity, and check that min_replicas is used
         # to create the lower bound.
         self.apply_config_and_check_status(
@@ -773,8 +777,6 @@ class TestTargetCapacityUpdateAndServeStatus:
             0, app_name, deployment_name, replica_state=ReplicaState.STOPPING
         )
 
-        print(f"Autoscaling metrics: {get_autoscaling_metrics()}")
-
         # Check that target_capacity * max_replicas is still the upper bound.
         requests = []
         handle = serve.get_app_handle(app_name)
@@ -791,15 +793,11 @@ class TestTargetCapacityUpdateAndServeStatus:
             retry_interval_ms=2000,
         )
 
-        print(f"Autoscaling metrics: {get_autoscaling_metrics()}")
-
         # Clear requests and check that application scales down to
         # target_capacity * min_replicas.
         ray.get(request_signal.send.remote())
         results = [request.result() for request in requests]
         assert results == ["Hello world!"] * (max_replicas)
-
-        print(f"Autoscaling metrics: {get_autoscaling_metrics()}")
 
         wait_for_condition(
             self.check_num_replicas,
