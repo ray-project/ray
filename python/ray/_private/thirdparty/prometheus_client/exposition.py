@@ -214,8 +214,6 @@ def generate_latest(registry: CollectorRegistry = REGISTRY) -> bytes:
                 # A gauge histogram is really a gauge,
                 # but this captures the structure better.
                 mtype = 'histogram'
-            elif mtype == 'sum_counter':
-                mtype = 'counter'
             elif mtype == 'unknown':
                 mtype = 'untyped'
 

@@ -6,7 +6,6 @@ from .samples import Exemplar, Sample, Timestamp
 METRIC_TYPES = (
     'counter', 'gauge', 'summary', 'histogram',
     'gaugehistogram', 'unknown', 'info', 'stateset',
-    'sum_counter',
 )
 METRIC_NAME_RE = re.compile(r'^[a-zA-Z_:][a-zA-Z0-9_:]*$')
 METRIC_LABEL_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
