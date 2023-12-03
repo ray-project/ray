@@ -19,8 +19,8 @@ from ray.serve._private.common import (
     ReplicaState,
     TargetCapacityDirection,
 )
-from ray.serve.config import AutoscalingConfig
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
@@ -472,8 +472,10 @@ class TestTargetCapacityUpdateAndServeStatus:
             autoscaling_metrics = ray.get(
                 controller_handle._dump_autoscaling_metrics_for_testing.remote()
             )
+            import time
             assert num_running_replicas == expected_num_replicas, (
-                f"Status: {deployment}" f"\nAutoscaling metrics: {autoscaling_metrics}"
+                f"Status: {deployment}\nAutoscaling metrics: {autoscaling_metrics}"
+                f"\nCurrent time: {time.time()}"
             )
         return True
 

@@ -1224,6 +1224,7 @@ class DeploymentState:
         )
 
         self.replica_average_ongoing_requests: Dict[str, float] = dict()
+        self.replica_autoscaling_last_update: Dict[str, float] = dict()
 
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
@@ -2246,10 +2247,13 @@ class DeploymentState:
             downscale=downscale,
         )
 
-    def record_autoscaling_metrics(self, replica_tag: str, window_avg: float) -> None:
+    def record_autoscaling_metrics(
+        self, replica_tag: str, window_avg: float, send_timestamp: float = 0
+    ) -> None:
         """Records average ongoing requests at replicas."""
 
         self.replica_average_ongoing_requests[replica_tag] = window_avg
+        self.replica_autoscaling_last_update[replica_tag] = send_timestamp
 
     def record_multiplexed_model_ids(
         self, replica_name: str, multiplexed_model_ids: List[str]
@@ -2333,7 +2337,7 @@ class DeploymentStateManager:
             replica_name = ReplicaName.from_replica_tag(replica_tag)
             self._deployment_states[
                 replica_name.deployment_id
-            ].record_autoscaling_metrics(replica_tag, window_avg)
+            ].record_autoscaling_metrics(replica_tag, window_avg, send_timestamp)
 
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.handle_metrics_store.add_metrics_point(data, send_timestamp)
@@ -2344,6 +2348,15 @@ class DeploymentStateManager:
         """
         return {
             deployment: deployment_state.replica_average_ongoing_requests
+            for deployment, deployment_state in self._deployment_states.items()
+        }
+
+    def get_autoscaling_update_times(self):
+        """
+        Return autoscaling metrics (used for dumping from controller)
+        """
+        return {
+            deployment: deployment_state.replica_autoscaling_last_update
             for deployment, deployment_state in self._deployment_states.items()
         }
 
