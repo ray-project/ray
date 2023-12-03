@@ -48,6 +48,13 @@ class CoreWorkerClientPool {
   /// be open until it's no longer used, at which time it will disconnect.
   void Disconnect(ray::WorkerID id);
 
+  /// For testing.
+  size_t Size() {
+    absl::MutexLock lock(&mu_);
+    RAY_CHECK_EQ(client_list_.size(), client_map_.size());
+    return client_list_.size();
+  }
+
  private:
   /// Provides the default client factory function. Providing this function to the
   /// construtor aids migration but is ultimately a thing that should be
