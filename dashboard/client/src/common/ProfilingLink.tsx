@@ -96,3 +96,43 @@ export const CpuStackTraceLink = ({
     </Link>
   );
 };
+
+export const RunMemoryProfilingLink = ({
+  pid,
+  ip,
+  type = "",
+}: CpuProfilingLinkProps) => {
+  if (!pid || !ip || typeof pid === "undefined" || typeof ip === "undefined") {
+    return <div></div>;
+  }
+  return (
+    <Link
+      href={`worker/traceback?pid=${pid}&ip=${ip}&native=0`}
+      target="_blank"
+      title="Sample the current Python stack trace for this worker."
+      rel="noreferrer"
+    >
+      Stack&nbsp;Trace{type ? ` (${type})` : ""}
+    </Link>
+  );
+};
+
+export const GetMemoryProfilingLink = ({
+  pid,
+  ip,
+  type = "",
+}: CpuProfilingLinkProps) => {
+  if (!pid || !ip || typeof pid === "undefined" || typeof ip === "undefined") {
+    return <div></div>;
+  }
+  return (
+    <Link
+      href={`worker/traceback?pid=${pid}&ip=${ip}&native=0`}
+      target="_blank"
+      title="Sample the current Python stack trace for this worker."
+      rel="noreferrer"
+    >
+      Stack&nbsp;Trace{type ? ` (${type})` : ""}
+    </Link>
+  );
+};

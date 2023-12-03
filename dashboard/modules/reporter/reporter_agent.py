@@ -375,10 +375,12 @@ class ReporterAgent(
     async def GetMemoryProfile(self, request, context):
         pid = request.pid
         format = request.format
+        leaks = request.leaks
         p = MemoryProfilingManager(self._log_dir)
         success, output = await p.get_profile_result(
             pid,
             format=format,
+            leaks=leaks
         )
         return reporter_pb2.GetMemoryProfileReply(output=output, success=success)
 

@@ -515,6 +515,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         node_id = req.query.get("node_id")
 
         format = req.query.get("format", "flamegraph")
+        leaks = req.query.get("leaks", False) == "1"
 
         ip = DataSource.node_id_to_ip[node_id]
         reporter_stub = self._stubs[ip]
@@ -533,7 +534,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
         reply = await reporter_stub.GetMemoryProfile(
-            reporter_pb2.GetMemoryProfileRequest(pid=pid, format=format)
+            reporter_pb2.GetMemoryProfileRequest(pid=pid, format=format, leaks=leaks)
         )
 
         """
@@ -663,6 +664,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             reporter_stub = list(self._stubs.values())[0]
         pid = int(req.query["pid"])
         format = req.query.get("format", "flamegraph")
+        leaks = req.query.get("leaks", False) == "1"
 
         # Default not using `--native` for profiling
         logger.info(
@@ -672,7 +674,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             )
         )
         reply = await reporter_stub.GetMemoryProfile(
-            reporter_pb2.GetMemoryProfileRequest(pid=pid, format=format)
+            reporter_pb2.GetMemoryProfileRequest(pid=pid, format=format, leaks=leaks)
         )
         if reply.success:
             logger.info(

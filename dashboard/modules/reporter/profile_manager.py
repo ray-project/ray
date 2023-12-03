@@ -156,7 +156,7 @@ class MemoryProfilingManager:
         self.profile_dir_path.mkdir(exist_ok=True)
         self.profiler = "memray"
 
-    async def get_profile_result(self, pid: int, format="flamegraph") -> (bool, str):
+    async def get_profile_result(self, pid: int, format="flamegraph", leaks=False) -> (bool, str):
         memray = shutil.which(self.profiler)
         if memray is None:
             return False, "memray is not installed"
@@ -179,16 +179,31 @@ class MemoryProfilingManager:
                 return False, _format_failed_profiler_command(
                     cmd, self.profiler, stdout, stderr
                 )
-
         profile_visualize_path = self.profile_dir_path / f"{pid}_memory_profiling.html"
-        visualize_cmd = [
-            memray,
-            "flamegraph",
-            "-o",
-            profile_visualize_path,
-            "-f",
-            profile_file_path,
-        ]
+        if format == "flamegraph":
+            visualize_cmd = [
+                memray,
+                "flamegraph",
+                "-o",
+                profile_visualize_path,
+                "-f",
+                profile_file_path,
+            ]
+        elif format == "table":
+            visualize_cmd = [
+                memray,
+                "table",
+                "-o",
+                profile_visualize_path,
+                "-f",
+                profile_file_path,
+        
+            ]
+        else:
+            return False, f"Report with format: {format} is not supported"
+
+        if leaks:
+            visualize_cmd.append("--leaks")
 
         process = await asyncio.create_subprocess_exec(
             *visualize_cmd,
@@ -212,6 +227,8 @@ class MemoryProfilingManager:
 
         profile_file_path = self.profile_dir_path / f"{pid}_memory_profiling.bin"
         cmd = [memray, "attach", "-o", profile_file_path, str(pid), "-f"]
+        if duration:
+            cmd += ["-d", str(duration)]
         if native:
             cmd.append("--native")
         if await _can_passwordless_sudo():
