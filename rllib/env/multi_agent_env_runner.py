@@ -72,6 +72,12 @@ class MultiAgentEnvRunner(EnvRunner):
             "rllib-multi-agent-env-runner-v0",
         )
 
+        # Create the vectorized gymnasium env.
+        assert isinstance(self.env.unwrapped, MultiAgentEnv), (
+            "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
+            "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
+        )
+
         # Check, if spaces are in preferred format, i.e. `gym.spaces.Dict` with
         # agent ids mapping to agent spaces.
         self._action_space_in_preferred_format = (
@@ -79,12 +85,6 @@ class MultiAgentEnvRunner(EnvRunner):
         )
         self._obs_space_in_preferred_format = (
             self.env.unwrapped._check_if_obs_space_maps_agent_id_to_sub_space()
-        )
-
-        # Create the vectorized gymnasium env.
-        assert isinstance(self.env.unwrapped, MultiAgentEnv), (
-            "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
-            "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
         )
 
         # TODO (simon): An env runner needs not to know about what agents are there.
@@ -449,12 +449,17 @@ class MultiAgentEnvRunner(EnvRunner):
         # Create a new multi-agent episode.
         self._episode = MultiAgentEpisode(agent_ids=self.agent_ids)
 
-        # TODO (simon): Add image rendering.
+        # Initialize image rendering if needed.
+        render_image = None
+        if with_render_data:
+            render_image = self.env.render()
 
         # Set the initial observations in the episodes.
         # TODO (sven): maybe move this into connector pipeline (even
         # if automated).
-        self._episode.add_env_reset(observations=obs, infos=infos)
+        self._episode.add_env_reset(
+            observations=obs, infos=infos, render_image=render_image
+        )
         # Set states to initial states and start sampling.
         states = initial_states
 
@@ -522,7 +527,11 @@ class MultiAgentEnvRunner(EnvRunner):
                 if STATE_OUT in fwd_out:
                     states.update(tree.map_structure(lambda s: s[STATE_OUT], fwd_out))
 
+            # Step the environment.
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            # Add render data if needed.
+            if with_render_data:
+                render_image = self.env.render()
 
             extra_model_outputs = {
                 agent_id: {
@@ -545,6 +554,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 terminateds=terminateds,
                 truncateds=truncateds,
                 extra_model_outputs=extra_model_outputs,
+                render_image=render_image,
             )
 
             # TODO (sven, simon): We have to check, if we need this elaborate
