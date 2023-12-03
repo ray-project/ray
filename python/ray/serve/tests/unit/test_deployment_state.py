@@ -1045,6 +1045,153 @@ def test_redeploy_new_version(mock_deployment_state):
     )
 
 
+def test_redeploy_different_num_replicas(mock_deployment_state):
+    """Tests status changes when redeploying with different num_replicas.
+
+    1. Deploys a deployment -> checks if it's UPDATING.
+    2. Redeploys deployment -> checks that it's still UPDATING.
+    3. Makes deployment HEALTHY, and then redeploys with more replicas ->
+       check that is becomes UPSCALING.
+    4. Makes deployment HEALTHY, and then redeploys with more replicas ->
+       check that is becomes DOWNSCALING.
+    """
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
+
+    version = "1"
+    b_info_1, info_version = deployment_info(version=version, num_replicas=5)
+    updating = deployment_state.deploy(b_info_1)
+    assert updating
+
+    deployment_state_update_result = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._id: deployment_state_update_result.upscale}, {}
+    )
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.STARTING, 5)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    # Test redeploying with a higher num_replicas while the deployment is UPDATING.
+    b_info_2, info_version = deployment_info(version=version, num_replicas=10)
+    updating = deployment_state.deploy(b_info_2)
+    assert updating
+    # Redeploying while the deployment is UPDATING shouldn't change status.
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    deployment_state_update_result = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._id: deployment_state_update_result.upscale}, {}
+    )
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.STARTING, 10)],
+    )
+
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.RUNNING, 10)],
+    )
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
+
+    # Redeploy with a higher number of replicas. The status should be UPSCALING.
+    b_info_3, info_version = deployment_info(version=version, num_replicas=20)
+    updating = deployment_state.deploy(b_info_3)
+    assert updating
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    deployment_state_update_result = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._id: deployment_state_update_result.upscale}, {}
+    )
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.STARTING, 10), (ReplicaState.STARTING, 10)],
+    )
+
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.RUNNING, 20)],
+    )
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.UPSCALE_COMPLETED
+    )
+
+    # Redeploy with lower number of replicas. The status should be DOWNSCALING.
+    b_info_4, info_version = deployment_info(version=version, num_replicas=5)
+    updating = deployment_state.deploy(b_info_4)
+    assert updating
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    deployment_state_update_result = deployment_state.update()
+    replicas_to_stop = deployment_state._deployment_scheduler.schedule(
+        {}, {deployment_state._id: deployment_state_update_result.downscale}
+    )[deployment_state._id]
+    deployment_state.stop_replicas(replicas_to_stop)
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.STOPPING, 15), (ReplicaState.RUNNING, 5)],
+    )
+
+    for replica in deployment_state._replicas.get(states=[ReplicaState.STOPPING]):
+        replica._actor.set_done_stopping()
+
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=info_version,
+        total=5,
+        by_state=[(ReplicaState.RUNNING, 5)],
+    )
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+    )
+
+
 @pytest.mark.parametrize(
     "option,value",
     [
