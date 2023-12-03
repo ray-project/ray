@@ -12,7 +12,7 @@ more information.
 .. dropdown:: Adding Your Integration
 
     To add an integration, simply add an entry to the `projects` list of our
-    Gallery yaml on `GitHub <https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/ray-libraries.rst>`_.
+    Gallery YAML on `GitHub <https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/ray-libraries.rst>`_.
 
     .. code-block:: yaml
 
