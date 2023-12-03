@@ -16,13 +16,6 @@ more information.
 
     .. code-block:: yaml
 
-          - name: the integration link button text
-            section_title: The section title for this integration
-            description: A quick description of your library and its integration with Ray
-            website: The URL of your website
-            repo: The URL of your project on GitHub
-            image: The URL of a logo of your project
-
         .. grid-item-card::
     
             .. figure:: The link to an image for your library eg. ../images/<library name>.png
@@ -30,7 +23,7 @@ more information.
     
             .. div::
     
-                .. image:: A Shields.io Badge for your libraries stars eg. https://img.shields.io/github/stars/<org>/<library>?style=social)]
+                .. image:: A Shields.io Badge for your libraries stars eg. https://img.shields.io/github/stars/<org>/<library name>?style=social)]
                     :target: https://github.com/<org>/<library name>
     
                 A short description of your library eg. Ray is an open-source unified compute framework that makes it easy to scale AI and Python workloads.
@@ -41,7 +34,7 @@ more information.
                 :outline:
                 :expand:
     
-                <Library name> Integration
+                <library name> Integration
     
         That's all!
 
