@@ -31,7 +31,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
         options: Optional[dict] = None,
     ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         # Call the super's reset function.
-        super().reset(seed=seed, options=options)
+        super().reset(seed=seed if seed else 0, options=options)
 
         # Set the timestep back to zero.
         self.t = 0

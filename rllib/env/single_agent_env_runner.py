@@ -162,7 +162,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Get initial states for all 'batch_size_B` rows in the forward batch,
         # i.e. for all vector sub_envs.
-        if hasattr(self.module, "get_initial_state"):
+        if self.module and self.module.is_stateful():
             initial_states = tree.map_structure(
                 lambda s: np.repeat(s, self.num_envs, axis=0),
                 self.module.get_initial_state(),
@@ -189,7 +189,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     observation=obs[i],
                     infos=infos[i],
                 )
-                self._states[i] = {k: s[i] for k, s in states.items()}
         # Do not reset envs, but instead continue in already started episodes.
         else:
             # Pick up stored observations and states from previous timesteps.
@@ -252,13 +251,11 @@ class SingleAgentEnvRunner(EnvRunner):
             ts += self.num_envs
 
             for i in range(self.num_envs):
-                # Extract state for vector sub_env.
-                s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
                 # TODO (simon): This might be unfortunate if a user needs to set a
                 # certain env parameter during different episodes (for example for
-                # benchmarking).
+                # benchmarking during some evaluation runs).
                 extra_model_output = {}
                 for k, v in fwd_out.items():
                     if SampleBatch.ACTIONS != k:
@@ -280,21 +277,20 @@ class SingleAgentEnvRunner(EnvRunner):
                         truncated=truncateds[i],
                         extra_model_outputs=extra_model_output,
                     )
-                    self._states[i] = s
 
-                    # Reset h-states to nthe model's intiial ones b/c we are starting a
+                    # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
-                    if hasattr(self.module, "get_initial_state"):
+                    if self.module and self.module.is_stateful():
                         for k, v in self.module.get_initial_state().items():
-                            states[k][i] = convert_to_numpy(v)
+                            states[k][i] = v
 
                     done_episodes_to_return.append(self._episodes[i].finalize())
                     # Create a new episode object with already the reset data in it.
                     self._episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]], infos=[infos[i]]
                     )
-                    self._states[i] = s
                 else:
+                    # Add data to episode.
                     self._episodes[i].add_env_step(
                         obs[i],
                         actions[i],
@@ -302,7 +298,8 @@ class SingleAgentEnvRunner(EnvRunner):
                         infos=infos[i],
                         extra_model_outputs=extra_model_output,
                     )
-                    self._states[i] = s
+                    # Extract state for vector sub_env.
+                    self._states[i] = {k: s[i] for k, s in states.items()}
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)

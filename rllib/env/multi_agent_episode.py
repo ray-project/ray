@@ -10,8 +10,18 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.typing import MultiAgentDict
 
 
+# TODO (simon): Add a `finalize()` method to the episode that calls
+# `SAE.finalize()` for all agents.
 # TODO (simon): Include cases in which the number of agents in an
 # episode are shrinking or growing during the episode itself.
+# Note, recorded `terminateds`/`truncateds` come as simple
+# `MultiAgentDict`s and have no assingment to a certain timestep.
+# Instead we assign it to the last observation recorded.
+# Theoretically, there could occur edge cases in some environments
+# where an agent receives partial rewards and then terminates without
+# a last observation. In these cases, we duplicate the last observation.
+# If no initial observation, but only partial rewards occurred,
+# we delete the agent data b/c there is nothing to learn.
 class MultiAgentEpisode:
     """Stores multi-agent episode data.
 
@@ -107,7 +117,7 @@ class MultiAgentEpisode:
             else (len(observations) - 1 if observations is not None else 0)
         )
 
-        self.ts_carriage_return = self.t_started - (
+        self.ts_carriage_return: int = self.t_started - (
             len(observations) - 1 if observations else 0
         )
         # Keeps track of the correspondence between agent steps and environment steps.
@@ -115,16 +125,16 @@ class MultiAgentEpisode:
         # track of the global timesteps at which an agent stepped.
         # Note, global (env) timesteps are values, while local (agent) steps are the
         # indices at which these global steps are recorded.
-        self.global_t_to_local_t: Dict[str, List[int]] = self._generate_ts_mapping(
-            observations
-        )
+        self.global_t_to_local_t: Dict[
+            str, _IndexMapping[int]
+        ] = self._generate_ts_mapping(observations)
 
         # In the `MultiAgentEpisode` we need these buffers to keep track of actions,
         # that happen when an agent got observations and acted, but did not receive
         # a next observation, yet. In this case we buffer the action, add the rewards,
         # and record `is_terminated/is_truncated` until the next observation is
         # received.
-        self.agent_buffers = {
+        self.agent_buffers: MultiAgentDict = {
             agent_id: {
                 "actions": Queue(maxsize=1),
                 "rewards": Queue(maxsize=1),
@@ -1440,7 +1450,7 @@ class MultiAgentEpisode:
             stepped (was ready).
         """
         # Only if agent ids have been provided we can build the timestep mapping.
-        if len(self._agent_ids) > 0:
+        if self._agent_ids:
             global_t_to_local_t = {agent: _IndexMapping() for agent in self._agent_ids}
 
             # We need the observations to create the timestep mapping.
@@ -1453,11 +1463,9 @@ class MultiAgentEpisode:
                         )
             # Otherwise, set to an empoty dict (when creating an empty episode).
             else:
-                global_t_to_local_t = {}
+                global_t_to_local_t = {agent_id: [] for agent_id in self._agent_ids}
         # Otherwise, set to an empoty dict (when creating an empty episode).
         else:
-            # TODO (sven, simon): Shall we return an empty dict or an agent dict with
-            # empty lists?
             global_t_to_local_t = {}
         # Return the index mapping.
         return global_t_to_local_t
@@ -1497,7 +1505,7 @@ class MultiAgentEpisode:
         # If an episode id for an agent episode was provided assign it.
         episode_id = None if agent_episode_ids is None else agent_episode_ids[agent_id]
         # We need the timestep mapping to create single agent's episode.
-        if len(self.global_t_to_local_t) > 0:
+        if self.global_t_to_local_t and self.global_t_to_local_t[agent_id]:
             # Set to None if not provided.
             agent_observations = (
                 None

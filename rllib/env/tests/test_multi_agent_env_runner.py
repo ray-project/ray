@@ -27,7 +27,7 @@ class MultiAgentTestEnvWithBox(MultiAgentTestEnv):
         # If we want the preferred format we need to set it here.
         if with_preferred_format:
             self.action_space = gym.spaces.Dict(
-                {agent_id: self.action_space for agent_id in self._agent_ids}
+                {agent_id: gym.spaces.Discrete(200) for agent_id in self._agent_ids}
             )
             self.observation_space = gym.spaces.Dict(
                 {
@@ -42,9 +42,12 @@ class MultiAgentTestEnvWithBox(MultiAgentTestEnv):
         # In the other case, set only the observation space to `gym.spaces.Box` as
         # `RLlib` has at this time no encoder for `gym.spaces.Discrete`.
         else:
+            self.action_space = self.action_space["agent_0"]
             self.observation_space = gym.spaces.Box(
                 0, 201, shape=(1,), dtype=np.float32
             )
+            self._action_space_in_preferred_format = False
+            self._obs_space_in_preferred_format = False
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict] = None):
         obs, info = super().reset(seed=seed, options=options)
@@ -118,11 +121,62 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         # Also ensure that the first episode was truncated.
         self.assertTrue(episodes[0].is_truncated)
         # Assert that indeed 200 timesteps were sampled.
-        self.assertEqual(episodes[0].t + episodes[1].t, 200)
+        self.assertEqual(len(episodes[0]) + len(episodes[1]), 200)
+        # Assert that the timesteps however in the episodes are 210.
+        # Note, the first episode started at `t_started=10`.
+        self.assertEqual(episodes[0].t + episodes[1].t, 210)
         # Assert that all agents extra model outputs are recorded.
-        for agent_id, agent_eps in episodes[0].agent_episodes.items():
-            self.assertTrue("action_logps" in agent_eps.extra_model_outputs)
-            self.assertEqual(len(agent_eps.actions), len(agent_eps.extra_model_outputs))
+        for agent_eps in episodes[0].agent_episodes.values():
+            self.assertTrue("action_logp" in agent_eps.extra_model_outputs)
+            self.assertEqual(
+                len(agent_eps.actions),
+                len(agent_eps.extra_model_outputs["action_logp"]),
+            )
+            self.assertEqual(
+                len(agent_eps.actions),
+                len(agent_eps.extra_model_outputs["action_dist_inputs"]),
+            )
+
+    def test_sample_episodes(self):
+        # Build a multi agent config.
+        config = self._build_config()
+        # Create a `MultiAgentEnvRunner` instance.
+        env_runner = MultiAgentEnvRunner(config=config)
+
+        # Now sample 5 episodes.
+        episodes = env_runner.sample(num_episodes=5)
+        # Assert that we have 5 episodes sampled.
+        self.assertEqual(len(episodes), 5)
+        # Also assert that the episodes are indeed truncated.
+        self.assertTrue(all(eps.is_truncated for eps in episodes))
+        # Assert then that all episodes have 200 steps.
+        for eps in episodes:
+            self.assertEqual(eps.t, 200)
+            # Assert that all agents have the extra model outputs.
+            for agent_eps in eps.agent_episodes.values():
+                self.assertTrue("action_logp" in agent_eps.extra_model_outputs)
+                self.assertEqual(
+                    len(agent_eps.actions),
+                    len(agent_eps.extra_model_outputs["action_logp"]),
+                )
+                self.assertEqual(
+                    len(agent_eps.actions),
+                    len(agent_eps.extra_model_outputs["action_dist_inputs"]),
+                )
+
+        # Now sample 10 timesteps and then 1 episode.
+        episodes = env_runner.sample(num_timesteps=10)
+        episodes += env_runner.sample(num_episodes=1)
+        # Ensure that the episodes both start at zero.
+        for eps in episodes:
+            self.assertEqual(eps.t_started, 0)
+
+        # Now sample 1 episode and then 10 timesteps.
+        episodes = env_runner.sample(num_episodes=1)
+        episodes += env_runner.sample(num_timesteps=10)
+        # Assert that in both cases we start at zero.
+        for eps in episodes:
+            self.assertEqual(eps.t_started, 0)
 
     def _build_config(self, with_preferred_format: bool = False):
         # Create an environment to retrieve the agent ids.
