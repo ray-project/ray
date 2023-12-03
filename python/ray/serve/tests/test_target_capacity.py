@@ -19,6 +19,7 @@ from ray.serve._private.common import (
     ReplicaState,
     TargetCapacityDirection,
 )
+from ray.serve.config import AutoscalingConfig
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
@@ -440,7 +441,7 @@ def create_autoscaling_controlled_app(
     max_replicas = config.max_replicas
     return ControlledLifecycleDeployment.options(
         name="controlled",
-        autoscaling_config=dict(
+        autoscaling_config=AutoscalingConfig(
             min_replicas=min_replicas,
             initial_replicas=initial_replicas,
             max_replicas=max_replicas,
@@ -450,7 +451,7 @@ def create_autoscaling_controlled_app(
             upscale_delay_s=0.01,
             downscale_delay_s=0.01,
         ),
-        graceful_shutdown_timeout_s=20,
+        graceful_shutdown_timeout_s=0,
     ).bind()
 
 
