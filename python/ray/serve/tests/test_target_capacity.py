@@ -19,8 +19,8 @@ from ray.serve._private.common import (
     ReplicaState,
     TargetCapacityDirection,
 )
-from ray.serve.config import AutoscalingConfig
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 

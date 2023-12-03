@@ -265,7 +265,12 @@ class ServeController:
         self.deployment_state_manager.record_handle_metrics(data, send_timestamp)
 
     def _dump_autoscaling_metrics_for_testing(self):
-        return self.deployment_state_manager.get_autoscaling_metrics()
+        metrics = self.deployment_state_manager.get_autoscaling_metrics()
+        times = self.deployment_state_manager.get_autoscaling_update_times()
+        return {
+            "METRICS": metrics,
+            "UPDATE_TIMES": times,
+        }
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._deployment_states[deployment_id]._replicas
