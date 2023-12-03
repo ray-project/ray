@@ -550,7 +550,12 @@ void raylet::RayletClient::UpdateLabel(
 
     myMap[pair.first]=pair.second;
   }
+  
   // request.mutable_new_labels()->insert(new_labels.begin(),new_labels.end());
+  auto& myMap2 = *request.mutable_new_labels();
+  for (auto pair : myMap2) {
+            RAY_LOG(INFO)  << "raylet_client label Key: " << pair.first << ", Value: " << pair.second ;
+          }
   grpc_client_->UpdateLabel(request, callback);
 
 }

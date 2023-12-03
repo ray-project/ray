@@ -138,14 +138,16 @@ void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered
         RAY_LOG(INFO)  << "New label Key: " << pair.first << ", Value: " << pair.second ;
     }
   auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
-
+  std::unordered_map<std::string, std::string> label(myMap.begin(),
+                                                       myMap.end());
   auto on_put_done = [this,
                       remote_address = remote_address,
-                      labels,
+                      label,
                       node_id,
                       node = node](const Status &status) {
     auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
     RAY_CHECK(raylet_client);
+    
     // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
     // this until the proper "drain" behavior is implemented. Currently, before
     // raylet is killed, it sends a drain request to GCS. That said, this can
@@ -157,12 +159,17 @@ void GcsNodeManager::UpdateNodeLabels(const NodeID &node_id,const std::unordered
     // implement the right drain behavior for the simplicity. Check
     // https://github.com/ray-project/ray/pull/19350 for more details.
     raylet_client->UpdateLabel(
-        labels,
+        label,
         node_id,
-        [this, node_id, node = node](
+        [this, node_id, label=label,node = node](
             const Status &status, const rpc::UpdateLabelReply &reply) {
-          RAY_LOG(INFO) << "Raylet " << node_id << " label is updated. Status " << status
+          RAY_LOG(INFO) << "Raylet " << node_id << " label" <<"is updated. Status " << status
                         << ". The information will be published to the cluster.";
+          
+          for (auto pair : label) {
+            RAY_LOG(INFO)  << "gcs_node_manager New label Key: " << pair.first << ", Value: " << pair.second ;
+          }
+         
           /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
           RAY_CHECK_OK(
               gcs_publisher_->PublishNodeInfo(node_id, *node, nullptr));

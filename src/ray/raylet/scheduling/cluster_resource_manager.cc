@@ -282,6 +282,11 @@ void ClusterResourceManager::SetNodeLabels(
     NodeResources node_resources;
     it = nodes_.emplace(node_id, node_resources).first;
   }
+  RAY_LOG(INFO) << "Update node info, node_id: " << node_id;
+  for (auto pair : labels) {
+        RAY_LOG(INFO)  << "New label Key: " << pair.first << ", Value: " << pair.second ;
+  }
+                 
   it->second.GetMutableLocalView()->labels = labels;
 }
 
