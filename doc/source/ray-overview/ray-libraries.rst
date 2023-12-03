@@ -36,7 +36,7 @@ more information.
     
                 <library name> Integration
     
-        That's all!
+    That's all!
 
 .. grid:: 1 2 2 3
     :gutter: 1
