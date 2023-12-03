@@ -1305,7 +1305,7 @@ def setup_ray_cluster(
     return cluster.address, remote_connection_address
 
 
-def setup_global_ray_cluster(*args, **kwargs):
+def setup_global_ray_cluster_and_serve(*args, **kwargs):
     """
     Create a global mode cluster by calling ``setup_ray_cluster`` with
     ``is_global=True``,
