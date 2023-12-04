@@ -23,8 +23,7 @@ config = (
     .environment(
         "env",
         env_config={
-            # Crash roughly every 300 ts. This should be ok to measure 180.0
-            # reward (episodes are 200 ts long).
+            # Crash roughly every 500 ts.
             "p_crash": 0.0005,  # prob to crash during step()
             "p_crash_reset": 0.005,  # prob to crash during reset()
             "crash_on_worker_indices": [1, 2],

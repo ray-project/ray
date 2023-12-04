@@ -260,6 +260,9 @@ class FaultTolerantActorManager:
         # Actors are stored in a map and indexed by a unique id.
         self.__actors: Mapping[int, ActorHandle] = {}
         self.__remote_actor_states: Mapping[int, self._ActorState] = {}
+        self.__restored_actors = set()
+        #TEST ONLY
+        self.restored_actors_history = defaultdict(int)
         self.add_actors(actors or [])
 
         # Maps outstanding async requests to the ids of the actors that
@@ -328,6 +331,7 @@ class FaultTolerantActorManager:
         # Remove the actor from the pool.
         del self.__actors[actor_id]
         del self.__remote_actor_states[actor_id]
+        self.__restored_actors.discard(actor_id)
         self._remove_async_state(actor_id)
 
         return actor
@@ -376,6 +380,16 @@ class FaultTolerantActorManager:
         """
         if actor_id not in self.__remote_actor_states:
             raise ValueError(f"Unknown actor id: {actor_id}")
+
+        was_healthy = self.__remote_actor_states[actor_id].is_healthy
+        # Set from unhealthy to healthy -> Add to restored set.
+        if not was_healthy and healthy:
+            self.__restored_actors.add(actor_id)
+            self.restored_actors_history[actor_id] += 1
+        # Set from healthy to unhealthy -> Remove from restored set.
+        elif was_healthy and not healthy:
+            self.__restored_actors.discard(actor_id)
+
         self.__remote_actor_states[actor_id].is_healthy = healthy
 
         if not healthy:
@@ -389,6 +403,7 @@ class FaultTolerantActorManager:
             ray.kill(actor)
         self.__actors.clear()
         self.__remote_actor_states.clear()
+        self.__restored_actors.clear()
         self.__in_flight_req_to_actor_id.clear()
 
     def __call_actors(
@@ -487,8 +502,9 @@ class FaultTolerantActorManager:
                 result = ray.get(r)
                 remote_results.add_result(actor_id, ResultOrError(result=result), tag)
 
+                # Actor came back from an unhealthy state. Mark this actor as healthy
+                # and add it to our restored set.
                 if mark_healthy and not self.is_actor_healthy(actor_id):
-                    # Yay, mark this actor as healthy.
                     logger.info(f"brining actor {actor_id} back into service.")
                     self.set_actor_state(actor_id, healthy=True)
                     self._num_actor_restarts += 1
@@ -790,17 +806,27 @@ class FaultTolerantActorManager:
             mark_healthy: Whether to mark actors healthy if they respond to the ping.
 
         Returns:
-            A list of actor ids that are restored.
+            A list of actor IDs that were restored by the `ping` AND those actors that
+            were previously restored via other remote requests. The cached set of
+            such previously restored actors will be erased in this call.
         """
+        # Collect recently restored actors (from `self.__fetch_result` calls other than
+        # the one triggered here via the `ping`).
+        restored_actors = list(self.__restored_actors)
+        self.__restored_actors.clear()
+
+        # Probe all unhealthy actors via a simple `ping()`.
         unhealthy_actor_ids = [
             actor_id
             for actor_id in self.actor_ids()
             if not self.is_actor_healthy(actor_id)
         ]
+        # No unhealthy actors currently -> Return recently restored ones.
         if not unhealthy_actor_ids:
-            # Great, nothing to do.
-            return []
+            return restored_actors
 
+        # Some unhealthy actors -> `ping()` all of them to trigger a new fetch and
+        # capture all restored ones.
         remote_results = self.foreach_actor(
             func=lambda actor: actor.ping(),
             remote_actor_ids=unhealthy_actor_ids,
@@ -809,7 +835,11 @@ class FaultTolerantActorManager:
             mark_healthy=mark_healthy,
         )
 
-        return [result.actor_id for result in remote_results if result.ok]
+        # Return previously restored actors AND actors restored via the `ping()` call.
+        return (
+            restored_actors
+            + [result.actor_id for result in remote_results if result.ok]
+        )
 
     def actors(self):
         # TODO(jungong) : remove this API once WorkerSet.remote_workers()

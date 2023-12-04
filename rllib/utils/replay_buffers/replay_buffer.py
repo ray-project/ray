@@ -373,13 +373,3 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
             out = SampleBatch()
         out.decompress_if_needed()
         return out
-
-    @Deprecated(
-        help="ReplayBuffers could be iterated over by default before. "
-        "Making a buffer an iterator has been deprecated. Switch your Algorithm to "
-        "override the `training_step()` method (instead of `execution_plan()`) to "
-        "resolve this.",
-        error=True,
-    )
-    def make_iterator(self, num_items_to_replay: int):
-        pass
