@@ -29,7 +29,6 @@ proto_library(
     visibility = ["//java:__subpackages__"],
     deps = [
         ":common_proto",
-        ":autoscaler_proto",
         ":runtime_env_common_proto",
     ],
 )
