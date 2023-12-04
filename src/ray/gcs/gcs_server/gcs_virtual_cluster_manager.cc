@@ -144,7 +144,7 @@ GcsVirtualClusterManager::Schedule(const rpc::CreateVirtualClusterRequest &reque
   std::vector<VirtualClusterBundleSpec> bundles;
   std::vector<const ResourceRequest *> resource_request_list;
   bundles.reserve(request.virtual_cluster_spec().bundles_size());
-  for (size_t i = 0; i < request.virtual_cluster_spec().bundles_size(); i++) {
+  for (int i = 0; i < request.virtual_cluster_spec().bundles_size(); i++) {
     bundles.emplace_back(request.virtual_cluster_spec().bundles(i), vc_id);
     resource_request_list.emplace_back(&bundles[i].GetRequiredResources());
   }
