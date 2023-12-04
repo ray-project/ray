@@ -15,6 +15,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve.handle import DeploymentHandle
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest_docker import *  # noqa
+from ray.tests.conftest_docker import run_in_container
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks, list_workers
 
@@ -52,6 +53,7 @@ def test_b(podman_docker_cluster):
 
     put_get_script = """
 import ray
+import numpy as np
 
 @ray.remote
 def create_ref():
@@ -72,9 +74,11 @@ assert ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_c(podman_docker_cluster):
     container_id = podman_docker_cluster
+    run_in_container(["python", "-c", "import ray; print(ray.__file__)"], container_id)
 
     put_get_script = """
 import ray
+import numpy as np
 
 @ray.remote(runtime_env={
     "container": {
@@ -92,9 +96,33 @@ assert ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
     put_get_script = put_get_script.strip()
     # with open("/home/ray/file.txt") as f:
     #     assert f.read().strip() == "helloworldalice"
-    ray_script = ["docker", "exec", container_id, "python", "-c", put_get_script]
-    print("Executing", ray_script)
-    print(subprocess.check_output(ray_script))
+    run_in_container(["python", "-c", put_get_script], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_d(podman_docker_cluster):
+    container_id = podman_docker_cluster
+    run_in_container(["python", "-c", "import ray; print(ray.__file__)"], container_id)
+    run_in_container(
+        ["podman", "run", "rayproject/ray:runtime_env_container", "ls", "-l"],
+        container_id,
+    )
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_e(podman_docker_cluster):
+    container_id = podman_docker_cluster
+    run_in_container(
+        ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"], container_id
+    )
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_f(podman_docker_cluster):
+    container_id = podman_docker_cluster
+    run_in_container(
+        ["bash", "-c", "echo helloworldalice", ">>" "/tmp/file.txt"], container_id
+    )
 
 
 @pytest.mark.skip

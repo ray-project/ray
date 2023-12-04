@@ -4,6 +4,7 @@ from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
 import subprocess
 import re
+from typing import List
 
 # If you need to debug tests using fixtures in this file,
 # comment in the volume
@@ -145,9 +146,9 @@ def docker_cluster(head_node, worker_node):
     yield (head_node, worker_node)
 
 
-def run_in_container(cmd: str, container_id: str):
+def run_in_container(cmd: List[str], container_id: str):
     docker_cmd = ["docker", "exec", container_id]
-    docker_cmd.extend(cmd.split())
+    docker_cmd.extend(cmd)
     print(f"executing command: {docker_cmd}")
     resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
     output = resp.decode("utf-8").strip()
@@ -181,25 +182,27 @@ def podman_docker_cluster():
     print(f"container_id: {container_id}")
     print("docker ps:", subprocess.check_output(["docker", "ps"]))
 
-    output = run_in_container("ls -l /var/run/docker.sock", container_id)
+    output = run_in_container(["ls", "-l", "/var/run/docker.sock"], container_id)
     regex = ".{10} +\d+ +root +(\d+) \d+ [A-Za-z]+ +\d+ +.+ +\/var\/run\/docker\.sock"
     docker_group_id = re.search(regex, output).group(1)
 
-    run_in_container("id", container_id)
-    run_in_container("cat /etc/group", container_id)
-    run_in_container(f"sudo groupadd -g {docker_group_id} docker", container_id)
-    run_in_container("sudo usermod -aG daemon ray", container_id)
-    run_in_container("sudo usermod -aG docker ray", container_id)
-    run_in_container("cat /etc/group", container_id)
-    run_in_container("podman image ls", container_id)
-    run_in_container(f"podman pull docker-daemon:{image_name}", container_id)
-    run_in_container("podman image ls", container_id)
+    run_in_container(["id"], container_id)
+    run_in_container(["cat", "/etc/group"], container_id)
+    run_in_container(
+        ["sudo", "groupadd", "-g", docker_group_id, "docker"], container_id
+    )
+    run_in_container(["sudo", "usermod", "-aG", "daemon", "ray"], container_id)
+    run_in_container(["sudo", "usermod", "-aG", "docker", "ray"], container_id)
+    run_in_container(["cat", "/etc/group"], container_id)
+    run_in_container(["podman" "image", "ls"], container_id)
+    run_in_container(["podman", "pull", f"docker-daemon:{image_name}"], container_id)
+    run_in_container(["podman", "image", "ls"], container_id)
     # run_in_container("bash -c 'echo helloworldalice' >> /tmp/file.txt", container_id)
     # run_in_container(f"podman create --name tmp_container {image_name}", container_id)
     # run_in_container(
     #     "podman cp /tmp/file.txt tmp_container:/home/ray/file.txt", container_id
     # )
     # run_in_container(f"podman commit tmp_container {nested_image_name}", container_id)
-    run_in_container("podman image ls", container_id)
+    # run_in_container(["podman", "image", "ls"], container_id)
 
     yield container_id
