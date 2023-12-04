@@ -45,16 +45,6 @@ Objects
     ray.wait
     ray.put
 
-.. _generator-api:
-
-Generator
----------
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ray.ObjectRefGenerator
-
 .. _runtime-context-apis:
 
 Runtime Context
