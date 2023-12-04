@@ -582,7 +582,7 @@ def test_per_func_name_stats(shutdown_only):
             components = set()
             for sample in samples:
                 components.add(sample.labels["Component"])
-
+        print(components)
         assert {
             "raylet",
             "agent",
