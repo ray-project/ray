@@ -147,8 +147,7 @@ def docker_cluster(head_node, worker_node):
 
 
 def run_in_container(cmd: List[str], container_id: str):
-    docker_cmd = ["docker", "exec", container_id]
-    docker_cmd.extend(cmd)
+    docker_cmd = ["docker", "exec", container_id] + cmd
     print(f"executing command: {docker_cmd}")
     resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
     output = resp.decode("utf-8").strip()
@@ -196,7 +195,7 @@ def podman_docker_cluster():
     run_in_container(["cat", "/etc/group"], container_id)
     run_in_container(["podman" "image", "ls"], container_id)
     run_in_container(["podman", "pull", f"docker-daemon:{image_name}"], container_id)
-    run_in_container(["podman", "image", "ls"], container_id)
+    # run_in_container(["podman", "image", "ls"], container_id)
     # run_in_container("bash -c 'echo helloworldalice' >> /tmp/file.txt", container_id)
     # run_in_container(f"podman create --name tmp_container {image_name}", container_id)
     # run_in_container(
