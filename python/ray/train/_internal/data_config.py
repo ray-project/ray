@@ -112,8 +112,8 @@ class DataConfig:
         ctx = ray.data.DataContext.get_current()
         resource_limits=ctx.execution_options.resource_limits
         cluster_resources = ray.cluster_resources()
-        resource_limits.cpu = (resource_limits.cpu or cluster_resources["CPU"]) - trainer_cpus
-        resource_limits.gpu = (resource_limits.gpu or cluster_resources["GPU"]) - trainer_gpus
+        resource_limits.cpu = (resource_limits.cpu or cluster_resources.get("CPU", 0)) - trainer_cpus
+        resource_limits.gpu = (resource_limits.gpu or cluster_resources.get("GPU", 0)) - trainer_gpus
         return ExecutionOptions(
             locality_with_output=True,
             resource_limits=resource_limits,
