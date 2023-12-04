@@ -192,6 +192,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                `self._agents`.
         """
         # the number of agents which has an available HTTP port.
+        choost_head_failed_count = 0
         while True:
             head_node_id = None
             raw_agent_infos = await DataOrganizer.get_all_agent_infos()
@@ -215,6 +216,13 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                     for key, value in raw_agent_infos.items()
                     if value.get("httpPort", -1) > 0
                 }
+            
+            if choose_head_node and head_node_id is None and choost_head_failed_count <= 10:
+                choost_head_failed_count += 1
+                logger.info("failed to choose ray head in only head mode, try again next time")
+                await asyncio.sleep(5)
+                continue
+            
             if len(agent_infos) > 0:
                 break
             await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
