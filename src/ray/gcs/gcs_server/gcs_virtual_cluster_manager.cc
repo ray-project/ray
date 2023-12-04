@@ -8,10 +8,12 @@ namespace gcs {
 GcsVirtualClusterManager::GcsVirtualClusterManager(
     instrumented_io_context &io_context,
     const gcs::GcsNodeManager &gcs_node_manager,
+    const GcsResourceManager &gcs_resource_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
     : io_context_(io_context),
       gcs_node_manager_(gcs_node_manager),
+      gcs_resource_manager_(gcs_resource_manager),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       raylet_client_pool_(raylet_client_pool) {
   Tick();
@@ -61,10 +63,21 @@ GcsVirtualClusterManager::GetVirtualClusterLoad() const {
 
 void GcsVirtualClusterManager::Tick() {
   CreateVirtualClusters();
+  ScaleExistingVirtualClustersHack();
+
   execute_after(
       io_context_,
       [this] { Tick(); },
       std::chrono::milliseconds(1000) /* milliseconds */);
+}
+
+void GcsVirtualClusterManager::ScaleExistingVirtualClustersHack() {
+  // TODO:
+  // - read loads and availablees from gcs_resource_manager_
+  // - calculate vc-renamed ones, compare with running_virtual_clusters
+  // - issue renames if needed, warning-and-ignore if rename failed (wait for next tick
+  // pls!)
+  (void)&gcs_resource_manager_;
 }
 
 void GcsVirtualClusterManager::CreateVirtualClusters() {

@@ -2,6 +2,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -24,6 +25,7 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   GcsVirtualClusterManager(
       instrumented_io_context &io_context,
       const GcsNodeManager &gcs_node_manager,
+      const GcsResourceManager &gcs_resource_manager,
       ClusterResourceScheduler &cluster_resource_scheduler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
@@ -48,9 +50,11 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
 
   void Tick();
   void CreateVirtualClusters();
+  void ScaleExistingVirtualClustersHack();
 
   instrumented_io_context &io_context_;
   const GcsNodeManager &gcs_node_manager_;
+  const GcsResourceManager &gcs_resource_manager_;
   ClusterResourceScheduler &cluster_resource_scheduler_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   std::deque<rpc::CreateVirtualClusterRequest> pending_virtual_clusters_;
