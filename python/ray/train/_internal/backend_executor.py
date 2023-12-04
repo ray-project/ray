@@ -507,6 +507,8 @@ class BackendExecutor:
                 world_size=len(self.worker_group),
                 worker_handles=actors,
                 worker_node_ids=node_ids,
+                num_cpus_per_worker=self._num_cpus_per_worker,
+                num_gpus_per_worker=self._num_gpus_per_worker,
             )
 
         (

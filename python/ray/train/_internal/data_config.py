@@ -42,9 +42,7 @@ class DataConfig:
                 f"{type(datasets_to_split).__name__} with value {datasets_to_split}."
             )
 
-        self._execution_options: ExecutionOptions = (
-            execution_options or DataConfig.default_ingest_options()
-        )
+        self._execution_options = execution_options
 
     @DeveloperAPI
     def configure(
@@ -53,6 +51,8 @@ class DataConfig:
         world_size: int,
         worker_handles: Optional[List[ActorHandle]],
         worker_node_ids: Optional[List[NodeIdStr]],
+        num_cpus_per_worker: float,
+        num_gpus_per_worker: float,
         **kwargs,
     ) -> List[Dict[str, DataIterator]]:
         """Configure how Train datasets should be assigned to workers.
@@ -78,7 +78,13 @@ class DataConfig:
 
         for name, ds in datasets.items():
             ds = ds.copy(ds)
-            ds.context.execution_options = self._execution_options
+            ds.context.execution_options = (
+                self._execution_options
+                or self.default_ingest_options(
+                    num_cpus_per_worker * world_size,
+                    num_gpus_per_worker * world_size,
+                )
+            )
             if name in datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
@@ -93,7 +99,10 @@ class DataConfig:
         return output
 
     @staticmethod
-    def default_ingest_options() -> ExecutionOptions:
+    def default_ingest_options(
+        trainer_cpus: float,
+        trainer_gpus: float,
+    ) -> ExecutionOptions:
         """The default Ray Data options used for data ingest.
 
         By default, output locality is enabled, which means that Ray Data will try to
@@ -101,9 +110,13 @@ class DataConfig:
         carried over from what is already set in DataContext.
         """
         ctx = ray.data.DataContext.get_current()
+        resource_limits=ctx.execution_options.resource_limits
+        cluster_resources = ray.cluster_resources()
+        resource_limits.cpu = (resource_limits.cpu or cluster_resources["CPU"]) - trainer_cpus
+        resource_limits.gpu = (resource_limits.gpu or cluster_resources["GPU"]) - trainer_gpus
         return ExecutionOptions(
             locality_with_output=True,
-            resource_limits=ctx.execution_options.resource_limits,
+            resource_limits=resource_limits,
             preserve_order=ctx.execution_options.preserve_order,
             verbose_progress=ctx.execution_options.verbose_progress,
         )
