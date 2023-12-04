@@ -42,7 +42,9 @@ class DataConfig:
                 f"{type(datasets_to_split).__name__} with value {datasets_to_split}."
             )
 
-        self._execution_options = execution_options
+        self._execution_options: ExecutionOptions = (
+            execution_options or DataConfig.default_ingest_options()
+        )
 
     @DeveloperAPI
     def configure(
@@ -51,8 +53,6 @@ class DataConfig:
         world_size: int,
         worker_handles: Optional[List[ActorHandle]],
         worker_node_ids: Optional[List[NodeIdStr]],
-        num_cpus_per_trainer: float,
-        num_gpus_per_trainer: float,
         **kwargs,
     ) -> List[Dict[str, DataIterator]]:
         """Configure how Train datasets should be assigned to workers.
@@ -62,8 +62,6 @@ class DataConfig:
             world_size: The number of Train workers in total.
             worker_handles: The actor handles of the Train workers.
             worker_node_ids: The node ids of the Train workers.
-            num_cpus_per_trainer: The number of CPUs per Train worker.
-            num_gpus_per_trainer: The number of GPUs per Train worker.
             kwargs: Forwards compatibility placeholder.
 
         Returns:
@@ -80,13 +78,7 @@ class DataConfig:
 
         for name, ds in datasets.items():
             ds = ds.copy(ds)
-            ds.context.execution_options = (
-                self._execution_options
-                or self.default_ingest_options(
-                    num_cpus_per_trainer * world_size,
-                    num_gpus_per_trainer * world_size,
-                )
-            )
+            ds.context.execution_options = self._execution_options
             if name in datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
@@ -101,33 +93,17 @@ class DataConfig:
         return output
 
     @staticmethod
-    def default_ingest_options(
-        trainer_cpus: float,
-        trainer_gpus: float,
-    ) -> ExecutionOptions:
+    def default_ingest_options() -> ExecutionOptions:
         """The default Ray Data options used for data ingest.
 
-        It carrys over most configurations from the current DataContext except for the following:
-        - `locality_with_output` is set to True, which means that Ray Data will try to
-          place tasks on the node the data is consumed.
-        - If CPU and GPU resource limits are not set, the default values will be set to cluter
-          resources minus the resources used by the trainer workers.
-
-        Args:
-            trainer_cpus: The number of CPUs for all trainer worker.
-            trainer_gpus: The number of GPUs for all trainer worker.
+        By default, output locality is enabled, which means that Ray Data will try to
+        place tasks on the node the data is consumed. The remaining configurations are
+        carried over from what is already set in DataContext.
         """
         ctx = ray.data.DataContext.get_current()
-        resource_limits=ctx.execution_options.resource_limits
-        # TODO(hchen): Here we set resource limits based on the current cluster resources.
-        # This means that auto-scaling is not supported. This is fine for now since Ray Train
-        # itself does not support auto-scaling yet.
-        cluster_resources = ray.cluster_resources()
-        resource_limits.cpu = (resource_limits.cpu or cluster_resources.get("CPU", 0)) - trainer_cpus
-        resource_limits.gpu = (resource_limits.gpu or cluster_resources.get("GPU", 0)) - trainer_gpus
         return ExecutionOptions(
             locality_with_output=True,
-            resource_limits=resource_limits,
+            resource_limits=ctx.execution_options.resource_limits,
             preserve_order=ctx.execution_options.preserve_order,
             verbose_progress=ctx.execution_options.verbose_progress,
         )
