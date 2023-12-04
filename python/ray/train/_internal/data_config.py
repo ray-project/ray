@@ -53,6 +53,8 @@ class DataConfig:
         world_size: int,
         worker_handles: Optional[List[ActorHandle]],
         worker_node_ids: Optional[List[NodeIdStr]],
+        num_cpus_per_trainer: int,
+        num_gpus_per_trainer: int,
         **kwargs,
     ) -> List[Dict[str, DataIterator]]:
         """Configure how Train datasets should be assigned to workers.
@@ -62,6 +64,8 @@ class DataConfig:
             world_size: The number of Train workers in total.
             worker_handles: The actor handles of the Train workers.
             worker_node_ids: The node ids of the Train workers.
+            num_cpus_per_trainer: The number of CPUs per trainer.
+            num_gpus_per_trainer: The number of GPUs per trainer.
             kwargs: Forwards compatibility placeholder.
 
         Returns:
@@ -79,6 +83,23 @@ class DataConfig:
         for name, ds in datasets.items():
             ds = ds.copy(ds)
             ds.context.execution_options = self._execution_options
+
+            # If CPU or GPU limits are not set. The default value should be
+            # the cluster resources minus the resources used by the trainers.
+            # TODO(hchen): We calculate the resource limits based on the current
+            # cluster resources here, which means that auto-scaling is not supported.
+            # This should be fixed when we want to support auto-scaling for Ray Train.
+            resource_limits = ds.context.execution_options.resource_limits
+            cluster_resources = ray.cluster_resources()
+            if resource_limits.cpu is None:
+                resource_limits.cpu = (
+                    cluster_resources.get("CPU", 0) - num_cpus_per_trainer * world_size
+                )
+            if resource_limits.gpu is None:
+                resource_limits.gpu = (
+                    cluster_resources.get("GPU", 0) - num_gpus_per_trainer * world_size
+                )
+
             if name in datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
