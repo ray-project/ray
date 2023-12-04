@@ -150,7 +150,7 @@ def _gym_env_creator(
                 # the initial observations) or new gymnasium APIs (reset takes `seed`
                 # and `options` AND returns observations and infos).
                 obs_and_infos = env.reset(seed=None, options={})
-                # Check return values for correct gymnasium .
+                # Check return values for correct gymnasium.
                 check_old_gym_env(reset_results=obs_and_infos)
             # TypeError for `reset()` not accepting seed/options.
             # ValueError for `check_old_gym_env` raising error if return values
