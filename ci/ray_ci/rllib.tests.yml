@@ -1,40 +1,40 @@
 flaky_tests:
   # torch, tf2-static-graph, tf2-eager-tracing
-  - //rllib:learning_tests_multi_agent_cartpole_impala 
-  - //rllib:learning_tests_multi_agent_pendulum_ppo
-  - //rllib:learning_tests_stateless_cartpole_r2d2
-  - //rllib:learning_tests_cartpole_appo_fake_gpus
-  - //rllib:learning_tests_cartpole_ddppo
-  - //rllib:learning_tests_two_step_game_qmix
-  - //rllib:learning_tests_pendulum_cql
-  - //rllib:learning_tests_two_step_game_qmix_no_mixer
+  - linux://rllib:learning_tests_multi_agent_cartpole_impala 
+  - linux://rllib:learning_tests_multi_agent_pendulum_ppo
+  - linux://rllib:learning_tests_stateless_cartpole_r2d2
+  - linux://rllib:learning_tests_cartpole_appo_fake_gpus
+  - linux://rllib:learning_tests_cartpole_ddppo
+  - linux://rllib:learning_tests_two_step_game_qmix
+  - linux://rllib:learning_tests_pendulum_cql
+  - linux://rllib:learning_tests_two_step_game_qmix_no_mixer
   # algorithm, model and other tests
-  - //rllib:test_bc 
-  - //rllib:test_a3c
-  - //rllib:policy/tests/test_policy
-  - //rllib:env/tests/test_local_inference_cartpole
-  - //rllib:evaluation/tests/test_envs_that_crash
-  - //rllib:test_actor_manager 
-  - //rllib:test_apex_ddpg
-  - //rllib:test_algorithm_export_checkpoint
-  - //rllib:test_dataset_reader
+  - linux://rllib:test_bc 
+  - linux://rllib:test_a3c
+  - linux://rllib:policy/tests/test_policy
+  - linux://rllib:env/tests/test_local_inference_cartpole
+  - linux://rllib:evaluation/tests/test_envs_that_crash
+  - linux://rllib:test_actor_manager 
+  - linux://rllib:test_apex_ddpg
+  - linux://rllib:test_algorithm_export_checkpoint
+  - linux://rllib:test_dataset_reader
   # examples
-  - //rllib:examples/nested_action_spaces_ppo_torch
-  - //rllib:examples/rl_module/mobilenet_rlm
-  - //rllib:examples/action_masking_torch
-  - //rllib:examples/action_masking_tf2
-  - //rllib:examples/learner/train_w_bc_finetune_w_ppo
-  - //rllib:examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_torch
-  - //rllib:examples/rock_paper_scissors_multiagent_torch
+  - linux://rllib:examples/nested_action_spaces_ppo_torch
+  - linux://rllib:examples/rl_module/mobilenet_rlm
+  - linux://rllib:examples/action_masking_torch
+  - linux://rllib:examples/action_masking_tf2
+  - linux://rllib:examples/learner/train_w_bc_finetune_w_ppo
+  - linux://rllib:examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_torch
+  - linux://rllib:examples/rock_paper_scissors_multiagent_torch
   # memory leak tf2-eager-tracing
-  - //rllib:test_memory_leak_ppo
-  - //rllib:test_memory_leak_appo
-  - //rllib:test_memory_leak_sac
-  - //rllib:test_memory_leak_impala
-  - //rllib:test_memory_leak_a3c
-  - //rllib:test_memory_leak_dqn
-  - //rllib:test_memory_leak_ddpg
+  - linux://rllib:test_memory_leak_ppo
+  - linux://rllib:test_memory_leak_appo
+  - linux://rllib:test_memory_leak_sac
+  - linux://rllib:test_memory_leak_impala
+  - linux://rllib:test_memory_leak_a3c
+  - linux://rllib:test_memory_leak_dqn
+  - linux://rllib:test_memory_leak_ddpg
   # tests/ dir
-  - //rllib:tests/test_io
+  - linux://rllib:tests/test_io
   # multi-gpu
-  - //rllib:TestLearnerGroupAsyncUpdate
+  - linux://rllib:TestLearnerGroupAsyncUpdate

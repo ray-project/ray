@@ -42,7 +42,7 @@ def test_get_container() -> None:
 
 
 def test_get_test_targets() -> None:
-    _TEST_YAML = "flaky_tests: [//python/ray/tests:flaky_test_01]"
+    _TEST_YAML = "flaky_tests: [linux://python/ray/tests:flaky_test_01]"
 
     with TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
@@ -66,6 +66,7 @@ def test_get_test_targets() -> None:
                     TesterContainer("core"),
                     "targets",
                     "core",
+                    "linux",
                     yaml_dir=tmp,
                 )
             ) == {
@@ -78,6 +79,7 @@ def test_get_test_targets() -> None:
                 TesterContainer("core"),
                 "targets",
                 "core",
+                "linux",
                 yaml_dir=tmp,
                 get_flaky_tests=True,
             ) == [
@@ -115,12 +117,12 @@ def test_get_all_test_query() -> None:
 
 
 def test_get_flaky_test_targets() -> None:
-    _TEST_YAML = "flaky_tests: [//target]"
+    _TEST_YAML = "flaky_tests: [windows://target]"
 
     with TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
             f.write(_TEST_YAML)
-        assert _get_flaky_test_targets("core", yaml_dir=tmp) == ["//target"]
+        assert _get_flaky_test_targets("core", "windows", yaml_dir=tmp) == ["//target"]
 
 
 if __name__ == "__main__":

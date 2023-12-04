@@ -1,4 +1,4 @@
 flaky_tests:
-  - //python/ray/data:test_streaming_integration
-  - //python/ray/data:test_split
-  - //python/ray/data:test_stats
+  - linux://python/ray/data:test_streaming_integration
+  - linux://python/ray/data:test_split
+  - linux://python/ray/data:test_stats
