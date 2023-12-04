@@ -4,11 +4,9 @@ from typing import Any, Dict, List, Union, Tuple
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 
-IN_CONTEXT_MANAGER = "__in_context_manager__"
-
 
 class OutputNode(DAGNode):
-    r"""Ray dag node used in DAG building API to mark the endpoint of DAG"""
+    """Ray dag node used in DAG building API to mark the endpoint of DAG"""
 
     def __init__(
         self,
