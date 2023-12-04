@@ -1,23 +1,19 @@
 import asyncio
 import os
-import re
 import sys
-from pathlib import Path
 import subprocess
 
 import numpy as np
 import pytest
 
 import ray
-from ray import serve
 from ray._private.state_api_test_utils import verify_failed_task
 from ray._private.test_utils import wait_for_condition
-from ray.serve.handle import DeploymentHandle
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest_docker import *  # noqa
 from ray.tests.conftest_docker import run_in_container
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray.util.state import list_tasks, list_workers
+from ray.util.state import list_workers
 
 # Runtime env that points to an image that
 # - layers on top of the rayproject/ray:nightly-py38-cpu image
@@ -25,7 +21,7 @@ from ray.util.state import list_tasks, list_workers
 # - contains a custom file that a Serve deployment can read when executing requests
 # See `docker/container-runtime-env-tests/Dockerfile`
 CONTAINER_SPEC = {
-    "image": "zcin/runtime-env-prototype:ci",
+    "image": "rayproject/ray:runtime_env_container_nested",
     "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
 }
 CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
@@ -61,16 +57,11 @@ def test_c(podman_docker_cluster):
     container_id = podman_docker_cluster
     run_in_container(["python", "-c", "import ray; print(ray.__file__)"], container_id)
 
-    put_get_script = """
+    put_get_script = f"""
 import ray
 import numpy as np
 
-@ray.remote(runtime_env={
-    "container": {
-        "image": "rayproject/ray:runtime_env_container",
-        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py", # noqa
-    }
-})
+@ray.remote(runtime_env={CONTAINER_SPEC})
 def create_ref():
     print("yoo")
     return "hii"
@@ -100,7 +91,7 @@ import numpy as np
     }
 })
 def create_ref():
-    with open("/tmp/file.txt") as f:
+    with open("/home/ray/file.txt") as f:
         print(f.read())
     print("yoo")
     return "hii"
@@ -114,42 +105,44 @@ print(output)
     run_in_container(["python", "-c", put_get_script], container_id)
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_e(podman_docker_cluster):
-    container_id = podman_docker_cluster
-    run_in_container(
-        ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"], container_id
-    )
-    run_in_container(["ls", "-l", "/tmp"], container_id)
-    run_in_container(["cat", "/tmp/file.txt"], container_id)
-
-
 @pytest.mark.skip
-def test_basic(ray_start_stop):
-    @serve.deployment(ray_actor_options={"runtime_env": CONTAINER_RUNTIME_ENV})
-    class Model:
-        def __call__(self):
-            with open("file.txt") as f:
-                return f.read()
+def test_serve_basic(podman_docker_cluster):
+    """Test Serve deployment."""
 
-    def check_application(app_handle: DeploymentHandle, expected: str):
-        ref = app_handle.remote()
-        assert ref.result() == expected
-        return True
+    container_id = podman_docker_cluster
+    put_get_script = f"""
+from ray import serve
+from ray._private.test_utils import wait_for_condition
+from ray.serve.handle import DeploymentHandle
 
-    h = serve.run(Model.bind())
-    wait_for_condition(
-        check_application,
-        app_handle=h,
-        expected="Hello world ABC\n",
-        timeout=300,
-    )
+@serve.deployment(ray_actor_options={{"runtime_env": {CONTAINER_SPEC}}})
+class Model:
+    def __call__(self):
+        with open("file.txt") as f:
+            return f.read()
+
+def check_application(app_handle: DeploymentHandle, expected: str):
+    ref = app_handle.remote()
+    assert ref.result() == expected
+    return True
+
+h = serve.run(Model.bind())
+wait_for_condition(
+    check_application,
+    app_handle=h,
+    expected="Hello world ABC\n",
+    timeout=300,
+)
+""".strip()
+
+    run_in_container(["python", "-c", put_get_script], container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_put_get(podman_docker_cluster):
-    container_id = podman_docker_cluster
+    """Test ray.put and ray.get."""
 
+    container_id = podman_docker_cluster
     put_get_script = """
 import ray
 import numpy as np
@@ -167,15 +160,15 @@ def create_ref():
 wrapped_ref = create_ref.remote()
 ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
 """.strip()
-    # with open("/home/ray/file.txt") as f:
-    #     assert f.read().strip() == "helloworldalice"
+
     run_in_container(["python", "-c", put_get_script], container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_shared_memory(podman_docker_cluster):
-    container_id = podman_docker_cluster
+    """Test shared memory."""
 
+    container_id = podman_docker_cluster
     put_get_script = """
 import ray
 import numpy as np
@@ -199,58 +192,59 @@ assert size < sys.getsizeof(np.random.rand(5000, 5000))
 print(f"Size of result fetched from ray.put: {size}")
 assert val.shape == (5000, 5000)
 """.strip()
-    run_in_container(["python", "-c", put_get_script], container_id)
-    # @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
-    # def f():
-    #     array = np.random.rand(5000, 5000)
-    #     return ray.put(array)
 
-    # ray.init()
-    # ref = ray.get(f.remote())
-    # val = ray.get(ref)
-    # size = sys.getsizeof(val)
-    # assert size < sys.getsizeof(np.random.rand(5000, 5000))
-    # print(f"Size of result fetched from ray.put: {size}")
-    # assert val.shape == (5000, 5000)
+    run_in_container(["python", "-c", put_get_script], container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 @pytest.mark.skip
-def test_log_file_exists(shutdown_only):
+def test_log_file_exists(podman_docker_cluster):
     """Verify worker log file exists"""
-    ray.init(num_cpus=1)
 
-    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
-    session_path = Path(session_dir)
-    log_dir_path = session_path / "logs"
+    container_id = podman_docker_cluster
+    put_get_script = f"""
+import ray
+from pathlib import Path
+import re
+from ray.util.state import list_tasks
+from ray._private.test_utils import wait_for_condition
 
-    def task_finished():
-        tasks = list_tasks()
-        assert len(tasks) > 0
-        assert tasks[0].worker_id
-        assert tasks[0].worker_pid
-        assert tasks[0].state == "FINISHED"
-        return True
+ray.init(num_cpus=1)
 
-    # Run a basic workload.
-    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
-    def f():
-        for i in range(10):
-            print(f"test {i}")
+session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+session_path = Path(session_dir)
+log_dir_path = session_path / "logs"
 
-    f.remote()
-    wait_for_condition(task_finished)
+def task_finished():
+    tasks = list_tasks()
+    assert len(tasks) > 0
+    assert tasks[0].worker_id
+    assert tasks[0].worker_pid
+    assert tasks[0].state == "FINISHED"
+    return True
 
-    task_state = list_tasks()[0]
-    worker_id = task_state.worker_id
-    worker_pid = task_state.worker_pid
-    print(f"Worker ID: {worker_id}")
-    print(f"Worker PID: {worker_pid}")
+# Run a basic workload.
+@ray.remote(runtime_env={CONTAINER_SPEC})
+def f():
+    for i in range(10):
+        print(f"test {{i}}")
 
-    paths = [path.name for path in log_dir_path.iterdir()]
-    assert f"python-core-worker-{worker_id}_{worker_pid}.log" in paths
-    assert any(re.search(f"^worker-{worker_id}-.*-{worker_pid}.err$", p) for p in paths)
-    assert any(re.search(f"^worker-{worker_id}-.*-{worker_pid}.out$", p) for p in paths)
+f.remote()
+wait_for_condition(task_finished)
+
+task_state = list_tasks()[0]
+worker_id = task_state.worker_id
+worker_pid = task_state.worker_pid
+print(f"Worker ID: {{worker_id}}")
+print(f"Worker PID: {{worker_pid}}")
+
+paths = [path.name for path in log_dir_path.iterdir()]
+assert f"python-core-worker-{{worker_id}}_{{worker_pid}}.log" in paths
+assert any(re.search(f"^worker-{{worker_id}}-.*-{{worker_pid}}.err$", p) for p in paths)
+assert any(re.search(f"^worker-{{worker_id}}-.*-{{worker_pid}}.out$", p) for p in paths)
+""".strip()
+
+    run_in_container(["python", "-c", put_get_script], container_id)
 
 
 @pytest.mark.skip
