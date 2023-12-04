@@ -1056,9 +1056,9 @@ class ActorClass:
         # Copy is safe for Dict[str, int]
         max_retries_dict = meta.method_meta.max_retries.copy()
         default_max_retries = max_task_retries if max_task_retries is not None else 0
-        for name in meta.method_meta.methods:
-            if name not in max_retries_dict:
-                max_retries_dict[name] = default_max_retries
+        for method_name in meta.method_meta.methods:
+            if method_name not in max_retries_dict:
+                max_retries_dict[method_name] = default_max_retries
 
         # Update the creation descriptor based on number of arguments
         if meta.is_cross_language:

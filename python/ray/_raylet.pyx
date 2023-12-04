@@ -4122,7 +4122,7 @@ cdef class CoreWorker:
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)
             method_meta = ray.actor._ActorClassMethodMetadata.create(
-                actor_class, actor_creation_function_descriptor, max_task_retries)
+                actor_class, actor_creation_function_descriptor)
             return ray.actor.ActorHandle(language, actor_id,
                                          method_meta.method_is_generator,
                                          method_meta.decorators,
