@@ -51,8 +51,8 @@ class DataConfig:
         world_size: int,
         worker_handles: Optional[List[ActorHandle]],
         worker_node_ids: Optional[List[NodeIdStr]],
-        num_cpus_per_worker: float,
-        num_gpus_per_worker: float,
+        num_cpus_per_trainer: float,
+        num_gpus_per_trainer: float,
         **kwargs,
     ) -> List[Dict[str, DataIterator]]:
         """Configure how Train datasets should be assigned to workers.
@@ -62,6 +62,8 @@ class DataConfig:
             world_size: The number of Train workers in total.
             worker_handles: The actor handles of the Train workers.
             worker_node_ids: The node ids of the Train workers.
+            num_cpus_per_trainer: The number of CPUs per Train worker.
+            num_gpus_per_trainer: The number of GPUs per Train worker.
             kwargs: Forwards compatibility placeholder.
 
         Returns:
@@ -81,8 +83,8 @@ class DataConfig:
             ds.context.execution_options = (
                 self._execution_options
                 or self.default_ingest_options(
-                    num_cpus_per_worker * world_size,
-                    num_gpus_per_worker * world_size,
+                    num_cpus_per_trainer * world_size,
+                    num_gpus_per_trainer * world_size,
                 )
             )
             if name in datasets_to_split:
@@ -105,12 +107,21 @@ class DataConfig:
     ) -> ExecutionOptions:
         """The default Ray Data options used for data ingest.
 
-        By default, output locality is enabled, which means that Ray Data will try to
-        place tasks on the node the data is consumed. The remaining configurations are
-        carried over from what is already set in DataContext.
+        It carrys over most configurations from the current DataContext except for the following:
+        - `locality_with_output` is set to True, which means that Ray Data will try to
+          place tasks on the node the data is consumed.
+        - If CPU and GPU resource limits are not set, the default values will be set to cluter
+          resources minus the resources used by the trainer workers.
+
+        Args:
+            trainer_cpus: The number of CPUs for all trainer worker.
+            trainer_gpus: The number of GPUs for all trainer worker.
         """
         ctx = ray.data.DataContext.get_current()
         resource_limits=ctx.execution_options.resource_limits
+        # TODO(hchen): Here we set resource limits based on the current cluster resources.
+        # This means that auto-scaling is not supported. This is fine for now since Ray Train
+        # itself does not support auto-scaling yet.
         cluster_resources = ray.cluster_resources()
         resource_limits.cpu = (resource_limits.cpu or cluster_resources.get("CPU", 0)) - trainer_cpus
         resource_limits.gpu = (resource_limits.gpu or cluster_resources.get("GPU", 0)) - trainer_gpus
