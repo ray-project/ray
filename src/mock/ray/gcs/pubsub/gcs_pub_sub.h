@@ -15,20 +15,13 @@
 namespace ray {
 namespace gcs {
 
-class MockGcsPublisher : public GcsPublisher {
+class MockGcsPubSub : public GcsPubSub {
  public:
-  MockGcsPublisher() {}
-
   MOCK_METHOD(Status,
-              PublishError,
-              (const std::string &id,
-               const rpc::ErrorTableData &message,
-               const StatusCallback &done),
-              (override));
-  MOCK_METHOD(Status,
-              PublishNodeInfo,
-              (const NodeID &id,
-               const rpc::GcsNodeInfo &message,
+              Publish,
+              (const std::string &channel,
+               const std::string &id,
+               const std::string &data,
                const StatusCallback &done),
               (override));
 };
