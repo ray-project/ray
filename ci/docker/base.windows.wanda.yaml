@@ -1,0 +1,14 @@
+name: "oss-ci-base_windows"
+froms: ["mcr.microsoft.com/windows/servercore:ltsc2022"]
+dockerfile: ci/docker/base.windows.Dockerfile
+srcs:
+  - ci/ray_ci/build_base_windows.sh
+  - ci/pipeline/fix-windows-bazel.ps1
+  - ci/pipeline/fix-windows-recycle.ps1
+  - python/requirements_compiled.txt
+  - python/requirements.txt
+  - python/requirements/test-requirements.txt
+build_args:
+  - BUILDKITE_BAZEL_CACHE_URL
+tags:
+  - cr.ray.io/rayproject/oss-ci-base_windows
