@@ -316,7 +316,9 @@ class _ActorClassMethodMetadata(object):
         cls._cache.clear()
 
     @classmethod
-    def create(cls, modified_class, actor_creation_function_descriptor):
+    def create(
+        cls, modified_class, actor_creation_function_descriptor, max_task_retries
+    ):
         # Try to create an instance from cache.
         cached_meta = cls._cache.get(actor_creation_function_descriptor)
         if cached_meta is not None:
@@ -364,6 +366,10 @@ class _ActorClassMethodMetadata(object):
 
             if hasattr(method, "__ray_max_retries__"):
                 self.max_retries[method_name] = method.__ray_max_retries__
+            else:
+                self.max_retries[method_name] = (
+                    max_task_retries if max_task_retries is not None else 0
+                )
 
             if hasattr(method, "__ray_retry_exceptions__"):
                 self.retry_exceptions[method_name] = method.__ray_retry_exceptions__
@@ -459,7 +465,7 @@ class _ActorClassMetadata:
         self.scheduling_strategy = scheduling_strategy
         self.last_export_session_and_job = None
         self.method_meta = _ActorClassMethodMetadata.create(
-            modified_class, actor_creation_function_descriptor
+            modified_class, actor_creation_function_descriptor, self.max_task_retries
         )
 
 
