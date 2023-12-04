@@ -195,6 +195,7 @@ enum ErrorType {
   // Indicates that the object has been placed in plasma. This error shouldn't
   // ever be exposed to user code; it is only used internally to indicate the
   // result of a direct call has been placed in plasma.
+  // IMPORTANT: Keep the enum index "4" in sync with ray_object.cc.
   OBJECT_IN_PLASMA = 4;
   // Indicates that an object has been cancelled.
   TASK_CANCELLED = 5;
@@ -245,7 +246,7 @@ enum ErrorType {
   // We use this error for failure due to node died unexpectedly.
   NODE_DIED = 23;
   // This is a dummy object used to mark the end of a
-  // ray.StreamingObjectRefGenerator. It should never be returned directly to
+  // ray.ObjectRefGenerator. It should never be returned directly to
   // application code (instead raise StopIteration).
   END_OF_STREAMING_GENERATOR = 24;
 }

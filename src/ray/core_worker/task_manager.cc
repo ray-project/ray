@@ -63,8 +63,7 @@ bool ObjectRefStream::IsObjectConsumed(int64_t item_index) {
 
 Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   *object_id_out = GetObjectRefAtIndex(next_index_);
-  bool is_eof_set = end_of_stream_index_ != -1;
-  if (is_eof_set && next_index_ >= end_of_stream_index_) {
+  if (IsFinished()) {
     // next_index_ cannot be bigger than end_of_stream_index_.
     RAY_CHECK(next_index_ == end_of_stream_index_);
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
@@ -90,7 +89,19 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   return Status::OK();
 }
 
-ObjectID ObjectRefStream::PeekNextItem() { return GetObjectRefAtIndex(next_index_); }
+bool ObjectRefStream::IsFinished() const {
+  bool is_eof_set = end_of_stream_index_ != -1;
+  return is_eof_set && next_index_ >= end_of_stream_index_;
+}
+
+std::pair<ObjectID, bool> ObjectRefStream::PeekNextItem() {
+  const auto &object_id = GetObjectRefAtIndex(next_index_);
+  if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
+    return {object_id, false};
+  } else {
+    return {object_id, true};
+  }
+}
 
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
   // Write to a stream if the object ID is not consumed yet.
@@ -527,19 +538,30 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
-ObjectID TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
+bool TaskManager::IsFinished(const ObjectID &generator_id) const {
+  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "IsFinished API can be used only when the stream has been "
+         "created "
+         "and not removed.";
+  return stream_it->second.IsFinished();
+}
+
+std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
   ObjectID next_object_id;
   absl::MutexLock lock(&objet_ref_stream_ops_mu_);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "PeekObjectRefStream API can be used only when the stream has been "
          "created and not removed.";
-  next_object_id = stream_it->second.PeekNextItem();
+  const auto &result = stream_it->second.PeekNextItem();
 
   // Temporarily own the ref since the corresponding reference is probably
   // not reported yet.
-  TemporarilyOwnGeneratorReturnRefIfNeededInternal(next_object_id, generator_id);
-  return next_object_id;
+  TemporarilyOwnGeneratorReturnRefIfNeededInternal(result.first /*=object_id*/,
+                                                   generator_id);
+  return result;
 }
 
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {

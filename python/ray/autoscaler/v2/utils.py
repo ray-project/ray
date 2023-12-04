@@ -37,6 +37,10 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeStatus,
     ResourceRequest,
 )
+from ray.core.generated.autoscaler_pb2 import (
+    ResourceRequestByCount as ResourceRequestByCountProto,
+)
+from ray.core.generated.instance_manager_pb2 import Instance
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_initialized
 
 
@@ -54,6 +58,31 @@ def _count_by(data: Any, key: str) -> Dict[str, int]:
         key_name = getattr(item, key)
         counts[key_name] += 1
     return counts
+
+
+# TODO: unify the ClusterStatus to use proto definitions directly.
+def resource_requests_by_count(
+    requests: List[ResourceRequest],
+) -> List[ResourceRequestByCountProto]:
+    """
+    Aggregate resource requests by shape.
+    Args:
+        requests: the list of resource requests
+    Returns:
+        resource_requests_by_count: the aggregated resource requests by count
+    """
+    resource_requests_by_count = defaultdict(int)
+    for request in requests:
+        serialized_request = request.SerializeToString()
+        resource_requests_by_count[serialized_request] += 1
+
+    results = []
+    for serialized_request, count in resource_requests_by_count.items():
+        request = ResourceRequest()
+        request.ParseFromString(serialized_request)
+        results.append(ResourceRequestByCountProto(request=request, count=count))
+
+    return results
 
 
 class ClusterStatusFormatter:
@@ -576,3 +605,12 @@ def is_autoscaler_v2() -> bool:
     )
 
     return cached_is_autoscaler_v2
+
+
+# TODO: use InstanceUtil after it's merged.
+def is_pending(instance: Instance) -> bool:
+    return instance.status in [
+        Instance.REQUESTED,
+        Instance.QUEUED,
+        Instance.UNKNOWN,
+    ]

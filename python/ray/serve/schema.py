@@ -15,8 +15,8 @@ from ray._private.pydantic_compat import (
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
-    DeploymentInfo,
     DeploymentStatus,
+    DeploymentStatusTrigger,
     ProxyStatus,
     ReplicaState,
     ServeDeployMode,
@@ -26,6 +26,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
@@ -35,8 +36,8 @@ TARGET_CAPACITY_FIELD = Field(
     default=None,
     description=(
         "[EXPERIMENTAL]: the target capacity percentage for all replicas across the "
-        "cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for each "
-        "deployment will be scaled by this percentage."
+        "cluster. The `num_replicas`, `min_replicas`, `max_replicas`, and "
+        "`initial_replicas` for each deployment will be scaled by this percentage."
     ),
     ge=0,
     le=100,
@@ -755,6 +756,7 @@ class DeploymentStatusOverview:
     """
 
     status: DeploymentStatus
+    status_trigger: DeploymentStatusTrigger
     replica_states: Dict[ReplicaState, int]
     message: str
 
@@ -847,6 +849,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     name: str = Field(description="Deployment name.")
     status: DeploymentStatus = Field(
         description="The current status of the deployment."
+    )
+    status_trigger: DeploymentStatusTrigger = Field(
+        description="[EXPERIMENTAL] The trigger for the current status.",
     )
     message: str = Field(
         description=(
@@ -1008,6 +1013,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     deployments={
                         deployment_name: DeploymentStatusOverview(
                             status=deployment.status,
+                            status_trigger=deployment.status_trigger,
                             replica_states=dict(
                                 Counter([r.state.value for r in deployment.replicas])
                             ),

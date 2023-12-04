@@ -143,11 +143,6 @@ class RayTaskError(RayError):
         if issubclass(RayTaskError, cause_cls):
             return self  # already satisfied
 
-        if issubclass(cause_cls, RayError) and not issubclass(
-            cause_cls, TaskCancelledError
-        ):
-            return self  # don't try to wrap ray internal errors
-
         error_msg = str(self)
 
         class cls(RayTaskError, cause_cls):

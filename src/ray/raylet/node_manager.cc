@@ -1297,7 +1297,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
              worker_type == rpc::WorkerType::RESTORE_WORKER) {
     RAY_CHECK(job_id.IsNil());
   }
-  auto worker = std::dynamic_pointer_cast<WorkerInterface>(
+  auto worker = std::static_pointer_cast<WorkerInterface>(
       std::make_shared<Worker>(job_id,
                                runtime_env_hash,
                                worker_id,
@@ -2533,6 +2533,10 @@ rpc::ObjectStoreStats AccumulateStoreStats(
     if (cur_store.object_pulls_queued()) {
       store_stats.set_object_pulls_queued(true);
     }
+    store_stats.set_cumulative_created_objects(store_stats.cumulative_created_objects() +
+                                               cur_store.cumulative_created_objects());
+    store_stats.set_cumulative_created_bytes(store_stats.cumulative_created_bytes() +
+                                             cur_store.cumulative_created_bytes());
   }
   return store_stats;
 }

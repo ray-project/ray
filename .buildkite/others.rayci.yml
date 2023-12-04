@@ -1,22 +1,13 @@
 group: others
+depends_on:
+  - oss-ci-base_build
+  - forge
 steps:
   #build
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
-    depends_on: oss-ci-base_build
 
   # test
-  - label: ":java: java tests"
-    tags: java
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //... core --build-only
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail 
-        "./java/test.sh"
-    depends_on: corebuild
-    job_env: forge
-
   - label: doc tests
     instance_type: large
     commands:
@@ -33,4 +24,13 @@ steps:
         --except-tags gpu
         --skip-ray-installation
     depends_on: doctestbuild
-    job_env: forge
+
+  - label: ":java: java tests"
+    tags: java
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... core --build-only
+      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail 
+        "./java/test.sh"
+    depends_on: [ "corebuild", "forge" ]

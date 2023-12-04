@@ -95,7 +95,6 @@ export const NodeRow = ({
     disk,
     networkSpeed = [0, 0],
     raylet,
-    logUrl,
     logicalResources,
   } = node;
 
@@ -145,7 +144,7 @@ export const NodeRow = ({
       <TableCell>
         {raylet.state !== "DEAD" && (
           <Link
-            to={`/logs/${encodeURIComponent(logUrl)}`}
+            to={`/logs/?nodeId=${encodeURIComponent(raylet.nodeId)}`}
             style={{ textDecoration: "none" }}
           >
             Log
@@ -237,7 +236,11 @@ type WorkerRowProps = {
 export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const classes = rowStyles();
 
-  const { ip, mem, logUrl } = node;
+  const {
+    ip,
+    mem,
+    raylet: { nodeId },
+  } = node;
   const {
     pid,
     cpuPercent: cpu = 0,
@@ -248,8 +251,8 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
 
   const coreWorker = coreWorkerStats.length ? coreWorkerStats[0] : undefined;
   const workerLogUrl =
-    `/logs/${encodeURIComponent(logUrl)}` +
-    (coreWorker ? `?fileName=${coreWorker.workerId}` : "");
+    `/logs/?nodeId=${encodeURIComponent(nodeId)}` +
+    (coreWorker ? `&fileName=${coreWorker.workerId}` : "");
 
   return (
     <TableRow>
@@ -277,9 +280,9 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           Log
         </Link>
         <br />
-        <CpuStackTraceLink pid={pid} ip={ip} type="" />
-        <br />
         <CpuProfilingLink pid={pid} ip={ip} type="" />
+        <br />
+        <CpuStackTraceLink pid={pid} ip={ip} type="" />
         <br />
       </TableCell>
       <TableCell>
