@@ -86,7 +86,7 @@ fractional_gpu_actors = [FractionalGPUActor.remote() for _ in range(3)]
 # __leak_gpus_start__
 # By default, ray will not reuse workers for GPU tasks to prevent
 # GPU resource leakage.
-@ray.remote(num_gpus=1)
+@ray.remote(num_gpus=1, max_calls=0)
 def leak_gpus():
     import tensorflow as tf
 
