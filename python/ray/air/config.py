@@ -71,11 +71,20 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 
     non_default_values = {}  # Maps field name to value.
 
+    def equals(value, default_value):
+        # We need to special case None because of a bug in pyarrow:
+        # https://github.com/apache/arrow/issues/38535
+        if value is None and default_value is None:
+            return True
+        if value is None or default_value is None:
+            return False
+        return value == default_value
+
     for field in fields(obj):
         value = getattr(obj, field.name)
         default_value = default_values.get(field.name, field.default)
         is_required = isinstance(field.default, _MISSING_TYPE)
-        if is_required or value != default_value:
+        if is_required or not equals(value, default_value):
             non_default_values[field.name] = value
 
     string = f"{obj.__class__.__name__}("

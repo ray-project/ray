@@ -1,5 +1,27 @@
 group: core tests
+depends_on:
+  - forge
+  - oss-ci-base_build
 steps:
+  # builds
+  - name: corebuild
+    wanda: ci/docker/core.build.wanda.yaml
+
+  - name: minbuild-core
+    label: "wanda: minbuild-core-py{{matrix}}"
+    wanda: ci/docker/min.build.wanda.yaml
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      EXTRA_DEPENDENCY: core
+
+  - wait: ~
+
+  # tests
   - label: ":ray: core: python tests"
     tags: python
     instance_type: large
@@ -7,9 +29,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit
-    depends_on: corebuild
-    job_env: forge
+        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit,manual
 
   - label: ":ray: core: redis tests"
     tags: python
@@ -19,9 +39,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit
-    depends_on: corebuild
-    job_env: forge
+        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit,manual
 
   - label: ":ray: core: workflow tests"
     tags: 
@@ -32,19 +50,40 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --except-tags use_all_core
         --parallelism-per-worker 2
-    depends_on: data12build
-    job_env: forge
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --skip-ray-installation
+        --only-tags use_all_core
+
+  - label: ":ray: core: doc tests"
+    tags: 
+      - python
+      - doc
+    instance_type: large
+    commands:
+      # doc tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
+        --only-tags doctest
+        --parallelism-per-worker 3
+      # doc examples
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
+        --except-tags gpu,post_wheel_build,xcommit,doctest
+        --parallelism-per-worker 3
+        --skip-ray-installation
 
   - label: ":ray: core: data tests"
     tags: python
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- python/ray/util/dask/... core
-        --build-name data12build
+      - bazel run //ci/ray_ci:test_in_docker -- 
+        python/ray/util/dask/... python/ray/tests/modin/... core
+        --build-name data14build
         --parallelism-per-worker 2
-    depends_on: data12build
-    job_env: forge
+    depends_on:
+      - data14build
+      - forge
 
   - label: ":ray: core: dashboard tests"
     tags: 
@@ -58,8 +97,6 @@ steps:
       - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail 
         "./dashboard/tests/run_ui_tests.sh"
-    depends_on: corebuild
-    job_env: forge
 
   - label: ":ray: core: debug test"
     tags: python
@@ -69,9 +106,7 @@ steps:
         --build-type debug
         --parallelism-per-worker 3
         --only-tags debug_tests
-        --except-tags kubernetes
-    depends_on: corebuild
-    job_env: forge
+        --except-tags kubernetes,manual
 
   - label: ":ray: core: asan tests"
     tags: python
@@ -81,9 +116,37 @@ steps:
         --build-type asan
         --parallelism-per-worker 2
         --only-tags asan_tests
-        --except-tags kubernetes 
-    depends_on: corebuild
-    job_env: forge
+        --except-tags kubernetes,manual
+
+  - label: ":ray: core: wheel tests"
+    tags: linux_wheels
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core 
+        --build-type wheel
+        --parallelism-per-worker 3
+        --only-tags post_wheel_build
+        --test-env=RAY_CI_POST_WHEEL_TESTS=True
+    depends_on:
+      - manylinux
+      - corebuild
+      - forge
+
+  - label: ":ray: core: wheel-aarch64 tests"
+    tags: linux_wheels
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core 
+        --build-type wheel-aarch64
+        --build-name oss-ci-base_build-aarch64
+        --parallelism-per-worker 3
+        --only-tags post_wheel_build
+        --test-env=RAY_CI_POST_WHEEL_TESTS=True
+    depends_on: 
+      - manylinux-aarch64
+      - oss-ci-base_build-aarch64
+      - forge-aarch64
+    job_env: forge-aarch64
 
   - label: ":ray: core: minimal tests {{matrix}}"
     tags: python
@@ -98,14 +161,14 @@ steps:
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
-        --except-tags basic_test
+        --except-tags basic_test,manual
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
         --parallelism-per-worker 3
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
-        --except-tags no_basic_test
+        --except-tags no_basic_test,manual
         --skip-ray-installation
       # core redis tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
@@ -115,7 +178,7 @@ steps:
         --test-env=TEST_EXTERNAL_REDIS=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
-        --except-tags no_basic_test
+        --except-tags no_basic_test,manual
         --skip-ray-installation
       # serve tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve 
@@ -124,32 +187,83 @@ steps:
         --test-env=RAY_MINIMAL=1
         --only-tags minimal
         --skip-ray-installation
-    depends_on: minbuild-core
-    job_env: forge
     matrix:
       - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
 
+  # cpp tests
+  - label: ":ray: core: cpp tests"
+    tags: core_cpp
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang
+        --parallelism-per-worker 2
+
+  - label: ":ray: core: cpp asan tests"
+    tags: core_cpp
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type asan-clang
+        --parallelism-per-worker 2
+
+  - label: ":ray: core: cpp ubsan tests"
+    tags: core_cpp
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type ubsan
+        --except-tags no_ubsan
+        --parallelism-per-worker 2
+
+  - label: ":ray: core: cpp tsan tests"
+    tags: core_cpp
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type tsan-clang
+        --except-tags no_tsan
+        --parallelism-per-worker 2
+
   - label: ":ray: core: flaky tests"
-    tags: python
+    tags:
+      - python
+      - skip-on-premerge
     instance_type: large
     soft_fail: true
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //... core --run-flaky-tests --parallelism-per-worker 3
-    depends_on: corebuild
-    job_env: forge
+      - bazel run //ci/ray_ci:test_in_docker -- //... core 
+        --run-flaky-tests  --build-type clang
+      - bazel run //ci/ray_ci:test_in_docker -- 
+        //python/ray/tests:test_placement_group
+        //python/ray/tests:test_runtime_env_working_dir_3 
+        //python/ray/tests:test_state_api_log
+        //python/ray/tests:test_client_builder
+        //python/ray/tests:test_object_assign_owner_client_mode core 
+        --test-env CI_SKIP_FLAKY_TEST=0
+        --skip-ray-installation
 
-  - name: minbuild-core
-    label: "wanda: minbuild-core-py{{matrix}}"
-    wanda: ci/docker/min.build.wanda.yaml
+  - label: ":ray: core: cpp worker tests"
+    tags: core_cpp
+    instance_type: small
+    commands:
+      - ci/ci.sh build
+      - ci/ci.sh test_cpp
     depends_on: oss-ci-base_build
-    matrix:
-      - "3.8"
-      - "3.9"
-      - "3.10"
-      - "3.11"
-    env:
-      PYTHON_VERSION: "{{matrix}}"
-      EXTRA_DEPENDENCY: core
+    job_env: oss-ci-base_build
+
+  - label: ":windows: python tests"
+    tags:
+      - python
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash /c/workdir/.buildkite/windows_ci.sh test_python
+    parallelism: 10
+
+  - label: ":windows: core tests"
+    tags:
+      - core_cpp
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash /c/workdir/.buildkite/windows_ci.sh test_core

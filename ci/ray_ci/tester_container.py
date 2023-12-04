@@ -29,7 +29,14 @@ class TesterContainer(Container):
         used to run tests in a distributed fashion.
         :param shard_ids: The list of shard ids to run. If none, run no shards.
         """
-        super().__init__(docker_tag, envs=test_envs)
+        super().__init__(
+            docker_tag,
+            envs=test_envs,
+            volumes=[
+                f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
+                "/var/run/docker.sock:/var/run/docker.sock",
+            ],
+        )
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
         self.test_envs = test_envs or []
@@ -89,6 +96,10 @@ class TesterContainer(Container):
                     "trap cleanup EXIT",
                 ]
             )
+        if self.build_type == "ubsan":
+            # clang currently runs into problems with ubsan builds, this will revert to
+            # using GCC instead.
+            commands.append("unset CC CXX")
         # note that we run tests serially within each docker, since we already use
         # multiple dockers to shard tests
         test_cmd = "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
@@ -96,6 +107,14 @@ class TesterContainer(Container):
             test_cmd += "--config=ci-debug "
         if self.build_type == "asan":
             test_cmd += "--config=asan --config=asan-buildkite "
+        if self.build_type == "clang":
+            test_cmd += "--config=llvm "
+        if self.build_type == "asan-clang":
+            test_cmd += "--config=asan-clang "
+        if self.build_type == "ubsan":
+            test_cmd += "--config=ubsan "
+        if self.build_type == "tsan-clang":
+            test_cmd += "--config=tsan-clang "
         for env in test_envs:
             test_cmd += f"--test_env {env} "
         if test_arg:

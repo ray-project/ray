@@ -46,6 +46,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/client_connection.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
 #include "ray/object_manager/plasma/malloc.h"
@@ -112,6 +113,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
             this->AddToClientObjectIds(object_id, fallback_allocated_fd, request->client);
           },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
+  ray::SetCloseOnFork(acceptor_);
+
   if (RayConfig::instance().event_stats_print_interval_ms() > 0 &&
       RayConfig::instance().event_stats()) {
     PrintAndRecordDebugDump();
@@ -251,7 +254,7 @@ bool PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
   auto &object_ids = client->GetObjectIDs();
   auto it = object_ids.find(object_id);
   if (it != object_ids.end()) {
-    bool should_unmap = client->MarkObjectAsUnused(*it);
+    bool should_unmap = client->MarkObjectAsUnused(object_id);
     RAY_LOG(DEBUG) << "Object " << object_id
                    << " no longer in use by client, should_unmap = " << should_unmap;
     // Decrease reference count.
@@ -298,7 +301,7 @@ int PlasmaStore::AbortObject(const ObjectID &object_id,
   }
   // The client requesting the abort is the creator. Free the object.
   RAY_CHECK(object_lifecycle_mgr_.AbortObject(object_id) == PlasmaError::OK);
-  client->MarkObjectAsUnused(*it);
+  client->MarkObjectAsUnused(object_id);
   return 1;
 }
 

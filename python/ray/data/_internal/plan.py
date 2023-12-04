@@ -32,14 +32,18 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
-from ray.data._internal.logical.rules.split_read_output_blocks import (
+from ray.data._internal.logical.rules.set_read_parallelism import (
     compute_additional_split_factor,
 )
 from ray.data._internal.planner.plan_read_op import (
     apply_output_blocks_handling_to_read_task,
 )
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data._internal.util import capitalize, unify_block_metadata_schema
+from ray.data._internal.util import (
+    capitalize,
+    create_dataset_tag,
+    unify_block_metadata_schema,
+)
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -532,9 +536,8 @@ class ExecutionPlan:
         )
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
-        executor = StreamingExecutor(
-            copy.deepcopy(ctx.execution_options), self._dataset_uuid
-        )
+        metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
+        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options), metrics_tag)
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,
@@ -591,7 +594,7 @@ class ExecutionPlan:
                     StreamingExecutor,
                 )
 
-                metrics_tag = (self._dataset_name or "") + self._dataset_uuid
+                metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
                 executor = StreamingExecutor(
                     copy.deepcopy(context.execution_options),
                     metrics_tag,
@@ -746,7 +749,7 @@ class ExecutionPlan:
                 estimated_num_blocks,
                 k,
             ) = compute_additional_split_factor(
-                logical_op._reader,
+                logical_op._datasource_or_legacy_reader,
                 logical_op._parallelism,
                 logical_op._mem_size,
                 ctx.target_max_block_size,

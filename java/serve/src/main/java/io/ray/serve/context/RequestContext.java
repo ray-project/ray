@@ -1,14 +1,21 @@
 package io.ray.serve.context;
 
+import java.util.Optional;
+
 public class RequestContext {
-  private String route = "";
-  private String requestId = "";
-  private String appName = "";
-  private String multiplexedModelId = "";
 
-  public RequestContext() {}
+  private static RequestContext DEFAULT_CONTEXT = new RequestContext("", "", "", "");
 
-  public RequestContext(String route, String requestId, String appName, String multiplexedModelId) {
+  private static ThreadLocal<RequestContext> SERVE_REQUEST_CONTEXT =
+      ThreadLocal.withInitial(() -> DEFAULT_CONTEXT);
+
+  private String route;
+  private String requestId;
+  private String appName;
+  private String multiplexedModelId;
+
+  private RequestContext(
+      String route, String requestId, String appName, String multiplexedModelId) {
     this.route = route;
     this.requestId = requestId;
     this.appName = appName;
@@ -19,31 +26,34 @@ public class RequestContext {
     return route;
   }
 
-  public void setRoute(String route) {
-    this.route = route;
-  }
-
   public String getRequestId() {
     return requestId;
-  }
-
-  public void setRequestId(String requestId) {
-    this.requestId = requestId;
   }
 
   public String getAppName() {
     return appName;
   }
 
-  public void setAppName(String appName) {
-    this.appName = appName;
-  }
-
   public String getMultiplexedModelId() {
     return multiplexedModelId;
   }
 
-  public void setMultiplexedModelId(String multiplexedModelId) {
-    this.multiplexedModelId = multiplexedModelId;
+  public static void set(
+      String route, String requestId, String appName, String multiplexedModelId) {
+    SERVE_REQUEST_CONTEXT.set(
+        new RequestContext(
+            Optional.ofNullable(route).orElse(DEFAULT_CONTEXT.getRoute()),
+            Optional.ofNullable(requestId).orElse(DEFAULT_CONTEXT.getRequestId()),
+            Optional.ofNullable(appName).orElse(DEFAULT_CONTEXT.getAppName()),
+            Optional.ofNullable(multiplexedModelId)
+                .orElse(DEFAULT_CONTEXT.getMultiplexedModelId())));
+  }
+
+  public static RequestContext get() {
+    return SERVE_REQUEST_CONTEXT.get();
+  }
+
+  public static void clean() {
+    SERVE_REQUEST_CONTEXT.remove();
   }
 }

@@ -13,7 +13,7 @@ from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import DeploymentSchema, RayActorOptionsSchema
+from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -211,6 +211,13 @@ class Deployment:
 
         return _get_global_client().root_url + self.route_prefix
 
+    @property
+    def logging_config(self) -> Dict:
+        return self._deployment_config.logging_config
+
+    def set_logging_config(self, logging_config: Dict):
+        self._deployment_config.logging_config = logging_config
+
     def __call__(self):
         raise RuntimeError(
             "Deployments cannot be constructed directly. "
@@ -330,6 +337,7 @@ class Deployment:
             app_name="",
             missing_ok=True,
             sync=sync,
+            use_new_handle_api=False,
         )
 
     def options(
@@ -338,8 +346,6 @@ class Deployment:
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-        init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-        init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
@@ -354,6 +360,9 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+        logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
+        _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+        _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
@@ -423,11 +432,11 @@ class Deployment:
         if version is DEFAULT.VALUE:
             version = self._version
 
-        if init_args is DEFAULT.VALUE:
-            init_args = self._replica_config.init_args
+        if _init_args is DEFAULT.VALUE:
+            _init_args = self._replica_config.init_args
 
-        if init_kwargs is DEFAULT.VALUE:
-            init_kwargs = self._replica_config.init_kwargs
+        if _init_kwargs is DEFAULT.VALUE:
+            _init_kwargs = self._replica_config.init_kwargs
 
         if route_prefix is DEFAULT.VALUE:
             # Default is to keep the previous value
@@ -464,10 +473,15 @@ class Deployment:
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
 
+        if logging_config is not DEFAULT.VALUE:
+            if isinstance(logging_config, LoggingConfig):
+                logging_config = logging_config.dict()
+            new_deployment_config.logging_config = logging_config
+
         new_replica_config = ReplicaConfig.create(
             func_or_class,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
+            init_args=_init_args,
+            init_kwargs=_init_kwargs,
             ray_actor_options=ray_actor_options,
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
@@ -495,8 +509,6 @@ class Deployment:
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-        init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-        init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
@@ -528,8 +540,6 @@ class Deployment:
             func_or_class=func_or_class,
             name=name,
             version=version,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
             route_prefix=route_prefix,
             num_replicas=num_replicas,
             ray_actor_options=ray_actor_options,
@@ -609,6 +619,7 @@ def deployment_to_schema(
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
+        "logging_config": d._deployment_config.logging_config,
     }
 
     if include_route_prefix:
@@ -670,6 +681,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
+        logging_config=s.logging_config,
     )
     deployment_config.user_configured_option_names = (
         s.get_user_configured_option_names()

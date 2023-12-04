@@ -6,13 +6,13 @@ import tree  # pip install dm_tree
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 
@@ -28,7 +28,9 @@ class Postprocessing:
 
 
 @DeveloperAPI
-def postprocess_episodes_to_sample_batch(episodes: List[_Episode]) -> SampleBatch:
+def postprocess_episodes_to_sample_batch(
+    episodes: List[SingleAgentEpisode],
+) -> SampleBatch:
     """Converts the results from sampling with an `EnvRunner` to one `SampleBatch'.
 
     Once the `SampleBatch` will be deprecated this function will be
@@ -41,10 +43,10 @@ def postprocess_episodes_to_sample_batch(episodes: List[_Episode]) -> SampleBatc
         # a list.
         if isinstance(episode_or_list, list):
             for episode in episode_or_list:
-                batches.append(episode.to_sample_batch())
+                batches.append(episode.get_sample_batch())
         # During exploration we have an episode.
         else:
-            batches.append(episode_or_list.to_sample_batch())
+            batches.append(episode_or_list.get_sample_batch())
 
     batch = concat_samples(batches)
     # TODO (sven): During evalaution we do not have infos at all.
@@ -58,7 +60,7 @@ def postprocess_episodes_to_sample_batch(episodes: List[_Episode]) -> SampleBatc
 
 @DeveloperAPI
 def compute_gae_for_episode(
-    episode: _Episode,
+    episode: SingleAgentEpisode,
     config: AlgorithmConfig,
     module: RLModule,
 ):
@@ -90,7 +92,9 @@ def compute_gae_for_episode(
     return episode
 
 
-def compute_bootstrap_value(episode: _Episode, module: RLModule) -> _Episode:
+def compute_bootstrap_value(
+    episode: SingleAgentEpisode, module: RLModule
+) -> SingleAgentEpisode:
     if episode.is_terminated:
         last_r = 0.0
     else:
@@ -142,7 +146,7 @@ def compute_bootstrap_value(episode: _Episode, module: RLModule) -> _Episode:
 
 
 def compute_advantages(
-    episode: _Episode,
+    episode: SingleAgentEpisode,
     last_r: float,
     gamma: float = 0.9,
     lambda_: float = 1.0,
