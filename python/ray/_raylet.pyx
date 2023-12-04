@@ -967,6 +967,7 @@ cdef raise_if_dependency_failed(arg):
     if isinstance(arg, RayError):
         raise arg
 
+
 def serialize_retry_exception_allowlist(retry_exception_allowlist, func_name):
     try:
         return ray_pickle.dumps(retry_exception_allowlist)
@@ -978,6 +979,7 @@ def serialize_retry_exception_allowlist(retry_exception_allowlist, func_name):
             "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
             "for more information.")
         raise TypeError(msg) from e
+
 
 cdef c_bool determine_if_retryable(
     Exception e,
