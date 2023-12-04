@@ -1331,7 +1331,24 @@ def setup_ray_cluster(
     )
 
 
-def setup_global_ray_cluster(*args, **kwargs):
+def setup_global_ray_cluster(
+    num_worker_nodes: int,
+    *,
+    is_blocking: bool = True,
+    num_cpus_worker_node: Optional[int] = None,
+    num_cpus_head_node: Optional[int] = None,
+    num_gpus_worker_node: Optional[int] = None,
+    num_gpus_head_node: Optional[int] = None,
+    object_store_memory_worker_node: Optional[int] = None,
+    object_store_memory_head_node: Optional[int] = None,
+    head_node_options: Optional[Dict] = None,
+    worker_node_options: Optional[Dict] = None,
+    strict_mode: bool = False,
+    collect_log_to_path: Optional[str] = None,
+    autoscale: bool = False,
+    autoscale_upscaling_speed: Optional[float] = 1.0,
+    autoscale_idle_timeout_minutes: Optional[float] = 1.0,
+):
     """
     Set up a global mode cluster.
     The global Ray on spark cluster means:
@@ -1361,17 +1378,24 @@ def setup_global_ray_cluster(*args, **kwargs):
     once Ray cluster setup completes, return immediately.
     """
 
-    if "ray_temp_root_dir" in kwargs:
-        raise ValueError("'ray_temp_root_dir' argument is not supported in global mode")
-
-    if "is_global" in kwargs:
-        raise ValueError(
-            "You can't set 'is_global' argument in 'serve_global_ray_cluster' call."
-        )
-
-    cluster_address = _setup_ray_cluster_internal(*args, **kwargs, is_global=True)
-
-    is_blocking = kwargs.get("is_blocking", True)
+    cluster_address = _setup_ray_cluster_internal(
+        num_worker_nodes=num_worker_nodes,
+        num_cpus_worker_node=num_cpus_worker_node,
+        num_cpus_head_node=num_cpus_head_node,
+        num_gpus_worker_node=num_gpus_worker_node,
+        num_gpus_head_node=num_gpus_head_node,
+        object_store_memory_worker_node=object_store_memory_worker_node,
+        object_store_memory_head_node=object_store_memory_head_node,
+        head_node_options=head_node_options,
+        worker_node_options=worker_node_options,
+        ray_temp_root_dir=None,
+        strict_mode=strict_mode,
+        collect_log_to_path=collect_log_to_path,
+        autoscale=autoscale,
+        autoscale_upscaling_speed=autoscale_upscaling_speed,
+        autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
+        is_global=True
+    )
 
     if not is_blocking:
         return cluster_address
