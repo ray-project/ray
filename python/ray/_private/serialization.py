@@ -12,7 +12,7 @@ from ray._private import ray_constants
 from ray._raylet import (
     MessagePackSerializedObject,
     MessagePackSerializer,
-    ObjectRefGenerator,
+    DynamicObjectRefGenerator,
     Pickle5SerializedObject,
     Pickle5Writer,
     RawSerializedObject,
@@ -144,10 +144,10 @@ class SerializationContext:
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
 
         def object_ref_generator_reducer(obj):
-            return ObjectRefGenerator, (obj._refs,)
+            return DynamicObjectRefGenerator, (obj._refs,)
 
         self._register_cloudpickle_reducer(
-            ObjectRefGenerator, object_ref_generator_reducer
+            DynamicObjectRefGenerator, object_ref_generator_reducer
         )
 
         serialization_addons.apply(self)

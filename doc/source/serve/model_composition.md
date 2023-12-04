@@ -150,7 +150,7 @@ The downstream model has two methods:
 
 ## Advanced: Convert a DeploymentResponse to a Ray ObjectRef
 
-Under the hood, each `DeploymentResponse` corresponds to a Ray `ObjectRef`, or a `StreamingObjectRefGenerator` for streaming calls.
+Under the hood, each `DeploymentResponse` corresponds to a Ray `ObjectRef`, or an `ObjectRefGenerator` for streaming calls.
 To compose `DeploymentHandle` calls with Ray Actors or Tasks, you may want to resolve the response to its `ObjectRef`.
 For this purpose, you can use the {mod}`DeploymentResponse._to_object_ref <ray.serve.handle.DeploymentResponse>` and {mod}`DeploymentResponse._to_object_ref_sync <ray.serve.handle.DeploymentResponse>` developer APIs.
 
