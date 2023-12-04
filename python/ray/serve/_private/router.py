@@ -164,7 +164,7 @@ class ReplicaWrapper(ABC):
 
     def send_query(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Send query to this replica."""
         pass
 
@@ -233,7 +233,7 @@ class ActorReplicaWrapper:
 
     def _send_query_python(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Send the query to a Python replica."""
         if query.metadata.is_streaming:
             method = self._actor_handle.handle_request_streaming.options(
@@ -246,7 +246,7 @@ class ActorReplicaWrapper:
 
     def send_query(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         if self._replica_info.is_cross_language:
             return self._send_query_java(query)
         else:
@@ -259,7 +259,7 @@ class ReplicaScheduler(ABC):
     @abstractmethod
     async def assign_replica(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         pass
 
     @abstractmethod
@@ -880,7 +880,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     async def assign_replica(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
@@ -996,7 +996,7 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Assign a query to a replica and return the resulting object_ref."""
 
         self.num_router_requests.inc(tags={"route": request_meta.route})

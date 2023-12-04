@@ -1,16 +1,24 @@
+from typing import Dict, Any
 from datetime import datetime
-from pathlib import Path
 from importlib import import_module
 import os
 import sys
 from jinja2.filters import FILTERS
+import sphinx
+from sphinx.ext import autodoc
+from docutils import nodes
+import pathlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.abspath("."))
-from custom_directives import (
+from custom_directives import (  # noqa
     DownloadAndPreprocessEcosystemDocs,
     update_context,
     LinkcheckSummarizer,
-    build_gallery,
+    parse_navbar_config,
+    setup_context,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -39,16 +47,13 @@ extensions = [
     "sphinx-jsonschema",
     "sphinxemoji.sphinxemoji",
     "sphinx_copybutton",
-    "versionwarning.extension",
     "sphinx_sitemap",
     "myst_nb",
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
-    "sphinx_external_toc",
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
-    "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
@@ -83,7 +88,6 @@ if os.getenv("FAST", False):
         "ray-core/scheduling/*",
         "ray-core/tasks/*",
         "ray-core/patterns/*",
-        "tune/examples/*",
     ]
 
 myst_enable_extensions = [
@@ -97,13 +101,25 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-# Cache notebook outputs in _build/.jupyter_cache
-# To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
-# To cache previous runs, set this to "cache".
-jupyter_execute_notebooks = os.getenv("RUN_NOTEBOOKS", "off")
+myst_heading_anchors = 3
 
-external_toc_exclude_missing = False
-external_toc_path = "_toc.yml"
+# Cache notebook outputs in _build/.jupyter_cache
+# To prevent notebook execution, set this to "off". To force re-execution, set this to
+# "force". To cache previous runs, set this to "cache".
+nb_execution_mode = os.getenv("RUN_NOTEBOOKS", "off")
+
+# Add a render priority for doctest
+nb_mime_priority_overrides = [
+    ("html", "application/vnd.jupyter.widget-view+json", 10),
+    ("html", "application/javascript", 20),
+    ("html", "text/html", 30),
+    ("html", "image/svg+xml", 40),
+    ("html", "image/png", 50),
+    ("html", "image/jpeg", 60),
+    ("html", "text/markdown", 70),
+    ("html", "text/latex", 80),
+    ("html", "text/plain", 90),
+]
 
 html_extra_path = ["robots.txt"]
 
@@ -124,7 +140,7 @@ sphinx_tabs_disable_tab_closing = True
 # Special mocking of packaging.version.Version is required when using sphinx;
 # we can't just add this to autodoc_mock_imports, as packaging is imported by
 # sphinx even before it can be mocked. Instead, we patch it here.
-import packaging.version as packaging_version
+import packaging.version as packaging_version  # noqa
 
 Version = packaging_version.Version
 
@@ -139,34 +155,8 @@ class MockVersion(Version):
 
 packaging_version.Version = MockVersion
 
-# This is used to suppress warnings about explicit "toctree" directives.
-suppress_warnings = ["etoc.toctree"]
-
-versionwarning_admonition_type = "note"
-versionwarning_banner_title = "Join the Ray Discuss Forums!"
-
-FORUM_LINK = "https://discuss.ray.io"
-versionwarning_messages = {
-    # Re-enable this after Ray Summit.
-    # "latest": (
-    #     "This document is for the latest pip release. "
-    #     'Visit the <a href="/en/master/">master branch documentation here</a>.'
-    # ),
-    # "master": (
-    #     "<b>Got questions?</b> Join "
-    #     f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
-    #     "for Q&A on all things Ray, as well as to share and learn use cases "
-    #     "and best practices with the Ray community."
-    # ),
-}
-
-versionwarning_body_selector = "#main-content"
-
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
-
-# The encoding of source files.
-# source_encoding = 'utf-8-sig'
 
 # The master toctree document.
 master_doc = "index"
@@ -176,16 +166,16 @@ project = "Ray"
 copyright = str(datetime.now().year) + ", The Ray Team"
 author = "The Ray Team"
 
-# The version info for the project you're documenting, acts as replacement for
-# |version| and |release|, also used in various other places throughout the
+# The version info for the project you're documenting acts as replacement for
+# |version| and |release|, and is also used in various other places throughout the
 # built documents. Retrieve the version using `find_version` rather than importing
 # directly (from ray import __version__) because initializing ray will prevent
 # mocking of certain external dependencies.
-from setup import find_version
+from setup import find_version  # noqa
 
 release = find_version("ray", "_version.py")
 
-language = None
+language = "en"
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -198,7 +188,9 @@ exclude_patterns = [
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
 
-all_toc_libs = [f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path]
+all_toc_libs = [
+    f.path.strip("./") for f in os.scandir(".") if f.is_dir() and "ray-" in f.path
+]
 all_toc_libs += [
     "cluster",
     "tune",
@@ -215,7 +207,6 @@ if build_one_lib and build_one_lib in all_toc_libs:
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "lovelace"
-
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
@@ -257,36 +248,68 @@ linkcheck_ignore = [
 ]
 
 # -- Options for HTML output ----------------------------------------------
+def render_svg_logo(path):
+    with open(pathlib.Path(__file__).parent / path, "r") as f:
+        content = f.read()
+
+    return content
+
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "sphinx_book_theme"
+html_theme = "pydata_sphinx_theme"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 html_theme_options = {
-    "repository_url": "https://github.com/ray-project/ray",
-    "use_repository_button": True,
-    "use_issues_button": True,
     "use_edit_page_button": True,
-    "path_to_docs": "doc/source",
-    "home_page_in_toc": True,
-    "show_navbar_depth": 1,
-    "announcement": "<div class='topnav'></div>",
+    "announcement": None,
+    "logo": {
+        "svg": render_svg_logo("_static/img/ray_logo.svg"),
+    },
+    "navbar_start": ["navbar-ray-logo"],
+    "navbar_end": [
+        "navbar-icon-links",
+        "navbar-anyscale",
+    ],
+    "navbar_center": ["navbar-links"],
+    "navbar_align": "left",
+    "navbar_persistent": [
+        "theme-switcher",
+    ],
+    "secondary_sidebar_items": [
+        "page-toc",
+        "edit-this-page",
+    ],
+    "content_footer_items": [
+        "csat",
+    ],
+    "navigation_depth": 4,
+    "analytics": {"google_analytics_id": "UA-110413294-1"},
 }
 
-# Add any paths that contain custom themes here, relative to this directory.
-# html_theme_path = []
+html_context = {
+    "github_user": "ray-project",
+    "github_repo": "ray",
+    "github_version": "master",
+    "doc_path": "doc/source/",
+}
+
+html_sidebars = {
+    "**": [
+        "release-header",
+        "search-button-field",
+        "main-sidebar",
+    ],
+    "ray-overview/examples": ["examples-sidebar"],
+}
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
 html_title = f"Ray {release}"
 
 autodoc_typehints_format = "short"
-
-# A shorter title for the navigation bar.  Default is the same as html_title.
-# html_short_title = None
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
@@ -354,21 +377,31 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
 
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
 
-# Add a render priority for doctest
-nb_render_priority = {
-    "doctest": (),
-    "html": (
-        "application/vnd.jupyter.widget-view+json",
-        "application/javascript",
-        "text/html",
-        "image/svg+xml",
-        "image/png",
-        "image/jpeg",
-        "text/markdown",
-        "text/latex",
-        "text/plain",
-    ),
-}
+
+def add_custom_assets(
+    app: sphinx.application.Sphinx,
+    pagename: str,
+    templatename: str,
+    context: Dict[str, Any],
+    doctree: nodes.Node,
+):
+    """Add custom per-page assets.
+
+    See documentation on Sphinx Core Events for more information:
+    https://www.sphinx-doc.org/en/master/extdev/appapi.html#sphinx-core-events
+    """
+    if pagename == "train/train":
+        app.add_css_file("css/ray-train.css")
+    elif pagename == "index":
+        # CSS for HTML part of index.html
+        app.add_css_file("css/splash.css")
+        app.add_js_file("js/splash.js")
+    elif pagename == "ray-overview/examples":
+        # Example gallery
+        app.add_css_file("css/examples.css")
+        app.add_js_file("js/examples.js")
+    elif pagename == "ray-overview/ray-libraries":
+        app.add_css_file("css/ray-libraries.css")
 
 
 def setup(app):
@@ -378,33 +411,27 @@ def setup(app):
     import doctest
 
     doctest.register_optionflag("MOCK")
-
     app.connect("html-page-context", update_context)
 
-    # Custom CSS
-    app.add_css_file("css/custom.css", priority=800)
-    app.add_css_file(
-        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css"
-    )
-    # https://github.com/ines/termynal
-    app.add_css_file("css/termynal.css")
-
-    # Custom JS
-    app.add_js_file(
-        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
-        defer="defer",
-    )
-    app.add_js_file("js/docsearch.js", defer="defer")
-    app.add_js_file("js/csat.js", defer="defer")
+    app.add_config_value("navbar_content_path", "navbar.yml", "env")
+    app.connect("config-inited", parse_navbar_config)
+    app.connect("html-page-context", setup_context)
+    app.connect("html-page-context", add_custom_assets)
 
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")
+    app.add_css_file("css/termynal.css")
+
     app.add_js_file("js/custom.js", defer="defer")
+    app.add_css_file("css/custom.css", priority=800)
+
+    app.add_js_file("js/csat.js")
+    app.add_css_file("css/csat.css")
+
     app.add_js_file("js/assistant.js", defer="defer")
+    app.add_css_file("css/assistant.css")
 
-    app.add_js_file("js/top-navigation.js", defer="defer")
-
-    base_path = Path(__file__).parent
+    base_path = pathlib.Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
     # Download docs from ecosystem library repos
     app.connect("builder-inited", github_docs.write_new_docs)
@@ -415,12 +442,6 @@ def setup(app):
     linkcheck_summarizer = LinkcheckSummarizer()
     app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
     app.connect("build-finished", linkcheck_summarizer.summarize)
-
-    # Create galleries on the fly
-    app.connect("builder-inited", build_gallery)
-
-    # tag filtering system
-    app.add_js_file("js/tags.js")
 
 
 redoc = [
@@ -442,11 +463,15 @@ autosummary_filename_map = {
 # Mock out external dependencies here.
 autodoc_mock_imports = [
     "aiohttp",
+    "aiosignal",
     "composer",
     "dask",
     "datasets",
     "fastapi",
+    "filelock",
+    "frozenlist",
     "fsspec",
+    "google",
     "grpc",
     "gymnasium",
     "horovod",
@@ -454,7 +479,6 @@ autodoc_mock_imports = [
     "joblib",
     "lightgbm",
     "lightgbm_ray",
-    "nevergrad",
     "numpy",
     "pandas",
     "pyarrow",
@@ -475,24 +499,27 @@ autodoc_mock_imports = [
     "watchfiles",
     "xgboost",
     "xgboost_ray",
+    "psutil",
+    "colorama",
+    "grpc",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",
     "ray.serve.generated",
 ]
 
-
 for mock_target in autodoc_mock_imports:
-    assert mock_target not in sys.modules, (
-        f"Problematic mock target ({mock_target}) found; "
-        "autodoc_mock_imports cannot mock modules that have already"
-        "been loaded into sys.modules when the sphinx build starts."
-    )
-
-from sphinx.ext import autodoc
+    if mock_target in sys.modules:
+        logger.info(
+            f"Potentially problematic mock target ({mock_target}) found; "
+            "autodoc_mock_imports cannot mock modules that have already "
+            "been loaded into sys.modules when the sphinx build starts."
+        )
 
 
 class MockedClassDocumenter(autodoc.ClassDocumenter):
+    """Remove note about base class when a class is derived from object."""
+
     def add_line(self, line: str, source: str, *lineno: int) -> None:
         if line == "   Bases: :py:class:`object`":
             return
@@ -516,10 +543,10 @@ intersphinx_mapping = {
     "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
     "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
-    "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
     "pyarrow": ("https://arrow.apache.org/docs", None),
+    "pydantic": ("https://docs.pydantic.dev/latest/", None),
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),

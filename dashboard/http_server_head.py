@@ -130,15 +130,34 @@ class HttpServerDashboardHead:
     @aiohttp.web.middleware
     async def path_clean_middleware(self, request, handler):
         if request.path.startswith("/static") or request.path.startswith("/logs"):
-            parent = pathlib.Path(
+            parent = pathlib.PurePosixPath(
                 "/logs" if request.path.startswith("/logs") else "/static"
             )
 
             # If the destination is not relative to the expected directory,
             # then the user is attempting path traversal, so deny the request.
-            request_path = pathlib.Path(request.path).resolve()
+            request_path = pathlib.PurePosixPath(
+                pathlib.posixpath.realpath(request.path)
+            )
             if request_path != parent and parent not in request_path.parents:
+                logger.info(
+                    f"Rejecting {request_path=} because it is not relative to {parent=}"
+                )
                 raise aiohttp.web.HTTPForbidden()
+        return await handler(request)
+
+    @aiohttp.web.middleware
+    async def browsers_no_post_put_middleware(self, request, handler):
+        if (
+            # A best effort test for browser traffic. All common browsers
+            # start with Mozilla at the time of writing.
+            request.headers["User-Agent"].startswith("Mozilla")
+            and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
+        ):
+            return aiohttp.web.Response(
+                status=405, text="Method Not Allowed for browser traffic."
+            )
+
         return await handler(request)
 
     @aiohttp.web.middleware
@@ -180,7 +199,11 @@ class HttpServerDashboardHead:
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(
             client_max_size=100 * 1024**2,
-            middlewares=[self.metrics_middleware, self.path_clean_middleware],
+            middlewares=[
+                self.metrics_middleware,
+                self.path_clean_middleware,
+                self.browsers_no_post_put_middleware,
+            ],
         )
         app.add_routes(routes=routes.bound_routes())
 

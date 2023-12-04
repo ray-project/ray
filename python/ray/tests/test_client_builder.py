@@ -13,7 +13,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
-    skip_flaky_test,
+    skip_flaky_core_test_premerge,
 )
 from ray.util.state import list_workers
 
@@ -55,10 +55,7 @@ def test_client(address):
         assert builder.address == address.replace("ray://", "")
 
 
-@pytest.mark.skipif(
-    skip_flaky_test(),
-    reason="https://github.com/ray-project/ray/issues/38224",
-)
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
 def test_namespace(ray_start_cluster):
     """
     Most of the "checks" in this test case rely on the fact that
@@ -108,9 +105,7 @@ print("Current namespace:", ray.get_runtime_context().namespace)
     subprocess.check_output("ray stop --force", shell=True)
 
 
-@pytest.mark.skipif(
-    skip_flaky_test(), reason="https://github.com/ray-project/ray/issues/38224"
-)
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
 def test_connect_to_cluster(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50055")
     with ray.client("localhost:50055").connect() as client_context:
@@ -335,9 +330,7 @@ def has_client_deprecation_warn(warning: Warning, expected_replacement: str) -> 
 @pytest.mark.filterwarnings(
     "default:Starting a connection through `ray.client` will be deprecated"
 )
-@pytest.mark.skipif(
-    skip_flaky_test(), reason="https://github.com/ray-project/ray/issues/38224"
-)
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
 def test_client_deprecation_warn():
     """
     Tests that calling ray.client directly raises a deprecation warning with
