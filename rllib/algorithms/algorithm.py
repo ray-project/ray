@@ -778,10 +778,25 @@ class Algorithm(Trainable, AlgorithmBase):
                     modules_to_load=modules_to_load,
                     rl_module_ckpt_dirs=rl_module_ckpt_dirs,
                 )
-            # Update the LearnerGroup's `is_module_trainable` function
-            # (analogous to is_policy_to_train).
-            is_module_trainable = self.workers.local_worker().is_policy_to_train
-            self.learner_group.set_is_module_trainable(is_module_trainable)
+            # Setup proper policies-to-train/shoul-module-be-updated functions
+            # on the LearnerGroup.
+            self.learner_group.set_should_module_be_updated_fn(
+                self.config.policies_to_train
+            )
+
+            # Only when using RolloutWorkers: Update also the worker set's
+            # `should_module_be_updated_fn` (analogous to is_policy_to_train).
+            # Note that with the new EnvRunner API in combination with the new stack,
+            # this information only needs to be kept in the LearnerGroup and not on the
+            # EnvRunners anymore.
+            if self.config.env_runner_cls is None or issubclass(
+                self.config.env_runner_cls, RolloutWorker
+            ):
+                update_fn = self.learner_group.should_module_be_updated_fn
+                self.workers.foreach_worker(
+                    lambda w: w.set_is_policy_to_train(update_fn),
+                    healthy_only=True,
+                )
 
             # Sync the weights from the learner group to the rollout workers.
             weights = self.learner_group.get_weights()
@@ -834,7 +849,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         # Do we have to run `self.evaluate()` this iteration?
         # `self.iteration` gets incremented after this function returns,
-        # meaning that e. g. the first time this function is called,
+        # meaning that e.g. the first time this function is called,
         # self.iteration will be 0.
         evaluate_this_iter = (
             self.config.evaluation_interval is not None
@@ -2115,11 +2130,13 @@ class Algorithm(Trainable, AlgorithmBase):
                 module_spec=SingleAgentRLModuleSpec.from_module(module),
             )
 
+            # Update the LearnerGroup's `should_module_be_updated_fn` function, but only
+            # if the arg is explicitly provided here.
+            if policies_to_train is not None:
+                self.learner_group.set_should_module_be_updated_fn(policies_to_train)
+
             weights = policy.get_weights()
             self.learner_group.set_weights({policy_id: weights})
-            # Update the LearnerGroup's `is_module_trainable` function.
-            is_module_trainable = self.workers.local_worker().is_policy_to_train
-            self.learner_group.set_is_module_trainable(is_module_trainable)
 
         # Add to evaluation workers, if necessary.
         if evaluation_workers is True and self.evaluation_workers is not None:
@@ -2181,9 +2198,10 @@ class Algorithm(Trainable, AlgorithmBase):
         # Update all EnvRunner workers.
         self.workers.foreach_worker(fn, local_worker=True, healthy_only=True)
 
-        # Update the LearnerGroup's `is_module_trainable` function.
-        is_module_trainable = self.workers.local_worker().is_policy_to_train
-        self.learner_group.set_is_module_trainable(is_module_trainable)
+        # Update the LearnerGroup's `should_module_be_updated_fn` function, but only
+        # if the arg is explicitly provided here.
+        if policies_to_train is not None:
+            self.learner_group.set_should_module_be_updated_fn(policies_to_train)
 
         # Update the evaluation worker set's workers, if required.
         if evaluation_workers and self.evaluation_workers is not None:
@@ -2298,6 +2316,8 @@ class Algorithm(Trainable, AlgorithmBase):
             checkpoint_dir: The directory where the checkpoint files will be stored.
         """
         state = self.__getstate__()
+
+        # TODO (sven): Move LearnerGroup `get_state` call here as well.
 
         # Extract policy states from worker state (Policies get their own
         # checkpoint sub-dirs).

@@ -1390,12 +1390,10 @@ class Learner:
 
         """
         self._check_is_built()
-        # TODO: once we figure out the optimizer format, we can set/get the state
         return {
             "module_state": self.get_module_state(),
             "optimizer_state": self.get_optimizer_state(),
         }
-        # return {"module_state": self.get_module_state(), "optimizer_state": {}}
 
     def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
         """Sets the state of all optimizers currently registered in this Learner.
