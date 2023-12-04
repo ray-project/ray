@@ -256,6 +256,8 @@ class GcsTableStorage {
     system_config_table_ = std::make_unique<GcsInternalConfigTable>(store_client_);
   }
 
+  virtual ~GcsTableStorage() = default;
+
   GcsJobTable &JobTable() {
     RAY_CHECK(job_table_ != nullptr);
     return *job_table_;
