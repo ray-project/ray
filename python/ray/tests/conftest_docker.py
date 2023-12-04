@@ -148,8 +148,8 @@ def docker_cluster(head_node, worker_node):
 
 def run_in_container(cmd: List[str], container_id: str):
     docker_cmd = ["docker", "exec", container_id] + cmd
-    print(f"executing command: {docker_cmd}")
-    resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
+    print(f"executing command: {docker_cmd}", time.time())
+    resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT, timeout=1000)
     output = resp.decode("utf-8").strip()
     print(f"output: {output}")
     return output
