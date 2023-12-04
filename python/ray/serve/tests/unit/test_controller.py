@@ -2,8 +2,11 @@ from copy import deepcopy
 
 import pytest
 
-from ray.serve._private.common import TargetCapacityScaleDirection
-from ray.serve._private.controller import applications_match, calculate_scale_direction
+from ray.serve._private.common import TargetCapacityDirection
+from ray.serve._private.controller import (
+    applications_match,
+    calculate_target_capacity_direction,
+)
 from ray.serve.schema import (
     HTTPOptionsSchema,
     ServeApplicationSchema,
@@ -118,11 +121,11 @@ class TestApplicationsMatch:
 class TestCalculateScaleDirection:
     @pytest.mark.parametrize(
         "curr_direction",
-        [TargetCapacityScaleDirection.UP, TargetCapacityScaleDirection.DOWN],
+        [TargetCapacityDirection.UP, TargetCapacityDirection.DOWN],
     )
     @pytest.mark.parametrize(
         "new_direction",
-        [TargetCapacityScaleDirection.UP, TargetCapacityScaleDirection.DOWN],
+        [TargetCapacityDirection.UP, TargetCapacityDirection.DOWN],
     )
     def test_change_target_capacity_numeric(self, curr_direction, new_direction):
         curr_target_capacity = 5
@@ -135,9 +138,9 @@ class TestCalculateScaleDirection:
             ],
         )
 
-        if new_direction == TargetCapacityScaleDirection.UP:
+        if new_direction == TargetCapacityDirection.UP:
             new_target_capacity = curr_target_capacity * 3.3
-        elif new_direction == TargetCapacityScaleDirection.DOWN:
+        elif new_direction == TargetCapacityDirection.DOWN:
             new_target_capacity = curr_target_capacity / 3.3
 
         new_config = deepcopy(curr_config)
@@ -145,7 +148,7 @@ class TestCalculateScaleDirection:
 
         # The new direction must be returned, regardless of the current direction.
         assert (
-            calculate_scale_direction(
+            calculate_target_capacity_direction(
                 curr_config,
                 new_config,
                 curr_direction,
@@ -156,7 +159,7 @@ class TestCalculateScaleDirection:
     @pytest.mark.parametrize("target_capacity", [0, 50, 100, None])
     @pytest.mark.parametrize(
         "curr_direction",
-        [TargetCapacityScaleDirection.UP, TargetCapacityScaleDirection.DOWN, None],
+        [TargetCapacityDirection.UP, TargetCapacityDirection.DOWN, None],
     )
     def test_no_change_target_capacity(self, target_capacity, curr_direction):
         """When target_capacity doesn't change, return the current direction."""
@@ -175,7 +178,7 @@ class TestCalculateScaleDirection:
         )
 
         assert (
-            calculate_scale_direction(
+            calculate_target_capacity_direction(
                 curr_config,
                 curr_config,
                 curr_direction,
@@ -186,7 +189,7 @@ class TestCalculateScaleDirection:
     @pytest.mark.parametrize("curr_target_capacity", [0, 50, 100, None])
     @pytest.mark.parametrize(
         "curr_direction",
-        [TargetCapacityScaleDirection.UP, TargetCapacityScaleDirection.DOWN, None],
+        [TargetCapacityDirection.UP, TargetCapacityDirection.DOWN, None],
     )
     def test_enter_null_target_capacity(self, curr_target_capacity, curr_direction):
         """When target capacity becomes null, scale up/down behavior must stop."""
@@ -208,7 +211,7 @@ class TestCalculateScaleDirection:
         new_config.target_capacity = None
 
         assert (
-            calculate_scale_direction(
+            calculate_target_capacity_direction(
                 curr_config,
                 new_config,
                 curr_direction,
@@ -232,12 +235,12 @@ class TestCalculateScaleDirection:
         # None, and then a target_capacity is applied, the direction must
         # become DOWN.
         assert (
-            calculate_scale_direction(
+            calculate_target_capacity_direction(
                 curr_config,
                 new_config,
                 None,
             )
-            == TargetCapacityScaleDirection.UP
+            == TargetCapacityDirection.UP
         )
 
     def test_scale_up_first_config(self):
@@ -250,12 +253,12 @@ class TestCalculateScaleDirection:
             applications=[create_app_config(name="app1")],
         )
         assert (
-            calculate_scale_direction(
+            calculate_target_capacity_direction(
                 None,
                 new_config,
                 None,
             )
-            == TargetCapacityScaleDirection.UP
+            == TargetCapacityDirection.UP
         )
 
         # Case 2: target_capacity is not set. Serve should not be scaling.
@@ -265,7 +268,7 @@ class TestCalculateScaleDirection:
             applications=[create_app_config(name="app1")],
         )
         assert (
-            calculate_scale_direction(
+            calculate_target_capacity_direction(
                 None,
                 new_config,
                 None,
@@ -276,7 +279,7 @@ class TestCalculateScaleDirection:
     @pytest.mark.parametrize("curr_target_capacity", [0, 50, 100, None])
     @pytest.mark.parametrize(
         "curr_direction",
-        [TargetCapacityScaleDirection.UP, TargetCapacityScaleDirection.DOWN, None],
+        [TargetCapacityDirection.UP, TargetCapacityDirection.DOWN, None],
     )
     def test_config_live_apps_mismatch(self, curr_target_capacity, curr_direction):
         """Apply a config with apps that don't match the live apps.
@@ -308,12 +311,12 @@ class TestCalculateScaleDirection:
         )
 
         assert (
-            calculate_scale_direction(
+            calculate_target_capacity_direction(
                 curr_config,
                 new_config,
                 curr_direction,
             )
-            is TargetCapacityScaleDirection.UP
+            is TargetCapacityDirection.UP
         )
 
         # Case 2: target_capacity is not set. Serve should not be scaling.
@@ -326,7 +329,7 @@ class TestCalculateScaleDirection:
         )
 
         assert (
-            calculate_scale_direction(
+            calculate_target_capacity_direction(
                 curr_config,
                 new_config,
                 curr_direction,
