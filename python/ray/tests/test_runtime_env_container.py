@@ -32,22 +32,6 @@ CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_a(podman_docker_cluster):
-    container_id = podman_docker_cluster
-
-    put_get_script = """
-print("wassup")
-assert 1 + 2 == 3
-"""
-    put_get_script = put_get_script.strip()
-    # with open("/home/ray/file.txt") as f:
-    #     assert f.read().strip() == "helloworldalice"
-    ray_script = ["docker", "exec", container_id, "python", "-c", put_get_script]
-    print("Executing", ray_script)
-    print(subprocess.check_output(ray_script))
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_b(podman_docker_cluster):
     container_id = podman_docker_cluster
 
@@ -61,6 +45,7 @@ def create_ref():
     return ref
 
 wrapped_ref = create_ref.remote()
+print(wrapped_ref)
 assert (ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)).all()
 """
     put_get_script = put_get_script.strip()
@@ -103,7 +88,6 @@ print(output)
 def test_c2(podman_docker_cluster):
     container_id = podman_docker_cluster
     run_in_container(["python", "-c", "import ray; print(ray.__file__)"], container_id)
-    run_in_container(["ray", "start", "--head"], container_id)
 
     put_get_script = """
 import ray
@@ -111,11 +95,13 @@ import numpy as np
 
 @ray.remote(runtime_env={
     "container": {
-        "image": "rayproject/ray:runtime_env_container",
+        "image": "rayproject/ray:runtime_env_container_nested",
         "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py", # noqa
     }
 })
 def create_ref():
+    with open("/tmp/file.txt") as f:
+        print(f.read())
     print("yoo")
     return "hii"
 
@@ -126,47 +112,6 @@ print(output)
     # with open("/home/ray/file.txt") as f:
     #     assert f.read().strip() == "helloworldalice"
     run_in_container(["python", "-c", put_get_script], container_id)
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_c3(podman_docker_cluster):
-    container_id = podman_docker_cluster
-    run_in_container(
-        ["podman", "pull", "rayproject/ray:nightly-py38-cpu"], container_id
-    )
-    run_in_container(["ray", "start", "--head"], container_id)
-
-    put_get_script = """
-import ray
-import numpy as np
-
-@ray.remote(runtime_env={
-    "container": {
-        "image": "rayproject/ray:nightly-py38-cpu",
-        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py", # noqa
-    }
-})
-def create_ref():
-    print("yoo")
-    return "hii"
-
-output = ray.get(create_ref.remote())
-print(output)
-"""
-    put_get_script = put_get_script.strip()
-    # with open("/home/ray/file.txt") as f:
-    #     assert f.read().strip() == "helloworldalice"
-    run_in_container(["python", "-c", put_get_script], container_id)
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_d(podman_docker_cluster):
-    container_id = podman_docker_cluster
-    run_in_container(["python", "-c", "import ray; print(ray.__file__)"], container_id)
-    run_in_container(
-        ["podman", "run", "rayproject/ray:runtime_env_container", "ls", "-l"],
-        container_id,
-    )
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
@@ -174,16 +119,6 @@ def test_e(podman_docker_cluster):
     container_id = podman_docker_cluster
     run_in_container(
         ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"], container_id
-    )
-    run_in_container(["ls", "-l", "/tmp"], container_id)
-    run_in_container(["cat", "/tmp/file.txt"], container_id)
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_f(podman_docker_cluster):
-    container_id = podman_docker_cluster
-    run_in_container(
-        ["bash", "-c", "echo helloworldalice", ">>" "/tmp/file.txt"], container_id
     )
     run_in_container(["ls", "-l", "/tmp"], container_id)
     run_in_container(["cat", "/tmp/file.txt"], container_id)
@@ -212,58 +147,71 @@ def test_basic(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_put_get(shutdown_only):
-    ray.init()
+def test_put_get(podman_docker_cluster):
+    container_id = podman_docker_cluster
 
-    print("output of id:", subprocess.check_output(["id"]))
-    print("output of ls -l:", subprocess.check_output(["ls", "-l", "/tmp/ray"]))
-    command = [
-        "podman",
-        "run",
-        "-v",
-        "/tmp/ray:/tmp/ray",
-        "--userns=keep-id",
-        "docker.io/zcin/runtime-env-prototype:nested",
-        "ls",
-        "-l",
-        "/tmp/ray",
-    ]
-    print("output of podman run ls -l /tmp/ray:", subprocess.check_output(command))
-    command = [
-        "podman",
-        "run",
-        "-v",
-        "/tmp/ray:/tmp/ray",
-        "--userns=keep-id",
-        "docker.io/zcin/runtime-env-prototype:nested",
-        "id",
-    ]
-    print("output of podman run id:", subprocess.check_output(command))
+    put_get_script = """
+import ray
+import numpy as np
 
-    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
-    def create_ref():
-        ref = ray.put(np.zeros(100_000_000))
-        return ref
+@ray.remote(runtime_env={
+    "container": {
+        "image": "rayproject/ray:runtime_env_container_nested",
+        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py", # noqa
+    }
+})
+def create_ref():
+    ref = ray.put(np.zeros(100_000_000))
+    return ref
 
-    wrapped_ref = create_ref.remote()
-    ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
+wrapped_ref = create_ref.remote()
+ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
+""".strip()
+    # with open("/home/ray/file.txt") as f:
+    #     assert f.read().strip() == "helloworldalice"
+    run_in_container(["python", "-c", put_get_script], container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-@pytest.mark.skip
-def test_shared_memory(shutdown_only):
-    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
-    def f():
-        array = np.random.rand(5000, 5000)
-        return ray.put(array)
+def test_shared_memory(podman_docker_cluster):
+    container_id = podman_docker_cluster
 
-    ray.init()
-    ref = ray.get(f.remote())
-    val = ray.get(ref)
-    size = sys.getsizeof(val)
-    assert size < sys.getsizeof(np.random.rand(5000, 5000))
-    print(f"Size of result fetched from ray.put: {size}")
-    assert val.shape == (5000, 5000)
+    put_get_script = """
+import ray
+import numpy as np
+import sys
+
+@ray.remote(runtime_env={
+    "container": {
+        "image": "rayproject/ray:runtime_env_container_nested",
+        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py", # noqa
+    }
+})
+def f():
+    array = np.random.rand(5000, 5000)
+    return ray.put(array)
+
+ray.init()
+ref = ray.get(f.remote())
+val = ray.get(ref)
+size = sys.getsizeof(val)
+assert size < sys.getsizeof(np.random.rand(5000, 5000))
+print(f"Size of result fetched from ray.put: {size}")
+assert val.shape == (5000, 5000)
+""".strip()
+    run_in_container(["python", "-c", put_get_script], container_id)
+    # @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
+    # def f():
+    #     array = np.random.rand(5000, 5000)
+    #     return ray.put(array)
+
+    # ray.init()
+    # ref = ray.get(f.remote())
+    # val = ray.get(ref)
+    # size = sys.getsizeof(val)
+    # assert size < sys.getsizeof(np.random.rand(5000, 5000))
+    # print(f"Size of result fetched from ray.put: {size}")
+    # assert val.shape == (5000, 5000)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
