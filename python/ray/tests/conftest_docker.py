@@ -193,9 +193,9 @@ def podman_docker_cluster():
     run_in_container(["sudo", "usermod", "-aG", "daemon", "ray"], container_id)
     run_in_container(["sudo", "usermod", "-aG", "docker", "ray"], container_id)
     run_in_container(["cat", "/etc/group"], container_id)
-    run_in_container(["podman" "image", "ls"], container_id)
     run_in_container(["podman", "pull", f"docker-daemon:{image_name}"], container_id)
-    # run_in_container(["podman", "image", "ls"], container_id)
+    run_in_container(["podman", "image", "ls"], container_id)
+    # run_in_container("bash -c 'echo helloworldalice' >> /tmp/file.txt", container_id)
     # run_in_container("bash -c 'echo helloworldalice' >> /tmp/file.txt", container_id)
     # run_in_container(f"podman create --name tmp_container {image_name}", container_id)
     # run_in_container(
