@@ -842,10 +842,10 @@ py_test(
 )
 
 py_test(
-    name = "env/tests/test_lookback_buffer",
+    name = "env/tests/test_infinite_lookback_buffer",
     tags = ["team:rllib", "env"],
     size = "small",
-    srcs = ["env/tests/test_lookback_buffer.py"]
+    srcs = ["env/tests/test_infinite_lookback_buffer.py"]
 )
 
 py_test(

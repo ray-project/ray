@@ -1094,8 +1094,196 @@ class SingleAgentEpisode:
                 `set_observations(individual_observation, -1,
                 neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
                 observations buffer with the provided "individual_observation".
-        """
 
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        self.observations.set(
+            new_data=new_data,
+            at_indices=at_indices,
+            neg_indices_left_of_zero=neg_indices_left_of_zero,
+        )
+
+    def set_actions(
+        self,
+        *,
+        new_data,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_indices_left_of_zero: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's actions with the provided data.
+
+        Note that an episode's action data cannot be written to directly as it is
+        managed by a `BufferWithInfiniteLookback` object. Normally, individual, current
+        actions are added to the episode either by calling `self.add_env_step` or
+        more directly (and manually) via `self.actions.append|extend()`.
+        However, for certain postprocessing steps, the entirety (or a slice) of an
+        episode's actions might have to be rewritten, which is when
+        `self.set_actions()` should be used.
+
+        Args:
+            new_data: The new action data to overwrite existing data with.
+                This may be a list of individual action(s) in case this episode
+                is still not finalized yet. In case this episode has already been
+                finalized, this should be (possibly complex) struct matching the
+                action space and with a batch size of its leafs exactly the size
+                of the to-be-overwritten slice or segment (provided by `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single action).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                actions = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_actions(individual_action, -1,
+                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                actions buffer with the provided "individual_action".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        self.actions.set(
+            new_data=new_data,
+            at_indices=at_indices,
+            neg_indices_left_of_zero=neg_indices_left_of_zero,
+        )
+
+    def set_rewards(
+        self,
+        *,
+        new_data,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_indices_left_of_zero: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's rewards with the provided data.
+
+        Note that an episode's reward data cannot be written to directly as it is
+        managed by a `BufferWithInfiniteLookback` object. Normally, individual, current
+        rewards are added to the episode either by calling `self.add_env_step` or
+        more directly (and manually) via `self.rewards.append|extend()`.
+        However, for certain postprocessing steps, the entirety (or a slice) of an
+        episode's rewards might have to be rewritten, which is when
+        `self.set_rewards()` should be used.
+
+        Args:
+            new_data: The new reward data to overwrite existing data with.
+                This may be a list of individual reward(s) in case this episode
+                is still not finalized yet. In case this episode has already been
+                finalized, this should be a np.ndarray with a length exactly
+                the size of the to-be-overwritten slice or segment (provided by
+                `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single reward).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_rewards(individual_reward, -1,
+                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                rewards buffer with the provided "individual_reward".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        self.rewards.set(
+            new_data=new_data,
+            at_indices=at_indices,
+            neg_indices_left_of_zero=neg_indices_left_of_zero,
+        )
+
+    def set_extra_model_outputs(
+        self,
+        *,
+        key,
+        new_data,
+        at_indices: Optional[Union[int, List[int], slice]] = None,
+        neg_indices_left_of_zero: bool = False,
+    ) -> None:
+        """Overwrites all or some of this Episode's extra model outputs with `new_data`.
+
+        Note that an episode's `extra_model_outputs` data cannot be written to directly
+        as it is managed by a `BufferWithInfiniteLookback` object. Normally, individual,
+        current `extra_model_output` values are added to the episode either by calling
+        `self.add_env_step` or more directly (and manually) via
+        `self.extra_model_outputs[key].append|extend()`. However, for certain
+        postprocessing steps, the entirety (or a slice) of an episode's
+        `extra_model_outputs` might have to be rewritten or a new key (a new type of
+        `extra_model_outputs`) must be inserted, which is when
+        `self.set_extra_model_outputs()` should be used.
+
+        Args:
+            key: The `key` within `self.extra_model_outputs` to override data on or
+                to insert as a new key into `self.extra_model_outputs`.
+            new_data: The new reward data to overwrite existing data with.
+                This may be a list of individual reward(s) in case this episode
+                is still not finalized yet. In case this episode has already been
+                finalized, this should be a np.ndarray with a length exactly
+                the size of the to-be-overwritten slice or segment (provided by
+                `at_indices`).
+            at_indices: A single int is interpreted as one index, which to overwrite
+                with `new_data` (which is expected to be a single reward).
+                A list of ints is interpreted as a list of indices, all of which to
+                overwrite with `new_data` (which is expected to be of the same size
+                as `len(at_indices)`).
+                A slice object is interpreted as a range of indices to be overwritten
+                with `new_data` (which is expected to be of the same size as the
+                provided slice).
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, an episode with
+                rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
+                lookback buffer range (ts=0 item is 7), will handle a call to
+                `set_rewards(individual_reward, -1,
+                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                rewards buffer with the provided "individual_reward".
+
+        Raises:
+            IndexError: If the provided `at_indices` do not match the size of
+                `new_data`.
+        """
+        # Record already exists -> Set existing record's data to new values.
+        if key in self.extra_model_outputs:
+            self.extra_model_outputs[key].set(
+                new_data=new_data,
+                at_indices=at_indices,
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            )
+        # Users wants to add a new record -> Create new buffer.
+        else:
+            if at_indices is not None:
+                raise AttributeError(
+                    f"Cannot set non-existing extra_model_outputs[{key}] using the "
+                    "`at_indices` arg! Try leaving `at_indices` None."
+                )
+            self.extra_model_outputs[key] = BufferWithInfiniteLookback(data=new_data)
 
     def slice(self, slice_: slice) -> "SingleAgentEpisode":
         """Returns a slice of this episode with the given slice object.

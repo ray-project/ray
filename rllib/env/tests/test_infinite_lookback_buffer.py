@@ -483,6 +483,96 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
                 batch_([buffer_0, buffer_0]),
             )
 
+    def test_set(self):
+        buffer = BufferWithInfiniteLookback(
+            data=[0, 1,  2, 3, 4, 5, 6, 7],
+            lookback=2,
+        )
+        # Directly via the []-notation.
+        buffer[0:2] = [200, 300]
+        check(buffer.data, [0, 1, 200, 300, 4, 5, 6, 7])
+        buffer[-1] = 700
+        check(buffer.data, [0, 1, 200, 300, 4, 5, 6, 700])
+        buffer[-3] = 500
+        check(buffer.data, [0, 1, 200, 300, 4, 500, 6, 700])
+        buffer[-4:-2] = [400, 5000]
+        check(buffer.data, [0, 1, 200, 300, 400, 5000, 6, 700])
+        buffer[0] = 2000
+        check(buffer.data, [0, 1, 2000, 300, 400, 5000, 6, 700])
+        buffer[-4:-1] = [400, 5000, 60]
+        check(buffer.data, [0, 1, 2000, 300, 400, 5000, 60, 700])
+
+        # Reset to initial values (excluding lookback buffer).
+        buffer[:] = [2, 3, 4, 5, 6, 7]
+        check(buffer.data, [0, 1, 2, 3, 4, 5, 6, 7])
+
+        # Via the `set` method.
+        buffer.set([200, 300], at_indices=slice(0, 2))
+        check(buffer.data, [0, 1, 200, 300, 4, 5, 6, 7])
+        buffer.set(700, at_indices=-1)
+        check(buffer.data, [0, 1, 200, 300, 4, 5, 6, 700])
+        buffer.set(500, at_indices=-3)
+        check(buffer.data, [0, 1, 200, 300, 4, 500, 6, 700])
+        buffer.set([400, 5000], at_indices=slice(-4, -2))
+        check(buffer.data, [0, 1, 200, 300, 400, 5000, 6, 700])
+        buffer.set(2000, at_indices=0)
+        check(buffer.data, [0, 1, 2000, 300, 400, 5000, 6, 700])
+        buffer.set([400, 5000, 60], at_indices=slice(-4, -1))
+        check(buffer.data, [0, 1, 2000, 300, 400, 5000, 60, 700])
+        # Check "out of index" conditions.
+        self.assertRaises(IndexError, lambda: buffer.set(100, at_indices=-100))
+        self.assertRaises(
+            IndexError,
+            lambda: buffer.set(100, at_indices=-3, neg_indices_left_of_zero=True),
+        )
+        self.assertRaises(
+            IndexError,
+            lambda: buffer.set(100, at_indices=-9, neg_indices_left_of_zero=False),
+        )
+        self.assertRaises(IndexError, lambda: buffer.set(100, at_indices=6))
+        self.assertRaises(IndexError, lambda: buffer.set(100, at_indices=100))
+
+        # Reset to initial values (excluding lookback buffer).
+        buffer.set([2, 3, 4, 5, 6, 7])
+        check(buffer.data, [0, 1, 2, 3, 4, 5, 6, 7])
+
+        # Via the `set` method with going into the lookback buffer.
+        buffer.set([100, 200, 300], at_indices=slice(-1, 2), neg_indices_left_of_zero=True)
+        check(buffer.data, [0, 100, 200, 300, 4, 5, 6, 7])
+        buffer.set(-999, at_indices=-2, neg_indices_left_of_zero=True)
+        check(buffer.data, [-999, 100, 200, 300, 4, 5, 6, 7])
+        buffer.set([-998, 1000], at_indices=slice(-2, 0), neg_indices_left_of_zero=True)
+        check(buffer.data, [-998, 1000, 200, 300, 4, 5, 6, 7])
+        buffer.set(2000, at_indices=0, neg_indices_left_of_zero=True)
+        check(buffer.data, [-998, 1000, 2000, 300, 4, 5, 6, 7])
+        # Negative steps.
+        buffer.set([-1, -4], at_indices=slice(3, 1, -1), neg_indices_left_of_zero=True)
+        check(buffer.data, [-998, 1000, 2000, 300, -4, -1, 6, 7])
+        buffer.set([-10, -40, -30], at_indices=slice(3, 0, -1))
+        check(buffer.data, [-998, 1000, 2000, -30, -40, -10, 6, 7])
+        # Check proper error handling if provided new_data is larger/smaller than slice.
+        self.assertRaises(
+            IndexError,
+            lambda: buffer.set([100, 101], at_indices=slice(0, 1)),
+        )
+
+    def test_set_with_complex_space(self):
+        """Tests setting data in a buffer using a complex space."""
+        buffer = BufferWithInfiniteLookback(
+            data=[
+                get_dummy_batch_for_space(
+                    space=self.space,
+                    batch_size=0,
+                    fill_value=float(i),
+                )
+                for i in range(10)
+            ],
+            lookback=2,
+            space=self.space,
+        )
+
+
+
 
 if __name__ == "__main__":
     import pytest
