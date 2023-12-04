@@ -29,11 +29,7 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.rl_module import (
-    RLModule,
-    ModuleID,
-    SingleAgentRLModuleSpec,
-)
+from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
@@ -56,6 +52,7 @@ from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
 from ray.rllib.utils.typing import (
     LearningRateOrSchedule,
+    ModuleID,
     Optimizer,
     Param,
     ParamRef,

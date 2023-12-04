@@ -20,7 +20,6 @@ from ray.rllib.core.learner.learner import (
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    ModuleID,
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
@@ -39,7 +38,7 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     copy_torch_tensors,
 )
-from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
+from ray.rllib.utils.typing import ModuleID, Optimizer, Param, ParamDict, TensorType
 
 torch, nn = try_import_torch()
 

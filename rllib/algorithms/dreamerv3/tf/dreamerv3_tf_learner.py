@@ -15,14 +15,13 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
     DreamerV3Learner,
     DreamerV3LearnerHyperparameters,
 )
-from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.core.learner.learner import ParamDict
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.tf_utils import symlog, two_hot, clip_gradients
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
 tfp = try_import_tfp()

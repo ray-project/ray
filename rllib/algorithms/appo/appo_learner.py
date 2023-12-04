@@ -6,11 +6,11 @@ from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearner,
     ImpalaLearnerHyperparameters,
 )
-from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 from ray.rllib.utils.schedules.scheduler import Scheduler
+from ray.rllib.utils.typing import ModuleID
 
 
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"

@@ -19,7 +19,6 @@ from ray.rllib.core.learner.learner import (
 )
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    ModuleID,
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
@@ -33,7 +32,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
-from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
+from ray.rllib.utils.typing import ModuleID, Optimizer, Param, ParamDict, TensorType
 
 
 tf1, tf, tfv = try_import_tf()

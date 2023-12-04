@@ -17,7 +17,6 @@ import uuid
 import ray
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
-    ModuleID,
     SingleAgentRLModuleSpec,
     RLMODULE_STATE_DIR_NAME,
 )
@@ -26,7 +25,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator
-from ray.rllib.utils.typing import ResultDict, ShouldModuleBeUpdatedFn
+from ray.rllib.utils.typing import ModuleID, ResultDict, ShouldModuleBeUpdatedFn
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes

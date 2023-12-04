@@ -6,12 +6,11 @@ from ray.rllib.core.learner.learner import (
     LearnerHyperparameters,
 )
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
 logger = logging.getLogger(__file__)
