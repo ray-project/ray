@@ -261,8 +261,6 @@ class FaultTolerantActorManager:
         self.__actors: Mapping[int, ActorHandle] = {}
         self.__remote_actor_states: Mapping[int, self._ActorState] = {}
         self.__restored_actors = set()
-        # TEST ONLY
-        self.restored_actors_history = defaultdict(int)
         self.add_actors(actors or [])
 
         # Maps outstanding async requests to the ids of the actors that
@@ -385,7 +383,6 @@ class FaultTolerantActorManager:
         # Set from unhealthy to healthy -> Add to restored set.
         if not was_healthy and healthy:
             self.__restored_actors.add(actor_id)
-            self.restored_actors_history[actor_id] += 1
         # Set from healthy to unhealthy -> Remove from restored set.
         elif was_healthy and not healthy:
             self.__restored_actors.discard(actor_id)
