@@ -589,7 +589,7 @@ def test_per_func_name_stats(shutdown_only):
             "ray::Actor",
             "ray::ActorB",
             "ray::IDLE",
-        } injl components
+        } in components
         return True
 
     wait_for_condition(verify_components, timeout=30)
