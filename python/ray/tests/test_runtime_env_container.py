@@ -1,27 +1,19 @@
-import asyncio
-import os
 import sys
 import subprocess
 
-import numpy as np
 import pytest
 
 import ray
-from ray._private.state_api_test_utils import verify_failed_task
-from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest_docker import *  # noqa
-from ray.tests.conftest_docker import run_in_container
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray.util.state import list_workers
+from ray.tests.conftest_docker import run_in_container, NESTED_IMAGE_NAME
 
 # Runtime env that points to an image that
-# - layers on top of the rayproject/ray:nightly-py38-cpu image
-# - downgrades python version to 3.8.16 to match that of the Ray CI environment
-# - contains a custom file that a Serve deployment can read when executing requests
-# See `docker/container-runtime-env-tests/Dockerfile`
+# - is a ray image built from the changes in the current commit
+# - contains a custom file that Ray actors can read from when executing requests
+# See `docker/runtime_env_container/Dockerfile` and the `podman_docker_cluster` fixture
 CONTAINER_SPEC = {
-    "image": "rayproject/ray:runtime_env_container_nested",
+    "image": NESTED_IMAGE_NAME,
     "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
 }
 CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
@@ -45,8 +37,6 @@ print(wrapped_ref)
 assert (ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)).all()
 """
     put_get_script = put_get_script.strip()
-    # with open("/home/ray/file.txt") as f:
-    #     assert f.read().strip() == "helloworldalice"
     ray_script = ["docker", "exec", container_id, "python", "-c", put_get_script]
     print("Executing", ray_script)
     print(subprocess.check_output(ray_script))
@@ -55,8 +45,6 @@ assert (ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)).all()
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_c(podman_docker_cluster):
     container_id = podman_docker_cluster
-    run_in_container(["python", "-c", "import ray; print(ray.__file__)"], container_id)
-
     put_get_script = f"""
 import ray
 import numpy as np
@@ -68,10 +56,8 @@ def create_ref():
 
 output = ray.get(create_ref.remote())
 print(output)
-"""
-    put_get_script = put_get_script.strip()
-    # with open("/home/ray/file.txt") as f:
-    #     assert f.read().strip() == "helloworldalice"
+""".strip()
+
     run_in_container(["python", "-c", put_get_script], container_id)
 
 
@@ -119,7 +105,7 @@ from ray.serve.handle import DeploymentHandle
 class Model:
     def __call__(self):
         with open("file.txt") as f:
-            return f.read()
+            return f.read().strip()
 
 def check_application(app_handle: DeploymentHandle, expected: str):
     ref = app_handle.remote()
@@ -130,7 +116,7 @@ h = serve.run(Model.bind())
 wait_for_condition(
     check_application,
     app_handle=h,
-    expected="Hello world ABC\n",
+    expected="helloworldalice",
     timeout=300,
 )
 """.strip()
@@ -197,7 +183,6 @@ assert val.shape == (5000, 5000)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-@pytest.mark.skip
 def test_log_file_exists(podman_docker_cluster):
     """Verify worker log file exists"""
 
@@ -247,8 +232,8 @@ assert any(re.search(f"^worker-{{worker_id}}-.*-{{worker_pid}}.out$", p) for p i
     run_in_container(["python", "-c", put_get_script], container_id)
 
 
-@pytest.mark.skip
-def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_worker_exit_intended_system_exit_and_user_error(podman_docker_cluster):
     """
     INTENDED_SYSTEM_EXIT
     - (not tested, hard to test) Unused resource removed
@@ -258,114 +243,126 @@ def test_worker_exit_intended_system_exit_and_user_error(shutdown_only):
     - (tested) Actor init failed
     """
 
-    ray.init(num_cpus=1)
+    container_id = podman_docker_cluster
+    put_get_script = f"""
+import asyncio
+import os
+from ray._private.state_api_test_utils import verify_failed_task
+from ray.util.state import list_workers
+from ray._private.test_utils import wait_for_condition
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-    def get_worker_by_pid(pid, detail=True):
-        for w in list_workers(detail=detail):
-            if w["pid"] == pid:
-                return w
-        assert False
+ray.init(num_cpus=1)
 
-    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
-    def f():
-        return ray.get(g.remote())
+def get_worker_by_pid(pid, detail=True):
+    for w in list_workers(detail=detail):
+        if w["pid"] == pid:
+            return w
+    assert False
 
-    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
-    def g():
+@ray.remote(runtime_env={CONTAINER_SPEC})
+def f():
+    return ray.get(g.remote())
+
+@ray.remote(runtime_env={CONTAINER_SPEC})
+def g():
+    return os.getpid()
+
+# Start a task that has a blocking call ray.get with g.remote.
+# g.remote will borrow the CPU and start a new worker.
+# The worker started for g.remote will exit by IDLE timeout.
+pid = ray.get(f.remote())
+
+def verify_exit_by_idle_timeout():
+    worker = get_worker_by_pid(pid)
+    type = worker["exit_type"]
+    detail = worker["exit_detail"]
+    return type == "INTENDED_SYSTEM_EXIT" and "it was idle" in detail
+
+wait_for_condition(verify_exit_by_idle_timeout)
+
+ray.shutdown()
+
+@ray.remote(num_cpus=1, runtime_env={CONTAINER_SPEC})
+class A:
+    def __init__(self):
+        self.sleeping = False
+
+    async def getpid(self):
+        while not self.sleeping:
+            await asyncio.sleep(0.1)
         return os.getpid()
 
-    # Start a task that has a blocking call ray.get with g.remote.
-    # g.remote will borrow the CPU and start a new worker.
-    # The worker started for g.remote will exit by IDLE timeout.
-    pid = ray.get(f.remote())
+    async def sleep(self):
+        self.sleeping = True
+        await asyncio.sleep(9999)
 
-    def verify_exit_by_idle_timeout():
-        worker = get_worker_by_pid(pid)
-        type = worker["exit_type"]
-        detail = worker["exit_detail"]
-        return type == "INTENDED_SYSTEM_EXIT" and "it was idle" in detail
+pg = ray.util.placement_group(bundles=[{{"CPU": 1}}])
+a = A.options(
+    scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+).remote()
+a.sleep.options(name="sleep").remote()
+pid = ray.get(a.getpid.remote())
+ray.util.remove_placement_group(pg)
 
-    wait_for_condition(verify_exit_by_idle_timeout)
+def verify_exit_by_pg_removed():
+    worker = get_worker_by_pid(pid)
+    type = worker["exit_type"]
+    detail = worker["exit_detail"]
+    assert verify_failed_task(
+        name="sleep",
+        error_type="ACTOR_DIED",
+        error_message=["INTENDED_SYSTEM_EXIT", "placement group was removed"],
+    )
+    return (
+        type == "INTENDED_SYSTEM_EXIT" and "placement group was removed" in detail
+    )
 
-    ray.shutdown()
+wait_for_condition(verify_exit_by_pg_removed)
 
-    @ray.remote(num_cpus=1, runtime_env=CONTAINER_RUNTIME_ENV)
-    class A:
-        def __init__(self):
-            self.sleeping = False
+@ray.remote(runtime_env={CONTAINER_SPEC})
+class PidDB:
+    def __init__(self):
+        self.pid = None
 
-        async def getpid(self):
-            while not self.sleeping:
-                await asyncio.sleep(0.1)
-            return os.getpid()
+    def record_pid(self, pid):
+        self.pid = pid
 
-        async def sleep(self):
-            self.sleeping = True
-            await asyncio.sleep(9999)
+    def get_pid(self):
+        return self.pid
 
-    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
-    a = A.options(
-        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
-    ).remote()
-    a.sleep.options(name="sleep").remote()
-    pid = ray.get(a.getpid.remote())
-    ray.util.remove_placement_group(pg)
+p = PidDB.remote()
 
-    def verify_exit_by_pg_removed():
-        worker = get_worker_by_pid(pid)
-        type = worker["exit_type"]
-        detail = worker["exit_detail"]
-        assert verify_failed_task(
-            name="sleep",
-            error_type="ACTOR_DIED",
-            error_message=["INTENDED_SYSTEM_EXIT", "placement group was removed"],
-        )
-        return (
-            type == "INTENDED_SYSTEM_EXIT" and "placement group was removed" in detail
-        )
+@ray.remote(runtime_env={CONTAINER_SPEC})
+class FaultyActor:
+    def __init__(self):
+        p.record_pid.remote(os.getpid())
+        raise Exception("exception in the initialization method")
 
-    wait_for_condition(verify_exit_by_pg_removed)
+    def ready(self):
+        pass
 
-    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
-    class PidDB:
-        def __init__(self):
-            self.pid = None
+a = FaultyActor.remote()
+wait_for_condition(lambda: ray.get(p.get_pid.remote()) is not None)
+pid = ray.get(p.get_pid.remote())
 
-        def record_pid(self, pid):
-            self.pid = pid
+def verify_exit_by_actor_init_failure():
+    worker = get_worker_by_pid(pid)
+    type = worker["exit_type"]
+    detail = worker["exit_detail"]
+    assert (
+        type == "USER_ERROR" and "exception in the initialization method" in detail
+    )
+    return verify_failed_task(
+        name="FaultyActor.__init__",
+        error_type="TASK_EXECUTION_EXCEPTION",
+        error_message="exception in the initialization method",
+    )
 
-        def get_pid(self):
-            return self.pid
+wait_for_condition(verify_exit_by_actor_init_failure)
+""".strip()
 
-    p = PidDB.remote()
-
-    @ray.remote(runtime_env=CONTAINER_RUNTIME_ENV)
-    class FaultyActor:
-        def __init__(self):
-            p.record_pid.remote(os.getpid())
-            raise Exception("exception in the initialization method")
-
-        def ready(self):
-            pass
-
-    a = FaultyActor.remote()
-    wait_for_condition(lambda: ray.get(p.get_pid.remote()) is not None)
-    pid = ray.get(p.get_pid.remote())
-
-    def verify_exit_by_actor_init_failure():
-        worker = get_worker_by_pid(pid)
-        type = worker["exit_type"]
-        detail = worker["exit_detail"]
-        assert (
-            type == "USER_ERROR" and "exception in the initialization method" in detail
-        )
-        return verify_failed_task(
-            name="FaultyActor.__init__",
-            error_type="TASK_EXECUTION_EXCEPTION",
-            error_message="exception in the initialization method",
-        )
-
-    wait_for_condition(verify_exit_by_actor_init_failure)
+    run_in_container(["python", "-c", put_get_script], container_id)
 
 
 class TestValidation:
@@ -379,8 +376,7 @@ class TestValidation:
                 }
             )
             def f():
-                array = np.random.rand(5000, 5000)
-                return ray.put(array)
+                return ray.put((1, 10))
 
     def test_container_with_pip(self):
         with pytest.raises(ValueError):
@@ -392,8 +388,7 @@ class TestValidation:
                 }
             )
             def f():
-                array = np.random.rand(5000, 5000)
-                return ray.put(array)
+                return ray.put((1, 10))
 
     def test_container_with_conda(self):
         with pytest.raises(ValueError):
@@ -405,8 +400,7 @@ class TestValidation:
                 }
             )
             def f():
-                array = np.random.rand(5000, 5000)
-                return ray.put(array)
+                return ray.put((1, 10))
 
     def test_container_with_py_modules(self):
         with pytest.raises(ValueError):
@@ -418,8 +412,7 @@ class TestValidation:
                 }
             )
             def f():
-                array = np.random.rand(5000, 5000)
-                return ray.put(array)
+                return ray.put((1, 10))
 
     def test_container_with_working_dir(self):
         with pytest.raises(ValueError):
@@ -431,8 +424,20 @@ class TestValidation:
                 }
             )
             def f():
-                array = np.random.rand(5000, 5000)
-                return ray.put(array)
+                return ray.put((1, 10))
+
+    def test_container_with_env_vars_and_working_dir(self):
+        with pytest.raises(ValueError):
+
+            @ray.remote(
+                runtime_env={
+                    "container": CONTAINER_SPEC,
+                    "env_vars": {"HELLO": "WORLD"},
+                    "working_dir": ".",
+                }
+            )
+            def f():
+                return ray.put((1, 10))
 
 
 if __name__ == "__main__":

@@ -155,13 +155,12 @@ def run_in_container(cmd: List[str], container_id: str):
     return output
 
 
+IMAGE_NAME = "rayproject/ray:runtime_env_container"
+NESTED_IMAGE_NAME = "rayproject/ray:runtime_env_container_nested"
+
+
 @pytest.fixture
 def podman_docker_cluster():
-    print("docker image ls:", subprocess.check_output(["docker", "image", "ls"]))
-    print("id:", subprocess.check_output(["id"]))
-
-    image_name = "rayproject/ray:runtime_env_container"
-    nested_image_name = "rayproject/ray:runtime_env_container_nested"
     start_container_command = [
         "docker",
         "run",
@@ -171,7 +170,7 @@ def podman_docker_cluster():
         "/var/run/docker.sock:/var/run/docker.sock",
         "-v",
         "/var/lib/containers:/var/lib/containers",
-        image_name,
+        IMAGE_NAME,
         "tail",
         "-f",
         "/dev/null",
@@ -181,32 +180,30 @@ def podman_docker_cluster():
     print(f"container_id: {container_id}")
     print("docker ps:", subprocess.check_output(["docker", "ps"]))
 
-    output = run_in_container(["ls", "-l", "/var/run/docker.sock"], container_id)
+    ls_output = run_in_container(["ls", "-l", "/var/run/docker.sock"], container_id)
     regex = ".{10} +\d+ +root +(\d+) \d+ [A-Za-z]+ +\d+ +.+ +\/var\/run\/docker\.sock"
-    docker_group_id = re.search(regex, output).group(1)
+    docker_group_id = re.search(regex, ls_output).group(1)
 
-    run_in_container(["id"], container_id)
-    run_in_container(["cat", "/etc/group"], container_id)
+    run_in_container(["id"], container_id)  # For debugging
     run_in_container(
         ["sudo", "groupadd", "-g", docker_group_id, "docker"], container_id
     )
     run_in_container(["sudo", "usermod", "-aG", "daemon", "ray"], container_id)
     run_in_container(["sudo", "usermod", "-aG", "docker", "ray"], container_id)
-    run_in_container(["cat", "/etc/group"], container_id)
-    run_in_container(["podman", "pull", f"docker-daemon:{image_name}"], container_id)
+    run_in_container(["podman", "pull", f"docker-daemon:{IMAGE_NAME}"], container_id)
     run_in_container(
         ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"], container_id
     )
     run_in_container(
-        ["podman", "create", "--name", "tmp_container", image_name], container_id
+        ["podman", "create", "--name", "tmp_container", IMAGE_NAME], container_id
     )
     run_in_container(
         ["podman", "cp", "/tmp/file.txt", "tmp_container:/home/ray/file.txt"],
         container_id,
     )
     run_in_container(
-        ["podman", "commit", "tmp_container", nested_image_name], container_id
+        ["podman", "commit", "tmp_container", NESTED_IMAGE_NAME], container_id
     )
-    run_in_container(["podman", "image", "ls"], container_id)
+    run_in_container(["podman", "image", "ls"], container_id)  # For debugging
 
     yield container_id
