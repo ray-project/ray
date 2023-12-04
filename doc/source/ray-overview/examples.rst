@@ -104,21 +104,21 @@ Ray Examples
         Aviary toolkit serving live traffic for LLMs
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item pytorch training
+        :class-item: gallery-item pytorch
         :link: /train/examples/pytorch/convert_existing_pytorch_code_to_ray_train
         :link-type: doc
 
         Get started with Ray Train from an existing PyTorch codebase
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training
+        :class-item: gallery-item
         :link: /train/examples/lightgbm/lightgbm_example
         :link-type: doc
 
         Distributed training with LightGBM
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item training
+        :class-item: gallery-item
         :link: /train/examples/xgboost/xgboost_example
         :link-type: doc
 
@@ -295,14 +295,14 @@ Ray Examples
         Many Models Batch Training at Scale with Ray Core
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training
+        :class-item: gallery-item
         :link: /ray-core/examples/batch_training
         :link-type: doc
 
         Batch Training with Ray Core
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing training
+        :class-item: gallery-item data-processing
         :link: /data/examples/batch_training
         :link-type: doc
 
@@ -316,7 +316,7 @@ Ray Examples
         Tune Basic Parallel Experiments
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training tuning
+        :class-item: gallery-item tuning
         :link: /tune/examples/batch_tuning
         :link-type: doc
 
@@ -523,6 +523,19 @@ Ray Examples
         :link-type: doc
 
         Fine-tune a 🤗 Transformers model on GLUE benchmark
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training huggingface natural-language-processing
+        :link: /train/examples/transformers/transformers_torch_trainer_basic
+        :link-type: doc
+
+        Fine-tune a Text Classifier with Hugging Face Transformers
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training huggingface large-language-models natural-language-processing
+        :link: https://github.com/ray-project/ray/blob/master/doc/source/templates/04_finetuning_llms_with_deepspeed/
+
+        Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch training train computer-vision
@@ -748,7 +761,7 @@ Ray Examples
         Example of DeepMind's Differentiable Neural Computer for partially-observable environments.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib training
+        :class-item: gallery-item reinforcement-learning rllib
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py
 
         Example of how to use Tune's support for custom training functions to implement custom training workflows.
@@ -1043,7 +1056,7 @@ Ray Examples
         Working with custom Keras models in RLlib
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item reinforcement-learning training
+        :class-item: gallery-item reinforcement-learning
         :link: /rllib/rllib-training
         :link-type: doc
 
@@ -1062,7 +1075,7 @@ Ray Examples
         The Magic of Merlin - Shopify's New ML Platform
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item training
+        :class-item: gallery-item
         :link: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
 
         Large Scale Deep Learning Training and Tuning with Ray
@@ -1145,7 +1158,7 @@ Ray Examples
         Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing training
+        :class-item: gallery-item data data-processing
         :link: /data/examples/batch_training
         :link-type: doc
 
@@ -1173,7 +1186,7 @@ Ray Examples
         Simple Parallel Model Selection
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item core training
+        :class-item: gallery-item core
         :link: /ray-core/examples/plot_example-lm
         :link-type: doc
 
