@@ -83,11 +83,7 @@ from ray.data._internal.stage_impl import (
     SortStage,
     ZipStage,
 )
-from ray.data._internal.stats import (
-    DatasetStats,
-    DatasetStatsSummary,
-    get_dataset_id_from_stats_actor,
-)
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
@@ -256,7 +252,7 @@ class Dataset:
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
 
-        self._set_uuid(get_dataset_id_from_stats_actor())
+        self._set_uuid(StatsManager.get_dataset_id_from_stats_actor())
 
     @staticmethod
     def copy(
@@ -3369,6 +3365,7 @@ class Dataset:
         self,
         project_id: str,
         dataset: str,
+        max_retry_cnt: int = 10,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -3393,13 +3390,30 @@ class Dataset:
         Args:
             project_id: The name of the associated Google Cloud Project that hosts
                 the dataset to read. For more information, see details in
-                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`.
             dataset: The name of the dataset in the format of ``dataset_id.table_id``.
                 The dataset is created if it doesn't already exist. The table_id is
                 overwritten if it exists.
+            max_retry_cnt: The maximum number of retries that an individual block write
+                is retried due to BigQuery rate limiting errors. This isn't
+                related to Ray fault tolerance retries. The default number of retries
+                is 10.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-        """
-        datasink = _BigQueryDatasink(project_id, dataset)
+        """  # noqa: E501
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        # Each write task will launch individual remote tasks to write each block
+        # To avoid duplicate block writes, the write task should not be retried
+        if ray_remote_args.get("max_retries", 0) != 0:
+            warnings.warn(
+                "The max_retries of a BigQuery Write Task should be set to 0"
+                " to avoid duplicate writes."
+            )
+        else:
+            ray_remote_args["max_retries"] = 0
+
+        datasink = _BigQueryDatasink(project_id, dataset, max_retry_cnt=max_retry_cnt)
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @Deprecated

@@ -5,6 +5,18 @@
 RLlib: Industry-Grade Reinforcement Learning
 ============================================
 
+.. toctree::
+    :hidden:
+
+    rllib-training
+    key-concepts
+    rllib-env
+    rllib-algorithms
+    user-guides
+    rllib-examples
+    package_ref/index
+
+
 .. image:: images/rllib-logo.png
     :align: center
 
@@ -54,10 +66,10 @@ PyTorch (or both, as shown below):
         <span data-ty="input">pip install "ray[rllib]" tensorflow torch</span>
     </div>
 
-.. margin::
+.. note::
 
     For installation on computers running Apple Silicon (such as M1), please follow instructions
-    `here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`._
+    `here. <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
     To be able to run our Atari examples, you should also install
     `pip install "gym[atari]" "gym[accept-rom-license]" atari_py`.
 

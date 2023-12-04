@@ -835,8 +835,16 @@ def test_usage_lib_get_total_num_nodes_to_report(ray_start_cluster, reset_usage_
     )
 
 
-def test_usage_lib_get_cluster_status_to_report(shutdown_only, reset_usage_stats):
-    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2**30)
+@pytest.mark.parametrize("enable_v2", [True, False])
+def test_usage_lib_get_cluster_status_to_report(
+    enable_v2, shutdown_only, reset_usage_stats
+):
+    ray.init(
+        num_cpus=3,
+        num_gpus=1,
+        object_store_memory=2**30,
+        _system_config={"enable_autoscaler_v2": enable_v2},
+    )
     # Wait for monitor.py to update cluster status
     wait_for_condition(
         lambda: ray_usage_lib.get_cluster_status_to_report(

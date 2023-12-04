@@ -42,6 +42,9 @@ namespace gcs {
 /// password.
 class GcsClientOptions {
  public:
+  GcsClientOptions(const std::string gcs_address, int port)
+      : gcs_address_(gcs_address), gcs_port_(port) {}
+
   /// Constructor of GcsClientOptions from gcs address
   ///
   /// \param gcs_address gcs address, including port

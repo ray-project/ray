@@ -65,8 +65,8 @@ over some values. You should probably still use
 supports early stopping).
 
 **If your model is large**, you can try to either use
-**Bayesian Optimization-based search algorithms** like :ref:`BayesOpt <bayesopt>` or
-:ref:`Dragonfly <Dragonfly>` to get good parameter configurations after few
+**Bayesian Optimization-based search algorithms** like :ref:`BayesOpt <bayesopt>`
+to get good parameter configurations after few
 trials. :ref:`Ax <tune-ax>` is similar but more robust to noisy data.
 Please note that these algorithms only work well with **a small number of hyperparameters**.
 Alternatively, you can use :ref:`Population Based Training <tune-scheduler-pbt>` which
