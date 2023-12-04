@@ -250,7 +250,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-recreate-workers-appo.yaml"],
+    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-recreate-workers-appo.py"],
     args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
 )
 # Multi-agent: Crash and stall.
