@@ -214,8 +214,6 @@ class ActorMethod:
             num_returns = self._num_returns
         if max_retries is None:
             max_retries = self._max_retries
-        if max_retries is None:
-            max_retries = 0
         if retry_exceptions is None:
             retry_exceptions = self._retry_exceptions
         if _generator_backpressure_num_objects is None:
@@ -301,9 +299,7 @@ class _ActorClassMethodMetadata(object):
         cls._cache.clear()
 
     @classmethod
-    def create(
-        cls, modified_class, actor_creation_function_descriptor, max_task_retries
-    ):
+    def create(cls, modified_class, actor_creation_function_descriptor):
         # Try to create an instance from cache.
         cached_meta = cls._cache.get(actor_creation_function_descriptor)
         if cached_meta is not None:
@@ -352,8 +348,6 @@ class _ActorClassMethodMetadata(object):
 
             if hasattr(method, "__ray_max_retries__"):
                 self.max_retries[method_name] = method.__ray_max_retries__
-            else:
-                self.max_retries[method_name] = max_task_retries
 
             if hasattr(method, "__ray_retry_exceptions__"):
                 self.retry_exceptions[method_name] = method.__ray_retry_exceptions__
@@ -444,7 +438,7 @@ class _ActorClassMetadata:
         self.scheduling_strategy = scheduling_strategy
         self.last_export_session_and_job = None
         self.method_meta = _ActorClassMethodMetadata.create(
-            modified_class, actor_creation_function_descriptor, max_task_retries
+            modified_class, actor_creation_function_descriptor
         )
 
 
@@ -1038,6 +1032,13 @@ class ActorClass:
                 PythonFunctionDescriptor(module_name, method_name, class_name)
             )
 
+        # Copy is safe for Dict[str, int]
+        max_retries_dict = meta.method_meta.max_retries.copy()
+        default_max_retries = max_task_retries if max_task_retries is not None else 0
+        for name in meta.method_meta.methods:
+            if name not in max_retries_dict:
+                max_retries_dict[name] = default_max_retries
+
         # Update the creation descriptor based on number of arguments
         if meta.is_cross_language:
             func_name = "<init>"
@@ -1084,7 +1085,7 @@ class ActorClass:
             meta.method_meta.decorators,
             meta.method_meta.signatures,
             meta.method_meta.num_returns,
-            meta.method_meta.max_retries,
+            max_retries_dict,
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
             actor_method_cpu,
