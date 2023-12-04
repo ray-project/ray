@@ -1119,9 +1119,7 @@ cdef report_streaming_generator_output(
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
 
-    is_exception = isinstance(output_or_exception, Exception)
-
-    if is_exception:
+    if isinstance(output_or_exception, Exception):
         create_generator_error_object(
             output_or_exception,
             worker,
@@ -1173,8 +1171,6 @@ cdef report_streaming_generator_output(
             context.attempt_number,
             context.waiter))
 
-    return is_exception
-
 
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
     """Execute a given generator and streaming-report the
@@ -1209,10 +1205,10 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
         except Exception as e:
             output_or_exception = e
 
-        done = report_streaming_generator_output(output_or_exception, context, gen_index)
+        report_streaming_generator_output(output_or_exception, context, gen_index)
         gen_index += 1
 
-        if done:
+        if isinstance(output_or_exception, Exception):
             break
 
 
@@ -1276,7 +1272,6 @@ async def execute_streaming_generator_async(
                 gen_index,
             )
         )
-
         gen_index += 1
 
         if is_exception:
@@ -1284,6 +1279,7 @@ async def execute_streaming_generator_async(
 
     # TODO elaborate
     await asyncio.gather(*futures)
+    futures.clear()
 
 
 cdef create_generator_return_obj(
