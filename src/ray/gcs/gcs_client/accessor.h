@@ -456,11 +456,6 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &callback);
 
- protected:
-  /// Cache which stores resource usage in last report used to check if they are changed.
-  /// Used by light resource usage report.
-  std::shared_ptr<NodeResources> last_resource_usage_ = std::make_shared<NodeResources>();
-
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
@@ -587,6 +582,15 @@ class WorkerInfoAccessor {
                                          uint32_t debugger_port,
                                          const StatusCallback &callback);
 
+  /// Update the number of worker's paused threads in GCS asynchronously.
+  ///
+  /// \param worker_id The ID of worker to update in the GCS.
+  /// \param num_paused_threads_delta The number of paused threads to update in the GCS.
+  /// \param callback Callback that will be called after update finishes.
+  /// \return Status
+  virtual Status AsyncUpdateWorkerNumPausedThreads(const WorkerID &worker_id,
+                                                   int num_paused_threads_delta,
+                                                   const StatusCallback &callback);
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to

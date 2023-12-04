@@ -11,9 +11,14 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
-from ray._private.test_utils import chdir, check_local_files_gced, wait_for_condition
-from ray._private.test_utils import skip_flaky_test
 from ray._private.utils import get_directory_size_bytes
+from ray._private.test_utils import (
+    chdir,
+    check_local_files_gced,
+    wait_for_condition,
+    skip_flaky_core_test_premerge,
+    find_free_port,
+)
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -107,7 +112,9 @@ class TestGC:
         cluster, address = start_cluster
         for i in range(NUM_NODES - 1):  # Head node already added.
             cluster.add_node(
-                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
+                num_cpus=1,
+                runtime_env_dir_name=f"node_{i}_runtime_resources",
+                dashboard_agent_listen_port=find_free_port(),
             )
             print(f'Added node with runtime_env_dir_name "node_{i}_runtime_resources".')
 
@@ -250,10 +257,7 @@ class TestGC:
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
     )
-    @pytest.mark.skipif(
-        skip_flaky_test(),
-        reason="https://github.com/ray-project/ray/issues/40781",
-    )
+    @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
     def test_detached_actor_gc(
         self,
         start_cluster,
@@ -348,10 +352,7 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @pytest.mark.skipif(
-        skip_flaky_test(),
-        reason="https://github.com/ray-project/ray/issues/40781",
-    )
+    @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
     def test_hit_cache_size_limit(
         self, start_cluster, URI_cache_10_MB, disable_temporary_uri_pinning
     ):

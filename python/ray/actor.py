@@ -1419,13 +1419,15 @@ def _modify_class(cls):
             "'class ClassName(object):' instead of 'class ClassName:'."
         )
 
-    # Modify the class to have additional methods
-    # for checking actor alive status and to terminate the worker.
+    # Modify the class to have additional default methods.
     class Class(cls):
         __ray_actor_class__ = cls  # The original actor class
 
         def __ray_ready__(self):
             return True
+
+        def __ray_call__(self, fn, *args, **kwargs):
+            return fn(self, *args, **kwargs)
 
         def __ray_terminate__(self):
             worker = ray._private.worker.global_worker

@@ -259,7 +259,6 @@ def run(
     max_failures: int = 0,
     fail_fast: bool = False,
     restore: Optional[str] = None,
-    server_port: Optional[int] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
     raise_on_failed_trial: bool = True,
@@ -419,7 +418,6 @@ def run(
             is best used with `ray.init(local_mode=True)`).
         restore: Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
-        server_port: Port number for launching TuneServer.
         resume: One of [True, False, "LOCAL", "REMOTE", "PROMPT", "AUTO"]. Can
             be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
             "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"] (e.g. ``AUTO+ERRORED``).
@@ -929,7 +927,6 @@ def run(
         scheduler=scheduler,
         stopper=experiments[0].stopper,
         resume=resume,
-        server_port=server_port,
         fail_fast=fail_fast,
         callbacks=callbacks,
         metric=metric,
@@ -1075,7 +1072,6 @@ def run(
 def run_experiments(
     experiments: Union[Experiment, Mapping, Sequence[Union[Experiment, Mapping]]],
     scheduler: Optional[TrialScheduler] = None,
-    server_port: Optional[int] = None,
     verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
@@ -1127,7 +1123,6 @@ def run_experiments(
             remote_run.remote(
                 experiments,
                 scheduler,
-                server_port,
                 verbose,
                 progress_reporter,
                 resume,
@@ -1147,7 +1142,6 @@ def run_experiments(
     if concurrent:
         return run(
             experiments,
-            server_port=server_port,
             verbose=verbose,
             progress_reporter=progress_reporter,
             resume=resume,
@@ -1162,7 +1156,6 @@ def run_experiments(
         for exp in experiments:
             trials += run(
                 exp,
-                server_port=server_port,
                 verbose=verbose,
                 progress_reporter=progress_reporter,
                 resume=resume,
