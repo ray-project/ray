@@ -1317,7 +1317,7 @@ def test_actor_parent_task_correct(shutdown_only, actor_type):
     # Verify a generator actor
     actor = GeneratorActor.remote()
     child_actor = ChildActor.remote()
-    gen = actor.parent.options(num_returns="streaming").remote(child_actor)
+    gen = actor.parent.remote(child_actor)
     for ref in gen:
         result = ray.get(ref)
     actual, expected = result

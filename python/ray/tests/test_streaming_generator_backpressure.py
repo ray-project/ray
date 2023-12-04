@@ -31,7 +31,7 @@ def test_streaming_generator_backpressure_basic(shutdown_only, actor):
 
     TOTAL_RETURN = 10
 
-    @ray.remote(num_returns="streaming", _generator_backpressure_num_objects=1)
+    @ray.remote(_generator_backpressure_num_objects=1)
     def f(reporter):
         for i in range(TOTAL_RETURN):
             print("yield ", i)
@@ -40,7 +40,7 @@ def test_streaming_generator_backpressure_basic(shutdown_only, actor):
 
     @ray.remote
     class A:
-        @ray.method(_generator_backpressure_num_objects=1, num_returns="streaming")
+        @ray.method(_generator_backpressure_num_objects=1)
         def f(self, reporter):
             for i in range(TOTAL_RETURN):
                 print("yield ", i)
@@ -105,9 +105,7 @@ def test_streaming_generator_backpressure_multiple_objects(
 
     TOTAL_RETURN = 10
 
-    @ray.remote(
-        num_returns="streaming", _generator_backpressure_num_objects=backpressure_size
-    )
+    @ray.remote(_generator_backpressure_num_objects=backpressure_size)
     def f(reporter):
         for i in range(TOTAL_RETURN):
             print("yield ", i)
@@ -148,7 +146,7 @@ def test_caller_failure_doesnt_hang(shutdown_only):
     """
     ray.init(num_cpus=2)
 
-    @ray.remote(num_returns="streaming", _generator_backpressure_num_objects=1)
+    @ray.remote(_generator_backpressure_num_objects=1)
     def f():
         for i in range(5):
             print("yield", i)
@@ -239,15 +237,13 @@ def test_backpressure_invalid(shutdown_only):
                 yield i
 
     a = A.remote()
-    gen = a.f.options(
-        num_returns="streaming", _generator_backpressure_num_objects=1
-    ).remote()
+    gen = a.f.options(_generator_backpressure_num_objects=1).remote()
     with pytest.raises(ValueError):
         ray.get(next(gen))
 
     with pytest.raises(ValueError, match="backpressure_num_objects=0 is not allowed"):
 
-        @ray.remote(num_returns="streaming", _generator_backpressure_num_objects=0)
+        @ray.remote(_generator_backpressure_num_objects=0)
         def f():
             pass
 
@@ -268,9 +264,7 @@ def test_threaded_actor_generator_backpressure(shutdown_only):
 
         async def run():
             i = 0
-            gen = a.f.options(
-                num_returns="streaming", _generator_backpressure_num_objects=1
-            ).remote()
+            gen = a.f.options(_generator_backpressure_num_objects=1).remote()
             async for ref in gen:
                 val = ray.get(ref)
                 print(val)
@@ -292,7 +286,6 @@ def test_backpressure_pause_signal(shutdown_only):
     """
 
     @ray.remote(
-        num_returns="streaming",
         _generator_backpressure_num_objects=1,
         max_retries=0,
     )
