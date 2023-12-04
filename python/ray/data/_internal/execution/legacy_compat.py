@@ -39,7 +39,6 @@ from ray.data._internal.planner.plan_read_op import (
 )
 from ray.data._internal.stage_impl import LimitStage, RandomizeBlocksStage
 from ray.data._internal.stats import DatasetStats, StatsDict
-from ray.data._internal.util import validate_compute
 from ray.data.block import Block, BlockMetadata, CallableClass, List
 from ray.data.context import DataContext
 from ray.data.datasource import ReadTask
@@ -323,7 +322,6 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
     if isinstance(stage, OneToOneStage):
         compute = get_compute(stage.compute)
-        validate_compute(stage.fn, compute)
 
         block_fn = stage.block_fn
         if stage.fn:
