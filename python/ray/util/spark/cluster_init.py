@@ -880,10 +880,8 @@ def _verify_node_options(node_options, block_keys, node_type):
                 )
 
 
-@PublicAPI(stability="alpha")
-def setup_ray_cluster(
+def _setup_ray_cluster_internal(
     num_worker_nodes: int,
-    *,
     num_cpus_worker_node: Optional[int] = None,
     num_cpus_head_node: Optional[int] = None,
     num_gpus_worker_node: Optional[int] = None,
@@ -901,130 +899,6 @@ def setup_ray_cluster(
     is_global: bool = False,
     **kwargs,
 ) -> Tuple[str, str]:
-    """
-    Set up a ray cluster on the spark cluster by starting a ray head node in the
-    spark application's driver side node.
-    After creating the head node, a background spark job is created that
-    generates an instance of `RayClusterOnSpark` that contains configuration for the
-    ray cluster that will run on the Spark cluster's worker nodes.
-    After a ray cluster is set up, "RAY_ADDRESS" environment variable is set to
-    the cluster address, so you can call `ray.init()` without specifying ray cluster
-    address to connect to the cluster. To shut down the cluster you can call
-    `ray.util.spark.shutdown_ray_cluster()`.
-    Note: If the active ray cluster haven't shut down, you cannot create a new ray
-    cluster.
-
-    Args:
-        num_worker_nodes: This argument represents how many ray worker nodes to start
-            for the ray cluster.
-            If autoscale=True, then the ray cluster starts with zero worker node,
-            and it can scale up to at most `num_worker_nodes` worker nodes.
-            In non-autoscaling mode, you can
-            specify the `num_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
-            represents a ray cluster
-            configuration that will use all available resources configured for the
-            spark application.
-            To create a spark application that is intended to exclusively run a
-            shared ray cluster in non-scaling, it is recommended to set this argument
-            to `ray.util.spark.MAX_NUM_WORKER_NODES`.
-
-        num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
-            provided, use spark application configuration 'spark.task.cpus' instead.
-            **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
-            supports setting this argument.
-        num_cpus_head_node: Number of cpus available to Ray head node, if not provide,
-            use 0 instead. Number 0 means tasks requiring CPU resources are not
-            scheduled to Ray head node.
-        num_gpus_worker_node: Number of gpus available to per-ray worker node, if not
-            provided, use spark application configuration
-            'spark.task.resource.gpu.amount' instead.
-            This argument is only available on spark cluster that is configured with
-            'gpu' resources.
-            **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
-            supports setting this argument.
-        num_gpus_head_node: Number of gpus available to Ray head node, if not provide,
-            use 0 instead.
-            This argument is only available on spark cluster which spark driver node
-            has GPUs.
-        object_store_memory_worker_node: Object store memory available to per-ray worker
-            node, but it is capped by
-            "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
-            The default value equals to
-            "0.3 * spark_worker_physical_memory * 0.8 / num_tasks_per_spark_worker".
-        object_store_memory_head_node: Object store memory available to Ray head
-            node, but it is capped by "dev_shm_available_size * 0.8".
-            The default value equals to
-            "0.3 * spark_driver_physical_memory * 0.8".
-        head_node_options: A dict representing Ray head node extra options, these
-            options will be passed to `ray start` script. Note you need to convert
-            `ray start` options key from `--foo-bar` format to `foo_bar` format.
-            For flag options (e.g. '--disable-usage-stats'), you should set the value
-            to None in the option dict, like `{"disable_usage_stats": None}`.
-            Note: Short name options (e.g. '-v') are not supported.
-        worker_node_options: A dict representing Ray worker node extra options,
-            these options will be passed to `ray start` script. Note you need to
-            convert `ray start` options key from `--foo-bar` format to `foo_bar`
-            format.
-            For flag options (e.g. '--disable-usage-stats'), you should set the value
-            to None in the option dict, like `{"disable_usage_stats": None}`.
-            Note: Short name options (e.g. '-v') are not supported.
-        ray_temp_root_dir: A local disk path to store the ray temporary data. The
-            created cluster will create a subdirectory
-            "ray-{head_port}-{random_suffix}" beneath this path.
-        strict_mode: Boolean flag to fast-fail initialization of the ray cluster if
-            the available spark cluster does not have sufficient resources to fulfill
-            the resource allocation for memory, cpu and gpu. When set to true, if the
-            requested resources are not available for recommended minimum recommended
-            functionality, an exception will be raised that details the inadequate
-            spark cluster configuration settings. If overridden as `False`,
-            a warning is raised.
-        collect_log_to_path: If specified, after ray head / worker nodes terminated,
-            collect their logs to the specified path. On Databricks Runtime, we
-            recommend you to specify a local path starts with '/dbfs/', because the
-            path mounts with a centralized storage device and stored data is persisted
-            after Databricks spark cluster terminated.
-        autoscale: If True, enable autoscaling, the number of initial Ray worker nodes
-            is zero, and the maximum number of Ray worker nodes is set to
-            `num_worker_nodes`. Default value is False.
-        autoscale_upscaling_speed: If autoscale enabled, it represents the number of
-            nodes allowed to be pending as a multiple of the current number of nodes.
-            The higher the value, the more aggressive upscaling will be. For example,
-            if this is set to 1.0, the cluster can grow in size by at most 100% at any
-            time, so if the cluster currently has 20 nodes, at most 20 pending launches
-            are allowed. The minimum number of pending launches is 5 regardless of
-            this setting.
-            Default value is 1.0, minimum value is 1.0
-        autoscale_idle_timeout_minutes: If autoscale enabled, it represents the number
-            of minutes that need to pass before an idle worker node is removed by the
-            autoscaler. The smaller the value, the more aggressive downscaling will be.
-            Worker nodes are considered idle when they hold no active tasks, actors,
-            or referenced objects (either in-memory or spilled to disk). This parameter
-            does not affect the head node.
-            Default value is 1.0, minimum value is 0
-        is_global: If True, set up and serve a global mode Ray on spark cluster.
-            The global Ray on spark cluster means:
-            - You can only create one active global Ray on spark cluster at a time.
-            On databricks cluster, the global Ray cluster can be used by all users,
-            - as contrast, non-global Ray cluster can only be used by current notebook
-            user.
-            - It is up persistently without automatic shutdown.
-            - On databricks notebook, you can connect to the global cluster by calling
-            ``ray.init()`` without specifying its address, it will discover the
-            global cluster automatically if it is up.
-
-            For global mode, the ``ray_temp_root_dir`` argument is not supported.
-            Global model Ray cluster always use the default Ray temporary directory
-            path.
-    Returns:
-        returns a tuple of (address, remote_connection_address)
-        "address" is in format of "<ray_head_node_ip>:<port>"
-        "remote_connection_address" is in format of
-        "ray://<ray_head_node_ip>:<ray-client-server-port>",
-        if your client runs on a machine that also hosts a Ray cluster node locally,
-        you can connect to the Ray cluster via ``ray.init(address)``,
-        otherwise you can connect to the Ray cluster via
-        ``ray.init(remote_connection_address)``.
-    """
     global _active_ray_cluster
 
     _check_system_environment()
@@ -1305,19 +1179,186 @@ def setup_ray_cluster(
     return cluster.address, remote_connection_address
 
 
-def setup_global_ray_cluster_and_serve(*args, **kwargs):
+@PublicAPI(stability="alpha")
+def setup_ray_cluster(
+    num_worker_nodes: int,
+    *,
+    num_cpus_worker_node: Optional[int] = None,
+    num_cpus_head_node: Optional[int] = None,
+    num_gpus_worker_node: Optional[int] = None,
+    num_gpus_head_node: Optional[int] = None,
+    object_store_memory_worker_node: Optional[int] = None,
+    object_store_memory_head_node: Optional[int] = None,
+    head_node_options: Optional[Dict] = None,
+    worker_node_options: Optional[Dict] = None,
+    ray_temp_root_dir: Optional[str] = None,
+    strict_mode: bool = False,
+    collect_log_to_path: Optional[str] = None,
+    autoscale: bool = False,
+    autoscale_upscaling_speed: Optional[float] = 1.0,
+    autoscale_idle_timeout_minutes: Optional[float] = 1.0,
+    **kwargs,
+) -> Tuple[str, str]:
     """
-    Create a global mode cluster by calling ``setup_ray_cluster`` with
-    ``is_global=True``,
+    Set up a ray cluster on the spark cluster by starting a ray head node in the
+    spark application's driver side node.
+    After creating the head node, a background spark job is created that
+    generates an instance of `RayClusterOnSpark` that contains configuration for the
+    ray cluster that will run on the Spark cluster's worker nodes.
+    After a ray cluster is set up, "RAY_ADDRESS" environment variable is set to
+    the cluster address, so you can call `ray.init()` without specifying ray cluster
+    address to connect to the cluster. To shut down the cluster you can call
+    `ray.util.spark.shutdown_ray_cluster()`.
+    Note: If the active ray cluster haven't shut down, you cannot create a new ray
+    cluster.
+
+    Args:
+        num_worker_nodes: This argument represents how many ray worker nodes to start
+            for the ray cluster.
+            If autoscale=True, then the ray cluster starts with zero worker node,
+            and it can scale up to at most `num_worker_nodes` worker nodes.
+            In non-autoscaling mode, you can
+            specify the `num_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
+            represents a ray cluster
+            configuration that will use all available resources configured for the
+            spark application.
+            To create a spark application that is intended to exclusively run a
+            shared ray cluster in non-scaling, it is recommended to set this argument
+            to `ray.util.spark.MAX_NUM_WORKER_NODES`.
+
+        num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
+            provided, use spark application configuration 'spark.task.cpus' instead.
+            **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
+            supports setting this argument.
+        num_cpus_head_node: Number of cpus available to Ray head node, if not provide,
+            use 0 instead. Number 0 means tasks requiring CPU resources are not
+            scheduled to Ray head node.
+        num_gpus_worker_node: Number of gpus available to per-ray worker node, if not
+            provided, use spark application configuration
+            'spark.task.resource.gpu.amount' instead.
+            This argument is only available on spark cluster that is configured with
+            'gpu' resources.
+            **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
+            supports setting this argument.
+        num_gpus_head_node: Number of gpus available to Ray head node, if not provide,
+            use 0 instead.
+            This argument is only available on spark cluster which spark driver node
+            has GPUs.
+        object_store_memory_worker_node: Object store memory available to per-ray worker
+            node, but it is capped by
+            "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
+            The default value equals to
+            "0.3 * spark_worker_physical_memory * 0.8 / num_tasks_per_spark_worker".
+        object_store_memory_head_node: Object store memory available to Ray head
+            node, but it is capped by "dev_shm_available_size * 0.8".
+            The default value equals to
+            "0.3 * spark_driver_physical_memory * 0.8".
+        head_node_options: A dict representing Ray head node extra options, these
+            options will be passed to `ray start` script. Note you need to convert
+            `ray start` options key from `--foo-bar` format to `foo_bar` format.
+            For flag options (e.g. '--disable-usage-stats'), you should set the value
+            to None in the option dict, like `{"disable_usage_stats": None}`.
+            Note: Short name options (e.g. '-v') are not supported.
+        worker_node_options: A dict representing Ray worker node extra options,
+            these options will be passed to `ray start` script. Note you need to
+            convert `ray start` options key from `--foo-bar` format to `foo_bar`
+            format.
+            For flag options (e.g. '--disable-usage-stats'), you should set the value
+            to None in the option dict, like `{"disable_usage_stats": None}`.
+            Note: Short name options (e.g. '-v') are not supported.
+        ray_temp_root_dir: A local disk path to store the ray temporary data. The
+            created cluster will create a subdirectory
+            "ray-{head_port}-{random_suffix}" beneath this path.
+        strict_mode: Boolean flag to fast-fail initialization of the ray cluster if
+            the available spark cluster does not have sufficient resources to fulfill
+            the resource allocation for memory, cpu and gpu. When set to true, if the
+            requested resources are not available for recommended minimum recommended
+            functionality, an exception will be raised that details the inadequate
+            spark cluster configuration settings. If overridden as `False`,
+            a warning is raised.
+        collect_log_to_path: If specified, after ray head / worker nodes terminated,
+            collect their logs to the specified path. On Databricks Runtime, we
+            recommend you to specify a local path starts with '/dbfs/', because the
+            path mounts with a centralized storage device and stored data is persisted
+            after Databricks spark cluster terminated.
+        autoscale: If True, enable autoscaling, the number of initial Ray worker nodes
+            is zero, and the maximum number of Ray worker nodes is set to
+            `num_worker_nodes`. Default value is False.
+        autoscale_upscaling_speed: If autoscale enabled, it represents the number of
+            nodes allowed to be pending as a multiple of the current number of nodes.
+            The higher the value, the more aggressive upscaling will be. For example,
+            if this is set to 1.0, the cluster can grow in size by at most 100% at any
+            time, so if the cluster currently has 20 nodes, at most 20 pending launches
+            are allowed. The minimum number of pending launches is 5 regardless of
+            this setting.
+            Default value is 1.0, minimum value is 1.0
+        autoscale_idle_timeout_minutes: If autoscale enabled, it represents the number
+            of minutes that need to pass before an idle worker node is removed by the
+            autoscaler. The smaller the value, the more aggressive downscaling will be.
+            Worker nodes are considered idle when they hold no active tasks, actors,
+            or referenced objects (either in-memory or spilled to disk). This parameter
+            does not affect the head node.
+            Default value is 1.0, minimum value is 0
+    Returns:
+        returns a tuple of (address, remote_connection_address)
+        "address" is in format of "<ray_head_node_ip>:<port>"
+        "remote_connection_address" is in format of
+        "ray://<ray_head_node_ip>:<ray-client-server-port>",
+        if your client runs on a machine that also hosts a Ray cluster node locally,
+        you can connect to the Ray cluster via ``ray.init(address)``,
+        otherwise you can connect to the Ray cluster via
+        ``ray.init(remote_connection_address)``.
+    """
+
+    return _setup_ray_cluster_internal(
+        num_worker_nodes=num_worker_nodes,
+        num_cpus_worker_node=num_cpus_worker_node,
+        num_cpus_head_node=num_cpus_head_node,
+        num_gpus_worker_node=num_gpus_worker_node,
+        num_gpus_head_node=num_gpus_head_node,
+        object_store_memory_worker_node=object_store_memory_worker_node,
+        object_store_memory_head_node=object_store_memory_head_node,
+        head_node_options=head_node_options,
+        worker_node_options=worker_node_options,
+        ray_temp_root_dir=ray_temp_root_dir,
+        strict_mode=strict_mode,
+        collect_log_to_path=collect_log_to_path,
+        autoscale=autoscale,
+        autoscale_upscaling_speed=autoscale_upscaling_speed,
+        autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
+        is_global=False,
+        **kwargs,
+    )
+
+
+def setup_global_ray_cluster(*args, **kwargs):
+    """
+    Set up a global mode cluster.
+    The global Ray on spark cluster means:
+    - You can only create one active global Ray on spark cluster at a time.
+    On databricks cluster, the global Ray cluster can be used by all users,
+    - as contrast, non-global Ray cluster can only be used by current notebook
+    user.
+    - It is up persistently without automatic shutdown.
+    - On databricks notebook, you can connect to the global cluster by calling
+    ``ray.init()`` without specifying its address, it will discover the
+    global cluster automatically if it is up.
+
+    For global mode, the ``ray_temp_root_dir`` argument is not supported.
+    Global model Ray cluster always use the default Ray temporary directory
+    path.
+
+    All arguments are the same with ``setup_ray_cluster`` API except that:
+    - the ``ray_temp_root_dir`` argument is not supported.
+    Global model Ray cluster always use the default Ray temporary directory
+    path.
+    - A new argument "is_blocking" (default ``True``) is added.
+    If "is_blocking" is True,
     then keep the call blocking until it is interrupted.
     once the call is interrupted, the global Ray on spark cluster is shut down and
     `serve_global_ray_cluster` call terminates.
-
-    Args:
-        All arguments are the same with ``setup_ray_cluster`` API except that
-        the ``ray_temp_root_dir`` argument is not supported.
-        Global model Ray cluster always use the default Ray temporary directory
-        path.
+    If "is_blocking" is False,
+    once Ray cluster setup completes, return immediately.
     """
 
     if "ray_temp_root_dir" in kwargs:
@@ -1328,7 +1369,12 @@ def setup_global_ray_cluster_and_serve(*args, **kwargs):
             "You can't set 'is_global' argument in 'serve_global_ray_cluster' call."
         )
 
-    setup_ray_cluster(*args, **kwargs, is_global=True)
+    cluster_address = _setup_ray_cluster_internal(*args, **kwargs, is_global=True)
+
+    is_blocking = kwargs.get("is_blocking", True)
+
+    if not is_blocking:
+        return cluster_address
 
     global _global_ray_cluster_cancel_event
     try:
