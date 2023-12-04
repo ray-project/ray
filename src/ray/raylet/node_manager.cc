@@ -1933,24 +1933,23 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
                                     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Drain raylet RPC has received. Drain reason: "
                 << request.reason_message();
-  switch (request.reason()) {
-  case DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION:
-    if (bool is_idle =
-            cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
-        is_idle) {
+
+  if (request.reason() ==
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
+    const bool is_idle =
+        cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
+    if (is_idle) {
+      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
     }
-    break;
-  case DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION:
+  } else {
     // Non-rejectable draining request.
+    RAY_CHECK_EQ(request.reason(),
+                 rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
     reply->set_is_accepted(true);
-    break;
-  // Crash immediately.
-  case DrainNodeReason::DRAIN_NODE_REASON_UNSPECIFIED:
-  default:
-    RAY_LOG(ERROR) << "Drain raylet RPC has received, but the reason is not specified.";
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);

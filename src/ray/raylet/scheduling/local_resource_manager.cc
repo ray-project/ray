@@ -440,4 +440,9 @@ void LocalResourceManager::RecordMetrics() const {
   }
 }
 
+void LocalResourceManager::SetLocalNodeDraining() {
+  is_local_node_draining_ = true;
+  OnResourceOrStateChanged();
+}
+
 }  // namespace ray

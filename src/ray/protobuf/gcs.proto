@@ -330,6 +330,7 @@ message NodeDeathInfo {
 
   // Detailed reason
   oneof Detail {
+    // TODO(sang): Add Drain node message.
     autoscaler.DrainNodeReason drain_reason = 2;
   }
 }

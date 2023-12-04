@@ -184,8 +184,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleDuringDraining)
 
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle1_specs));
   // Drain the node, new bundle prepare will fail.
-  cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-      DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+  cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
   ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundles(bundle2_specs));
   // Prepared bundles can still be committed.
   new_placement_group_resource_manager_->CommitBundles(bundle1_specs);

@@ -328,6 +328,10 @@ class RayActorError(RayError):
     def __str__(self) -> str:
         return self.error_msg
 
+    @property
+    def preempted(self) -> bool:
+        return self._preempted
+
     @staticmethod
     def from_task_error(task_error: RayTaskError):
         return RayActorError(task_error)
