@@ -110,9 +110,9 @@ class CartPoleCrashing(CartPoleEnv):
         # Should we crash?
         if self._should_crash(p=self.p_crash_reset):
             raise EnvError(
-                #f"Simulated env crash on worker={self.config.worker_index} "
-                #f"env-idx={self.config.vector_index} during `reset()`! "
-                #"Feel free to use any other exception type here instead."
+                # f"Simulated env crash on worker={self.config.worker_index} "
+                # f"env-idx={self.config.vector_index} during `reset()`! "
+                # "Feel free to use any other exception type here instead."
             )
         # Should we stall for a while?
         self._stall_if_necessary(p=self.p_stall_reset)
@@ -127,9 +127,9 @@ class CartPoleCrashing(CartPoleEnv):
         # Should we crash?
         if self._should_crash(p=self.p_crash):
             raise EnvError(
-                #f"Simulated env crash on worker={self.config.worker_index} "
-                #f"env-idx={self.config.vector_index} during `step()`! "
-                #"Feel free to use any other exception type here instead."
+                # f"Simulated env crash on worker={self.config.worker_index} "
+                # f"env-idx={self.config.vector_index} during `step()`! "
+                # "Feel free to use any other exception type here instead."
             )
         # Should we stall for a while?
         self._stall_if_necessary(p=self.p_stall)

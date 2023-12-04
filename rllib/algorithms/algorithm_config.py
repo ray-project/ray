@@ -2632,8 +2632,8 @@ class AlgorithmConfig(_Config):
             deprecation_warning(
                 old="config.experimental(_disable_execution_plan_api=...)",
                 help="The execution plan API is no longer supported! Use subclassing "
-                     "of the `Algorithm` class and override the "
-                     "`Algorithm.training_step()` method instead.",
+                "of the `Algorithm` class and override the "
+                "`Algorithm.training_step()` method instead.",
                 error=True,
             )
 

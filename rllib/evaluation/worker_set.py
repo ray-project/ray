@@ -1007,7 +1007,7 @@ class WorkerSet:
     def remote_workers(self) -> List[ActorHandle]:
         return list(self.__worker_manager.actors().values())
 
-    #TODO: remove
+    # TODO: remove
     @property
     def restored_actors_history(self):
         return self.__worker_manager.restored_actors_history

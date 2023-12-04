@@ -261,7 +261,7 @@ class FaultTolerantActorManager:
         self.__actors: Mapping[int, ActorHandle] = {}
         self.__remote_actor_states: Mapping[int, self._ActorState] = {}
         self.__restored_actors = set()
-        #TEST ONLY
+        # TEST ONLY
         self.restored_actors_history = defaultdict(int)
         self.add_actors(actors or [])
 
@@ -836,10 +836,9 @@ class FaultTolerantActorManager:
         )
 
         # Return previously restored actors AND actors restored via the `ping()` call.
-        return (
-            restored_actors
-            + [result.actor_id for result in remote_results if result.ok]
-        )
+        return restored_actors + [
+            result.actor_id for result in remote_results if result.ok
+        ]
 
     def actors(self):
         # TODO(jungong) : remove this API once WorkerSet.remote_workers()

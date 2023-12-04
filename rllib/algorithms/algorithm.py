@@ -3355,12 +3355,10 @@ class TrainIterCtx:
             )
         else:
             self.sampled = (
-                self.algo._counters[NUM_ENV_STEPS_SAMPLED]
-                - self.init_env_steps_sampled
+                self.algo._counters[NUM_ENV_STEPS_SAMPLED] - self.init_env_steps_sampled
             )
             self.trained = (
-                self.algo._counters[NUM_ENV_STEPS_TRAINED]
-                - self.init_env_steps_trained
+                self.algo._counters[NUM_ENV_STEPS_TRAINED] - self.init_env_steps_trained
             )
 
         min_t = self.algo.config["min_time_s_per_iteration"]
