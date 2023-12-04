@@ -1003,14 +1003,14 @@ def setup_ray_cluster(
             Default value is 1.0, minimum value is 0
         is_global: If True, set up and serve a global mode Ray on spark cluster.
             The global Ray on spark cluster means:
-             - You can only create one active global Ray on spark cluster at a time.
-             - On databricks cluster, the global Ray cluster can be used by all users,
-               as contrast, non-global Ray cluster can only be used by current notebook
-               user.
-             - It is up persistently without automatic shutdown.
-             - On databricks notebook, you can connect to the global cluster by calling
-               ``ray.init()`` without specifying its address, it will discover the
-               global cluster automatically if it is up.
+            - You can only create one active global Ray on spark cluster at a time.
+            On databricks cluster, the global Ray cluster can be used by all users,
+            - as contrast, non-global Ray cluster can only be used by current notebook
+            user.
+            - It is up persistently without automatic shutdown.
+            - On databricks notebook, you can connect to the global cluster by calling
+            ``ray.init()`` without specifying its address, it will discover the
+            global cluster automatically if it is up.
 
             For global mode, the ``ray_temp_root_dir`` argument is not supported.
             Global model Ray cluster always use the default Ray temporary directory
