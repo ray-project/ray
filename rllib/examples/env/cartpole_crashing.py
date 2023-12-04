@@ -67,8 +67,7 @@ class CartPoleCrashing(CartPoleEnv):
             self.stall_time_sec is None
             or isinstance(self.stall_time_sec, (int, float))
             or (
-                isinstance(self.stall_time_sec, tuple)
-                and len(self.stall_time_sec) == 2
+                isinstance(self.stall_time_sec, tuple) and len(self.stall_time_sec) == 2
             )
         )
 
@@ -175,7 +174,8 @@ class CartPoleCrashing(CartPoleEnv):
 
         if stall:
             sec = (
-                self.stall_time_sec if not isinstance(self.stall_time_sec, tuple)
+                self.stall_time_sec
+                if not isinstance(self.stall_time_sec, tuple)
                 else np.random.uniform(self.stall_time_sec[0], self.stall_time_sec[1])
             )
             print(f" -> will stall for {sec}sec ...")

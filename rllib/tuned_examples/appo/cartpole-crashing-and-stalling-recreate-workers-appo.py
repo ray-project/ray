@@ -28,10 +28,9 @@ config = (
             "p_crash_reset": 0.001,  # prob to crash during reset()
             "crash_on_worker_indices": [1, 2],
             "init_time_s": 2.0,
-
             "p_stall": 0.001,  # prob to stall during step()
             "p_stall_reset": 0.001,  # prob to stall during reset()
-            "stall_time_sec": (2, 10), # stall between 2 and 10sec.
+            "stall_time_sec": (2, 10),  # stall between 2 and 10sec.
             "stall_on_worker_indices": [2, 3],
         },
         # Disable env checking. Env checker doesn't handle Exceptions from

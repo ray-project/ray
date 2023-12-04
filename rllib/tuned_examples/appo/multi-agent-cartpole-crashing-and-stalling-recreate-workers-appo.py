@@ -29,7 +29,6 @@ config = (
             "p_crash": 0.0001,  # prob to crash during step()
             "p_crash_reset": 0.001,  # prob to crash during reset()
             "init_time_s": 2.0,
-
             "p_stall": 0.001,  # prob to stall during step()
             "p_stall_reset": 0.001,  # prob to stall during reset()
             "stall_time_sec": (2, 10),  # stall between 2 and 10sec.
