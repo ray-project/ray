@@ -508,6 +508,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto task_skipped = task_spec.GetMessage().skip_execution();
+  const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
@@ -516,7 +517,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // reply for a previously completed task. We are not calling CompletePendingTask
     // because the tasks are pushed directly to the actor, not placed on any queues
     // in task_finisher_.
-  } else if (status.ok() && !reply.is_retryable_error()) {
+  } else if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_finisher_.CompletePendingTask(
@@ -541,7 +542,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     rpc::RayErrorInfo error_info;
     if (status.ok()) {
       // retryable user exception.
-      RAY_CHECK(reply.is_retryable_error());
+      RAY_CHECK(is_retryable_exception);
       error_type = rpc::ErrorType::TASK_EXECUTION_EXCEPTION;
       error_info = gcs::GetRayErrorInfo(error_type, reply.task_execution_error());
     } else {
@@ -612,11 +613,11 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     auto queue_pair = client_queues_.find(actor_id);
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
-    // Every seqno for the actor_submit_queue must be MarkTaskCompleted.
+    // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted.
     // On exception-retry we update the seqno so we need to call;
     // On exception's or actor's last try we also need to call.
-    if ((!will_retry) || (status.ok() && reply.is_retryable_error())) {
-      queue.actor_submit_queue->MarkTaskCompleted(actor_counter, task_spec);
+    if ((!will_retry) || is_retryable_exception) {
+      queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
     }
     queue.cur_pending_calls--;
   }

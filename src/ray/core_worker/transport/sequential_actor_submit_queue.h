@@ -63,8 +63,8 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   /// Get the task's sequence number according to the internal offset.
   uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;
   /// Mark a task has been executed on the receiver side.
-  void MarkTaskCompleted(uint64_t sequence_no,
-                         const TaskSpecification &task_spec) override;
+  void MarkSeqnoCompleted(uint64_t sequence_no,
+                          const TaskSpecification &task_spec) override;
 
  private:
   /// The ID of the actor.
