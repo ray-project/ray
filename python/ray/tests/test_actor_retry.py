@@ -81,14 +81,20 @@ class AsyncTroubleMaker:
 
     @ray.method(retry_exceptions=[MyError])
     async def raise_or_exit(self, counter, actions):
-        c = ray.get(counter.increment.remote())
+        c = await counter.increment.remote()
         action = "return" if c >= len(actions) else actions[c]
         print(f"raise_or_exit, action = {action}, count = {c}")
 
         if action == "raise":
             raise MyError()
         elif action == "exit":
-            sys.exit(1)
+            # import signal
+            # sys.exit(1) -> hang
+            # ray.actor.exit_actor() -> failed, no retry
+            # os.kill(os.getpid(), signal.SIGTERM) -> ignored, continued to return
+            # os.kill(os.getpid(), signal.SIGKILL) -> retries
+            os._exit(0)
+            return -42
         else:
             return c
 
@@ -215,11 +221,12 @@ def test_exit_only(is_async, shutdown_only):
     counter = Counter.remote()
     trouble_maker = actor_class.options(max_restarts=2).remote()
     with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(
+        ret = ray.get(
             trouble_maker.raise_or_exit.options(max_retries=2).remote(
                 counter, ["exit", "exit", "exit"]
             )
         )
+        print(f"should not print: ret = {ret}")
     # 3 = 1 initial + 2 retries (with the 2 restarts included)
     assert ray.get(counter.get_count.remote()) == 3
 
