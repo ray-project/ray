@@ -1323,10 +1323,10 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training large-language-models pytorch huggingface natural-language-processing
-        :link: deepspeed_example
+        :link: accelerate_example
         :link-type: ref
 
-        Distributed Training with Hugging Face Accelelate and TorchTrainer
+        Distributed Training with Hugging Face Accelerate and TorchTrainer
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item inference huggingface computer-vision
