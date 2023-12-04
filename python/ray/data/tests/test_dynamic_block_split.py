@@ -150,14 +150,35 @@ def test_dataset(
     restore_data_context,
     compute,
 ):
+    def identity_fn(x):
+        return x
+
+    def empty_fn(x):
+        return {}
+
+    class IdentityClass:
+        def __call__(self, x):
+            return x
+
+    class EmptyClass:
+        def __call__(self, x):
+            return {}
+
     ctx = ray.data.DataContext.get_current()
     # 1MiB.
     ctx.target_max_block_size = 1024 * 1024
 
     if compute == "tasks":
         compute = ray.data._internal.compute.TaskPoolStrategy()
+        identity_func = identity_fn
+        empty_func = empty_fn
+        func_name = "identity_fn"
     else:
         compute = ray.data.ActorPoolStrategy()
+        identity_func = IdentityClass
+        empty_func = EmptyClass
+        func_name = "IdentityClass"
+
     ray.shutdown()
     # We need at least 2 CPUs to run a actorpool streaming
     ray.init(num_cpus=2, object_store_memory=1e9)
@@ -200,7 +221,7 @@ def test_dataset(
     )
 
     # Too-large blocks will get split to respect target max block size.
-    map_ds = ds.map_batches(lambda x: x, compute=compute)
+    map_ds = ds.map_batches(identity_func, compute=compute)
     map_ds = map_ds.materialize()
     num_blocks_expected = num_tasks * num_blocks_per_task
     assert map_ds.num_blocks() == num_blocks_expected
@@ -208,10 +229,10 @@ def test_dataset(
         CoreExecutionMetrics(
             task_count={
                 "MapWorker(ReadRandomBytes->MapBatches"
-                "(<lambda>)).get_location": lambda count: True,
+                f"({func_name})).get_location": lambda count: True,
                 "_MapWorker.__init__": lambda count: True,
                 "_MapWorker.get_location": lambda count: True,
-                "ReadRandomBytes->MapBatches(<lambda>)": num_tasks,
+                f"ReadRandomBytes->MapBatches({func_name})": num_tasks,
             },
         ),
         last_snapshot,
@@ -224,13 +245,13 @@ def test_dataset(
 
     # Blocks smaller than requested batch size will get coalesced.
     map_ds = ds.map_batches(
-        lambda x: {},
+        empty_func,
         batch_size=num_blocks_per_task * num_tasks,
         compute=compute,
     )
     map_ds = map_ds.materialize()
     assert map_ds.num_blocks() == 1
-    map_ds = ds.map(lambda x: x, compute=compute)
+    map_ds = ds.map(identity_func, compute=compute)
     map_ds = map_ds.materialize()
     assert map_ds.num_blocks() == num_blocks_per_task * num_tasks
 

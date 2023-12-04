@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray._private.test_utils import skip_flaky_core_test_premerge
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -22,6 +23,7 @@ def config(request):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41514")
 def test_reconstruction_stress(config, ray_start_cluster):
     config["task_retry_delay_ms"] = 100
     config["max_direct_call_object_size"] = 100
