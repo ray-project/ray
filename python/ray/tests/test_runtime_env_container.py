@@ -1,5 +1,4 @@
 import sys
-import subprocess
 
 import pytest
 
@@ -20,111 +19,6 @@ CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_b(podman_docker_cluster):
-    container_id = podman_docker_cluster
-
-    put_get_script = """
-import ray
-import numpy as np
-
-@ray.remote
-def create_ref():
-    ref = ray.put(np.zeros(100_000_000))
-    return ref
-
-wrapped_ref = create_ref.remote()
-print(wrapped_ref)
-assert (ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)).all()
-"""
-    put_get_script = put_get_script.strip()
-    ray_script = ["docker", "exec", container_id, "python", "-c", put_get_script]
-    print("Executing", ray_script)
-    print(subprocess.check_output(ray_script))
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_c(podman_docker_cluster):
-    container_id = podman_docker_cluster
-    put_get_script = f"""
-import ray
-import numpy as np
-
-@ray.remote(runtime_env={CONTAINER_SPEC})
-def create_ref():
-    print("yoo")
-    return "hii"
-
-output = ray.get(create_ref.remote())
-print(output)
-""".strip()
-
-    run_in_container(["python", "-c", put_get_script], container_id)
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_c2(podman_docker_cluster):
-    container_id = podman_docker_cluster
-    run_in_container(["python", "-c", "import ray; print(ray.__file__)"], container_id)
-
-    put_get_script = """
-import ray
-import numpy as np
-
-@ray.remote(runtime_env={
-    "container": {
-        "image": "rayproject/ray:runtime_env_container_nested",
-        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py", # noqa
-    }
-})
-def create_ref():
-    with open("/home/ray/file.txt") as f:
-        print(f.read())
-    print("yoo")
-    return "hii"
-
-output = ray.get(create_ref.remote())
-print(output)
-"""
-    put_get_script = put_get_script.strip()
-    # with open("/home/ray/file.txt") as f:
-    #     assert f.read().strip() == "helloworldalice"
-    run_in_container(["python", "-c", put_get_script], container_id)
-
-
-@pytest.mark.skip
-def test_serve_basic(podman_docker_cluster):
-    """Test Serve deployment."""
-
-    container_id = podman_docker_cluster
-    put_get_script = f"""
-from ray import serve
-from ray._private.test_utils import wait_for_condition
-from ray.serve.handle import DeploymentHandle
-
-@serve.deployment(ray_actor_options={{"runtime_env": {CONTAINER_SPEC}}})
-class Model:
-    def __call__(self):
-        with open("file.txt") as f:
-            return f.read().strip()
-
-def check_application(app_handle: DeploymentHandle, expected: str):
-    ref = app_handle.remote()
-    assert ref.result() == expected
-    return True
-
-h = serve.run(Model.bind())
-wait_for_condition(
-    check_application,
-    app_handle=h,
-    expected="helloworldalice",
-    timeout=300,
-)
-""".strip()
-
-    run_in_container(["python", "-c", put_get_script], container_id)
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_put_get(podman_docker_cluster):
     """Test ray.put and ray.get."""
 
@@ -140,6 +34,9 @@ import numpy as np
     }
 })
 def create_ref():
+    with open("file.txt") as f:
+        print(f.read())
+
     ref = ray.put(np.zeros(100_000_000))
     return ref
 
@@ -365,6 +262,39 @@ wait_for_condition(verify_exit_by_actor_init_failure)
     run_in_container(["python", "-c", put_get_script], container_id)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_serve_basic(podman_docker_cluster):
+    """Test Serve deployment."""
+
+    container_id = podman_docker_cluster
+    put_get_script = f"""
+from ray import serve
+from ray._private.test_utils import wait_for_condition
+from ray.serve.handle import DeploymentHandle
+
+@serve.deployment(ray_actor_options={{"runtime_env": {CONTAINER_SPEC}}})
+class Model:
+    def __call__(self):
+        with open("file.txt") as f:
+            return f.read().strip()
+
+def check_application(app_handle: DeploymentHandle, expected: str):
+    ref = app_handle.remote()
+    assert ref.result() == expected
+    return True
+
+h = serve.run(Model.bind())
+wait_for_condition(
+    check_application,
+    app_handle=h,
+    expected="helloworldalice",
+    timeout=300,
+)
+""".strip()
+
+    run_in_container(["python", "-c", put_get_script], container_id)
+
+
 class TestValidation:
     def test_container_with_env_vars(self):
         with pytest.raises(ValueError):
@@ -438,6 +368,77 @@ class TestValidation:
             )
             def f():
                 return ray.put((1, 10))
+
+
+# @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+# def test_b(podman_docker_cluster):
+#     container_id = podman_docker_cluster
+
+#     put_get_script = """
+# import ray
+# import numpy as np
+
+# @ray.remote
+# def create_ref():
+#     ref = ray.put(np.zeros(100_000_000))
+#     return ref
+
+# wrapped_ref = create_ref.remote()
+# print(wrapped_ref)
+# assert (ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)).all()
+# """
+#     put_get_script = put_get_script.strip()
+#     ray_script = ["docker", "exec", container_id, "python", "-c", put_get_script]
+#     print("Executing", ray_script)
+#     print(subprocess.check_output(ray_script))
+
+
+# @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+# def test_c(podman_docker_cluster):
+#     container_id = podman_docker_cluster
+#     put_get_script = f"""
+# import ray
+# import numpy as np
+
+# @ray.remote(runtime_env={CONTAINER_SPEC})
+# def create_ref():
+#     print("yoo")
+#     return "hii"
+
+# output = ray.get(create_ref.remote())
+# print(output)
+# """.strip()
+
+#     run_in_container(["python", "-c", put_get_script], container_id)
+
+
+# @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+# def test_c2(podman_docker_cluster):
+#     container_id = podman_docker_cluster
+
+#     put_get_script = """
+# import ray
+# import numpy as np
+
+# @ray.remote(runtime_env={
+#     "container": {
+#         "image": "rayproject/ray:runtime_env_container_nested",
+#         "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py", # noqa
+#     }
+# })
+# def create_ref():
+#     with open("/home/ray/file.txt") as f:
+#         print(f.read())
+#     print("yoo")
+#     return "hii"
+
+# output = ray.get(create_ref.remote())
+# print(output)
+# """
+#     put_get_script = put_get_script.strip()
+#     # with open("/home/ray/file.txt") as f:
+#     #     assert f.read().strip() == "helloworldalice"
+#     run_in_container(["python", "-c", put_get_script], container_id)
 
 
 if __name__ == "__main__":
