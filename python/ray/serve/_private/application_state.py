@@ -14,13 +14,12 @@ from ray.serve._private.common import (
     ApplicationStatus,
     ApplicationStatusInfo,
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
     EndpointInfo,
     EndpointTag,
-    TargetCapacityScaleDirection,
+    TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -29,6 +28,7 @@ from ray.serve._private.deploy_utils import (
     get_app_code_version,
     get_deploy_args,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.storage.kv_store import KVStoreBase
@@ -69,6 +69,9 @@ class BuildAppTaskInfo:
 
     obj_ref: ObjectRef
     code_version: str
+    config: ServeApplicationSchema
+    target_capacity: Optional[float]
+    target_capacity_direction: Optional[TargetCapacityDirection]
     finished: bool
 
 
@@ -80,20 +83,25 @@ class ApplicationTargetState:
     match that of the config. When that happens, a new build app task
     should be kicked off to reconcile the inconsistency.
 
-    deployment_infos: Map of deployment name to deployment info. This is
+    deployment_infos: map of deployment name to deployment info. This is
       - None if a config was deployed but the app hasn't finished
-        building yet
-      - An empty dict if the app is deleting
+        building yet,
+      - An empty dict if the app is deleting.
     code_version: Code version of all deployments in target state. None
-        if application was deployed through serve.run
+        if application was deployed through serve.run.
     config: application config deployed by user. None if application was
-        deployed through serve.run
+        deployed through serve.run.
+    target_capacity: the target_capacity to use when adjusting num_replicas.
+    target_capacity_direction: the scale direction to use when
+        running the Serve autoscaler.
     deleting: whether the application is being deleted.
     """
 
     deployment_infos: Optional[Dict[str, DeploymentInfo]]
     code_version: Optional[str]
     config: Optional[ServeApplicationSchema]
+    target_capacity: Optional[float]
+    target_capacity_direction: Optional[TargetCapacityDirection]
     deleting: bool
 
 
@@ -138,6 +146,8 @@ class ApplicationState:
             deployment_infos=None,
             code_version=None,
             config=None,
+            target_capacity=None,
+            target_capacity_direction=None,
             deleting=False,
         )
         self._save_checkpoint_func = save_checkpoint_func
@@ -190,6 +200,8 @@ class ApplicationState:
             checkpoint_data.deployment_infos,
             checkpoint_data.code_version,
             checkpoint_data.config,
+            checkpoint_data.target_capacity,
+            checkpoint_data.target_capacity_direction,
             checkpoint_data.deleting,
         )
 
@@ -198,6 +210,8 @@ class ApplicationState:
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
         code_version: str,
         target_config: Optional[ServeApplicationSchema],
+        target_capacity: Optional[float] = None,
+        target_capacity_direction: Optional[TargetCapacityDirection] = None,
         deleting: bool = False,
     ):
         """Set application target state.
@@ -223,7 +237,12 @@ class ApplicationState:
                     self._ingress_deployment_name = name
 
         target_state = ApplicationTargetState(
-            deployment_infos, code_version, target_config, deleting
+            deployment_infos,
+            code_version,
+            target_config,
+            target_capacity,
+            target_capacity_direction,
+            deleting,
         )
 
         # Checkpoint ahead, so that if the controller crashes before we
@@ -233,30 +252,19 @@ class ApplicationState:
         # Set target state
         self._target_state = target_state
 
-    def _set_target_state_deployment_infos(
-        self, deployment_infos: Optional[Dict[str, DeploymentInfo]]
-    ):
-        """Updates only the target deployment infos."""
-        self._set_target_state(
-            deployment_infos=deployment_infos,
-            code_version=self._target_state.code_version,
-            target_config=self._target_state.config,
-        )
-
-    def _set_target_state_config(self, target_config: Optional[ServeApplicationSchema]):
-        """Updates only the target config."""
-        self._set_target_state(
-            deployment_infos=self._target_state.deployment_infos,
-            code_version=self._target_state.code_version,
-            target_config=target_config,
-        )
-
     def _set_target_state_deleting(self):
         """Set target state to deleting.
 
         Wipes the target deployment infos, code version, and config.
         """
-        self._set_target_state(dict(), None, None, True)
+        self._set_target_state(dict(), None, None, None, None, True)
+
+    def _clear_target_state_and_store_config(
+        self, target_config: Optional[ServeApplicationSchema]
+    ):
+        """Clears the target state and stores the config."""
+
+        self._set_target_state(None, None, target_config, None, None, False)
 
     def _delete_deployment(self, name):
         id = EndpointTag(name, self._name)
@@ -284,8 +292,6 @@ class ApplicationState:
         self,
         deployment_name: str,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ) -> None:
         """Deploys a deployment in the application."""
         route_prefix = deployment_info.route_prefix
@@ -296,12 +302,7 @@ class ApplicationState:
 
         deployment_id = DeploymentID(deployment_name, self._name)
 
-        self._deployment_state_manager.deploy(
-            deployment_id,
-            deployment_info,
-            target_capacity=target_capacity,
-            target_capacity_scale_direction=target_capacity_scale_direction,
-        )
+        self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
@@ -339,10 +340,16 @@ class ApplicationState:
             deployment_infos=deployment_infos,
             code_version=None,
             target_config=None,
+            target_capacity=None,
+            target_capacity_direction=None,
         )
 
     def deploy_config(
-        self, config: ServeApplicationSchema, deployment_time: int
+        self,
+        config: ServeApplicationSchema,
+        target_capacity: Optional[float],
+        target_capacity_direction: Optional[TargetCapacityDirection],
+        deployment_time: int,
     ) -> None:
         """Deploys an application config.
 
@@ -353,7 +360,6 @@ class ApplicationState:
         """
 
         self._deployment_timestamp = deployment_time
-        self._set_target_state_config(config)
 
         config_version = get_app_code_version(config)
         if config_version == self._target_state.code_version:
@@ -361,25 +367,25 @@ class ApplicationState:
                 overrided_infos = override_deployment_info(
                     self._name,
                     self._target_state.deployment_infos,
-                    self._target_state.config,
+                    config,
                 )
                 self._check_routes(overrided_infos)
-                self._set_target_state_deployment_infos(overrided_infos)
-            except (TypeError, ValueError, RayServeException):
                 self._set_target_state(
-                    deployment_infos=None,
-                    code_version=None,
-                    target_config=self._target_state.config,
+                    # Code version doesn't change.
+                    code_version=self._target_state.code_version,
+                    # Everything else must reflect the new config.
+                    deployment_infos=overrided_infos,
+                    target_config=config,
+                    target_capacity=target_capacity,
+                    target_capacity_direction=target_capacity_direction,
                 )
+            except (TypeError, ValueError, RayServeException):
+                self._clear_target_state_and_store_config(config)
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED, traceback.format_exc()
                 )
             except Exception:
-                self._set_target_state(
-                    deployment_infos=None,
-                    code_version=None,
-                    target_config=self._target_state.config,
-                )
+                self._clear_target_state_and_store_config(config)
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED,
                     (
@@ -396,26 +402,28 @@ class ApplicationState:
                 )
                 ray.cancel(self._build_app_task_info.obj_ref)
 
-            # Halt reconciliation of target deployments
-            self._set_target_state(
-                deployment_infos=None,
-                code_version=None,
-                target_config=self._target_state.config,
-            )
+            # Halt reconciliation of target deployments. A new target state
+            # will be set once the new app has finished building.
+            self._clear_target_state_and_store_config(config)
 
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
-                runtime_env=self._target_state.config.runtime_env
+                runtime_env=config.runtime_env
             ).remote(
-                self._target_state.config.import_path,
-                self._target_state.config.deployment_names,
+                config.import_path,
+                config.deployment_names,
                 config_version,
-                self._target_state.config.name,
-                self._target_state.config.args,
+                config.name,
+                config.args,
             )
             self._build_app_task_info = BuildAppTaskInfo(
-                build_app_obj_ref, config_version, False
+                obj_ref=build_app_obj_ref,
+                code_version=config_version,
+                config=config,
+                target_capacity=target_capacity,
+                target_capacity_direction=target_capacity_direction,
+                finished=False,
             )
 
     def _get_live_deployments(self) -> List[str]:
@@ -510,11 +518,7 @@ class ApplicationState:
             Error message (str):
                 Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
         """
-        if (
-            self._target_state.config is None
-            or self._build_app_task_info is None
-            or self._build_app_task_info.finished
-        ):
+        if self._build_app_task_info is None or self._build_app_task_info.finished:
             return None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
 
         if not check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
@@ -530,7 +534,7 @@ class ApplicationState:
                 return (
                     None,
                     BuildAppStatus.FAILED,
-                    (f"Deploying app '{self._name}' failed with " f"exception:\n{err}"),
+                    f"Deploying app '{self._name}' failed with exception:\n{err}",
                 )
         except RuntimeEnvSetupError:
             error_msg = (
@@ -555,7 +559,7 @@ class ApplicationState:
                 for params in args
             }
             overrided_infos = override_deployment_info(
-                self._name, deployment_infos, self._target_state.config
+                self._name, deployment_infos, self._build_app_task_info.config
             )
             self._route_prefix, self._docs_path = self._check_routes(overrided_infos)
             return overrided_infos, BuildAppStatus.SUCCEEDED, ""
@@ -614,11 +618,7 @@ class ApplicationState:
 
         return route_prefix, docs_path
 
-    def _reconcile_target_deployments(
-        self,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
-    ) -> None:
+    def _reconcile_target_deployments(self) -> None:
         """Reconcile target deployments in application target state.
 
         Ensure each deployment is running on up-to-date info, and
@@ -628,6 +628,15 @@ class ApplicationState:
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
             deploy_info = deepcopy(info)
+
+            # Apply the target capacity information to the deployment info.
+            deploy_info.set_target_capacity(
+                new_target_capacity=self._target_state.target_capacity,
+                new_target_capacity_direction=(
+                    self._target_state.target_capacity_direction
+                ),
+            )
+
             # Apply the application logging config to the deployment logging config
             # if it is not set.
             if (
@@ -638,23 +647,14 @@ class ApplicationState:
                 deploy_info.deployment_config.logging_config = (
                     self._target_state.config.logging_config
                 )
-            self.apply_deployment_info(
-                deployment_name,
-                deploy_info,
-                target_capacity=target_capacity,
-                target_capacity_scale_direction=target_capacity_scale_direction,
-            )
+            self.apply_deployment_info(deployment_name, deploy_info)
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
             if deployment_name not in self.target_deployments:
                 self._delete_deployment(deployment_name)
 
-    def update(
-        self,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
-    ) -> bool:
+    def update(self) -> bool:
         """Attempts to reconcile this application to match its target state.
 
         Updates the application status and status message based on the
@@ -670,19 +670,20 @@ class ApplicationState:
             self._set_target_state(
                 deployment_infos=infos,
                 code_version=self._build_app_task_info.code_version,
-                target_config=self._target_state.config,
+                target_config=self._build_app_task_info.config,
+                target_capacity=self._build_app_task_info.target_capacity,
+                target_capacity_direction=(
+                    self._build_app_task_info.target_capacity_direction
+                ),
             )
         elif task_status == BuildAppStatus.FAILED:
             self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
-        # If we're waiting on the build app task to finish, we don't
-        # have info on what the target list of deployments is, so don't
-        # perform reconciliation or check on deployment statuses
+        # Only reconcile deployments when the build app task is finished. If
+        # it's not finished, we don't know what the target list of deployments
+        # is, so we don't perform any reconciliation.
         if self._target_state.deployment_infos is not None:
-            self._reconcile_target_deployments(
-                target_capacity=target_capacity,
-                target_capacity_scale_direction=target_capacity_scale_direction,
-            )
+            self._reconcile_target_deployments()
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
 
@@ -829,6 +830,8 @@ class ApplicationStateManager:
         name: str,
         app_config: ServeApplicationSchema,
         deployment_time: float = 0,
+        target_capacity: Optional[float] = None,
+        target_capacity_direction: Optional[TargetCapacityDirection] = None,
     ) -> None:
         """Deploy application from config."""
 
@@ -842,7 +845,9 @@ class ApplicationStateManager:
         ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
         self._application_states[name].deploy_config(
             app_config,
-            deployment_time,
+            target_capacity,
+            target_capacity_direction,
+            deployment_time=deployment_time,
         )
 
     def get_deployments(self, app_name: str) -> List[str]:
@@ -897,18 +902,11 @@ class ApplicationStateManager:
             return {}
         return self._application_states[name].list_deployment_details()
 
-    def update(
-        self,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
-    ):
+    def update(self):
         """Update each application state"""
         apps_to_be_deleted = []
         for name, app in self._application_states.items():
-            ready_to_be_deleted = app.update(
-                target_capacity=target_capacity,
-                target_capacity_scale_direction=target_capacity_scale_direction,
-            )
+            ready_to_be_deleted = app.update()
             if ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
                 logger.debug(f"Application '{name}' deleted successfully.")

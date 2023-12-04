@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import serve
-from ray._raylet import GcsClient, StreamingObjectRefGenerator
+from ray._raylet import GcsClient, ObjectRefGenerator
 from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.router import RequestMetadata, Router
@@ -500,14 +500,14 @@ class RayServeDeploymentHandle(RayServeHandle):
 class _DeploymentResponseBase:
     def __init__(self, object_ref_future: concurrent.futures.Future):
         # The result of `object_ref_future` must be an ObjectRef or
-        # StreamingObjectRefGenerator.
+        # ObjectRefGenerator.
         self._object_ref_future = object_ref_future
         self._cancelled = False
 
     async def _to_object_ref_or_gen(
         self,
         _record_telemetry: bool = True,
-    ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
+    ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
         # Record telemetry for using the developer API to convert to an object
         # ref. Recorded here because all of the other codepaths go through this.
         # `_record_telemetry` is used to filter other API calls that go through
@@ -523,7 +523,7 @@ class _DeploymentResponseBase:
         self,
         _record_telemetry: bool = True,
         _allow_running_in_asyncio_loop: bool = False,
-    ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
+    ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
@@ -761,7 +761,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         object_ref_future: concurrent.futures.Future,
     ):
         super().__init__(object_ref_future)
-        self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
+        self._obj_ref_gen: Optional[ObjectRefGenerator] = None
 
     def __await__(self):
         raise TypeError(
@@ -792,8 +792,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
     @DeveloperAPI
     async def _to_object_ref_gen(
         self, _record_telemetry: bool = True
-    ) -> StreamingObjectRefGenerator:
-        """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
+    ) -> ObjectRefGenerator:
+        """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
 
         This method is `async def` because it will block until the handle call has been
         assigned to a replica actor. If there are many requests in flight and all
@@ -806,8 +806,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         self,
         _record_telemetry: bool = True,
         _allow_running_in_asyncio_loop: bool = False,
-    ) -> StreamingObjectRefGenerator:
-        """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
+    ) -> ObjectRefGenerator:
+        """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
 
         This method is a *blocking* call because it will block until the handle call has
         been assigned to a replica actor. If there are many requests in flight and all

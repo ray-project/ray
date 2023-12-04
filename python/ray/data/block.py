@@ -19,7 +19,7 @@ from typing import (
 import numpy as np
 
 import ray
-from ray import ObjectRefGenerator
+from ray import DynamicObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -82,9 +82,10 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = List["BlockMetadata"]
 
-# TODO(ekl/chengsu): replace this with just `ObjectRefGenerator` once block splitting
+# TODO(ekl/chengsu): replace this with just
+# `DynamicObjectRefGenerator` once block splitting
 # is on by default. When block splitting is off, the type is a plain block.
-MaybeBlockPartition = Union[Block, ObjectRefGenerator]
+MaybeBlockPartition = Union[Block, DynamicObjectRefGenerator]
 
 VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", None]
 

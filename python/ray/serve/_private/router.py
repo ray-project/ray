@@ -26,18 +26,14 @@ from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError
-from ray.serve._private.common import (
-    DeploymentID,
-    DeploymentInfo,
-    RequestProtocol,
-    RunningReplicaInfo,
-)
+from ray.serve._private.common import DeploymentID, RequestProtocol, RunningReplicaInfo
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import JavaActorHandleProxy, MetricsPusher
 from ray.serve.generated.serve_pb2 import DeploymentRoute
@@ -164,7 +160,7 @@ class ReplicaWrapper(ABC):
 
     def send_query(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Send query to this replica."""
         pass
 
@@ -233,7 +229,7 @@ class ActorReplicaWrapper:
 
     def _send_query_python(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Send the query to a Python replica."""
         if query.metadata.is_streaming:
             method = self._actor_handle.handle_request_streaming.options(
@@ -246,7 +242,7 @@ class ActorReplicaWrapper:
 
     def send_query(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         if self._replica_info.is_cross_language:
             return self._send_query_java(query)
         else:
@@ -259,7 +255,7 @@ class ReplicaScheduler(ABC):
     @abstractmethod
     async def assign_replica(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         pass
 
     @abstractmethod
@@ -880,7 +876,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     async def assign_replica(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
@@ -996,7 +992,7 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         """Assign a query to a replica and return the resulting object_ref."""
 
         self.num_router_requests.inc(tags={"route": request_meta.route})
