@@ -41,7 +41,7 @@ if __name__ == "__main__":
     run_experiments(
         {
             "demo": {
-                "run": "PG",
+                "run": "PPO",
                 "env": "subproc",
                 "num_samples": 1,
                 "config": {

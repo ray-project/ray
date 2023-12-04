@@ -52,9 +52,7 @@ int64_t SchedulerResourceReporter::TotalBacklogSize(
   return sum;
 }
 
-void SchedulerResourceReporter::FillResourceUsage(
-    rpc::ResourcesData &data,
-    const std::shared_ptr<NodeResources> &last_reported_resources) const {
+void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) const {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
@@ -130,8 +128,19 @@ void SchedulerResourceReporter::FillResourceUsage(
 
   fill_resource_usage_helper(
       tasks_to_schedule_ | boost::adaptors::transformed(transform_func), false);
-  fill_resource_usage_helper(
-      tasks_to_dispatch_ | boost::adaptors::transformed(transform_func), false);
+  auto tasks_to_dispatch_range =
+      tasks_to_dispatch_ | boost::adaptors::transformed([](const auto &pair) {
+        auto cnt = pair.second.size();
+        // We should only report dispatching tasks that do not have resources allocated.
+        for (const auto &task : pair.second) {
+          if (task->allocated_instances) {
+            cnt--;
+          }
+        }
+        return std::make_pair(pair.first, cnt);
+      });
+  fill_resource_usage_helper(tasks_to_dispatch_range, false);
+
   fill_resource_usage_helper(
       infeasible_tasks_ | boost::adaptors::transformed(transform_func), true);
   auto backlog_tracker_range = backlog_tracker_ |
@@ -148,20 +157,6 @@ void SchedulerResourceReporter::FillResourceUsage(
     RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report_
                   << " scheduling classes. Some resource loads may not be reported to "
                      "the autoscaler.";
-  }
-
-  if (RayConfig::instance().enable_light_weight_resource_report() &&
-      last_reported_resources != nullptr) {
-    // Check whether resources have been changed.
-    absl::flat_hash_map<std::string, double> local_resource_map(
-        data.resource_load().begin(), data.resource_load().end());
-    ray::ResourceRequest local_resource =
-        ResourceMapToResourceRequest(local_resource_map, false);
-    if (last_reported_resources->load != local_resource) {
-      data.set_resource_load_changed(true);
-    }
-  } else {
-    data.set_resource_load_changed(true);
   }
 }
 

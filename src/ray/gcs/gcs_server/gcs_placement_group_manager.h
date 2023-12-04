@@ -36,7 +36,6 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-class GcsMonitorServerTest;
 namespace gcs {
 
 /// GcsPlacementGroup just wraps `PlacementGroupTableData` and provides some convenient
@@ -379,19 +378,14 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     usage_stats_client_ = usage_stats_client;
   }
 
-  /// Get a read only view of the pending placement groups.
+  /// Get the placement group load information.
   ///
-  /// \return Pending placement groups.
-  const absl::btree_multimap<
-      int64_t,
-      std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-      &GetPendingPlacementGroups() const;
-
-  /// Get a read only view of the infeasible placement groups.
+  /// The API guarantees the returned placement groups' states
+  /// are either PENDING or RESCHEDULING.
   ///
-  /// \return Infeasible placement groups.
-  const std::deque<std::shared_ptr<GcsPlacementGroup>> &GetInfeasiblePlacementGroups()
-      const;
+  /// \return Placement group load information. Users should check if
+  /// the returned rpc has any placement_group_data.
+  virtual std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
 
  protected:
   /// For testing/mocking only.
@@ -523,8 +517,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
-
-  friend GcsMonitorServerTest;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);

@@ -1,4 +1,6 @@
+import copy
 import logging
+import time
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
@@ -15,6 +17,7 @@ class InstanceUpdateEvent:
 
     instance_id: str
     new_status: int
+    new_ray_status: int = Instance.RAY_STATUS_UNKOWN
 
 
 class InstanceUpdatedSuscriber(metaclass=ABCMeta):
@@ -39,7 +42,12 @@ class InstanceStorage:
         self._storage = storage
         self._cluster_id = cluster_id
         self._table_name = f"instance_table@{cluster_id}"
-        self._status_change_subscriber = status_change_subscriber
+        self._status_change_subscribers = []
+        if status_change_subscriber:
+            self._status_change_subscribers.append(status_change_subscriber)
+
+    def add_status_change_subscriber(self, subscriber: InstanceUpdatedSuscriber):
+        self._status_change_subscribers.append(subscriber)
 
     def batch_upsert_instances(
         self,
@@ -68,25 +76,29 @@ class InstanceStorage:
             return StoreStatus(False, version)
 
         for instance in updates:
+            instance = copy.deepcopy(instance)
             # the instance version is set to 0, it will be
             # populated by the storage entry's verion on read
             instance.version = 0
+            instance.timestamp_since_last_modified = int(time.time())
             mutations[instance.instance_id] = instance.SerializeToString()
 
         result, version = self._storage.batch_update(
             self._table_name, mutations, {}, expected_storage_version
         )
 
-        if result and self._status_change_subscriber:
-            self._status_change_subscriber.notify(
-                [
-                    InstanceUpdateEvent(
-                        instance_id=instance.instance_id,
-                        new_status=instance.status,
-                    )
-                    for instance in updates
-                ],
-            )
+        if result:
+            for subscriber in self._status_change_subscribers:
+                subscriber.notify(
+                    [
+                        InstanceUpdateEvent(
+                            instance_id=instance.instance_id,
+                            new_status=instance.status,
+                            new_ray_status=instance.ray_status,
+                        )
+                        for instance in updates
+                    ],
+                )
 
         return StoreStatus(result, version)
 
@@ -114,9 +126,11 @@ class InstanceStorage:
         Returns:
             StoreStatus: A tuple of (success, storage_version).
         """
+        instance = copy.deepcopy(instance)
         # the instance version is set to 0, it will be
         # populated by the storage entry's verion on read
         instance.version = 0
+        instance.timestamp_since_last_modified = int(time.time())
         result, version = self._storage.update(
             self._table_name,
             key=instance.instance_id,
@@ -126,26 +140,34 @@ class InstanceStorage:
             insert_only=False,
         )
 
-        if result and self._status_change_subscriber:
-            self._status_change_subscriber.notify(
-                [
-                    InstanceUpdateEvent(
-                        instance_id=instance.instance_id,
-                        new_status=instance.status,
-                    )
-                ],
-            )
+        if result:
+            for subscriber in self._status_change_subscribers:
+                subscriber.notify(
+                    [
+                        InstanceUpdateEvent(
+                            instance_id=instance.instance_id,
+                            new_status=instance.status,
+                            new_ray_status=instance.ray_status,
+                        )
+                    ],
+                )
 
         return StoreStatus(result, version)
 
     def get_instances(
-        self, instance_ids: List[str] = None, status_filter: Set[int] = None
+        self,
+        instance_ids: List[str] = None,
+        status_filter: Set[int] = None,
+        ray_status_filter: Set[int] = None,
     ) -> Tuple[Dict[str, Instance], int]:
         """Get instances from the storage.
 
         Args:
             instance_ids: A list of instance ids to be retrieved. If empty, all
                 instances will be retrieved.
+            status_filter: Only instances with the specified status will be returned.
+            ray_status_filter: Only instances with the specified ray status will
+                be returned.
 
         Returns:
             Tuple[Dict[str, Instance], int]: A tuple of (instances, version).
@@ -160,6 +182,8 @@ class InstanceStorage:
             instance.ParseFromString(instance_data)
             instance.version = entry_version
             if status_filter and instance.status not in status_filter:
+                continue
+            if ray_status_filter and instance.ray_status not in ray_status_filter:
                 continue
             instances[instance_id] = instance
         return instances, version
@@ -186,14 +210,16 @@ class InstanceStorage:
             self._table_name, {}, instance_ids, expected_storage_version
         )
 
-        if result[0] and self._status_change_subscriber:
-            self._status_change_subscriber.notify(
-                [
-                    InstanceUpdateEvent(
-                        instance_id=instance_id,
-                        new_status=Instance.GARAGE_COLLECTED,
-                    )
-                    for instance_id in instance_ids
-                ],
-            )
+        if result[0]:
+            for subscriber in self._status_change_subscribers:
+                subscriber.notify(
+                    [
+                        InstanceUpdateEvent(
+                            instance_id=instance_id,
+                            new_status=Instance.GARBAGE_COLLECTED,
+                            new_ray_status=Instance.RAY_STATUS_UNKOWN,
+                        )
+                        for instance_id in instance_ids
+                    ],
+                )
         return result

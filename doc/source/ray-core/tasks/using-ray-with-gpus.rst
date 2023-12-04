@@ -123,4 +123,26 @@ This also lets the multi-node-type autoscaler know that there is demand for that
     :start-after: __accelerator_type_start__
     :end-before: __accelerator_type_end__
 
-See ``ray.util.accelerators`` for available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
+See ``ray.util.accelerators`` for available accelerator types. Current automatically detected accelerator types include:
+
+ - Nvidia GPUs
+ - AWS Neuron Cores
+
+AWS Neuron Core Accelerator (Experimental)
+------------------------------------------
+
+Similar to Nvidia GPUs, Ray auto-detects `AWS Neuron Cores`_  by default.
+The user can specify `resources={"neuron_cores": some_number}` on
+task or actor resource requirements to assign the Neuron Core(s).
+
+.. _`AWS Neuron Cores` : https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/model-architecture-fit.html
+
+.. note::
+
+  Ray supports a heterogeneous cluster of GPUs and Neuron Cores but doesn't allow specifying resources requirements of
+  ``num_gpus`` and ``neuron_cores`` together for a task or actor.
+
+.. literalinclude:: ../doc_code/neuron_core_accelerator.py
+    :language: python
+    :start-after: __neuron_core_accelerator_start__
+    :end-before: __neuron_core_accelerator_end__

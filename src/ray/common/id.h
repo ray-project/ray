@@ -395,6 +395,7 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
     type() : UniqueID() {}                                                               \
     static type FromRandom() { return type(UniqueID::FromRandom()); }                    \
     static type FromBinary(const std::string &binary) { return type(binary); }           \
+    static type FromHex(const std::string &hex) { return type(UniqueID::FromHex(hex)); } \
     static type Nil() { return type(UniqueID::Nil()); }                                  \
     static constexpr size_t Size() { return kUniqueIDSize; }                             \
                                                                                          \
@@ -413,27 +414,6 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
 
 // Restore the compiler alignment to default (8 bytes).
 #pragma pack(pop)
-
-struct SafeClusterID {
- private:
-  mutable absl::Mutex m_;
-  ClusterID id_ GUARDED_BY(m_);
-
- public:
-  SafeClusterID(const ClusterID &id) : id_(id) {}
-
-  const ClusterID load() const {
-    absl::MutexLock l(&m_);
-    return id_;
-  }
-
-  ClusterID exchange(const ClusterID &newId) {
-    absl::MutexLock l(&m_);
-    ClusterID old = id_;
-    id_ = newId;
-    return old;
-  }
-};
 
 template <typename T>
 BaseID<T>::BaseID() {

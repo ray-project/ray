@@ -1,15 +1,11 @@
-import { useContext, useState } from "react";
+import { useState } from "react";
 import useSWR from "swr";
-import { GlobalContext } from "../../../App";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getServeApplications } from "../../../service/serve";
 import { ServeSystemActorStatus } from "../../../type/serve";
 import { ServeDetails } from "../ServeSystemDetails";
 
-const SERVE_HTTP_PROXY_STATUS_SORT_ORDER: Record<
-  ServeSystemActorStatus,
-  number
-> = {
+const SERVE_PROXY_STATUS_SORT_ORDER: Record<ServeSystemActorStatus, number> = {
   [ServeSystemActorStatus.UNHEALTHY]: 0,
   [ServeSystemActorStatus.STARTING]: 1,
   [ServeSystemActorStatus.HEALTHY]: 2,
@@ -18,7 +14,6 @@ const SERVE_HTTP_PROXY_STATUS_SORT_ORDER: Record<
 
 export const useServeApplications = () => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
-  const { ipLogMap } = useContext(GlobalContext);
   const [filter, setFilter] = useState<
     {
       key: "name" | "status";
@@ -35,7 +30,7 @@ export const useServeApplications = () => {
     setFilter([...filter]);
   };
 
-  const [httpProxiesPage, setHttpProxiesPage] = useState({
+  const [proxiesPage, setProxiesPage] = useState({
     pageSize: 10,
     pageNo: 1,
   });
@@ -55,6 +50,7 @@ export const useServeApplications = () => {
   const serveDetails: ServeDetails | undefined = data
     ? {
         http_options: data.http_options,
+        grpc_options: data.grpc_options,
         proxy_location: data.proxy_location,
         controller_info: data.controller_info,
       }
@@ -65,12 +61,12 @@ export const useServeApplications = () => {
       )
     : [];
 
-  const httpProxies =
-    data && data.http_proxies
-      ? Object.values(data.http_proxies).sort(
+  const proxies =
+    data && data.proxies
+      ? Object.values(data.proxies).sort(
           (a, b) =>
-            SERVE_HTTP_PROXY_STATUS_SORT_ORDER[b.status] -
-            SERVE_HTTP_PROXY_STATUS_SORT_ORDER[a.status],
+            SERVE_PROXY_STATUS_SORT_ORDER[b.status] -
+            SERVE_PROXY_STATUS_SORT_ORDER[a.status],
         )
       : [];
 
@@ -81,15 +77,14 @@ export const useServeApplications = () => {
         f.val ? app[f.key] && (app[f.key] ?? "").includes(f.val) : true,
       ),
     ),
-    httpProxies,
+    proxies,
     error,
     changeFilter,
     page,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
-    httpProxiesPage,
-    setHttpProxiesPage: (key: string, val: number) =>
-      setHttpProxiesPage({ ...httpProxiesPage, [key]: val }),
-    ipLogMap,
+    proxiesPage,
+    setProxiesPage: (key: string, val: number) =>
+      setProxiesPage({ ...proxiesPage, [key]: val }),
     allServeApplications: serveApplicationsList,
   };
 };
@@ -98,7 +93,6 @@ export const useServeApplicationDetails = (
   applicationName: string | undefined,
 ) => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
-  const { ipLogMap } = useContext(GlobalContext);
   const [filter, setFilter] = useState<
     {
       key: "name" | "status";
@@ -153,7 +147,6 @@ export const useServeApplicationDetails = (
     changeFilter,
     page,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
-    ipLogMap,
     allDeployments: deployments,
   };
 };
@@ -197,9 +190,9 @@ export const useServeReplicaDetails = (
   };
 };
 
-export const useServeHTTPProxyDetails = (httpProxyId: string | undefined) => {
+export const useServeProxyDetails = (proxyId: string | undefined) => {
   const { data, error, isLoading } = useSWR(
-    "useServeHTTPProxyDetails",
+    "useServeProxyDetails",
     async () => {
       const rsp = await getServeApplications();
 
@@ -210,13 +203,13 @@ export const useServeHTTPProxyDetails = (httpProxyId: string | undefined) => {
     { refreshInterval: API_REFRESH_INTERVAL_MS },
   );
 
-  const httpProxy = httpProxyId ? data?.http_proxies?.[httpProxyId] : undefined;
+  const proxy = proxyId ? data?.proxies?.[proxyId] : undefined;
 
   // Need to expose loading because it's not clear if undefined values
-  // for http proxies means loading or missing data.
+  // for proxies means loading or missing data.
   return {
     loading: isLoading,
-    httpProxy,
+    proxy,
     error,
   };
 };

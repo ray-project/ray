@@ -64,7 +64,7 @@ formats by calling one of the following methods:
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
                 print(batch)
@@ -106,7 +106,7 @@ formats by calling one of the following methods:
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_torch_batches(batch_size=2):
                 print(batch)
@@ -172,7 +172,7 @@ movement.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_batches(
                 batch_size=2,
@@ -223,7 +223,7 @@ movement.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             for batch in ds.iter_torch_batches(
                 batch_size=2,
                 local_shuffle_buffer_size=250,
@@ -273,7 +273,7 @@ into disjoint shards.
 
   If you're using :ref:`Ray Train <train-docs>`, you don't need to split the dataset.
   Ray Train automatically splits your dataset for you. To learn more, see
-  :ref:`Configuring training datasets <air-ingest>`.
+  :ref:`Data Loading for ML Training guide <data-ingest-torch>`.
 
 .. testcode::
 

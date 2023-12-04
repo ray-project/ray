@@ -63,8 +63,34 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-  RAY_CHECK_OK(
-      gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  if (request.node_info().is_head_node()) {
+    // mark all old head nodes as dead if exists:
+    // 1. should never happen when HA is not used
+    // 2. happens when a new head node is started
+
+    std::vector<NodeID> head_nodes;
+    for (auto &node : alive_nodes_) {
+      if (node.second->is_head_node()) {
+        head_nodes.push_back(node.first);
+      }
+    }
+
+    assert(head_nodes.size() <= 1);
+    if (head_nodes.size() == 1) {
+      OnNodeFailure(head_nodes[0],
+                    [this, request, on_done, node_id](const Status &status) {
+                      RAY_CHECK_OK(status);
+                      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+                          node_id, request.node_info(), on_done));
+                    });
+    } else {
+      RAY_CHECK_OK(
+          gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+    }
+  } else {
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  }
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
@@ -120,37 +146,29 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
                       remote_address = remote_address,
                       node_id,
                       node_info_delta = node_info_delta](const Status &status) {
-    auto on_resource_update_done = [this,
-                                    remote_address = std::move(remote_address),
-                                    node_id,
-                                    node_info_delta =
-                                        node_info_delta](const Status &status) {
-      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
-      RAY_CHECK(raylet_client);
-      // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
-      // this until the proper "drain" behavior is implemented. Currently, before
-      // raylet is killed, it sends a drain request to GCS. That said, this can
-      // happen;
-      // - GCS updates the drain state and kills a raylet gracefully.
-      // - Raylet kills itself and send a drain request of itself to GCS.
-      // - Drain request will become a no-op in GCS.
-      // This behavior is redundant, but harmless. We'll keep this behavior until we
-      // implement the right drain behavior for the simplicity. Check
-      // https://github.com/ray-project/ray/pull/19350 for more details.
-      raylet_client->ShutdownRaylet(
-          node_id,
-          /*graceful*/ true,
-          [this, node_id, node_info_delta = node_info_delta](
-              const Status &status, const rpc::ShutdownRayletReply &reply) {
-            RAY_LOG(INFO) << "Raylet " << node_id << " is drained. Status " << status
-                          << ". The information will be published to the cluster.";
-            /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
-            RAY_CHECK_OK(
-                gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
-          });
-    };
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeResourceTable().Delete(node_id, on_resource_update_done));
+    auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+    RAY_CHECK(raylet_client);
+    // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
+    // this until the proper "drain" behavior is implemented. Currently, before
+    // raylet is killed, it sends a drain request to GCS. That said, this can
+    // happen;
+    // - GCS updates the drain state and kills a raylet gracefully.
+    // - Raylet kills itself and send a drain request of itself to GCS.
+    // - Drain request will become a no-op in GCS.
+    // This behavior is redundant, but harmless. We'll keep this behavior until we
+    // implement the right drain behavior for the simplicity. Check
+    // https://github.com/ray-project/ray/pull/19350 for more details.
+    raylet_client->ShutdownRaylet(
+        node_id,
+        /*graceful*/ true,
+        [this, node_id, node_info_delta = node_info_delta](
+            const Status &status, const rpc::ShutdownRayletReply &reply) {
+          RAY_LOG(INFO) << "Raylet " << node_id << " is drained. Status " << status
+                        << ". The information will be published to the cluster.";
+          /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
+          RAY_CHECK_OK(
+              gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
+        });
   };
   // Update node state to DEAD instead of deleting it.
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
@@ -259,7 +277,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   return removed_node;
 }
 
-void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
+void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
+                                   const StatusCallback &node_table_updated_callback) {
   if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
@@ -269,13 +288,16 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
     node_info_delta->set_state(node->state());
     node_info_delta->set_end_time_ms(node->end_time_ms());
 
-    auto on_done = [this, node_id, node_info_delta](const Status &status) {
-      auto on_done = [this, node_id, node_info_delta](const Status &status) {
-        RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
-      };
-      RAY_CHECK_OK(gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
+    auto on_done = [this, node_id, node_table_updated_callback, node_info_delta](
+                       const Status &status) {
+      if (node_table_updated_callback != nullptr) {
+        node_table_updated_callback(Status::OK());
+      }
+      RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     };
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
+  } else if (node_table_updated_callback != nullptr) {
+    node_table_updated_callback(Status::OK());
   }
 }
 

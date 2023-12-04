@@ -75,6 +75,27 @@ std::shared_ptr<T> Get(const ray::ObjectRef<T> &object);
 template <typename T>
 std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> &objects);
 
+/// Get a single object from the object store.
+/// This method will be blocked until the object is ready.
+///
+/// \param[in] object The object reference which should be returned.
+/// \param[in] timeout_ms The maximum amount of time in miliseconds to wait before
+/// returning.
+/// \return shared pointer of the result.
+template <typename T>
+std::shared_ptr<T> Get(const ray::ObjectRef<T> &object, const int &timeout_ms);
+
+/// Get a list of objects from the object store.
+/// This method will be blocked until all the objects are ready.
+///
+/// \param[in] objects The object array which should be got.
+/// \param[in] timeout_ms The maximum amount of time in miliseconds to wait before
+/// returning.
+/// \return shared pointer array of the result.
+template <typename T>
+std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> &objects,
+                                    const int &timeout_ms);
+
 /// Wait for a list of objects to be locally available,
 /// until specified number of objects are ready, or specified timeout has passed.
 ///
@@ -141,6 +162,10 @@ void ExitActor();
 template <typename T>
 std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
 
+template <typename T>
+std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids,
+                                    const int &timeout_ms);
+
 /// Create a placement group on remote nodes.
 ///
 /// \param[in] create_options Creation options of the placement group.
@@ -193,13 +218,14 @@ inline ray::ObjectRef<T> Put(const T &obj) {
 }
 
 template <typename T>
-inline std::shared_ptr<T> Get(const ray::ObjectRef<T> &object) {
-  return GetFromRuntime(object);
+inline std::shared_ptr<T> Get(const ray::ObjectRef<T> &object, const int &timeout_ms) {
+  return GetFromRuntime(object, timeout_ms);
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids) {
-  auto result = ray::internal::GetRayRuntime()->Get(ids);
+inline std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids,
+                                           const int &timeout_ms) {
+  auto result = ray::internal::GetRayRuntime()->Get(ids, timeout_ms);
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
   for (auto it = result.begin(); it != result.end(); it++) {
@@ -211,9 +237,25 @@ inline std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids) 
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> &ids) {
+inline std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> &ids,
+                                           const int &timeout_ms) {
   auto object_ids = ObjectRefsToObjectIDs<T>(ids);
-  return Get<T>(object_ids);
+  return Get<T>(object_ids, timeout_ms);
+}
+
+template <typename T>
+inline std::shared_ptr<T> Get(const ray::ObjectRef<T> &object) {
+  return Get<T>(object, -1);
+}
+
+template <typename T>
+inline std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids) {
+  return Get<T>(ids, -1);
+}
+
+template <typename T>
+inline std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> &ids) {
+  return Get<T>(ids, -1);
 }
 
 template <typename T>

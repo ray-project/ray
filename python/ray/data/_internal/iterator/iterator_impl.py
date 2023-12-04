@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
 
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import create_dataset_tag
 from ray.data.block import Block, BlockMetadata
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
@@ -47,7 +48,7 @@ class DataIteratorImpl(DataIterator):
             # Raise error for backwards compatibility.
             # TODO: remove this method in 2.6.
             raise DeprecationWarning(
-                "session.get_dataset_shard returns a ray.data.DataIterator "
+                "ray.train.get_dataset_shard returns a ray.data.DataIterator "
                 "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
                 "Use iter_torch_batches(), to_tf(), or iter_batches() to "
                 "iterate over one epoch. See "
@@ -56,3 +57,8 @@ class DataIteratorImpl(DataIterator):
             )
 
         raise AttributeError()
+
+    def _get_dataset_tag(self):
+        return create_dataset_tag(
+            self._base_dataset._plan._dataset_name, self._base_dataset._uuid
+        )

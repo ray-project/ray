@@ -97,6 +97,7 @@ export type TaskProgress = {
   numRunning?: number;
   numPendingNodeAssignment?: number;
   numFailed?: number;
+  numCancelled?: number;
   numUnknown?: number;
 };
 
@@ -175,9 +176,7 @@ export type JobProgressGroup = {
 export type StateApiNestedJobProgress = {
   node_id_to_summary: {
     cluster: {
-      summary: {
-        [taskName: string]: NestedJobProgress;
-      };
+      summary: NestedJobProgress[];
     };
   };
 };

@@ -83,13 +83,21 @@ class FakeBatchingNodeProvider(BatchingNodeProvider):
             resources = self.provider_config["available_node_types"][node_type][
                 "resources"
             ]
+            labels = self.provider_config["available_node_types"][node_type].get(
+                "labels", {}
+            )
             tags = {
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
                 TAG_RAY_USER_NODE_TYPE: node_type,
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             }
-            FakeMultiNodeProvider.create_node_with_resources(
-                self, node_config={}, tags=tags, count=diff, resources=resources
+            FakeMultiNodeProvider.create_node_with_resources_and_labels(
+                self,
+                node_config={},
+                tags=tags,
+                count=diff,
+                resources=resources,
+                labels=labels,
             )
 
 

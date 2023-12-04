@@ -13,11 +13,11 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     Partitioning,
     PartitionStyle,
-    PathPartitionEncoder,
     PathPartitionFilter,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import Counter, extract_values, gen_bin_files
 from ray.tests.conftest import *  # noqa
 
@@ -75,19 +75,6 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
         fs, _ = pa.fs.FileSystem.from_uri("/")
         ds = ray.data.read_binary_files(paths, filesystem=fs, parallelism=10)
         for i, item in enumerate(ds.iter_rows()):
-            expected = open(paths[i], "rb").read()
-            assert expected == item["bytes"]
-
-
-def test_read_binary_files_with_paths(ray_start_regular_shared):
-    with gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(
-            paths,
-            include_paths=True,
-            parallelism=10,
-        )
-        for i, item in enumerate(ds.iter_rows()):
-            assert paths[i] == item["path"]
             expected = open(paths[i], "rb").read()
             assert expected == item["bytes"]
 

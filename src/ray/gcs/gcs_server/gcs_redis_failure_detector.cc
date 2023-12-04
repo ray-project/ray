@@ -21,10 +21,10 @@ namespace gcs {
 
 GcsRedisFailureDetector::GcsRedisFailureDetector(
     instrumented_io_context &io_service,
-    std::shared_ptr<RedisContext> redis_context,
+    std::shared_ptr<RedisClient> redis_client,
     std::function<void()> callback)
     : io_service_(io_service),
-      redis_context_(redis_context),
+      redis_client_(redis_client),
       callback_(std::move(callback)) {}
 
 void GcsRedisFailureDetector::Start() {
@@ -48,7 +48,8 @@ void GcsRedisFailureDetector::DetectRedis() {
       callback_();
     }
   };
-  redis_context_->RunArgvAsync({"PING"}, redis_callback);
+  auto cxt = redis_client_->GetShardContext("");
+  cxt->RunArgvAsync({"PING"}, redis_callback);
 }
 
 }  // namespace gcs

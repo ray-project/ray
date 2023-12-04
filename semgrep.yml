@@ -1,0 +1,29 @@
+rules:
+  - id: code-block-python
+    paths:
+      include:
+        # Ray Core
+        - "python/ray/util/**/*.py"
+        - "python/ray/_private/**/*.py"
+        - "python/ray/core/**/*.py"
+        - "doc/source/ray-core/**/*.rst"
+        - "doc/source/ray-overview/**/*.rst"
+        - "doc/source/ray-observability/**/*.rst"
+        # Ray Data
+        - "python/ray/data/**/*.py"
+        - "doc/source/data/**/*.rst"
+        # Ray Train
+        - "python/ray/train/**/*.py"
+        - "doc/source/train/**/*.rst"
+      exclude:
+        # These files use the :emphasize-lines: option, which isn't supported by testcode.
+        - "doc/source/train/getting-started-pytorch-lightning.rst"
+        - "doc/source/train/getting-started-pytorch.rst"
+        - "doc/source/train/getting-started-transformers.rst"
+        - "doc/source/train/user-guides/data-loading-preprocessing.rst"
+
+    languages:
+      - generic
+    message: "Don't use 'code-block:: python', it's not tested! Use 'testcode' instead! For more information, see https://docs.ray.io/en/master/ray-contribute/writing-code-snippets.html."
+    pattern: "code-block:: python"
+    severity: ERROR

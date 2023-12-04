@@ -1,19 +1,9 @@
 import struct
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    Iterable,
-    Iterator,
-    Optional,
-    Union,
-)
+from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Union
 
 import numpy as np
 
-from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
@@ -27,16 +17,22 @@ if TYPE_CHECKING:
 class TFRecordDatasource(FileBasedDatasource):
     """TFRecord datasource, for reading and writing TFRecord files."""
 
-    _FILE_EXTENSION = "tfrecords"
+    _FILE_EXTENSIONS = ["tfrecords"]
 
-    def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
-    ) -> Iterator[Block]:
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        tf_schema: Optional["schema_pb2.Schema"] = None,
+        **file_based_datasource_kwargs,
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        self.tf_schema = tf_schema
+
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import pyarrow as pa
         import tensorflow as tf
         from google.protobuf.message import DecodeError
-
-        tf_schema: Optional["schema_pb2.Schema"] = reader_args.get("tf_schema", None)
 
         for record in _read_records(f, path):
             example = tf.train.Example()
@@ -49,30 +45,9 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
 
-            yield pa.Table.from_pydict(_convert_example_to_dict(example, tf_schema))
-
-    def _write_block(
-        self,
-        f: "pyarrow.NativeFile",
-        block: BlockAccessor,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        tf_schema: Optional["schema_pb2.Schema"] = None,
-        **writer_args,
-    ) -> None:
-        _check_import(self, module="crc32c", package="crc32c")
-
-        arrow_table = block.to_arrow()
-
-        # It seems like TFRecords are typically row-based,
-        # https://www.tensorflow.org/tutorials/load_data/tfrecord#writing_a_tfrecord_file_2
-        # so we must iterate through the rows of the block,
-        # serialize to tf.train.Example proto, and write to file.
-
-        examples = _convert_arrow_table_to_examples(arrow_table, tf_schema)
-
-        # Write each example to the arrow file in the TFRecord format.
-        for example in examples:
-            _write_record(f, example)
+            yield pa.Table.from_pydict(
+                _convert_example_to_dict(example, self.tf_schema)
+            )
 
 
 def _convert_example_to_dict(
@@ -231,6 +206,7 @@ def _value_to_feature(
 
     underlying_value_type = {
         "bytes": pa.types.is_binary(value_type),
+        "string": pa.types.is_string(value_type),
         "float": pa.types.is_floating(value_type),
         "int": pa.types.is_integer(value_type),
     }
@@ -245,7 +221,10 @@ def _value_to_feature(
                 "the tensorflow-metadata package."
             )
         specified_feature_type = {
-            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and not underlying_value_type["string"],
+            "string": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and underlying_value_type["string"],
             "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
             "int": schema_feature_type == schema_pb2.FeatureType.INT,
         }
@@ -265,6 +244,9 @@ def _value_to_feature(
     if underlying_value_type["float"]:
         return tf.train.Feature(float_list=tf.train.FloatList(value=value))
     if underlying_value_type["bytes"]:
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
+    if underlying_value_type["string"]:
+        value = [v.encode() for v in value]  # casting to bytes
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if pa.types.is_null(value_type):
         raise ValueError(

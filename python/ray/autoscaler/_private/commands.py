@@ -70,7 +70,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.experimental.internal_kv import _internal_kv_put
+from ray.experimental.internal_kv import _internal_kv_put, internal_kv_get_gcs_client
 from ray.util.debug import log_once
 
 try:  # py3
@@ -112,9 +112,30 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
         return reload_log_state(log_state)
 
 
-def debug_status(status, error, verbose: bool = False) -> str:
-    """Return a debug string for the autoscaler."""
-    if status:
+def debug_status(
+    status, error, verbose: bool = False, address: Optional[str] = None
+) -> str:
+    """
+    Return a debug string for the autoscaler.
+
+    Args:
+        status: The autoscaler status string for v1
+        error: The autoscaler error string for v1
+        verbose: Whether to print verbose information.
+        address: The address of the cluster (gcs address).
+
+    Returns:
+        str: A debug string for the cluster's status.
+    """
+    from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+    if is_autoscaler_v2():
+        from ray.autoscaler.v2.sdk import get_cluster_status
+        from ray.autoscaler.v2.utils import ClusterStatusFormatter
+
+        cluster_status = get_cluster_status(address)
+        status = ClusterStatusFormatter.format(cluster_status, verbose=verbose)
+    elif status:
         status = status.decode("utf-8")
         status_dict = json.loads(status)
         lm_summary_dict = status_dict.get("load_metrics_report")
@@ -188,10 +209,13 @@ def request_resources(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True
     )
 
-    if ray._config.enable_autoscaler_v2():
+    from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+    if is_autoscaler_v2():
         from ray.autoscaler.v2.sdk import request_cluster_resources
 
-        request_cluster_resources(to_request)
+        gcs_address = internal_kv_get_gcs_client().address
+        request_cluster_resources(gcs_address, to_request)
 
 
 def create_or_update_cluster(
@@ -704,6 +728,7 @@ def get_or_create_head_node(
     # The above `head_node` field is deprecated in favor of per-node-type
     # node_configs. We allow it for backwards-compatibility.
     head_node_resources = None
+    head_node_labels = None
     head_node_type = config.get("head_node_type")
     if head_node_type:
         head_node_tags[TAG_RAY_USER_NODE_TYPE] = head_node_type
@@ -713,6 +738,7 @@ def get_or_create_head_node(
         # Not necessary to keep in sync with node_launcher.py
         # Keep in sync with autoscaler.py _node_resources
         head_node_resources = head_config.get("resources")
+        head_node_labels = head_config.get("labels")
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
     creating_new_head = _should_create_new_head(
@@ -812,6 +838,7 @@ def get_or_create_head_node(
             file_mounts_contents_hash=file_mounts_contents_hash,
             is_head_node=True,
             node_resources=head_node_resources,
+            node_labels=head_node_labels,
             rsync_options={
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter"),
@@ -844,22 +871,48 @@ def get_or_create_head_node(
         modifiers = ""
 
     cli_logger.newline()
-    with cli_logger.group("Useful commands"):
+    with cli_logger.group("Useful commands:"):
         printable_config_file = os.path.abspath(printable_config_file)
-        cli_logger.print("Monitor autoscaling with")
+
+        cli_logger.print("To terminate the cluster:")
+        cli_logger.print(cf.bold(f"  ray down {printable_config_file}{modifiers}"))
+        cli_logger.newline()
+
+        cli_logger.print("To retrieve the IP address of the cluster head:")
         cli_logger.print(
-            cf.bold("  ray exec {}{} {}"),
-            printable_config_file,
-            modifiers,
-            quote(monitor_str),
+            cf.bold(f"  ray get-head-ip {printable_config_file}{modifiers}")
         )
+        cli_logger.newline()
 
-        cli_logger.print("Connect to a terminal on the cluster head:")
-        cli_logger.print(cf.bold("  ray attach {}{}"), printable_config_file, modifiers)
+        cli_logger.print(
+            "To port-forward the cluster's Ray Dashboard to the local machine:"
+        )
+        cli_logger.print(cf.bold(f"  ray dashboard {printable_config_file}{modifiers}"))
+        cli_logger.newline()
 
-        remote_shell_str = updater.cmd_runner.remote_shell_command_str()
-        cli_logger.print("Get a remote shell to the cluster manually:")
-        cli_logger.print("  {}", remote_shell_str.strip())
+        cli_logger.print(
+            "To submit a job to the cluster, port-forward the "
+            "Ray Dashboard in another terminal and run:"
+        )
+        cli_logger.print(
+            cf.bold(
+                "  ray job submit --address http://localhost:<dashboard-port> "
+                "--working-dir . -- python my_script.py"
+            )
+        )
+        cli_logger.newline()
+
+        cli_logger.print("To connect to a terminal on the cluster head for debugging:")
+        cli_logger.print(cf.bold(f"  ray attach {printable_config_file}{modifiers}"))
+        cli_logger.newline()
+
+        cli_logger.print("To monitor autoscaling:")
+        cli_logger.print(
+            cf.bold(
+                f"  ray exec {printable_config_file}{modifiers} {quote(monitor_str)}"
+            )
+        )
+        cli_logger.newline()
 
 
 def _should_create_new_head(
@@ -1033,7 +1086,7 @@ def attach_cluster(
 def exec_cluster(
     config_file: str,
     *,
-    cmd: str = None,
+    cmd: Optional[str] = None,
     run_env: str = "auto",
     screen: bool = False,
     tmux: bool = False,

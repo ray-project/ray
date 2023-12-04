@@ -1,7 +1,8 @@
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Iterator, List
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.datasource.binary_datasource import BinaryDatasource
+from ray.data.block import Block
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -9,30 +10,35 @@ if TYPE_CHECKING:
 
 
 @PublicAPI
-class TextDatasource(BinaryDatasource):
+class TextDatasource(FileBasedDatasource):
     """Text datasource, for reading and writing text files."""
 
     _COLUMN_NAME = "text"
 
-    def _read_file(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
-    ) -> List[str]:
-        block = super()._read_file(f, path, **reader_args)
-        assert len(block) == 1
-        data = block[0]
+    def __init__(
+        self,
+        paths: List[str],
+        *,
+        drop_empty_lines: bool = False,
+        encoding: str = "utf-8",
+        **file_based_datasource_kwargs
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        self.drop_empty_lines = drop_empty_lines
+        self.encoding = encoding
+
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+        data = f.readall()
 
         builder = DelegatingBlockBuilder()
 
-        drop_empty_lines = reader_args["drop_empty_lines"]
-        lines = data.decode(reader_args["encoding"]).split("\n")
+        lines = data.decode(self.encoding).split("\n")
         for line in lines:
-            if drop_empty_lines and line.strip() == "":
+            if self.drop_empty_lines and line.strip() == "":
                 continue
             item = {self._COLUMN_NAME: line}
             builder.add(item)
 
         block = builder.build()
-        return block
-
-    def _rows_per_file(self):
-        return None
+        yield block

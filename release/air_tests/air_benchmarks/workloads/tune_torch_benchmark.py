@@ -8,7 +8,7 @@ import click
 import numpy as np
 
 import ray
-from ray.air import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 

@@ -19,8 +19,19 @@ Ray DAG nodes can otherwise be composed like normal Ray tasks.
 However, unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on
 DAG nodes. Instead, the DAG needs to be *executed* in order to compute a result.
 
-.. code-block:: python
-    :caption: Composing functions together into a DAG:
+Composing functions together into a DAG:
+
+.. testcode::
+    :hide:
+
+    import tempfile
+    import ray
+
+    temp_dir = tempfile.TemporaryDirectory()
+
+    ray.init(storage=f"file://{temp_dir.name}")
+
+.. testcode::
 
     import ray
 
@@ -40,8 +51,7 @@ Workflow Execution
 
 To execute a DAG with workflows, use `workflow.run`:
 
-.. code-block:: python
-    :caption: Executing a DAG with Ray Workflows.
+.. testcode::
 
     from ray import workflow
 
@@ -61,14 +71,20 @@ When executing the workflow DAG, workflow tasks are retried on failure, but once
 they finish successfully and the results are persisted by the workflow engine,
 they will never be run again.
 
-.. code-block:: python
-    :caption: Getting the result of a workflow.
+Getting the result of a workflow:
+
+.. testcode::
+    :hide:
+
+    ray.shutdown()
+
+.. testcode::
 
     # configure the storage with "ray.init" or "ray start --head --storage=<STORAGE_URI>"
     # A default temporary storage is used by by the workflow if starting without
     # Ray init.
     ray.init(storage="/tmp/data")
-    assert output.run(workflow_id="run_1") == 101
+    assert workflow.run(dag, workflow_id="run_1") == 101
     assert workflow.get_status("run_1") == workflow.WorkflowStatus.SUCCESSFUL
     assert workflow.get_output("run_1") == 101
     # workflow.get_output_async returns an ObjectRef.
@@ -82,8 +98,9 @@ when initially returned from a task. After checkpointing, the object can be
 shared among any number of workflow tasks at memory-speed via the Ray object
 store.
 
-.. code-block:: python
-    :caption: Using Ray objects in a workflow:
+Using Ray objects in a workflow:
+
+.. testcode::
 
     import ray
     from typing import List
@@ -109,10 +126,11 @@ Dynamic Workflows
 Workflows can generate new tasks at runtime. This is achieved by returning a
 continuation of a DAG. A continuation is something returned by a function and
 executed after it returns. The continuation feature enables nesting, looping,
-and recursion within workflows:
+and recursion within workflows.
 
-.. code-block:: python
-    :caption: The Fibonacci recursive workflow:
+The Fibonacci recursive workflow:
+
+.. testcode::
 
     @ray.remote
     def add(a: int, b: int) -> int:
@@ -133,14 +151,15 @@ Events
 Events are external signals sent to the workflow. Workflows can be efficiently
 triggered by timers or external events using the event system.
 
-.. code-block:: python
-    :caption: Using events.
+.. testcode::
+
+    import time
 
     # Sleep is a special type of event.
-    sleep_task = workflow.sleep(100)
+    sleep_task = workflow.sleep(1)
 
     # `wait_for_events` allows for pluggable event listeners.
-    event_task = workflow.wait_for_event(MyEventListener)
+    event_task = workflow.wait_for_event(workflow.event_listener.TimerListener, time.time() + 2)
 
     @ray.remote
     def gather(*args):

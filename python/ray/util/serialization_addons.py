@@ -6,35 +6,7 @@ site packages.
 import sys
 
 from ray.util.annotations import DeveloperAPI
-
-
-@DeveloperAPI
-def register_pydantic_serializer(serialization_context):
-    try:
-        import pydantic.fields
-    except ImportError:
-        return
-
-    # Pydantic's Cython validators are not serializable.
-    # https://github.com/cloudpipe/cloudpickle/issues/408
-    serialization_context._register_cloudpickle_serializer(
-        pydantic.fields.ModelField,
-        custom_serializer=lambda o: {
-            "name": o.name,
-            # outer_type_ is the original type for ModelFields,
-            # while type_ can be updated later with the nested type
-            # like int for List[int].
-            "type_": o.outer_type_,
-            "class_validators": o.class_validators,
-            "model_config": o.model_config,
-            "default": o.default,
-            "default_factory": o.default_factory,
-            "required": o.required,
-            "alias": o.alias,
-            "field_info": o.field_info,
-        },
-        custom_deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs),
-    )
+from ray._private.pydantic_compat import register_pydantic_serializers
 
 
 @DeveloperAPI
@@ -55,7 +27,7 @@ def register_starlette_serializer(serialization_context):
 
 @DeveloperAPI
 def apply(serialization_context):
-    register_pydantic_serializer(serialization_context)
+    register_pydantic_serializers(serialization_context)
     register_starlette_serializer(serialization_context)
 
     if sys.platform != "win32":

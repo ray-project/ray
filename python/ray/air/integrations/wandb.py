@@ -7,6 +7,8 @@ import warnings
 import numpy as np
 from numbers import Number
 
+import pyarrow.fs
+
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -19,7 +21,7 @@ from ray.air.util.node import _force_on_current_node
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
-from ray.tune.syncer import DEFAULT_SYNC_TIMEOUT
+from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
 
 from ray._private.storage import _load_class
 from ray.util import PublicAPI
@@ -449,8 +451,8 @@ class WandbLoggerCallback(LoggerCallback):
 
             import random
 
-            from ray import tune
-            from ray.air import session, RunConfig
+            from ray import train, tune
+            from ray.train import RunConfig
             from ray.air.integrations.wandb import WandbLoggerCallback
 
 
@@ -459,7 +461,7 @@ class WandbLoggerCallback(LoggerCallback):
                 for epoch in range(2, config["epochs"]):
                     acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
                     loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
-                    session.report({"acc": acc, "loss": loss})
+                    train.report({"acc": acc, "loss": loss})
 
 
             tuner = tune.Tuner(
@@ -636,10 +638,17 @@ class WandbLoggerCallback(LoggerCallback):
                 num_cpus=0,
                 **_force_on_current_node(),
                 runtime_env={"env_vars": env_vars},
+                max_restarts=-1,
+                max_task_retries=-1,
             )(self._logger_actor_cls)
 
         self._trial_queues[trial] = Queue(
-            actor_options={"num_cpus": 0, **_force_on_current_node()}
+            actor_options={
+                "num_cpus": 0,
+                **_force_on_current_node(),
+                "max_restarts": -1,
+                "max_task_retries": -1,
+            }
         )
         self._trial_logging_actors[trial] = self._remote_logger_class.remote(
             logdir=trial.local_path,
@@ -664,9 +673,12 @@ class WandbLoggerCallback(LoggerCallback):
 
     def log_trial_save(self, trial: "Trial"):
         if self.upload_checkpoints and trial.checkpoint:
-            self._trial_queues[trial].put(
-                (_QueueItem.CHECKPOINT, trial.checkpoint.dir_or_data)
-            )
+            checkpoint_root = None
+            if isinstance(trial.checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+                checkpoint_root = trial.checkpoint.path
+
+            if checkpoint_root:
+                self._trial_queues[trial].put((_QueueItem.CHECKPOINT, checkpoint_root))
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         self._signal_logging_actor_stop(trial=trial)

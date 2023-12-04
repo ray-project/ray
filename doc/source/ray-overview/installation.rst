@@ -22,7 +22,7 @@ and macOS by choosing the option that best matches your use case.
 
         .. code-block:: shell
 
-          pip install -U "ray[air]"
+          pip install -U "ray[data,train,tune,serve]"
 
           # For reinforcement learning support, install RLlib instead.
           # pip install -U "ray[rllib]"
@@ -56,16 +56,16 @@ and macOS by choosing the option that best matches your use case.
             - Core, Tune
           * - `pip install -U "ray[serve]"`
             - Core, Dashboard, Cluster Launcher, Serve
+          * - `pip install -U "ray[serve-grpc]"`
+            - Core, Dashboard, Cluster Launcher, Serve with gRPC support
           * - `pip install -U "ray[rllib]"`
             - Core, Tune, RLlib
-          * - `pip install -U "ray[air]"`
-            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve
           * - `pip install -U "ray[all]"`
             - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib
 
         .. tip::
 
-          You can combine installation extras. 
+          You can combine installation extras.
           For example, to install Ray with Dashboard, Cluster Launcher, and Train support, you can run:
 
           .. code-block:: shell
@@ -125,6 +125,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
            * - `Windows Python 3.9`_
            * - `Windows Python 3.8`_
            * - `Windows Python 3.7`_
+           * - `Windows Python 3.11 (EXPERIMENTAL)`_
 
 .. note::
 
@@ -136,6 +137,8 @@ You can install the nightly Ray wheels via the following links. These daily rele
   :ref:`Usage stats <ref-usage-stats>` collection is enabled by default (can be :ref:`disabled <usage-disable>`) for nightly wheels including both local clusters started via ``ray.init()`` and remote clusters via cli.
 
 .. note::
+
+  .. If you change the list of wheel links below, remember to update `get_wheel_filename()` in  `https://github.com/ray-project/ray/blob/master/python/ray/_private/utils.py`.
 
   Python 3.11 support is experimental.
 
@@ -165,6 +168,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. _`MacOS Python 3.8 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_11_0_arm64.whl
 
 
+.. _`Windows Python 3.11 (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-win_amd64.whl
 .. _`Windows Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-win_amd64.whl
 .. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-win_amd64.whl
@@ -298,8 +302,22 @@ Multi-node clusters are untested. To get started with local Ray development:
 Windows Support
 ---------------
 
-Windows support is currently in beta, and multi-node Ray clusters are untested.
-Please submit any issues you encounter on
+Windows support is in Beta. Ray supports running on Windows with the following caveats (only the first is
+Ray-specific, the rest are true anywhere Windows is used):
+
+* Multi-node Ray clusters are untested.
+
+* Filenames are tricky on Windows and there still may be a few places where Ray
+  assumes UNIX filenames rather than Windows ones. This can be true in downstream
+  packages as well.
+
+* Performance on Windows is known to be slower since opening files on Windows
+  is considerably slower than on other operating systems. This can affect logging.
+
+* Windows does not have a copy-on-write forking model, so spinning up new
+  processes can require more memory.
+
+Submit any issues you encounter to
 `GitHub <https://github.com/ray-project/ray/issues/>`_.
 
 Installing Ray on Arch Linux
@@ -349,10 +367,11 @@ To install Ray libraries, use ``pip`` as above or ``conda``/``mamba``.
 
 .. code-block:: bash
 
-  conda install -c conda-forge "ray-air"    # installs Ray + dependencies for Ray AI Runtime
+  conda install -c conda-forge "ray-data"   # installs Ray + dependencies for Ray Data
+  conda install -c conda-forge "ray-train"  # installs Ray + dependencies for Ray Train
   conda install -c conda-forge "ray-tune"   # installs Ray + dependencies for Ray Tune
-  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
   conda install -c conda-forge "ray-serve"  # installs Ray + dependencies for Ray Serve
+  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
 
 For a complete list of available ``ray`` libraries on Conda-forge, have a look
 at https://anaconda.org/conda-forge/ray-default
@@ -399,7 +418,7 @@ Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platfor
    * - 6 character Git SHA prefix
      - A specific development build (uses a SHA from the Github ``master``, e.g. ``8960af``).
 
-The optional ``Python version`` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. ``py37``, ``py38``, ``py39`` and ``py310``. If unspecified, the tag points to an image using ``Python 3.7``.
+The optional ``Python version`` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. ``py38``, ``py39`` and ``py310``. If unspecified, the tag points to an image using ``Python 3.8``.
 
 The optional ``Platform`` tag specifies the platform where the image is intended for:
 
@@ -499,16 +518,18 @@ required for Ray and its libraries.
 We publish the dependencies that are installed in our ``ray`` and ``ray-ml``
 Docker images for Python 3.9.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: ray (Python 3.9)
+    .. tab-item:: ray (Python 3.9)
+        :sync: ray (Python 3.9)
 
-        Ray version: nightly (`0d880e3 <https://github.com/ray-project/ray/commit/0d880e351d3c52bcb84207e397c531088c11ffda>`_)
+        Ray version: nightly (`7b8ec8a <https://github.com/ray-project/ray/commit/7b8ec8acfdd8e5c0e677e9f0b6feaf5144254b7c>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
-    .. group-tab:: ray-ml (Python 3.9)
+    .. tab-item:: ray-ml (Python 3.9)
+        :sync: ray-ml (Python 3.9)
 
-        Ray version: nightly (`0d880e3 <https://github.com/ray-project/ray/commit/0d880e351d3c52bcb84207e397c531088c11ffda>`_)
+        Ray version: nightly (`7b8ec8a <https://github.com/ray-project/ray/commit/7b8ec8acfdd8e5c0e677e9f0b6feaf5144254b7c>`_)
 
         .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt

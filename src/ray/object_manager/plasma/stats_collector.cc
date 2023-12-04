@@ -30,20 +30,29 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
       {/*fallback_allocated*/ kAllocation.fallback_allocated, /*sealed*/ false},
       kObjectSize);
 
+  num_objects_created_total_ += 1;
   num_bytes_created_total_ += kObjectSize;
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_++;
     num_bytes_created_by_worker_ += kObjectSize;
+    ray::stats::STATS_object_store_dist.Record(
+        kObjectSize, {{ray::stats::SourceKey, "CreatedByWorker"}});
   } else if (kSource == plasma::flatbuf::ObjectSource::RestoredFromStorage) {
     num_objects_restored_++;
     num_bytes_restored_ += kObjectSize;
+    ray::stats::STATS_object_store_dist.Record(
+        kObjectSize, {{ray::stats::SourceKey, "RestoredFromStorage"}});
   } else if (kSource == plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet) {
     num_objects_received_++;
     num_bytes_received_ += kObjectSize;
+    ray::stats::STATS_object_store_dist.Record(
+        kObjectSize, {{ray::stats::SourceKey, "ReceivedFromRemoteRaylet"}});
   } else if (kSource == plasma::flatbuf::ObjectSource::ErrorStoredByRaylet) {
     num_objects_errored_++;
     num_bytes_errored_ += kObjectSize;
+    ray::stats::STATS_object_store_dist.Record(
+        kObjectSize, {{ray::stats::SourceKey, "ErrorStoredByRaylet"}});
   }
 
   RAY_CHECK(!obj.Sealed());
@@ -235,6 +244,10 @@ void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
 }
 
 int64_t ObjectStatsCollector::GetNumBytesInUse() const { return num_bytes_in_use_; }
+
+int64_t ObjectStatsCollector::GetNumObjectsCreatedTotal() const {
+  return num_objects_created_total_;
+}
 
 int64_t ObjectStatsCollector::GetNumBytesCreatedTotal() const {
   return num_bytes_created_total_;

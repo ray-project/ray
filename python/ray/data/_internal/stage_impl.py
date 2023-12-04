@@ -12,7 +12,7 @@ from ray.data._internal.shuffle_and_partition import (
     PushBasedShufflePartitionOp,
     SimpleShufflePartitionOp,
 )
-from ray.data._internal.sort import sort_impl
+from ray.data._internal.sort import SortKey, sort_impl
 from ray.data._internal.split import _split_at_index, _split_at_indices
 from ray.data.block import (
     Block,
@@ -20,7 +20,6 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
-    _validate_key_fn,
 )
 from ray.data.context import DataContext
 
@@ -312,7 +311,7 @@ def _do_zip(
 class SortStage(AllToAllStage):
     """Implementation of `Dataset.sort()`."""
 
-    def __init__(self, ds: "Dataset", key: Optional[str], descending: bool):
+    def __init__(self, ds: "Dataset", sort_key: SortKey):
         def do_sort(
             block_list,
             ctx: TaskContext,
@@ -327,15 +326,8 @@ class SortStage(AllToAllStage):
                 block_list.clear()
             else:
                 blocks = block_list
-            schema = ds.schema(fetch_if_missing=True)
-            if isinstance(key, list):
-                if not key:
-                    raise ValueError("`key` must be a list of non-zero length")
-                for subkey in key:
-                    _validate_key_fn(schema, subkey)
-            else:
-                _validate_key_fn(schema, key)
-            return sort_impl(blocks, clear_input_blocks, key, descending, ctx)
+            sort_key.validate_schema(ds.schema(fetch_if_missing=True))
+            return sort_impl(blocks, clear_input_blocks, sort_key, ctx)
 
         super().__init__(
             "Sort",

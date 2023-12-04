@@ -54,31 +54,31 @@ describe("RecentJobsCard", () => {
   it("renders", async () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
-    await screen.findByText("01000000");
+    await screen.findByText("raysubmit_12345 (01000000)");
     expect(screen.getByText("02000000")).toBeVisible();
     expect(screen.getByText("raysubmit_23456")).toBeVisible();
-    expect(screen.getByText("04000000")).toBeVisible();
-    expect(screen.getByText("05000000")).toBeVisible();
-    expect(screen.getByText("06000000")).toBeVisible();
-    expect(screen.queryByText("07000000")).toBeNull();
+    expect(screen.getByText("raysubmit_34567 (04000000)")).toBeVisible();
+    expect(screen.getByText("raysubmit_45678 (05000000)")).toBeVisible();
+    expect(screen.getByText("raysubmit_56789 (06000000)")).toBeVisible();
+    expect(screen.queryByText(/raysubmit_67890/)).toBeNull();
   });
 
   it("the link is active when job_id is not null", async () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
-    await screen.findByText("01000000");
+    await screen.findByText(/raysubmit_12345/);
 
-    const link = screen.getByRole("link", { name: "05000000" });
+    const link = screen.getByRole("link", { name: /raysubmit_45678/ });
     expect(link).toHaveAttribute("href");
   });
 
   it("link is active for driverless job(only have submission_id)", async () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
-    await screen.findByText("01000000");
+    await screen.findByText(/raysubmit_12345/);
 
     expect(
-      screen.queryByRole("link", { name: "raysubmit_23456" }),
+      screen.queryByRole("link", { name: /raysubmit_23456/ }),
     ).toBeVisible();
   });
 });

@@ -103,11 +103,11 @@ DECLARE_stats(gcs_storage_operation_latency_ms);
 DECLARE_stats(gcs_storage_operation_count);
 DECLARE_stats(gcs_task_manager_task_events_dropped);
 DECLARE_stats(gcs_task_manager_task_events_stored);
-DECLARE_stats(gcs_task_manager_task_events_stored_bytes);
 DECLARE_stats(gcs_task_manager_task_events_reported);
 
 /// Object Store
 DECLARE_stats(object_store_memory);
+DECLARE_stats(object_store_dist);
 
 /// Placement Group
 DECLARE_stats(gcs_placement_group_creation_latency_ms);
@@ -130,7 +130,7 @@ static Histogram GcsLatency("gcs_latency",
                             "The latency of a GCS (by default Redis) operation.",
                             "us",
                             {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
-                            {CustomKey});
+                            {kCustomKey});
 
 ///
 /// Raylet Metrics
@@ -140,12 +140,12 @@ static Histogram GcsLatency("gcs_latency",
 static Gauge TestMetrics("local_available_resource",
                          "The available resources on this node.",
                          "",
-                         {ResourceNameKey});
+                         {kResourceNameKey});
 
 static Gauge LocalTotalResource("local_total_resource",
                                 "The total resources on this node.",
                                 "",
-                                {ResourceNameKey});
+                                {kResourceNameKey});
 
 /// Object Manager.
 static Gauge ObjectStoreAvailableMemory(
@@ -266,7 +266,7 @@ static Histogram GcsUpdateResourceUsageTime(
     "The average RTT of a UpdateResourceUsage RPC.",
     "ms",
     {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000},
-    {CustomKey});
+    {kCustomKey});
 
 /// Testing
 static Gauge LiveActors("live_actors", "Number of live actors.", "actors");

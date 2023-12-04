@@ -44,7 +44,7 @@ from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
 torch, nn = try_import_torch()
 
 if torch:
-    from ray.train.torch.train_loop_utils import get_device
+    from ray.air._internal.torch_utils import get_device
 
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class TorchLearner(Learner):
         # Will be set during build.
         self._device = None
 
-        # Whether to compile the RL Module of this learner. This implies that the
+        # Whether to compile the RL Module of this learner. This implies that the.
         # forward_train method of the RL Module will be compiled. Further more,
         # other forward methods of the RL Module will be compiled on demand.
         # This is assumed to not happen, since other forwrad methods are not expected
@@ -445,6 +445,12 @@ class TorchLearner(Learner):
                 )
             ),
         )
+
+    @staticmethod
+    @override(Learner)
+    def _get_optimizer_lr(optimizer: "torch.optim.Optimizer") -> float:
+        for g in optimizer.param_groups:
+            return g["lr"]
 
     @staticmethod
     @override(Learner)

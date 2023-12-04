@@ -22,7 +22,7 @@ You want to do data parallel training and train the same model with different hy
 For each hyperparameter, you can launch a supervisor actor to do the orchestration and it will create worker actors to do the actual training per data shard.
 
 .. note::
-    For data parallel training and hyperparameter tuning, it's recommended to use :ref:`Ray AIR <air>` (:py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` and :ref:`Tuner <air-tuner>`)
+    For data parallel training and hyperparameter tuning, it's recommended to use :ref:`Ray Train <train-key-concepts>` (:py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` and :ref:`Ray Tune's Tuner <tune-main>`)
     which applies this pattern under the hood.
 
 Code example

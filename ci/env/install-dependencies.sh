@@ -37,9 +37,6 @@ install_bazel() {
   fi
 
   "${SCRIPT_DIR}"/install-bazel.sh
-  if [ -f /etc/profile.d/bazel.sh ]; then
-    . /etc/profile.d/bazel.sh
-  fi
 }
 
 install_base() {
@@ -164,6 +161,9 @@ install_miniconda() {
     )
   fi
 
+  # Install mpi4py
+  "${WORKSPACE_DIR}"/ci/suppress_output conda install -c anaconda mpi4py -y
+
   command -V python
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
@@ -233,7 +233,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --upgrade "pip<23.1"
+    "${python}" -m pip install --upgrade pip
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
@@ -355,6 +355,14 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
     #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
+
+    # Install MuJoCo.
+    sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
+    wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
+    mkdir -p /root/.mujoco
+    mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
+    (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
+    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco-2.1.1/bin
   fi
 
   # Additional Train test dependencies.
@@ -420,8 +428,8 @@ install_pip_packages() {
         pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
         # We won't add dl-cpu-requirements.txt as it would otherwise overwrite our custom
         # torch. Thus we have also have to install tensorflow manually.
-        TF_PACKAGE=$(grep "tensorflow==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
-        TFPROB_PACKAGE=$(grep "tensorflow-probability==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
+        TF_PACKAGE=$(grep -ohE "tensorflow==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
+        TFPROB_PACKAGE=$(grep -ohE "tensorflow-probability==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
         pip install -U "${TF_PACKAGE%%;*}" "${TFPROB_PACKAGE%%;*}"
@@ -429,8 +437,8 @@ install_pip_packages() {
         # Otherwise, use pinned default torch version.
         # Again, install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
-        TORCH_PACKAGE=$(grep "torch==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
-        TORCHVISION_PACKAGE=$(grep "torchvision==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
+        TORCH_PACKAGE=$(grep -ohE "torch==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
+        TORCHVISION_PACKAGE=$(grep -ohE "torchvision==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
         pip install "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
@@ -458,6 +466,13 @@ install_pip_packages() {
 
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
+
+  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  && "${OSTYPE}" != msys ]]; then
+    # On Windows, some pinned dependencies are not built for win, so we
+    # skip this until we have a good wy to resolve cross-platform dependencies.
+    pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  fi
+
   for file in "${requirements_files[@]}"; do
      pip_cmd+=" -r ${file}"
   done
@@ -494,9 +509,9 @@ install_pip_packages() {
 }
 
 install_thirdparty_packages() {
-  # shellcheck disable=SC2262
-  alias pip="python -m pip"
-  CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
+  CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {

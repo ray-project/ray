@@ -269,6 +269,15 @@ def put_pre_init_usage_stats():
     _put_pre_init_extra_usage_tags()
 
 
+def reset_global_state():
+    global _recorded_library_usages, _recorded_extra_usage_tags
+
+    with _recorded_library_usages_lock:
+        _recorded_library_usages = set()
+    with _recorded_extra_usage_tags_lock:
+        _recorded_extra_usage_tags = dict()
+
+
 ray._private.worker._post_init_hooks.append(put_pre_init_usage_stats)
 
 
@@ -478,10 +487,10 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
     try:
         result = gcs_client.get_all_job_info()
         total_num_running_jobs = 0
-        for job_id, job_info in result.items():
-            if not job_info["is_dead"] and not job_info["config"][
-                "ray_namespace"
-            ].startswith("_ray_internal"):
+        for job_info in result.values():
+            if not job_info.is_dead and not job_info.config.ray_namespace.startswith(
+                "_ray_internal"
+            ):
                 total_num_running_jobs += 1
         return total_num_running_jobs
     except Exception as e:
@@ -560,6 +569,40 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
     return extra_usage_tags
 
 
+def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
+    """
+    Get the current status of this cluster. A temporary proxy for the
+    autoscaler v2 API.
+
+    It is a blocking API.
+
+    Params:
+        gcs_client: The GCS client.
+
+    Returns:
+        The current cluster status or empty ClusterStatusToReport
+        if it fails to get that information.
+    """
+    from ray.autoscaler.v2.sdk import get_cluster_status
+
+    result = ClusterStatusToReport()
+    try:
+        cluster_status = get_cluster_status(gcs_client.address)
+        total_resources = cluster_status.total_resources()
+        result.total_num_cpus = total_resources.get("CPU", 0)
+        result.total_num_gpus = total_resources.get("GPU", 0)
+
+        to_GiB = 1 / 2**30
+        result.total_memory_gb = total_resources.get("memory", 0) * to_GiB
+        result.total_object_store_memory_gb = (
+            total_resources.get("object_store_memory", 0) * to_GiB
+        )
+    except Exception as e:
+        logger.info(f"Failed to get cluster status to report {e}")
+    finally:
+        return result
+
+
 def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
     """Get the current status of this cluster.
 
@@ -572,6 +615,12 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
         The current cluster status or empty if it fails to get that information.
     """
     try:
+
+        from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+        if is_autoscaler_v2():
+            return _get_cluster_status_to_report_v2(gcs_client)
+
         cluster_status = gcs_client.internal_kv_get(
             ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS.encode(),
             namespace=None,

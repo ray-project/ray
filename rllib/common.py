@@ -144,13 +144,15 @@ train_help = dict(
     ray_num_nodes="Emulate multiple cluster nodes for debugging.",
     ray_object_store_memory="--object-store-memory to use if starting a new cluster.",
     upload_dir="Optional URI to sync training results to (e.g. s3://bucket).",
-    trace="Whether to attempt to enable tracing for eager mode.",
+    trace="Whether to attempt to enable eager-tracing for framework=tf2.",
     torch="Whether to use PyTorch (instead of tf) as the DL framework. "
     "This argument is deprecated, please use --framework to select 'torch'"
     "as backend.",
-    eager="Whether to attempt to enable TensorFlow eager execution. "
-    "This argument is deprecated, please choose 'tf2' in "
-    "--framework to run select eager mode.",
+    wandb_key="An optional WandB API key for logging all results to your WandB "
+    "account.",
+    wandb_project="An optional project name under which to store the training results.",
+    wandb_run_name="An optional name for the specific run under which to store the "
+    "training results.",
 )
 
 
@@ -246,6 +248,13 @@ class CLIArguments:
     RayNumNodes = typer.Option(None, help=train_help.get("ray_num_nodes"))
     RayObjectStoreMemory = typer.Option(
         None, help=train_help.get("ray_object_store_memory")
+    )
+    WandBKey = typer.Option(None, "--wandb-key", help=train_help.get("wandb_key"))
+    WandBProject = typer.Option(
+        None, "--wandb-project", help=eval_help.get("wandb_project")
+    )
+    WandBRunName = typer.Option(
+        None, "--wandb-run-name", help=eval_help.get("wandb_run_name")
     )
     # __cli_train_end__
 

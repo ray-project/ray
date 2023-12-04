@@ -20,7 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
-#include "src/ray/protobuf/experimental/autoscaler.pb.h"
+#include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -52,6 +52,7 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
   *job_info_ptr->mutable_driver_address() = driver_address;
+  job_info_ptr->set_driver_ip_address(driver_address.ip_address());
   job_info_ptr->set_driver_pid(driver_pid);
   job_info_ptr->set_entrypoint(entrypoint);
   *job_info_ptr->mutable_config() = job_config;
@@ -111,6 +112,8 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const WorkerID &worker_id,
+    const NodeID &node_id,
+    const std::string &ip_address,
     int64_t timestamp,
     rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
@@ -120,6 +123,8 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   // Only report the worker id + delta (new data upon worker failures).
   // GCS will merge the data with original worker data.
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(node_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_ip_address(ip_address);
   worker_failure_info_ptr->set_timestamp(timestamp);
   worker_failure_info_ptr->set_exit_type(disconnect_type);
   worker_failure_info_ptr->set_exit_detail(disconnect_detail);
@@ -297,6 +302,37 @@ inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
   return state_updates.has_finished_ts() || state_updates.has_failed_ts();
 }
 
+inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_profile_events()) {
+    return 0;
+  }
+  return static_cast<size_t>(task_event.profile_events().events_size());
+}
+
+inline TaskAttempt GetTaskAttempt(const rpc::TaskEvents &task_event) {
+  return std::make_pair<>(TaskID::FromBinary(task_event.task_id()),
+                          task_event.attempt_number());
+}
+
+inline bool IsActorTask(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_task_info()) {
+    return false;
+  }
+
+  const auto &task_info = task_event.task_info();
+  return task_info.type() == rpc::TaskType::ACTOR_TASK ||
+         task_info.type() == rpc::TaskType::ACTOR_CREATION_TASK;
+}
+
+inline bool IsTaskFinished(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_state_updates()) {
+    return false;
+  }
+
+  const auto &state_updates = task_event.state_updates();
+  return state_updates.has_finished_ts();
+}
+
 /// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
 ///
 /// \param task_status The task status.
@@ -342,6 +378,19 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
 
 inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {
   return kPlacementGroupConstraintKeyPrefix + pg_id;
+}
+
+/// \brief Format placement group details.
+///     Format:
+///        <pg_id>:<strategy>:<state>
+///
+/// \param pg_data
+/// \return
+inline std::string FormatPlacementGroupDetails(
+    const rpc::PlacementGroupTableData &pg_data) {
+  return PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex() + ":" +
+         rpc::PlacementStrategy_Name(pg_data.strategy()) + "|" +
+         rpc::PlacementGroupTableData::PlacementGroupState_Name(pg_data.state());
 }
 
 /// Generate a placement constraint for placement group.

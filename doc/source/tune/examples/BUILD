@@ -19,7 +19,9 @@ py_test_run_all_notebooks(
     exclude = [
         "pbt_ppo_example.ipynb",
         "tune-xgboost.ipynb",
-        "sigopt_example.ipynb", # REGRESSION: no credentials
+        "pbt_transformers.ipynb",  # Transformers uses legacy Tune APIs.
+        # TODO(justinvyu): tune_sklearn uses removed experiment analysis method
+        "tune-sklearn.ipynb",
     ],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],

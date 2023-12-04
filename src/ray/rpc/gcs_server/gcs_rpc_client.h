@@ -117,7 +117,7 @@ class Executor {
         }                                                                                \
         delete executor;                                                                 \
       } else {                                                                           \
-        /* In case of GCS failure, we queue the request and these requets will be */     \
+        /* In case of GCS failure, we queue the request and these requests will be */    \
         /* executed once GCS is back. */                                                 \
         gcs_is_down_ = true;                                                             \
         auto request_bytes = request.ByteSizeLong();                                     \
@@ -189,7 +189,7 @@ class GcsRpcClient {
  public:
   /// Constructor. GcsRpcClient is not thread safe.
   ///
-  /// \param[in] address Address of gcs server.
+  // \param[in] address Address of gcs server.
   /// \param[in] port Port of the gcs server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   /// \param[in] gcs_service_failure_detected The function is used to redo subscription
@@ -350,21 +350,14 @@ class GcsRpcClient {
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Get node's resources from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
-                             GetResources,
-                             node_resource_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
   /// Get available resources of all nodes from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetAllAvailableResources,
                              node_resource_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Report resource usage of a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
-                             ReportResourceUsage,
+                             GetDrainingNodes,
                              node_resource_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
@@ -407,6 +400,18 @@ class GcsRpcClient {
   /// Add worker information to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
                              AddWorkerInfo,
+                             worker_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  /// Add worker debugger port
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
+                             UpdateWorkerDebuggerPort,
+                             worker_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  /// Update the worker number of paused threads delta
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
+                             UpdateWorkerNumPausedThreads,
                              worker_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 

@@ -1,0 +1,5 @@
+name: "stable-diffusion-service"
+ray_serve_config:
+  import_path: app:entrypoint
+  runtime_env:
+    working_dir: "."

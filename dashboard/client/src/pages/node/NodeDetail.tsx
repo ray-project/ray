@@ -184,7 +184,11 @@ const NodeDetailPage = () => {
             <Grid container spacing={2}>
               <Grid item xs>
                 <div className={classes.label}>Logs</div>{" "}
-                <Link to={`/logs/${encodeURIComponent(nodeDetail.logUrl)}`}>
+                <Link
+                  to={`/logs/?nodeId=${encodeURIComponent(
+                    nodeDetail.raylet.nodeId,
+                  )}`}
+                >
                   log
                 </Link>
               </Grid>

@@ -6,10 +6,12 @@ import { TaskProgress } from "../../type/job";
 
 export type TaskProgressBarProps = TaskProgress & {
   showAsComplete?: boolean;
+  showLegend?: boolean;
   showTooltip?: boolean;
   expanded?: boolean;
   onClick?: () => void;
   total?: number;
+  controls?: JSX.Element;
 };
 
 export const TaskProgressBar = ({
@@ -19,12 +21,15 @@ export const TaskProgressBar = ({
   numPendingNodeAssignment = 0,
   numSubmittedToWorker = 0,
   numFailed = 0,
+  numCancelled = 0,
   numUnknown = 0,
   showAsComplete = false,
+  showLegend = true,
   showTooltip = true,
   expanded,
   onClick,
   total,
+  controls,
 }: TaskProgressBarProps) => {
   const theme = useTheme<Theme>();
   const progress: ProgressBarSegment[] = [
@@ -54,6 +59,11 @@ export const TaskProgressBar = ({
       color: "#f79e02",
     },
     {
+      label: "Cancelled",
+      value: numCancelled,
+      color: theme.palette.grey.A100,
+    },
+    {
       label: "Unknown",
       value: numUnknown,
       color: "#5f6469",
@@ -63,10 +73,12 @@ export const TaskProgressBar = ({
     <ProgressBar
       progress={progress}
       expanded={expanded}
+      showLegend={showLegend}
       showTooltip={showTooltip}
       onClick={onClick}
       showTotalProgress={numFinished}
       total={total}
+      controls={controls}
     />
   );
 };

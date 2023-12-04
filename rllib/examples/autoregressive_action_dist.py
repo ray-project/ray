@@ -139,6 +139,8 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        # Batch-norm models have not been migrated to the RL Module API yet.
+        .experimental(_enable_new_api_stack=False)
         .environment(CorrelatedActionsEnv)
         .framework(args.framework)
         .training(gamma=0.5)

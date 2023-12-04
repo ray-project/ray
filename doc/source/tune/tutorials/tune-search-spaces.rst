@@ -110,7 +110,7 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
 
     tuner = tune.Tuner(
         my_trainable,
-        run_config=air.RunConfig(name="my_trainable"),
+        run_config=RunConfig(name="my_trainable"),
         # num_samples will repeat the entire config 10 times.
         tune_config=tune.TuneConfig(num_samples=10),
         param_space={
@@ -133,6 +133,9 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
     Use :func:`tune.with_parameters <ray.tune.with_parameters>` to pass large objects in or load them inside your trainable
     from disk (making sure that all nodes have access to the files) or cloud storage.
     See :ref:`tune-bottlenecks` for more information.
+
+Note that when using Ray Train with Ray Tune, certain config objects can also be included
+as part of the search space, thereby allowing you to tune things like number of workers for a trainer.
 
 .. _tune_custom-search:
 
@@ -170,7 +173,7 @@ This lets you specify conditional parameter distributions.
 
     tuner = tune.Tuner(
         my_trainable,
-        run_config=air.RunConfig(name="my_trainable"),
+        run_config=RunConfig(name="my_trainable"),
         param_space={
             "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
             "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),

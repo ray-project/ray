@@ -58,6 +58,10 @@ class IActorSubmitQueue {
   virtual void MarkDependencyFailed(uint64_t sequence_no) = 0;
   /// Mark a task's dependency is resolved thus ready to send.
   virtual void MarkDependencyResolved(uint64_t sequence_no) = 0;
+  // Mark a task has been canceled.
+  // If a task hasn't been sent yet, this API will guarantee a task won't be
+  // popped via PopNextTaskToSend.
+  virtual void MarkTaskCanceled(uint64_t sequence_no) = 0;
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
   virtual std::vector<TaskID> ClearAllTasks() = 0;
   /// Find next task to send.

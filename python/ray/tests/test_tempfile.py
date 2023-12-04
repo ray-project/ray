@@ -134,7 +134,7 @@ def test_raylet_tempfiles(shutdown_only):
     assert sum(1 for filename in log_files if filename.startswith("worker")) == 4
 
     socket_files = set(os.listdir(node.get_sockets_dir_path()))
-    assert socket_files == expected_socket_files
+    assert socket_files.issuperset(expected_socket_files)
 
 
 def test_tempdir_privilege(shutdown_only):

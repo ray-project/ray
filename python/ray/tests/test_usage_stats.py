@@ -125,6 +125,8 @@ def reset_ray_version_commit():
 def test_get_extra_usage_tags_to_report(
     monkeypatch, call_ray_start, reset_usage_stats, ray_client, gcs_storage_type
 ):
+    if os.environ.get("RAY_MINIMAL") == "1" and ray_client:
+        pytest.skip("Skipping due to we don't have ray client in minimal.")
     with monkeypatch.context() as m:
         # Test a normal case.
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2")
@@ -833,8 +835,16 @@ def test_usage_lib_get_total_num_nodes_to_report(ray_start_cluster, reset_usage_
     )
 
 
-def test_usage_lib_get_cluster_status_to_report(shutdown_only, reset_usage_stats):
-    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2**30)
+@pytest.mark.parametrize("enable_v2", [True, False])
+def test_usage_lib_get_cluster_status_to_report(
+    enable_v2, shutdown_only, reset_usage_stats
+):
+    ray.init(
+        num_cpus=3,
+        num_gpus=1,
+        object_store_memory=2**30,
+        _system_config={"enable_autoscaler_v2": enable_v2},
+    )
     # Wait for monitor.py to update cluster status
     wait_for_condition(
         lambda: ray_usage_lib.get_cluster_status_to_report(
@@ -1204,8 +1214,8 @@ provider:
         if os.environ.get("RAY_MINIMAL") != "1":
             expected_payload["tune_scheduler"] = "FIFOScheduler"
             expected_payload["tune_searcher"] = "BasicVariantGenerator"
-            expected_payload["air_storage_configuration"] = "driver"
             expected_payload["air_entrypoint"] = "Tuner.fit"
+            expected_payload["air_storage_configuration"] = "local"
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1

@@ -114,8 +114,9 @@ void GcsWorkerManager::HandleReportWorkerFailure(
             worker_crash_system_error_count_ += 1;
             key = usage::TagKey::WORKER_CRASH_SYSTEM_ERROR;
             count = worker_crash_system_error_count_;
-          } else if (request.worker_failure().exit_type() ==
-                     rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+          } else {
+            RAY_CHECK_EQ(request.worker_failure().exit_type(),
+                         rpc::WorkerExitType::NODE_OUT_OF_MEMORY);
             worker_crash_oom_count_ += 1;
             key = usage::TagKey::WORKER_CRASH_OOM;
             count = worker_crash_oom_count_;
@@ -196,6 +197,107 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
   Status status = gcs_table_storage_->WorkerTable().Put(worker_id, *worker_data, on_done);
   if (!status.ok()) {
     on_done(status);
+  }
+}
+
+void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
+    rpc::UpdateWorkerDebuggerPortRequest request,
+    rpc::UpdateWorkerDebuggerPortReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto worker_id = WorkerID::FromBinary(request.worker_id());
+  auto debugger_port = request.debugger_port();
+  RAY_LOG(DEBUG) << "updating worker " << worker_id << "with debugger port "
+                 << debugger_port;
+
+  auto on_worker_update_done =
+      [worker_id, debugger_port, reply, send_reply_callback](const Status &status) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to update debugger port on worker id " << worker_id
+                         << "with value" << debugger_port;
+        }
+        RAY_LOG(DEBUG) << "Finished updating debugger port on worker " << worker_id;
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      };
+
+  auto on_worker_get_done =
+      [&, worker_id, reply, debugger_port, on_worker_update_done, send_reply_callback](
+          const Status &status, const boost::optional<WorkerTableData> &result) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING) << "Failed to get worker info, worker id = " << worker_id
+                           << ", status = " << status;
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        } else {
+          // Update the debugger port
+          auto worker_data = std::make_shared<WorkerTableData>();
+          worker_data->CopyFrom(*result);
+          worker_data->set_debugger_port(debugger_port);
+          Status status = gcs_table_storage_->WorkerTable().Put(
+              worker_id, *worker_data, on_worker_update_done);
+          if (!status.ok()) {
+            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+          }
+        }
+      };
+
+  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_worker_get_done);
+  if (!status.ok()) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  }
+}
+
+void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
+    rpc::UpdateWorkerNumPausedThreadsRequest request,
+    rpc::UpdateWorkerNumPausedThreadsReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto worker_id = WorkerID::FromBinary(request.worker_id());
+  auto num_paused_threads_delta = request.num_paused_threads_delta();
+  RAY_LOG(DEBUG) << "updating worker " << worker_id << "with num_paused_threads_delta "
+                 << num_paused_threads_delta;
+
+  auto on_worker_update_done = [worker_id,
+                                num_paused_threads_delta,
+                                reply,
+                                send_reply_callback](const Status &status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to update num_paused_threads_delta on worker id "
+                     << worker_id << "with value" << num_paused_threads_delta;
+    }
+    RAY_LOG(DEBUG) << "Finished updating num_paused_threads_delta on worker "
+                   << worker_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+
+  auto on_worker_get_done = [&,
+                             worker_id,
+                             reply,
+                             num_paused_threads_delta,
+                             on_worker_update_done,
+                             send_reply_callback](
+                                const Status &status,
+                                const boost::optional<WorkerTableData> &result) {
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to get worker info, worker id = " << worker_id
+                       << ", status = " << status;
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    } else {
+      // Update the num_paused_threads_delta
+      auto worker_data = std::make_shared<WorkerTableData>();
+      worker_data->CopyFrom(*result);
+      auto current_num_paused_threads =
+          worker_data->has_num_paused_threads() ? worker_data->num_paused_threads() : 0;
+      worker_data->set_num_paused_threads(current_num_paused_threads +
+                                          num_paused_threads_delta);
+      Status status = gcs_table_storage_->WorkerTable().Put(
+          worker_id, *worker_data, on_worker_update_done);
+      if (!status.ok()) {
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      }
+    }
+  };
+
+  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_worker_get_done);
+  if (!status.ok()) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
 }
 

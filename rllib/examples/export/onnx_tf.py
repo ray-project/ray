@@ -24,11 +24,10 @@ if __name__ == "__main__":
     # Configure our PPO Algorithm.
     config = (
         ppo.PPOConfig()
+        # ONNX is not supported by RLModule API yet.
+        .experimental(_enable_new_api_stack=False)
         .rollouts(num_rollout_workers=1)
         .framework(args.framework)
-        # ONNX is not supported by RLModule API yet.
-        .training(_enable_learner_api=False)
-        .rl_module(_enable_rl_module_api=False)
     )
 
     outdir = "export_tf"

@@ -49,11 +49,6 @@ SIGNAL_WORKER_INFO_FETCHED = "worker_info_fetched"
 # Default value for datacenter (the default value in protobuf)
 DEFAULT_LANGUAGE = "PYTHON"
 DEFAULT_JOB_ID = "ffff"
-# Cache TTL for bad runtime env. After this time, delete the cache and retry to create
-# runtime env if needed.
-BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
-    "BAD_RUNTIME_ENV_CACHE_TTL_SECONDS", 60 * 10
-)
 # Hook that is invoked on the dashboard `/api/component_activities` endpoint.
 # Environment variable stored here should be a callable that does not
 # take any arguments and should return a dictionary mapping

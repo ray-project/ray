@@ -5,12 +5,14 @@ GroupedData API
 
 .. currentmodule:: ray.data
 
-GroupedData objects are returned by groupby call: Dataset.groupby().
+GroupedData objects are returned by groupby call: 
+:meth:`Dataset.groupby() <ray.data.Dataset.groupby>`.
 
 Constructor
 -----------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    grouped_data.GroupedData
@@ -19,6 +21,7 @@ Computations / Descriptive Stats
 --------------------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    grouped_data.GroupedData.count
@@ -32,6 +35,7 @@ Function Application
 --------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    grouped_data.GroupedData.aggregate
@@ -41,6 +45,7 @@ Aggregate Function
 ------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    aggregate.AggregateFn

@@ -1,9 +1,7 @@
 import pytest
-import pickle
 
 import ray
 from ray.dag import (
-    DAGNode,
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
 )
@@ -31,12 +29,6 @@ class Actor:
 
     def get(self):
         return self.i
-
-
-def test_serialize_warning():
-    node = DAGNode([], {}, {}, {})
-    with pytest.raises(ValueError):
-        pickle.dumps(node)
 
 
 def test_basic_actor_dag(shared_ray_instance):

@@ -60,6 +60,12 @@ class RayRuntime {
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
       const std::vector<std::string> &ids) = 0;
 
+  virtual std::shared_ptr<msgpack::sbuffer> Get(const std::string &object_id,
+                                                const int &timeout_ms) = 0;
+
+  virtual std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
+      const std::vector<std::string> &ids, const int &timeout_ms) = 0;
+
   virtual std::vector<bool> Wait(const std::vector<std::string> &ids,
                                  int num_objects,
                                  int timeout_ms) = 0;

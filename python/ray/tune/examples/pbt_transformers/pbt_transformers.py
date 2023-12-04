@@ -5,7 +5,7 @@ huggingface transformers `hyperparameter_search` API.
 import os
 
 from ray import tune
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.tune import CLIReporter
 from ray.tune.examples.pbt_transformers.utils import (
     download_data,

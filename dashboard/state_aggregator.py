@@ -185,9 +185,32 @@ class StateAPIManager:
                 if filter_column not in datum:
                     match = False
                 elif filter_predicate == "=":
-                    match = datum[filter_column] == filter_value
+                    if isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], str
+                    ):
+                        # Case insensitive match for string filter values.
+                        match = datum[filter_column].lower() == filter_value.lower()
+                    elif isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], bool
+                    ):
+                        match = datum[filter_column] == convert_string_to_type(
+                            filter_value, bool
+                        )
+                    elif isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], int
+                    ):
+                        match = datum[filter_column] == convert_string_to_type(
+                            filter_value, int
+                        )
+                    else:
+                        match = datum[filter_column] == filter_value
                 elif filter_predicate == "!=":
-                    match = datum[filter_column] != filter_value
+                    if isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], str
+                    ):
+                        match = datum[filter_column].lower() != filter_value.lower()
+                    else:
+                        match = datum[filter_column] != filter_value
                 else:
                     raise ValueError(
                         f"Unsupported filter predicate {filter_predicate} is given. "
@@ -229,6 +252,7 @@ class StateAPIManager:
                 ],
             )
             result.append(data)
+
         num_after_truncation = len(result) + reply.num_filtered
         result = self._filter(result, option.filters, ActorState, option.detail)
         num_filtered = len(result)
@@ -396,14 +420,17 @@ class StateAPIManager:
             protobuf_to_task_state_dict(message) for message in reply.events_by_task
         ]
 
-        num_after_truncation = len(result)
-        num_total = num_after_truncation + reply.num_status_task_events_dropped
+        # Num pre-truncation is the number of tasks returned from
+        # source + num filtered on source
+        num_after_truncation = len(result) + reply.num_filtered_on_gcs
+        num_total = reply.num_total_stored + reply.num_status_task_events_dropped
 
         result = self._filter(result, option.filters, TaskState, option.detail)
         num_filtered = len(result)
 
         result.sort(key=lambda entry: entry["task_id"])
         result = list(islice(result, option.limit))
+        # TODO(rickyx): we could do better with the warning logic. It's messy now.
         return ListApiResponse(
             result=result,
             total=num_total,
@@ -518,7 +545,7 @@ class StateAPIManager:
             We don't have id -> data mapping like other API because runtime env
             doesn't have unique ids.
         """
-        agent_ids = self._client.get_all_registered_agent_ids()
+        agent_ids = self._client.get_all_registered_runtime_env_agent_ids()
         replies = await asyncio.gather(
             *[
                 self._client.get_runtime_envs_info(node_id, timeout=option.timeout)
@@ -530,7 +557,9 @@ class StateAPIManager:
         result = []
         unresponsive_nodes = 0
         total_runtime_envs = 0
-        for node_id, reply in zip(self._client.get_all_registered_agent_ids(), replies):
+        for node_id, reply in zip(
+            self._client.get_all_registered_runtime_env_agent_ids(), replies
+        ):
             if isinstance(reply, DataSourceUnavailable):
                 unresponsive_nodes += 1
                 continue

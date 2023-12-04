@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Clone pinned Kuberay commit to temporary directory, copy the CRD definitions
+# Clone pinned KubeRay commit to temporary directory, copy the CRD definitions
 # into the autoscaler folder.
-KUBERAY_BRANCH="v0.5.0"
-OPERATOR_TAG="v0.5.0"
+KUBERAY_BRANCH="v1.0.0"
+OPERATOR_TAG="v1.0.0"
 
 # Requires Kustomize
 if ! command -v kustomize &> /dev/null

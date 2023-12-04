@@ -13,9 +13,10 @@ serve-ml-models
 stable-diffusion
 text-classification
 object-detection
+aws-neuron-core-inference
 rllib
 gradio-integration
 batch
-gradio-dag-visualization
+streaming
 java
 ```

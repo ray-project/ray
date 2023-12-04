@@ -1,7 +1,14 @@
 .. _ray-core-examples-tutorial:
 
+
 Ray Tutorials and Examples
 ==========================
+
+.. toctree::
+    :hidden:
+    :glob:
+
+    *
 
 
 Machine Learning Examples
@@ -78,14 +85,6 @@ For Ray's production-grade reinforcement learning library, see `RLlib <http://do
         .. button-ref:: plot_pong_example
 
             Learning to Play Pong
-
-    .. grid-item-card::
-        :img-top: images/a3c.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_example-a3c
-
-            Asynchronous Advantage Actor Critic (A3C)
 
 
 Basic Examples

@@ -19,7 +19,7 @@ if __name__ == "__main__":
         ray.init(address="auto")
 
     start_time = time.time()
-    results = run()
+    results = run(storage_path="/mnt/cluster_storage")
     exp_analysis = results._experiment_analysis
     end_time = time.time()
 

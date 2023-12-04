@@ -19,7 +19,6 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import (
     deprecation_warning,
     DEPRECATED_VALUE,
-    Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
@@ -43,7 +42,7 @@ logger = logging.getLogger(__name__)
 TOWER_SCOPE_NAME = "tower"
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class DynamicTFPolicy(TFPolicy):
     """A TFPolicy that auto-defines placeholders dynamically at runtime.
 
@@ -333,7 +332,6 @@ class DynamicTFPolicy(TFPolicy):
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:
-
                     # Try new action_distribution_fn signature, supporting
                     # state_batches and seq_lens.
                     in_dict = self._input_dict
@@ -718,7 +716,6 @@ class DynamicTFPolicy(TFPolicy):
     def _initialize_loss_from_dummy_batch(
         self, auto_remove_unneeded_view_reqs: bool = True, stats_fn=None
     ) -> None:
-
         # Create the optimizer/exploration optimizer here. Some initialization
         # steps (e.g. exploration postprocessing) may need this.
         if not self._optimizers:
@@ -923,7 +920,7 @@ class DynamicTFPolicy(TFPolicy):
         return losses
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class TFMultiGPUTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
 
@@ -1336,7 +1333,6 @@ def _average_gradients(tower_grads):
 
     average_grads = []
     for grad_and_vars in zip(*tower_grads):
-
         # Note that each grad_and_vars looks like the following:
         #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
         grads = []

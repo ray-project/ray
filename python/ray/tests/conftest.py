@@ -20,13 +20,12 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray.util.client.server.server as ray_client_server
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 
 from ray._private.test_utils import (
-    get_and_run_node_killer,
+    get_and_run_resource_killer,
     init_error_pubsub,
     init_log_pubsub,
     setup_tls,
@@ -36,6 +35,9 @@ from ray._private.test_utils import (
     get_redis_cli,
     start_redis_instance,
     find_available_port,
+    wait_for_condition,
+    find_free_port,
+    NodeKillerActor,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -168,6 +170,36 @@ def is_process_listen_to_port(pid, port):
     return False
 
 
+def redis_alive(port, enable_tls):
+    try:
+        # If there is no redis libs installed, skip the check.
+        # This could happen In minimal test, where we don't have
+        # redis.
+        import redis
+    except Exception:
+        return True
+
+    params = {}
+    if enable_tls:
+        from ray._raylet import Config
+
+        params = {"ssl": True, "ssl_cert_reqs": "required"}
+        if Config.REDIS_CA_CERT():
+            params["ssl_ca_certs"] = Config.REDIS_CA_CERT()
+        if Config.REDIS_CLIENT_CERT():
+            params["ssl_certfile"] = Config.REDIS_CLIENT_CERT()
+        if Config.REDIS_CLIENT_KEY():
+            params["ssl_keyfile"] = Config.REDIS_CLIENT_KEY()
+
+    cli = redis.Redis("localhost", port, **params)
+
+    try:
+        return cli.ping()
+    except Exception:
+        pass
+    return False
+
+
 def start_redis(db_dir):
     retry_num = 0
     while True:
@@ -181,9 +213,10 @@ def start_redis(db_dir):
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
         leader_port = None
         leader_id = None
-        for port, free_port in redis_ports:
-            print("Start Redis with port: ", port)
+        redis_ports = []
+        while len(redis_ports) != redis_replicas():
             temp_dir = ray._private.utils.get_ray_temp_dir()
+            port, free_port = find_available_port(49159, 55535, 2)
             node_id, proc = start_redis_instance(
                 temp_dir,
                 port,
@@ -193,6 +226,14 @@ def start_redis(db_dir):
                 db_dir=db_dir,
                 free_port=free_port,
             )
+            try:
+                wait_for_condition(
+                    redis_alive, 3, 100, port=port, enable_tls=enable_tls
+                )
+            except Exception as e:
+                print(e)
+                continue
+            redis_ports.append(port)
             if leader_port is None:
                 leader_port = port
                 leader_id = node_id
@@ -222,13 +263,28 @@ def start_redis(db_dir):
                 pass
 
         scheme = "rediss://" if enable_tls else ""
-        address_str = f"{scheme}127.0.0.1:{redis_ports[-1][0]}"
+        address_str = f"{scheme}127.0.0.1:{redis_ports[-1]}"
         return address_str, processes
+
+
+def kill_all_redis_server():
+    import psutil
+
+    # Find Redis server processes
+    redis_procs = []
+    for proc in psutil.process_iter(["name", "cmdline"]):
+        if proc.name() == "redis-server":
+            redis_procs.append(proc)
+
+    # Kill Redis server processes
+    for proc in redis_procs:
+        proc.kill()
 
 
 @contextmanager
 def _setup_redis(request):
     with tempfile.TemporaryDirectory() as tmpdirname:
+        kill_all_redis_server()
         address_str, processes = start_redis(tmpdirname)
         old_addr = os.environ.get("RAY_REDIS_ADDRESS")
         os.environ["RAY_REDIS_ADDRESS"] = address_str
@@ -251,6 +307,7 @@ def _setup_redis(request):
 
         for proc in processes:
             proc.process.kill()
+        kill_all_redis_server()
 
 
 @pytest.fixture
@@ -533,11 +590,16 @@ def call_ray_start_context(request):
     except Exception as e:
         print(type(e), e)
         raise
+
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
-    address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
-    address = out[address_location:]
-    address = address.split("'")[0]
+    idx = out.find(redis_substring_prefix)
+    if idx >= 0:
+        address_location = idx + len(redis_substring_prefix)
+        address = out[address_location:]
+        address = address.split("'")[0]
+    else:
+        address = None
 
     yield address
 
@@ -572,6 +634,8 @@ def call_ray_start_with_external_redis(request):
 
 @pytest.fixture
 def init_and_serve():
+    import ray.util.client.server.server as ray_client_server
+
     server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
@@ -592,8 +656,11 @@ def call_ray_stop_only():
 def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
+    if os.environ.get("RAY_MINIMAL") == "1" and use_ray_client:
+        pytest.skip("Skipping due to we don't have ray client in minimal.")
+
     cluster = ray_start_cluster_enabled
-    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4, dashboard_agent_listen_port=find_free_port())
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"
         cluster.head_node.start_ray_client_server()
@@ -636,12 +703,15 @@ def enable_pickle_debug():
 
 
 @pytest.fixture
-def set_enable_auto_connect(enable_auto_connect: str = "0"):
+def set_enable_auto_connect(enable_auto_connect: bool = False):
+    from ray._private import auto_init_hook
+
     try:
-        os.environ["RAY_ENABLE_AUTO_CONNECT"] = enable_auto_connect
+        old_value = auto_init_hook.enable_auto_connect
+        auto_init_hook.enable_auto_connect = enable_auto_connect
         yield enable_auto_connect
     finally:
-        del os.environ["RAY_ENABLE_AUTO_CONNECT"]
+        auto_init_hook.enable_auto_connect = old_value
 
 
 @pytest.fixture
@@ -843,13 +913,13 @@ def _ray_start_chaos_cluster(request):
     assert len(nodes) == 1
 
     if kill_interval is not None:
-        node_killer = get_and_run_node_killer(kill_interval)
+        node_killer = get_and_run_resource_killer(NodeKillerActor, kill_interval)
 
     yield cluster
 
     if kill_interval is not None:
         ray.get(node_killer.stop_run.remote())
-        killed = ray.get(node_killer.get_total_killed_nodes.remote())
+        killed = ray.get(node_killer.get_total_killed.remote())
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
         assert died.issubset(
@@ -929,7 +999,19 @@ def listen_port(request):
         sock = socket.socket()
         if hasattr(socket, "SO_REUSEPORT"):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
-        sock.bind(("127.0.0.1", port))
+
+        # Try up to 10 times.
+        MAX_RETRY = 10
+        for i in range(MAX_RETRY):
+            try:
+                sock.bind(("127.0.0.1", port))
+                break
+            except OSError as e:
+                if i == MAX_RETRY - 1:
+                    raise e
+                else:
+                    print(f"failed to bind on a port {port}. {e}")
+                    time.sleep(1)
         yield port
     finally:
         sock.close()
@@ -1176,20 +1258,16 @@ def set_runtime_env_plugin_schemas(request):
         del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
 
 
-@pytest.fixture(params=[True, False])
-def enable_syncer_test(request, monkeypatch):
-    with_syncer = request.param
-    monkeypatch.setenv("RAY_use_ray_syncer", "true" if with_syncer else "false")
-    ray._raylet.Config.initialize("")
-    yield
-    monkeypatch.delenv("RAY_use_ray_syncer")
-    ray._raylet.Config.initialize("")
-
-
 @pytest.fixture(scope="function")
 def temp_file(request):
     with tempfile.NamedTemporaryFile("r+b") as fp:
         yield fp
+
+
+@pytest.fixture(scope="function")
+def temp_dir(request):
+    with tempfile.TemporaryDirectory("r+b") as d:
+        yield d
 
 
 @pytest.fixture(scope="module")
