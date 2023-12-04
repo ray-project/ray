@@ -115,6 +115,7 @@ class ExecutionPlan:
         stats: DatasetStats,
         *,
         run_by_consumer: bool,
+        data_context: Optional[DataContext] = None,
     ):
         """Create a plan with no transformation stages.
 
@@ -143,9 +144,12 @@ class ExecutionPlan:
         self._run_by_consumer = run_by_consumer
         self._dataset_name = None
 
-        # Snapshot the current context, so that the config of Datasets is always
-        # determined by the config at the time it was created.
-        self._context = copy.deepcopy(DataContext.get_current())
+        if data_context is None:
+            # Snapshot the current context, so that the config of Datasets is always
+            # determined by the config at the time it was created.
+            self._context = copy.deepcopy(DataContext.get_current())
+        else:
+            self._context = data_context
 
     def __repr__(self) -> str:
         return (
@@ -330,7 +334,10 @@ class ExecutionPlan:
             A shallow copy of this execution plan.
         """
         plan_copy = ExecutionPlan(
-            self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
+            self._in_blocks,
+            self._in_stats,
+            run_by_consumer=self._run_by_consumer,
+            data_context=self._context,
         )
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.

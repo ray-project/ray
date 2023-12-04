@@ -342,8 +342,25 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   FailInflightTasks(inflight_task_callbacks);
 }
 
+void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(const TaskInfo &task_info) {
+  rpc::ActorDeathCause actor_death_cause;
+  actor_death_cause.mutable_actor_died_error_context()->set_actor_id(
+      task_info.actor_id.Binary());
+  actor_death_cause.mutable_actor_died_error_context()->set_preempted(
+      task_info.preempted);
+  rpc::RayErrorInfo error_info;
+  error_info.mutable_actor_died_error()->CopyFrom(actor_death_cause);
+  error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
+  error_info.set_error_message("Actor died.");
+
+  GetTaskFinisherWithoutMu().FailPendingTask(task_info.specification.TaskId(),
+                                             rpc::ErrorType::ACTOR_DIED,
+                                             &task_info.status,
+                                             &error_info);
+}
+
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
-  std::vector<std::pair<TaskSpecification, Status>> task_specs_and_status;
+  auto task_info_list = std::make_shared<std::vector<TaskInfo>>();
   {
     absl::MutexLock lock(&mu_);
     for (auto &queue_pair : client_queues_) {
@@ -352,18 +369,25 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
         auto &task_spec_status_pair = deque_itr->second;
-        task_specs_and_status.push_back(task_spec_status_pair);
+        task_info_list->push_back(TaskInfo{
+            task_spec_status_pair.first,
+            task_spec_status_pair.second,
+            queue_pair.first,
+            queue.preempted,
+        });
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
       }
     }
   }
 
+  if (task_info_list->empty()) {
+    return;
+  }
+
   // Do not hold mu_, because FailPendingTask may call python from cpp,
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
-  for (auto &task_spec_status_pair : task_specs_and_status) {
-    GetTaskFinisherWithoutMu().FailPendingTask(task_spec_status_pair.first.TaskId(),
-                                               rpc::ErrorType::ACTOR_DIED,
-                                               &task_spec_status_pair.second);
+  for (auto &task_info : *task_info_list) {
+    FailTaskWithError(task_info);
   }
 }
 
@@ -586,7 +610,12 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
             << task_spec.TaskId()
             << ", wait_queue_size=" << queue.wait_for_death_info_tasks.size();
       } else {
-        // If we don't need death info, just fail the request.
+        // TODO(vitsai): if we don't need death info, just fail the request.
+        {
+          absl::MutexLock lock(&mu_);
+          auto queue_pair = client_queues_.find(actor_id);
+          RAY_CHECK(queue_pair != client_queues_.end());
+        }
         GetTaskFinisherWithoutMu().FailPendingTask(
             task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, &status);
       }
