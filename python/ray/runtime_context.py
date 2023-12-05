@@ -437,7 +437,7 @@ class RuntimeContext(object):
         ) in ray._private.accelerators.get_all_accelerator_resource_names():
             accelerator_ids = worker.get_accelerator_ids_for_accelerator_resource(
                 accelerator_resource_name,
-                f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
+                f"^{accelerator_resource_name}_(group|vc)_[0-9A-Za-z]+$",
             )
             ids_dict[accelerator_resource_name] = accelerator_ids
         return ids_dict
