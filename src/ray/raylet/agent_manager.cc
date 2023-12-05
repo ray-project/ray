@@ -62,9 +62,12 @@ void AgentManager::StartAgent() {
   monitor_thread_ = std::make_unique<std::thread>([this]() mutable {
     SetThreadName("agent.monitor." + options_.agent_name);
     RAY_LOG(INFO) << "Monitor agent process with name " << options_.agent_name;
-    int exit_code = process_.Wait();
-    RAY_LOG(INFO) << "Agent process with name " << options_.agent_name
-                  << " exited, exit code " << exit_code << ".";
+    while(true){
+      sleep(1);
+    }
+    //int exit_code = process_.Wait();
+    // RAY_LOG(INFO) << "Agent process with name " << options_.agent_name
+    //               << " exited, exit code " << exit_code << ".";
 
     if (fate_shares_.load()) {
       RAY_LOG(ERROR)
