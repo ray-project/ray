@@ -56,6 +56,7 @@ class DataConfig:
         If CPU or GPU resource limits are not set, they will be set to the
         total cluster resources minus the resources used by training.
         """
+        # TODO: We may also include other resources besides CPU and GPU.
         self._num_train_cpus = num_train_cpus
         self._num_train_gpus = num_train_gpus
 
