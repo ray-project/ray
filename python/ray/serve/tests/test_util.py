@@ -12,6 +12,7 @@ import ray
 from ray import serve
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.test_utils import wait_for_condition
+from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import (
     MetricsPusher,
     calculate_remaining_timeout,
@@ -30,7 +31,6 @@ from ray.serve.tests.common.remote_uris import (
     TEST_DAG_PINNED_URI,
     TEST_DEPLOY_GROUP_PINNED_URI,
 )
-from ray.serve.tests.common.utils import MockTimer
 
 
 def test_serialize():

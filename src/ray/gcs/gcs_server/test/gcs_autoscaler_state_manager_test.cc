@@ -20,9 +20,12 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "mock/ray/gcs/store_client/store_client.h"
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 // clang-format on
@@ -48,8 +51,12 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<MockGcsActorManager> gcs_actor_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
+  std::unique_ptr<GcsFunctionManager> function_manager_;
+  std::unique_ptr<RuntimeEnvManager> runtime_env_manager_;
+  std::unique_ptr<GcsInternalKVManager> kv_manager_;
 
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
@@ -57,6 +64,13 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
+    kv_manager_ = std::make_unique<GcsInternalKVManager>(
+        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()));
+    function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+    runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
+        [](const std::string &, std::function<void(bool)>) {});
+    gcs_actor_manager_ =
+        std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
     gcs_resource_manager_ =
         std::make_shared<GcsResourceManager>(io_service_,
                                              *cluster_resource_manager_,
@@ -65,8 +79,12 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
     gcs_placement_group_manager_ =
         std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
-    gcs_autoscaler_state_manager_.reset(new GcsAutoscalerStateManager(
-        "fake_cluster", *gcs_node_manager_, *gcs_placement_group_manager_, client_pool_));
+    gcs_autoscaler_state_manager_.reset(
+        new GcsAutoscalerStateManager("fake_cluster",
+                                      *gcs_node_manager_,
+                                      *gcs_actor_manager_,
+                                      *gcs_placement_group_manager_,
+                                      client_pool_));
   }
 
  public:
