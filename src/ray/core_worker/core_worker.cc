@@ -730,6 +730,8 @@ void CoreWorker::Disconnect(
           exit_type, exit_detail, creation_task_exception_pb_bytes));
     }
   }
+  RAY_LOG(INFO) << "Disconnecting to the remote worker.";
+  core_worker_client_pool_->DisconnectAll(worker_context_.GetWorkerID());
 }
 
 void CoreWorker::KillChildProcs() {
@@ -3159,6 +3161,8 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                            send_reply_callback)) {
     return;
   }
+  auto conn = core_worker_client_pool_->GetOrConnect(request.task_spec().caller_address());
+
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
     auto job_id = JobID::FromBinary(request.task_spec().job_id());
@@ -4015,7 +4019,15 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
   bool force_exit = request.force_exit();
-  RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
+  auto worker_id = WorkerID::FromBinary(request.worker_id());
+  bool only_disconnect = request.disconnect();
+
+  core_worker_client_pool_->Disconnect(worker_id);
+  if (only_disconnect) {
+    RAY_LOG(DEBUG) << "Disconnect: worker_id" << worker_id;
+    return;
+  }
+  RAY_LOG(DEBUG) << "Exiting: worker_id" << worker_id << " is_idle: " << is_idle << " force_exit: " << force_exit;
   if (!is_idle && force_exit) {
     RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other "
                      "workers that depends on the object to lose it. "

@@ -1112,6 +1112,7 @@ void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
                   << idle_worker->WorkerId();
     request.set_force_exit(true);
   }
+  request.set_worker_id(idle_worker->WorkerId().Binary());
   rpc_client->Exit(
       request,
       [this, idle_worker, last_time_used_ms](const ray::Status &status,

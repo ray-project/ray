@@ -53,6 +53,8 @@ class CoreWorkerClientPool {
   /// be open until it's no longer used, at which time it will disconnect.
   void Disconnect(ray::WorkerID id);
 
+  void DisconnectAll(ray::WorkerID id);
+
  private:
   /// Provides the default client factory function. Providing this function to the
   /// construtor aids migration but is ultimately a thing that should be
