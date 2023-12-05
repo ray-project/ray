@@ -3,6 +3,18 @@
 Ray Workflows: Durable Ray Task Graphs
 ======================================
 
+.. toctree::
+    :hidden:
+
+    key-concepts
+    basics
+    management
+    metadata
+    events
+    comparison
+    advanced
+    api/api
+
 .. warning::
 
   Ray Workflows is available as **alpha** in Ray 2.0+. Expect rough corners and

@@ -156,6 +156,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   /// Drain the given node.
   /// Idempotent.
+  /// This is technically not draining a node. It should be just called "kill node".
   virtual void DrainNode(const NodeID &node_id);
 
  private:

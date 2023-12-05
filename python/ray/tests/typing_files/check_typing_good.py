@@ -84,9 +84,9 @@ for more details.
 #     yield 1
 
 
-# gen: StreamingObjectRefGeneratorType[int] = generator_1.remote()
-# gen2: StreamingObjectRefGeneratorType[int] = generator_2.remote()
-# gen3: StreamingObjectRefGeneratorType[int] = generator_3.remote()
+# gen: ObjectRefGenerator[int] = generator_1.remote()
+# gen2: ObjectRefGenerator[int] = generator_2.remote()
+# gen3: ObjectRefGenerator[int] = generator_3.remote()
 
 
 # next_item: ObjectRef[int] = gen.__next__()
@@ -107,6 +107,6 @@ for more details.
 #     yield 1
 
 
-# gen4: StreamingObjectRefGeneratorType[int] = async_generator_1.remote()
-# gen5: StreamingObjectRefGeneratorType[int] = async_generator_2.remote()
-# gen6: StreamingObjectRefGeneratorType[int] = async_generator_3.remote()
+# gen4: ObjectRefGenerator[int] = async_generator_1.remote()
+# gen5: ObjectRefGenerator[int] = async_generator_2.remote()
+# gen6: ObjectRefGenerator[int] = async_generator_3.remote()

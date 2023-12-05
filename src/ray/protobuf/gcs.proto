@@ -325,6 +325,7 @@ message NodeDeathInfo {
     EXPECTED_TERMINATION = 1;
     UNEXPECTED_TERMINATION = 2;
     AUTOSCALER_DRAIN = 3;
+    AUTOSCALER_DRAIN_IDLE = 4;
   }
   Reason reason = 1;
 
@@ -486,6 +487,8 @@ message WorkerTableData {
   uint64 worker_launched_time_ms = 26;
   // The debugger port on the worker process.
   optional uint32 debugger_port = 27;
+  // The number of paused threads in this worker process
+  optional uint32 num_paused_threads = 28;
 }
 
 // Fields to publish when worker fails.

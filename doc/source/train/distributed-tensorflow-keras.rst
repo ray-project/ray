@@ -1,7 +1,7 @@
 .. _train-tensorflow-overview:
 
-Get Started with TensorFlow and Keras
-=====================================
+Get Started with Distributed Training using TensorFlow/Keras
+============================================================
 
 Ray Train's `TensorFlow <https://www.tensorflow.org/>`__ integration enables you
 to scale your TensorFlow and Keras training functions to many machines and GPUs.

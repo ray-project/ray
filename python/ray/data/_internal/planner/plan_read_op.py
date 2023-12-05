@@ -14,7 +14,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformFn,
 )
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.util import _autodetect_parallelism, _warn_on_high_parallelism
+from ray.data._internal.util import _warn_on_high_parallelism
 from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
@@ -25,7 +25,7 @@ TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 # Defensively compute the size of the block as the max size reported by the
 # datasource and the actual read task size. This is to guard against issues
 # with bad metadata reporting.
-def cleaned_metadata(read_task):
+def cleaned_metadata(read_task: ReadTask):
     block_meta = read_task.get_metadata()
     task_size = len(cloudpickle.dumps(read_task))
     if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
@@ -48,14 +48,10 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     """
 
     def get_input_data(target_max_block_size) -> List[RefBundle]:
-        parallelism, _, min_safe_parallelism, _ = _autodetect_parallelism(
-            op._parallelism,
-            target_max_block_size,
-            DataContext.get_current(),
-            op._datasource_or_legacy_reader,
-            op._mem_size,
-        )
-
+        parallelism = op.get_detected_parallelism()
+        assert (
+            parallelism is not None
+        ), "Read parallelism must be set by the optimizer before execution"
         read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 

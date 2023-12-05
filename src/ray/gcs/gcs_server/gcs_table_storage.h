@@ -279,7 +279,6 @@ class GcsTableStorage {
   }
 
   virtual GcsNodeTable &NodeTable() {
-    RAY_LOG(INFO) << "vct we got here!!!";
     RAY_CHECK(node_table_ != nullptr);
     return *node_table_;
   }
