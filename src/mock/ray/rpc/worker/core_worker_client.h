@@ -15,16 +15,6 @@
 namespace ray {
 namespace rpc {
 
-class MockWorkerAddress : public WorkerAddress {
- public:
-};
-
-}  // namespace rpc
-}  // namespace ray
-
-namespace ray {
-namespace rpc {
-
 class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientInterface,
                                       public CoreWorkerClientInterface {
  public:
