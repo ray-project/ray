@@ -1844,7 +1844,7 @@ querystring-parser==1.2.4
     #   raydp
     #   tune-sklearn
     #   xgboost-ray
-raydp==1.7.0b2022.9.0
+raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 recsim==0.2.4 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
