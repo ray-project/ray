@@ -189,7 +189,6 @@ class BufferWithInfiniteLookback:
         self.data = data if data is not None else []
         self.lookback = lookback
         self.finalized = not isinstance(self.data, list)
-        self._final_len = None
         self.space = space
         self.space_struct = get_base_struct_from_space(self.space)
 
@@ -212,12 +211,17 @@ class BufferWithInfiniteLookback:
             for item in items:
                 self.append(item)
 
-    def pop(self, index: int = -1):
-        """Removes the item at `index` from this buffer."""
+    def pop(self, index: int = -1) -> None:
+        """Removes the item at `index` from this buffer, but does NOT return it.
+
+        Args:
+            index: The index to pop out of this buffer (w/o returning it from this
+                method).
+        """
         if self.finalized:
-            self.data = tree.map_structure(lambda s: s.pop(index), self.data)
+            self.data = tree.map_structure(lambda s: np.delete(s, index, axis=0), self.data)
         else:
-            return self.data.pop(index)
+            self.data.pop(index)
 
     def finalize(self):
         """Finalizes this buffer by converting internal data lists into numpy arrays.
@@ -225,7 +229,6 @@ class BufferWithInfiniteLookback:
         Thereby, if the individual items in the list are complex (nested 2)
         """
         if not self.finalized:
-            self._final_len = len(self.data) - self.lookback
             self.data = batch(self.data)
             self.finalized = True
 
@@ -371,10 +374,10 @@ class BufferWithInfiniteLookback:
 
     def __len__(self):
         """Return the length of our data, excluding the lookback buffer."""
-        if self._final_len is not None:
-            assert self.finalized
-            return self._final_len
-        return len(self.data) - self.lookback
+        if self.finalized:
+            return len(tree.flatten(self.data)[0]) - self.lookback
+        else:
+            return len(self.data) - self.lookback
 
     def _get_all_data(self, one_hot_discrete=False):
         data = self[:]
@@ -392,18 +395,20 @@ class BufferWithInfiniteLookback:
         neg_indices_left_of_zero=False,
         one_hot_discrete=False,
     ):
-        slice_, fill_left_count, fill_right_count = (
+        slice_, slice_len, fill_left_count, fill_right_count = (
             self._interpret_slice(slice_, neg_indices_left_of_zero)
         )
 
         # Perform the actual slice.
-        if self.finalized:
-            data_slice = tree.map_structure(lambda s: s[slice_], self.data)
-        else:
-            data_slice = self.data[slice_]
+        data_slice = None
+        if slice_len > 0:
+            if self.finalized:
+                data_slice = tree.map_structure(lambda s: s[slice_], self.data)
+            else:
+                data_slice = self.data[slice_]
 
-        if one_hot_discrete and data_slice:
-            data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
+            if one_hot_discrete:
+                data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
 
         # Data is shorter than the range requested -> Fill the rest with `fill` data.
         if fill is not None and (fill_right_count > 0 or fill_left_count > 0):
@@ -415,9 +420,12 @@ class BufferWithInfiniteLookback:
                         batch_size=fill_left_count,
                         one_hot_discrete=one_hot_discrete,
                     )
-                    data_slice = tree.map_structure(
-                        lambda s0, s: np.concatenate([s0, s]), fill_batch, data_slice
-                    )
+                    if data_slice is not None:
+                        data_slice = tree.map_structure(
+                            lambda s0, s: np.concatenate([s0, s]), fill_batch, data_slice
+                        )
+                    else:
+                        data_slice = fill_batch
                 if fill_right_count:
                     fill_batch = get_dummy_batch_for_space(
                         self.space,
@@ -425,9 +433,12 @@ class BufferWithInfiniteLookback:
                         batch_size=fill_right_count,
                         one_hot_discrete=one_hot_discrete,
                     )
-                    data_slice = tree.map_structure(
-                        lambda s0, s: np.concatenate([s, s0]), fill_batch, data_slice
-                    )
+                    if data_slice is not None:
+                        data_slice = tree.map_structure(
+                            lambda s0, s: np.concatenate([s, s0]), fill_batch, data_slice
+                        )
+                    else:
+                        data_slice = fill_batch
 
             else:
                 fill_batch = [
@@ -440,7 +451,7 @@ class BufferWithInfiniteLookback:
                 ]
                 data_slice = (
                     fill_batch * fill_left_count
-                    + data_slice
+                    + (data_slice if data_slice is not None else [])
                     + fill_batch * fill_right_count
                 )
 
@@ -452,7 +463,7 @@ class BufferWithInfiniteLookback:
         slice_,
         neg_indices_left_of_zero=False,
     ):
-        slice_, _, _ = (
+        slice_, _, _, _ = (
             self._interpret_slice(slice_, neg_indices_left_of_zero)
         )
 
@@ -619,7 +630,14 @@ class BufferWithInfiniteLookback:
             start,
             stop,
         )
-        return slice(start, stop, slice_.step), fill_left_count, fill_right_count
+
+        step = slice_.step if slice_.step is not None else 1
+        slice_ = slice(start, stop, step)
+        slice_len = max(
+            0,
+            (stop - start + (step - (1 if step > 0 else -1))) // step
+        )
+        return slice_, slice_len, fill_left_count, fill_right_count
 
     def _one_hot(self, data, space_struct):
         if space_struct is None:

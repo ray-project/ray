@@ -143,7 +143,7 @@ class PPOLearner(Learner):
         )
         # Perform the value model's forward pass.
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
-        # Compute advantages.
+        # Compute advantages and value targets.
         advantages, value_targets = compute_advantages_and_value_targets(
             values=vf_preds,
             rewards=batch_for_vf[SampleBatch.REWARDS],
@@ -152,8 +152,6 @@ class PPOLearner(Learner):
             gamma=self.hps.gamma,
             lambda_=self.hps.lambda_,
         )
-        # Compute value targets as sum of advantages + vf predictions.
-        #value_targets = advantages + vf_preds
 
         # Remove the extra timesteps again from vf_preds and advantages and
         # un-zero-pad, if applicable.
@@ -262,7 +260,7 @@ class PPOLearner(Learner):
                 #episode.actions,
             #)
             episode.rewards.append(0.0)# = np.append(episode.rewards, 0.0)
-            for v in episode.extra_model_outputs.values():
+            for v in list(episode.extra_model_outputs.values()):
                 v.append(v[-1])
             #episode.extra_model_outputs = tree.map_structure(
             #    lambda s: np.concatenate([s, [s[-1]]], axis=0),
@@ -272,6 +270,8 @@ class PPOLearner(Learner):
             # GAE computations.
             if not episode.is_done:
                 episode.is_truncated = True
+            # Validate to make sure, everything is in order.
+            episode.validate()
 
         return orig_truncateds
 

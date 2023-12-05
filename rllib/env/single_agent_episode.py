@@ -625,8 +625,10 @@ class SingleAgentEpisode:
             # Same ID.
             id_=self.id_,
             observations=self.get_observations(indices=indices_obs_and_infos),
+            observation_space=self.observation_space,
             infos=self.get_infos(indices=indices_obs_and_infos),
             actions=self.get_actions(indices=indices_rest),
+            action_space=self.action_space,
             rewards=self.get_rewards(indices=indices_rest),
             extra_model_outputs={
                 k: self.get_extra_model_outputs(k, indices_rest)
