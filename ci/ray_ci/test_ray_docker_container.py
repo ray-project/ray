@@ -33,8 +33,7 @@ class TestRayDockerContainer(RayCITestBase):
                 f"{_DOCKER_ECR_REPO}:123-ray-py3.8-cu11.8.0-base "
                 "requirements_compiled.txt "
                 "rayproject/ray:123456-py38-cu118 "
-                "ray:123456-py38-cu118_pip-freeze.txt "
-                "docker/ray/Dockerfile"
+                "ray:123456-py38-cu118_pip-freeze.txt"
             )
 
             container = RayDockerContainer("3.9", "cpu", "ray-ml")
@@ -46,8 +45,7 @@ class TestRayDockerContainer(RayCITestBase):
                 f"{_DOCKER_ECR_REPO}:123-ray-ml-py3.9-cpu-base "
                 "requirements_compiled.txt "
                 "rayproject/ray-ml:123456-py39-cpu "
-                "ray-ml:123456-py39-cpu_pip-freeze.txt "
-                "docker/ray/Dockerfile"
+                "ray-ml:123456-py39-cpu_pip-freeze.txt"
             )
 
     def test_canonical_tag(self) -> None:

@@ -3,7 +3,6 @@ import pytest
 from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
 import subprocess
-import re
 from typing import List
 
 # If you need to debug tests using fixtures in this file,
@@ -146,13 +145,17 @@ def docker_cluster(head_node, worker_node):
     yield (head_node, worker_node)
 
 
-def run_in_container(cmd: List[str], container_id: str):
-    docker_cmd = ["docker", "exec", container_id] + cmd
-    print(f"Executing command: {docker_cmd}", time.time())
-    resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT, timeout=1000)
-    output = resp.decode("utf-8").strip()
-    print(f"Output: {output}")
-    return output
+def run_in_container(cmds: List[List[str]], container_id: str):
+    outputs = []
+    for cmd in cmds:
+        docker_cmd = ["docker", "exec", container_id] + cmd
+        print(f"Executing command: {docker_cmd}", time.time())
+        resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
+        output = resp.decode("utf-8").strip()
+        print(f"Output: {output}")
+        outputs.append(output)
+
+    return outputs
 
 
 IMAGE_NAME = "rayproject/ray:runtime_env_container"
@@ -181,39 +184,35 @@ def podman_docker_cluster():
     # Get group id that owns the docker socket file. Add user `ray` to
     # group to get necessary permissions for pulling an image from
     # docker's local storage into podman
-    ls_output = run_in_container(["ls", "-l", "/var/run/docker.sock"], container_id)
-    regex = ".{10} +\d+ +root +(\d+) \d+ [A-Za-z]+ +\d+ +.+ +\/var\/run\/docker\.sock"
-    docker_group_id = re.search(regex, ls_output).group(1)
-    run_in_container(["id"], container_id)  # For debugging
+    docker_group_id = run_in_container(
+        [["statc", "-c", "%g", "/var/run/docker.sock"]], container_id
+    )[0]
     run_in_container(
-        ["sudo", "groupadd", "-g", docker_group_id, "docker"], container_id
+        [
+            ["id"],
+            ["sudo", "groupadd", "-g", docker_group_id, "docker"],
+            ["sudo", "usermod", "-aG", "docker", "ray"],
+            ["podman", "pull", f"docker-daemon:{IMAGE_NAME}"],
+        ],
+        container_id,
     )
-    run_in_container(["sudo", "usermod", "-aG", "daemon", "ray"], container_id)
-    run_in_container(["sudo", "usermod", "-aG", "docker", "ray"], container_id)
-
-    # Pull image from docker's local storage into podman
-    run_in_container(["podman", "pull", f"docker-daemon:{IMAGE_NAME}"], container_id)
 
     # Add custom file to new image tagged `runtime_env_container_nested`,
     # which can be read by Ray actors / Serve deployments to verify the
     # container runtime env plugin
     run_in_container(
-        ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"], container_id
-    )
-    run_in_container(
-        ["podman", "create", "--name", "tmp_container", IMAGE_NAME], container_id
-    )
-    run_in_container(
-        ["podman", "cp", "/tmp/file.txt", "tmp_container:/home/ray/file.txt"],
+        [
+            ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"],
+            ["podman", "create", "--name", "tmp_container", IMAGE_NAME],
+            ["podman", "cp", "/tmp/file.txt", "tmp_container:/home/ray/file.txt"],
+            ["podman", "commit", "tmp_container", NESTED_IMAGE_NAME],
+        ],
         container_id,
-    )
-    run_in_container(
-        ["podman", "commit", "tmp_container", NESTED_IMAGE_NAME], container_id
     )
 
     # For debugging
-    run_in_container(["podman", "image", "ls"], container_id)
+    run_in_container([["podman", "image", "ls"]], container_id)
 
     yield container_id
 
-    subprocess.check_output(["docker", "kill", container_id])
+    subprocess.check_call(["docker", "kill", container_id])

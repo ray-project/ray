@@ -15,7 +15,6 @@ PLATFORM = [
 ]
 GPU_PLATFORM = "cu11.8.0"
 DEFAULT_PYTHON_VERSION = "3.8"
-DEFAULT_DOCKERFILE = "docker/ray/Dockerfile"
 
 
 class DockerContainer(Container):
@@ -31,7 +30,6 @@ class DockerContainer(Container):
         architecture: str = DEFAULT_ARCHITECTURE,
         canonical_tag: str = None,
         upload: bool = False,
-        dockerfile: str = DEFAULT_DOCKERFILE,
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
@@ -41,7 +39,6 @@ class DockerContainer(Container):
         self.architecture = architecture
         self.canonical_tag = canonical_tag
         self.upload = upload
-        self.dockerfile = dockerfile
 
         super().__init__(
             "forge" if architecture == "x86_64" else "forge-aarch64",
