@@ -16,6 +16,20 @@ type TaskProfilingStackTraceProps = {
   nodeId: string;
 };
 
+type MemoryProfilingProps = PropsWithChildren<
+  {
+    pid: string | number | null | undefined;
+    ip: string | null | undefined;
+    type: string | null;
+  } & ClassNameProps
+>;
+
+type TaskMemoryProfilingProps = {
+  taskId: string | null | undefined;
+  attemptNumber: number;
+  nodeId: string;
+};
+
 export const TaskCpuProfilingLink = ({
   taskId,
   attemptNumber,
@@ -97,42 +111,42 @@ export const CpuStackTraceLink = ({
   );
 };
 
-export const RunMemoryProfilingLink = ({
-  pid,
-  ip,
-  type = "",
-}: CpuProfilingLinkProps) => {
-  if (!pid || !ip || typeof pid === "undefined" || typeof ip === "undefined") {
-    return <div></div>;
+export const TaskMemoryProfilingLink = ({
+  taskId,
+  attemptNumber,
+  nodeId,
+}: TaskMemoryProfilingProps) => {
+  if (!taskId) {
+    return null;
   }
   return (
     <Link
-      href={`worker/traceback?pid=${pid}&ip=${ip}&native=0`}
+      href={`task/memory_profile?task_id=${taskId}&duration=30attempt_number=${attemptNumber}&node_id=${nodeId}`}
       target="_blank"
-      title="Sample the current Python stack trace for this worker."
+      title="Profile the Python worker memory allocation."
       rel="noreferrer"
     >
-      Stack&nbsp;Trace{type ? ` (${type})` : ""}
+      Profile&nbsp;Memory
     </Link>
   );
 };
 
-export const GetMemoryProfilingLink = ({
+export const MemoryProfilingLink = ({
   pid,
   ip,
   type = "",
-}: CpuProfilingLinkProps) => {
-  if (!pid || !ip || typeof pid === "undefined" || typeof ip === "undefined") {
+}: MemoryProfilingProps) => {
+  if (!pid || !ip) {
     return <div></div>;
   }
   return (
     <Link
-      href={`worker/traceback?pid=${pid}&ip=${ip}&native=0`}
+      href={`worker/memory_profile?pid=${pid}&ip=${ip}&duration=30&native=0&leaks=0`}
       target="_blank"
-      title="Sample the current Python stack trace for this worker."
+      title="Profile the Python worker memory allocation."
       rel="noreferrer"
     >
-      Stack&nbsp;Trace{type ? ` (${type})` : ""}
+      Profile&nbsp;Memory{type ? ` (${type})` : ""}
     </Link>
   );
 };

@@ -7,6 +7,7 @@ import socket
 import sys
 import traceback
 import warnings
+import time
 
 import psutil
 
@@ -372,24 +373,19 @@ class ReporterAgent(
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
 
-    async def GetMemoryProfile(self, request, context):
+    async def MemoryProfiling(self, request, context):
         pid = request.pid
         format = request.format
         leaks = request.leaks
-        p = MemoryProfilingManager(self._log_dir)
-        success, output = await p.get_profile_result(
-            pid,
-            format=format,
-            leaks=leaks
-        )
-        return reporter_pb2.GetMemoryProfileReply(output=output, success=success)
-
-    async def RunMemoryProfile(self, request, context):
-        pid = request.pid
         duration = request.duration
         native = request.native
         p = MemoryProfilingManager(self._log_dir)
-        success, output = await p.memory_profile(pid, duration=duration, native=native)
+        success, output = await p.attach_profiler(pid, duration=duration, native=native)
+        if not success:
+            return reporter_pb2.MemoryProfilingReply(output=output, success=success)
+        time.sleep(duration + 1)  # add 1 second overhead
+        success, output = await p.detach_profiler(pid)
+        success, output = await p.get_profile_result(pid, format=format, leaks=leaks)
         return reporter_pb2.MemoryProfilingReply(output=output, success=success)
 
     async def ReportOCMetrics(self, request, context):

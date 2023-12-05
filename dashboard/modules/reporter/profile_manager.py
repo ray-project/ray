@@ -156,29 +156,17 @@ class MemoryProfilingManager:
         self.profile_dir_path.mkdir(exist_ok=True)
         self.profiler = "memray"
 
-    async def get_profile_result(self, pid: int, format="flamegraph", leaks=False) -> (bool, str):
+    async def get_profile_result(
+        self, pid: int, format="flamegraph", leaks=False
+    ) -> (bool, str):
         memray = shutil.which(self.profiler)
         if memray is None:
             return False, "memray is not installed"
 
-        cmd = [memray, "detach", str(pid)]
         profile_file_path = self.profile_dir_path / f"{pid}_memory_profiling.bin"
+        if not Path(profile_file_path).is_file():
+            return False, f"process {pid} has not been profiled"
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        stdout, stderr = await process.communicate()
-        if process.returncode != 0:
-            if Path(profile_file_path).is_file():
-                # try to detach from finished process or finished attach with duration
-                # return last recorded profile
-                pass
-            else:
-                return False, _format_failed_profiler_command(
-                    cmd, self.profiler, stdout, stderr
-                )
         profile_visualize_path = self.profile_dir_path / f"{pid}_memory_profiling.html"
         if format == "flamegraph":
             visualize_cmd = [
@@ -187,7 +175,6 @@ class MemoryProfilingManager:
                 "-o",
                 profile_visualize_path,
                 "-f",
-                profile_file_path,
             ]
         elif format == "table":
             visualize_cmd = [
@@ -196,14 +183,13 @@ class MemoryProfilingManager:
                 "-o",
                 profile_visualize_path,
                 "-f",
-                profile_file_path,
-        
             ]
         else:
             return False, f"Report with format: {format} is not supported"
 
         if leaks:
             visualize_cmd.append("--leaks")
+        visualize_cmd.append(profile_file_path)
 
         process = await asyncio.create_subprocess_exec(
             *visualize_cmd,
@@ -213,12 +199,12 @@ class MemoryProfilingManager:
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             return False, _format_failed_profiler_command(
-                cmd, self.profiler, stdout, stderr
+                visualize_cmd, self.profiler, stdout, stderr
             )
 
         return True, open(profile_visualize_path, "rb").read()
 
-    async def memory_profile(
+    async def attach_profiler(
         self, pid: int, duration: Optional[float] = None, native: bool = False
     ) -> (bool, str):
         memray = shutil.which(self.profiler)
@@ -226,13 +212,37 @@ class MemoryProfilingManager:
             return False, "memray is not installed"
 
         profile_file_path = self.profile_dir_path / f"{pid}_memory_profiling.bin"
-        cmd = [memray, "attach", "-o", profile_file_path, str(pid), "-f"]
-        if duration:
-            cmd += ["-d", str(duration)]
+        cmd = [memray, "attach", "-o", profile_file_path, "-f"]
+
         if native:
             cmd.append("--native")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
+        cmd.append(str(pid))
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            return False, _format_failed_profiler_command(
+                cmd, self.profiler, stdout, stderr
+            )
+        else:
+            return True, f"Success ataching memray to process {pid}"
+
+    async def detach_profiler(
+        self,
+        pid: int,
+    ) -> (bool, str):
+        memray = shutil.which(self.profiler)
+        if memray is None:
+            return False, "memray is not installed"
+
+        cmd = [memray, "detach", str(pid)]
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=subprocess.PIPE,
@@ -244,4 +254,4 @@ class MemoryProfilingManager:
                 cmd, self.profiler, stdout, stderr
             )
         else:
-            return True, "success"
+            return True, f"Success detaching memray from process {pid}"

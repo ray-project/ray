@@ -8,6 +8,7 @@ import { generateNodeLink } from "../../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
+  MemoryProfilingLink,
 } from "../../common/ProfilingLink";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
@@ -204,6 +205,12 @@ const ActorDetailPage = () => {
                 />
                 <br />
                 <CpuStackTraceLink
+                  pid={actorDetail.pid}
+                  ip={actorDetail.address?.ipAddress}
+                  type=""
+                />
+                <br />
+                <MemoryProfilingLink
                   pid={actorDetail.pid}
                   ip={actorDetail.address?.ipAddress}
                   type=""

@@ -411,6 +411,103 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             headers={"Content-Type": "text/html"},
         )
 
+    @routes.get("/task/memory_profile")
+    async def task_memory_profile(self, req) -> aiohttp.web.Response:
+        """
+        Retrieves the memory profile for a specific task.
+        Note that one worker process works on one task at a time
+        or one worker works on multiple async tasks.
+
+        Args:
+            req (aiohttp.web.Request): The HTTP request object.
+
+        Returns:
+            aiohttp.web.Response: The HTTP response containing the memory profile data.
+
+        Raises:
+            ValueError: If the "task_id" parameter is
+            missing in the request query.
+            ValueError: If the "attempt_number" parameter is
+            missing in the request query.
+            ValueError: If the maximum duration allowed is exceeded.
+            ValueError: If the worker begins working on
+            another task during the profile retrieval.
+            aiohttp.web.HTTPInternalServerError: If there is
+            an internal server error during the profile retrieval.
+        """
+        if "task_id" not in req.query:
+            raise ValueError("task_id is required")
+        if "attempt_number" not in req.query:
+            raise ValueError("task's attempt number is required")
+        if "node_id" not in req.query:
+            raise ValueError("node_id is required")
+
+        task_id = req.query.get("task_id")
+        attempt_number = req.query.get("attempt_number")
+        node_id = req.query.get("node_id")
+
+        duration = int(req.query.get("duration", 30))
+
+        # Default not using `--native`, `--leaks` and `--format` for profiling
+        format = req.query.get("format", "flamegraph")
+        native = req.query.get("native", False) == "1"
+        leaks = req.query.get("leaks", False) == "1"
+
+        ip = DataSource.node_id_to_ip[node_id]
+        reporter_stub = self._stubs[ip]
+
+        try:
+            (pid, _) = await self.get_worker_details_for_running_task(
+                task_id, attempt_number
+            )
+        except ValueError as e:
+            raise aiohttp.web.HTTPInternalServerError(text=str(e))
+
+        logger.info(
+            "Retrieving memory profiling request to {}:{} for {}".format(
+                ip, pid, task_id
+            )
+        )
+
+        reply = await reporter_stub.MemoryProfiling(
+            reporter_pb2.MemoryProfilingRequest(
+                pid=pid, format=format, leaks=leaks, duration=duration, native=native
+            )
+        )
+
+        """
+            In order to truly confirm whether there are any other tasks
+            running during the profiling, we need to retrieve all tasks
+            that are currently running or have finished, and then parse
+            the task events (i.e., their start and finish times) to check
+            for any potential overlap. However, this process can be quite
+            extensive, so here we will make our best efforts to check
+            for any overlapping tasks. Therefore, we will check if
+            the task is still running
+        """
+        try:
+            (_, worker_id) = await self.get_worker_details_for_running_task(
+                task_id, attempt_number
+            )
+        except ValueError as e:
+            raise aiohttp.web.HTTPInternalServerError(text=str(e))
+
+        if not reply.success:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+        logger.info("Returning profiling response, size {}".format(len(reply.output)))
+
+        task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(worker_id)
+        return aiohttp.web.Response(
+            body='<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
+                EMOJI_WARNING,
+                WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker),
+            )
+            + (reply.output)
+            if len(task_ids_in_a_worker) > 1
+            else reply.output,
+            headers={"Content-Type": "text/html"},
+        )
+
     @routes.get("/task/run_memory_profile")
     async def run_task_memory_profile(self, req) -> aiohttp.web.Response:
         """
@@ -475,9 +572,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 pid=pid, duration=duration, native=native
             )
         )
-        if not reply.success:
-            return aiohttp.web.HTTPInternalServerError(text=reply.output)
-        return aiohttp.web.Response(text=reply.output)
+
+        return dashboard_optional_utils.rest_response(
+            success=reply.success, message=reply.output
+        )
 
     @routes.get("/task/get_memory_profile")
     async def get_task_memory_profile(self, req) -> aiohttp.web.Response:
@@ -632,8 +730,34 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
-    @routes.get("/worker/run_memory_profile")
+    @routes.get("/worker/memory_profile")
     async def memory_profile(self, req) -> aiohttp.web.Response:
+        if "ip" in req.query:
+            reporter_stub = self._stubs[req.query["ip"]]
+        else:
+            reporter_stub = list(self._stubs.values())[0]
+        pid = int(req.query["pid"])
+        duration = int(req.query.get("duration", 30))
+
+        # Default not using `--native`, `--leaks` and `--format` for profiling
+        format = req.query.get("format", "flamegraph")
+        native = req.query.get("native", False) == "1"
+        leaks = req.query.get("leaks", False) == "1"
+
+        reply = await reporter_stub.MemoryProfiling(
+            reporter_pb2.MemoryProfilingRequest(
+                pid=pid, format=format, leaks=leaks, duration=duration, native=native
+            )
+        )
+        if not reply.success:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+        return aiohttp.web.Response(
+            body=reply.output,
+            headers={"Content-Type": "text/html"},
+        )
+
+    @routes.get("/worker/run_memory_profile")
+    async def run_memory_profile(self, req) -> aiohttp.web.Response:
         if "ip" in req.query:
             reporter_stub = self._stubs[req.query["ip"]]
         else:

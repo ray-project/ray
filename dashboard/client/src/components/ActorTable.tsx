@@ -20,7 +20,11 @@ import React, { useContext, useMemo, useState } from "react";
 import { GlobalContext } from "../App";
 import { DurationText } from "../common/DurationText";
 import { ActorLink } from "../common/links";
-import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+  MemoryProfilingLink,
+} from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { Actor, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
@@ -447,6 +451,12 @@ const ActorTable = ({
                         />
                         <br />
                         <CpuStackTraceLink
+                          pid={pid}
+                          ip={address?.ipAddress}
+                          type=""
+                        />
+                        <br />
+                        <MemoryProfilingLink
                           pid={pid}
                           ip={address?.ipAddress}
                           type=""
