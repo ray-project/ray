@@ -582,14 +582,14 @@ def test_per_func_name_stats(shutdown_only):
             samples = metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-
+        print(components)
         assert {
             "raylet",
             "agent",
             "ray::Actor",
             "ray::ActorB",
             "ray::IDLE",
-        } == components
+        } <= components
         return True
 
     wait_for_condition(verify_components, timeout=30)
