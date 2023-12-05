@@ -30,6 +30,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
 from ray.data._internal.logical.rules.set_read_parallelism import (
@@ -115,6 +116,7 @@ class ExecutionPlan:
         stats: DatasetStats,
         *,
         run_by_consumer: bool,
+        data_context: Optional[DataContext] = None,
     ):
         """Create a plan with no transformation stages.
 
@@ -143,9 +145,12 @@ class ExecutionPlan:
         self._run_by_consumer = run_by_consumer
         self._dataset_name = None
 
-        # Snapshot the current context, so that the config of Datasets is always
-        # determined by the config at the time it was created.
-        self._context = copy.deepcopy(DataContext.get_current())
+        if data_context is None:
+            # Snapshot the current context, so that the config of Datasets is always
+            # determined by the config at the time it was created.
+            self._context = copy.deepcopy(DataContext.get_current())
+        else:
+            self._context = data_context
 
     def __repr__(self) -> str:
         return (
@@ -330,7 +335,10 @@ class ExecutionPlan:
             A shallow copy of this execution plan.
         """
         plan_copy = ExecutionPlan(
-            self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
+            self._in_blocks,
+            self._in_stats,
+            run_by_consumer=self._run_by_consumer,
+            data_context=self._context,
         )
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
@@ -592,22 +600,31 @@ class ExecutionPlan:
                     execute_to_legacy_block_list,
                     get_legacy_lazy_block_list_read_only,
                 )
-                from ray.data._internal.execution.streaming_executor import (
-                    StreamingExecutor,
-                )
 
-                metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-                executor = StreamingExecutor(
-                    copy.deepcopy(context.execution_options),
-                    metrics_tag,
-                )
-                if self.is_read_only():
+                if self._is_input_data_only():
+                    # No need to execute MaterializedDatasets with only an InputData
+                    # operator, since the data is already materialized. This also avoids
+                    # recording unnecessary metrics for an empty plan execution.
+                    blocks = self._in_blocks
+                    stats = _get_initial_stats_from_plan(self)
+                elif self.is_read_only():
                     # If the Dataset is read-only, get the LazyBlockList without
                     # executing the plan by only fetching metadata available from
                     # the input Datasource or Reader without executing its ReadTasks.
                     blocks = get_legacy_lazy_block_list_read_only(self)
                     stats = _get_initial_stats_from_plan(self)
                 else:
+                    from ray.data._internal.execution.streaming_executor import (
+                        StreamingExecutor,
+                    )
+
+                    metrics_tag = create_dataset_tag(
+                        self._dataset_name, self._dataset_uuid
+                    )
+                    executor = StreamingExecutor(
+                        copy.deepcopy(context.execution_options),
+                        metrics_tag,
+                    )
                     blocks = execute_to_legacy_block_list(
                         executor,
                         self,
@@ -843,6 +860,12 @@ class ExecutionPlan:
         """Return whether the underlying logical plan contains only a Read op."""
         root_op = self._logical_plan.dag
         return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
+
+    def _is_input_data_only(self) -> bool:
+        """Return whether the underlying logical plan contains only an InputData op
+        (e.g. in the case of a :class:`~ray.data.MaterializedDataset`)."""
+        root_op = self._logical_plan.dag
+        return isinstance(root_op, InputData) and len(root_op.input_dependencies) == 0
 
     def is_read_stage_equivalent(self) -> bool:
         """Return whether this plan can be executed as only a read stage."""
