@@ -25,6 +25,35 @@ os.environ["RAY_USAGE_STATS_REPORT_URL"] = "http://127.0.0.1:8000/telemetry"
 os.environ["RAY_USAGE_STATS_REPORT_INTERVAL_S"] = "1"
 
 
+def check_app(app_name: str, expected: str):
+    app_handle = serve.get_app_handle(app_name)
+    ref = app_handle.remote()
+    assert ref.result() == expected
+    return True
+
+
+def check_telemetry_app():
+    report = ray.get(storage_handle.get_report.remote())
+    print(report["extra_usage_tags"])
+    assert (
+        ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.get_value_from_report(report)
+        == "1"
+    )
+    return True
+
+
+def check_telemetry_deployment():
+    report = ray.get(storage_handle.get_report.remote())
+    print(report["extra_usage_tags"])
+    assert (
+        ServeUsageTag.DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED.get_value_from_report(
+            report
+        )
+        == "1"
+    )
+    return True
+
+
 subprocess.check_output(["ray", "start", "--head"])
 wait_for_condition(check_ray_started, timeout=5)
 serve.start()
@@ -49,41 +78,41 @@ report = ray.get(storage_handle.get_report.remote())
 assert (
     ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.get_value_from_report(report) is None
 )
+assert (
+    ServeUsageTag.DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED.get_value_from_report(report)
+    is None
+)
 
-# Start test
+# Deploy with container runtime env set at application level
 config["applications"].append(
     {
-        "name": "default",
+        "name": "app1",
         "import_path": "serve_application:app",
         "runtime_env": {"container": {"image": args.image, "worker_path": worker_pth}},
     },
 )
 client.deploy_apps(ServeDeploySchema.parse_obj(config))
+wait_for_condition(check_app, app_name="app1", expected="helloworldalice", timeout=300)
+wait_for_condition(check_telemetry_app)
 
-
-# def check_application(expected: str):
-#     app_handle = serve.get_app_handle("default")
-#     ref = app_handle.remote()
-#     assert ref.result() == expected
-#     return True
-
-
-# wait_for_condition(
-#     check_application,
-#     expected="helloworldalice",
-#     timeout=300,
-# )
-
-
-def check_telemetry():
-    report = ray.get(storage_handle.get_report.remote())
-    print(report["extra_usage_tags"])
-    assert (
-        ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.get_value_from_report(report)
-        == "1"
-    )
-    return True
-
-
-wait_for_condition(check_telemetry)
-print("Telemetry check passed!")
+# Deploy with container runtime env set at application level
+config["applications"].append(
+    {
+        "name": "app2",
+        "import_path": "serve_application:app",
+        "deployments": [
+            {
+                "name": "Model",
+                "ray_actor_options": {
+                    "runtime_env": {
+                        "container": {"image": args.image, "worker_path": worker_pth}
+                    },
+                },
+            }
+        ],
+    }
+)
+client.deploy_apps(ServeDeploySchema.parse_obj(config))
+wait_for_condition(check_app, app_name="app2", expected="helloworldalice", timeout=300)
+wait_for_condition(check_telemetry_deployment)
+print("Telemetry checks passed!")
