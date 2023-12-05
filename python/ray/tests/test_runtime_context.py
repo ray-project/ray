@@ -252,7 +252,7 @@ def test_actor_stats_async_actor_generator(ray_start_regular):
             yield ray.get_runtime_context()._get_actor_call_stats()
 
     actor = AysncActor.options(max_concurrency=3).remote()
-    gens = [actor.func.options(num_returns="streaming").remote() for _ in range(6)]
+    gens = [actor.func.remote() for _ in range(6)]
     time.sleep(1)
     signal.send.remote()
     results = []

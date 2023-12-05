@@ -23,7 +23,6 @@ from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
-    CONTROL_PLANE_CONCURRENCY_GROUP,
     DeploymentID,
     ReplicaTag,
     ServeComponentType,
@@ -40,6 +39,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.deployment_info import CONTROL_PLANE_CONCURRENCY_GROUP
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIMessageQueue,

@@ -55,10 +55,8 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import (
-    StreamingObjectRefGenerator,
-    raise_sys_exit_with_custom_error_message,
-)
+from ray._raylet import raise_sys_exit_with_custom_error_message
+from ray._raylet import ObjectRefGenerator
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -2553,7 +2551,7 @@ def get(
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
 
-    Passing :class:`~StreamingObjectRefGenerator` is not allowed.
+    Passing :class:`~ObjectRefGenerator` is not allowed.
 
     Related patterns and anti-patterns:
 
@@ -2596,9 +2594,9 @@ def get(
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
-        # TODO(sang): Should make StreamingObjectRefGenerator
+        # TODO(sang): Should make ObjectRefGenerator
         # compatible to ray.get for dataset.
-        if isinstance(object_refs, StreamingObjectRefGenerator):
+        if isinstance(object_refs, ObjectRefGenerator):
             return object_refs
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
@@ -2708,14 +2706,14 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"],
+    ray_waitables: Union["ObjectRef[R]", "ObjectRefGenerator[R]"],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
 ) -> Tuple[
-    List[Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"]],
-    List[Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"]],
+    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
+    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
 ]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
@@ -2725,7 +2723,7 @@ def wait(
     and returns that exact number of object refs.
 
     `ray_waitables` is a list of :class:`~ObjectRef` and
-    :class:`~StreamingObjectRefGenerator`.
+    :class:`~ObjectRefGenerator`.
 
     The method returns two lists, ready and unready `ray_waitables`.
 
@@ -2734,7 +2732,7 @@ def wait(
         in the object store are in the first list.
         The rest of the object refs are in the second list.
 
-    StreamingObjectRefGenerator:
+    ObjectRefGenerator:
             Generators whose next reference (that will be obtained
             via `next(generator)`) has a corresponding object available
             in the object store are in the first list.
@@ -2756,7 +2754,7 @@ def wait(
 
     Args:
         ray_waitables: List of :class:`~ObjectRef` or
-            :class:`~StreamingObjectRefGenerator` for objects that may or may
+            :class:`~ObjectRefGenerator` for objects that may or may
             not be ready. Note that these must be unique.
         num_returns: The number of ray_waitables that should be returned.
         timeout: The maximum amount of time in seconds to wait before
@@ -2790,18 +2788,18 @@ def wait(
             blocking_wait_inside_async_warned = True
 
     if isinstance(ray_waitables, ObjectRef) or isinstance(
-        ray_waitables, StreamingObjectRefGenerator
+        ray_waitables, ObjectRefGenerator
     ):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef or ray.StreamingObjectRefGenerator"
-            ", got a single ray.ObjectRef or ray.StreamingObjectRefGenerator "
+            "wait() expected a list of ray.ObjectRef or ray.ObjectRefGenerator"
+            ", got a single ray.ObjectRef or ray.ObjectRefGenerator "
             f"{ray_waitables}"
         )
 
     if not isinstance(ray_waitables, list):
         raise TypeError(
             "wait() expected a list of ray.ObjectRef or "
-            "ray.StreamingObjectRefGenerator, "
+            "ray.ObjectRefGenerator, "
             f"got {type(ray_waitables)}"
         )
 
@@ -2812,11 +2810,11 @@ def wait(
 
     for ray_waitable in ray_waitables:
         if not isinstance(ray_waitable, ObjectRef) and not isinstance(
-            ray_waitable, StreamingObjectRefGenerator
+            ray_waitable, ObjectRefGenerator
         ):
             raise TypeError(
                 "wait() expected a list of ray.ObjectRef or "
-                "ray.StreamingObjectRefGenerator, "
+                "ray.ObjectRefGenerator, "
                 f"got list containing {type(ray_waitable)}"
             )
     worker.check_connected()
@@ -2920,7 +2918,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 @PublicAPI
 @client_mode_hook
 def cancel(
-    ray_waitable: Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"],
+    ray_waitable: Union["ObjectRef[R]", "ObjectRefGenerator[R]"],
     *,
     force: bool = False,
     recursive: bool = True,
@@ -2972,7 +2970,7 @@ def cancel(
 
     Args:
         ray_waitable: :class:`~ObjectRef` and
-            :class:`~StreamingObjectRefGenerator`
+            :class:`~ObjectRefGenerator`
             returned by the task that should be canceled.
         force: Whether to force-kill a running task by killing
             the worker that is running the task.
@@ -2982,7 +2980,7 @@ def cancel(
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    if isinstance(ray_waitable, ray._raylet.StreamingObjectRefGenerator):
+    if isinstance(ray_waitable, ray._raylet.ObjectRefGenerator):
         assert hasattr(ray_waitable, "_generator_ref")
         ray_waitable = ray_waitable._generator_ref
 
@@ -3325,7 +3323,7 @@ def remote(
             invocation. The default value is 1.
             Pass "dynamic" to allow the task to decide how many
             return values to return during execution, and the caller will
-            receive an ObjectRef[ObjectRefGenerator].
+            receive an ObjectRef[DynamicObjectRefGenerator].
             See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU resources to reserve
             for this task or for the lifetime of the actor.
