@@ -1,7 +1,11 @@
 import ray
+import os
 import requests
 import sys
 import pytest
+
+# For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
+TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 
 DATA_HEAD_URLS = {"GET": "http://localhost:8265/api/data/datasets"}
 
@@ -28,6 +32,9 @@ OPERATOR_SCHEMA = [
 ] + DATA_SCHEMA
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 def test_get_datasets():
     ray.init()
     ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
