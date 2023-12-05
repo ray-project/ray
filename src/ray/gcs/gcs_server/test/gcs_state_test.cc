@@ -132,7 +132,6 @@ MATCHER(IsPreemptedNode, "") {
          rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION;
 }
 
-/*
 TEST_F(GcsStateTest, TestDrainFailure) {
   // TODO create an actor on this node
   auto node = Mocker::GenNodeInfo();
@@ -177,7 +176,6 @@ TEST_F(GcsStateTest, TestDrainFailure) {
   gcs_autoscaler_state_manager_->HandleDrainNode(request, &reply, send_reply_callback);
   ASSERT_FALSE(reply.is_accepted());
 }
-*/
 
 TEST_F(GcsStateTest, TestDrainNode) {
   // TODO create an actor on this node
