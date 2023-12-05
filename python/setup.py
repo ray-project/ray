@@ -246,6 +246,7 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0",
+            "memray >= 1.10.0",
             "requests",
             "gpustat >= 1.0.0",  # for windows
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
