@@ -23,16 +23,11 @@ def test_put_get(podman_docker_cluster):
     """Test ray.put and ray.get."""
 
     container_id = podman_docker_cluster
-    put_get_script = """
+    put_get_script = f"""
 import ray
 import numpy as np
 
-@ray.remote(runtime_env={
-    "container": {
-        "image": "rayproject/ray:nightly-py38-cpu",
-        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py", # noqa
-    }
-})
+@ray.remote(runtime_env={CONTAINER_RUNTIME_ENV})
 def create_ref():
     with open("file.txt") as f:
         assert f.read().strip() == "helloworldalice"
@@ -48,21 +43,24 @@ ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_put_get_script(podman_docker_cluster):
+    """Test ray.put and ray.get."""
+
+    container_id = podman_docker_cluster
+    run_in_container([["python", "tests/test_put_get.py"]], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_shared_memory(podman_docker_cluster):
     """Test shared memory."""
 
     container_id = podman_docker_cluster
-    put_get_script = """
+    put_get_script = f"""
 import ray
 import numpy as np
 import sys
 
-@ray.remote(runtime_env={
-    "container": {
-        "image": "rayproject/ray:runtime_env_container_nested",
-        "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py", # noqa
-    }
-})
+@ray.remote(runtime_env={CONTAINER_RUNTIME_ENV})
 def f():
     array = np.random.rand(5000, 5000)
     return ray.put(array)
@@ -72,7 +70,7 @@ ref = ray.get(f.remote())
 val = ray.get(ref)
 size = sys.getsizeof(val)
 assert size < sys.getsizeof(np.random.rand(5000, 5000))
-print(f"Size of result fetched from ray.put: {size}")
+print(f"Size of result fetched from ray.put: {{size}}")
 assert val.shape == (5000, 5000)
 """.strip()
 
