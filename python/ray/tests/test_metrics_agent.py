@@ -17,7 +17,6 @@ from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
     SignalActor,
-    skip_flaky_core_test_premerge,
     fetch_prometheus,
     fetch_prometheus_metrics,
     get_log_batch,
@@ -540,7 +539,6 @@ def test_operation_stats(monkeypatch, shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41548")
 def test_per_func_name_stats(shutdown_only):
     # Test operation stats are available when flag is on.
     comp_metrics = [
@@ -572,6 +570,9 @@ def test_per_func_name_stats(shutdown_only):
     a = Actor.remote()  # noqa
     b = ActorB.remote()
 
+    ray.get(a.__ray_ready__.remote())
+    ray.get(b.__ray_ready__.remote())
+
     def verify_components():
         metrics = raw_metrics(addr)
         metric_names = set(metrics.keys())
@@ -581,6 +582,7 @@ def test_per_func_name_stats(shutdown_only):
             components = set()
             for sample in samples:
                 components.add(sample.labels["Component"])
+
         assert {
             "raylet",
             "agent",
