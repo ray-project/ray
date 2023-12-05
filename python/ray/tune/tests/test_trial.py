@@ -30,8 +30,11 @@ def test_handle_preemption_error(
         monkeypatch.setenv(RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE, "1")
 
     # Case 1: Directly raised (preemption) RayActorError
-    err = RayActorError()
-    err.preempted = True
+    class PreemptionRayActorError(RayActorError):
+        def preempted(self) -> bool:
+            return True
+
+    err = PreemptionRayActorError()
     trial.handle_error(err)
     assert trial.num_failures == (1 if count_preemption_errors else 0)
 
@@ -44,7 +47,6 @@ def test_handle_preemption_error(
 
     # Case 3: Non-preemption error
     non_preempted_err = RayActorError()
-    non_preempted_err.preempted = False
     trial.handle_error(non_preempted_err)
     assert trial.num_failures == (3 if count_preemption_errors else 1)
 
