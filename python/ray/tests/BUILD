@@ -462,14 +462,6 @@ py_test(
 )
 
 py_test(
-  name = "test_runtime_env_container",
-  size = "large",
-  srcs = ["test_runtime_env_container.py"],
-  tags = ["exclusive", "team:core", "container"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
     name = "test_actor_group",
     size = "medium",
     srcs = ["test_actor_group.py"],
@@ -483,6 +475,14 @@ py_test(
     srcs = ["test_runtime_env_agent.py"],
     tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
     deps = ["//:ray_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_runtime_env_container",
+    size = "large",
+    srcs = ["test_runtime_env_container.py"],
+    tags = ["exclusive", "team:core", "container"],
+    deps = ["//:ray_lib", ":conftest"],
 )
 
 # TODO(barakmich): aws/ might want its own buildfile, or
