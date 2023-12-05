@@ -61,6 +61,8 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 
 def find_version(*filepath):
+    if os.environ.get("LUBAN_SPECFIC_VERSION") is not None:
+        return os.environ.get("LUBAN_SPECFIC_VERSION")
     # Extract version information from filepath
     with open(os.path.join(ROOT_DIR, *filepath)) as fp:
         version_match = re.search(r"^version = ['\"]([^'\"]*)['\"]", fp.read(), re.M)
@@ -132,7 +134,7 @@ else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
         SetupType.RAY,
-        "ray",
+        "bytedray",
         "Ray provides a simple, "
         "universal API for building distributed applications.",
         BUILD_TYPE,
@@ -225,10 +227,10 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    pandas_dep = "pandas >= 1.3"
-    numpy_dep = "numpy >= 1.20"
+    pandas_dep = "pandas >= 1.3, < 3.0"
+    numpy_dep = "numpy >= 1.20, < 2.0"
     if sys.platform != "win32":
-        pyarrow_dep = "pyarrow >= 6.0.1"
+        pyarrow_dep = "pyarrow >= 6.0.1, < 20.0"
     else:
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
         pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
@@ -237,50 +239,51 @@ if setup_spec.type == SetupType.RAY:
             numpy_dep,
             pandas_dep,
             pyarrow_dep,
-            "fsspec",
+            "fsspec >= 2021.0, < 2025.0",
         ],
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to dashboard/optional_deps.py as well.
-            "aiohttp >= 3.7",
-            "aiohttp_cors",
-            "colorful",
-            "py-spy >= 0.2.0",
-            "requests",
-            "gpustat >= 1.0.0",  # for windows
-            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
-            "opencensus",
-            "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
-            "prometheus_client >= 0.7.1",
-            "smart_open",
+            "aiohttp >= 3.7, < 5.0",
+            "aiohttp_cors >= 0.5.0, < 1.0.0",
+            "colorful >= 0.5.0, < 0.7.0",
+            "py-spy >= 0.2.0, < 0.5.0",
+            "requests >= 2.25.0, < 3.0.0",
+            # "gpustat >= 1.0.0",  # move to bytedance
+            "grpcio >= 1.32.0, < 1.60.0, != 1.56.0; python_version < '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0, < 1.60.0, != 1.56.0; python_version >= '3.10'",  # noqa:E501
+            "opencensus >= 0.8.0, < 1.0.0",
+            "pydantic>= 1.7.0,!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
+            "prometheus_client >= 0.7.1, < 0.14.0",
+            "smart_open >= 4.0.0, < 7.0.0",
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
         ],
-        "client": [
-            # The Ray client needs a specific range of gRPC to work:
-            # Tracking issues: https://github.com/grpc/grpc/issues/33714
-            "grpcio != 1.56.0"
-            if sys.platform == "darwin"
-            else "grpcio",
-        ],
         "serve": [
-            "uvicorn[standard]",
-            "requests",
-            "starlette",
-            "fastapi",
-            "aiorwlock",
-            "watchfiles",
+            "uvicorn[standard] >= 0.16.0, < 0.22.0",
+            "requests >= 2.25.0, < 3.0.0",
+            "starlette >= 0.14.0, < 1.0.0",
+            "fastapi >= 0.40, < 0.99",
+            "aiorwlock >= 1.0.0, < 2.0.0",
+            "watchfiles >= 0.12, < 0.3",
         ],
-        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
+        "tune": [
+            pandas_dep,
+            pyarrow_dep,
+            "fsspec >= 2021.0, < 2025.0",
+            "tensorboardX >= 1.9, < 3.0",
+            "requests >= 2.25.0, < 3.0.0",
+        ],
         "observability": [
-            "opentelemetry-api",
-            "opentelemetry-sdk",
-            "opentelemetry-exporter-otlp",
+            "opentelemetry-api >= 1.1.0, < 1.2.0",
+            "opentelemetry-sdk >= 1.1.0, < 1.2.0",
+            "opentelemetry-exporter-otlp >= 1.1.0, < 1.2.0",
         ],
         "bytedance": [
-            "pycryptodome >= 3.5, < 4.0",
-            "bytedance.servicediscovery >= 0.1.0, < 2.0.0",
-            "bytedance.metrics >= 0.1.0, < 1.0.0",
+            "bytedance.servicediscovery >= 0.1.0, < 0.17.0; sys_platform != 'darwin'",  # noqa
+            "bytedance.metrics >= 0.4.0, < 0.5.0",
+            "gpustat >= 1.0.0, < 1.0.1",
+            "pycryptodome >= 3.18.0, < 3.18.1",
+            "crypto >= 1.4.1, < 1.4.2",
         ],
     }
 
@@ -304,14 +307,14 @@ if setup_spec.type == SetupType.RAY:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
-        "dm_tree",
-        "gymnasium==0.28.1",
-        "lz4",
-        "scikit-image",
-        "pyyaml",
-        "scipy",
-        "typer",
-        "rich",
+        "dm_tree>=0.1.0,<0.2.0",
+        "gymnasium>=0.26.3,<0.26.4",
+        "lz4>=4.0.0,<5.0.0",
+        "scikit-image>=0.19.0,<0.20.0",
+        "pyyaml>=4.0.0,<7.0.0",
+        "scipy>=1.5.0,<2.0.0",
+        "typer>=0.4.0,<0.9.0",
+        "rich>=10.0,<15.0",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"]
@@ -339,16 +342,16 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        "click >= 7.0",
-        "filelock",
-        "jsonschema",
+        "click >= 7.0, < 10.0",
+        "filelock >= 3.0, < 4.0",
+        "jsonschema >= 4.0, < 4.18",
         "msgpack >= 1.0.0, < 2.0.0",
-        "packaging",
+        "packaging >= 21.0, < 24.0",
         "protobuf >= 3.15.3, != 3.19.5",
-        "pyyaml",
-        "aiosignal",
-        "frozenlist",
-        "requests",
+        "pyyaml>=4.0.0,<7.0.0",
+        "aiosignal >= 1.0, < 2.0",
+        "frozenlist >= 1.1, < 1.4",
+        "requests >= 2.25.0, <3.0.0",
     ]
 
 

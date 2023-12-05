@@ -3,7 +3,7 @@ set -exuo pipefail
 
 PYTHON="$1"
 NUMPY_VERSION="$2"
-TRAVIS_COMMIT="${TRAVIS_COMMIT:-$BUILDKITE_COMMIT}"
+# TRAVIS_COMMIT="${TRAVIS_COMMIT:-$BUILDKITE_COMMIT}"
 
 mkdir -p .whl
 cd python
@@ -11,12 +11,12 @@ cd python
 # support.
 /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.32
 # Set the commit SHA in _version.py.
-if [[ -n "$TRAVIS_COMMIT" ]]; then
-  sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
-else
-  echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
-  exit 1
-fi
+# if [[ -n "$TRAVIS_COMMIT" ]]; then
+#   sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
+# else
+#   echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
+#   exit 1
+# fi
 
 # When building the wheel, we always set RAY_INSTALL_JAVA=0 because we
 # have already built the Java code above.
