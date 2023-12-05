@@ -20,14 +20,16 @@ package ray.rpc.autoscaler.im;
 // A status code to be used for operations in the Instance Manager
 // and other components.
 enum StatusCode {
+  // The unspecified status code. Should not be used.
+  UNSPECIFIED = 0;
   // Success operations.
-  OK = 0;
+  OK = 1;
   // Version mismatched.
-  VERSION_MISMATCH = 1;
+  VERSION_MISMATCH = 2;
   // Unknown errors, that's probably not recoverable.
-  UNKNOWN_ERRORS = 2;
-  // Unavailable resources or operations. Caller should probably retry.
-  UNAVAILABLE = 3;
+  UNKNOWN_ERRORS = 3;
+  // Unavailable resources or operations. Caller should retry.
+  UNAVAILABLE = 4;
 }
 
 message Status {
@@ -131,8 +133,8 @@ message LaunchRequest {
   int32 count = 2;
   // a unique request id.
   string id = 3;
-  // request time in seconds.
-  int64 request_ts = 4;
+  // request time in milliseconds.
+  int64 request_ts_ms = 4;
 }
 
 message UpdateInstanceManagerStateRequest {
