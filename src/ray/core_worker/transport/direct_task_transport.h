@@ -155,7 +155,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] worker_exiting Whether the worker is exiting.
   /// \param[in] assigned_resources Resource ids previously assigned to the worker.
   void OnWorkerIdle(
-      const rpc::WorkerAddress &addr,
+      const rpc::Address &addr,
       const SchedulingKey &task_queue_key,
       bool was_error,
       const std::string &error_detail,
@@ -194,7 +194,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Set up client state for newly granted worker lease.
   void AddWorkerLeaseClient(
-      const rpc::WorkerAddress &addr,
+      const rpc::Address &addr,
       std::shared_ptr<WorkerLeaseInterface> lease_client,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
       const SchedulingKey &scheduling_key,
@@ -206,7 +206,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] error_detail The reason why it was errored.
   /// it is unused if was_error is false.
   /// \param[in] worker_exiting Whether the worker is exiting.
-  void ReturnWorker(const rpc::WorkerAddress addr,
+  void ReturnWorker(const rpc::Address addr,
                     bool was_error,
                     const std::string &error_detail,
                     bool worker_exiting,
@@ -219,7 +219,7 @@ class CoreWorkerDirectTaskSubmitter {
   }
 
   /// Push a task to a specific worker.
-  void PushNormalTask(const rpc::WorkerAddress &addr,
+  void PushNormalTask(const rpc::Address &addr,
                       rpc::CoreWorkerClientInterface &client,
                       const SchedulingKey &task_queue_key,
                       const TaskSpecification &task_spec,
@@ -231,7 +231,7 @@ class CoreWorkerDirectTaskSubmitter {
       const Status &task_execution_status,
       const bool is_actor,
       const TaskID &task_id,
-      const rpc::WorkerAddress &addr,
+      const rpc::Address &addr,
       const Status &get_task_failure_cause_reply_status,
       const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply);
 
@@ -312,7 +312,7 @@ class CoreWorkerDirectTaskSubmitter {
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
-  absl::flat_hash_map<rpc::WorkerAddress, LeaseEntry> worker_to_lease_entry_
+  absl::flat_hash_map<rpc::Address, LeaseEntry> worker_to_lease_entry_
       ABSL_GUARDED_BY(mu_);
 
   struct SchedulingKeyEntry {
@@ -324,8 +324,8 @@ class CoreWorkerDirectTaskSubmitter {
     std::deque<TaskSpecification> task_queue = std::deque<TaskSpecification>();
     // Keep track of the active workers, so that we can quickly check if one of them has
     // room for more tasks in flight
-    absl::flat_hash_set<rpc::WorkerAddress> active_workers =
-        absl::flat_hash_set<rpc::WorkerAddress>();
+    absl::flat_hash_set<rpc::Address> active_workers =
+        absl::flat_hash_set<rpc::Address>();
     // Keep track of how many workers have tasks to do.
     uint32_t num_busy_workers = 0;
     int64_t last_reported_backlog_size = 0;
@@ -369,7 +369,7 @@ class CoreWorkerDirectTaskSubmitter {
   absl::flat_hash_set<TaskID> cancelled_tasks_ ABSL_GUARDED_BY(mu_);
 
   // Keeps track of where currently executing tasks are being run.
-  absl::flat_hash_map<TaskID, rpc::WorkerAddress> executing_tasks_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, rpc::Address> executing_tasks_ ABSL_GUARDED_BY(mu_);
 
   // Ratelimiter controls the num of pending lease requests.
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
