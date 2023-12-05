@@ -43,6 +43,8 @@ Intermediate
     - Example
   * - PyTorch
     - :ref:`Fine-tune of Stable Diffusion with DreamBooth and Ray Train <torch_finetune_dreambooth_ex>`
+  * - PyTorch
+    - :ref:`Fine-tuning a Torch object detection model with Ray Train and Ray Data <torch_detection_train_example>`
   * - Lightning
     - :ref:`Train with PyTorch Lightning and Ray Data <lightning_advanced_example>`
   * - Transformers
