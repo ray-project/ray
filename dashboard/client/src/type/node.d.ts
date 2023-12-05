@@ -35,7 +35,6 @@ export type NodeDetail = {
   actors: { [id: string]: Actor };
   cmdline: string[];
   state: string;
-  logUrl: string;
   logicalResources?: str;
 };
 
@@ -54,10 +53,13 @@ export type NodeListRsp = {
   msg: string;
 };
 
-export type ProcessGPUUsage = {
-  // This gpu usage stats from a process
-  pid: number;
+export type GPUProcessStats = {
+  // Sub stat of GPU stats, this type represents the GPU
+  // utilization of a single process of a single GPU.
+  username: string;
+  command: string;
   gpuMemoryUsage: number;
+  pid: number;
 };
 
 export type GPUStats = {
@@ -65,10 +67,14 @@ export type GPUStats = {
   uuid: string;
   index: number;
   name: string;
+  temperatureGpu: number;
+  fanSpeed: number;
   utilizationGpu?: number;
+  powerDraw: number;
+  enforcedPowerLimit: number;
   memoryUsed: number;
   memoryTotal: number;
-  processes?: ProcessGPUUsage[];
+  processes?: GPUProcessStats[];
 };
 
 export type NodeDetailExtend = {

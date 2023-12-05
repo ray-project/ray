@@ -12,6 +12,7 @@ from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.data._internal.progress_bar import ProgressBar
 from ray.util.placement_group import placement_group
 from ray._private.test_utils import (
+    NodeKillerActor,
     get_log_message,
     get_and_run_resource_killer,
     WorkerKillerActor,
@@ -19,7 +20,8 @@ from ray._private.test_utils import (
 )
 from ray.exceptions import RayTaskError, ObjectLostError
 from ray.util.state.common import ListApiOptions, StateResource
-from ray.util.state.api import StateApiClient
+from ray.util.state.api import StateApiClient, list_nodes
+from ray.cluster_utils import AutoscalingCluster
 
 
 def assert_no_system_failure(p, timeout):
@@ -267,7 +269,7 @@ def test_worker_killer():
         WorkerKillerActor,
         1,
         max_to_kill=3,
-        task_filter=lambda task: task.name == task_name,
+        kill_filter_fn=lambda: lambda task: task.name == task_name,
     )
     worker_to_kill.options(name=task_name, max_retries=3).remote()
 
@@ -301,6 +303,47 @@ def test_worker_killer():
             assert (task.task_id, task.worker_pid) in killed_tasks
 
     ray.shutdown()
+
+
+def test_node_killer_filter():
+    # Initialize cluster with 1 head node and 2 worker nodes.
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "cpu_node": {
+                "resources": {
+                    "CPU": 1,
+                },
+                "node_config": {},
+                "min_workers": 2,
+                "max_workers": 2,
+            },
+        },
+    )
+    cluster.start()
+    ray.init()
+
+    wait_for_condition(lambda: len(list_nodes()) > 2)
+
+    # Choose random worker node to kill.
+    worker_nodes = [node for node in list_nodes() if not node["is_head_node"]]
+    node_to_kill = random.choice(worker_nodes)
+    node_killer = get_and_run_resource_killer(
+        NodeKillerActor,
+        1,
+        max_to_kill=1,
+        kill_filter_fn=lambda: lambda node: node["NodeID"] == node_to_kill.node_id,
+    )
+
+    def check_killed():
+        # Check that killed node is consistent across list_nodes() and NodeKillerActor
+        killed = list(ray.get(node_killer.get_total_killed.remote()))
+        dead = [node.node_id for node in list_nodes() if node.state == "DEAD"]
+        if len(killed) != 1 or len(dead) != 1:
+            return False
+        return killed[0] == dead[0] == node_to_kill.node_id
+
+    wait_for_condition(check_killed, timeout=100)
 
 
 if __name__ == "__main__":

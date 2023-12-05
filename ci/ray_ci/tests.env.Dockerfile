@@ -18,11 +18,10 @@ RUN <<EOF
 set -euo pipefail
 
 (
-  cd dashboard/client 
-  npm ci 
+  cd dashboard/client
+  npm ci
   npm run build
 )
-
 if [[ "$BUILD_TYPE" == "debug" ]]; then
   RAY_DEBUG_BUILD=debug pip install -v -e python/
 elif [[ "$BUILD_TYPE" == "asan" ]]; then

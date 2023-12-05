@@ -510,7 +510,7 @@ class CoreExecutionMetrics:
     def get_actor_count(self):
         return self.actor_count
 
-    def _assert_count_equals(self, actual_count, expected_count):
+    def _assert_count_equals(self, actual_count, expected_count, ignore_extra_tasks):
         diff = {}
         # Check that all tasks in expected tasks match those in actual task
         # count.
@@ -518,15 +518,16 @@ class CoreExecutionMetrics:
             if not equals_or_true(actual_count[name], count):
                 diff[name] = (actual_count[name], count)
         # Check that the actual task count does not have any additional tasks.
-        for name, count in actual_count.items():
-            if name not in expected_count and count != 0:
-                diff[name] = (count, 0)
+        if not ignore_extra_tasks:
+            for name, count in actual_count.items():
+                if name not in expected_count and count != 0:
+                    diff[name] = (count, 0)
 
         assert len(diff) == 0, "\nTask diff:\n" + "\n".join(
             f" - {key}: expected {val[1]}, got {val[0]}" for key, val in diff.items()
         )
 
-    def assert_task_metrics(self, expected_metrics):
+    def assert_task_metrics(self, expected_metrics, ignore_extra_tasks):
         """
         Assert equality to the given { <task name>: <task count> }.
         A lambda that takes in the count and returns a bool to assert can also
@@ -545,7 +546,9 @@ class CoreExecutionMetrics:
             expected_task_count[name] = count
 
         actual_task_count = self.get_task_count()
-        self._assert_count_equals(actual_task_count, expected_task_count)
+        self._assert_count_equals(
+            actual_task_count, expected_task_count, ignore_extra_tasks
+        )
 
     def assert_object_store_metrics(self, expected_metrics):
         """
@@ -568,6 +571,7 @@ class CoreExecutionMetrics:
 
         actual_object_store_stats = self.get_object_store_stats()
         for key, val in expected_object_store_stats.items():
+            print(f"{key}: Expect {val}, got {actual_object_store_stats[key]}")
             assert equals_or_true(
                 actual_object_store_stats[key], val
             ), f"{key}: expected {val} got {actual_object_store_stats[key]}"
@@ -727,12 +731,15 @@ def get_initial_core_execution_metrics_snapshot():
             task_count={"warmup": lambda count: True}, object_store_stats={}
         ),
         last_snapshot=None,
+        ignore_extra_tasks=True,
     )
     return last_snapshot
 
 
 def assert_core_execution_metrics_equals(
-    expected_metrics: CoreExecutionMetrics, last_snapshot=None
+    expected_metrics: CoreExecutionMetrics,
+    last_snapshot=None,
+    ignore_extra_tasks=False,
 ):
     # Wait for one task per CPU to finish to prevent a race condition where not
     # all of the task metrics have been collected yet.
@@ -742,7 +749,7 @@ def assert_core_execution_metrics_equals(
         wait_for_condition(lambda: task_metrics_flushed(refs))
 
     metrics = PhysicalCoreExecutionMetrics(last_snapshot)
-    metrics.assert_task_metrics(expected_metrics)
+    metrics.assert_task_metrics(expected_metrics, ignore_extra_tasks)
     metrics.assert_object_store_metrics(expected_metrics)
     metrics.assert_actor_metrics(expected_metrics)
 

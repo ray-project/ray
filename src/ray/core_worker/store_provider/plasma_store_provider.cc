@@ -144,8 +144,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
             << "is full. Object size is " << data_size << " bytes.";
     status = Status::ObjectStoreFull(message.str());
   } else if (status.IsObjectExists()) {
-    RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
-                     << object_id << ".";
+    RAY_LOG_EVERY_MS(WARNING, 5000)
+        << "Trying to put an object that already existed in plasma: " << object_id << ".";
     status = Status::OK();
   } else {
     RAY_RETURN_NOT_OK(status);

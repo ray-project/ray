@@ -17,12 +17,13 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/pubsub/publisher.h"
+#include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/pubsub/mock_pubsub.h"
 
 namespace ray {
 namespace core {
@@ -111,8 +112,8 @@ class TaskManagerTest : public ::testing::Test {
                   int64_t max_lineage_bytes = 1024 * 1024 * 1024)
       : lineage_pinning_enabled_(lineage_pinning_enabled),
         addr_(GetRandomWorkerAddr()),
-        publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
-        subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
+        publisher_(std::make_shared<pubsub::MockPublisher>()),
+        subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
             addr_,
@@ -170,8 +171,8 @@ class TaskManagerTest : public ::testing::Test {
 
   bool lineage_pinning_enabled_;
   rpc::Address addr_;
-  std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
-  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
