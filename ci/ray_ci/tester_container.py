@@ -7,7 +7,7 @@ from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
 
 
-class TesterContainer(Container):
+class TesterContainer(LinuxContainer):
     """
     A wrapper for running tests in ray ci docker container
     """
