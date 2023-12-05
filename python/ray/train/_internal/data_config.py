@@ -73,8 +73,6 @@ class DataConfig:
         world_size: int,
         worker_handles: Optional[List[ActorHandle]],
         worker_node_ids: Optional[List[NodeIdStr]],
-        num_cpus_per_trainer: int,
-        num_gpus_per_trainer: int,
         **kwargs,
     ) -> List[Dict[str, DataIterator]]:
         """Configure how Train datasets should be assigned to workers.
@@ -84,8 +82,6 @@ class DataConfig:
             world_size: The number of Train workers in total.
             worker_handles: The actor handles of the Train workers.
             worker_node_ids: The node ids of the Train workers.
-            num_cpus_per_trainer: The number of CPUs per trainer.
-            num_gpus_per_trainer: The number of GPUs per trainer.
             kwargs: Forwards compatibility placeholder.
 
         Returns:
