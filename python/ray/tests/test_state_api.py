@@ -2417,6 +2417,35 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+def test_get_task_object_ref(shutdown_only):
+    ray.init(num_cpus=2)
+    job_id = ray.get_runtime_context().get_job_id()
+    node_id = ray.get_runtime_context().get_node_id()
+
+    @ray.remote
+    def f():
+        import time
+
+        time.sleep(30)
+
+    f_ref = f.remote()
+    put_ref = ray.put([1] * 100)
+
+    def verify():
+        f_task = get_task(f_ref)
+        put_task = get_task(put_ref)
+
+        assert f_task["job_id"] == job_id
+        assert f_task["node_id"] == node_id
+        assert f_task["actor_id"] is None
+
+        assert put_task is None
+
+        return True
+
+    wait_for_condition(verify)
+
+
 def test_pg_worker_id_tasks(shutdown_only):
     ray.init(num_cpus=1)
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])
