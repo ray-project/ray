@@ -59,22 +59,15 @@ def test_sort_with_specified_boundaries(descending, boundaries, new_backend):
 
     def check_sort_result_in_blocks(dataset, id_exp, descending):
         dfs = ray.get(dataset.to_pandas_refs())
-        if descending:
-            for i in range(len(dfs)):
-                if dfs[i].shape[0] == 0:
-                    assert id_exp[-1-i] != []
-                else:
-                    idx = dfs[i]["id"].values.tolist()
-                    idx.sort()
-                    assert idx == id_exp[-1-i]
-        else:
-            for i in range(len(dfs)):
-                if dfs[i].shape[0] == 0:
-                    assert id_exp[i] != []
-                else:
-                    idx = dfs[i]["id"].values.tolist()
-                    #print(idx,  id_exp[i])
-                    assert idx == id_exp[i]
+        for i in range(len(dfs)):
+            if dfs[i].shape[0] == 0:
+                assert id_exp[-1-i] != [] if descending else assert id_exp[i] != []
+            else:
+                idx = dfs[i]["id"].values.tolist()
+                idx.sort() if descending else None
+                assert idx == id_exp[-1-i] if descending else assert idx == id_exp[i]
+
+
     x = np.random.randn(1000, 2)
     idx = np.asarray(range(1000)).reshape(-1, 1)
     np.random.shuffle(idx)
@@ -89,7 +82,6 @@ def test_sort_with_specified_boundaries(descending, boundaries, new_backend):
     # After sorting, check whether the number of blocks, the number of samples
     # in each block, and the sorting of IDs in the blocks are as expected.
     check_sort_result_in_blocks(ds, id_exp, descending)
-    print("GOOD!")
 
 
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):
