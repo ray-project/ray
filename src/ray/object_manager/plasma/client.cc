@@ -876,12 +876,12 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
 
   object_entry->second->is_sealed = true;
   auto plasma_header = GetPlasmaObjectHeader(object_entry->second->object);
-  if (plasma_header->num_readers != 0) {
-    plasma_header->WriteRelease(
-        /*write_version=*/object_entry->second->next_version_to_write);
-    // The next Write must pass a higher version.
-    object_entry->second->next_version_to_write++;
-  } else {
+  plasma_header->WriteRelease(
+      /*write_version=*/object_entry->second->next_version_to_write);
+  // The next Write must pass a higher version.
+  object_entry->second->next_version_to_write++;
+
+  if (plasma_header->num_readers <= 0) {
     // Send the seal request to Plasma. This is the normal Seal path, used for
     // immutable objects and the initial Create call for mutable objects.
     RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));

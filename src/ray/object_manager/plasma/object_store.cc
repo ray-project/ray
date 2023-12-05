@@ -82,7 +82,6 @@ bool ObjectStore::DeleteObject(const ObjectID &object_id) {
   if (entry == nullptr) {
     return false;
   }
-  // TODO(swang): Make sure Seal coroutine is done before deleting.
   auto plasma_header = entry->GetPlasmaObjectHeader();
   plasma_header->Destroy();
 
