@@ -175,7 +175,7 @@ def test_split_map(shutdown_only, use_actors):
             return x
 
     if use_actors:
-        kwargs = {"compute": ray.data.ActorPoolStrategy()}
+        kwargs = {"concurrency": 2}
         arrow_fn = ArrowUDFClass
         identity_fn = IdentityUDFClass
     else:

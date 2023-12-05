@@ -280,10 +280,12 @@ def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
+    class UDFClass:
+        def __call__(self, x):
+            return x
+
     def run():
-        ray.data.range(5, parallelism=5).map(
-            lambda x: x, compute=ray.data.ActorPoolStrategy(size=2)
-        ).take_all()
+        ray.data.range(5, parallelism=5).map(UDFClass, concurrency=2).take_all()
 
     DataContext.get_current().execution_options.resource_limits = ExecutionResources()
     run()
@@ -454,9 +456,7 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
     ray.data.range(6, parallelism=6).map_batches(
         BarrierWaiter,
         fn_constructor_args=(b1,),
-        compute=ray.data.ActorPoolStrategy(
-            min_size=1, max_size=6, max_tasks_in_flight_per_actor=1
-        ),
+        concurrency=(1, 6),
         batch_size=None,
     ).take_all()
     assert ray.get(b1.get_max_waiters.remote()) == 6
@@ -468,9 +468,7 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
     ray.data.range(6, parallelism=6).map_batches(
         BarrierWaiter,
         fn_constructor_args=(b2,),
-        compute=ray.data.ActorPoolStrategy(
-            min_size=1, max_size=3, max_tasks_in_flight_per_actor=2
-        ),
+        concurrency=(1, 3),
         batch_size=None,
     ).take_all()
     assert ray.get(b2.get_max_waiters.remote()) == 3
@@ -483,7 +481,7 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
         ray.data.range(6, parallelism=6).map(
             BarrierWaiter,
             fn_constructor_args=(b3,),
-            compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
+            concurrency=(1, 2),
         ).take_all()
 
 
@@ -501,7 +499,7 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().execution_options.resource_limits.cpu = 2
     ray.data.range(5, parallelism=5).map_batches(
         UDFClass,
-        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
+        concurrency=(1, 2),
         batch_size=None,
     ).map_batches(lambda x: x, batch_size=None, num_cpus=2).take_all()
 
@@ -534,15 +532,11 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
 
     # Test recover.
     base = ray.data.range(1000, parallelism=100)
-    ds1 = base.map_batches(
-        RandomExit, compute=ray.data.ActorPoolStrategy(size=4), max_task_retries=999
-    )
+    ds1 = base.map_batches(RandomExit, concurrency=4, max_task_retries=999)
     ds1.take_all()
 
     # Test disabling fault tolerance.
-    ds2 = base.map_batches(
-        RandomExit, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0
-    )
+    ds2 = base.map_batches(RandomExit, concurrency=4, max_restarts=0)
     with pytest.raises(ray.exceptions.RayActorError):
         ds2.take_all()
 

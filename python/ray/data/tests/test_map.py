@@ -47,25 +47,6 @@ def test_basic_actors(shutdown_only):
         )
     ) == list(range(1, n + 1))
 
-    # Test setting custom max inflight tasks.
-    ds = ray.data.range(10, parallelism=5)
-    assert sorted(
-        extract_values(
-            "id",
-            ds.map(
-                column_udf_class("id", lambda x: x + 1),
-                compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
-            ).take(),
-        )
-    ) == list(range(1, 11))
-
-    # Test invalid max tasks inflight arg.
-    with pytest.raises(ValueError):
-        ray.data.range(10).map(
-            column_udf_class("id", lambda x: x),
-            compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=0),
-        )
-
     # Test min no more than max check.
     with pytest.raises(ValueError):
         ray.data.range(10).map(
@@ -959,35 +940,6 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
 
     # Check that all actors have been killed by counting the available CPUs
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
-
-
-def test_actor_pool_strategy_default_num_actors(shutdown_only):
-    import time
-
-    class UDFClass:
-        def __call__(self, x):
-            time.sleep(1)
-            return x
-
-    num_cpus = 5
-    ray.init(num_cpus=num_cpus)
-    compute_strategy = ray.data.ActorPoolStrategy()
-    ray.data.range(10, parallelism=10).map_batches(
-        UDFClass, compute=compute_strategy, batch_size=1
-    ).materialize()
-
-    # The new execution backend is not using the ActorPoolStrategy under
-    # the hood, so the expectation here applies only to the old backend.
-    # TODO(https://github.com/ray-project/ray/issues/31723): we should check
-    # the num of workers once we have autoscaling in new execution backend.
-    if not DataContext.get_current().new_execution_backend:
-        expected_max_num_workers = math.ceil(
-            num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
-        )
-        assert (
-            compute_strategy.num_workers >= num_cpus
-            and compute_strategy.num_workers <= expected_max_num_workers
-        ), "Number of actors is out of the expected bound"
 
 
 def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):

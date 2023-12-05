@@ -53,7 +53,7 @@ def run(args):
         # Run the batch inference by consuming output with `take_all`.
         prompt_ds.map_batches(
             StableDiffusionCallable,
-            compute=ray.data.ActorPoolStrategy(size=num_workers),
+            concurrency=num_workers,
             fn_constructor_args=(args.model_dir, args.output_dir),
             num_gpus=1,
             batch_size=num_samples // num_workers,

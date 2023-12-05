@@ -94,11 +94,11 @@ def test_streaming_backpressure_e2e(restore_data_context):
         TestFast,
         batch_size=1,
         num_cpus=0.5,
-        compute=ray.data.ActorPoolStrategy(size=2),
+        concurrency=2,
     ).map_batches(
         TestSlow,
         batch_size=1,
-        compute=ray.data.ActorPoolStrategy(size=1),
+        concurrency=1,
     )
 
     for batch in pipe.iter_batches(batch_size=1, prefetch_batches=2):

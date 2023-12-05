@@ -251,6 +251,7 @@ class GroupedData:
         batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
@@ -293,10 +294,7 @@ class GroupedData:
                 that can be instantiated to create such a callable. It takes as
                 input a batch of all records from a single group, and returns a
                 batch of zero or more records, similar to map_batches().
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool.
+            compute: This argument is deprecated. Please use ``concurrency`` argument.
             batch_format: Specify ``"default"`` to use the default block format
                 (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
                 select ``pyarrow.Table``, or ``"numpy"`` to select
@@ -304,6 +302,10 @@ class GroupedData:
                 exactly as is with no additional formatting.
             fn_args: Arguments to `fn`.
             fn_kwargs: Keyword arguments to `fn`.
+            concurrency: The number of Ray workers to use concurrently. For a
+                fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
+                For an autoscaling worker pool from ``m`` to ``n`` workers, specify
+                ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -370,6 +372,7 @@ class GroupedData:
             group_fn,
             batch_size=None,
             compute=compute,
+            concurrency=concurrency,
             batch_format=batch_format,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,

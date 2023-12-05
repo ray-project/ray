@@ -130,7 +130,7 @@ def test_torch_e2e_dir(ray_start_4_cpus):
         TorchScorer,
         batch_size=3,
         batch_format="pandas",
-        compute=ray.data.ActorPoolStrategy(),
+        concurrency=1,
         fn_constructor_args=(result.checkpoint,),
     )
     assert predictions.count() == 3

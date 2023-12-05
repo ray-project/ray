@@ -169,12 +169,12 @@ def test_dataset(
     ctx.target_max_block_size = 1024 * 1024
 
     if compute == "tasks":
-        compute = ray.data._internal.compute.TaskPoolStrategy()
+        concurrency = None
         identity_func = identity_fn
         empty_func = empty_fn
         func_name = "identity_fn"
     else:
-        compute = ray.data.ActorPoolStrategy()
+        concurrency = 2
         identity_func = IdentityClass
         empty_func = EmptyClass
         func_name = "IdentityClass"
@@ -221,7 +221,7 @@ def test_dataset(
     )
 
     # Too-large blocks will get split to respect target max block size.
-    map_ds = ds.map_batches(identity_func, compute=compute)
+    map_ds = ds.map_batches(identity_func, concurrency=concurrency)
     map_ds = map_ds.materialize()
     num_blocks_expected = num_tasks * num_blocks_per_task
     assert map_ds.num_blocks() == num_blocks_expected
@@ -247,11 +247,11 @@ def test_dataset(
     map_ds = ds.map_batches(
         empty_func,
         batch_size=num_blocks_per_task * num_tasks,
-        compute=compute,
+        concurrency=concurrency,
     )
     map_ds = map_ds.materialize()
     assert map_ds.num_blocks() == 1
-    map_ds = ds.map(identity_func, compute=compute)
+    map_ds = ds.map(identity_func, concurrency=concurrency)
     map_ds = map_ds.materialize()
     assert map_ds.num_blocks() == num_blocks_per_task * num_tasks
 

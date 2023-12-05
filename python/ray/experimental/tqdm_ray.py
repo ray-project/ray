@@ -369,14 +369,13 @@ if __name__ == "__main__":
 
     @ray.remote
     def processing(delay):
-        def sleep(x):
-            print("Intermediate result", x)
-            time.sleep(delay)
-            return x
+        class UDFClass:
+            def __call__(self, x):
+                print("Intermediate result", x)
+                time.sleep(delay)
+                return x
 
-        ray.data.range(1000, parallelism=100).map(
-            sleep, compute=ray.data.ActorPoolStrategy(size=1)
-        ).count()
+        ray.data.range(1000, parallelism=100).map(UDFClass, concurrency=1).count()
 
     ray.get(
         [

@@ -172,9 +172,7 @@ def test_strict_compute(ray_start_regular_shared):
     with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute="actors").show()
     with pytest.raises(ValueError):
-        ray.data.range(10).map(
-            lambda x: x, compute=ray.data.ActorPoolStrategy(1, 1)
-        ).show()
+        ray.data.range(10).map(lambda x: x, concurrency=1).show()
     with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute="tasks").show()
 

@@ -37,7 +37,7 @@ def main(args):
     actor_pool_size = int(ray.cluster_resources().get("GPU"))
     dataset = dataset.map_batches(
         GenerateImage,
-        compute=ray.data.ActorPoolStrategy(size=actor_pool_size),
+        concurrency=actor_pool_size,
         batch_size=BATCH_SIZE,
         num_gpus=1,
     )

@@ -206,9 +206,7 @@ class TestReadImages:
                     torch_tensor = torch.as_tensor(batch["out"])
                     return {"prediction": self.model(torch_tensor)}
 
-        predictions = dataset.map_batches(
-            Predictor, compute=ray.data.ActorPoolStrategy(min_size=1), batch_size=4096
-        )
+        predictions = dataset.map_batches(Predictor, concurrency=2, batch_size=4096)
 
         for _ in predictions.iter_batches():
             pass

@@ -8,7 +8,6 @@ from torchvision.models import resnet50, ResNet50_Weights
 
 from benchmark import Benchmark, BenchmarkMetric
 import ray
-from ray.data import ActorPoolStrategy
 
 
 def parse_args():
@@ -97,7 +96,7 @@ def main(args):
     ds = ds.map_batches(
         Predictor,
         batch_size=BATCH_SIZE,
-        compute=ActorPoolStrategy(size=actor_pool_size),
+        concurrency=actor_pool_size,
         num_gpus=num_gpus,
         fn_constructor_kwargs={"model": model_ref},
         max_concurrency=2,

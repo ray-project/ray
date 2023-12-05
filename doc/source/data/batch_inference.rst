@@ -71,12 +71,11 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                     batch["output"] = [sequences[0]["generated_text"] for sequences in predictions]
                     return batch
 
+            # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            scale = ray.data.ActorPoolStrategy(size=2)
-            # Step 3: Map the Predictor over the Dataset to get predictions.
-            predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
-            # Step 4: Show one prediction output.
+            predictions = ds.map_batches(HuggingFacePredictor, concurrency=2)
+            # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
         .. testoutput::
@@ -122,12 +121,11 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                         # Get the predictions from the input batch.
                         return {"output": self.model(tensor).numpy()}
 
+            # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            scale = ray.data.ActorPoolStrategy(size=2)
-            # Step 3: Map the Predictor over the Dataset to get predictions.
-            predictions = ds.map_batches(TorchPredictor, compute=scale)
-            # Step 4: Show one prediction output.
+            predictions = ds.map_batches(TorchPredictor, concurrency=2)
+            # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
         .. testoutput::
@@ -168,12 +166,11 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                     # Get the predictions from the input batch.
                     return {"output": self.model(batch["data"]).numpy()}
 
+            # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            scale = ray.data.ActorPoolStrategy(size=2)
-            # Step 3: Map the Predictor over the Dataset to get predictions.
-            predictions = ds.map_batches(TFPredictor, compute=scale)
-             # Step 4: Show one prediction output.
+            predictions = ds.map_batches(TFPredictor, concurrency=2)
+             # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
         .. testoutput::
@@ -240,7 +237,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2),
+                concurrency=2,
                 )
             predictions.show(limit=1)
 
@@ -288,7 +285,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2)
+                concurrency=2,
                 )
             predictions.show(limit=1)
 
@@ -332,7 +329,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2)
+                concurrency=2,
                 )
             predictions.show(limit=1)
 
@@ -421,7 +418,7 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
         # Require 5 CPUs per actor (so at most 3 can fit per 16 CPU node).
         num_cpus=5,
         # 3 actors per node, with 4 nodes in the cluster means ActorPool size of 12.
-        compute=ray.data.ActorPoolStrategy(size=12)
+        concurrency=12,
         )
     predictions.show(limit=1)
 
@@ -497,13 +494,12 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
             return {"predictions": self.model.predict(dmatrix)}
 
 
+    # Step 2: Map the Predictor over the Dataset to get predictions.
     # Use 2 parallel actors for inference. Each actor predicts on a
     # different partition of data.
-    scale = ray.data.ActorPoolStrategy(size=2)
-    # Map the Predictor over the Dataset to get predictions.
     predictions = test_dataset.map_batches(
         XGBoostPredictor,
-        compute=scale,
+        concurrency=2,
         batch_format="pandas",
         # Pass in the Checkpoint to the XGBoostPredictor constructor.
         fn_constructor_kwargs={"checkpoint": checkpoint}

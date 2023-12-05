@@ -230,7 +230,7 @@ Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
     predictions = ds.map_batches(
         ImageClassifier,
-        compute=ray.data.ActorPoolStrategy(size=2),
+        concurrency=2,
         batch_size=4
     )
     predictions.show(3)
