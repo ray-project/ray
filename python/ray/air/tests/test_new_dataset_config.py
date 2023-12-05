@@ -267,12 +267,12 @@ def test_data_config_default_resource_limits(shutdown_only):
     used by training."""
     cluster_cpus, cluster_gpus = 20, 10
     num_workers = 2
-    # Reousrces used by training workers.
+    # Resources used by training workers.
     cpus_per_worker, gpus_per_worker = 2, 1
     # Resources used by the trainer actor.
-    default_trianer_cpus, default_trainer_gpus = 1, 0
+    default_trainer_cpus, default_trainer_gpus = 1, 0
     expected_cpu_limit = (
-        cluster_cpus - num_workers * cpus_per_worker - default_trianer_cpus
+        cluster_cpus - num_workers * cpus_per_worker - default_trainer_cpus
     )
     expected_gpu_limit = (
         cluster_gpus - num_workers * gpus_per_worker - default_trainer_gpus

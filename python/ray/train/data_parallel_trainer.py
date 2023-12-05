@@ -265,7 +265,7 @@ class DataParallelTrainer(BaseTrainer):
         )
 
         train_total_resources = self.scaling_config.total_resources
-        self._data_config.set_train_total_resoruces(
+        self._data_config.set_train_total_resources(
             train_total_resources.get("CPU", 0),
             train_total_resources.get("GPU", 0),
         )
