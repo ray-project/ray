@@ -1728,19 +1728,11 @@ cdef void execute_task(
                     # execute_dynamic_generator_and_store_task_outputs
                     return async_function(actor, *arguments, **kwarguments)
                 else:
-                    if task_id:
-                        async_task_id.set(task_id)
-
-                    # Record the log file offsets.
-                    worker.record_task_log_start()
-
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
                         name_of_concurrency_group_to_execute, task_id=task_id,
                         func_args=(actor, *arguments), func_kwargs=kwarguments)
 
-            # Record the log file offsets.
-            worker.record_task_log_start()
             return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
@@ -1790,6 +1782,8 @@ cdef void execute_task(
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
+
+            worker.record_task_log_start(task_id, attempt_number)
 
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
@@ -1895,7 +1889,7 @@ cdef void execute_task(
                     raise e
                 finally:
                     # Record the end of the task log.
-                    worker.record_task_log_end()
+                    worker.record_task_log_end(task_id, attempt_number)
 
                 if (returns[0].size() == 1
                         and not inspect.isgenerator(outputs)
@@ -4523,6 +4517,9 @@ cdef class CoreWorker:
 
         async def async_func():
             try:
+                if task_id:
+                    async_task_id.set(task_id)
+
                 if inspect.isawaitable(func_or_coro):
                     coroutine = func_or_coro
                 else:

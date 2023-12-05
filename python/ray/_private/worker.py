@@ -594,7 +594,7 @@ class Worker:
         """Set the worker's out file where stdout is redirected to"""
         self._out_file = out_file
 
-    def record_task_log_start(self):
+    def record_task_log_start(self, task_id, attempt_number: int):
         """Record the task log info when task starts executing for
         non concurrent actor tasks."""
         if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
@@ -608,15 +608,15 @@ class Worker:
             return
 
         self.core_worker.record_task_log_start(
-            ray.get_runtime_context()._get_current_task_id(),
-            self.core_worker.get_current_task_attempt_number(),
+            task_id,
+            attempt_number,
             self.get_out_file_path(),
             self.get_err_file_path(),
             self.get_current_out_offset(),
             self.get_current_err_offset(),
         )
 
-    def record_task_log_end(self):
+    def record_task_log_end(self, task_id, attempt_number: int):
         """Record the task log info when task finishes executing for
         non concurrent actor tasks."""
         if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
@@ -630,8 +630,8 @@ class Worker:
             return
 
         self.core_worker.record_task_log_end(
-            ray.get_runtime_context()._get_current_task_id(),
-            self.core_worker.get_current_task_attempt_number(),
+            task_id,
+            attempt_number,
             self.get_current_out_offset(),
             self.get_current_err_offset(),
         )
