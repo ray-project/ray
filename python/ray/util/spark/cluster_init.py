@@ -168,7 +168,7 @@ class RayClusterOnSpark:
                     len([node for node in ray.nodes() if node["Alive"]]) - 1
                 )  # Minus 1 means excluding the head node.
 
-                if cur_alive_worker_count >= self.num_worker_nodes:
+                if cur_alive_worker_count >= self.max_worker_nodes:
                     return
 
                 if cur_alive_worker_count > last_alive_worker_count:
@@ -176,7 +176,7 @@ class RayClusterOnSpark:
                     last_progress_move_time = time.time()
                     _logger.info(
                         "Ray worker nodes are starting. Progress: "
-                        f"({cur_alive_worker_count} / {self.num_worker_nodes})"
+                        f"({cur_alive_worker_count} / {self.max_worker_nodes})"
                     )
                 else:
                     if (
@@ -191,7 +191,7 @@ class RayClusterOnSpark:
                         _logger.warning(
                             "Timeout in waiting for all ray workers to start. "
                             "Started / Total requested: "
-                            f"({cur_alive_worker_count} / {self.num_worker_nodes}). "
+                            f"({cur_alive_worker_count} / {self.max_worker_nodes}). "
                             "Current spark cluster does not have sufficient resources "
                             "to launch requested number of Ray worker nodes."
                         )
@@ -1317,7 +1317,8 @@ def setup_ray_cluster(
             after Databricks spark cluster terminated.
         autoscale: If True, enable autoscaling, the number of initial Ray worker nodes
             is zero, and the maximum number of Ray worker nodes is set to
-            `num_worker_nodes`. Default value is False.
+            `max_worker_nodes`, minimal number of Ray worker nodes is set to
+            `min_worker_nodes`. Default value is False.
         autoscale_upscaling_speed: If autoscale enabled, it represents the number of
             nodes allowed to be pending as a multiple of the current number of nodes.
             The higher the value, the more aggressive upscaling will be. For example,
