@@ -21,7 +21,6 @@ class TesterContainer(Container):
         shard_ids: Optional[List[int]] = None,
         skip_ray_installation: bool = False,
         build_type: Optional[str] = None,
-        privileged: bool = False,
     ) -> None:
         """
         :param docker_tag: Name of the wanda build to be used as test container.
@@ -37,7 +36,6 @@ class TesterContainer(Container):
                 f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
                 "/var/run/docker.sock:/var/run/docker.sock",
             ],
-            privileged=privileged,
         )
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
