@@ -263,11 +263,19 @@ def test_materialized_preprocessing(ray_start_4_cpus):
 
 
 def test_data_config_default_resource_limits(shutdown_only):
+    """Test that DataConfig's default resource limits should exclude the resources used by training."""
     cluster_cpus, cluster_gpus = 20, 10
-    cpus_per_worker, gpus_per_worker = 2, 1
     num_workers = 2
-    expected_cpu_limit = cluster_cpus - num_workers * cpus_per_worker
-    expected_gpu_limit = cluster_gpus - num_workers * gpus_per_worker
+    # Reousrces used by training workers.
+    cpus_per_worker, gpus_per_worker = 2, 1
+    # Resources used by the trainer actor.
+    default_trianer_cpus, default_trainer_gpus = 1, 0
+    expected_cpu_limit = (
+        cluster_cpus - num_workers * cpus_per_worker - default_trianer_cpus
+    )
+    expected_gpu_limit = (
+        cluster_gpus - num_workers * gpus_per_worker - default_trainer_gpus
+    )
 
     ray.init(num_cpus=cluster_cpus, num_gpus=cluster_gpus)
 
@@ -275,7 +283,9 @@ def test_data_config_default_resource_limits(shutdown_only):
         def __init__(self, **kwargs):
             def train_loop_fn():
                 train_ds = train.get_dataset_shard("train")
-                resource_limits = train_ds._base_dataset.context.execution_options.resource_limits
+                resource_limits = (
+                    train_ds._base_dataset.context.execution_options.resource_limits
+                )
                 assert resource_limits.cpu == expected_cpu_limit
                 assert resource_limits.gpu == expected_gpu_limit
 

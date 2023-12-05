@@ -264,6 +264,12 @@ class DataParallelTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
+        train_total_resources = self.scaling_config.total_resources
+        self._data_config.set_train_total_resoruces(
+            train_total_resources["CPU"],
+            train_total_resources["GPU"],
+        )
+
     @PublicAPI(stability="beta")
     @classmethod
     def restore(
