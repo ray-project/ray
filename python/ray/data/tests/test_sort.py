@@ -61,11 +61,11 @@ def test_sort_with_specified_boundaries(descending, boundaries, new_backend):
         dfs = ray.get(dataset.to_pandas_refs())
         for i in range(len(dfs)):
             if dfs[i].shape[0] == 0:
-                assert id_exp[-1-i] != [] if descending else assert id_exp[i] != []
+                assert id_exp[-1-i] != [] if descending else id_exp[i] != []
             else:
                 idx = dfs[i]["id"].values.tolist()
                 idx.sort() if descending else None
-                assert idx == id_exp[-1-i] if descending else assert idx == id_exp[i]
+                assert idx == id_exp[-1-i] if descending else idx == id_exp[i]
 
 
     x = np.random.randn(1000, 2)
