@@ -325,7 +325,6 @@ message NodeDeathInfo {
     EXPECTED_TERMINATION = 1;
     UNEXPECTED_TERMINATION = 2;
     AUTOSCALER_DRAIN = 3;
-    AUTOSCALER_DRAIN_IDLE = 4;
   }
   Reason reason = 1;
 
