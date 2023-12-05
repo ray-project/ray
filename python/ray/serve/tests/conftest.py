@@ -12,8 +12,8 @@ from ray._private.test_utils import wait_for_condition
 from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private import api as _private_api
+from ray.serve._private.test_utils import TELEMETRY_ROUTE_PREFIX, check_ray_stopped
 from ray.serve.context import _get_global_client
-from ray.serve.tests.common.utils import TELEMETRY_ROUTE_PREFIX, check_ray_stopped
 from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
 
 # https://tools.ietf.org/html/rfc6335#section-6
