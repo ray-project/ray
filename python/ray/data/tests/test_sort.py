@@ -80,7 +80,6 @@ def test_sort_with_specified_boundaries(descending, boundaries, new_backend):
     # After sorting, check whether the number of blocks, the number of samples
     # in each block, and the sorting of IDs in the blocks are as expected.
     check_sort_result_in_blocks(ds, id_exp, descending)
-    print("GOOD!")
 
 
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):
