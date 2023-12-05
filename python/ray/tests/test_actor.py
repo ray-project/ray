@@ -29,7 +29,7 @@ except ImportError:
     pytest_timeout = None
 
 
-@pytest.mark.parametrize("set_enable_auto_connect", ["1", "0"], indirect=True)
+@pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
 def test_caching_actors(shutdown_only, set_enable_auto_connect):
     # Test defining actors before ray.init() has been called.
 
@@ -41,7 +41,7 @@ def test_caching_actors(shutdown_only, set_enable_auto_connect):
         def get_val(self):
             return 3
 
-    if set_enable_auto_connect == "0":
+    if not set_enable_auto_connect:
         # Check that we can't actually create actors before ray.init() has
         # been called.
         with pytest.raises(Exception):
@@ -1123,6 +1123,22 @@ def test_actor_ready(ray_start_regular_shared):
     assert ray.get(actor.__ray_ready__.remote())
 
 
+def test_actor_generic_call(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        pass
+
+    actor = Actor.remote()
+
+    with pytest.raises(TypeError):
+        # Method can't be called directly
+        actor.__ray_call__()
+
+    assert ray.get(actor.__ray_call__.remote(lambda self: 4)) == 4
+    assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, 2)) == 4
+    assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, x=2)) == 4
+
+
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
     @ray.remote
     class Inner:
@@ -1167,6 +1183,7 @@ def test_actor_autocomplete(ray_start_regular_shared):
         "__init__",
         "method_one",
         "__ray_ready__",
+        "__ray_call__",
         "__ray_terminate__",
     }
 
@@ -1300,7 +1317,7 @@ def test_actor_parent_task_correct(shutdown_only, actor_type):
     # Verify a generator actor
     actor = GeneratorActor.remote()
     child_actor = ChildActor.remote()
-    gen = actor.parent.options(num_returns="streaming").remote(child_actor)
+    gen = actor.parent.remote(child_actor)
     for ref in gen:
         result = ray.get(ref)
     actual, expected = result

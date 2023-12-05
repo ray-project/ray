@@ -5,8 +5,9 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import ApplicationStatus, DeploymentInfo
+from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import ServeDeploySchema

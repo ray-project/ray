@@ -150,8 +150,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         rewards = []
         actions = []
         infos = []
-        is_terminateds = []
-        is_truncateds = []
+        terminateds = {}
+        truncateds = {}
         extra_model_outputs = []
         # Initialize observation and info.
         obs, info = env.reset(seed=0)
@@ -159,33 +159,31 @@ class TestMultiAgentEpisode(unittest.TestCase):
         infos.append(info)
         # Run 100 samples.
         for i in range(100):
-            agents_stepped = list(obs.keys())
-            action = {
-                agent_id: i + 1
-                for agent_id in agents_stepped
-                if agent_id in env._agents_alive
-            }
+            agents_to_step_next = [
+                aid for aid in obs.keys() if aid in env._agents_alive
+            ]
+            action = {agent_id: i + 1 for agent_id in agents_to_step_next}
             # action = env.action_space_sample(agents_stepped)
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             observations.append(obs)
             actions.append(action)
             rewards.append(reward)
             infos.append(info)
-            is_terminateds.append(is_terminated)
-            is_truncateds.append(is_truncated)
+            terminateds.update(terminated)
+            truncateds.update(truncated)
             extra_model_outputs.append(
-                {agent_id: {"extra_1": 10.5} for agent_id in agents_stepped}
+                {agent_id: {"extra_1": 10.5} for agent_id in agents_to_step_next}
             )
 
         # Now create the episode from the recorded data.
         episode = MultiAgentEpisode(
-            agent_ids=env.get_agent_ids(),
+            agent_ids=list(env.get_agent_ids()),
             observations=observations,
             actions=actions,
             rewards=rewards,
             infos=infos,
-            is_terminated=is_terminateds,
-            is_truncated=is_truncateds,
+            terminateds=terminateds,
+            truncateds=truncateds,
             extra_model_outputs=extra_model_outputs,
         )
 
@@ -214,8 +212,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             rewards=rewards[-10:],
             infos=infos[-11:],
             t_started=100,
-            is_terminated=is_terminateds[-10:],
-            is_truncated=is_truncateds[-10:],
+            terminateds=terminateds,
+            truncateds=truncateds,
             extra_model_outputs=extra_model_outputs[-10:],
         )
 
@@ -239,8 +237,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             observations,
             actions,
             rewards,
-            is_terminated,
-            is_truncated,
+            terminateds,
+            truncateds,
             infos,
         ) = self._mock_multi_agent_records()
 
@@ -251,8 +249,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             actions=actions,
             rewards=rewards,
             infos=infos,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
+            terminateds=terminateds,
+            truncateds=truncateds,
         )
 
         # Assert that the length of `SingleAgentEpisode`s are all correct.
@@ -276,9 +274,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Generate initial observations and infos and add them to the episode.
         obs, infos = env.reset(seed=0)
-        episode.add_initial_observation(
-            initial_observation=obs,
-            initial_info=infos,
+        episode.add_env_reset(
+            observations=obs,
+            infos=infos,
         )
 
         # Assert that timestep is at zero.
@@ -295,15 +293,15 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # TODO (simon): Test the buffers and reward storage.
 
-    def test_add_timestep(self):
+    def test_add_env_step(self):
         # Create an environment and add the initial observations, infos, and states.
         env = MultiAgentTestEnv()
         episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
 
         obs, infos = env.reset(seed=0)
-        episode.add_initial_observation(
-            initial_observation=obs,
-            initial_info=infos,
+        episode.add_env_reset(
+            observations=obs,
+            infos=infos,
         )
 
         # Sample 100 timesteps and add them to the episode.
@@ -311,16 +309,16 @@ class TestMultiAgentEpisode(unittest.TestCase):
             action = {
                 agent_id: i + 1 for agent_id in obs if agent_id in env._agents_alive
             }
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
 
-            episode.add_timestep(
-                observation=obs,
-                action=action,
-                reward=reward,
-                info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={agent_id: {"extra": 10.5} for agent_id in action},
+            episode.add_env_step(
+                observations=obs,
+                actions=action,
+                rewards=reward,
+                infos=info,
+                terminateds=terminated,
+                truncateds=truncated,
+                extra_model_outputs={agent_id: {"extra": 10.5} for agent_id in action},
             )
 
         # Assert that the timestep is at 100.
@@ -349,19 +347,19 @@ class TestMultiAgentEpisode(unittest.TestCase):
             action = {
                 agent_id: i + 1 for agent_id in obs if agent_id in env._agents_alive
             }
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
-            episode.add_timestep(
-                observation=obs,
-                action=action,
-                reward=reward,
-                info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={agent_id: {"extra": 10.5} for agent_id in action},
+            obs, reward, terminated, truncated, info = env.step(action)
+            episode.add_env_step(
+                observations=obs,
+                actions=action,
+                rewards=reward,
+                infos=info,
+                terminateds=terminated,
+                truncateds=truncated,
+                extra_model_outputs={agent_id: {"extra": 10.5} for agent_id in action},
             )
 
         # Assert that the environment is done.
-        self.assertTrue(is_truncated["__all__"])
+        self.assertTrue(truncated["__all__"])
         # Assert that each agent is done.
         for agent_id in episode._agent_ids:
             self.assertTrue(episode.agent_episodes[agent_id].is_done)
@@ -378,8 +376,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             observations,
             actions,
             rewards,
-            is_terminated,
-            is_truncated,
+            terminated,
+            truncated,
             infos,
         ) = self._mock_multi_agent_records()
 
@@ -389,25 +387,25 @@ class TestMultiAgentEpisode(unittest.TestCase):
             actions=actions,
             rewards=rewards,
             infos=infos,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
+            terminateds=terminated,
+            truncateds=truncated,
         )
         # Now test that intermediate rewards will get recorded and actions buffered.
         action = {"agent_2": 3, "agent_4": 3}
         observation = {"agent_1": 3, "agent_2": 3}
         reward = {"agent_1": 1.0, "agent_2": 1.0, "agent_3": 1.0, "agent_5": 1.0}
         infos = {"agent_1": {}, "agent_2": {}}
-        is_terminated = {k: False for k in observation.keys()}
-        is_terminated.update({"__all__": False})
-        is_truncated = {k: False for k in observation.keys()}
-        is_truncated.update({"__all__": False})
-        episode.add_timestep(
-            observation=observation,
-            action=action,
-            reward=reward,
-            info=info,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
+        terminated = {k: False for k in observation.keys()}
+        terminated.update({"__all__": False})
+        truncated = {k: False for k in observation.keys()}
+        truncated.update({"__all__": False})
+        episode.add_env_step(
+            observations=observation,
+            actions=action,
+            rewards=reward,
+            infos=infos,
+            terminateds=terminated,
+            truncateds=truncated,
         )
         # Assert that the action buffer for agent 4 is full.
         # Note, agent 4 acts, but receives no observation.
@@ -420,7 +418,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         episode.agent_buffers["agent_3"]["rewards"].put_nowait(1.0)
         episode.agent_buffers["agent_5"]["rewards"].put_nowait(1.0)
 
-    def test_create_successor(self):
+    def test_cut(self):
         # Create an environment.
         episode_1, _ = self._mock_multi_agent_records_from_env(size=100)
 
@@ -428,7 +426,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertEqual(episode_1.t, 100)
 
         # Create a successor.
-        episode_2 = episode_1.create_successor()
+        episode_2 = episode_1.cut()
         # Assert that it has the same id.
         self.assertEqual(episode_1.id_, episode_2.id_)
         # Assert that all `SingleAgentEpisode`s have identical ids.
@@ -575,8 +573,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             observations,
             actions,
             rewards,
-            is_terminated,
-            is_truncated,
+            terminateds,
+            truncateds,
             infos,
         ) = self._mock_multi_agent_records()
 
@@ -587,8 +585,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             actions=actions,
             rewards=rewards,
             infos=infos,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
+            terminateds=terminateds,
+            truncateds=truncateds,
         )
 
         # Assert that agents 1 and 3's buffers are indeed full.
@@ -611,17 +609,17 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # add this to the buffer and to the global reward history.
         reward = {"agent_1": 2.0, "agent_2": 2.0, "agent_3": 2.0, "agent_5": 2.0}
         info = {"agent_1": {}, "agent_2": {}}
-        is_terminated = {k: False for k in observation.keys()}
-        is_terminated.update({"__all__": False})
-        is_truncated = {k: False for k in observation.keys()}
-        is_truncated.update({"__all__": False})
-        episode_1.add_timestep(
-            observation=observation,
-            action=action,
-            reward=reward,
-            info=info,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
+        terminateds = {k: False for k in observation.keys()}
+        terminateds.update({"__all__": False})
+        truncateds = {k: False for k in observation.keys()}
+        truncateds.update({"__all__": False})
+        episode_1.add_env_step(
+            observations=observation,
+            actions=action,
+            rewards=reward,
+            infos=info,
+            terminateds=terminateds,
+            truncateds=truncateds,
         )
 
         # Check that the partial reward history is correct.
@@ -647,7 +645,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             self.assertEqual(episode_1.partial_rewards[agent_id][-1], 2.0)
 
         # Now create the successor.
-        episode_2 = episode_1.create_successor()
+        episode_2 = episode_1.cut()
 
         for agent_id, agent_eps in episode_2.agent_episodes.items():
             if len(agent_eps.observations) > 0:
@@ -704,8 +702,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             actions=actions,
             rewards=rewards,
             infos=infos,
-            is_terminated=is_terminateds,
-            is_truncated=is_truncateds,
+            terminateds=is_terminateds,
+            truncateds=is_truncateds,
             extra_model_outputs=extra_model_outputs,
         )
 
@@ -791,9 +789,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Test with initial observations only.
         episode_init_only = MultiAgentEpisode(agent_ids=agent_ids)
-        episode_init_only.add_initial_observation(
-            initial_observation=observations[0],
-            initial_info=infos[0],
+        episode_init_only.add_env_reset(
+            observation=observations[0],
+            infos=infos[0],
         )
         # Get the last observation for agents and assert that its correct.
         last_observation = episode_init_only.get_observations()
@@ -985,22 +983,22 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Generate initial observation and info.
         obs, info = env.reset(seed=42)
-        episode_1.add_initial_observation(
-            initial_observation=obs,
-            initial_info=info,
+        episode_1.add_env_reset(
+            observations=obs,
+            infos=info,
         )
         # Now, generate 100 samples.
         for i in range(100):
             action = {agent_id: i for agent_id in obs}
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
-            episode_1.add_timestep(
-                observation=obs,
-                action=action,
-                reward=reward,
-                info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={agent_id: {"extra": 10} for agent_id in action},
+            obs, reward, terminated, truncated, info = env.step(action)
+            episode_1.add_env_step(
+                observations=obs,
+                actions=action,
+                rewards=reward,
+                infos=info,
+                terminateds=terminated,
+                truncateds=truncated,
+                extra_model_outputs={agent_id: {"extra": 10} for agent_id in action},
             )
 
         # First, receive the last rewards without considering buffered values.
@@ -1644,7 +1642,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             size=100, truncate=False
         )
         # Now, create a successor episode.
-        episode_2 = episode_1.create_successor()
+        episode_2 = episode_1.cut()
         # Generate 100 more samples from the environment and store it in the episode.
         episode_2, env = self._mock_multi_agent_records_from_env(
             size=100, episode=episode_2, env=env, init=False
@@ -1900,7 +1898,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Assert that the length is indeed 100.
         self.assertEqual(len(episode), 100)
         # Now, build a successor.
-        successor = episode.create_successor()
+        successor = episode.cut()
         # Sample another 100 timesteps.
         successor, env = self._mock_multi_agent_records_from_env(
             episode=successor, env=env, init=False
@@ -1935,7 +1933,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # Now test that when creating a successor its sample batch will
         # contain the correct values.
-        successor = episode.create_successor()
+        successor = episode.cut()
         # Run 100 more timesteps for the successor.
         successor, env = self._mock_multi_agent_records_from_env(
             episode=successor, env=env, init=False
@@ -2007,7 +2005,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # We initialize the episode, if requested.
         if init:
             obs, info = env.reset(seed=seed)
-            episode.add_initial_observation(initial_observation=obs, initial_info=info)
+            episode.add_env_reset(observations=obs, infos=info)
         # In the other case wer need at least the last observations for the next
         # actions.
         else:
@@ -2020,15 +2018,15 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Sample `size` many records.
         for i in range(env.t, env.t + size):
             action = {agent_id: i + 1 for agent_id in obs}
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
-            episode.add_timestep(
-                observation=obs,
-                action=action,
-                reward=reward,
-                info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={agent_id: {"extra": 10} for agent_id in action},
+            obs, reward, terminated, truncated, info = env.step(action)
+            episode.add_env_step(
+                observations=obs,
+                actions=action,
+                rewards=reward,
+                infos=info,
+                terminateds=terminated,
+                truncateds=truncated,
+                extra_model_outputs={agent_id: {"extra": 10} for agent_id in action},
             )
 
         # Return both, epsiode and environment.
@@ -2066,17 +2064,21 @@ class TestMultiAgentEpisode(unittest.TestCase):
             {"agent_2": {}, "agent_4": {}},
         ]
         # Let no agent terminate or being truncated.
-        is_terminated = [
-            {"__all__": False, "agent_1": False, "agent_3": False, "agent_4": False},
-            {"__all__": False, "agent_2": False, "agent_4": False},
-        ]
-        is_truncated = [
-            {"__all__": False, "agent_1": False, "agent_3": False, "agent_4": False},
-            {"__all__": False, "agent_2": False, "agent_4": False},
-        ]
+        terminateds = {
+            "__all__": False,
+            "agent_1": False,
+            "agent_3": False,
+            "agent_4": False,
+        }
+        truncateds = {
+            "__all__": False,
+            "agent_1": False,
+            "agent_3": False,
+            "agent_4": False,
+        }
 
         # Return all observations.
-        return observations, actions, rewards, is_terminated, is_truncated, infos
+        return observations, actions, rewards, terminateds, truncateds, infos
 
 
 if __name__ == "__main__":
