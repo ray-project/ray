@@ -22,12 +22,14 @@ from ray.air.constants import (
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint, CheckpointConfig
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.constants import (
+    RAY_CHDIR_TO_TRIAL_DIR,
+    RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
+)
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.tune import TuneError
-from ray.tune.error import _TuneRestoreError
 from ray.tune.logger import NoopLogger
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -749,23 +751,48 @@ class Trial:
             return None
         return os.path.join(self.local_path, self.run_metadata.pickled_error_filename)
 
-    def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
-        if isinstance(exc, _TuneRestoreError):
-            exc = exc.exc
-            if self.temporary_state.num_restore_failures >= int(
-                os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
-            ):
-                # Restore was unsuccessful, try again without checkpoint.
-                self.clear_checkpoint()
-                self.run_metadata.num_failures += 1
-            else:
-                self.temporary_state.num_restore_failures += 1
+    def _handle_restore_error(self, exc: Exception):
+        if self.temporary_state.num_restore_failures >= int(
+            os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
+        ):
+            # Restore was unsuccessful, try again without checkpoint.
+            self.clear_checkpoint()
+            self.run_metadata.num_failures += 1
+        else:
+            self.temporary_state.num_restore_failures += 1
+
+    def _handle_ray_actor_error(self, exc: RayActorError):
+        count_preemption_errors = bool(
+            int(os.environ.get(RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE, "0"))
+        )
+        if not exc.preempted or count_preemption_errors:
+            # Only count non-preempted actor errors as failures.
+            self.run_metadata.num_failures += 1
+
+    def _handle_ray_task_error(self, exc: RayTaskError):
+        cause = exc.as_instanceof_cause()
+        if isinstance(cause, RayActorError):
+            # Handle the RayActorError directly (ex: Ray Train worker actor errors)
+            return self._handle_ray_actor_error(cause)
+
+        # Increment failures for all user errors (which get raised as RayTaskError)
+        self.run_metadata.num_failures += 1
+
+    def handle_error(
+        self, exc: Optional[Union[TuneError, RayTaskError, RayActorError]] = None
+    ):
+        if self.is_restoring:
+            self._handle_restore_error(exc)
+        elif isinstance(exc, RayActorError):
+            self._handle_ray_actor_error(exc)
+        elif isinstance(exc, RayTaskError):
+            self._handle_ray_task_error(exc)
         else:
             self.run_metadata.num_failures += 1
 
         if self.local_path:
             self.run_metadata.error_filename = EXPR_ERROR_FILE
-            if isinstance(exc, RayTaskError):
+            if isinstance(exc, (RayTaskError, RayActorError)):
                 # Piping through the actual error to result grid.
                 self.run_metadata.pickled_error_filename = EXPR_ERROR_PICKLE_FILE
                 with open(self.pickled_error_file, "wb") as f:
@@ -844,19 +871,17 @@ class Trial:
     def should_recover(self):
         """Returns whether the trial qualifies for retrying.
 
-        This is if the trial has not failed more than max_failures. Note this
-        may return true even when there is no checkpoint, either because
+        `num_failures` should represent the number of times the trial has
+        failed *up to the moment this method is called.* If we've failed
+        5 times and `max_failures=5`, then we should recover, since
+        we only pass the limit on the 6th failure.
+
+        Note this may return true even when there is no checkpoint, either because
         `self.checkpoint_freq` is `0` or because the trial failed before
         a checkpoint has been made.
         """
         return (
-            self.run_metadata.num_failures < self.max_failures
-            or self.max_failures < 0
-            or (
-                self.run_metadata.num_failures == self.max_failures
-                and self.temporary_state.num_restore_failures
-                < int(os.environ.get("TUNE_RESTORE_RETRY_NUM", 0))
-            )
+            self.run_metadata.num_failures <= self.max_failures or self.max_failures < 0
         )
 
     def update_last_result(self, result):
