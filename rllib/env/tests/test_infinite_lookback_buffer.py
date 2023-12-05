@@ -12,12 +12,39 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
     space = gym.spaces.Dict(
         {
             "a": gym.spaces.Discrete(4),
-            "b": gym.spaces.Box(-1.0, 1.0, (2, 3)),
-            "c": gym.spaces.Tuple(
-                [gym.spaces.MultiDiscrete([2, 3]), gym.spaces.Box(-1.0, 1.0, (1,))]
-            ),
+            "b": gym.spaces.Box(-1.0, 1.0, (2, 3), np.float32),
+            "c": gym.spaces.Tuple([
+                gym.spaces.MultiDiscrete([2, 3]),
+                gym.spaces.Box(-1.0, 1.0, (1,), np.float32),
+            ]),
         }
     )
+
+    buffer_0 = {
+        "a": 0,
+        "b": np.array([[0, 0, 0], [0, 0, 0]], np.float32),
+        "c": (np.array([0, 0]), np.array([0], np.float32)),
+    }
+    buffer_0_one_hot = {
+        "a": np.array([0.0, 0.0, 0.0, 0.0], np.float32),
+        "b": np.array([[0, 0, 0], [0, 0, 0]], np.float32),
+        "c": (np.array([0, 0, 0, 0, 0]), np.array([0], np.float32)),
+    }
+    buffer_1 = {
+        "a": 1,
+        "b": np.array([[1, 1, 1], [1, 1, 1]], np.float32),
+        "c": (np.array([1, 1]), np.array([1], np.float32)),
+    }
+    buffer_2 = {
+        "a": 2,
+        "b": np.array([[2, 2, 2], [2, 2, 2]], np.float32),
+        "c": (np.array([2, 2]), np.array([2], np.float32)),
+    }
+    buffer_3 = {
+        "a": 3,
+        "b": np.array([[3, 3, 3], [3, 3, 3]], np.float32),
+        "c": (np.array([3, 3]), np.array([3], np.float32)),
+    }
 
     def test_append_and_pop(self):
         buffer = BufferWithInfiniteLookback(data=[0, 1, 2, 3])
@@ -414,32 +441,6 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
             space=self.space,
         )
 
-        buffer_0 = {
-            "a": 0,
-            "b": np.array([[0, 0, 0], [0, 0, 0]]),
-            "c": (np.array([0, 0]), np.array([0])),
-        }
-        buffer_0_one_hot = {
-            "a": np.array([0.0, 0.0, 0.0, 0.0]),
-            "b": np.array([[0, 0, 0], [0, 0, 0]]),
-            "c": (np.array([0, 0, 0, 0, 0]), np.array([0])),
-        }
-        buffer_1 = {
-            "a": 1,
-            "b": np.array([[1, 1, 1], [1, 1, 1]]),
-            "c": (np.array([1, 1]), np.array([1])),
-        }
-        buffer_2 = {
-            "a": 2,
-            "b": np.array([[2, 2, 2], [2, 2, 2]]),
-            "c": (np.array([2, 2]), np.array([2])),
-        }
-        buffer_3 = {
-            "a": 3,
-            "b": np.array([[3, 3, 3], [3, 3, 3]]),
-            "c": (np.array([3, 3]), np.array([3])),
-        }
-
         # Test on ongoing and finalized buffer.
         for finalized in [False, True]:
             if finalized:
@@ -455,32 +456,38 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
 
             self.assertTrue(len(buffer), 2)
 
-            check(buffer.get(-1), buffer_3)
-            check(buffer.get(-2), buffer_2)
-            check(buffer.get(-3), buffer_1)
-            check(buffer.get(-4), buffer_0)
-            check(buffer.get(-5, fill=0.0), buffer_0)
-            check(buffer.get([-5, 5], fill=0.0), batch_([buffer_0, buffer_0]))
-            check(buffer.get([-5, 1], fill=0.0), batch_([buffer_0, buffer_3]))
-            check(buffer.get([1, -10], fill=0.0), batch_([buffer_3, buffer_0]))
+            check(buffer.get(-1), self.buffer_3)
+            check(buffer.get(-2), self.buffer_2)
+            check(buffer.get(-3), self.buffer_1)
+            check(buffer.get(-4), self.buffer_0)
+            check(buffer.get(-5, fill=0.0), self.buffer_0)
+            check(buffer.get([-5, 5], fill=0.0), batch_([self.buffer_0, self.buffer_0]))
+            check(buffer.get([-5, 1], fill=0.0), batch_([self.buffer_0, self.buffer_3]))
+            check(buffer.get([1, -10], fill=0.0), batch_([self.buffer_3, self.buffer_0]))
             check(
                 buffer.get([-10], fill=0.0, one_hot_discrete=True),
-                batch_([buffer_0_one_hot]),
+                batch_([self.buffer_0_one_hot]),
             )
-            check(buffer.get(slice(0, 1), fill=0.0), batch_([buffer_2]))
-            check(buffer.get(slice(1, 3), fill=0.0), batch_([buffer_3, buffer_0]))
-            check(buffer.get(slice(-10, -12), fill=0.0), batch_([buffer_0, buffer_0]))
+            check(buffer.get(slice(0, 1), fill=0.0), batch_([self.buffer_2]))
+            check(
+                buffer.get(slice(1, 3), fill=0.0),
+                batch_([self.buffer_3, self.buffer_0]),
+            )
+            check(
+                buffer.get(slice(-10, -12), fill=0.0),
+                batch_([self.buffer_0, self.buffer_0]),
+            )
             check(
                 buffer.get(slice(-10, -12), fill=0.0, neg_indices_left_of_zero=True),
-                batch_([buffer_0, buffer_0]),
+                batch_([self.buffer_0, self.buffer_0]),
             )
             check(
                 buffer.get(slice(100, 98), fill=0.0, neg_indices_left_of_zero=True),
-                batch_([buffer_0, buffer_0]),
+                batch_([self.buffer_0, self.buffer_0]),
             )
             check(
                 buffer.get(slice(100, 98), fill=0.0),
-                batch_([buffer_0, buffer_0]),
+                batch_([self.buffer_0, self.buffer_0]),
             )
 
     def test_set(self):
@@ -570,7 +577,14 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
             lookback=2,
             space=self.space,
         )
-
+        # Directly via the []-notation.
+        buffer[0:2] = [self.buffer_1, self.buffer_3]
+        # Lookback buffer (untouched).
+        check(buffer.data[0], self.buffer_0)
+        check(buffer.data[1], self.buffer_1)
+        # Actual buffer has been changed by our set above.
+        check(buffer.data[2], self.buffer_1)
+        check(buffer.data[3], self.buffer_3)
 
 
 

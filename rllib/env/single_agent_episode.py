@@ -145,12 +145,12 @@ class SingleAgentEpisode:
         self,
         id_: Optional[str] = None,
         *,
-        observations: List[ObsType] = None,
+        observations: Optional[Union[List[ObsType], BufferWithInfiniteLookback]] = None,
         observation_space: Optional[gym.Space] = None,
-        actions: List[ActType] = None,
+        actions: Optional[Union[List[ActType], BufferWithInfiniteLookback]] = None,
         action_space: Optional[gym.Space] = None,
-        rewards: List[SupportsFloat] = None,
-        infos: List[Dict] = None,
+        rewards: Optional[Union[List[SupportsFloat], BufferWithInfiniteLookback]] = None,
+        infos: Optional[Union[List[Dict], BufferWithInfiniteLookback]] = None,
         terminated: bool = False,
         truncated: bool = False,
         extra_model_outputs: Optional[Dict[str, Any]] = None,
@@ -164,8 +164,8 @@ class SingleAgentEpisode:
         which might then go into the lookback buffer.
 
         Args:
-            id_: Optional. Unique identifier for this episode. If no id is
-                provided the constructor generates a hexadecimal code for the id.
+            id_: Unique identifier for this episode. If no ID is provided the
+                constructor generates a unique hexadecimal code for the id.
             observations: Optional. A list of observations from a rollout. If
                 data is provided it should be complete (i.e. observations, actions,
                 rewards, terminated, truncated, and all necessary
@@ -205,22 +205,26 @@ class SingleAgentEpisode:
                 is zero. If data is provided, the starting point is from the last
                 observation onwards (i.e. `t_started = len(observations) - 1). If
                 this parameter is provided the episode starts at the provided value.
-            len_lookback_buffer: The size of an optional lookback buffer to keep in
-                front of this Episode. If >0, will interpret the first
-                `len_lookback_buffer` items in each data as NOT part of this actual
-                episode chunk, but instead serve as historic data that may be viewed.
-                If None, will interpret all provided data in constructor as part of the
-                lookback buffer.
+            len_lookback_buffer: The size of the (optional) lookback buffers to keep in
+                front of this Episode for each type of data (observations, actions,
+                etc..). If larger 0, will interpret the first `len_lookback_buffer`
+                items in each type of data as NOT part of this actual
+                episode chunk, but instead serve as "historical" record that may be
+                viewed and used to derive new data from. For example, it might be
+                necessary to have a lookback buffer of four if you would like to do
+                observation frame stacking and your episode has been cut and you are now
+                operating on a new chunk (continuing from the cut one). Then, for the
+                first 3 items, you would have to be able to look back into the old
+                chunk's data.
+                If `len_lookback_buffer` is None, will interpret all provided data in
+                constructor as part of the lookback buffers.
         """
         self.id_ = id_ or uuid.uuid4().hex
 
-        # Lookback buffer length is provided.
-        if len_lookback_buffer is not None:
-            self._len_lookback_buffer = len_lookback_buffer
         # Lookback buffer length is not provided. Interpret already given data as
-        # lookback buffer.
-        else:
-            self._len_lookback_buffer = len(rewards or [])
+        # lookback buffer lengths for all data types.
+        if len_lookback_buffer is None:
+            len_lookback_buffer = len(rewards or [])
 
         infos = infos or [{} for _ in range(len(observations or []))]
 
@@ -228,26 +232,26 @@ class SingleAgentEpisode:
         self.observation_space = observation_space
         self.observations = BufferWithInfiniteLookback(
             data=observations,
-            lookback=self._len_lookback_buffer,
+            lookback=len_lookback_buffer,
             space=observation_space,
         )
         # Actions: t1 to T.
         self.action_space = action_space
         self.actions = BufferWithInfiniteLookback(
             data=actions,
-            lookback=self._len_lookback_buffer,
+            lookback=len_lookback_buffer,
             space=action_space,
         )
         # Rewards: t1 to T.
         self.rewards = BufferWithInfiniteLookback(
             data=rewards,
-            lookback=self._len_lookback_buffer,
+            lookback=len_lookback_buffer,
             space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
         )
         # Infos: t0 (initial info) to T.
         self.infos = BufferWithInfiniteLookback(
             data=infos,
-            lookback=self._len_lookback_buffer,
+            lookback=len_lookback_buffer,
         )
 
         # obs[-1] is the final observation in the episode.
@@ -259,7 +263,7 @@ class SingleAgentEpisode:
         self.extra_model_outputs = defaultdict(
             functools.partial(
                 BufferWithInfiniteLookback,
-                lookback=self._len_lookback_buffer,
+                lookback=len_lookback_buffer,
             ),
         )
         for k, v in (extra_model_outputs or {}).items():
@@ -279,7 +283,7 @@ class SingleAgentEpisode:
 
         self.t = (
             (len(rewards) if rewards is not None else 0)
-            - self._len_lookback_buffer
+            - len_lookback_buffer
             + self.t_started
         )
 
@@ -468,9 +472,6 @@ class SingleAgentEpisode:
             )
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
-
-            # Make sure, length of pre-buffer and len(self) make sense.
-            assert self._len_lookback_buffer + len(self) == len(self.rewards.data)
 
     @property
     def is_finalized(self) -> bool:
@@ -1297,9 +1298,10 @@ class SingleAgentEpisode:
         reset.
 
         Note that in any case, the lookback buffer will remain (if possible) at the same
-        size as it has been previously set to (`self._len_lookback_buffer`) and the
-        given slice object will NOT have to provide for this extra offset at the
-        beginning.
+        size as it has been previously set to (during construction) and the
+        provided `slice` arg will NOT have to account for this extra offset at the
+        beginning in order for the returned SingleAgentEpisode to have such a
+        lookback buffer.
 
         Args:
             slice_: The slice object to use for slicing. This should exclude the
@@ -1316,43 +1318,56 @@ class SingleAgentEpisode:
         t_started = self.t_started + start + (0 if start >= 0 else len(self))
 
         neg_indices_left_of_zero = (slice_.start or 0) >= 0
-        slice_ = slice(
-            # Make sure that the lookback buffer is part of the new slice as well.
-            (slice_.start or 0) - self._len_lookback_buffer,
-            slice_.stop,
-            slice_.step,
-        )
-        slice_obs_infos = slice(
-            slice_.start,
-            # Obs and infos need one more step at the end.
-            ((slice_.stop if slice_.stop != -1 else (len(self) - 1)) or len(self)) + 1,
-            slice_.step,
-        )
+
+        start = slice_.start or 0
+        stop = slice_.stop
+        # Obs and infos need one more step at the end.
+        stop_obs_infos = ((stop if stop != -1 else (len(self) - 1)) or len(self)) + 1
+        step = slice_.step
+        #slice_ = slice(
+        #    # Make sure that the lookback buffer is part of the new slice as well.
+        #    (slice_.start or 0) - self._len_lookback_buffer,
+        #    slice_.stop,
+        #    slice_.step,
+        #)
+        #slice_obs_infos = slice(
+        #    slice_.start,
+        #    # Obs and infos need one more step at the end.
+        #    ((slice_.stop if slice_.stop != -1 else (len(self) - 1)) or len(self)) + 1,
+        #    slice_.step,
+        #)
         return SingleAgentEpisode(
             id_=self.id_,
-            observations=self.get_observations(
-                slice_obs_infos,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            observations=BufferWithInfiniteLookback(
+                data=self.get_observations(
+                    slice(start - self.observations.lookback, stop_obs_infos, step),
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                ),
+                lookback=self.observations.lookback,
+                space=self.observation_space,
             ),
-            infos=self.get_infos(
-                slice_obs_infos,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+            infos=BufferWithInfiniteLookback(
+                data=self.get_infos(
+                    slice(start - self.infos.lookback, stop_obs_infos, step),
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                ),
+                lookback=self.infos.lookback,
             ),
             actions=self.get_actions(
-                slice_,
+                slice(start - self.actions.lookback, stop, step),
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
             ),
             rewards=self.get_rewards(
-                slice_,
+                slice(start - self.rewards.lookback, stop, step),
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
             ),
             extra_model_outputs={
                 k: self.get_extra_model_outputs(
                     k,
-                    slice_,
+                    slice(start - v.lookback, stop, step),
                     neg_indices_left_of_zero=neg_indices_left_of_zero,
                 )
-                for k in self.extra_model_outputs
+                for k, v in self.extra_model_outputs.items()
             },
             terminated=(self.is_terminated if keep_done else False),
             truncated=(self.is_truncated if keep_done else False),
