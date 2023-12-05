@@ -1673,6 +1673,13 @@ def init(
     else:
         logger.info(info_str)
 
+    if os.environ.get(ray_constants.RAY_JOB_VIRTUAL_CLUSTER_ID, None):
+        if "env_var" not in job_config.runtime_env:
+            job_config.runtime_env["env_vars"] = {}
+        job_config.runtime_env["env_vars"][
+            ray_constants.RAY_JOB_VIRTUAL_CLUSTER_ID
+        ] = os.environ[ray_constants.RAY_JOB_VIRTUAL_CLUSTER_ID]
+
     connect(
         _global_node,
         _global_node.session_name,

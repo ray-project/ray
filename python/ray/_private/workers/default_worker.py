@@ -279,6 +279,9 @@ if __name__ == "__main__":
             worker.core_worker.drain_and_exit_worker("system", error)
 
     if mode == ray.WORKER_MODE:
+        ray.get_runtime_context()._set_virtual_cluster_id(
+            os.environ.get(ray_constants.RAY_JOB_VIRTUAL_CLUSTER_ID, None)
+        )
         worker.main_loop()
     elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
         # It is handled by another thread in the C++ core worker.
