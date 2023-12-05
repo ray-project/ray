@@ -25,7 +25,7 @@ TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 # Defensively compute the size of the block as the max size reported by the
 # datasource and the actual read task size. This is to guard against issues
 # with bad metadata reporting.
-def cleaned_metadata(read_task):
+def cleaned_metadata(read_task: ReadTask):
     block_meta = read_task.get_metadata()
     task_size = len(cloudpickle.dumps(read_task))
     if block_meta.size_bytes is None or task_size > block_meta.size_bytes:

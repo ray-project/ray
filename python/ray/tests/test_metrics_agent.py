@@ -570,6 +570,9 @@ def test_per_func_name_stats(shutdown_only):
     a = Actor.remote()  # noqa
     b = ActorB.remote()
 
+    ray.get(a.__ray_ready__.remote())
+    ray.get(b.__ray_ready__.remote())
+
     def verify_components():
         metrics = raw_metrics(addr)
         metric_names = set(metrics.keys())
@@ -579,6 +582,7 @@ def test_per_func_name_stats(shutdown_only):
             components = set()
             for sample in samples:
                 components.add(sample.labels["Component"])
+
         assert {
             "raylet",
             "agent",

@@ -205,6 +205,7 @@ import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
+from ray.util.annotations import PublicAPI
 
 cimport cpython
 
@@ -253,7 +254,7 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
 
 
-class ObjectRefGenerator:
+class DynamicObjectRefGenerator:
     def __init__(self, refs):
         # TODO(swang): As an optimization, can also store the generator
         # ObjectID so that we don't need to keep individual ref counts for the
@@ -268,7 +269,7 @@ class ObjectRefGenerator:
         return len(self._refs)
 
 
-class StreamingObjectRefGenerator:
+class ObjectRefGenerator:
     """A generator to obtain object references
     from a task in a streaming manner.
 
@@ -276,6 +277,9 @@ class StreamingObjectRefGenerator:
     async generator interface.
 
     The class is not thread-safe.
+
+    Do not initialize the class and create an instance directly.
+    The instance should be created by `.remote`.
 
     >>> gen = generator_task.remote()
     >>> next(gen)
@@ -295,7 +299,7 @@ class StreamingObjectRefGenerator:
     Public APIs
     """
 
-    def __iter__(self) -> "StreamingObjectRefGenerator":
+    def __iter__(self) -> "ObjectRefGenerator":
         return self
 
     def __next__(self) -> ObjectRef:
@@ -320,7 +324,7 @@ class StreamingObjectRefGenerator:
     def close(self):
         raise NotImplementedError("`gen.close` is not supported.")
 
-    def __aiter__(self) -> "StreamingObjectRefGenerator":
+    def __aiter__(self) -> "ObjectRefGenerator":
         return self
 
     async def __anext__(self):
@@ -541,8 +545,11 @@ class StreamingObjectRefGenerator:
     def __getstate__(self):
         raise TypeError(
             "You cannot return or pass a generator to other task. "
-            "Serializing a StreamingObjectRefGenerator is not allowed.")
+            "Serializing a ObjectRefGenerator is not allowed.")
 
+
+# For backward compatibility.
+StreamingObjectRefGenerator = ObjectRefGenerator
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
@@ -1593,7 +1600,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
 
             # If a generator task fails mid-execution, we fail the
             # dynamically generated nested ObjectRefs instead of
-            # the top-level ObjectRefGenerator.
+            # the top-level DynamicObjectRefGenerator.
             num_errors_stored = store_task_errors(
                         worker, error,
                         False,  # task_exception
@@ -1955,7 +1962,7 @@ cdef void execute_task(
                             caller_address.SerializeAsString(),
                         ))
                     # Swap out the generator for an ObjectRef generator.
-                    outputs = (ObjectRefGenerator(dynamic_refs), )
+                    outputs = (DynamicObjectRefGenerator(dynamic_refs), )
 
                 # TODO(swang): For generator tasks, iterating over outputs will
                 # actually run the task. We should run the usual handlers for
@@ -2469,10 +2476,14 @@ def maybe_initialize_job_config():
             for p in py_driver_sys_path:
                 sys.path.insert(0, p)
 
+        # Cache and set the current job id.
+        job_id = core_worker.get_current_job_id()
+        ray._private.worker.global_worker.set_cached_job_id(job_id)
+
         # Record the task name via :task_name: magic token in the log file.
         # This is used for the prefix in driver logs `(task_name pid=123) ...`
         job_id_magic_token = "{}{}\n".format(
-            ray_constants.LOG_PREFIX_JOB_ID, core_worker.get_current_job_id().hex())
+            ray_constants.LOG_PREFIX_JOB_ID, job_id.hex())
         # Print on both .out and .err
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
@@ -3537,14 +3548,14 @@ cdef class CoreWorker:
         object_refs = []
         for ref_or_generator in object_refs_or_generators:
             if (not isinstance(ref_or_generator, ObjectRef)
-                    and not isinstance(ref_or_generator, StreamingObjectRefGenerator)):
+                    and not isinstance(ref_or_generator, ObjectRefGenerator)):
                 raise TypeError(
                     "wait() expected a list of ray.ObjectRef "
-                    "or StreamingObjectRefGenerator, "
+                    "or ObjectRefGenerator, "
                     f"got list containing {type(ref_or_generator)}"
                 )
 
-            if isinstance(ref_or_generator, StreamingObjectRefGenerator):
+            if isinstance(ref_or_generator, ObjectRefGenerator):
                 # Before calling wait,
                 # get the next reference from a generator.
                 object_refs.append(ref_or_generator._get_next_ref())
@@ -4298,7 +4309,7 @@ cdef class CoreWorker:
                 # NOTE(swang): returns could also be empty if the task returned
                 # an empty generator and was re-executed. However, this should
                 # not happen because we never reconstruct empty
-                # ObjectRefGenerators (since these are not stored in plasma).
+                # DynamicObjectRefGenerators (since these aren't stored in plasma).
                 num_returns = -1
         else:
             # The task specified how many return values it should have.
