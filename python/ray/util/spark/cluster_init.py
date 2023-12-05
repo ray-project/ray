@@ -1394,7 +1394,7 @@ def setup_global_ray_cluster(
         autoscale=autoscale,
         autoscale_upscaling_speed=autoscale_upscaling_speed,
         autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
-        is_global=True
+        is_global=True,
     )
 
     if not is_blocking:
