@@ -297,6 +297,30 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             consumer_timestamps,
         )
 
+    def test_no_deadlock_for_resource_contention(self):
+        """Test no deadlock in case of resource contention from
+        non-Data code."""
+        # Create a non-Data actor that uses 4 CPUs, only 1 CPU
+        # is left for Data. Currently Data StreamExecturo still
+        # incorrectly assumes it has all the 5 CPUs.
+        # Check that we don't deadlock in this case.
+
+        @ray.remote(num_cpus=4)
+        class DummyActor:
+            def foo(self):
+                return None
+
+        dummy_actor = DummyActor.remote()
+        ray.get(dummy_actor.foo.remote())
+
+        producer_timestamps, consumer_timestamps = self._run_dataset(
+            producer_num_cpus=1, consumer_num_cpus=0.9
+        )
+        assert producer_timestamps[-1] < consumer_timestamps[0], (
+            producer_timestamps,
+            consumer_timestamps,
+        )
+
 
 def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F811
     """Test backpressure on a synthetic large-scale workload."""
