@@ -234,13 +234,14 @@ TEST_F(GcsStateTest, TestDrainNode) {
 
   ON_CALL(*gcs_publisher_, PublishError).WillByDefault(Return(Status::OK()));
 
-  // Simulate raylet failure
-  gcs_node_manager_->OnNodeFailure(node_id, [](Status) {});
-
+  // Set the expectation that we will get a preempted node.
   MockGcsNodeTable node_table;
   EXPECT_CALL(*gcs_table_storage_, NodeTable()).WillOnce(ReturnRef(node_table));
   EXPECT_CALL(node_table, Put(node_id, IsPreemptedNode(), _))
       .WillOnce(Return(Status::OK()));
+
+  // Simulate raylet failure
+  gcs_node_manager_->OnNodeFailure(node_id, [](Status) {});
 }
 
 }  // namespace gcs
