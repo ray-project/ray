@@ -185,7 +185,7 @@ def podman_docker_cluster():
     # group to get necessary permissions for pulling an image from
     # docker's local storage into podman
     docker_group_id = run_in_container(
-        [["statc", "-c", "%g", "/var/run/docker.sock"]], container_id
+        [["stat", "-c", "%g", "/var/run/docker.sock"]], container_id
     )[0]
     run_in_container(
         [
