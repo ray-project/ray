@@ -227,6 +227,8 @@ class ActorMethod:
             num_returns = self._num_returns
         if max_retries is None:
             max_retries = self._max_retries
+        if max_retries is None:
+            max_retries = 0
         if retry_exceptions is None:
             retry_exceptions = self._retry_exceptions
         if _generator_backpressure_num_objects is None:
@@ -316,9 +318,7 @@ class _ActorClassMethodMetadata(object):
         cls._cache.clear()
 
     @classmethod
-    def create(
-        cls, modified_class, actor_creation_function_descriptor, max_task_retries
-    ):
+    def create(cls, modified_class, actor_creation_function_descriptor):
         # Try to create an instance from cache.
         cached_meta = cls._cache.get(actor_creation_function_descriptor)
         if cached_meta is not None:
@@ -364,12 +364,12 @@ class _ActorClassMethodMetadata(object):
             else:
                 self.num_returns[method_name] = None
 
+            # Only contains entries from `@ray.method(max_retries=...)`
+            # We may not populate the others with max_task_retries here since it may be
+            # set in `actor.method.options(max_retries=...)`. So we always store both
+            # max_retries and max_task_retries, and favor the former.
             if hasattr(method, "__ray_max_retries__"):
                 self.max_retries[method_name] = method.__ray_max_retries__
-            else:
-                self.max_retries[method_name] = (
-                    max_task_retries if max_task_retries is not None else 0
-                )
 
             if hasattr(method, "__ray_retry_exceptions__"):
                 self.retry_exceptions[method_name] = method.__ray_retry_exceptions__
@@ -465,7 +465,7 @@ class _ActorClassMetadata:
         self.scheduling_strategy = scheduling_strategy
         self.last_export_session_and_job = None
         self.method_meta = _ActorClassMethodMetadata.create(
-            modified_class, actor_creation_function_descriptor, self.max_task_retries
+            modified_class, actor_creation_function_descriptor
         )
 
 
@@ -1059,13 +1059,6 @@ class ActorClass:
                 PythonFunctionDescriptor(module_name, method_name, class_name)
             )
 
-        # Copy is safe for Dict[str, int]
-        max_retries_dict = meta.method_meta.max_retries.copy()
-        default_max_retries = max_task_retries if max_task_retries is not None else 0
-        for method_name in meta.method_meta.methods:
-            if method_name not in max_retries_dict:
-                max_retries_dict[method_name] = default_max_retries
-
         # Update the creation descriptor based on number of arguments
         if meta.is_cross_language:
             func_name = "<init>"
@@ -1109,11 +1102,12 @@ class ActorClass:
         actor_handle = ActorHandle(
             meta.language,
             actor_id,
+            max_task_retries,
             meta.method_meta.method_is_generator,
             meta.method_meta.decorators,
             meta.method_meta.signatures,
             meta.method_meta.num_returns,
-            max_retries_dict,
+            meta.method_meta.max_retries,
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
             actor_method_cpu,
@@ -1181,6 +1175,7 @@ class ActorHandle:
         self,
         language,
         actor_id,
+        max_task_retries: Optional[int],
         method_is_generator: Dict[str, bool],
         method_decorators,
         method_signatures,
@@ -1195,6 +1190,7 @@ class ActorHandle:
     ):
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
+        self._ray_max_task_retries = max_task_retries
         self._ray_original_handle = original_handle
         self._ray_method_is_generator = method_is_generator
         self._ray_method_decorators = method_decorators
@@ -1228,7 +1224,10 @@ class ActorHandle:
                     self,
                     method_name,
                     self._ray_method_num_returns[method_name],
-                    self._ray_method_max_retries[method_name],
+                    self._ray_method_max_retries.get(
+                        method_name, self._ray_max_task_retries
+                    )
+                    or 0,  # never None
                     self._ray_method_retry_exceptions.get(method_name),
                     self._ray_method_is_generator[method_name],
                     self._ray_method_generator_backpressure_num_objects.get(
@@ -1259,7 +1258,7 @@ class ActorHandle:
         kwargs: Dict[str, Any] = None,
         name: str = "",
         num_returns: Optional[int] = None,
-        max_retries: Optional[int] = None,
+        max_retries: int = None,
         retry_exceptions: Union[bool, list, tuple] = None,
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
@@ -1386,10 +1385,12 @@ class ActorHandle:
             return FakeActorMethod()
 
         return ActorMethod(
-            self,
-            item,
+            self,  # actor
+            item,  # method_name
             ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,
-            False,
+            0,  # max_retries
+            False,  # retry_exceptions,
+            False,  # is_generator
             self._ray_method_generator_backpressure_num_objects.get(item, -1),
             # Currently, cross-lang actor method not support decorator
             decorator=None,
@@ -1428,6 +1429,7 @@ class ActorHandle:
                 {
                     "actor_language": self._ray_actor_language,
                     "actor_id": self._ray_actor_id,
+                    "max_task_retries": self._ray_max_task_retries,
                     "method_is_generator": self._ray_method_is_generator,
                     "method_decorators": self._ray_method_decorators,
                     "method_signatures": self._ray_method_signatures,
@@ -1471,6 +1473,7 @@ class ActorHandle:
                 # thread-safe.
                 state["actor_language"],
                 state["actor_id"],
+                state["max_task_retries"],
                 state["method_is_generator"],
                 state["method_decorators"],
                 state["method_signatures"],

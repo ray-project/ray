@@ -968,13 +968,18 @@ cdef raise_if_dependency_failed(arg):
         raise arg
 
 
-def serialize_retry_exception_allowlist(retry_exception_allowlist, func_name):
+def serialize_retry_exception_allowlist(retry_exception_allowlist, function_descriptor):
     try:
         return ray_pickle.dumps(retry_exception_allowlist)
     except TypeError as e:
+        # Only PythonFunctionDescriptor has @property repr.
+        if hasattr(function_descriptor, "repr"):
+            name = function_descriptor.repr
+        else:
+            name = function_descriptor.__repr__()
         msg = (
             "Could not serialize the retry exception allowlist"
-            f"{retry_exception_allowlist} for task {func_name}. "
+            f"{retry_exception_allowlist} for task {name}. "
             "Check "
             "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
             "for more information.")
@@ -1723,7 +1728,7 @@ cdef void execute_task(
                     raise RayActorError(
                         ActorDiedErrorContext(
                             error_message=error_message,
-                            actor_id=core_worker.get_actor_id(),
+                            actor_id=core_worker.get_actor_id().binary(),
                             class_name=class_name
                             )
                         )
@@ -3754,7 +3759,7 @@ cdef class CoreWorker:
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
-            function_descriptor.repr)
+            function_descriptor)
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -4122,8 +4127,8 @@ cdef class CoreWorker:
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)
             method_meta = ray.actor._ActorClassMethodMetadata.create(
-                actor_class, actor_creation_function_descriptor, max_task_retries)
-            return ray.actor.ActorHandle(language, actor_id,
+                actor_class, actor_creation_function_descriptor)
+            return ray.actor.ActorHandle(language, actor_id, max_task_retries,
                                          method_meta.method_is_generator,
                                          method_meta.decorators,
                                          method_meta.signatures,
@@ -4135,7 +4140,8 @@ cdef class CoreWorker:
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
         else:
-            return ray.actor.ActorHandle(language, actor_id,
+            return ray.actor.ActorHandle(language, actor_id, 
+                                        0, # max_task_retries,
                                          {},  # method is_generator
                                          {},  # method decorators
                                          {},  # method signatures
