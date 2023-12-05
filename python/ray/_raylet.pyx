@@ -4140,8 +4140,8 @@ cdef class CoreWorker:
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
         else:
-            return ray.actor.ActorHandle(language, actor_id, 
-                                        0, # max_task_retries,
+            return ray.actor.ActorHandle(language, actor_id,
+                                         0,   # max_task_retries,
                                          {},  # method is_generator
                                          {},  # method decorators
                                          {},  # method signatures
