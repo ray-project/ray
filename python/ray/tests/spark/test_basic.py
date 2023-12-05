@@ -219,9 +219,10 @@ class RayOnSparkCPUClusterTestBase(ABC):
             assert not is_port_in_use(hostname, int(port))
 
     def test_autoscaling(self):
-        for num_worker_nodes, num_cpus_worker_node in [
-            (self.max_spark_tasks, self.num_cpus_per_spark_task),
-            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2),
+        for num_worker_nodes, num_cpus_worker_node, min_worker_nodes in [
+            (self.max_spark_tasks, self.num_cpus_per_spark_task, 0),
+            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2, 0),
+            (self.max_spark_tasks, self.num_cpus_per_spark_task, 1),
         ]:
             num_ray_task_slots = self.max_spark_tasks // (
                 num_cpus_worker_node // self.num_cpus_per_spark_task
@@ -271,10 +272,15 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
                 # Test scale down
                 wait_for_condition(
-                    lambda: len(self.get_ray_worker_resources_list()) == 0,
+                    lambda: len(self.get_ray_worker_resources_list())
+                    == min_worker_nodes,
                     timeout=60,
                     retry_interval_ms=1000,
                 )
+                if min_worker_nodes > 0:
+                    # Test scaling down keeps nodes number >= min_worker_nodes
+                    time.sleep(30)
+                    assert self.get_ray_worker_resources_list() == min_worker_nodes
 
 
 class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):

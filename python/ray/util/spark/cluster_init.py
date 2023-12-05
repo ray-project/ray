@@ -85,7 +85,8 @@ class RayClusterOnSpark:
         address,
         head_proc,
         spark_job_group_id,
-        num_workers_node,
+        min_worker_nodes,
+        max_worker_nodes,
         temp_dir,
         cluster_unique_id,
         start_hook,
@@ -98,7 +99,8 @@ class RayClusterOnSpark:
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
-        self.num_worker_nodes = num_workers_node
+        self.min_worker_nodes = min_worker_nodes
+        self.max_worker_nodes = max_worker_nodes
         self.temp_dir = temp_dir
         self.cluster_unique_id = cluster_unique_id
         self.start_hook = start_hook
@@ -446,7 +448,8 @@ def _get_default_ray_tmp_dir():
 
 def _setup_ray_cluster(
     *,
-    num_worker_nodes: int,
+    max_worker_nodes: int,
+    min_worker_nodes: int,
     num_cpus_worker_node: int,
     num_cpus_head_node: int,
     num_gpus_worker_node: int,
@@ -635,8 +638,8 @@ def _setup_ray_cluster(
                         "object_store_memory": object_store_memory_worker_node,
                     },
                     "node_config": {},
-                    "min_workers": 0,
-                    "max_workers": num_worker_nodes,
+                    "min_workers": min_worker_nodes,
+                    "max_workers": max_worker_nodes,
                 },
             },
             extra_provider_config={
@@ -727,7 +730,8 @@ def _setup_ray_cluster(
         address=cluster_address,
         head_proc=ray_head_proc,
         spark_job_group_id=None,
-        num_workers_node=num_worker_nodes,
+        min_worker_nodes=min_worker_nodes,
+        max_worker_nodes=max_worker_nodes,
         temp_dir=ray_temp_dir,
         cluster_unique_id=cluster_unique_id,
         start_hook=start_hook,
@@ -750,7 +754,7 @@ def _setup_ray_cluster(
                         "This job group is for spark job which runs the Ray cluster "
                         f"with ray head node {ray_head_ip}:{ray_head_port}"
                     ),
-                    num_worker_nodes=num_worker_nodes,
+                    num_worker_nodes=max_worker_nodes,
                     using_stage_scheduling=using_stage_scheduling,
                     ray_head_ip=ray_head_ip,
                     ray_head_port=ray_head_port,
@@ -881,22 +885,23 @@ def _verify_node_options(node_options, block_keys, node_type):
 
 
 def _setup_ray_cluster_internal(
-    num_worker_nodes: int,
-    num_cpus_worker_node: Optional[int] = None,
-    num_cpus_head_node: Optional[int] = None,
-    num_gpus_worker_node: Optional[int] = None,
-    num_gpus_head_node: Optional[int] = None,
-    object_store_memory_worker_node: Optional[int] = None,
-    object_store_memory_head_node: Optional[int] = None,
-    head_node_options: Optional[Dict] = None,
-    worker_node_options: Optional[Dict] = None,
-    ray_temp_root_dir: Optional[str] = None,
-    strict_mode: bool = False,
-    collect_log_to_path: Optional[str] = None,
-    autoscale: bool = False,
-    autoscale_upscaling_speed: Optional[float] = 1.0,
-    autoscale_idle_timeout_minutes: Optional[float] = 1.0,
-    is_global: bool = False,
+    max_worker_nodes: int,
+    min_worker_nodes: Optional[int],
+    num_cpus_worker_node: Optional[int],
+    num_cpus_head_node: Optional[int],
+    num_gpus_worker_node: Optional[int],
+    num_gpus_head_node: Optional[int],
+    object_store_memory_worker_node: Optional[int],
+    object_store_memory_head_node: Optional[int],
+    head_node_options: Optional[Dict],
+    worker_node_options: Optional[Dict],
+    ray_temp_root_dir: Optional[str],
+    strict_mode: bool,
+    collect_log_to_path: Optional[str],
+    autoscale: bool,
+    autoscale_upscaling_speed: Optional[float],
+    autoscale_idle_timeout_minutes: Optional[float],
+    is_global: bool,
     **kwargs,
 ) -> Tuple[str, str]:
     global _active_ray_cluster
@@ -1053,23 +1058,46 @@ def _setup_ray_cluster_internal(
         num_gpus_worker_node,
     )
 
-    if num_worker_nodes == MAX_NUM_WORKER_NODES:
+    if max_worker_nodes is None and "num_worker_nodes" in kwargs:
+        max_worker_nodes = kwargs["num_worker_nodes"]
+        _logger.warning(
+            "'num_worker_nodes' argument is deprecated, please set "
+            "'max_worker_nodes' argument instead."
+        )
+
+    if max_worker_nodes is None:
+        raise ValueError("Please set a number for 'max_worker_nodes' argument.")
+    if max_worker_nodes == MAX_NUM_WORKER_NODES:
         if autoscale:
             raise ValueError(
-                "If you set autoscale=True, you cannot set `num_worker_nodes` to "
-                "`MAX_NUM_WORKER_NODES`, instead, you should set `num_worker_nodes` "
+                "If you set autoscale=True, you cannot set `max_worker_nodes` to "
+                "`MAX_NUM_WORKER_NODES`, instead, you should set `max_worker_nodes` "
                 "to the number that represents the upper bound of the ray worker "
                 "nodes number."
             )
 
-        # num_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
+        # max_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
         # spark task slots
-        num_worker_nodes = get_max_num_concurrent_tasks(spark.sparkContext, res_profile)
-    elif num_worker_nodes <= 0:
+        max_worker_nodes = get_max_num_concurrent_tasks(spark.sparkContext, res_profile)
+    elif max_worker_nodes <= 0:
         raise ValueError(
-            "The value of 'num_worker_nodes' argument must be either a positive "
+            "The value of 'max_worker_nodes' argument must be either a positive "
             "integer or 'ray.util.spark.MAX_NUM_WORKER_NODES'."
         )
+
+    if autoscale:
+        if min_worker_nodes is None:
+            min_worker_nodes = 0
+        elif min_worker_nodes < 0 or min_worker_nodes > max_worker_nodes:
+            raise ValueError(
+                "The value of 'max_worker_nodes' argument must be an integer >= 0 "
+                "and <= 'max_worker_nodes'"
+            )
+    else:
+        if min_worker_nodes is not None:
+            raise ValueError(
+                "For non-autoscale mode, you cannot set 'min_worker_nodes' argument."
+            )
 
     insufficient_resources = []
 
@@ -1148,7 +1176,8 @@ def _setup_ray_cluster_internal(
 
     with _active_ray_cluster_rwlock:
         cluster = _setup_ray_cluster(
-            num_worker_nodes=num_worker_nodes,
+            max_worker_nodes=max_worker_nodes,
+            min_worker_nodes=min_worker_nodes,
             num_cpus_worker_node=num_cpus_worker_node,
             num_cpus_head_node=num_cpus_head_node,
             num_gpus_worker_node=num_gpus_worker_node,
@@ -1181,8 +1210,9 @@ def _setup_ray_cluster_internal(
 
 @PublicAPI(stability="alpha")
 def setup_ray_cluster(
-    num_worker_nodes: int,
+    max_worker_nodes: Optional[int] = None,
     *,
+    min_worker_nodes: Optional[int] = None,
     num_cpus_worker_node: Optional[int] = None,
     num_cpus_head_node: Optional[int] = None,
     num_gpus_worker_node: Optional[int] = None,
@@ -1213,19 +1243,23 @@ def setup_ray_cluster(
     cluster.
 
     Args:
-        num_worker_nodes: This argument represents how many ray worker nodes to start
+        max_worker_nodes: This argument represents maximum ray worker nodes to start
             for the ray cluster.
-            If autoscale=True, then the ray cluster starts with zero worker node,
-            and it can scale up to at most `num_worker_nodes` worker nodes.
+            If autoscale=True, then the ray cluster starts with "min_worker_nodes"
+            number of worker node, and it can scale up to at most `num_worker_nodes`
+            worker nodes.
+            If autoscale=False, then the ray cluster starts with "max_worker_nodes"
+            number of worker nodes.
             In non-autoscaling mode, you can
-            specify the `num_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
+            specify the `max_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
             represents a ray cluster
             configuration that will use all available resources configured for the
             spark application.
             To create a spark application that is intended to exclusively run a
             shared ray cluster in non-scaling, it is recommended to set this argument
             to `ray.util.spark.MAX_NUM_WORKER_NODES`.
-
+        min_worker_nodes: Minimal number of worker nodes in autoscaling mode.
+            This argument is only available in autoscaling mode.
         num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
             provided, use spark application configuration 'spark.task.cpus' instead.
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
@@ -1311,7 +1345,8 @@ def setup_ray_cluster(
     """
 
     return _setup_ray_cluster_internal(
-        num_worker_nodes=num_worker_nodes,
+        max_worker_nodes=max_worker_nodes,
+        min_worker_nodes=min_worker_nodes,
         num_cpus_worker_node=num_cpus_worker_node,
         num_cpus_head_node=num_cpus_head_node,
         num_gpus_worker_node=num_gpus_worker_node,
@@ -1332,9 +1367,10 @@ def setup_ray_cluster(
 
 
 def setup_global_ray_cluster(
-    num_worker_nodes: int,
+    max_worker_nodes: int,
     *,
     is_blocking: bool = True,
+    min_worker_nodes: Optional[int] = None,
     num_cpus_worker_node: Optional[int] = None,
     num_cpus_head_node: Optional[int] = None,
     num_gpus_worker_node: Optional[int] = None,
@@ -1379,7 +1415,8 @@ def setup_global_ray_cluster(
     """
 
     cluster_address = _setup_ray_cluster_internal(
-        num_worker_nodes=num_worker_nodes,
+        max_worker_nodes=max_worker_nodes,
+        min_worker_nodes=min_worker_nodes,
         num_cpus_worker_node=num_cpus_worker_node,
         num_cpus_head_node=num_cpus_head_node,
         num_gpus_worker_node=num_gpus_worker_node,
