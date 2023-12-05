@@ -1106,7 +1106,7 @@ def calculate_target_capacity_direction(
         if curr_target_capacity == next_target_capacity:
             next_target_capacity_direction = curr_target_capacity_direction
         elif curr_target_capacity is None and next_target_capacity is not None:
-            # target_capacity is scaling down from None to a numeric value.
+            # target_capacity is scaling down from None to a number.
             next_target_capacity_direction = TargetCapacityDirection.DOWN
         elif next_target_capacity is None:
             next_target_capacity_direction = None
