@@ -7,11 +7,12 @@ from ray.tests.conftest import *  # noqa
 from ray.tests.conftest_docker import *  # noqa
 from ray.tests.conftest_docker import run_in_container, NESTED_IMAGE_NAME
 
-# Runtime env that points to an image that
-# - is a ray image built from the changes in the current commit
-# - contains a custom file that Ray actors can read from when executing requests
-# See `docker/runtime_env_container/Dockerfile` and the `podman_docker_cluster` fixture
-WORKER_PATH = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+
+# NOTE(zcin): The actual test code are in python scripts under
+# python/ray/tests/runtime_env_container. The scripts are copied over to
+# the docker container that's started by the `podman_docker_cluster`
+# fixture, so that the tests can be run by invoking the scripts from
+# within the pytests in this file
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
@@ -19,14 +20,7 @@ def test_put_get(podman_docker_cluster):
     """Test ray.put and ray.get."""
 
     container_id = podman_docker_cluster
-    cmd = [
-        "python",
-        "tests/test_put_get.py",
-        "--image",
-        NESTED_IMAGE_NAME,
-        "--worker-path",
-        WORKER_PATH,
-    ]
+    cmd = ["python", "tests/test_put_get.py", "--image", NESTED_IMAGE_NAME]
     run_in_container([cmd], container_id)
 
 
@@ -35,14 +29,7 @@ def test_shared_memory(podman_docker_cluster):
     """Test shared memory."""
 
     container_id = podman_docker_cluster
-    cmd = [
-        "python",
-        "tests/test_shared_memory.py",
-        "--image",
-        NESTED_IMAGE_NAME,
-        "--worker-path",
-        WORKER_PATH,
-    ]
+    cmd = ["python", "tests/test_shared_memory.py", "--image", NESTED_IMAGE_NAME]
     run_in_container([cmd], container_id)
 
 
@@ -51,14 +38,7 @@ def test_log_file_exists(podman_docker_cluster):
     """Verify worker log file exists"""
 
     container_id = podman_docker_cluster
-    cmd = [
-        "python",
-        "tests/test_log_file_exists.py",
-        "--image",
-        NESTED_IMAGE_NAME,
-        "--worker-path",
-        WORKER_PATH,
-    ]
+    cmd = ["python", "tests/test_log_file_exists.py", "--image", NESTED_IMAGE_NAME]
     run_in_container([cmd], container_id)
 
 
@@ -79,8 +59,6 @@ def test_worker_exit_intended_system_exit_and_user_error(podman_docker_cluster):
         "tests/test_worker_exit_intended_system_exit_and_user_error.py",
         "--image",
         NESTED_IMAGE_NAME,
-        "--worker-path",
-        WORKER_PATH,
     ]
     run_in_container([cmd], container_id)
 
@@ -90,14 +68,7 @@ def test_serve_basic(podman_docker_cluster):
     """Test Serve deployment."""
 
     container_id = podman_docker_cluster
-    cmd = [
-        "python",
-        "tests/test_serve_basic.py",
-        "--image",
-        NESTED_IMAGE_NAME,
-        "--worker-path",
-        WORKER_PATH,
-    ]
+    cmd = ["python", "tests/test_serve_basic.py", "--image", NESTED_IMAGE_NAME]
     run_in_container([cmd], container_id)
 
 
@@ -106,9 +77,9 @@ def test_serve_basic(podman_docker_cluster):
 def test_serve_telemetry(podman_docker_cluster):
     """Test Serve deployment telemetry."""
 
-    pass
-    # container_id = podman_docker_cluster
-    # run_in_container([["python", "-c", put_get_script]], container_id)
+    container_id = podman_docker_cluster
+    cmd = ["python", "tests/test_serve_telemetry.py", "--image", NESTED_IMAGE_NAME]
+    run_in_container([cmd], container_id)
 
 
 class TestValidation:
@@ -119,7 +90,7 @@ class TestValidation:
                 runtime_env={
                     "container": {
                         "image": NESTED_IMAGE_NAME,
-                        "worker_path": WORKER_PATH,
+                        "worker_path": "/some/path/to/default_worker.py",
                     },
                     "env_vars": {"HELLO": "WORLD"},
                 }
@@ -134,7 +105,7 @@ class TestValidation:
                 runtime_env={
                     "container": {
                         "image": NESTED_IMAGE_NAME,
-                        "worker_path": WORKER_PATH,
+                        "worker_path": "/some/path/to/default_worker.py",
                     },
                     "pip": ["requests"],
                 }
@@ -149,7 +120,7 @@ class TestValidation:
                 runtime_env={
                     "container": {
                         "image": NESTED_IMAGE_NAME,
-                        "worker_path": WORKER_PATH,
+                        "worker_path": "/some/path/to/default_worker.py",
                     },
                     "conda": ["requests"],
                 }
@@ -164,7 +135,7 @@ class TestValidation:
                 runtime_env={
                     "container": {
                         "image": NESTED_IMAGE_NAME,
-                        "worker_path": WORKER_PATH,
+                        "worker_path": "/some/path/to/default_worker.py",
                     },
                     "py_modules": ["requests"],
                 }
@@ -179,7 +150,7 @@ class TestValidation:
                 runtime_env={
                     "container": {
                         "image": NESTED_IMAGE_NAME,
-                        "worker_path": WORKER_PATH,
+                        "worker_path": "/some/path/to/default_worker.py",
                     },
                     "working_dir": ".",
                 }
@@ -194,7 +165,7 @@ class TestValidation:
                 runtime_env={
                     "container": {
                         "image": NESTED_IMAGE_NAME,
-                        "worker_path": WORKER_PATH,
+                        "worker_path": "/some/path/to/default_worker.py",
                     },
                     "env_vars": {"HELLO": "WORLD"},
                     "working_dir": ".",

@@ -3,21 +3,14 @@ import numpy as np
 import sys
 import argparse
 
-parser = argparse.ArgumentParser(
-    description="Example Python script taking command line arguments."
-)
+parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
-parser.add_argument(
-    "--worker-path",
-    type=str,
-    help="The path to `default_worker.py` inside the container.",
-)
 args = parser.parse_args()
 
+worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
 
-@ray.remote(
-    runtime_env={"container": {"image": args.image, "worker_path": args.worker_path}}
-)
+
+@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
 def f():
     array = np.random.rand(5000, 5000)
     return ray.put(array)

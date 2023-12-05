@@ -8,16 +8,11 @@ from ray.util.state import list_workers
 from ray._private.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-parser = argparse.ArgumentParser(
-    description="Example Python script taking command line arguments."
-)
+parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
-parser.add_argument(
-    "--worker-path",
-    type=str,
-    help="The path to `default_worker.py` inside the container.",
-)
 args = parser.parse_args()
+worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+
 
 ray.init(num_cpus=1)
 
@@ -29,16 +24,12 @@ def get_worker_by_pid(pid, detail=True):
     assert False
 
 
-@ray.remote(
-    runtime_env={"container": {"image": args.image, "worker_path": args.worker_path}}
-)
+@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
 def f():
     return ray.get(g.remote())
 
 
-@ray.remote(
-    runtime_env={"container": {"image": args.image, "worker_path": args.worker_path}}
-)
+@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
 def g():
     return os.getpid()
 
@@ -63,7 +54,7 @@ ray.shutdown()
 
 @ray.remote(
     num_cpus=1,
-    runtime_env={"container": {"image": args.image, "worker_path": args.worker_path}},
+    runtime_env={"container": {"image": args.image, "worker_path": worker_pth}},
 )
 class A:
     def __init__(self):
@@ -79,7 +70,7 @@ class A:
         await asyncio.sleep(9999)
 
 
-pg = ray.util.placement_group(bundles=[{{"CPU": 1}}])
+pg = ray.util.placement_group(bundles=[{"CPU": 1}])
 a = A.options(
     scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
 ).remote()
@@ -103,9 +94,7 @@ def verify_exit_by_pg_removed():
 wait_for_condition(verify_exit_by_pg_removed)
 
 
-@ray.remote(
-    runtime_env={"container": {"image": args.image, "worker_path": args.worker_path}}
-)
+@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
 class PidDB:
     def __init__(self):
         self.pid = None
@@ -120,9 +109,7 @@ class PidDB:
 p = PidDB.remote()
 
 
-@ray.remote(
-    runtime_env={"container": {"image": args.image, "worker_path": args.worker_path}}
-)
+@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
 class FaultyActor:
     def __init__(self):
         p.record_pid.remote(os.getpid())
