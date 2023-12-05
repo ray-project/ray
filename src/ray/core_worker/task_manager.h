@@ -318,7 +318,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    *   or objects are already consumed), it replies immediately.
    *
    * Reference implementation of streaming generator using the following APIs
-   * is available from `_raylet.StreamingObjectRefGenerator`.
+   * is available from `_raylet.ObjectRefGenerator`.
    */
 
   /// Handle the generator task return so that it will be accessible

@@ -1,5 +1,5 @@
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 from unittest.mock import Mock, PropertyMock, patch
 
 import pytest
@@ -13,14 +13,13 @@ from ray.serve._private.application_state import (
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
-    TargetCapacityScaleDirection,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import DeploymentSchema, ServeApplicationSchema
@@ -60,8 +59,6 @@ class MockDeploymentStateManager:
         self,
         deployment_id: DeploymentID,
         deployment_info: DeploymentInfo,
-        target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
     ):
         existing_info = self.deployment_infos.get(deployment_id)
         self.deleting[deployment_id] = False

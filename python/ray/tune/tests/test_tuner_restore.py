@@ -125,7 +125,6 @@ class _ClassTrainableSometimesFailing(Trainable):
 
         # We fail after reporting num_epochs checkpoints.
         if self.iteration == self.config.get("fail_epochs", 1):
-
             if failing and failing.exists():
                 raise RuntimeError("I am failing")
 
