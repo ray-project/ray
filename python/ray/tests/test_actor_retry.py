@@ -114,6 +114,18 @@ def test_method_raise_no_over_retry(shutdown_only):
     assert ray.get(counter.get_count.remote()) == 6
 
 
+def test_method_no_retry_without_retry_exceptions(shutdown_only):
+    counter = Counter.remote()
+    trouble_maker = TroubleMaker.remote()
+    with pytest.raises(MyError):
+        ray.get(
+            trouble_maker.may_raise_n_times.options(retry_exceptions=False).remote(
+                counter, 5
+            )
+        )
+    assert ray.get(counter.get_count.remote()) == 1
+
+
 def test_options_takes_precedence(shutdown_only):
     counter = Counter.remote()
     trouble_maker = TroubleMaker.remote()
