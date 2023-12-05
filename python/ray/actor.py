@@ -263,7 +263,7 @@ class ActorMethod:
             "actor": self._actor_ref(),
             "method_name": self._method_name,
             "num_returns": self._num_returns,
-            "max_retries": self._retry_exceptions,
+            "max_retries": self._max_retries,
             "retry_exceptions": self._retry_exceptions,
             "decorator": self._decorator,
             "is_generator": self._is_generator,
