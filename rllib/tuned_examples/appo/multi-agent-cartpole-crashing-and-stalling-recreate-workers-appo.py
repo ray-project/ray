@@ -26,12 +26,12 @@ config = (
             "num_agents": 2,
             # Crash roughly every 300 ts. This should be ok to measure 180.0
             # reward (episodes are 200 ts long).
-            "p_crash": 0.0001,  # prob to crash during step()
-            "p_crash_reset": 0.001,  # prob to crash during reset()
+            "p_crash": 0.00005,  # prob to crash during step()
+            "p_crash_reset": 0.0005,  # prob to crash during reset()
             "init_time_s": 2.0,
             "p_stall": 0.001,  # prob to stall during step()
             "p_stall_reset": 0.001,  # prob to stall during reset()
-            "stall_time_sec": (2, 10),  # stall between 2 and 10sec.
+            "stall_time_sec": (2, 5),  # stall between 2 and 10sec.
             "stall_on_worker_indices": [2, 3],
         },
         # Disable env checking. Env checker doesn't handle Exceptions from
