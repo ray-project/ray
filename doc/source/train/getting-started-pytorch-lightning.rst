@@ -168,7 +168,10 @@ Compare a PyTorch Lightning training script with and without Ray Train.
             # [4] Load the trained model.
             with result.checkpoint.as_directory() as checkpoint_dir:
                 model = ImageClassifier.load_from_checkpoint(
-                    os.path.join(checkpoint_dir, "checkpoint.ckpt"),
+                    os.path.join(
+                        checkpoint_dir,
+                        ray.train.lightning.RayTrainReportCallback.CHECKPOINT_NAME,
+                    ),
                 )
 
 
