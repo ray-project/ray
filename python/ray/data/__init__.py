@@ -77,11 +77,11 @@ try:
         pass
     elif parse_version(pyarrow_version) >= parse_version("14.0.1"):
         pa.PyExtensionType.set_auto_load(True)
-    # Import these arrow extension types to ensure that they are registered.
-    from ray.data.extensions.tensor_extension import (  # noqa
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
-    )
+        # Import these arrow extension types to ensure that they are registered.
+        from ray.data.extensions.tensor_extension import (  # noqa
+            ArrowTensorType,
+            ArrowVariableShapedTensorType,
+        )
 except ModuleNotFoundError:
     pass
 
