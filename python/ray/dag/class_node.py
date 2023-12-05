@@ -193,3 +193,7 @@ class ClassMethodNode(DAGNode):
 
     def get_method_name(self) -> str:
         return self._method_name
+
+    def _get_remote_method(self, method_name):
+        method_body = getattr(self._parent_class_node, method_name)
+        return method_body
