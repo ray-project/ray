@@ -5,7 +5,7 @@ from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 
 
-class OutputNode(DAGNode):
+class MultiOutputNode(DAGNode):
     """Ray dag node used in DAG building API to mark the endpoint of DAG"""
 
     def __init__(
@@ -39,7 +39,7 @@ class OutputNode(DAGNode):
         new_other_args_to_resolve: Dict[str, Any],
     ) -> "DAGNode":
         """Return a copy of this node with the given new args."""
-        return OutputNode(new_args, new_other_args_to_resolve)
+        return MultiOutputNode(new_args, new_other_args_to_resolve)
 
     def __str__(self) -> str:
-        return get_dag_node_str(self, "__OutputNode__")
+        return get_dag_node_str(self, "__MultiOutputNode__")

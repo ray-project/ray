@@ -6,7 +6,7 @@ from ray.dag.input_node import (
     InputAttributeNode,
     DAGInputData,
 )
-from ray.dag.output_node import OutputNode
+from ray.dag.output_node import MultiOutputNode
 from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     DAGNODE_TYPE_KEY,
@@ -24,5 +24,5 @@ __all__ = [
     "PARENT_CLASS_NODE_KEY",
     "DAGNODE_TYPE_KEY",
     "plot",
-    "OutputNode",
+    "MultiOutputNode",
 ]

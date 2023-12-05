@@ -88,6 +88,39 @@ as args of ``dag_node.execute()``
           :start-after: __dag_input_node_begin__
           :end-before: __dag_input_node_end__
 
+Ray DAG with multiple MultiOutputNode
+-------------------------------------
+
+``MultiOutputNode`` is useful when you have more than 1 output from a DAG. ``dag_node.execute()``
+returns a list object Ray object references passed to ``MultiOutputNode``. The below example
+shows the multi output node of 2 outputs.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. literalinclude:: ./doc_code/ray-dag.py
+          :language: python
+          :start-after: __dag_multi_output_node_begin__
+          :end-before: __dag_multi_output_node_end__
+
+Reuse Ray Actors in DAGs
+------------------------
+Actors can be a part of the DAG definition via ``Actor.bind()`` API.
+However, when a DAG finishes execution, actors created with ``bind`` are killed.
+
+You can avoid killing your actors whenever DAG is finished by creating actors via ``Actor.remote()``.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. literalinclude:: ./doc_code/ray-dag.py
+          :language: python
+          :start-after: __dag_actor_reuse_begin__
+          :end-before: __dag_actor_reuse_end__
+
+
 More Resources
 --------------
 
