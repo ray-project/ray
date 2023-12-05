@@ -139,6 +139,14 @@ class DashboardHead:
         self.gcs_log_subscriber = None
         self.ip = node_ip_address
         DataOrganizer.head_node_ip = self.ip
+        DataOrganizer.bytedance_cpu_metric = os.environ.get("BYTED_RAY_CPU_METRIC", "")
+        DataOrganizer.bytedance_gpu_metric = os.environ.get("BYTED_RAY_GPU_METRIC", "")
+        DataOrganizer.bytedance_head_webshell = os.environ.get(
+            "BYTED_RAY_HEAD_WEBSHELL", ""
+        )
+        DataOrganizer.bytedance_worker_webshell = os.environ.get(
+            "BYTED_RAY_WORKER_WEBSHELL", ""
+        )
 
         if self.minimal:
             self.server, self.grpc_port = None, None

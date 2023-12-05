@@ -96,6 +96,10 @@ export const NodeRow = ({
     networkSpeed = [0, 0],
     raylet,
     logicalResources,
+    logUrl,
+    webShellUrl,
+    metricCpu,
+    metricGpu,
   } = node;
 
   const classes = useStyles();
@@ -170,6 +174,20 @@ export const NodeRow = ({
       </TableCell>
       <TableCell>
         <NodeGRAM node={node} />
+      </TableCell>
+      <TableCell>
+        {webShellUrl && (<React.Fragment> <a target='_blank' href={webShellUrl}>
+          Webshell
+        </a>
+        <br /> </React.Fragment>)}
+        {metricCpu && (<React.Fragment> <a target='_blank' href={metricCpu}>
+          MetricCPU
+        </a>
+        <br /> </React.Fragment>)}
+        {metricGpu && (<React.Fragment> <a target='_blank' href={metricGpu}>
+          MetricGPU
+        </a>
+        <br /> </React.Fragment>)}
       </TableCell>
       <TableCell>
         {raylet && objectStoreTotalMemory && (

@@ -96,6 +96,7 @@ const columns = [
     ),
   },
   { label: "GRAM" },
+  { label: "Bytedance Links"},
   { label: "Object Store Memory" },
   {
     label: "Disk(root)",
