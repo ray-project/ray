@@ -108,6 +108,13 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
+        "--metrics-agent-type",
+        required=False,
+        type=str,
+        default="internal",
+        help="Which MetricsAgent to be used.",
+    )
+    parser.add_argument(
         "--log-dir",
         required=True,
         type=str,

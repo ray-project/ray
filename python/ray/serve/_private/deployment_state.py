@@ -267,6 +267,7 @@ class ActorReplicaWrapper:
         # todo: will be confused with deployment_config.is_cross_language
         self._is_cross_language = False
         self._deployment_is_cross_language = False
+        self.detached = os.environ.get("BYTED_RAY_SERVE_CONTROLLER_OLD_MODE") is None
 
     @property
     def replica_tag(self) -> str:
@@ -465,6 +466,10 @@ class ActorReplicaWrapper:
             "namespace": SERVE_NAMESPACE,
             "lifetime": "detached",
         }
+        
+        if not self.detached:
+            actor_options["lifetime"] = None
+
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
         return ReplicaSchedulingRequest(
@@ -1884,7 +1889,7 @@ class DeploymentState:
         failed_to_start_count = self._replica_constructor_retry_counter
         failed_to_start_threshold = min(
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            target_replica_count * self._byted_max_failed_threshold,
+            target_num_replicas * self._byted_max_failed_threshold,
         )
 
         # Got to make a call to complete current deploy() goal after

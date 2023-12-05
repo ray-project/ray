@@ -259,9 +259,10 @@ class Deployment:
         return Application._from_internal_dag_node(dag_node)
 
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
-        raise ValueError(
-            "This API has been fully deprecated. Please use serve.run() instead."
-        )
+        self._deploy(*init_args, _blocking=_blocking, **init_kwargs)
+        # raise ValueError(
+        #     "This API has been fully deprecated. Please use serve.run() instead."
+        # )
 
     def _deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
@@ -311,10 +312,11 @@ class Deployment:
     def get_handle(
         self, sync: Optional[bool] = True
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        raise ValueError(
-            "This API has been fully deprecated. Please use serve.get_app_handle() or "
-            "serve.get_deployment_handle() instead."
-        )
+        return self._get_handle(sync)
+        # raise ValueError(
+        #     "This API has been fully deprecated. Please use serve.get_app_handle() or "
+        #     "serve.get_deployment_handle() instead."
+        # )
 
     def _get_handle(
         self,

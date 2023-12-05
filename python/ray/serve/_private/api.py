@@ -4,6 +4,7 @@ from types import FunctionType
 from typing import Any, Dict, Tuple, Union
 
 import ray
+import os
 from ray._private.pydantic_compat import is_subclass_of_base_model
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.usage import usage_lib
@@ -21,6 +22,11 @@ from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
+
+from ray.serve._private.utils import (
+    format_actor_name,
+    get_random_letters,
+)
 
 logger = logging.getLogger(__file__)
 
@@ -125,14 +131,20 @@ def _start_controller(
     """
 
     # Initialize ray if needed.
+    detached = os.environ.get("BYTED_RAY_SERVE_CONTROLLER_OLD_MODE") is None
     ray._private.worker.global_worker._filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
+    if detached:
+        controller_name = SERVE_CONTROLLER_NAME
+    else:
+        controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
+
     controller_actor_options = {
         "num_cpus": 0,
-        "name": SERVE_CONTROLLER_NAME,
-        "lifetime": "detached",
+        "name": controller_name,
+        "lifetime": "detached" if detached else None,
         "max_restarts": -1,
         "max_task_retries": -1,
         "resources": {HEAD_NODE_RESOURCE_NAME: 0.001},
@@ -163,7 +175,7 @@ def _start_controller(
         system_logging_config = LoggingConfig(**system_logging_config)
 
     controller = ServeController.options(**controller_actor_options).remote(
-        SERVE_CONTROLLER_NAME,
+        controller_name,
         http_config=http_options,
         grpc_options=grpc_options,
         system_logging_config=system_logging_config,
@@ -180,10 +192,11 @@ def _start_controller(
             raise TimeoutError(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
-    return controller, SERVE_CONTROLLER_NAME
+    return controller, controller_name
 
 
 async def serve_start_async(
+    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     system_logging_config: Union[None, dict, LoggingConfig] = None,

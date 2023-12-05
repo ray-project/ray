@@ -19,7 +19,11 @@ git config --global --add safe.directory /ray
 
 # Setup runtime environment
 ./ci/build/build-manylinux-forge.sh
-source "$HOME"/.nvm/nvm.sh
+if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+  source $XDG_CONFIG_HOME/nvm.sh
+else
+  source "$HOME"/.nvm/nvm.sh
+fi
 
 # Compile ray
 ./ci/build/build-manylinux-ray.sh

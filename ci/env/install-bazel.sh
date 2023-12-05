@@ -96,7 +96,7 @@ fi
 bazel --version
 
 # clear bazelrc
-if [[ ! -v BYTED_RAY_BUILD_TAG ]]; then
+if [[ "${BYTED_RAY_BUILD_TAG-}" == true ]]; then
   echo > ~/.bazelrc
 fi
 

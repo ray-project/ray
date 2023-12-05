@@ -26,7 +26,11 @@ fi
 
 # Install ray dashboard dependencies.
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
-source "$HOME"/.nvm/nvm.sh
+if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+  source $XDG_CONFIG_HOME/nvm.sh
+else
+  source "$HOME"/.nvm/nvm.sh
+fi
 
 NODE_VERSION="14"
 nvm install "$NODE_VERSION"

@@ -452,6 +452,12 @@ class Node:
         try_to_create_directory(self._sockets_dir)
         # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
+        
+        redirect_log_dir = os.environ.get("BYTED_RAY_REDIRECT_LOG", None)
+        if redirect_log_dir:
+            self._logs_dir = redirect_log_dir
+            logger.debug(f"Redirect log dir to {self._logs_dir} on this node.")
+
         try_to_create_directory(self._logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
