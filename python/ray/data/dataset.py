@@ -2258,13 +2258,11 @@ class Dataset:
                 than or equal to 10 and less than 20 will be divided into the second block,
                 and rows with values greater than or equal to 20 will be divided into
                 the third block. If not provided, the boundaries will be sampled from
-                the input blocks.
-
+                the input blocks. This feature only supports numeric columns right now.
 
         Returns:
             A new, sorted :class:`Dataset`.
         """
-
         sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.with_stage(SortStage(self, sort_key))
 

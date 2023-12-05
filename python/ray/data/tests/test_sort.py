@@ -105,9 +105,34 @@ def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     assert len([n for n in ds.sort("item")._block_num_rows() if n > 0]) == parallelism
     # Make sure that the number of samples in each block is as expected,
     # when boundaries is given.
-    boundaries = [25, 50, 75]
-    for n in ds.sort("item", boundaries=boundaries)._block_num_rows():
+
+    # Divided into two blocks.
+    boundaries1 = [50]
+    for n in ds.sort("item", boundaries=boundaries1)._block_num_rows():
+        assert n == 50
+    # Divided into three blocks.
+    boundaries2 = [60, 30]
+    for i, n in enumerate(ds.sort("item", boundaries=boundaries2)._block_num_rows()):
+        if i == 2:
+            assert n == 40
+        else:
+            assert n == 30
+    # The items in boundaries are of type float
+    boundaries3 = [24.2, 50.0, 75.0]
+    for n in ds.sort("item", boundaries=boundaries3)._block_num_rows():
         assert n == 25
+    # When the value of an element in the boundaries exceeds the value range of
+    # the selected column, an empty block will be generated.
+    boundaries4 = [50, 200]
+    for i, n in enumerate(ds.sort("item", boundaries=boundaries4)._block_num_rows()):
+        if i == 2:
+            assert n == 0
+        else:
+            assert n == 50
+    # When an element of non-numeric type appears in boundaries,
+    # an exception will be thrown.
+    boundaries5 = ["a"]
+    ds.sort("item", boundaries=boundaries5)
 
     assert extract_values(
         "item", ds.sort("item", descending=True).take(num_items)

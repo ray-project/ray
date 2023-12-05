@@ -65,6 +65,12 @@ class SortKey:
                 raise ValueError("Sorting with mixed key orders not supported yet.")
         self._columns = key
         self._descending = descending
+        if boundaries:
+            for item in boundaries:
+                if not isinstance(item, (int, float)):
+                    raise ValueError("The type of items in boundaries must be int or float.")
+            boundaries = list(set(boundaries))
+            boundaries.sort()
         self._boundaries = boundaries
 
     def get_columns(self) -> List[str]:
