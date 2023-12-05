@@ -58,13 +58,9 @@ class DataConfig:
         resource_limits = self._execution_options.resource_limits
         cluster_resources = ray.cluster_resources()
         if resource_limits.cpu is None:
-            resource_limits.cpu = (
-                cluster_resources.get("CPU", 0) - num_cpus
-            )
+            resource_limits.cpu = cluster_resources.get("CPU", 0) - num_cpus
         if resource_limits.gpu is None:
-            resource_limits.gpu = (
-                cluster_resources.get("GPU", 0) - num_gpus
-            )
+            resource_limits.gpu = cluster_resources.get("GPU", 0) - num_gpus
 
     @DeveloperAPI
     def configure(

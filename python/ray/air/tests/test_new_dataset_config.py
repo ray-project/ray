@@ -8,7 +8,7 @@ from ray import train
 from ray.train import DataConfig, ScalingConfig
 from ray.data import DataIterator
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.tests.conftest import *
+from ray.tests.conftest import *  # noqa
 
 
 @pytest.fixture
@@ -263,7 +263,8 @@ def test_materialized_preprocessing(ray_start_4_cpus):
 
 
 def test_data_config_default_resource_limits(shutdown_only):
-    """Test that DataConfig's default resource limits should exclude the resources used by training."""
+    """Test that DataConfig's default resource limits should exclude the resources
+    used by training."""
     cluster_cpus, cluster_gpus = 20, 10
     num_workers = 2
     # Reousrces used by training workers.
