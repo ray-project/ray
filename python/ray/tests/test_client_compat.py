@@ -8,6 +8,10 @@ try:
 except ImportError:
     pyspark = None
 
+from ray._private.test_utils import (
+    skip_flaky_core_test_premerge,
+)
+
 
 @pytest.mark.skipif(pyspark is None, reason="PySpark dependency not found")
 @pytest.mark.parametrize(
@@ -18,6 +22,7 @@ except ImportError:
     ],
     indirect=True,
 )
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41620")
 def test_client_data_get(call_ray_start):
     """PySpark import changes NamedTuple pickling behavior, leading
     to inconpatibilities with the Ray client and Ray Data. This test
