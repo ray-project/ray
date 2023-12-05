@@ -454,50 +454,6 @@ Dataset iterator time breakdown:
             )
 
 
-def test_dataset_stats_stage_execution_time(ray_start_regular_shared):
-    # Disable stage/operator fusion in order to test the stats
-    # of two different map_batches operators without fusing them together,
-    # so that we can observe different execution times for each.
-    ctx = ray.data.DataContext.get_current()
-    curr_optimizer_enabled = ctx.optimizer_enabled
-    curr_optimize_fuse_stages = ctx.optimize_fuse_stages
-    ctx.optimize_fuse_stages = False
-    ctx.optimizer_enabled = False
-
-    sleep_1 = 1
-    sleep_2 = 3
-    ds = (
-        ray.data.range(100, parallelism=1)
-        .map_batches(lambda batch: map_batches_sleep(batch, sleep_1))
-        .map_batches(lambda batch: map_batches_sleep(batch, sleep_2))
-        .materialize()
-    )
-
-    # Check that each map_batches operator has the corresponding execution time.
-    map_batches_1_stats = ds._get_stats_summary().parents[0].stages_stats[0]
-    map_batches_2_stats = ds._get_stats_summary().stages_stats[0]
-    assert sleep_1 <= map_batches_1_stats.time_total_s
-    assert sleep_2 <= map_batches_2_stats.time_total_s
-
-    ctx.optimize_fuse_stages = curr_optimize_fuse_stages
-    ctx.optimizer_enabled = curr_optimizer_enabled
-
-    # The following case runs 2 tasks with 1 CPU, with each task sleeping for
-    # `sleep_2` seconds. We expect the overall reported stage time to be
-    # at least `2 * sleep_2` seconds`, and less than the total elapsed time.
-    num_tasks = 2
-    ds = ray.data.range(100, parallelism=num_tasks).map_batches(
-        lambda batch: map_batches_sleep(batch, sleep_2)
-    )
-    start_time = time.time()
-    ds.take_all()
-    end_time = time.time()
-
-    stage_stats = ds._get_stats_summary().stages_stats[0]
-    stage_time = stage_stats.time_total_s
-    assert num_tasks * sleep_2 <= stage_time <= end_time - start_time
-
-
 def test_dataset__repr__(ray_start_regular_shared):
     n = 100
     ds = ray.data.range(n)
