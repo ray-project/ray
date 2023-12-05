@@ -53,5 +53,21 @@ void CoreWorkerClientPool::Disconnect(ray::WorkerID id) {
   client_map_.erase(it);
 }
 
+void CoreWorkerClientPool::DisconnectAll(ray::WorkerID id) {
+  // disconnect
+  for (auto it : client_map_) {
+    auto conn = it->second;
+    rpc::ExitRequest request;
+    request.set_disconnect(true);
+    request.set_worker_id(id.Binary());
+    conn->Exit(request,
+    [this](const ray::Status &status, const rpc::ExitReply &r) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
+        }
+      })
+  }
+}
+
 }  // namespace rpc
 }  // namespace ray
