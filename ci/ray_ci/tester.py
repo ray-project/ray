@@ -312,7 +312,7 @@ def _get_test_targets(
         # CUDA image comes with a license header that we need to remove
         .replace(CUDA_COPYRIGHT, "")
         .strip()
-        .split("\n")
+        .split(os.linesep)
     )
     flaky_tests = set(_get_flaky_test_targets(team, yaml_dir))
 
