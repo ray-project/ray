@@ -251,7 +251,7 @@ steps:
     depends_on: oss-ci-base_build
     job_env: oss-ci-base_build
 
-  - label: ":ray: core: Container tests"
+  - label: ":ray: core: container tests"
     tags:
       - python
       - docker

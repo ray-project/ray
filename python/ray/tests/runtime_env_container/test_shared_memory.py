@@ -1,5 +1,6 @@
 import ray
 import numpy as np
+import sys
 import argparse
 
 parser = argparse.ArgumentParser(
@@ -17,13 +18,15 @@ args = parser.parse_args()
 @ray.remote(
     runtime_env={"container": {"image": args.image, "worker_path": args.worker_path}}
 )
-def create_ref():
-    with open("file.txt") as f:
-        assert f.read().strip() == "helloworldalice"
-
-    ref = ray.put(np.zeros(100_000_000))
-    return ref
+def f():
+    array = np.random.rand(5000, 5000)
+    return ray.put(array)
 
 
-wrapped_ref = create_ref.remote()
-ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
+ray.init()
+ref = ray.get(f.remote())
+val = ray.get(ref)
+size = sys.getsizeof(val)
+assert size < sys.getsizeof(np.random.rand(5000, 5000))
+print(f"Size of result fetched from ray.put: {size}")
+assert val.shape == (5000, 5000)

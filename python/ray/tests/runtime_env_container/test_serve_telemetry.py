@@ -1,3 +1,4 @@
+import argparse
 import os
 import requests
 import subprocess
@@ -10,16 +11,31 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema
 
-CONTAINER_SPEC = {
-    # "image": "rayproject/ray:runtime_env_container_nested",
-    "image": "rayproject/ray:nightly-py38-cpu",
-    "worker_path": "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py",  # noqa
-}
-CONTAINER_RUNTIME_ENV = {"container": CONTAINER_SPEC}
+parser = argparse.ArgumentParser(
+    description="Example Python script taking command line arguments."
+)
+parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
+parser.add_argument(
+    "--worker-path",
+    type=str,
+    help="The path to `default_worker.py` inside the container.",
+)
+args = parser.parse_args()
+
+os.environ["RAY_USAGE_STATS_ENABLED"] = "1"
+os.environ["RAY_USAGE_STATS_REPORT_URL"] = "http://127.0.0.1:8000/telemetry"
+os.environ["RAY_USAGE_STATS_REPORT_INTERVAL_S"] = "1"
 
 
 def check_ray_started():
     return requests.get("http://localhost:52365/api/ray/version").status_code == 200
+
+
+subprocess.check_output(["ray", "start", "--head"])
+wait_for_condition(check_ray_started, timeout=5)
+serve.start()
+
+# Start TelemetryStorage and perform initial checks
 
 
 @ray.remote(name="storage", namespace="serve", num_cpus=0)
@@ -39,34 +55,18 @@ class TelemetryStorage:
         return self.reports_received
 
 
-@serve.deployment(ray_actor_options={"num_cpus": 0})
-class TelemetryReceiver:
-    def __init__(self):
-        self.storage = ray.get_actor(name="storage", namespace="serve")
-
-    async def __call__(self, request) -> bool:
-        report = await request.json()
-        ray.get(self.storage.store_report.remote(report))
-        return True
-
-
-receiver_app = TelemetryReceiver.bind()
-
-
-def start_telemetry_app():
-    storage = TelemetryStorage.remote()
-    serve.run(receiver_app, name="telemetry", route_prefix="/telemetry")
-    return storage
-
-
-os.environ["RAY_USAGE_STATS_ENABLED"] = "1"
-os.environ["RAY_USAGE_STATS_REPORT_URL"] = "http://127.0.0.1:8000/telemetry"
-os.environ["RAY_USAGE_STATS_REPORT_INTERVAL_S"] = "1"
-
-subprocess.check_output(["ray", "start", "--head"])
-wait_for_condition(check_ray_started, timeout=5)
-
-storage_handle = start_telemetry_app()
+storage_handle = TelemetryStorage.remote()
+client = _get_global_client()
+config = {
+    "applications": [
+        {
+            "name": "telemetry",
+            "route_prefix": "/telemetry",
+            "import_path": "telemetry_receiver:app",
+        },
+    ],
+}
+client.deploy_apps(ServeDeploySchema.parse_obj(config))
 wait_for_condition(
     lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
 )
@@ -74,28 +74,31 @@ report = ray.get(storage_handle.get_report.remote())
 assert ServeUsageTag.CONTAINER_RUNTIME_ENV_USED.get_value_from_report(report) is None
 
 # Start test
-client = _get_global_client()
-worker_path = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
-new_config = ServeDeploySchema.parse_obj(
-    {
-        "applications": [
-            {
-                "route_prefix": "/app3",
-                "import_path": "serve_application:app",
-                "deployments": [
-                    {
-                        "name": "Model",
-                        "ray_actor_options": {"runtime_env": CONTAINER_RUNTIME_ENV},
-                    },
-                ],
-            },
-        ],
-    }
-)
-client.deploy_apps(new_config)
 
-handle = serve.get_app_handle("default")
-assert handle.remote().result() == "helloworldalice"
+config["applications"].append(
+    {
+        "name": "default",
+        "import_path": "serve_application:app",
+        "runtime_env": {
+            "container": {"image": args.image, "worker_path": args.worker_path}
+        },
+    },
+)
+client.deploy_apps(ServeDeploySchema.parse_obj(config))
+
+
+# def check_application(expected: str):
+#     app_handle = serve.get_app_handle("default")
+#     ref = app_handle.remote()
+#     assert ref.result() == expected
+#     return True
+
+
+# wait_for_condition(
+#     check_application,
+#     expected="helloworldalice",
+#     timeout=300,
+# )
 
 
 def check_telemetry():

@@ -199,12 +199,30 @@ def podman_docker_cluster():
 
     # Add custom file to new image tagged `runtime_env_container_nested`,
     # which can be read by Ray actors / Serve deployments to verify the
-    # container runtime env plugin
+    # container runtime env plugin. Also add serve application that will
+    # be imported by the telemetry test.
+    serve_app = """
+from ray import serve
+@serve.deployment
+class Model:
+    def __call__(self):
+        with open("file.txt") as f:
+            return f.read().strip()
+app = Model.bind()
+"""
+
     run_in_container(
         [
             ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"],
+            ["bash", "-c", f"echo '{serve_app}' >> /tmp/serve_application.py"],
             ["podman", "create", "--name", "tmp_container", IMAGE_NAME],
             ["podman", "cp", "/tmp/file.txt", "tmp_container:/home/ray/file.txt"],
+            [
+                "podman",
+                "cp",
+                "/tmp/serve_application.py",
+                "tmp_container:/home/ray/serve_application.py",
+            ],
             ["podman", "commit", "tmp_container", NESTED_IMAGE_NAME],
         ],
         container_id,
