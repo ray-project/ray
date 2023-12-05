@@ -10,7 +10,7 @@ import { JobStatusWithIcon } from "../../common/JobStatus";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
-  MemoryProfilingLink,
+  MemoryProfilingButton,
 } from "../../common/ProfilingLink";
 import { filterRuntimeEnvSystemVariables } from "../../common/util";
 import Loading from "../../components/Loading";
@@ -201,7 +201,7 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
                 type="Driver"
               />
               <br />
-              <MemoryProfilingLink
+              <MemoryProfilingButton
                 pid={job.driver_info?.pid}
                 ip={job.driver_info?.node_ip_address}
                 type="Driver"

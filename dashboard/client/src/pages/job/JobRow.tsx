@@ -9,7 +9,7 @@ import { JobStatusWithIcon } from "../../common/JobStatus";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
-  MemoryProfilingLink,
+  MemoryProfilingButton,
 } from "../../common/ProfilingLink";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
@@ -134,7 +134,7 @@ export const JobRow = ({ job }: JobRowProps) => {
           type="Driver"
         />
         <br />
-        <MemoryProfilingLink
+        <MemoryProfilingButton
           pid={job.driver_info?.pid}
           ip={job.driver_info?.node_ip_address}
           type="Driver"

@@ -23,7 +23,7 @@ import { ActorLink } from "../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
-  MemoryProfilingLink,
+  MemoryProfilingButton,
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { Actor, ActorEnum } from "../type/actor";
@@ -456,7 +456,7 @@ const ActorTable = ({
                           type=""
                         />
                         <br />
-                        <MemoryProfilingLink
+                        <MemoryProfilingButton
                           pid={pid}
                           ip={address?.ipAddress}
                           type=""

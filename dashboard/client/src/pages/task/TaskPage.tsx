@@ -13,7 +13,7 @@ import {
 import {
   TaskCpuProfilingLink,
   TaskCpuStackTraceLink,
-  TaskMemoryProfilingLink,
+  TaskMemoryProfilingButton,
 } from "../../common/ProfilingLink";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
@@ -241,7 +241,7 @@ const TaskPageContents = ({
                       nodeId={node_id}
                     />
                     <br />
-                    <TaskMemoryProfilingLink
+                    <TaskMemoryProfilingButton
                       taskId={task_id}
                       attemptNumber={attempt_number}
                       nodeId={node_id}

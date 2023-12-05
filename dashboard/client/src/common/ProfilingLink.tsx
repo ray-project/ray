@@ -1,5 +1,5 @@
-import { Link } from "@material-ui/core";
-import React, { PropsWithChildren } from "react";
+import { Button, Link, TextField } from "@material-ui/core";
+import React, { PropsWithChildren, useState } from "react";
 import { ClassNameProps } from "./props";
 
 type CpuProfilingLinkProps = PropsWithChildren<
@@ -111,42 +111,118 @@ export const CpuStackTraceLink = ({
   );
 };
 
-export const TaskMemoryProfilingLink = ({
-  taskId,
-  attemptNumber,
-  nodeId,
-}: TaskMemoryProfilingProps) => {
-  if (!taskId) {
-    return null;
-  }
-  return (
-    <Link
-      href={`task/memory_profile?task_id=${taskId}&duration=30attempt_number=${attemptNumber}&node_id=${nodeId}`}
-      target="_blank"
-      title="Profile the Python worker memory allocation."
-      rel="noreferrer"
-    >
-      Profile&nbsp;Memory
-    </Link>
-  );
-};
-
-export const MemoryProfilingLink = ({
+export const MemoryProfilingButton = ({
   pid,
   ip,
   type = "",
 }: MemoryProfilingProps) => {
-  if (!pid || !ip) {
-    return <div></div>;
-  }
+  // Set the default duration to 5
+  const [duration, setDuration] = useState<number | null>(5);
+
+  // State to manage whether the input field is visible
+  const [fillDuration, setFillDuration] = useState<boolean>(false);
+
+  const handleButtonClick = () => {
+    // Show the input field
+    setFillDuration(true);
+  };
+
+  const handleInputSubmit = (e: React.FormEvent) => {
+    // Prevent the default form submission behavior
+    e.preventDefault();
+
+    // Hide the input field after submitting the form
+    setFillDuration(false);
+  };
+
   return (
-    <Link
-      href={`worker/memory_profile?pid=${pid}&ip=${ip}&duration=30&native=0&leaks=0`}
-      target="_blank"
-      title="Profile the Python worker memory allocation."
-      rel="noreferrer"
-    >
-      Profile&nbsp;Memory{type ? ` (${type})` : ""}
-    </Link>
+    <div>
+      {!fillDuration ? (
+        <Button
+          variant="text"
+          onClick={handleButtonClick}
+          style={{ color: "blue" }}
+        >
+          Profile&nbsp;Memory{type ? ` (${type})` : ""}
+        </Button>
+      ) : (
+        <form onSubmit={handleInputSubmit}>
+          <TextField
+            label="Duration"
+            type="number"
+            value={duration !== null ? duration : ""}
+            onChange={(e) => setDuration(parseInt(e.target.value, 10))}
+            required
+          />
+          <Button variant="text">
+            <Link
+              href={`worker/memory_profile?pid=${pid}&ip=${ip}&duration=${duration}&native=0&leaks=1`}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Show&nbsp;Flame&nbsp;Graph{type ? ` (${type})` : ""}
+            </Link>
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+};
+
+export const TaskMemoryProfilingButton = ({
+  taskId,
+  attemptNumber,
+  nodeId,
+}: TaskMemoryProfilingProps) => {
+  // Set the default duration to 5
+  const [duration, setDuration] = useState<number | null>(5);
+
+  // State to manage whether the input field is visible
+  const [fillDuration, setFillDuration] = useState<boolean>(false);
+
+  const handleButtonClick = () => {
+    // Show the input field
+    setFillDuration(true);
+  };
+
+  const handleInputSubmit = (e: React.FormEvent) => {
+    // Prevent the default form submission behavior
+    e.preventDefault();
+
+    // Hide the input field after submitting the form
+    setFillDuration(false);
+  };
+
+  return (
+    <div>
+      {!fillDuration ? (
+        <Button
+          variant="text"
+          onClick={handleButtonClick}
+          style={{ color: "blue" }}
+        >
+          Profile&nbsp;Memory
+        </Button>
+      ) : (
+        <form onSubmit={handleInputSubmit}>
+          <TextField
+            label="Duration"
+            type="number"
+            value={duration !== null ? duration : ""}
+            onChange={(e) => setDuration(parseInt(e.target.value, 10))}
+            required
+          />
+          <Button variant="text">
+            <Link
+              href={`task/memory_profile?task_id=${taskId}&duration=${duration}attempt_number=${attemptNumber}&node_id=${nodeId}`}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Show&nbsp;Flame&nbsp;Graph
+            </Link>
+          </Button>
+        </form>
+      )}
+    </div>
   );
 };
