@@ -148,10 +148,10 @@ def docker_cluster(head_node, worker_node):
 
 def run_in_container(cmd: List[str], container_id: str):
     docker_cmd = ["docker", "exec", container_id] + cmd
-    print(f"executing command: {docker_cmd}", time.time())
+    print(f"Executing command: {docker_cmd}", time.time())
     resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT, timeout=1000)
     output = resp.decode("utf-8").strip()
-    print(f"output: {output}")
+    print(f"Output: {output}")
     return output
 
 
@@ -177,20 +177,26 @@ def podman_docker_cluster():
     ]
     container_id = subprocess.check_output(start_container_command).decode("utf-8")
     container_id = container_id.strip()
-    print(f"container_id: {container_id}")
-    print("docker ps:", subprocess.check_output(["docker", "ps"]))
 
+    # Get group id that owns the docker socket file. Add user `ray` to
+    # group to get necessary permissions for pulling an image from
+    # docker's local storage into podman
     ls_output = run_in_container(["ls", "-l", "/var/run/docker.sock"], container_id)
     regex = ".{10} +\d+ +root +(\d+) \d+ [A-Za-z]+ +\d+ +.+ +\/var\/run\/docker\.sock"
     docker_group_id = re.search(regex, ls_output).group(1)
-
     run_in_container(["id"], container_id)  # For debugging
     run_in_container(
         ["sudo", "groupadd", "-g", docker_group_id, "docker"], container_id
     )
     run_in_container(["sudo", "usermod", "-aG", "daemon", "ray"], container_id)
     run_in_container(["sudo", "usermod", "-aG", "docker", "ray"], container_id)
+
+    # Pull image from docker's local storage into podman
     run_in_container(["podman", "pull", f"docker-daemon:{IMAGE_NAME}"], container_id)
+
+    # Add custom file to new image tagged `runtime_env_container_nested`,
+    # which can be read by Ray actors / Serve deployments to verify the
+    # container runtime env plugin
     run_in_container(
         ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"], container_id
     )
@@ -204,6 +210,10 @@ def podman_docker_cluster():
     run_in_container(
         ["podman", "commit", "tmp_container", NESTED_IMAGE_NAME], container_id
     )
-    run_in_container(["podman", "image", "ls"], container_id)  # For debugging
+
+    # For debugging
+    run_in_container(["podman", "image", "ls"], container_id)
 
     yield container_id
+
+    subprocess.check_output(["docker", "kill", container_id])
