@@ -246,23 +246,28 @@ class PPOLearner(Learner):
             # Make sure the episode is already in numpy format.
             assert episode.is_finalized
             orig_truncateds.append(episode.is_truncated)
+
             # Add timestep.
             episode.t += 1
-            episode.observations = tree.map_structure(
-                lambda s: np.concatenate([s, [s[-1]]]),
-                episode.observations,
-            )
-            # Infos are always lists.
-            #UNDO THIS : episode.infos.append(episode.infos[-1])
-            episode.actions = tree.map_structure(
-                lambda s: np.concatenate([s, [s[-1]]]),
-                episode.actions,
-            )
-            episode.rewards = np.append(episode.rewards, 0.0)
-            episode.extra_model_outputs = tree.map_structure(
-                lambda s: np.concatenate([s, [s[-1]]], axis=0),
-                episode.extra_model_outputs,
-            )
+            # Use the episode API that allows appending (possibly complex) structs
+            # to the data.
+            episode.observations.append(episode.observations[-1])
+                #= tree.map_structure(
+                #lambda s: np.concatenate([s, [s[-1]]]),
+                #episode.observations,
+            #)
+            episode.infos.append(episode.infos[-1])
+            episode.actions.append(episode.actions[-1])# = tree.map_structure(
+                #lambda s: np.concatenate([s, [s[-1]]]),
+                #episode.actions,
+            #)
+            episode.rewards.append(0.0)# = np.append(episode.rewards, 0.0)
+            for v in episode.extra_model_outputs.values():
+                v.append(v[-1])
+            #episode.extra_model_outputs = tree.map_structure(
+            #    lambda s: np.concatenate([s, [s[-1]]], axis=0),
+            #    episode.extra_model_outputs,
+            #)
             # Artificially make this episode truncated for the upcoming
             # GAE computations.
             if not episode.is_done:
@@ -274,21 +279,16 @@ class PPOLearner(Learner):
     def _remove_ts_from_episodes_and_restore_truncateds(episodes, orig_truncateds):
         # Fix episodes (remove the extra timestep).
         for episode, orig_truncated in zip(episodes, orig_truncateds):
+            # Reduce timesteps by 1.
             episode.t -= 1
+            episode.observations.pop()
+            episode.infos.pop()
+            episode.actions.pop()
+            episode.rewards.pop()
+            for v in episode.extra_model_outputs.values():
+                v.pop()
             # Fix the truncateds flag again.
             episode.is_truncated = orig_truncated
-            episode.observations = tree.map_structure(
-                lambda s: s[:-1],
-                episode.observations,
-            )
-            # Infos are always lists.
-            episode.infos = episode.infos[:-1]
-            episode.actions = tree.map_structure(lambda s: s[:-1], episode.actions)
-            episode.rewards = episode.rewards[:-1]
-            episode.extra_model_outputs = tree.map_structure(
-                lambda s: s[:-1],
-                episode.extra_model_outputs,
-            )
 
     @staticmethod
     def _remove_last_values_1d(episode_lens, *data):

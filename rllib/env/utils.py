@@ -196,21 +196,28 @@ class BufferWithInfiniteLookback:
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""
         if self.finalized:
-            raise RuntimeError(f"Cannot `append` to a finalized {type(self).__name__}.")
-        self.data.append(item)
+            self.data = tree.map_structure(
+                lambda d, i: np.concatenate([d, [i]], axis=0), self.data, item
+            )
+        else:
+            self.data.append(item)
 
     def extend(self, items):
         """Appends all items in `items` to the end of this buffer."""
         if self.finalized:
-            raise RuntimeError(f"Cannot `extend` a finalized {type(self).__name__}.")
-        for item in items:
-            self.append(item)
+            self.data = tree.map_structure(
+                lambda d, i: np.concatenate([d, i], axis=0), self.data, items
+            )
+        else:
+            for item in items:
+                self.append(item)
 
     def pop(self, index: int = -1):
         """Removes the item at `index` from this buffer."""
         if self.finalized:
-            raise RuntimeError(f"Cannot `pop` from a finalized {type(self).__name__}.")
-        return self.data.pop(index)
+            self.data = tree.map_structure(lambda s: s.pop(index), self.data)
+        else:
+            return self.data.pop(index)
 
     def finalize(self):
         """Finalizes this buffer by converting internal data lists into numpy arrays.
@@ -395,7 +402,7 @@ class BufferWithInfiniteLookback:
         else:
             data_slice = self.data[slice_]
 
-        if one_hot_discrete:
+        if one_hot_discrete and data_slice:
             data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
 
         # Data is shorter than the range requested -> Fill the rest with `fill` data.

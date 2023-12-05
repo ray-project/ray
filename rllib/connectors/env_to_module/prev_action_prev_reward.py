@@ -54,7 +54,8 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                         # Extract n actions from `ts - n` to `ts` (excluding `ts`).
                         indices=slice(ts - self.n_prev_actions, ts),
                         # Make sure negative indices are NOT interpreted as "counting
-                        # from the end".
+                        # from the end", but as absolute indices meaning they refer
+                        # to timesteps before 0 (which is the lookback buffer).
                         neg_indices_left_of_zero=True,
                         # In case we are at the very beginning of the episode, e.g.
                         # ts==0, fill the left side with zero-actions.

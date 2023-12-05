@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init()#local_mode=True)#TODO
+    ray.init(local_mode=True)#TODO
 
     # Define our custom connector pipelines.
     def make_sampling_connectors(env, rl_module):
