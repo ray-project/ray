@@ -205,6 +205,36 @@ class _StatsActor:
             description="Time spent generating blocks.",
             tag_keys=op_tags_keys,
         )
+        self.p50_task_runtime = Gauge(
+            "data_p50_task_runtime_seconds",
+            description="Task runtime in seconds",
+            tag_keys=op_tags_keys,
+        )
+        self.p90_task_runtime = Gauge(
+            "data_p90_task_runtime_seconds",
+            description="Task runtime in seconds",
+            tag_keys=op_tags_keys,
+        )
+        self.p99_task_runtime = Gauge(
+            "data_p99_task_runtime_seconds",
+            description="Task runtime in seconds",
+            tag_keys=op_tags_keys,
+        )
+        self.p50_task_rss = Gauge(
+            "data_p50_task_rss_seconds",
+            description="Task RSS in seconds",
+            tag_keys=op_tags_keys,
+        )
+        self.p90_task_rss = Gauge(
+            "data_p90_task_rss_seconds",
+            description="Task RSS in seconds",
+            tag_keys=op_tags_keys,
+        )
+        self.p99_task_rss = Gauge(
+            "data_p99_task_rss_seconds",
+            description="Task RSS in seconds",
+            tag_keys=op_tags_keys,
+        )
 
         iter_tag_keys = ("dataset",)
         self.iter_total_blocked_s = Gauge(
@@ -282,6 +312,12 @@ class _StatsActor:
             self.cpu_usage.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage.set(stats.get("gpu_usage", 0), tags)
             self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
+            self.p50_task_runtime.set(stats.get("task_runtime_p50", 0), tags)
+            self.p90_task_runtime.set(stats.get("task_runtime_p90", 0), tags)
+            self.p99_task_runtime.set(stats.get("task_runtime_p99", 0), tags)
+            self.p50_task_rss.set(stats.get("task_rss_p50", 0), tags)
+            self.p90_task_rss.set(stats.get("task_rss_p90", 0), tags)
+            self.p99_task_rss.set(stats.get("task_rss_p99", 0), tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
@@ -308,6 +344,12 @@ class _StatsActor:
             self.cpu_usage.set(0, tags)
             self.gpu_usage.set(0, tags)
             self.block_generation_time.set(0, tags)
+            self.p50_task_runtime.set(0, tags)
+            self.p90_task_runtime.set(0, tags)
+            self.p99_task_runtime.set(0, tags)
+            self.p50_task_rss.set(0, tags)
+            self.p90_task_rss.set(0, tags)
+            self.p99_task_rss.set(0, tags)
 
     def clear_iteration_metrics(self, dataset_tag: str):
         tags = self._create_tags(dataset_tag)
@@ -373,7 +415,7 @@ class _StatsManager:
     """A Class containing util functions that manage remote calls to _StatsActor.
 
     This class collects stats from execution and iteration codepaths and keeps
-    track of the latest snapshot.
+    track of running executors and iterators.
 
     An instance of this class runs a single background thread that periodically
     forwards the latest execution/iteration stats to the _StatsActor.
@@ -397,7 +439,9 @@ class _StatsManager:
         self._stats_actor_cluster_id = None
 
         # Last execution stats snapshots for all executing datasets
-        self._last_execution_stats = {}
+        self._last_execution_stats: List[
+            Tuple[str, List[OpRuntimeMetrics], List[str], Dict[str, Any]]
+        ] = {}
         # Last iteration stats snapshots for all running iterators
         self._last_iteration_stats: Dict[
             str, Tuple[Dict[str, str], "DatasetStats"]
@@ -440,15 +484,8 @@ class _StatsManager:
                                 # this thread can be running even after the cluster is
                                 # shutdown. Creating an actor will automatically start
                                 # a new cluster.
-                                self._stats_actor(
-                                    create_if_not_exists=False
-                                ).update_metrics.remote(
-                                    execution_metrics=list(
-                                        self._last_execution_stats.values()
-                                    ),
-                                    iteration_metrics=list(
-                                        self._last_iteration_stats.values()
-                                    ),
+                                self._call_stats_actor_update(
+                                    create_if_not_exists=False,
                                 )
                                 iter_stats_inactivity = 0
                             except Exception:
@@ -473,6 +510,26 @@ class _StatsManager:
                 )
                 self._update_thread.start()
 
+    def _call_stats_actor_update(self, create_if_not_exists: bool = True):
+        # Makes a remote call to `_StatsActor.update_metrics` to update metrics.
+        execution_metrics = list(self._last_execution_stats.values())
+        iteration_metrics = list(self._last_iteration_stats.values())
+        for i in range(len(execution_metrics)):
+            args = list(execution_metrics[i])
+            # Call OpRuntimeMetrics.as_dict() to get snapshot of current stats.
+            args[1] = [
+                metrics.as_dict(metrics_only=True, compute_percentiles=True)
+                for metrics in args[1]
+            ]
+            execution_metrics[i] = tuple(args)
+
+        self._stats_actor(
+            create_if_not_exists=create_if_not_exists,
+        ).update_metrics.remote(
+            execution_metrics=execution_metrics,
+            iteration_metrics=iteration_metrics,
+        )
+
     # Execution methods
 
     def update_execution_metrics(
@@ -483,13 +540,12 @@ class _StatsManager:
         state: Dict[str, Any],
         force_update: bool = False,
     ):
-        op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
-        args = (dataset_tag, op_metrics_dicts, operator_tags, state)
+        args = (dataset_tag, op_metrics, operator_tags, state)
+        with self._stats_lock:
+            self._last_execution_stats[dataset_tag] = args
         if force_update:
-            self._stats_actor().update_execution_metrics.remote(*args)
+            self._call_stats_actor_update()
         else:
-            with self._stats_lock:
-                self._last_execution_stats[dataset_tag] = args
             self._start_thread_if_not_running()
 
     def clear_execution_metrics(self, dataset_tag: str, operator_tags: List[str]):

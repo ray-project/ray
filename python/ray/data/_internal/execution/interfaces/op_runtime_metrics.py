@@ -1,5 +1,10 @@
-from dataclasses import dataclass, field, fields
+import threading
+import time
+from collections import deque
+from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Dict, Optional
+
+import numpy as np
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
@@ -16,6 +21,52 @@ class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
     bytes_outputs: int
+    start_time: float
+    bytes_rss: int
+
+
+class SlidingWindowMetric:
+    """Class to maintain metrics datapoints for the last X seconds."""
+
+    # Length in seconds of sliding window.
+    WINDOW_LENGTH_SECONDS = 10
+    # Percentiles to compute.
+    PERCENTILES = [50, 90, 99]
+
+    def __init__(self):
+        self._window = deque()
+        self._window_lock = threading.Lock()
+        self._computed_percentiles = [
+            (percentile, -1) for percentile in SlidingWindowMetric.PERCENTILES
+        ]
+
+    def append(self, value):
+        with self._window_lock:
+            self._window.append((value, time.time()))
+            self._slide_window()
+
+    def percentiles(self):
+        with self._window_lock:
+            self._slide_window()
+            values = [item[0] for item in self._window]
+        results = []
+        for percentile in SlidingWindowMetric.PERCENTILES:
+            results.append(
+                (percentile, np.percentile(values, percentile) if values else -1)
+            )
+        self._computed_percentiles = results
+        return results
+
+    def get_last_computed_percentiles(self):
+        return self._computed_percentiles
+
+    def _slide_window(self):
+        while (
+            len(self._window) > 0
+            and time.time() - self._window[0][1]
+            > SlidingWindowMetric.WINDOW_LENGTH_SECONDS
+        ):
+            self._window.popleft()
 
 
 @dataclass
@@ -27,6 +78,14 @@ class OpRuntimeMetrics:
 
     DO NOT modify the fields of this class directly. Instead, use the provided
     callback methods.
+
+    Field metadata:
+        - export: Metrics to export for `as_dict()`
+        - map_only: Metrics only available for map operator.
+        - export_metric: Metrics to export for `as_dict()` to
+            Ray Data Prometheus metrics.
+        - window: A field that stores individual datapoints of the last X
+            seconds in a deque. Used for querying percentiles.
     """
 
     # === Inputs-related metrics ===
@@ -80,6 +139,16 @@ class OpRuntimeMetrics:
     num_tasks_finished: int = field(default=0, metadata={"map_only": True})
     # Number of failed tasks.
     num_tasks_failed: int = field(default=0, metadata={"map_only": True})
+    # Runtime of finished tasks.
+    task_runtime: SlidingWindowMetric = field(
+        default_factory=lambda: SlidingWindowMetric(),
+        metadata={"export_metric": True, "map_only": True, "window": True},
+    )
+    # RSS of finished tasks.
+    task_rss: SlidingWindowMetric = field(
+        default_factory=lambda: SlidingWindowMetric(),
+        metadata={"export_metric": True, "map_only": True, "window": True},
+    )
 
     # === Object store memory metrics ===
 
@@ -117,13 +186,26 @@ class OpRuntimeMetrics:
         self._running_tasks: Dict[int, RunningTaskInfo] = {}
         self._extra_metrics: Dict[str, Any] = {}
 
+        # default_factory fields are not initialized automatically
+        # because we define __init__.
+        for f in fields(self):
+            if not isinstance(f.default_factory, _MISSING_TYPE):
+                setattr(self, f.name, f.default_factory())
+
     @property
     def extra_metrics(self) -> Dict[str, Any]:
         """Return a dict of extra metrics."""
         return self._extra_metrics
 
-    def as_dict(self, metrics_only: bool = False):
-        """Return a dict representation of the metrics."""
+    def as_dict(self, metrics_only: bool = False, compute_percentiles: bool = False):
+        """Return a dict representation of the metrics.
+
+        Args:
+            metrics_only: Whether to include `metrics_only` tagged fields.
+            compute_percentiles: Whether to compute updated percentiles for
+                `window` tagged fields. This can be expensive to compute, and should
+                only be set when fetching stats for the _StatsActor.
+        """
         result = []
         for f in fields(self):
             if f.metadata.get("export", True):
@@ -132,7 +214,16 @@ class OpRuntimeMetrics:
                 ):
                     continue
                 value = getattr(self, f.name)
-                result.append((f.name, value))
+                if f.metadata.get("window", False):
+                    percentiles = (
+                        value.percentiles()
+                        if compute_percentiles
+                        else value.get_last_computed_percentiles()
+                    )
+                    for percentile, value in percentiles:
+                        result.append((f"{f.name}_p{percentile}", value))
+                else:
+                    result.append((f.name, value))
 
         # TODO: record resource usage in OpRuntimeMetrics,
         # avoid calling self._op.current_resource_usage()
@@ -223,7 +314,7 @@ class OpRuntimeMetrics:
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
-        self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
+        self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0, time.time(), 0)
 
     def on_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
@@ -245,12 +336,15 @@ class OpRuntimeMetrics:
         if self.obj_store_mem_cur > self.obj_store_mem_peak:
             self.obj_store_mem_peak = self.obj_store_mem_cur
 
+        bundle_rss = 0
         for block_ref, meta in output.blocks:
             assert meta.exec_stats and meta.exec_stats.wall_time_s
             self.block_generation_time += meta.exec_stats.wall_time_s
             assert meta.num_rows is not None
             self.rows_outputs_generated += meta.num_rows
+            bundle_rss += meta.exec_stats.max_rss_bytes
             trace_allocation(block_ref, "operator_output")
+        self._running_tasks[task_index].bytes_rss += bundle_rss
 
     def on_task_finished(self, task_index: int, exception: Optional[Exception]):
         """Callback when a task is finished."""
@@ -262,6 +356,9 @@ class OpRuntimeMetrics:
         task_info = self._running_tasks[task_index]
         self.num_outputs_of_finished_tasks += task_info.num_outputs
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
+        task_runtime = time.time() - task_info.start_time
+        self.task_runtime.append(task_runtime)
+        self.task_rss.append(task_info.bytes_rss)
 
         inputs = self._running_tasks[task_index].inputs
         self.num_inputs_processed += len(inputs)

@@ -116,6 +116,50 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
+        id=12,
+        title="Task Runtime",
+        description="Task runtime in seconds.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_p50_task_runtime_seconds{{{global_filters}}}) by (dataset, operator)",
+                legend="P50 Task Runtime: {{dataset}}, {{operator}}",
+            ),
+            Target(
+                expr="sum(ray_data_p90_task_runtime_seconds{{{global_filters}}}) by (dataset, operator)",
+                legend="P90 Task Runtime: {{dataset}}, {{operator}}",
+            ),
+            Target(
+                expr="sum(ray_data_p99_task_runtime_seconds{{{global_filters}}}) by (dataset, operator)",
+                legend="P99 Task Runtime: {{dataset}}, {{operator}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=13,
+        title="Task RSS",
+        description="Resident set size of tasks. May be an overestimate, as we don't differentiate from previous tasks on the same worker",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_p50_task_rss_seconds{{{global_filters}}}) by (dataset, operator)",
+                legend="P50 Task RSS: {{dataset}}, {{operator}}",
+            ),
+            Target(
+                expr="sum(ray_data_p90_task_rss_seconds{{{global_filters}}}) by (dataset, operator)",
+                legend="P90 Task RSS: {{dataset}}, {{operator}}",
+            ),
+            Target(
+                expr="sum(ray_data_p99_task_rss_seconds{{{global_filters}}}) by (dataset, operator)",
+                legend="P99 Task RSS: {{dataset}}, {{operator}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=9,
         title="Iteration Blocked Time",
         description="Seconds user thread is blocked by iter_batches()",

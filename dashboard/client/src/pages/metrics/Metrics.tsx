@@ -213,6 +213,14 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=8",
       },
       {
+        title: "Task Runtime",
+        pathParams: "orgId=1&theme=light&panelId=12",
+      },
+      {
+        title: "Task RSS",
+        pathParams: "orgId=1&theme=light&panelId=13",
+      },
+      {
         title: "Iteration Blocked Time",
         pathParams: "orgId=1&theme=light&panelId=9",
       },

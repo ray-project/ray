@@ -2,7 +2,7 @@ import collections
 import random
 import time
 from typing import Any, Iterable, List
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -15,6 +15,10 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
     RefBundle,
+)
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    OpRuntimeMetrics,
+    SlidingWindowMetric,
 )
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
@@ -1012,6 +1016,81 @@ def test_all_to_all_estimated_output_blocks():
     # estimated output blocks for op2 should fallback to op1
     assert op2._estimated_output_blocks is None
     assert op2.num_outputs_total() == estimated_output_blocks
+
+
+def test_op_window_metrics():
+    # Test SlidingWindowMetric fields in OpRuntimeMetrics
+    def test(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        yield pd.DataFrame({"id": [0]})
+
+    num_tasks = SlidingWindowMetric.WINDOW_LENGTH_SECONDS
+
+    # Launch one task each second
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(num_tasks)]))
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(test),
+        input_op=input_op,
+        name="TestOpWindowMetrics",
+        min_rows_per_bundle=1,
+    )
+
+    op.start(ExecutionOptions())
+    with patch("time.time") as mock_time:
+        mock_time.return_value = 0
+        while input_op.has_next():
+            op.add_input(input_op.get_next(), 0)
+            run_op_tasks_sync(op)
+            mock_time.return_value += 1
+
+    assert len(op.metrics.task_rss._window) == num_tasks
+    assert len(op.metrics.task_runtime._window) == num_tasks
+
+    # Get percentile metrics names
+    window_fields = [
+        name
+        for name, field in OpRuntimeMetrics.__dataclass_fields__.items()
+        if field.metadata.get("window", False)
+    ]
+    percentile_metrics = []
+    for field in window_fields:
+        for percentile in SlidingWindowMetric.PERCENTILES:
+            percentile_metrics.append(f"{field}_p{percentile}")
+
+    # Set current time window outside half of the datapoints
+    with patch("time.time", MagicMock(return_value=num_tasks * 1.5)):
+        percentiles = op.metrics.as_dict(metrics_only=True, compute_percentiles=True)
+        assert all([percentiles[metric] != -1 for metric in percentile_metrics])
+        # half the datapoints should have been evicted.
+        assert len(op.metrics.task_rss._window) == num_tasks / 2
+        assert len(op.metrics.task_rss._window) == num_tasks / 2
+
+    # evict all datapoints
+    with patch("time.time", MagicMock(return_value=num_tasks * 2)):
+        percentiles = op.metrics.as_dict(metrics_only=True, compute_percentiles=True)
+        assert all([percentiles[metric] == -1 for metric in percentile_metrics])
+
+        assert len(op.metrics.task_rss._window) == 0
+        assert len(op.metrics.task_runtime._window) == 0
+
+
+def test_sliding_window_metric_percentile_calculation():
+    window = SlidingWindowMetric()
+    with patch("time.time", MagicMock(return_value=0)):
+        for i in range(101):
+            window.append(i)
+        percentiles = window.percentiles()
+        assert percentiles == [
+            (percentile, percentile) for percentile in SlidingWindowMetric.PERCENTILES
+        ]
+
+    with patch(
+        "time.time",
+        MagicMock(return_value=SlidingWindowMetric.WINDOW_LENGTH_SECONDS * 2),
+    ):
+        percentiles = window.percentiles()
+        assert percentiles == [
+            (percentile, -1) for percentile in SlidingWindowMetric.PERCENTILES
+        ]
 
 
 if __name__ == "__main__":

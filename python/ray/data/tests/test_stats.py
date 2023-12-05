@@ -49,6 +49,12 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
+            "'task_runtime_pN': N",
+            "'task_runtime_pN': N",
+            "'task_runtime_pN': N",
+            "'task_rss_pN': N",
+            "'task_rss_pN': N",
+            "'task_rss_pN': N",
             "'obj_store_mem_alloc': N",
             "'obj_store_mem_freed': N",
             "'obj_store_mem_cur': Z",
@@ -122,7 +128,7 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     # Handle zero values specially so we can check for missing values.
     s4 = re.sub(" [0]+(\.[0])?", " Z", s3)
     # Other numerics.
-    s5 = re.sub("[0-9]+(\.[0-9]+)?", "N", s4)
+    s5 = re.sub("-?[0-9]+(\.[0-9]+)?", "N", s4)
     # Replace tabs with spaces.
     s6 = re.sub("\t", "    ", s5)
     if filter_global_stats:
@@ -539,6 +545,12 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
+        "      task_runtime_pN: N,\n"
+        "      task_runtime_pN: N,\n"
+        "      task_runtime_pN: N,\n"
+        "      task_rss_pN: N,\n"
+        "      task_rss_pN: N,\n"
+        "      task_rss_pN: N,\n"
         "      obj_store_mem_alloc: N,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_cur: Z,\n"
