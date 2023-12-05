@@ -248,7 +248,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             ):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
-                assert len(worker_res_list) == 0
+                assert len(worker_res_list) == min_worker_nodes
 
                 @ray.remote(num_cpus=num_cpus_worker_node)
                 def f(x):
