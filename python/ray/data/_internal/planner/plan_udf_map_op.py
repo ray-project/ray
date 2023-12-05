@@ -30,7 +30,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
 )
 from ray.data._internal.numpy_support import is_valid_udf_return
-from ray.data._internal.util import _truncated_repr, validate_compute
+from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -51,7 +51,6 @@ def plan_udf_map_op(
     """
 
     compute = get_compute(op._compute)
-    validate_compute(op._fn, compute)
     fn, init_fn = _parse_op_fn(op)
 
     if isinstance(op, MapBatches):

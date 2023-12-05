@@ -707,6 +707,24 @@ py_test(
 )
 
 py_test(
+    name = "test_step",
+    size = "small",
+    srcs = ["ray_release/tests/test_step.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_wheels",
     size = "small",
     srcs = ["ray_release/tests/test_wheels.py"],

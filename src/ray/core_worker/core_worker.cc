@@ -2692,7 +2692,7 @@ Status CoreWorker::ExecuteTask(
       RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
                      << " should return dynamic object " << dynamic_return_id;
 
-      AddLocalReference(dynamic_return_id, "<temporary (ObjectRefGenerator)>");
+      AddLocalReference(dynamic_return_id, "<temporary (DynamicObjectRefGenerator)>");
       reference_counter_->AddBorrowedObject(
           dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
     }
@@ -2930,7 +2930,7 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
                                              const TaskID &task_id,
                                              std::optional<ObjectIDIndexType> put_index) {
   const auto return_id = worker_context_.GetGeneratorReturnId(task_id, put_index);
-  AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
+  AddLocalReference(return_id, "<temporary (DynamicObjectRefGenerator)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
   return return_id;
 }
@@ -3056,7 +3056,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   SetActorId(actor_id);
   bool is_retryable_error;
   std::string application_error = "";
-  // TODO(swang): Support ObjectRefGenerators in local mode?
+  // TODO(swang): Support DynamicObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
   std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
   RAY_UNUSED(ExecuteTask(task_spec,
