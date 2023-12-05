@@ -3,8 +3,8 @@ import subprocess
 from typing import List, Optional
 
 from ci.ray_ci.utils import shard_tests, chunk_into_n
+from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.utils import logger
-from ci.ray_ci.container import Container
 
 
 class TesterContainer(LinuxContainer):
