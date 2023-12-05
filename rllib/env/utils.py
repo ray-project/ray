@@ -536,7 +536,8 @@ class BufferWithInfiniteLookback:
 
                 tree.map_structure(__set, self.data, new_data)
             else:
-                assert self.space.contains(new_data)
+                if self.space:
+                    assert self.space.contains(new_data)
                 self.data[actual_idx] = new_data
         except IndexError as e:
             raise IndexError(
