@@ -972,14 +972,9 @@ def serialize_retry_exception_allowlist(retry_exception_allowlist, function_desc
     try:
         return ray_pickle.dumps(retry_exception_allowlist)
     except TypeError as e:
-        # Only PythonFunctionDescriptor has @property repr.
-        if hasattr(function_descriptor, "repr"):
-            name = function_descriptor.repr
-        else:
-            name = function_descriptor.__repr__()
         msg = (
             "Could not serialize the retry exception allowlist"
-            f"{retry_exception_allowlist} for task {name}. "
+            f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
             "Check "
             "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
             "for more information.")
@@ -3979,7 +3974,7 @@ cdef class CoreWorker:
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
-            function_descriptor.repr)
+            function_descriptor)
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
