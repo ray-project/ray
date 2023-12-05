@@ -934,7 +934,7 @@ jupyter-core==5.5.0
     #   notebook
 jupyter-events==0.6.3
     # via jupyter-server-fileid
-jupyter-server==1.24.0
+jupyter-server==2.11.2
     # via
     #   jupyter-server-fileid
     #   jupyter-server-mathjax
