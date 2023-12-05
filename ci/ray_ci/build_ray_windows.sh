@@ -19,11 +19,12 @@ powershell ci/pipeline/fix-windows-bazel.ps1
 
 # Build ray
 conda init 
-pip install -U --ignore-installed  \
-  -c python/requirements_compiled.txt \
-  -r python/requirements.txt \
-  -r python/requirements/test-requirements.txt
+#pip install -U --ignore-installed  \
+#  -c python/requirements_compiled.txt \
+#  -r python/requirements.txt \
+#  -r python/requirements/test-requirements.txt
 pip install -v -e python
+git ls-files --others --exclude-standard
 
 # Clean up temp files to speed up docker build
 pip cache purge
