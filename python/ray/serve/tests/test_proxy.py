@@ -24,8 +24,8 @@ from ray.serve._private.proxy import (
 )
 from ray.serve._private.proxy_request_response import ProxyRequest
 from ray.serve._private.proxy_router import ProxyRouter
+from ray.serve._private.test_utils import FakeGrpcContext
 from ray.serve.generated import serve_pb2
-from ray.serve.tests.common.utils import FakeGrpcContext
 
 
 class FakeRef:
