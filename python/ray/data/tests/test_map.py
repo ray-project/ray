@@ -201,7 +201,8 @@ def test_concurrent_callable_classes(shutdown_only):
             raise ValueError
 
     with pytest.raises(ValueError):
-        ds.map_batches(ErrorFn, concurrency=1, max_concurrency=2).take_all()
+        ds.map_batches(ErrorFn, concurrency=1, max_concurrency=2,
+                       max_retries=5).take_all()
 
 
 def test_transform_failure(shutdown_only):
