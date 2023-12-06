@@ -136,13 +136,13 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             return
         self._warning_printed = True
         msg = (
-            "Temporarily unblocking backpressure."
-            f" Because some tasks of operator {op} have been submitted,"
-            f" but no outputs are generated for {no_output_time} seconds."
+            f"Operator {op} is running but has no ouptputs for {no_output_time} seconds,"
             " Ignore this warning if your UDF is expected to be slow."
-            " This may also be because some resources are preempted by"
-            " non-Ray-Data workloads."
-            " If this is the case, set `ExecutionOptions.reserved_resources`."
-            " This message will only be printed once."
+            " Otherwise, this can happen when there are fewer cluster resources available"
+            " to Ray Data than expected."
+            " If you have non-Data tasks or actors running in the cluster, exclude their"
+            " resources from Ray Data with"
+            " `DataContext.get_current().execution_options.exclude_resources`."
+            " This message will only print once."
         )
         logger.get_logger().warning(msg)

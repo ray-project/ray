@@ -332,21 +332,21 @@ class StreamingExecutor(Executor, threading.Thread):
         autoscaling.
         """
         base = self._options.resource_limits
-        reserved = self._options.exclude_resources
+        exclude = self._options.exclude_resources
         cluster = ray.cluster_resources()
 
         cpu = base.cpu
         if cpu is None:
-            cpu = cluster.get("CPU", 0.0) - (reserved.cpu or 0.0)
+            cpu = cluster.get("CPU", 0.0) - (exclude.cpu or 0.0)
         gpu = base.gpu
         if gpu is None:
-            gpu = cluster.get("GPU", 0.0) - (reserved.gpu or 0.0)
+            gpu = cluster.get("GPU", 0.0) - (exclude.gpu or 0.0)
         object_store_memory = base.object_store_memory
         if object_store_memory is None:
             object_store_memory = round(
                 DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
                 * cluster.get("object_store_memory", 0.0)
-            ) - (reserved.object_store_memory or 0)
+            ) - (exclude.object_store_memory or 0)
 
         return ExecutionResources(
             cpu=cpu,
