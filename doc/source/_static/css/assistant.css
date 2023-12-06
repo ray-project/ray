@@ -26,7 +26,7 @@
   transform: translate(-50%, -20%);
   width: 50%;
   height: 70%;
-  background-color: var(--pst-color-surface);
+  background-color: var(--pst-color-background);
   border: 1px solid var(--pst-color-border);
   border-radius: 10px;
   box-shadow: 0 5px 10px var(--pst-color-shadow);
@@ -69,7 +69,10 @@
 
 #searchBar {
   border: 1px solid var(--pst-color-border);
-  background-color: var(--pst-color-on-surface);
+  background-color: var(--pst-color-surface);
+  margin: 0em 1em 0em 0em;
+  border-radius: 4px;
+  color: var(--pst-color-text-base);
 }
 
 .chatHeader {
@@ -100,7 +103,7 @@
   border-radius: 10px;
   margin-top: 10px;
   margin-bottom: 10px;
-  background-color: var(--pst-color-on-surface);
+  background-color: var(--pst-color-surface);
   max-height: calc(100% - 20px);
   overflow-y: auto;
 }
@@ -112,8 +115,9 @@
   resize: none;
 }
 
-.searchBtn {
-    white-space: nowrap;
+#searchBtn {
+  white-space: nowrap;
+  border-radius: 4px;
 }
 
 .input-group {

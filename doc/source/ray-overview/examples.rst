@@ -54,6 +54,12 @@ Ray Examples
     :gutter: 1
     :class-container: gallery-container container pb-3
 
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item data-processing generative-ai huggingface inference large-language-models monitoring natural-language-processing pytorch serving tracking training tuning
+        :link: https://madewithml.com/#course
+
+        Self-paced course on taking your ML applications to production
+
     .. grid-item-card:: :bdg-primary:`Blog`
         :class-item: gallery-item large-language-models generative-ai
         :link: https://www.anyscale.com/blog/ray-common-production-challenges-for-generative-ai-infrastructure
