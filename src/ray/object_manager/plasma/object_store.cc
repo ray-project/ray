@@ -71,9 +71,11 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
   entry->state = ObjectState::PLASMA_SEALED;
   entry->construct_duration = std::time(nullptr) - entry->create_time;
   auto plasma_header = entry->GetPlasmaObjectHeader();
+#ifndef _WIN32
   if (!entry->object_info.is_mutable) {
     RAY_CHECK(plasma_header->num_readers == -1) << plasma_header->num_readers;
   }
+#endif
   return entry;
 }
 
