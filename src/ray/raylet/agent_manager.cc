@@ -62,7 +62,8 @@ void AgentManager::StartAgent() {
   monitor_thread_ = std::make_unique<std::thread>([this]() mutable {
     SetThreadName("agent.monitor." + options_.agent_name);
     RAY_LOG(INFO) << "Monitor agent process with name " << options_.agent_name;
-    sleep(300); // sleep 5 mins to confirm if wait cause child process to die
+    sleep(900); // sleep 15 mins to confirm if wait cause child process to die
+    RAY_LOG(INFO) << "Finished sleeping" << options_.agent_name;
     int exit_code = process_.Wait();
     RAY_LOG(INFO) << "Agent process with name " << options_.agent_name
                   << " exited, exit code " << exit_code << ".";
