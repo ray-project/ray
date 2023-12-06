@@ -737,7 +737,7 @@ def get_multiplexed_model_id() -> str:
 
 @PublicAPI(stability="beta")
 def get_grpc_context() -> RayServegRPCContext:
-    # TODO (genesu): add docstring
+    """Get the grpc context for the current request."""
     _request_context = ray.serve.context._serve_request_context.get()
     return _request_context.grpc_context
 
