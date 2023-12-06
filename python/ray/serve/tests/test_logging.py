@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import string
 import sys
 import time
 from contextlib import redirect_stderr
@@ -548,6 +549,28 @@ def test_json_log_formatter(is_replica_type_component):
     record.application = "application"
     expected_json["application"] = "application"
     format_and_verify_json_output(record, expected_json)
+
+
+def test_log_filenames_contain_only_posix_characters(serve_instance):
+    """Assert that all log filenames only consist of POSIX-compliant characters.
+
+    See: https://github.com/ray-project/ray/issues/41615
+    """
+
+    @serve.deployment
+    class A:
+        def __call__(self, *args) -> str:
+            return "hi"
+
+    serve.run(A.bind())
+
+    r = requests.get("http://localhost:8000/")
+    r.raise_for_status()
+    assert r.text == "hi"
+
+    acceptable_chars = string.ascii_letters + string.digits + "_" + "."
+    for filename in os.listdir(get_serve_logs_dir()):
+        assert all(char in acceptable_chars for char in filename)
 
 
 if __name__ == "__main__":
