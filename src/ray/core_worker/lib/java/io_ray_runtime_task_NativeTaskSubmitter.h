@@ -47,17 +47,8 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
  * ([BLio/ray/runtime/functionmanager/FunctionDescriptor;ILjava/util/List;ILio/ray/api/options/CallOptions;IZLjava/lang/String;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(JNIEnv *,
-                                                                   jclass,
-                                                                   jbyteArray,
-                                                                   jobject,
-                                                                   jint,
-                                                                   jobject,
-                                                                   jint,
-                                                                   jobject,
-                                                                   jint,
-                                                                   jboolean,
-                                                                   jstring);
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
+    JNIEnv *, jclass, jbyteArray, jobject, jint, jobject, jint, jobject);
 
 /*
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
