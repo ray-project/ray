@@ -283,12 +283,9 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         <br />
         <CpuProfilingLink pid={pid} ip={ip} type="" />
         <br />
-<<<<<<< HEAD
-        <MemoryProfilingButton pid={pid} ip={ip} type="" />
-=======
         <CpuStackTraceLink pid={pid} ip={ip} type="" />
         <br />
->>>>>>> 4f406ad3c9f43f4dff079c8b5053ebd958e46ff7
+        <MemoryProfilingButton pid={pid} ip={ip} type="" />
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
