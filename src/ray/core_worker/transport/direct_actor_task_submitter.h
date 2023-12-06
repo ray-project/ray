@@ -17,6 +17,7 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
+#include <optional>
 #include <queue>
 #include <set>
 #include <utility>
@@ -35,6 +36,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -61,6 +63,10 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
 
   virtual void CheckTimeoutTasks() = 0;
 
+  /// Mark that the corresponding actor is preempted (e.g., spot preemption).
+  /// If called, preempted = true will be set in the death cause upon actor death.
+  virtual void SetPreempted(const ActorID &actor_id) = 0;
+
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
 };
 
@@ -82,6 +88,13 @@ class CoreWorkerDirectActorTaskSubmitter
         io_service_(io_service) {
     next_queueing_warn_threshold_ =
         ::RayConfig::instance().actor_excess_queueing_warn_threshold();
+  }
+
+  void SetPreempted(const ActorID &actor_id) {
+    absl::MutexLock lock(&mu_);
+    if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
+      iter->second.preempted = true;
+    }
   }
 
   /// Add an actor queue. This should be called whenever a reference to an
@@ -229,6 +242,13 @@ class CoreWorkerDirectActorTaskSubmitter
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
  private:
+  struct TaskInfo {
+    TaskSpecification specification;
+    Status status;
+    ActorID actor_id;
+    bool preempted;
+  };
+
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access
   /// - FailOrRetryPendingTask
@@ -263,6 +283,8 @@ class CoreWorkerDirectActorTaskSubmitter
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
     int64_t num_restarts = -1;
+    /// Whether this actor exits by spot preemption.
+    bool preempted = false;
     /// The RPC client. We use shared_ptr to enable shared_from_this for
     /// pending client callbacks.
     std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
@@ -312,6 +334,9 @@ class CoreWorkerDirectActorTaskSubmitter
       return stream.str();
     }
   };
+
+  /// Fail the task with a constructed ActorDiedError, with preemption info.
+  void FailTaskWithError(const TaskInfo &task_info);
 
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
