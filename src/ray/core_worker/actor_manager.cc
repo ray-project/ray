@@ -220,6 +220,10 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", num_restarts: " << actor_data.num_restarts()
                 << ", death context type="
                 << gcs::GetActorDeathCauseString(actor_data.death_cause());
+  if (actor_data.preempted()) {
+    direct_actor_submitter_->SetPreempted(actor_id);
+  }
+
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id,
                                              actor_data.num_restarts(),

@@ -1,8 +1,10 @@
 import copy
+from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Dict, List
 
 from ray.autoscaler._private.util import hash_runtime_conf, prepare_config
+from ray.autoscaler.v2.scheduler import ClusterConfig
 
 
 class Provider(Enum):
@@ -13,6 +15,15 @@ class Provider(Enum):
     GCP = 4
     KUBERAY = 5
     LOCAL = 6
+
+
+class IConfigReader(ABC):
+    """An interface for reading cluster config."""
+
+    @abstractmethod
+    def get_cluster_config(self) -> ClusterConfig:
+        """Returns the cluster config."""
+        pass
 
 
 class NodeProviderConfig(object):

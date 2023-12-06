@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray._private.thirdparty.tabulate.tabulate import tabulate
@@ -264,6 +264,12 @@ class DataParallelTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
+        train_total_resources = self.scaling_config.total_resources
+        self._data_config.set_train_total_resources(
+            train_total_resources.get("CPU", 0),
+            train_total_resources.get("GPU", 0),
+        )
+
     @PublicAPI(stability="beta")
     @classmethod
     def restore(
@@ -357,61 +363,71 @@ class DataParallelTrainer(BaseTrainer):
 
         return scaling_config
 
-    def _report(self, training_iterator: TrainingIterator) -> None:
-        for results in training_iterator:
+    def _run_training(self, training_iterator: TrainingIterator) -> None:
+        """This method loops over the `TrainingIterator`:
+        The actual iteration (for ... in ...) waits for the training function
+        on each worker to report a result and supplies it as a list of results.
+        Afterwards (in the body of the loop), it will report the result
+        to the Tune session.
+        The iterator ends after the training function on each worker has finished.
+        """
+        for training_results in training_iterator:
             # TODO(ml-team): add ability to report results from multiple workers.
-            first_worker_result = results[0]
-            assert all(isinstance(result, _TrainingResult) for result in results)
+            self._propagate_results(training_results)
 
-            tune_session = get_session()
+    def _propagate_results(self, training_results: List[_TrainingResult]):
+        first_worker_result = training_results[0]
+        assert all(isinstance(result, _TrainingResult) for result in training_results)
 
-            # Check if any workers reported a checkpoint.
-            # If so, report a checkpoint pointing to the persisted location
-            # to Tune for book-keeping.
-            # NOTE: This removes the restriction for any individual worker
-            # (ex: global rank 0 worker) from needing to report a checkpoint.
-            # All workers reported a checkpoint to the same fs path, so there's
-            # no need to report multiple checkpoints to Tune.
-            worker_checkpoints = [
-                result.checkpoint for result in results if result.checkpoint is not None
-            ]
-            at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
+        tune_session = get_session()
 
-            if at_least_one_reported_checkpoint:
-                # Update the coordinator's checkpoint index to the latest.
-                # This is what keeps the checkpoint index in line with the workers.
-                tune_session.storage._update_checkpoint_index(
-                    first_worker_result.metrics
-                )
+        # Check if any workers reported a checkpoint.
+        # If so, report a checkpoint pointing to the persisted location
+        # to Tune for book-keeping.
+        # NOTE: This removes the restriction for any individual worker
+        # (ex: global rank 0 worker) from needing to report a checkpoint.
+        # All workers reported a checkpoint to the same fs path, so there's
+        # no need to report multiple checkpoints to Tune.
+        worker_checkpoints = [
+            result.checkpoint
+            for result in training_results
+            if result.checkpoint is not None
+        ]
+        at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
 
-            # Make sure that all workers uploaded to the same location.
-            assert all(
-                checkpoint.path == tune_session.storage.checkpoint_fs_path
-                for checkpoint in worker_checkpoints
+        if at_least_one_reported_checkpoint:
+            # Update the coordinator's checkpoint index to the latest.
+            # This is what keeps the checkpoint index in line with the workers.
+            tune_session.storage._update_checkpoint_index(first_worker_result.metrics)
+
+        # Make sure that all workers uploaded to the same location.
+        assert all(
+            checkpoint.path == tune_session.storage.checkpoint_fs_path
+            for checkpoint in worker_checkpoints
+        )
+
+        checkpoint = (
+            Checkpoint(
+                filesystem=tune_session.storage.storage_filesystem,
+                path=tune_session.storage.checkpoint_fs_path,
             )
+            if at_least_one_reported_checkpoint
+            else None
+        )
 
-            checkpoint = (
-                Checkpoint(
-                    filesystem=tune_session.storage.storage_filesystem,
-                    path=tune_session.storage.checkpoint_fs_path,
-                )
-                if at_least_one_reported_checkpoint
-                else None
-            )
+        tracked_training_result = _TrainingResult(
+            checkpoint=checkpoint,
+            metrics=first_worker_result.metrics,
+        )
 
-            tracked_training_result = _TrainingResult(
-                checkpoint=checkpoint,
-                metrics=first_worker_result.metrics,
-            )
+        logger.debug(
+            "Report (metrics, checkpoint) to the Tune session:\n"
+            f"  metrics={tracked_training_result.metrics}\n"
+            f"  checkpoint={tracked_training_result.checkpoint}"
+        )
 
-            logger.debug(
-                "Report (metrics, checkpoint) to the Tune session:\n"
-                f"  metrics={tracked_training_result.metrics}\n"
-                f"  checkpoint={tracked_training_result.checkpoint}"
-            )
-
-            # Report the metrics and checkpoint to Tune.
-            tune_session._report_training_result(tracked_training_result)
+        # Report the metrics and checkpoint to Tune.
+        tune_session._report_training_result(tracked_training_result)
 
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
@@ -457,7 +473,7 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint=self.starting_checkpoint,
         )
 
-        self._report(training_iterator)
+        self._run_training(training_iterator)
 
         # Shutdown workers.
         backend_executor.shutdown()
