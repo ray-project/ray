@@ -26,6 +26,7 @@ py_test_module_list(
     "test_actor_pool.py",
     "test_async.py",
     "test_asyncio.py",
+    "test_core_worker_io_thread_stack_size.py",
     "test_actor_lifetime.py",
     "test_advanced.py",
     "test_advanced_2.py",
@@ -120,6 +121,7 @@ py_test_module_list(
     "test_bounded_unix_sockets.py",
     "test_autoscaler_fake_scaledown.py",
     "accelerators/test_neuron.py",
+    "accelerators/test_npu.py",
     "accelerators/test_tpu.py",
     "accelerators/test_nvidia_gpu.py",
     "accelerators/test_hpu.py",
@@ -130,6 +132,7 @@ py_test_module_list(
     "test_nested_task.py",
     "test_metrics.py",
     "test_task_events.py",
+    "test_worker_state.py",
     "test_task_events_2.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
@@ -140,6 +143,7 @@ py_test_module_list(
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_mpi.py",
+    "test_node_labels.py",
     "test_node_manager.py",
     "test_object_assign_owner.py",
     "test_placement_group_2.py",
@@ -286,11 +290,16 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
     "test_gcs_ha_e2e_2.py",
-    "test_memory_pressure.py",
-    "test_node_labels.py",
   ],
   size = "medium",
-  tags = ["exclusive", "team:core", "xcommit"],
+  tags = ["exclusive", "ha_integration", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = ["test_memory_pressure.py"],
+  size = "medium",
+  tags = ["exclusive", "mem_pressure", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -299,18 +308,26 @@ py_test_module_list(
     "test_autoscaler_e2e.py",
   ],
   size = "medium",
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test_module_list(
   files = [
     "test_autoscaler.py",
-    "test_batch_node_provider_unit.py",
-    "test_batch_node_provider_integration.py",
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_util.py",
     "test_autoscaler_gcp.py",
+  ],
+  size = "small",
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_batch_node_provider_unit.py",
+    "test_batch_node_provider_integration.py",
     "test_cli_logger.py",
     "test_client_metadata.py",
     "test_client_terminate.py",
@@ -331,7 +348,7 @@ py_test(
   name = "test_autoscaler_yaml",
   size = "small",
   srcs = ["test_autoscaler_yaml.py"],
-  tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = [
     "additional_property.yaml",
@@ -480,7 +497,7 @@ py_test(
     name = "test_autoscaler_aws",
     size = "small",
     srcs = ["aws/test_autoscaler_aws.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "small_size_python_tests", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -638,7 +655,7 @@ py_test_module_list(
     "spark/test_utils.py",
     "spark/test_databricks_hook.py",
   ],
-  size = "large",
+  size = "enormous",
   tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
   data = [

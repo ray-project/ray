@@ -1,4 +1,5 @@
 import copy
+import functools
 import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
@@ -6,7 +7,7 @@ from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Un
 
 import ray
 from ray import ObjectRef
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -79,7 +80,7 @@ class MapOperator(OneToOneOperator, ABC):
         # TODO(hchen): This is a workaround for a bug of lineage reconstruction.
         # When the streaming generator ref is GC'ed, the objects it generated
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
-        self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
+        self._finished_streaming_gens: List[ObjectRefGenerator] = []
         super().__init__(name, input_op, target_max_block_size)
 
         # If set, then all output blocks will be split into
@@ -274,7 +275,7 @@ class MapOperator(OneToOneOperator, ABC):
 
     def _submit_data_task(
         self,
-        gen: StreamingObjectRefGenerator,
+        gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
     ):
@@ -296,8 +297,8 @@ class MapOperator(OneToOneOperator, ABC):
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
 
-        def _task_done_callback(task_index):
-            self._metrics.on_task_finished(task_index)
+        def _task_done_callback(task_index: int, exception: Optional[Exception]):
+            self._metrics.on_task_finished(task_index, exception)
 
             # Estimate number of tasks from inputs received and tasks submitted so far
             estimated_num_tasks = (
@@ -319,9 +320,10 @@ class MapOperator(OneToOneOperator, ABC):
                 task_done_callback()
 
         self._data_tasks[task_index] = DataOpTask(
+            task_index,
             gen,
             lambda output: _output_ready_callback(task_index, output),
-            lambda: _task_done_callback(task_index),
+            functools.partial(_task_done_callback, task_index),
         )
 
     def _submit_metadata_task(
@@ -337,7 +339,7 @@ class MapOperator(OneToOneOperator, ABC):
             task_done_callback()
 
         self._metadata_tasks[task_index] = MetadataOpTask(
-            result_ref, _task_done_callback
+            task_index, result_ref, _task_done_callback
         )
 
     def get_active_tasks(self) -> List[OpTask]:

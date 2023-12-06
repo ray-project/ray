@@ -1,21 +1,20 @@
 group: data tests
+depends_on:
+  - forge
+  - oss-ci-base_ml
 steps:
   # builds
   - name: data6build
     wanda: ci/docker/data6.build.wanda.yaml
-    depends_on: oss-ci-base_ml
 
   - name: data14build
     wanda: ci/docker/data14.build.wanda.yaml
-    depends_on: oss-ci-base_ml
 
   - name: datanbuild
     wanda: ci/docker/datan.build.wanda.yaml
-    depends_on: oss-ci-base_ml
 
   - name: datamongobuild
     wanda: ci/docker/datamongo.build.wanda.yaml
-    depends_on: oss-ci-base_ml
 
   # tests
   - label: ":database: data: arrow 6 tests"
@@ -32,7 +31,6 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: data6build
-    job_env: forge
 
   - label: ":database: data: arrow 14 tests"
     tags: 
@@ -48,7 +46,6 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: data14build
-    job_env: forge
 
   - label: ":database: data: arrow nightly tests"
     tags: 
@@ -65,7 +62,6 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: datanbuild
-    job_env: forge
 
   - label: ":database: data: doc tests"
     tags: 
@@ -86,7 +82,6 @@ steps:
         --parallelism-per-worker 2
         --skip-ray-installation
     depends_on: data14build
-    job_env: forge
 
   - label: ":database: data: doc gpu tests"
     tags: 
@@ -107,7 +102,6 @@ steps:
         --only-tags gpu
         --skip-ray-installation
     depends_on: docgpubuild
-    job_env: forge
 
   - label: ":database: data: integration tests"
     tags:
@@ -121,11 +115,11 @@ steps:
         --only-tags data_integration
         --except-tags doctest
     depends_on: datamongobuild
-    job_env: forge
 
   - label: ":database: data: dashboard tests"
     tags:
       - python
+      - data
       - dashboard
     instance_type: small
     commands:
@@ -133,7 +127,6 @@ steps:
         --build-name data14build
         --parallelism-per-worker 3
     depends_on: data14build
-    job_env: forge
 
   - label: ":database: data: flaky tests"
     tags: 
@@ -147,4 +140,3 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1 --parallelism-per-worker 3
         --build-name data14build
     depends_on: data14build
-    job_env: forge

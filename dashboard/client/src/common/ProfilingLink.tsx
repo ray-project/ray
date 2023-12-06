@@ -70,7 +70,7 @@ export const TaskCpuStackTraceLink = ({
   );
 };
 
-export const CpuProfilingLink = ({
+export const CpuStackTraceLink = ({
   pid,
   ip,
   type = "",
@@ -90,7 +90,7 @@ export const CpuProfilingLink = ({
   );
 };
 
-export const CpuStackTraceLink = ({
+export const CpuProfilingLink = ({
   pid,
   ip,
   type = "",

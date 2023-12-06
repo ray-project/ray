@@ -198,13 +198,13 @@ const ActorDetailPage = () => {
             label: "Actions",
             content: (
               <div>
-                <CpuProfilingLink
+                <CpuStackTraceLink
                   pid={actorDetail.pid}
                   ip={actorDetail.address?.ipAddress}
                   type=""
                 />
                 <br />
-                <CpuStackTraceLink
+                <CpuProfilingLink
                   pid={actorDetail.pid}
                   ip={actorDetail.address?.ipAddress}
                   type=""

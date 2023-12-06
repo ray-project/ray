@@ -12,9 +12,7 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve.config import gRPCOptions
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.common.utils import (
+from ray.serve._private.test_utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -24,6 +22,8 @@ from ray.serve.tests.common.utils import (
     ping_grpc_streaming,
     send_signal_on_cancellation,
 )
+from ray.serve.config import gRPCOptions
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 
 

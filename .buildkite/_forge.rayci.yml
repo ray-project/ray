@@ -33,6 +33,7 @@ steps:
     label: "wanda: ray.py{{matrix}}.cpu.base"
     tags:
       - python_dependencies
+      - python
       - docker
       - tune
     wanda: ci/docker/ray.cpu.base.wanda.yaml

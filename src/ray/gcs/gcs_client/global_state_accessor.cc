@@ -218,8 +218,38 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
   return true;
 }
 
+uint32_t GlobalStateAccessor::GetWorkerDebuggerPort(const WorkerID &worker_id) {
+  absl::ReaderMutexLock debugger_lock(&debugger_port_mutex_);
+  std::promise<uint32_t> promise;
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
+        worker_id,
+        [&promise](const Status &status,
+                   const boost::optional<rpc::WorkerTableData> &result) {
+          RAY_CHECK_OK(status);
+          if (result.has_value()) {
+            promise.set_value(result->debugger_port());
+            return;
+          }
+          promise.set_value(0);
+        }));
+  }
+  // Setup a timeout
+  auto future = promise.get_future();
+  if (future.wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    RAY_LOG(FATAL) << "Failed to get the debugger port within the timeout setting.";
+    return 0;
+  }
+  return future.get();
+}
+
 bool GlobalStateAccessor::UpdateWorkerDebuggerPort(const WorkerID &worker_id,
                                                    const uint32_t debugger_port) {
+  // debugger mutex is used to avoid concurrent updates to the same worker
+  absl::WriterMutexLock debugger_lock(&debugger_port_mutex_);
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
@@ -235,6 +265,37 @@ bool GlobalStateAccessor::UpdateWorkerDebuggerPort(const WorkerID &worker_id,
           RayConfig::instance().gcs_server_request_timeout_seconds())) !=
       std::future_status::ready) {
     RAY_LOG(FATAL) << "Failed to update the debugger port within the timeout setting.";
+    return false;
+  }
+  return future.get();
+}
+
+bool GlobalStateAccessor::UpdateWorkerNumPausedThreads(
+    const WorkerID &worker_id, const int num_paused_threads_delta) {
+  // Verify that the current thread is not the same as the thread_io_service_ to prevent
+  // deadlock
+  RAY_CHECK(thread_io_service_->get_id() != std::this_thread::get_id())
+      << "This method should not be called from the same thread as the "
+         "thread_io_service_";
+
+  // debugger mutex is used to avoid concurrent updates to the same worker
+  absl::WriterMutexLock debugger_lock(&debugger_threads_mutex_);
+  std::promise<bool> promise;
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncUpdateWorkerNumPausedThreads(
+        worker_id, num_paused_threads_delta, [&promise](const Status &status) {
+          RAY_CHECK_OK(status);
+          promise.set_value(status.ok());
+        }));
+  }
+  // Setup a timeout for the update request
+  auto future = promise.get_future();
+  if (future.wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    RAY_LOG(FATAL)
+        << "Failed to update the num of paused threads within the timeout setting.";
     return false;
   }
   return future.get();
