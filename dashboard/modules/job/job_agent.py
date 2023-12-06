@@ -18,6 +18,8 @@ from ray.dashboard.modules.job.job_manager import JobManager
 from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.utils import parse_and_validate_request, find_job_by_ids
 
+import psutil
+import asyncio
 
 routes = optional_utils.DashboardAgentRouteTable
 logger = logging.getLogger(__name__)
@@ -202,7 +204,23 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         return self._job_manager
 
     async def run(self, server):
-        pass
+        while True:
+            try:
+                logger.info("Job Agent: monitoring process liveness")
+                curr_proc = psutil.Process()
+                if not curr_proc.is_running():
+                    logger.info(f"Process with PID {target_pid} has exited. ")
+                    stdout_output = curr_proc.stdout.readlines()
+                    logger.info(f"Last few lines of standard output: {stdout_output}")
+                    
+                    # Attempt to get the last few lines of standard error
+                    stderr_output = curr_proc.stderr.readlines()
+                    logger.info(f"Last few lines of standard error: {stderr_output}")
+                
+                await asyncio.sleep(0.5)
+            except Exception:
+                logger.warning("current process ded")
+                exit(1)
 
     @staticmethod
     def is_minimal_module():

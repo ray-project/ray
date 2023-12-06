@@ -603,3 +603,4 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
                 logger.warning(traceback.format_exc())
                 logger.warning(f"Error message: {e}")
             time.sleep(self.default_service_discovery_flush_period)
+        logger.info("should not be here")

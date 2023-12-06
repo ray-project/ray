@@ -117,6 +117,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         await asyncio.gather(
             self.report_events(),
         )
+        logger.info("finish event_agent")
 
     @staticmethod
     def is_minimal_module():

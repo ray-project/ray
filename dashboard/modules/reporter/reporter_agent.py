@@ -1147,13 +1147,16 @@ class ReporterAgent(
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
+            logger.info("retry reporter_agent update")
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
+        logger.info("this shouldn't happen")
 
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-
+        logger.info("running reporter_agent")
         await self._perform_iteration(self._dashboard_agent.publisher)
+        logger.info("finish reporter_agent")
 
     @staticmethod
     def is_minimal_module():

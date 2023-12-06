@@ -207,7 +207,8 @@ class DashboardAgent:
                     "Failed to start http server. Agent will stay alive but "
                     "disable the http service."
                 )
-
+        logger.info("Run dashboard agent with server, Write the dashboard agent port to kv")
+        logger.info(f"pid: {os.getpid()}")
         # Write the dashboard agent port to kv.
         # TODO: Use async version if performance is an issue
         # -1 should indicate that http server is not started.
@@ -221,6 +222,7 @@ class DashboardAgent:
         )
 
         tasks = [m.run(self.server) for m in modules]
+        logger.info("Run dashboard agent with server, modules launched")
         if sys.platform not in ["win32", "cygwin"]:
 
             def callback():
@@ -235,8 +237,11 @@ class DashboardAgent:
         await asyncio.gather(*tasks)
 
         if self.server:
+            logger.info("Run dashboard agent with server, waiting for termination")
             await self.server.wait_for_termination()
+            logger.info("Run dashboard agent with server, terminating")
         else:
+            logger.info("Run dashboard agent without server, keep running")
             while True:
                 await asyncio.sleep(3600)  # waits forever
 
@@ -448,8 +453,9 @@ if __name__ == "__main__":
             # Re-open the issue: https://github.com/ray-project/ray/issues/25518
             # if a truly graceful shutdown is required.
             loop.add_signal_handler(signal.SIGTERM, sigterm_handler)
-
+        logger.info("Dashboard agent start")
         loop.run_until_complete(agent.run())
+        logger.info("Dashboard agent exit")
     except Exception:
         logger.exception("Agent is working abnormally. It will exit immediately.")
         exit(1)
