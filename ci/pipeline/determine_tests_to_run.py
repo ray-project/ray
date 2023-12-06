@@ -251,9 +251,11 @@ if __name__ == "__main__":
                     if changed_file.endswith(compiled_extension):
                         RAY_CI_COMPILED_PYTHON_AFFECTED = 1
                         break
+            elif changed_file == ".buildkite/core.rayci.yml":
+                RAY_CI_PYTHON_AFFECTED = 1
+                RAY_CI_CORE_CPP_AFFECTED = 1
             elif (
-                changed_file == ".buildkite/core.rayci.yml"
-                or changed_file == "ci/docker/min.build.Dockerfile"
+                changed_file == "ci/docker/min.build.Dockerfile"
                 or changed_file == "ci/docker/min.build.wanda.yaml"
                 or changed_file == ".buildkite/serverless.rayci.yml"
                 or changed_file == ".buildkite/pipeline.ml.yml"

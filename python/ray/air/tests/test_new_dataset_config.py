@@ -8,6 +8,7 @@ from ray import train
 from ray.train import DataConfig, ScalingConfig
 from ray.data import DataIterator
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.tests.conftest import *  # noqa
 
 
 @pytest.fixture
@@ -259,6 +260,54 @@ def test_materialized_preprocessing(ray_start_4_cpus):
         dataset_config=DataConfig(datasets_to_split=[]),
     )
     test.fit()
+
+
+def test_data_config_default_resource_limits(shutdown_only):
+    """Test that DataConfig's default resource limits should exclude the resources
+    used by training."""
+    cluster_cpus, cluster_gpus = 20, 10
+    num_workers = 2
+    # Resources used by training workers.
+    cpus_per_worker, gpus_per_worker = 2, 1
+    # Resources used by the trainer actor.
+    default_trainer_cpus, default_trainer_gpus = 1, 0
+    expected_cpu_limit = (
+        cluster_cpus - num_workers * cpus_per_worker - default_trainer_cpus
+    )
+    expected_gpu_limit = (
+        cluster_gpus - num_workers * gpus_per_worker - default_trainer_gpus
+    )
+
+    ray.init(num_cpus=cluster_cpus, num_gpus=cluster_gpus)
+
+    class MyTrainer(DataParallelTrainer):
+        def __init__(self, **kwargs):
+            def train_loop_fn():
+                train_ds = train.get_dataset_shard("train")
+                resource_limits = (
+                    train_ds._base_dataset.context.execution_options.resource_limits
+                )
+                assert resource_limits.cpu == expected_cpu_limit
+                assert resource_limits.gpu == expected_gpu_limit
+
+            kwargs.pop("scaling_config", None)
+            super().__init__(
+                train_loop_per_worker=train_loop_fn,
+                scaling_config=ScalingConfig(
+                    num_workers=num_workers,
+                    use_gpu=True,
+                    resources_per_worker={
+                        "CPU": cpus_per_worker,
+                        "GPU": gpus_per_worker,
+                    },
+                ),
+                datasets={"train": ray.data.range(10)},
+                dataset_config=DataConfig(),
+                **kwargs,
+            )
+
+    trainer = MyTrainer()
+    trainer.fit()
 
 
 if __name__ == "__main__":
