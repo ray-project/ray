@@ -1,13 +1,18 @@
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Dict, Tuple
 
 import ray
 from .backpressure_policy import BackpressurePolicy
+from ray.data._internal.dataset_logger import DatasetLogger
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
+
+
+logger = DatasetLogger(__name__)
 
 
 class StreamingOutputBackpressurePolicy(BackpressurePolicy):
@@ -42,7 +47,9 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
         "backpressure_policies.streaming_output.max_blocks_in_op_output_queue"
     )
 
-    OUTPUT_DETECTION_INTERVAL_SECONDS = 1
+    # If an operator has active tasks but no outputs for at least this time,
+    # we'll consider it as idle and temporarily unblock backpressure for its upstream.
+    MAX_OUTPUT_IDLE_SECONDS = 10
 
     def __init__(self, topology: "Topology"):
         data_context = ray.data.DataContext.get_current()
@@ -64,57 +71,76 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
         )
         assert self._max_num_blocks_in_op_output_queue > 0
 
-        self._last_op_num_outputs: Dict["PhysicalOperator", int] = defaultdict(int)
-        self._last_output_detection_time = 0
+        # Latest number of outputs and the last time when the number changed
+        # for each op.
+        self._last_num_outputs_and_time: Dict[
+            "PhysicalOperator", Tuple[int, float]
+        ] = defaultdict(lambda: (0, time.time()))
+        self._warning_printed = False
 
     def calculate_max_blocks_to_read_per_op(
         self, topology: "Topology"
     ) -> Dict["OpState", int]:
         max_blocks_to_read_per_op: Dict["OpState", int] = {}
-        downstream_num_active_tasks = 0
 
-        should_detect_outputs = (
-            time.time() - self._last_output_detection_time
-            > self.OUTPUT_DETECTION_INTERVAL_SECONDS
-        )
-        downstream_num_outputs_since_last_detection = 0
-        if should_detect_outputs:
-            self._last_output_detection_time = time.time()
+        # Indicates if the immediate downstream operator is idle.
+        downstream_idle = False
 
         for op, state in reversed(topology.items()):
             max_blocks_to_read_per_op[state] = (
                 self._max_num_blocks_in_op_output_queue - state.outqueue_num_blocks()
             )
-            # Detect if all the downstream operators are idle based on 2 conditions:
-            # - if they have no active tasks.
-            # - if they have no outputs for the last `OUTPUT_DETECTION_INTERVAL_SECONDS`.
-            #
-            # Note, only detecting active tasks is not enough. Because tasks are considered
-            # active by Data when they are submitted. But they may not actually have enough
-            # resources to run. This can happen if there are non-Data tasks/actors running
-            # in the same cluster.
-            downstream_idle = downstream_num_active_tasks == 0 or (
-                should_detect_outputs
-                and downstream_num_outputs_since_last_detection == 0
-            )
+
             if downstream_idle:
-                # If all downstream operators are idle, we'll make sure to read at least
-                # one block to avoid deadlock.
-                # TODO(hchen): `downstream_num_active_tasks == 0` doesn't necessarily
-                # mean no enough resources. One false positive case is when the upstream
-                # op hasn't produced any blocks for the downstream op to consume.
-                # In this case, at least reading one block is fine.
-                # If there are other false positive cases, we may want to make this
-                # deadlock check more accurate by directly checking resources.
                 max_blocks_to_read_per_op[state] = max(
                     max_blocks_to_read_per_op[state],
                     1,
                 )
-            downstream_num_active_tasks += len(op.get_active_tasks())
-            if should_detect_outputs:
+
+            # An operator is considered idle if either of the following is true:
+            # - It has no active tasks.
+            #   - This can happen when all resources are used by upstream operators.
+            # - It has active tasks, but no outputs for at least `MAX_OUTPUT_IDLE_SECONDS`.
+            #   - This can happen when non-Data code preempted cluster resources, and
+            #   - some of the active tasks don't actually have enough resources to run.
+            #
+            # If the operator is idle, we'll temporarily unblock backpressure by
+            # allowing reading at least one block from its upstream
+            # to avoid deadlock.
+            # NOTE, these 2 conditions don't necessarily mean deadlock.
+            # The first case can also happen when the upstream operator hasn't outputted
+            # any blocks yet. While the second case can also happen when the task is
+            # expected to output data slowly.
+            # The false postive cases are fine as we only allow reading one block a time.
+            downstream_idle = False
+            if op.num_active_tasks() == 0:
+                downstream_idle = True
+            else:
                 cur_num_outputs = state.op.metrics.num_outputs_generated
-                downstream_num_outputs_since_last_detection += (
-                    cur_num_outputs - self._last_op_num_outputs[state.op]
-                )
-                self._last_op_num_outputs[state.op] = cur_num_outputs
+                cur_time = time.time()
+                last_num_outputs, last_time = self._last_num_outputs_and_time[state.op]
+                if cur_num_outputs > last_num_outputs:
+                    self._last_num_outputs_and_time[state.op] = (
+                        cur_num_outputs,
+                        cur_time,
+                    )
+                else:
+                    if cur_time - last_time > self.MAX_OUTPUT_IDLE_SECONDS:
+                        downstream_idle = True
+                        self._print_warning(state.op, cur_time - last_time)
         return max_blocks_to_read_per_op
+
+    def _print_warning(self, op: "PhysicalOperator", no_output_time: float):
+        if self._warning_printed:
+            return
+        self._warning_printed = True
+        msg = (
+            "Temporarily unblocking backpressure."
+            f" Because some tasks of operator {op} have been submitted,"
+            f" but no outputs are generated for {no_output_time} seconds."
+            " Ignore this warning if your UDF is expected to be slow."
+            " This may also be because some resources are preempted by non-Data code."
+            " If this is the case, set ."
+            " This message will only be printed once."
+        )
+        logger.get_logger().warning(msg)
