@@ -76,20 +76,20 @@ class VirtualClusterResourceManager {
   ///
   /// \param bundle_specs A set of bundles that waiting to be prepared.
   /// \return bool True if all bundles successfully reserved resources, otherwise false.
-  virtual bool PrepareBundle(const VirtualClusterBundleSpec &bundle_spec);
+  virtual bool PrepareBundle(const VirtualClusterBundleSpec &bundle_spec, int64_t seqno);
 
   /// Convert the required resources to virtual cluster resources(like CPU ->
   /// CPU_cluster_i). This is phase two of 2PC.
   ///
   /// \param bundle_spec Specification of bundle whose resources will be commited.
-  void CommitBundle(VirtualClusterID vc_id);
+  void CommitBundle(VirtualClusterID vc_id, int64_t seqno);
 
   /// Return back all the bundle resource.
   /// Removes the added renamed resources, releases the original resources, and erases the
   /// entry in `vc_bundles_`.
   ///
   /// \param bundle_spec Specification of bundle whose resources will be returned.
-  virtual void ReturnBundle(VirtualClusterID vc_id);
+  virtual void ReturnBundle(VirtualClusterID vc_id, int64_t seqno);
 
   /// Return back all the bundle(which is unused) resource.
   ///
@@ -107,7 +107,7 @@ class VirtualClusterResourceManager {
 
   /// Tracking virtual cluster bundles and their states. This mapping is the source of
   /// truth for the scheduler.
-  absl::flat_hash_map<VirtualClusterID,
+  absl::flat_hash_map<std::pair<VirtualClusterID, int64_t /*seqno*/>,
                       std::shared_ptr<VirtualClusterBundleTransactionState>>
       vc_bundles_;
 };

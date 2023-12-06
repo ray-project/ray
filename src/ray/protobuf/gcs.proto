@@ -555,6 +555,7 @@ message ResourcesData {
   // Total resource capacity configured for this node manager.
   map<string, double> resources_total = 4;
   // Aggregate outstanding resource load on this node manager.
+  // DEPRECATED in favor of resource_load_by_shape. Don't use.
   map<string, double> resource_load = 5;
   // The resource load on this node, sorted by resource shape.
   ResourceLoad resource_load_by_shape = 7;

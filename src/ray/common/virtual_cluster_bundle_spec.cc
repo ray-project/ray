@@ -23,7 +23,10 @@ std::optional<VirtualClusterBundleResourceLabel> VirtualClusterBundleResourceLab
   VirtualClusterBundleResourceLabel data;
   std::smatch match_groups;
 
-  static const std::regex wildcard_resource_pattern("^(.*)_vc_([0-9a-f]+)$");
+  // Greedy match.
+  // CPU_vc_123_vc_456 is parsed as
+  // {.original_resource="CPU_vc_123", .vc_id="456"}
+  static const std::regex wildcard_resource_pattern("^(.*?)_vc_([0-9a-f]+)$");
   if (std::regex_match(resource, match_groups, wildcard_resource_pattern) &&
       match_groups.size() == 3) {
     data.original_resource = match_groups[1].str();

@@ -25,11 +25,15 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   GcsVirtualClusterManager(
       instrumented_io_context &io_context,
       const GcsNodeManager &gcs_node_manager,
-      const GcsResourceManager &gcs_resource_manager,
       ClusterResourceScheduler &cluster_resource_scheduler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   ~GcsVirtualClusterManager() = default;
+
+  void SetGcsResourceManager(const GcsResourceManager *gcs_resource_manager) {
+    RAY_CHECK(gcs_resource_manager_ == nullptr);
+    gcs_resource_manager_ = gcs_resource_manager;
+  }
 
   void HandleCreateVirtualCluster(rpc::CreateVirtualClusterRequest request,
                                   rpc::CreateVirtualClusterReply *reply,
@@ -48,18 +52,28 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   std::shared_ptr<ResourceReserveInterface> GetLeaseClientFromNode(
       const std::shared_ptr<rpc::GcsNodeInfo> &node);
 
+  int64_t IncrementSeqno() {
+    int64_t ret = seqno_;
+    seqno_++;
+    return ret;
+  }
+
+  bool IsInited() const { return gcs_resource_manager_ != nullptr; }
   void Tick();
   void CreateVirtualClusters();
   void ScaleExistingVirtualClustersHack();
 
   instrumented_io_context &io_context_;
   const GcsNodeManager &gcs_node_manager_;
-  const GcsResourceManager &gcs_resource_manager_;
+  // Due to init order in gcs_server we will have to construct gcs_resource_manager later
+  // than this class.
+  const GcsResourceManager *gcs_resource_manager_ = nullptr;
   ClusterResourceScheduler &cluster_resource_scheduler_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   std::deque<rpc::CreateVirtualClusterRequest> pending_virtual_clusters_;
   std::unordered_map<VirtualClusterID, VirtualClusterCreationTracker>
       ongoing_virtual_clusters_;
+  int64_t seqno_ = 1;
 };
 }  // namespace gcs
 }  // namespace ray

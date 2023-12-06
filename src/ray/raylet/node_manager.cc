@@ -1905,7 +1905,8 @@ void NodeManager::HandlePrepareVirtualClusterBundle(
   auto bundle_spec = VirtualClusterBundleSpec(request.bundle_spec(), vc_id);
   RAY_LOG(DEBUG) << "Request to prepare resources for virtual cluster bundle: "
                  << bundle_spec.DebugString();
-  bool prepared = virtual_cluster_resource_manager_->PrepareBundle(bundle_spec);
+  bool prepared =
+      virtual_cluster_resource_manager_->PrepareBundle(bundle_spec, request.seqno());
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -1916,7 +1917,7 @@ void NodeManager::HandleCommitVirtualClusterBundle(
     rpc::SendReplyCallback send_reply_callback) {
   auto vc_id = VirtualClusterID::FromBinary(request.virtual_cluster_id());
   RAY_LOG(DEBUG) << "Request to commit resources for virtual cluster bundle: " << vc_id;
-  virtual_cluster_resource_manager_->CommitBundle(vc_id);
+  virtual_cluster_resource_manager_->CommitBundle(vc_id, request.seqno());
   send_reply_callback(Status::OK(), nullptr, nullptr);
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
@@ -1927,7 +1928,7 @@ void NodeManager::HandleReturnVirtualClusterBundle(
     rpc::SendReplyCallback send_reply_callback) {
   auto vc_id = VirtualClusterID::FromBinary(request.virtual_cluster_id());
   RAY_LOG(DEBUG) << "Request to return resources for virtual cluster bundle: " << vc_id;
-  virtual_cluster_resource_manager_->ReturnBundle(vc_id);
+  virtual_cluster_resource_manager_->ReturnBundle(vc_id, request.seqno());
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

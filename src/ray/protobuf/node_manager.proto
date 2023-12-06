@@ -122,6 +122,7 @@ message CancelResourceReserveReply {
 
 message PrepareVirtualClusterBundleRequest {
   bytes virtual_cluster_id = 1;
+  int64 seqno = 3; // Used to track each request.
   // 1 virtual cluster can only have 1 bundle on a node.
   VirtualClusterBundle bundle_spec = 2;
 }
@@ -133,12 +134,14 @@ message PrepareVirtualClusterBundleReply {
 
 message CommitVirtualClusterBundleRequest {
   bytes virtual_cluster_id = 1;
+  int64 seqno = 3; // Used to track each request.
 }
 
 message CommitVirtualClusterBundleReply {}
 
 message ReturnVirtualClusterBundleRequest {
   bytes virtual_cluster_id = 1;
+  int64 seqno = 3; // Used to track each request. Only returns so many things.
 }
 
 message ReturnVirtualClusterBundleReply {}
