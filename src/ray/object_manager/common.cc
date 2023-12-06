@@ -2,19 +2,8 @@
 
 namespace ray {
 
-void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
-  RAY_LOG(DEBUG) << "PlasmaObjectHeader: \n"
-                 << "version: " << header->version << "\n"
-                 << "num_readers: " << header->num_readers << "\n"
-                 << "num_read_acquires_remaining: " << header->num_read_acquires_remaining
-                 << "\n"
-                 << "num_read_releases_remaining: " << header->num_read_releases_remaining
-                 << "\n"
-                 << "data_size: " << header->data_size << "\n"
-                 << "metadata_size: " << header->metadata_size << "\n";
-}
-
 void PlasmaObjectHeader::Init() {
+#ifndef _WIN32
   // wr_mut is shared between writer and readers.
   pthread_mutexattr_t mutex_attr;
   pthread_mutexattr_init(&mutex_attr);
@@ -29,12 +18,29 @@ void PlasmaObjectHeader::Init() {
   pthread_condattr_init(&cond_attr);
   pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
   pthread_cond_init(&cond, &cond_attr);
+#endif
 }
 
 void PlasmaObjectHeader::Destroy() {
+#ifndef _WIN32
   RAY_CHECK(pthread_mutex_destroy(&wr_mut) == 0);
   RAY_CHECK(pthread_cond_destroy(&cond) == 0);
   RAY_CHECK(sem_destroy(&rw_semaphore) == 0);
+#endif
+}
+
+#ifndef _WIN32
+
+void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
+  RAY_LOG(DEBUG) << "PlasmaObjectHeader: \n"
+                 << "version: " << header->version << "\n"
+                 << "num_readers: " << header->num_readers << "\n"
+                 << "num_read_acquires_remaining: " << header->num_read_acquires_remaining
+                 << "\n"
+                 << "num_read_releases_remaining: " << header->num_read_releases_remaining
+                 << "\n"
+                 << "data_size: " << header->data_size << "\n"
+                 << "metadata_size: " << header->metadata_size << "\n";
 }
 
 void PlasmaObjectHeader::WriteAcquire(int64_t write_version,
@@ -155,5 +161,7 @@ void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
     sem_post(&rw_semaphore);
   }
 }
+
+#endif
 
 }  // namespace ray
