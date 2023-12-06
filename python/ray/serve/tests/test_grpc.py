@@ -576,5 +576,65 @@ async def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bo
         r.result()
 
 
+@pytest.mark.parametrize("streaming", [False, True])
+def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
+    """Test using gRPC context.
+
+    When the deployment sets code, details, and trailing metadata in the gRPC context,
+    the response will reflect those values.
+    """
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+    error_code = grpc.StatusCode.DATA_LOSS
+    error_message = "my specific error message"
+    trailing_metadata = ("foo", "bar")
+
+    @serve.deployment()
+    class HelloModel:
+        def __call__(self, user_message):
+            grpc_context = serve.get_grpc_context()
+            grpc_context.set_code(error_code)
+            grpc_context.set_details(error_message)
+            grpc_context.set_trailing_metadata([trailing_metadata])
+            return serve_pb2.UserDefinedResponse(greeting="hello")
+
+        def Streaming(self, user_message):
+            grpc_context = serve.get_grpc_context()
+            grpc_context.set_code(error_code)
+            grpc_context.set_details(error_message)
+            grpc_context.set_trailing_metadata([trailing_metadata])
+            yield serve_pb2.UserDefinedResponse(greeting="hello")
+
+    model = HelloModel.bind()
+    app_name = "app1"
+    serve.run(target=model, name=app_name)
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    if streaming:
+        with pytest.raises(grpc.RpcError) as exception_info:
+            list(stub.Streaming(request=request))
+        rpc_error = exception_info.value
+    else:
+        with pytest.raises(grpc.RpcError) as exception_info:
+            _ = stub.__call__(request=request)
+        rpc_error = exception_info.value
+
+    assert rpc_error.code() == error_code
+    assert error_message == rpc_error.details()
+    assert trailing_metadata in rpc_error.trailing_metadata()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
