@@ -661,14 +661,19 @@ Status PlasmaClient::Impl::GetBuffers(
     // If we are here, the object was not currently in use, so we need to
     // process the reply from the object store.
     if (object->data_size != -1) {
-      // Increment the count of the number of instances of this object that this
-      // client is using. Cache the reference to the object.
-      InsertObjectInUse(received_object_ids[i], std::move(object), /*is_sealed=*/true);
+      if (objects_in_use_.find(received_object_ids[i]) == objects_in_use_.end()) {
+        // Increment the count of the number of instances of this object that this
+        // client is using. Cache the reference to the object.
+        InsertObjectInUse(received_object_ids[i], std::move(object), /*is_sealed=*/true);
+      } else {
+        IncrementObjectCount(received_object_ids[i]);
+      }
       auto &object_entry = objects_in_use_[received_object_ids[i]];
 
       // Wait for the object to become ready to read.
-      RAY_CHECK(!object_entry->read_acquired);
-      RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry));
+      if (!object_entry->read_acquired) {
+        RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry));
+      }
       std::shared_ptr<Buffer> physical_buf;
       RAY_LOG(DEBUG) << "Plasma Get " << received_object_ids[i]
                      << ", data size: " << object_entry->object.data_size
