@@ -270,6 +270,8 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
                                     << ", actor id = " << actor_id;
                       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
                     });
+
+  RAY_LOG(INFO) << "vct :)";
   if (!status.ok()) {
     RAY_LOG(WARNING) << "Failed to register actor: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
@@ -518,6 +520,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
   // the GCS server is restarted, it is required to continue to register actor
   // successfully.
+
   RAY_CHECK(success_callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
@@ -598,6 +601,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
                                          request.task_spec().runtime_env_info());
   }
+  RAY_LOG(INFO) << "vct g";
 
   // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Put(
@@ -606,6 +610,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
             actor->GetActorID(),
             *actor->GetMutableActorTableData(),
             [this, actor](const Status &status) {
+              RAY_LOG(INFO) << "vct h";
               // The backend storage is supposed to be reliable, so the status must be ok.
               RAY_CHECK_OK(status);
               // If a creator dies before this callback is called, the actor could have

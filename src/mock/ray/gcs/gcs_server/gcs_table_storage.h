@@ -95,6 +95,21 @@ class MockGcsPlacementGroupTable : public GcsPlacementGroupTable {
 namespace ray {
 namespace gcs {
 
+class MockGcsActorTaskSpecTable : public GcsActorTaskSpecTable {
+ public:
+  MockGcsActorTaskSpecTable() : GcsActorTaskSpecTable(GetNullClient()) {}
+
+  MOCK_METHOD(Status,
+              Put,
+              (const ActorID &, const TaskSpec &, const StatusCallback &),
+              (override));
+
+  std::shared_ptr<StoreClient> &GetNullClient() {
+    static std::shared_ptr<StoreClient> store_client = nullptr;
+    return store_client;
+  }
+};
+
 class MockGcsNodeTable : public GcsNodeTable {
  public:
   MockGcsNodeTable() : GcsNodeTable(nullptr){};
@@ -153,11 +168,34 @@ class MockGcsInternalConfigTable : public GcsInternalConfigTable {
 namespace ray {
 namespace gcs {
 
+/*
+class FakeGcsTableStorage : public GcsTableStorage {
+ public:
+  explicit FakeGcsTableStorage() : FakeGcsTableStorage(nullptr) {}
+
+  FakeGcsTableStorage(std::shared_ptr<StoreClient> store_client) :
+GcsTableStorage(store_client) { job_table_ =
+std::make_unique<MockGcsJobTable>(store_client_); actor_table_ =
+std::make_unique<MockGcsActorTable>(store_client_); actor_task_spec_table_ =
+std::make_unique<MockGcsActorTaskSpecTable>(store_client_); placement_group_table_ =
+std::make_unique<MockGcsPlacementGroupTable>(store_client_); node_table_ =
+std::make_unique<MockGcsNodeTable>(store_client_); placement_group_schedule_table_ =
+        std::make_unique<MockGcsPlacementGroupScheduleTable>(store_client_);
+    resource_usage_batch_table_ =
+        std::make_unique<MockGcsResourceUsageBatchTable>(store_client_);
+    worker_table_ = std::make_unique<MockGcsWorkerTable>(store_client_);
+    system_config_table_ = std::make_unique<MockGcsInternalConfigTable>(store_client_);
+  }
+};
+*/
+
 class MockGcsTableStorage : public GcsTableStorage {
  public:
   MockGcsTableStorage() : GcsTableStorage(nullptr) {}
 
   MOCK_METHOD((GcsNodeTable &), NodeTable, (), (override));
+  MOCK_METHOD((GcsActorTaskSpecTable &), ActorTaskSpecTable, (), (override));
+  MOCK_METHOD((GcsActorTable &), ActorTable, (), (override));
 };
 
 }  // namespace gcs

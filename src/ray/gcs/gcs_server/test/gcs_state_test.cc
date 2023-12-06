@@ -45,6 +45,30 @@ using ::testing::ReturnRef;
 using ResourceBundleMap = std::unordered_map<std::string, double>;
 using BundlesOnNodeMap = absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>;
 
+class MockGcsActorManager : public GcsActorManager {
+ public:
+  MockGcsActorManager(
+      std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+      std::shared_ptr<GcsTableStorage> gcs_table_storage,
+      std::shared_ptr<GcsPublisher> gcs_publisher,
+      RuntimeEnvManager &runtime_env_manager,
+      GcsFunctionManager &function_manager,
+      std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+      const rpc::ClientFactoryFn &worker_client_factory = nullptr)
+      : GcsActorManager(scheduler,
+                        gcs_table_storage,
+                        gcs_publisher,
+                        runtime_env_manager,
+                        function_manager,
+                        destroy_owned_placement_group_if_needed,
+                        worker_client_factory) {}
+
+  MOCK_METHOD(void,
+              PollOwnerForActorOutOfScope,
+              (const std::shared_ptr<GcsActor> &actor),
+              (override));
+};
+
 // Test suite for AutoscalerState related functionality.
 class GcsStateTest : public ::testing::Test {
  public:
@@ -62,7 +86,7 @@ class GcsStateTest : public ::testing::Test {
   std::shared_ptr<MockGcsTableStorage> gcs_table_storage_;
   std::unique_ptr<RuntimeEnvManager> runtime_env_manager_;
   std::unique_ptr<GcsFunctionManager> function_manager_;
-  std::shared_ptr<GcsActorManager> gcs_actor_manager_;
+  std::shared_ptr<MockGcsActorManager> gcs_actor_manager_;
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::shared_ptr<MockGcsPublisher> gcs_publisher_;
   std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
@@ -90,7 +114,7 @@ class GcsStateTest : public ::testing::Test {
     MockGcsActorTable gcs_actor_table;
     gcs_actor_scheduler_ = std::make_shared<MockGcsActorScheduler>(
         io_service_, gcs_actor_table, *gcs_node_manager_);
-    gcs_actor_manager_ = std::make_shared<GcsActorManager>(
+    gcs_actor_manager_ = std::make_shared<MockGcsActorManager>(
         gcs_actor_scheduler_,
         gcs_table_storage_,
         gcs_publisher_,
@@ -115,6 +139,38 @@ class GcsStateTest : public ::testing::Test {
     gcs_resource_manager_->OnNodeAdd(*node);
     gcs_autoscaler_state_manager_->OnNodeAdd(*node);
   }
+
+  void AddActor(const std::string &actor_name) {
+    // Create the actor spec and RegisterActor request.
+    rpc::RegisterActorRequest request;
+    rpc::RegisterActorReply reply;
+    auto spec = request.mutable_task_spec();
+    spec->set_name(actor_name);
+    spec->set_type(TaskType::ACTOR_CREATION_TASK);
+    spec->set_job_id(JobID::FromInt(1202).Binary());
+    spec->set_task_id(TaskID::FromRandom(JobID::FromBinary(spec->job_id())).Binary());
+    spec->set_parent_task_id(TaskID::FromRandom(JobID::FromInt(1220)).Binary());
+    spec->add_dynamic_return_ids(ObjectID::FromRandom().Binary());
+    spec->set_num_returns(1);
+    auto creation_spec = spec->mutable_actor_creation_task_spec();
+    creation_spec->set_actor_id(ActorID::Of(JobID::FromBinary(spec->job_id()),
+                                            TaskID::FromBinary(spec->parent_task_id()),
+                                            0)
+                                    .Binary());
+    creation_spec->set_ray_namespace("test_namespace");
+
+    // Set the expectations for some side effects.
+    EXPECT_CALL(*gcs_actor_manager_, PollOwnerForActorOutOfScope(_));
+    MockGcsNodeTable node_table;
+    MockGcsActorTaskSpecTable spec_table;
+    MockGcsActorTable actor_table;
+    EXPECT_CALL(*gcs_table_storage_, ActorTaskSpecTable())
+        .WillOnce(ReturnRef(spec_table));
+    // EXPECT_CALL(*gcs_table_storage_, ActorTable()).WillOnce(ReturnRef(actor_table));
+    EXPECT_CALL(spec_table, Put(_, _, _)).WillOnce(Return(Status::OK()));
+
+    gcs_actor_manager_->HandleRegisterActor(request, &reply, nullptr);
+  }
 };
 
 MATCHER(IsPreemptedActor, "") {
@@ -133,7 +189,6 @@ MATCHER(IsPreemptedNode, "") {
 }
 
 TEST_F(GcsStateTest, TestDrainFailure) {
-  // TODO create an actor on this node
   auto node = Mocker::GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 2});
   node->mutable_resources_total()->insert({"GPU", 1});
@@ -178,7 +233,7 @@ TEST_F(GcsStateTest, TestDrainFailure) {
 }
 
 TEST_F(GcsStateTest, TestDrainNode) {
-  // TODO create an actor on this node
+  AddActor("test_actor");
   auto node = Mocker::GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 2});
   node->mutable_resources_total()->insert({"GPU", 1});

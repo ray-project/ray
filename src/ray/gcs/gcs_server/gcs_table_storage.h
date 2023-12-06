@@ -263,12 +263,12 @@ class GcsTableStorage {
     return *job_table_;
   }
 
-  GcsActorTable &ActorTable() {
+  virtual GcsActorTable &ActorTable() {
     RAY_CHECK(actor_table_ != nullptr);
     return *actor_table_;
   }
 
-  GcsActorTaskSpecTable &ActorTaskSpecTable() {
+  virtual GcsActorTaskSpecTable &ActorTaskSpecTable() {
     RAY_CHECK(actor_task_spec_table_ != nullptr);
     return *actor_task_spec_table_;
   }

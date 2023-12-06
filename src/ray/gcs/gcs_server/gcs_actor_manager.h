@@ -478,7 +478,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Poll an actor's owner so that we will receive a notification when the
   /// actor has gone out of scope, or the owner has died. This should not be
   /// called for detached actors.
-  void PollOwnerForActorOutOfScope(const std::shared_ptr<GcsActor> &actor);
+  virtual void PollOwnerForActorOutOfScope(const std::shared_ptr<GcsActor> &actor);
 
   /// Destroy an actor that has gone out of scope. This cleans up all local
   /// state associated with the actor and marks the actor as dead. For owned
