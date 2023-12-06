@@ -157,6 +157,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   void SetLocalNodeDraining();
 
   bool IsLocalNodeDraining() const { return is_local_node_draining_; }
+  void SetLocalNodeLabel(const absl::flat_hash_map<std::string, std::string> &labels);
 
  private:
   struct ResourceUsage {

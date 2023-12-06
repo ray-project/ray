@@ -358,6 +358,8 @@ struct Node {
 
   NodeResources *GetMutableLocalView() {
     local_view_modified_ts_ = absl::Now();
+    const auto &node_labels=&local_view_.labels;
+    RAY_LOG(INFO)  << "Upate label: " << node_labels;
     return &local_view_;
   }
 

@@ -26,13 +26,13 @@ ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_servi
     : timer_(io_service) {
   timer_.RunFnPeriodically(
       [this]() {
-        auto syncer_delay = absl::Milliseconds(
-            RayConfig::instance().ray_syncer_message_refresh_interval_ms());
+        // auto syncer_delay = absl::Milliseconds(
+        //     RayConfig::instance().ray_syncer_message_refresh_interval_ms());
         for (auto &[node_id, resource] : received_node_resources_) {
-          auto modified_ts = GetNodeResourceModifiedTs(node_id);
-          if (modified_ts && *modified_ts + syncer_delay < absl::Now()) {
+          // auto modified_ts = GetNodeResourceModifiedTs(node_id);
+          // if (modified_ts && *modified_ts + syncer_delay < absl::Now()) {
             AddOrUpdateNode(node_id, resource);
-          }
+          // }
         }
       },
       RayConfig::instance().ray_syncer_message_refresh_interval_ms(),
@@ -282,12 +282,22 @@ void ClusterResourceManager::SetNodeLabels(
     NodeResources node_resources;
     it = nodes_.emplace(node_id, node_resources).first;
   }
+   RAY_LOG(INFO)  << "Upate label Address: " << &it->second;
   RAY_LOG(INFO) << "Update node info, node_id: " << node_id;
   for (auto pair : labels) {
         RAY_LOG(INFO)  << "New label Key: " << pair.first << ", Value: " << pair.second ;
   }
+  RAY_LOG(INFO)  << "node_info_address1 " << &it ;
+  // RAY_LOG(INFO)  << "node_info_address 3" << it ;
+
                  
   it->second.GetMutableLocalView()->labels = labels;
+  const auto &node_labels = it->second.GetLocalView().labels;
+  RAY_LOG(INFO) << "Update node info, node_id: " << node_id;
+  for (auto pair : node_labels) {
+        RAY_LOG(INFO)  << "New label Key: " << pair.first << ", Value: " << pair.second ;
+  }
+
 }
 
 }  // namespace ray

@@ -447,4 +447,10 @@ void LocalResourceManager::SetLocalNodeDraining() {
   OnResourceOrStateChanged();
 }
 
+void LocalResourceManager::SetLocalNodeLabel(const absl::flat_hash_map<std::string, std::string> &labels) {
+  local_resources_.labels=labels;
+  OnResourceOrStateChanged();
+}
+
+
 }  // namespace ray

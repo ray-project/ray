@@ -183,6 +183,18 @@ NodeLabelSchedulingPolicy::SelectAvailableNodes(
   for (const auto &pair : candidate_nodes) {
     const auto &node_id = pair.first;
     const auto &node_resources = pair.second->GetLocalView();
+    const auto &node_labels = pair.second->GetLocalView().labels;
+    // const auto &node_label = pair.second->GetMutableLocalView();
+    RAY_LOG(INFO)  << "node_info_address2" << &pair ;
+    // RAY_LOG(INFO)  << "node_info_address4 " << pair ;
+    RAY_LOG(INFO)  << "Schedule label Address: " << pair.second;
+    RAY_LOG(INFO)  << "Schedule label Address2: " << &pair.second;
+  for (auto pair : node_labels) {
+        RAY_LOG(INFO)  << "Schedule label Key: " << pair.first << ", Value: " << pair.second ;
+  }
+  // for (auto pair : node_label) {
+  //       RAY_LOG(INFO)  << "Schedule label Key2: " << pair.first << ", Value: " << pair.second ;
+  // }
     if (node_resources.IsAvailable(resource_request)) {
       available_nodes.emplace(node_id, pair.second);
     }
