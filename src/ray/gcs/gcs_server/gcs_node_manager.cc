@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 
+#include <optional>
 #include <utility>
 
 #include "ray/common/ray_config.h"
@@ -21,6 +22,7 @@
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
+#include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -99,7 +101,8 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::SendReplyCallback send_reply_callback) {
   reply->set_ray_version(kRayVersion);
   for (const auto &addr : request.raylet_address()) {
-    reply->mutable_raylet_alive()->Add(node_map_.right.count(addr) != 0);
+    bool is_alive = node_map_.right.count(addr) != 0;
+    reply->mutable_raylet_alive()->Add(is_alive);
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -137,6 +140,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   node_info_delta->set_node_id(node->node_id());
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
+
   // Set the address.
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
@@ -217,6 +221,13 @@ absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
   return iter->second;
 }
 
+void GcsNodeManager::SetDeathInfo(const NodeID &node_id, rpc::NodeDeathInfo death_info) {
+  auto maybe_node = GetAliveNode(node_id);
+  RAY_CHECK(maybe_node.has_value());
+  auto node = std::move(maybe_node.value());
+  node->mutable_death_info()->CopyFrom(death_info);
+}
+
 void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
@@ -282,6 +293,10 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
   if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
+    if (node->death_info().reason() == rpc::NodeDeathInfo::UNSPECIFIED) {
+      // There was no drain in progress.
+      node->mutable_death_info()->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+    }
     AddDeadNodeToCache(node);
     auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
     node_info_delta->set_node_id(node->node_id());
