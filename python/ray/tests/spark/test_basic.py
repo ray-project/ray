@@ -281,7 +281,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 if min_worker_nodes > 0:
                     # Test scaling down keeps nodes number >= min_worker_nodes
                     time.sleep(30)
-                    assert self.get_ray_worker_resources_list() == min_worker_nodes
+                    assert len(self.get_ray_worker_resources_list()) == min_worker_nodes
 
 
 class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
