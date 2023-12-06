@@ -622,14 +622,12 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
-    if streaming:
-        with pytest.raises(grpc.RpcError) as exception_info:
+    with pytest.raises(grpc.RpcError) as exception_info:
+        if streaming:
             list(stub.Streaming(request=request))
-        rpc_error = exception_info.value
-    else:
-        with pytest.raises(grpc.RpcError) as exception_info:
+        else:
             _ = stub.__call__(request=request)
-        rpc_error = exception_info.value
+    rpc_error = exception_info.value
 
     assert rpc_error.code() == error_code
     assert error_message == rpc_error.details()
