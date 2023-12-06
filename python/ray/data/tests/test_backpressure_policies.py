@@ -301,7 +301,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         """Test no deadlock in case of resource contention from
         non-Data code."""
         # Create a non-Data actor that uses 4 CPUs, only 1 CPU
-        # is left for Data. Currently Data StreamExecturo still
+        # is left for Data. Currently Data StreamExecutor still
         # incorrectly assumes it has all the 5 CPUs.
         # Check that we don't deadlock in this case.
 
