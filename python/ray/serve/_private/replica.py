@@ -166,6 +166,11 @@ def create_replica_wrapper(actor_class_name: str):
             # method. After that, it calls `reconfigure` to trigger
             # user code initialization.
             async def initialize_replica():
+                logger.info(
+                    "Started initializing replica.",
+                    extra={"log_to_stderr": False},
+                )
+
                 if is_function:
                     _callable = deployment_def
                 else:
@@ -197,6 +202,10 @@ def create_replica_wrapper(actor_class_name: str):
                     app_name,
                 )
                 self._initialized = True
+                logger.info(
+                    "Finished initializing replica.",
+                    extra={"log_to_stderr": False},
+                )
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
