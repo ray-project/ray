@@ -18,10 +18,10 @@ from ray.serve._private.proxy_state import (
     ProxyWrapper,
     ProxyWrapperCallStatus,
 )
+from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import Timer
 from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve.schema import LoggingConfig
-from ray.serve.tests.common.utils import MockTimer
 
 HEAD_NODE_ID = "node_id-index-head"
 

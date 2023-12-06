@@ -1,3 +1,4 @@
+import copy
 from typing import Dict, List, Literal, Optional, Union
 
 import ray
@@ -46,6 +47,19 @@ class DataConfig:
             execution_options or DataConfig.default_ingest_options()
         )
 
+        self._num_train_cpus = 0.0
+        self._num_train_gpus = 0.0
+
+    def set_train_total_resources(self, num_train_cpus: float, num_train_gpus: float):
+        """Set the total number of CPUs and GPUs used by training.
+
+        If CPU or GPU resource limits are not set, they will be set to the
+        total cluster resources minus the resources used by training.
+        """
+        # TODO: We may also include other resources besides CPU and GPU.
+        self._num_train_cpus = num_train_cpus
+        self._num_train_gpus = num_train_gpus
+
     @DeveloperAPI
     def configure(
         self,
@@ -78,7 +92,24 @@ class DataConfig:
 
         for name, ds in datasets.items():
             ds = ds.copy(ds)
-            ds.context.execution_options = self._execution_options
+            ds.context.execution_options = copy.deepcopy(self._execution_options)
+
+            # If CPU or GPU resource limits are not set,
+            # exclude the resources used by training from the resource limits.
+            # TODO(hchen): We calculate the resource limits based on the current
+            # cluster resources here, which means that auto-scaling is not supported.
+            # This should be fixed when we want to support auto-scaling for Ray Train.
+            resource_limits = ds.context.execution_options.resource_limits
+            cluster_resources = ray.cluster_resources()
+            if resource_limits.cpu is None:
+                resource_limits.cpu = (
+                    cluster_resources.get("CPU", 0) - self._num_train_cpus
+                )
+            if resource_limits.gpu is None:
+                resource_limits.gpu = (
+                    cluster_resources.get("GPU", 0) - self._num_train_gpus
+                )
+
             if name in datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
