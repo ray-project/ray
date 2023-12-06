@@ -1178,13 +1178,6 @@ Ray Examples
 
         Running a Simple MapReduce Example with Ray Core
 
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item core pytorch
-        :link: train_benchmark
-        :link-type: ref
-
-        Benchmark example for the PyTorch data transfer auto pipeline
-
     .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item tune
         :link: /tune/examples/tune-sklearn
