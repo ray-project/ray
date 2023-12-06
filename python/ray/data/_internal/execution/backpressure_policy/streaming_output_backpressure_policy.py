@@ -139,8 +139,9 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             f" Because some tasks of operator {op} have been submitted,"
             f" but no outputs are generated for {no_output_time} seconds."
             " Ignore this warning if your UDF is expected to be slow."
-            " This may also be because some resources are preempted by non-Data code."
-            " If this is the case, set ."
+            " This may also be because some resources are preempted by"
+            " non-Ray-Data workloads."
+            " If this is the case, set `ExecutionOptions.reserved_resources`."
             " This message will only be printed once."
         )
         logger.get_logger().warning(msg)

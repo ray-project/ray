@@ -89,6 +89,9 @@ class ExecutionOptions:
     Attributes:
         resource_limits: Set a soft limit on the resource usage during execution.
             This is not supported in bulk execution mode. Autodetected by default.
+        reserved_resources: Amount of reserved resources for non-Ray-Data
+            workloads. Ray Data will exlcude these resources when scheduling tasks,
+            unless resource_limits is manually set.
         locality_with_output: Set this to prefer running tasks on the same node as the
             output node (node driving the execution). It can also be set to a list of
             node ids to spread the outputs across those nodes. Off by default.
@@ -104,6 +107,10 @@ class ExecutionOptions:
     """
 
     resource_limits: ExecutionResources = field(default_factory=ExecutionResources)
+
+    reserved_resources: ExecutionResources = field(
+        default_factory=lambda: ExecutionResources(0, 0, 0)
+    )
 
     locality_with_output: Union[bool, List[NodeIdStr]] = False
 

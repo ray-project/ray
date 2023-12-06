@@ -332,16 +332,26 @@ class StreamingExecutor(Executor, threading.Thread):
         autoscaling.
         """
         base = self._options.resource_limits
+        reserved = self._options.reserved_resources
         cluster = ray.cluster_resources()
-        return ExecutionResources(
-            cpu=base.cpu if base.cpu is not None else cluster.get("CPU", 0.0),
-            gpu=base.gpu if base.gpu is not None else cluster.get("GPU", 0.0),
-            object_store_memory=base.object_store_memory
-            if base.object_store_memory is not None
-            else round(
+
+        cpu = base.cpu
+        if cpu is None:
+            cpu = cluster.get("CPU", 0.0) - (reserved.cpu or 0.0)
+        gpu = base.gpu
+        if gpu is None:
+            gpu = cluster.get("GPU", 0.0) - (reserved.gpu or 0.0)
+        object_store_memory = base.object_store_memory
+        if object_store_memory is None:
+            object_store_memory = round(
                 DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
                 * cluster.get("object_store_memory", 0.0)
-            ),
+            ) - (reserved.object_store_memory or 0)
+
+        return ExecutionResources(
+            cpu=cpu,
+            gpu=gpu,
+            object_store_memory=object_store_memory,
         )
 
     def _report_current_usage(
