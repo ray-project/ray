@@ -332,7 +332,7 @@ class StreamingExecutor(Executor, threading.Thread):
         autoscaling.
         """
         base = self._options.resource_limits
-        reserved = self._options.reserved_resources
+        reserved = self._options.exclude_resources
         cluster = ray.cluster_resources()
 
         cpu = base.cpu

@@ -95,8 +95,8 @@ class DataConfig:
             ds.context.execution_options = copy.deepcopy(self._execution_options)
 
             # Set reeserved resources for training.
-            ds.context.execution_options.reserved_resources.cpu = self._num_train_cpus
-            ds.context.execution_options.reserved_resources.gpu = self._num_train_gpus
+            ds.context.execution_options.exclude_resources.cpu = self._num_train_cpus
+            ds.context.execution_options.exclude_resources.gpu = self._num_train_gpus
 
             if name in datasets_to_split:
                 for i, split in enumerate(
