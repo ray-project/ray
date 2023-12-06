@@ -641,7 +641,7 @@ py_test_module_list(
     "spark/test_utils.py",
     "spark/test_databricks_hook.py",
   ],
-  size = "large",
+  size = "enormous",
   tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
   data = [
