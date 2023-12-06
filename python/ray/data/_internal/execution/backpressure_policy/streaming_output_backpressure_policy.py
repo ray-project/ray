@@ -1,6 +1,5 @@
 import time
 from collections import defaultdict
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, Tuple
 
 import ray
@@ -100,7 +99,8 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             # An operator is considered idle if either of the following is true:
             # - It has no active tasks.
             #   - This can happen when all resources are used by upstream operators.
-            # - It has active tasks, but no outputs for at least `MAX_OUTPUT_IDLE_SECONDS`.
+            # - It has active tasks, but no outputs for at least
+            #   `MAX_OUTPUT_IDLE_SECONDS`.
             #   - This can happen when non-Data code preempted cluster resources, and
             #   - some of the active tasks don't actually have enough resources to run.
             #
@@ -111,7 +111,8 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             # The first case can also happen when the upstream operator hasn't outputted
             # any blocks yet. While the second case can also happen when the task is
             # expected to output data slowly.
-            # The false postive cases are fine as we only allow reading one block a time.
+            # The false postive cases are fine as we only allow reading one block
+            # each time.
             downstream_idle = False
             if op.num_active_tasks() == 0:
                 downstream_idle = True
