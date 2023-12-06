@@ -255,9 +255,6 @@ class FakeGrpcContext:
     def details(self):
         return self._details
 
-    def invocation_metadata(self):
-        return self._invocation_metadata
-
     def peer(self):
         return self._peer
 
