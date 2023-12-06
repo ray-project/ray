@@ -37,7 +37,7 @@ class SlidingWindowMetric:
         self._window = deque()
         self._window_lock = threading.Lock()
         self._computed_percentiles = [
-            (percentile, -1) for percentile in SlidingWindowMetric.PERCENTILES
+            (percentile, 0) for percentile in SlidingWindowMetric.PERCENTILES
         ]
 
     def append(self, value):
@@ -52,7 +52,7 @@ class SlidingWindowMetric:
         results = []
         for percentile in SlidingWindowMetric.PERCENTILES:
             results.append(
-                (percentile, np.percentile(values, percentile) if values else -1)
+                (percentile, np.percentile(values, percentile) if values else 0)
             )
         self._computed_percentiles = results
         return results

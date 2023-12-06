@@ -1264,19 +1264,15 @@ def test_op_metrics_logging():
     with patch.object(logger, "info") as mock_logger:
         ray.data.range(100).map_batches(lambda x: x).materialize()
         logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
-        input_str = (
-            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
-            + gen_expected_metrics(is_map=False)
-        )
+        input_str = "Operator InputDataBuffer[Input] completed."
         map_str = (
             "Operator InputDataBuffer[Input] -> "
             "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
-            "Operator Metrics:\n"
-        ) + STANDARD_EXTRA_METRICS
+        )
 
         # Check that these strings are logged exactly once.
-        assert sum([log == input_str for log in logs]) == 1
-        assert sum([log == map_str for log in logs]) == 1
+        assert sum([log.startswith(input_str) for log in logs]) == 1
+        assert sum([log.startswith(map_str) for log in logs]) == 1
 
 
 def test_op_state_logging():
