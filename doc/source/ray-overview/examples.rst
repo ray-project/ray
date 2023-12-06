@@ -104,7 +104,7 @@ Ray Examples
         Aviary toolkit serving live traffic for LLMs
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item pytorch
+        :class-item: gallery-item pytorch training
         :link: /train/examples/pytorch/convert_existing_pytorch_code_to_ray_train
         :link-type: doc
 
@@ -153,7 +153,7 @@ Ray Examples
         Fine-tune dolly-v2-7b with Ray Train, PyTorch Lightning and FSDP
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch computer-vision
+        :class-item: gallery-item pytorch computer-vision training
         :link: /train/examples/pytorch/torch_detection
         :link-type: doc
 
@@ -503,13 +503,6 @@ Ray Examples
 
         Ray Train, PyTorch, TorchX, and distributed deep learning
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item
-        :link: /train/train
-        :link-type: doc
-
-        Getting Started with Ray Train
-
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training huggingface natural-language-processing
         :link: /train/examples/transformers/huggingface_text_classification
@@ -564,13 +557,6 @@ Ray Examples
         :link-type: ref
 
         Fine-tune a PyTorch Lightning Text Classifier with Ray Data
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tensorflow tuning
-        :link: tune_train_tf_example
-        :link-type: ref
-
-        End-to-end Example for Tuning a TensorFlow Model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch tuning
