@@ -147,17 +147,11 @@ class RayClusterOnSpark:
                         "pip install ray[default]."
                     )
 
-            last_alive_worker_count = 0
-            last_progress_move_time = time.time()
-
-            if self.autoscale is None:
-                init_worker_nodes = self.min_worker_nodes
-            else:
-                init_worker_nodes = self.max_worker_nodes
-
-            if init_worker_nodes == 0:
+            if self.autoscale:
                 return
 
+            last_alive_worker_count = 0
+            last_progress_move_time = time.time()
             while True:
                 time.sleep(_RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL)
 
@@ -174,7 +168,7 @@ class RayClusterOnSpark:
                     len([node for node in ray.nodes() if node["Alive"]]) - 1
                 )  # Minus 1 means excluding the head node.
 
-                if cur_alive_worker_count >= init_worker_nodes:
+                if cur_alive_worker_count >= self.max_worker_nodes:
                     return
 
                 if cur_alive_worker_count > last_alive_worker_count:
@@ -182,7 +176,7 @@ class RayClusterOnSpark:
                     last_progress_move_time = time.time()
                     _logger.info(
                         "Ray worker nodes are starting. Progress: "
-                        f"({cur_alive_worker_count} / {init_worker_nodes})"
+                        f"({cur_alive_worker_count} / {self.max_worker_nodes})"
                     )
                 else:
                     if (
@@ -197,7 +191,7 @@ class RayClusterOnSpark:
                         _logger.warning(
                             "Timeout in waiting for all ray workers to start. "
                             "Started / Total requested: "
-                            f"({cur_alive_worker_count} / {init_worker_nodes}). "
+                            f"({cur_alive_worker_count} / {self.max_worker_nodes}). "
                             "Current spark cluster does not have sufficient resources "
                             "to launch requested number of Ray worker nodes."
                         )
