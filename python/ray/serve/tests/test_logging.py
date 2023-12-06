@@ -84,6 +84,7 @@ def test_handle_access_log(serve_instance):
 
         def check_log(replica_tag: str, method_name: str, fail: bool = False):
             s = f.getvalue()
+            print(s)
             return all(
                 [
                     name in s,
