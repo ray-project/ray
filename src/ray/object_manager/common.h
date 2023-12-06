@@ -14,7 +14,9 @@
 
 #pragma once
 
+#ifndef _WIN32
 #include <semaphore.h>
+#endif
 
 #include <atomic>
 #include <boost/asio.hpp>
@@ -46,6 +48,8 @@ using RestoreSpilledObjectCallback =
 /// needed once the object has been Sealed. For experimental mutable objects,
 /// we use the header to synchronize between writer and readers.
 struct PlasmaObjectHeader {
+// TODO(swang): PlasmaObjectHeader uses pthreads, POSIX mutex and semaphore.
+#ifndef _WIN32
   // Used to signal to the writer when all readers are done.
   sem_t rw_semaphore;
 
@@ -89,12 +93,6 @@ struct PlasmaObjectHeader {
   uint64_t data_size = 0;
   uint64_t metadata_size = 0;
 
-  /// Setup synchronization primitives.
-  void Init();
-
-  /// Destroy synchronization primitives.
-  void Destroy();
-
   /// Blocks until all readers for the previous write have ReadRelease'd the
   /// value. Protects against concurrent writers. Caller must pass consecutive
   /// versions on each new write, starting with write_version=1.
@@ -131,6 +129,13 @@ struct PlasmaObjectHeader {
   /// \param read_version This must match the version previously passed in
   /// ReadAcquire.
   void ReadRelease(int64_t read_version);
+#endif
+
+  /// Setup synchronization primitives.
+  void Init();
+
+  /// Destroy synchronization primitives.
+  void Destroy();
 };
 
 /// A struct that includes info about the object.

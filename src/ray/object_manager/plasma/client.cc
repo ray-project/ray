@@ -233,7 +233,13 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val) const;
 
-  ray::PlasmaObjectHeader *GetPlasmaObjectHeader(const PlasmaObject &object) const;
+#ifndef _WIN32
+  ray::PlasmaObjectHeader *GetPlasmaObjectHeader(const PlasmaObject &object) const {
+    auto base_ptr = LookupMmappedFile(object.store_fd);
+    auto header_ptr = base_ptr + object.header_offset;
+    return reinterpret_cast<ray::PlasmaObjectHeader *>(header_ptr);
+  }
+#endif
 
   void InsertObjectInUse(const ObjectID &object_id,
                          std::unique_ptr<PlasmaObject> object,
@@ -301,13 +307,6 @@ uint8_t *PlasmaClient::Impl::LookupMmappedFile(MEMFD_TYPE store_fd_val) const {
   auto entry = mmap_table_.find(store_fd_val);
   RAY_CHECK(entry != mmap_table_.end());
   return entry->second->pointer();
-}
-
-ray::PlasmaObjectHeader *PlasmaClient::Impl::GetPlasmaObjectHeader(
-    const PlasmaObject &object) const {
-  auto base_ptr = LookupMmappedFile(object.store_fd);
-  auto header_ptr = base_ptr + object.header_offset;
-  return reinterpret_cast<ray::PlasmaObjectHeader *>(header_ptr);
 }
 
 bool PlasmaClient::Impl::IsInUse(const ObjectID &object_id) {
@@ -411,6 +410,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
     int64_t metadata_size,
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
+#ifndef _WIN32
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   auto object_entry = objects_in_use_.find(object_id);
   if (object_entry == objects_in_use_.end()) {
@@ -455,6 +455,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
   }
 
   entry->is_sealed = false;
+#endif
   return Status::OK();
 }
 
@@ -503,6 +504,7 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
     RAY_CHECK(!entry->is_sealed);
     entry->is_mutable = is_mutable;
 
+#ifndef _WIN32
     auto plasma_header = GetPlasmaObjectHeader(entry->object);
     if (entry->is_mutable) {
       entry->is_writer = true;
@@ -518,6 +520,7 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                   // Anyone may read an immutable object.
                                   /*num_readers=*/-1);
     }
+#endif
   }
 
   return status;
@@ -715,6 +718,7 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
 
 Status PlasmaClient::Impl::EnsureGetAcquired(
     std::unique_ptr<ObjectInUseEntry> &object_entry) {
+#ifndef _WIN32
   PlasmaObject *object = &object_entry->object;
   auto plasma_header = GetPlasmaObjectHeader(*object);
   if (object_entry->read_acquired) {
@@ -743,11 +747,13 @@ Status PlasmaClient::Impl::EnsureGetAcquired(
     RAY_CHECK(object_entry->object.data_size + object_entry->object.metadata_size <=
               object_entry->object.allocated_size);
   }
+#endif
   return Status::OK();
 }
 
 Status PlasmaClient::Impl::ExperimentalMutableObjectReadRelease(
     const ObjectID &object_id) {
+#ifndef _WIN32
   RAY_LOG(DEBUG) << "Try to release Get for object " << object_id;
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
 
@@ -773,7 +779,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectReadRelease(
   // The next read needs to read at least this version.
   entry->next_version_to_read++;
   entry->read_acquired = false;
-
+#endif
   return Status::OK();
 }
 
@@ -875,6 +881,7 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   }
 
   object_entry->second->is_sealed = true;
+#ifndef _WIN32
   auto plasma_header = GetPlasmaObjectHeader(object_entry->second->object);
   plasma_header->WriteRelease(
       /*write_version=*/object_entry->second->next_version_to_write);
@@ -882,6 +889,9 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   object_entry->second->next_version_to_write++;
 
   if (plasma_header->num_readers <= 0) {
+#else
+  {
+#endif
     // Send the seal request to Plasma. This is the normal Seal path, used for
     // immutable objects and the initial Create call for mutable objects.
     RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
