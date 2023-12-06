@@ -777,8 +777,6 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
-  stable: false
-
   frequency: nightly
 
   team: data
