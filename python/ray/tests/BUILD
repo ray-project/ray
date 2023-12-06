@@ -304,13 +304,6 @@ py_test_module_list(
 )
 
 py_test_module_list(
-  files = ["test_memory_pressure.py"],
-  size = "medium",
-  tags = ["exclusive", "mem_pressure", "team:core"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
   files = [
     "test_autoscaler_e2e.py",
   ],
