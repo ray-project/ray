@@ -640,8 +640,13 @@ class gRPCProxy(GenericProxy):
                 else:
                     response = message
 
-            context.set_code(status.code)
-            context.set_details(status.message)
+            # Only the latest code and details will take effect. If the user already
+            # set them in the context, skip setting them with Serve's default values.
+            if not context.code():
+                context.set_code(status.code)
+            if not context.details():
+                context.set_details(status.message)
+
             return response
 
         async def unary_stream(
@@ -668,8 +673,12 @@ class gRPCProxy(GenericProxy):
                 else:
                     yield message
 
-            context.set_code(status.code)
-            context.set_details(status.message)
+            # Only the latest code and details will take effect. If the user already
+            # set them in the context, skip setting them with Serve's default values.
+            if not context.code():
+                context.set_code(status.code)
+            if not context.details():
+                context.set_details(status.message)
 
         return unary_stream if stream else unary_unary
 
@@ -702,6 +711,7 @@ class gRPCProxy(GenericProxy):
             "request_id": request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
+            "grpc_context": proxy_request.ray_serve_grpc_context,
         }
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
@@ -723,7 +733,8 @@ class gRPCProxy(GenericProxy):
         )
 
         try:
-            async for result in response_generator:
+            async for context, result in response_generator:
+                context.set_on_grpc_context(proxy_request.context)
                 yield result
 
             yield ResponseStatus(code=grpc.StatusCode.OK)

@@ -21,6 +21,7 @@ from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
+from ray.serve._private.grpc_util import RayServegRPCContext
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -732,6 +733,13 @@ def get_multiplexed_model_id() -> str:
     """
     _request_context = ray.serve.context._serve_request_context.get()
     return _request_context.multiplexed_model_id
+
+
+@PublicAPI(stability="beta")
+def get_grpc_context() -> RayServegRPCContext:
+    # TODO (genesu): add docstring
+    _request_context = ray.serve.context._serve_request_context.get()
+    return _request_context.grpc_context
 
 
 @PublicAPI(stability="alpha")

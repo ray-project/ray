@@ -10,6 +10,7 @@ from starlette.types import Receive, Scope, Send
 from ray.actor import ActorHandle
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.grpc_util import RayServegRPCContext
 from ray.serve._private.utils import DEFAULT
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -119,6 +120,7 @@ class gRPCProxyRequest(ProxyRequest):
         self.request_id = None
         self.method_name = "__call__"
         self.multiplexed_model_id = DEFAULT.VALUE
+        self.ray_serve_grpc_context = RayServegRPCContext(context)
         self.setup_variables()
 
     def setup_variables(self):
@@ -159,7 +161,7 @@ class gRPCProxyRequest(ProxyRequest):
         return self.request
 
     def send_request_id(self, request_id: str):
-        self.context.set_trailing_metadata([("request_id", request_id)])
+        self.ray_serve_grpc_context.set_trailing_metadata([("request_id", request_id)])
 
     def request_object(self, proxy_handle: ActorHandle) -> gRPCRequest:
         return gRPCRequest(

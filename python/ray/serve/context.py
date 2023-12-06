@@ -166,6 +166,7 @@ class _RequestContext:
     request_id: str = ""
     app_name: str = ""
     multiplexed_model_id: str = ""
+    grpc_context: Optional["RayServegRPCContext"] = None
 
 
 _serve_request_context = contextvars.ContextVar(

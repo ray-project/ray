@@ -34,6 +34,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.grpc_util import RayServegRPCContext
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import JavaActorHandleProxy, MetricsPusher
 from ray.serve.generated.serve_pb2 import DeploymentRoute
@@ -63,6 +64,8 @@ class RequestMetadata:
 
     # The protocol to serve this request
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
+
+    grpc_context: Optional[RayServegRPCContext] = None
 
     @property
     def is_http_request(self) -> bool:

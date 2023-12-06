@@ -40,6 +40,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import CONTROL_PLANE_CONCURRENCY_GROUP
+from ray.serve._private.grpc_util import RayServegRPCContext
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIMessageQueue,
@@ -713,6 +714,7 @@ class RayServeReplica:
                 request_metadata.request_id,
                 self.deployment_id.app,
                 request_metadata.multiplexed_model_id,
+                request_metadata.grpc_context,
             )
         )
 
@@ -758,7 +760,7 @@ class RayServeReplica:
 
     async def call_user_method_with_grpc_unary_stream(
         self, request_metadata: RequestMetadata, request: gRPCRequest
-    ) -> AsyncGenerator[bytes, None]:
+    ) -> AsyncGenerator[Tuple[RayServegRPCContext, bytes], None]:
         """Call a user method that is expected to be a generator.
 
         Deserializes gRPC request into protobuf object and pass into replica's runner
@@ -773,10 +775,10 @@ class RayServeReplica:
 
             if inspect.isgenerator(result_generator):
                 for result in result_generator:
-                    yield result.SerializeToString()
+                    yield request_metadata.grpc_context, result.SerializeToString()
             elif inspect.isasyncgen(result_generator):
                 async for result in result_generator:
-                    yield result.SerializeToString()
+                    yield request_metadata.grpc_context, result.SerializeToString()
             else:
                 raise TypeError(
                     "When using `stream=True`, the called method must be a generator "
@@ -785,7 +787,7 @@ class RayServeReplica:
 
     async def call_user_method_grpc_unary(
         self, request_metadata: RequestMetadata, request: gRPCRequest
-    ) -> bytes:
+    ) -> Tuple[RayServegRPCContext, bytes]:
         """Call a user method that is *not* expected to be a generator.
 
         Deserializes gRPC request into protobuf object and pass into replica's runner
@@ -807,7 +809,7 @@ class RayServeReplica:
             method_to_call = sync_to_async(runner_method)
 
             result = await method_to_call(user_request)
-            return result.SerializeToString()
+            return request_metadata.grpc_context, result.SerializeToString()
 
     async def call_user_method(
         self,
