@@ -22,7 +22,7 @@ from ray.train import CheckpointConfig
 from ray.train._internal.session import _FutureTrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.exceptions import RayActorError, RayTaskError
-from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
+from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError
 from ray.tune.execution.class_cache import _ActorClassCache
 from ray.tune.execution.experiment_state import (
     _ExperimentCheckpointManager,
@@ -61,7 +61,6 @@ from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
-from ray.tune.web_server import TuneServer
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
 
@@ -82,7 +81,6 @@ class TuneController:
         scheduler: Optional[TrialScheduler] = None,
         stopper: Optional[Stopper] = None,
         resume: Union[str, bool] = False,
-        server_port: Optional[int] = None,
         fail_fast: bool = False,
         checkpoint_period: Union[str, int] = None,
         callbacks: Optional[List[Callback]] = None,
@@ -204,11 +202,6 @@ class TuneController:
         self._print_trial_errors = bool(
             int(os.environ.get("TUNE_PRINT_ALL_TRIAL_ERRORS", "1"))
         )
-
-        self._server = None
-        self._server_port = server_port
-        if server_port is not None:
-            self._server = TuneServer(self, self._server_port)
 
         self._trials: List[Trial] = []
         self._live_trials: Set[Trial] = set()  # Set of non-terminated trials
@@ -752,13 +745,6 @@ class TuneController:
 
         self._iteration += 1
 
-        if self._server:
-            with warn_if_slow("server"):
-                self._process_stop_requests()
-
-            if self.is_finished():
-                self._server.shutdown()
-
         with warn_if_slow("on_step_end"):
             self.on_step_end()
         with warn_if_slow("callbacks.on_step_end"):
@@ -1052,6 +1038,7 @@ class TuneController:
                 f"Invalid trainable: {trial.trainable_name}. If you passed "
                 f"a string, make sure the trainable was registered before."
             )
+            trial.handle_error(exception)
             self._schedule_trial_stop(trial, exception=exception)
             return
 
@@ -1388,7 +1375,9 @@ class TuneController:
             self._process_trial_failure(trial, exception=exception)
 
     def _process_trial_failure(
-        self, trial: Trial, exception: Optional[Union[TuneError, RayTaskError]] = None
+        self,
+        trial: Trial,
+        exception: Union[TuneError, RayTaskError, RayActorError],
     ):
         """Handle trial failure.
 
@@ -1399,6 +1388,7 @@ class TuneController:
             exception: Exception prior to invoking this method.
         """
         self._has_errored = True
+        trial.handle_error(exception)
         if trial.status == Trial.RUNNING and trial.should_recover():
             self._try_recover(trial, exc=exception)
             self._callbacks.on_trial_recover(
@@ -1431,9 +1421,6 @@ class TuneController:
 
         self._set_trial_status(trial, Trial.ERROR if exception else Trial.TERMINATED)
         trial.set_location(_Location())
-
-        if exception:
-            trial.handle_error(exc=exception)
 
         if trial not in self._trial_to_actor:
             logger.debug(f"Will not STOP trial actor as it is not live: {trial}")
@@ -1883,7 +1870,9 @@ class TuneController:
         self._schedule_trial_train(trial)
         self._live_trials.add(trial)
 
-    def _try_recover(self, trial: Trial, exc: Union[TuneError, RayTaskError]):
+    def _try_recover(
+        self, trial: Trial, exc: Union[TuneError, RayTaskError, RayActorError]
+    ):
         """Tries to recover trial.
 
         Notifies SearchAlgorithm and Scheduler if failure to recover.
@@ -1896,8 +1885,6 @@ class TuneController:
         # Resetting this, in case that the trial is in saving status when it crashes.
         if trial.is_saving:
             trial.temporary_state.saving_to = None
-        if trial.is_restoring and exc:
-            exc = _TuneRestoreError(exc)
         self._schedule_trial_stop(trial, exception=exc)
 
         logger.debug("Trial %s: Notifying Scheduler and requeueing.", trial)
@@ -1993,6 +1980,7 @@ class TuneController:
 
             exception = _AbortTrialExecution(info)
 
+            trial.handle_error(exception)
             self._schedule_trial_stop(trial, exception=exception)
             return
 
@@ -2040,7 +2028,6 @@ class TuneController:
             "_trials",
             "_live_trials",
             "_stop_queue",
-            "_server",
             "_search_alg",
             "_placeholder_resolvers",
             "_scheduler_alg",
@@ -2070,12 +2057,9 @@ class TuneController:
             "_actor_cache",
         ]:
             del state[k]
-        state["launch_web_server"] = bool(self._server)
         return state
 
     def __setstate__(self, state):
-        launch_web_server = state.pop("launch_web_server")
-
         # Use session_str from previous checkpoint if does not exist
         session_str = state.pop("_session_str")
         self.__dict__.setdefault("_session_str", session_str)
@@ -2085,9 +2069,6 @@ class TuneController:
 
         self.__dict__.update(state)
         self._checkpoint_manager = self._create_checkpoint_manager()
-
-        if launch_web_server:
-            self._server = TuneServer(self, self._server_port)
 
 
 class _TrialExecutorWrapper:

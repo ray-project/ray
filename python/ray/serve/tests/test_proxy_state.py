@@ -18,9 +18,10 @@ from ray.serve._private.proxy_state import (
     ProxyWrapper,
     ProxyWrapperCallStatus,
 )
+from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import Timer
 from ray.serve.config import DeploymentMode, HTTPOptions
-from ray.serve.tests.common.utils import MockTimer
+from ray.serve.schema import LoggingConfig
 
 HEAD_NODE_ID = "node_id-index-head"
 
@@ -112,6 +113,7 @@ def _create_proxy_state_manager(
             config=http_options,
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
+            logging_config=LoggingConfig(),
             actor_proxy_wrapper_class=actor_proxy_wrapper_class,
             timer=timer,
         ),

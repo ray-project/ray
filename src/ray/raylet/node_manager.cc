@@ -1175,10 +1175,11 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-bool NodeManager::UpdateResourceUsage(const NodeID &node_id,
-                                      const rpc::ResourcesData &resource_data) {
+bool NodeManager::UpdateResourceUsage(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
-          scheduling::NodeID(node_id.Binary()), resource_data)) {
+          scheduling::NodeID(node_id.Binary()), resource_view_sync_message)) {
     RAY_LOG(INFO)
         << "[UpdateResourceUsage]: received resource usage from unknown node id "
         << node_id;
@@ -1296,7 +1297,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
              worker_type == rpc::WorkerType::RESTORE_WORKER) {
     RAY_CHECK(job_id.IsNil());
   }
-  auto worker = std::dynamic_pointer_cast<WorkerInterface>(
+  auto worker = std::static_pointer_cast<WorkerInterface>(
       std::make_shared<Worker>(job_id,
                                runtime_env_hash,
                                worker_id,
@@ -2532,6 +2533,10 @@ rpc::ObjectStoreStats AccumulateStoreStats(
     if (cur_store.object_pulls_queued()) {
       store_stats.set_object_pulls_queued(true);
     }
+    store_stats.set_cumulative_created_objects(store_stats.cumulative_created_objects() +
+                                               cur_store.cumulative_created_objects());
+    store_stats.set_cumulative_created_bytes(store_stats.cumulative_created_bytes() +
+                                             cur_store.cumulative_created_bytes());
   }
   return store_stats;
 }
@@ -2734,10 +2739,10 @@ void NodeManager::RecordMetrics() {
 void NodeManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
   if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
-    rpc::ResourcesData data;
-    data.ParseFromString(message->sync_message());
-    NodeID node_id = NodeID::FromBinary(data.node_id());
-    if (UpdateResourceUsage(node_id, data)) {
+    syncer::ResourceViewSyncMessage resource_view_sync_message;
+    resource_view_sync_message.ParseFromString(message->sync_message());
+    NodeID node_id = NodeID::FromBinary(message->node_id());
+    if (UpdateResourceUsage(node_id, resource_view_sync_message)) {
       cluster_task_manager_->ScheduleAndDispatchTasks();
     }
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
@@ -2751,7 +2756,7 @@ void NodeManager::ConsumeSyncMessage(
 
 std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
     int64_t after_version, syncer::MessageType message_type) const {
-  RAY_CHECK(message_type == syncer::MessageType::COMMANDS);
+  RAY_CHECK_EQ(message_type, syncer::MessageType::COMMANDS);
 
   syncer::CommandsSyncMessage commands_sync_message;
   commands_sync_message.set_should_global_gc(true);

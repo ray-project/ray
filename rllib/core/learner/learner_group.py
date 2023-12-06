@@ -29,6 +29,7 @@ from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
+from ray.util.annotations import PublicAPI
 
 
 if TYPE_CHECKING:
@@ -58,6 +59,7 @@ def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
     return True
 
 
+@PublicAPI(stability="alpha")
 class LearnerGroup:
     """Coordinator of Learners.
 

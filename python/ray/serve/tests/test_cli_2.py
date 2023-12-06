@@ -18,13 +18,7 @@ from ray import serve
 from ray._private.pydantic_compat import BaseModel
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.handle import DeploymentHandle
-from ray.serve.tests.common.remote_uris import (
-    TEST_DAG_PINNED_URI,
-    TEST_DEPLOY_GROUP_PINNED_URI,
-)
-from ray.serve.tests.common.utils import (
+from ray.serve._private.test_utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -32,6 +26,12 @@ from ray.serve.tests.common.utils import (
     ping_grpc_list_applications,
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
+)
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.handle import DeploymentHandle
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_DEPLOY_GROUP_PINNED_URI,
 )
 from ray.serve.tests.conftest import check_ray_stop
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
@@ -41,10 +41,19 @@ CONNECTION_ERROR_MSG = "connection error"
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
+    endpoint = endpoint.lstrip("/")
+
     try:
         return requests.get(f"http://localhost:8000/{endpoint}{params}").text
     except requests.exceptions.ConnectionError:
         return CONNECTION_ERROR_MSG
+
+
+def check_app_running(app_name: str):
+    status_response = subprocess.check_output(["serve", "status"])
+    status = yaml.safe_load(status_response)["applications"]
+    assert status[app_name]["status"] == "RUNNING"
+    return True
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -196,14 +205,12 @@ def test_run_application(ray_start_stop, number_of_kill_signals):
     p = subprocess.Popen(
         ["serve", "run", "--address=auto", "ray.serve.tests.test_cli_2.parrot_node"]
     )
-    wait_for_condition(
-        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk"
-    )
+    wait_for_condition(lambda: ping_endpoint("/", params="?sound=squawk") == "squawk")
     print("Run successful! Deployment is live and reachable over HTTP. Killing run.")
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
-    assert ping_endpoint("parrot", params="?sound=squawk") == CONNECTION_ERROR_MSG
+    assert ping_endpoint("/", params="?sound=squawk") == CONNECTION_ERROR_MSG
     print("Kill successful! Deployment is not reachable over HTTP.")
 
 
@@ -274,10 +281,10 @@ def test_run_deployment_node(ray_start_stop):
             "ray.serve.tests.test_cli_2.molly_macaw",
         ]
     )
-    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("/") == "Molly is green!", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
-    assert ping_endpoint("Macaw") == CONNECTION_ERROR_MSG
+    assert ping_endpoint("/") == CONNECTION_ERROR_MSG
 
 
 @serve.deployment
@@ -288,6 +295,9 @@ class Echo:
 
     def __call__(self, *args):
         return self._message
+
+
+echo_app = Echo.bind("hello")
 
 
 def build_echo_app(args):
@@ -327,7 +337,7 @@ def test_run_builder_with_args(ray_start_stop, import_path: str):
     wait_for_condition(lambda: ping_endpoint("") == "DEFAULT", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
-    assert ping_endpoint("") == CONNECTION_ERROR_MSG
+    assert ping_endpoint("/") == CONNECTION_ERROR_MSG
 
     # Now deploy passing a message as an argument, should get passed message.
     p = subprocess.Popen(
@@ -343,7 +353,7 @@ def test_run_builder_with_args(ray_start_stop, import_path: str):
 
     p.send_signal(signal.SIGINT)
     p.wait()
-    assert ping_endpoint("") == CONNECTION_ERROR_MSG
+    assert ping_endpoint("/") == CONNECTION_ERROR_MSG
 
 
 @serve.deployment
@@ -480,6 +490,38 @@ def test_run_teardown(ray_start_stop):
         timeout=30,
     ).decode()
     assert "Intentionally failing." in logs
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_route_prefix_default(ray_start_stop):
+    """Test `serve run` with route prefix option."""
+
+    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_2.echo_app"])
+
+    wait_for_condition(check_app_running, app_name="default")
+    assert ping_endpoint("/") == "hello"
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_route_prefix_override(ray_start_stop):
+    """Test `serve run` with route prefix option."""
+
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--route-prefix=/hello",
+            "ray.serve.tests.test_cli_2.echo_app",
+        ],
+    )
+
+    wait_for_condition(check_app_running, app_name="default")
+    assert "Path '/' not found" in ping_endpoint("/")
+    assert ping_endpoint("/hello") == "hello"
+    p.send_signal(signal.SIGINT)
+    p.wait()
 
 
 @serve.deployment

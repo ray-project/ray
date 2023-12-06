@@ -544,9 +544,9 @@ class LazyBlockList(BlockList):
         """Submit the task with index task_idx.
 
         NOTE: When dynamic block splitting is enabled, returns
-        Tuple[ObjectRef[ObjectRefGenerator], None] instead of
+        Tuple[ObjectRef[DynamicObjectRefGenerator], None] instead of
         Tuple[ObjectRef[Block], ObjectRef[BlockMetadata]], and the blocks metadata will
-        be fetched as the last element in ObjectRefGenerator.
+        be fetched as the last element in DynamicObjectRefGenerator.
         """
         if self._stats_actor is None:
             self._stats_actor = _get_or_create_stats_actor()
