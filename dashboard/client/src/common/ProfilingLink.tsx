@@ -116,25 +116,20 @@ export const MemoryProfilingButton = ({
   ip,
   type = "",
 }: MemoryProfilingProps) => {
-  // Set the default duration to 5
-  const [duration, setDuration] = useState<number | null>(5);
-
-  // State to manage whether the input field is visible
+  const [duration, setDuration] = useState<number | null>(10);
   const [fillDuration, setFillDuration] = useState<boolean>(false);
 
   const handleButtonClick = () => {
-    // Show the input field
     setFillDuration(true);
   };
-
   const handleInputSubmit = (e: React.FormEvent) => {
-    // Prevent the default form submission behavior
     e.preventDefault();
-
-    // Hide the input field after submitting the form
     setFillDuration(false);
   };
 
+  if (!pid || !ip) {
+    return <div></div>;
+  }
   return (
     <div>
       {!fillDuration ? (
@@ -174,25 +169,19 @@ export const TaskMemoryProfilingButton = ({
   attemptNumber,
   nodeId,
 }: TaskMemoryProfilingProps) => {
-  // Set the default duration to 5
-  const [duration, setDuration] = useState<number | null>(5);
-
-  // State to manage whether the input field is visible
+  const [duration, setDuration] = useState<number | null>(10);
   const [fillDuration, setFillDuration] = useState<boolean>(false);
-
   const handleButtonClick = () => {
-    // Show the input field
     setFillDuration(true);
   };
-
   const handleInputSubmit = (e: React.FormEvent) => {
-    // Prevent the default form submission behavior
     e.preventDefault();
-
-    // Hide the input field after submitting the form
     setFillDuration(false);
   };
 
+  if (!taskId) {
+    return null;
+  }
   return (
     <div>
       {!fillDuration ? (
@@ -214,7 +203,7 @@ export const TaskMemoryProfilingButton = ({
           />
           <Button variant="text">
             <Link
-              href={`task/memory_profile?task_id=${taskId}&duration=${duration}attempt_number=${attemptNumber}&node_id=${nodeId}`}
+              href={`task/memory_profile?task_id=${taskId}&duration=${duration}&attempt_number=${attemptNumber}&node_id=${nodeId}`}
               rel="noreferrer"
               target="_blank"
             >

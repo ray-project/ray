@@ -23,7 +23,7 @@ from ray._private.test_utils import (
 )
 @pytest.mark.parametrize("native", ["0", "1"])
 def test_profiler_endpoints(ray_start_with_dashboard, native):
-    # Sanity check py-spy is installed.
+    # Sanity check py-spy and are installed.
     subprocess.check_call(["py-spy", "--version"])
 
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -96,6 +96,80 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.parametrize("leaks", ["0", "1"])
+def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
+    subprocess.check_call(["memray", "--version"])
+
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    address_info = ray_start_with_dashboard
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+        def do_stuff_infinite(self):
+            while True:
+                pass
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    a.do_stuff_infinite.remote()
+
+    def get_actor_memory_flamegraph():
+        response = requests.get(
+            f"{webui_url}/worker/memory_profile?pid={pid}&leaks={leaks}&duration=5"
+        )
+        response.raise_for_status()
+
+        assert response.headers["Content-Type"] == "text/html", response.headers
+        content = response.content.decode("utf-8")
+        print(content)
+        assert "memray" in content, content
+
+        if leaks == "1":
+            assert "flamegraph report (memory leaks)" in content, content
+        else:
+            assert "flamegraph report" in content, content
+
+    assert wait_until_succeeded_without_exception(
+        get_actor_memory_flamegraph,
+        (requests.RequestException, AssertionError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
+    )
+
+    def get_actor_memory_multiple_flamegraphs():
+        response = requests.get(
+            f"{webui_url}/worker/memory_profile?pid={pid}&leaks={leaks}&duration=5"
+        )
+        response.raise_for_status()
+
+        assert response.headers["Content-Type"] == "text/html", response.headers
+        content = response.content.decode("utf-8")
+        print(content)
+        assert "memray" in content, content
+
+        if leaks == "1":
+            assert "flamegraph report (memory leaks)" in content, content
+        else:
+            assert "flamegraph report" in content, content
+
+    assert wait_until_succeeded_without_exception(
+        get_actor_memory_flamegraph,
+        (requests.RequestException, AssertionError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
+    )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
 @pytest.mark.skipif(
     sys.platform == "darwin",
@@ -147,6 +221,13 @@ def test_profiler_failure_message(ray_start_with_dashboard):
 
     # Check we return the right status code and error message on failure.
     response = requests.get(f"{webui_url}/worker/cpu_profile?pid=1234567")
+    content = response.content.decode("utf-8")
+    print(content)
+    assert "text/plain" in response.headers["Content-Type"], response.headers
+    assert "Failed to execute" in content, content
+
+    # Check we return the right status code and error message on failure.
+    response = requests.get(f"{webui_url}/worker/memory_profile?pid=1234567")
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
