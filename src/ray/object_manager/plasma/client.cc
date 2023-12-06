@@ -623,7 +623,6 @@ Status PlasmaClient::Impl::GetBuffers(
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaGetReply, &buffer));
   std::vector<ObjectID> received_object_ids(num_objects);
   std::vector<PlasmaObject> object_data(num_objects);
-  auto object = std::make_unique<PlasmaObject>();
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
   RAY_RETURN_NOT_OK(ReadGetReply(buffer.data(),
@@ -644,9 +643,10 @@ Status PlasmaClient::Impl::GetBuffers(
     GetStoreFdAndMmap(store_fds[i], mmap_sizes[i]);
   }
 
+  std::unique_ptr<PlasmaObject> object;
   for (int64_t i = 0; i < num_objects; ++i) {
     RAY_DCHECK(received_object_ids[i] == object_ids[i]);
-    *object = object_data[i];
+    object = std::make_unique<PlasmaObject>(object_data[i]);
     if (object_buffers[i].data) {
       // If the object was already in use by the client, then the store should
       // have returned it.
