@@ -1886,11 +1886,11 @@ cdef void execute_task(
                     exit_current_actor_if_asyncio()
                 except Exception as e:
                     retryable = (should_retry_exceptions and
-                                    determine_if_retryable(
-                                        e,
-                                        serialized_retry_exception_allowlist,
-                                        function_descriptor,
-                                    ))
+                                determine_if_retryable(
+                                    e,
+                                    serialized_retry_exception_allowlist,
+                                    function_descriptor,
+                                ))
                     is_retryable_error[0] = retryable
                     if is_retryable_error[0]:
                         logger.debug("Task failed with retryable exception:"
