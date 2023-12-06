@@ -1,6 +1,6 @@
 # __program_start__
 import ray
-from ray import ObjectRefGenerator
+from ray import DynamicObjectRefGenerator
 
 # fmt: off
 # __dynamic_generator_start__
@@ -17,7 +17,7 @@ def split(array, chunk_size):
 array_ref = ray.put(np.zeros(np.random.randint(1000_000)))
 block_size = 1000
 
-# Returns an ObjectRef[ObjectRefGenerator].
+# Returns an ObjectRef[DynamicObjectRefGenerator].
 dynamic_ref = split.remote(array_ref, block_size)
 print(dynamic_ref)
 # ObjectRef(c8ef45ccd0112571ffffffffffffffffffffffff0100000001000000)
@@ -25,9 +25,9 @@ print(dynamic_ref)
 i = -1
 ref_generator = ray.get(dynamic_ref)
 print(ref_generator)
-# <ray._raylet.ObjectRefGenerator object at 0x7f7e2116b290>
+# <ray._raylet.DynamicObjectRefGenerator object at 0x7f7e2116b290>
 for i, ref in enumerate(ref_generator):
-    # Each ObjectRefGenerator iteration returns an ObjectRef.
+    # Each DynamicObjectRefGenerator iteration returns an ObjectRef.
     assert len(ray.get(ref)) <= block_size
 num_blocks_generated = i + 1
 array_size = len(ray.get(array_ref))
@@ -47,7 +47,7 @@ del dynamic_ref
 # fmt: off
 # __dynamic_generator_pass_start__
 @ray.remote
-def get_size(ref_generator : ObjectRefGenerator):
+def get_size(ref_generator : DynamicObjectRefGenerator):
     print(ref_generator)
     num_elements = 0
     for ref in ref_generator:
@@ -57,16 +57,18 @@ def get_size(ref_generator : ObjectRefGenerator):
     return num_elements
 
 
-# Returns an ObjectRef[ObjectRefGenerator].
+# Returns an ObjectRef[DynamicObjectRefGenerator].
 dynamic_ref = split.remote(array_ref, block_size)
 assert array_size == ray.get(get_size.remote(dynamic_ref))
-# (get_size pid=1504184) <ray._raylet.ObjectRefGenerator object at 0x7f81c4250ad0>
+# (get_size pid=1504184)
+# <ray._raylet.DynamicObjectRefGenerator object at 0x7f81c4250ad0>
 
 # This also works, but should be avoided because you have to call an additional
 # `ray.get`, which blocks the driver.
 ref_generator = ray.get(dynamic_ref)
 assert array_size == ray.get(get_size.remote(ref_generator))
-# (get_size pid=1504184) <ray._raylet.ObjectRefGenerator object at 0x7f81c4251b50>
+# (get_size pid=1504184)
+# <ray._raylet.DynamicObjectRefGenerator object at 0x7f81c4251b50>
 # __dynamic_generator_pass_end__
 # fmt: on
 

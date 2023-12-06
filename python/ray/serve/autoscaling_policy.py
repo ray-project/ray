@@ -12,7 +12,7 @@ PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
 
 
 @PublicAPI(stability="beta")
-class TargetCapacityScaleDirection(str, Enum):
+class TargetCapacityDirection(str, Enum):
     """Determines what direction the target capacity is scaling."""
 
     UP = "UP"
@@ -33,7 +33,7 @@ class AutoscalingContext:
         current_num_ongoing_requests: List[float],
         current_handle_queued_queries: float,
         target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityScaleDirection] = None,
+        target_capacity_scale_direction: Optional[TargetCapacityDirection] = None,
         adjust_capacity: bool = False,
     ):
         """

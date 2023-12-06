@@ -9,7 +9,7 @@ from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAM
 from ray.serve.autoscaling_policy import (
     AutoscalingContext,
     AutoscalingPolicy,
-    TargetCapacityScaleDirection,
+    TargetCapacityDirection,
 )
 from ray.serve.config import AutoscalingConfig
 
@@ -17,7 +17,10 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def calculate_desired_num_replicas(
-    autoscaling_config: AutoscalingConfig, current_num_ongoing_requests: List[float]
+    autoscaling_config: AutoscalingConfig,
+    current_num_ongoing_requests: List[float],
+    override_min_replicas: Optional[float] = None,
+    override_max_replicas: Optional[float] = None,
 ) -> int:  # (desired replicas):
     """Returns the number of replicas to scale to based on the given metrics.
 
@@ -27,6 +30,10 @@ def calculate_desired_num_replicas(
         current_num_ongoing_requests (List[float]): A list of the number of
             ongoing requests for each replica.  Assumes each entry has already
             been time-averaged over the desired lookback window.
+        override_min_replicas: Overrides min_replicas from the config
+            when calculating the final number of replicas.
+        override_max_replicas: Overrides max_replicas from the config
+            when calculating the final number of replicas.
 
     Returns:
         desired_num_replicas: The desired number of replicas to scale to, based
@@ -75,9 +82,15 @@ def calculate_desired_num_replicas(
     ):
         desired_num_replicas -= 1
 
-    # Ensure min_replicas <= desired_num_replicas <= max_replicas.
-    desired_num_replicas = min(autoscaling_config.max_replicas, desired_num_replicas)
-    desired_num_replicas = max(autoscaling_config.min_replicas, desired_num_replicas)
+    min_replicas = autoscaling_config.min_replicas
+    max_replicas = autoscaling_config.max_replicas
+    if override_min_replicas is not None:
+        min_replicas = override_min_replicas
+    if override_max_replicas is not None:
+        max_replicas = override_max_replicas
+
+    # Ensure scaled_min_replicas <= desired_num_replicas <= scaled_max_replicas.
+    desired_num_replicas = max(min_replicas, min(max_replicas, desired_num_replicas))
 
     return desired_num_replicas
 
@@ -140,8 +153,8 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         # scale_up_periods or scale_down_periods.
         self.decision_counter = 0
 
-    def _calculate_base_desired_replica_numbers(
-        self, context: AutoscalingContext
+    def get_decision_num_replicas(
+        self, autoscaling_context: AutoscalingContext
     ) -> int:
         if len(context.current_num_ongoing_requests) == 0:
             # When 0 replicas and queries are queued, scale up the replicas
@@ -150,15 +163,24 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
                     math.ceil(1 * self.config.get_upscale_smoothing_factor()),
                     context.curr_target_num_replicas,
                 )
-            return context.curr_target_num_replicas
+            return autoscaling_context.curr_target_num_replicas
 
-        decision_num_replicas = context.curr_target_num_replicas
+        decision_num_replicas = autoscaling_context.curr_target_num_replicas
 
         desired_num_replicas = calculate_desired_num_replicas(
-            self.config, context.current_num_ongoing_requests
+            self.config,
+            autoscaling_context.current_num_ongoing_requests,
+            override_min_replicas=self.get_current_lower_bound(
+                autoscaling_context.target_capacity,
+                autoscaling_context.target_capacity_direction,
+            ),
+            override_max_replicas=get_capacity_adjusted_num_replicas(
+                self.config.max_replicas,
+                autoscaling_context.target_capacity,
+            ),
         )
         # Scale up.
-        if desired_num_replicas > context.curr_target_num_replicas:
+        if desired_num_replicas > autoscaling_context.curr_target_num_replicas:
             # If the previous decision was to scale down (the counter was
             # negative), we reset it and then increment it (set to 1).
             # Otherwise, just increment.
@@ -173,7 +195,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
                 decision_num_replicas = desired_num_replicas
 
         # Scale down.
-        elif desired_num_replicas < context.curr_target_num_replicas:
+        elif desired_num_replicas < autoscaling_context.curr_target_num_replicas:
             # If the previous decision was to scale up (the counter was
             # positive), reset it to zero before decrementing.
             if self.decision_counter > 0:
@@ -192,58 +214,46 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
         return decision_num_replicas
 
-    def _clip_desired_replica_numbers(
+    def apply_bounds(
         self,
-        context: AutoscalingContext,
-        decision_num_replicas: int,
-    ) -> Optional[int]:
-        if (
-            getattr(context, "target_capacity", None) is None
-            or getattr(context, "target_capacity_scale_direction", None) is None
-        ):
-            return decision_num_replicas
+        curr_target_num_replicas: int,
+        target_capacity: Optional[float] = None,
+        target_capacity_direction: Optional[TargetCapacityDirection] = None,
+    ) -> int:
+        """Clips curr_target_num_replicas using the current bounds."""
 
-        # Clip the replica count by capacity-adjusted bounds.
         upper_bound = get_capacity_adjusted_num_replicas(
-            self.config.max_replicas, context.target_capacity
+            self.config.max_replicas,
+            target_capacity,
         )
-        if (
-            context.target_capacity_scale_direction == TargetCapacityScaleDirection.UP
-            and self.config.initial_replicas is not None
+        lower_bound = self.get_current_lower_bound(
+            target_capacity, target_capacity_direction
+        )
+        return max(lower_bound, min(upper_bound, curr_target_num_replicas))
+
+    def get_current_lower_bound(
+        self,
+        target_capacity: Optional[float] = None,
+        target_capacity_direction: Optional[TargetCapacityDirection] = None,
+    ) -> int:
+        """Get the autoscaling lower bound, including target_capacity changes.
+
+        The autoscaler uses initial_replicas scaled by target_capacity only
+        if the target capacity direction is UP.
+        """
+
+        if self.config.initial_replicas is not None and (
+            target_capacity_direction == TargetCapacityDirection.UP
         ):
-            lower_bound = get_capacity_adjusted_num_replicas(
-                self.config.initial_replicas, context.target_capacity
+            return get_capacity_adjusted_num_replicas(
+                self.config.initial_replicas,
+                target_capacity,
             )
         else:
-            lower_bound = get_capacity_adjusted_num_replicas(
-                self.config.min_replicas, context.target_capacity
+            return get_capacity_adjusted_num_replicas(
+                self.config.min_replicas,
+                target_capacity,
             )
-
-        clipped_decision_num_replicas = max(
-            lower_bound, min(decision_num_replicas, upper_bound)
-        )
-
-        if (
-            clipped_decision_num_replicas == context.curr_target_num_replicas
-            and context.adjust_capacity is False
-        ):
-            return
-
-        return clipped_decision_num_replicas
-
-    def get_decision_num_replicas(
-        self, autoscaling_context: AutoscalingContext
-    ) -> Optional[int]:
-        base_desired_replica_numbers = self._calculate_base_desired_replica_numbers(
-            context=autoscaling_context,
-        )
-        decision_num_replicas = self._clip_desired_replica_numbers(
-            context=autoscaling_context,
-            decision_num_replicas=base_desired_replica_numbers,
-        )
-
-        return decision_num_replicas
-
 
 class CustomScalingPolicy(AutoscalingPolicy):
     """A custom autoscaling policy to handle user specified scaling logic."""

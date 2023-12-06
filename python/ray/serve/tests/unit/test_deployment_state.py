@@ -1,5 +1,6 @@
 import sys
 from collections import defaultdict
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import Mock, patch
 
@@ -8,12 +9,12 @@ import pytest
 from ray.serve._private.autoscaling_policy import get_capacity_adjusted_num_replicas
 from ray.serve._private.common import (
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaName,
     ReplicaState,
     ReplicaTag,
+    TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
@@ -23,6 +24,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_CONCURRENT_QUERIES,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
 from ray.serve._private.deployment_state import (
     ActorReplicaWrapper,
@@ -34,8 +36,11 @@ from ray.serve._private.deployment_state import (
     ReplicaStateContainer,
     VersionedReplica,
 )
-from ray.serve._private.utils import get_random_letters
-from ray.serve.tests.common.utils import MockKVStore, MockTimer
+from ray.serve._private.test_utils import MockKVStore, MockTimer
+from ray.serve._private.utils import (
+    get_capacity_adjusted_num_replicas,
+    get_random_letters,
+)
 
 
 class FakeRemoteFunction:
@@ -1041,6 +1046,153 @@ def test_redeploy_new_version(mock_deployment_state):
     )
 
 
+def test_redeploy_different_num_replicas(mock_deployment_state):
+    """Tests status changes when redeploying with different num_replicas.
+
+    1. Deploys a deployment -> checks if it's UPDATING.
+    2. Redeploys deployment -> checks that it's still UPDATING.
+    3. Makes deployment HEALTHY, and then redeploys with more replicas ->
+       check that is becomes UPSCALING.
+    4. Makes deployment HEALTHY, and then redeploys with more replicas ->
+       check that is becomes DOWNSCALING.
+    """
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
+
+    version = "1"
+    b_info_1, info_version = deployment_info(version=version, num_replicas=5)
+    updating = deployment_state.deploy(b_info_1)
+    assert updating
+
+    deployment_state_update_result = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._id: deployment_state_update_result.upscale}, {}
+    )
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.STARTING, 5)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    # Test redeploying with a higher num_replicas while the deployment is UPDATING.
+    b_info_2, info_version = deployment_info(version=version, num_replicas=10)
+    updating = deployment_state.deploy(b_info_2)
+    assert updating
+    # Redeploying while the deployment is UPDATING shouldn't change status.
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    deployment_state_update_result = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._id: deployment_state_update_result.upscale}, {}
+    )
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.STARTING, 10)],
+    )
+
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.RUNNING, 10)],
+    )
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
+
+    # Redeploy with a higher number of replicas. The status should be UPSCALING.
+    b_info_3, info_version = deployment_info(version=version, num_replicas=20)
+    updating = deployment_state.deploy(b_info_3)
+    assert updating
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    deployment_state_update_result = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._id: deployment_state_update_result.upscale}, {}
+    )
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.STARTING, 10), (ReplicaState.STARTING, 10)],
+    )
+
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.RUNNING, 20)],
+    )
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.UPSCALE_COMPLETED
+    )
+
+    # Redeploy with lower number of replicas. The status should be DOWNSCALING.
+    b_info_4, info_version = deployment_info(version=version, num_replicas=5)
+    updating = deployment_state.deploy(b_info_4)
+    assert updating
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+    )
+
+    deployment_state_update_result = deployment_state.update()
+    replicas_to_stop = deployment_state._deployment_scheduler.schedule(
+        {}, {deployment_state._id: deployment_state_update_result.downscale}
+    )[deployment_state._id]
+    deployment_state.stop_replicas(replicas_to_stop)
+    check_counts(
+        deployment_state,
+        version=info_version,
+        by_state=[(ReplicaState.STOPPING, 15), (ReplicaState.RUNNING, 5)],
+    )
+
+    for replica in deployment_state._replicas.get(states=[ReplicaState.STOPPING]):
+        replica._actor.set_done_stopping()
+
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=info_version,
+        total=5,
+        by_state=[(ReplicaState.RUNNING, 5)],
+    )
+
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+    )
+
+
 @pytest.mark.parametrize(
     "option,value",
     [
@@ -1988,8 +2140,10 @@ def test_new_version_and_scale_up(mock_deployment_state):
     )
 
 
-@pytest.mark.parametrize("scale_direction", ["up", "down"])
-def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction):
+@pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
+def test_scale_num_replicas(
+    mock_deployment_state_manager_full, target_capacity_direction
+):
     """Test upscaling and downscaling the number of replicas manually.
 
     Upscaling version:
@@ -2039,7 +2193,7 @@ def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction)
     )
 
     # upscale or downscale the number of replicas manually
-    new_num_replicas = 5 if scale_direction == "up" else 1
+    new_num_replicas = 5 if target_capacity_direction == "up" else 1
     info_2, _ = deployment_info(num_replicas=new_num_replicas, version=version)
     deployment_state_manager.deploy(deployment_id, info_2)
     deployment_state_manager.update()
@@ -2049,7 +2203,7 @@ def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction)
         deployment_state.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
-    if scale_direction == "up":
+    if target_capacity_direction == "up":
         check_counts(
             deployment_state,
             total=5,
@@ -2079,13 +2233,13 @@ def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction)
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
     assert deployment_state.curr_status_info.status_trigger == (
         DeploymentStatusTrigger.UPSCALE_COMPLETED
-        if scale_direction == "up"
+        if target_capacity_direction == "up"
         else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
     )
 
 
-@pytest.mark.parametrize("scale_direction", ["up", "down"])
-def test_autoscale(mock_deployment_state_manager_full, scale_direction):
+@pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
+def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction):
     """Test autoscaling up and down.
 
     Upscaling version:
@@ -2100,7 +2254,7 @@ def test_autoscale(mock_deployment_state_manager_full, scale_direction):
     deployment_id = DeploymentID("test_deployment", "test_app")
 
     # Create deployment state manager
-    create_deployment_state_manager, timer, _ = mock_deployment_state_manager_full
+    create_deployment_state_manager, _, _ = mock_deployment_state_manager_full
     deployment_state_manager: DeploymentStateManager = create_deployment_state_manager()
 
     # Deploy deployment with 3 replicas
@@ -2143,12 +2297,13 @@ def test_autoscale(mock_deployment_state_manager_full, scale_direction):
 
     for replica in depstate._replicas.get():
         deployment_state_manager.record_autoscaling_metrics(
-            (replica._actor.replica_tag, 2 if scale_direction == "up" else 0), None
+            (replica._actor.replica_tag, 2 if target_capacity_direction == "up" else 0),
+            None,
         )
 
     # status=UPSCALING/DOWNSCALING, status_trigger=AUTOSCALE
     deployment_state_manager.update()
-    if scale_direction == "up":
+    if target_capacity_direction == "up":
         check_counts(
             depstate,
             total=6,
@@ -2164,7 +2319,7 @@ def test_autoscale(mock_deployment_state_manager_full, scale_direction):
 
     # Set replicas ready and check statuses
     for replica in depstate._replicas.get():
-        if scale_direction == "up":
+        if target_capacity_direction == "up":
             replica._actor.set_ready()
         else:
             replica._actor.set_done_stopping()
@@ -2174,7 +2329,7 @@ def test_autoscale(mock_deployment_state_manager_full, scale_direction):
     assert depstate.curr_status_info.status == DeploymentStatus.HEALTHY
     assert depstate.curr_status_info.status_trigger == (
         DeploymentStatusTrigger.UPSCALE_COMPLETED
-        if scale_direction == "up"
+        if target_capacity_direction == "up"
         else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
     )
 
@@ -3285,6 +3440,21 @@ class TestTargetCapacity:
     Tests related to the `target_capacity` field that adjusts the target num_replicas.
     """
 
+    def update_target_capacity(
+        self,
+        deployment_state: DeploymentState,
+        curr_deployment_info: DeploymentInfo,
+        target_capacity: Optional[float],
+        target_capacity_direction: Optional[TargetCapacityDirection],
+    ):
+        new_deployment_info = deepcopy(curr_deployment_info)
+        new_deployment_info.set_target_capacity(
+            new_target_capacity=target_capacity,
+            new_target_capacity_direction=target_capacity_direction,
+        )
+        updating = deployment_state.deploy(new_deployment_info)
+        assert updating
+
     @pytest.mark.parametrize(
         "num_replicas,target_capacity,expected_output",
         [
@@ -3317,17 +3487,24 @@ class TestTargetCapacity:
         assert isinstance(result, int)
         assert result == expected_output
 
-    def test_initial_deploy(self, mock_deployment_state):
+    def test_initial_deploy(
+        self, mock_deployment_state: Tuple[DeploymentState, Mock, Mock]
+    ):
         """
         Deploy with target_capacity set, should apply immediately.
         """
-        deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+        deployment_state, _, _ = mock_deployment_state
 
-        b_info_1, b_version_1 = deployment_info(num_replicas=2)
-        updating = deployment_state.deploy(b_info_1)
-        assert updating
+        b_info_1, _ = deployment_info(num_replicas=2)
 
-        deployment_state_update_result = deployment_state.update(target_capacity=50)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=50,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
@@ -3337,27 +3514,35 @@ class TestTargetCapacity:
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
-        deployment_state.update(target_capacity=50)
+        deployment_state.update()
         check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        deployment_state.update(target_capacity=50)
+        deployment_state.update()
         check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    def test_target_capacity_100_no_effect(self, mock_deployment_state):
+    def test_target_capacity_100_no_effect(
+        self, mock_deployment_state: Tuple[DeploymentState, Mock, Mock]
+    ):
         """
         Deploy with no target_capacity set, then set to 100. Should take no effect.
 
         Then go back to no target_capacity, should still have no effect.
         """
-        deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+        deployment_state, _, _ = mock_deployment_state
 
-        b_info_1, b_version_1 = deployment_info(num_replicas=2)
-        updating = deployment_state.deploy(b_info_1)
-        assert updating
+        code_version = "arbitrary_version"
+        b_info_1, _ = deployment_info(num_replicas=2, version=code_version)
 
         # Initially deploy with no target_capacity set.
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=None,
+            target_capacity_direction=None,
+        )
+
         deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
@@ -3377,43 +3562,73 @@ class TestTargetCapacity:
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Now update target_capacity to 100, should have no effect.
-        deployment_state.update(target_capacity=100)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=100,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state.update()
         check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Now update target_capacity back to None, should have no effect.
-        deployment_state.update(target_capacity=None)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=None,
+            target_capacity_direction=None,
+        )
+
+        deployment_state.update()
         check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    def test_target_capacity_0(self, mock_deployment_state):
+    def test_target_capacity_0(
+        self, mock_deployment_state: Tuple[DeploymentState, Mock, Mock]
+    ):
         """
         Deploy with target_capacity set to 0. Should have no replicas.
         """
-        deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+        deployment_state, _, _ = mock_deployment_state
 
-        b_info_1, b_version_1 = deployment_info(num_replicas=100)
-        updating = deployment_state.deploy(b_info_1)
-        assert updating
+        b_info_1, _ = deployment_info(num_replicas=100)
 
-        deployment_state_update_result = deployment_state.update(target_capacity=0)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=0,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
         check_counts(deployment_state, total=0)
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    def test_reduce_target_capacity(self, mock_deployment_state):
+    def test_reduce_target_capacity(
+        self, mock_deployment_state: Tuple[DeploymentState, Mock, Mock]
+    ):
         """
         Deploy with target capacity set to 100, then reduce to 50, then reduce to 0.
         """
-        deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+        deployment_state, _, _ = mock_deployment_state
 
-        b_info_1, b_version_1 = deployment_info(num_replicas=10)
-        updating = deployment_state.deploy(b_info_1)
-        assert updating
+        code_version = "arbitrary_version"
+        b_info_1, _ = deployment_info(num_replicas=10, version=code_version)
 
-        deployment_state_update_result = deployment_state.update(target_capacity=100)
+        # Start with target_capacity 100.
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=100,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
@@ -3423,12 +3638,19 @@ class TestTargetCapacity:
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
-        deployment_state.update(target_capacity=100)
+        deployment_state.update()
         check_counts(deployment_state, total=10, by_state=[(ReplicaState.RUNNING, 10)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Reduce target_capacity to 50, half the replicas should be stopped.
-        deployment_state_update_result = deployment_state.update(target_capacity=50)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=50,
+            target_capacity_direction=TargetCapacityDirection.DOWN,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         replicas_to_stop = deployment_state._deployment_scheduler.schedule(
             {}, {deployment_state._id: deployment_state_update_result.downscale}
         )[deployment_state._id]
@@ -3439,19 +3661,28 @@ class TestTargetCapacity:
             by_state=[(ReplicaState.RUNNING, 5), (ReplicaState.STOPPING, 5)],
         )
 
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be downscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get([ReplicaState.STOPPING]):
             replica._actor.set_done_stopping()
 
-        deployment_state.update(target_capacity=50)
+        deployment_state.update()
         check_counts(deployment_state, total=5, by_state=[(ReplicaState.RUNNING, 5)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Reduce target_capacity to 1, all but 1 of the replicas should be stopped.
-        deployment_state_update_result = deployment_state.update(target_capacity=1)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=1,
+            target_capacity_direction=TargetCapacityDirection.DOWN,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         replicas_to_stop = deployment_state._deployment_scheduler.schedule(
             {}, {deployment_state._id: deployment_state_update_result.downscale}
         )[deployment_state._id]
@@ -3462,67 +3693,105 @@ class TestTargetCapacity:
             by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 4)],
         )
 
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be downscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get([ReplicaState.STOPPING]):
             replica._actor.set_done_stopping()
 
+        deployment_state.update()
+        check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+
         # Reduce target_capacity to 0, all replicas should be stopped.
-        deployment_state_update_result = deployment_state.update(target_capacity=0)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=0,
+            target_capacity_direction=TargetCapacityDirection.DOWN,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         replicas_to_stop = deployment_state._deployment_scheduler.schedule(
             {}, {deployment_state._id: deployment_state_update_result.downscale}
         )[deployment_state._id]
         deployment_state.stop_replicas(replicas_to_stop)
         check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
 
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be downscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get([ReplicaState.STOPPING]):
             replica._actor.set_done_stopping()
 
-        deployment_state.update(target_capacity=0)
+        deployment_state.update()
         check_counts(deployment_state, total=0)
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    def test_increase_target_capacity(self, mock_deployment_state):
+    def test_increase_target_capacity(
+        self, mock_deployment_state: Tuple[DeploymentState, Mock, Mock]
+    ):
         """
         Deploy with target_capacity set to 0, then increase to 1, then increase to 50,
         then increase to 100.
         """
-        deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+        deployment_state, _, _ = mock_deployment_state
 
-        b_info_1, b_version_1 = deployment_info(num_replicas=10)
-        updating = deployment_state.deploy(b_info_1)
-        assert updating
+        code_version = "arbitrary_version"
+        b_info_1, _ = deployment_info(num_replicas=10, version=code_version)
 
         # Start with target_capacity set to 0, should have no replicas start up.
-        deployment_state.update(target_capacity=0)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=0,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state.update()
         check_counts(deployment_state, total=0)
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        # Increase target_capacity to 0, should have 1 replica start up.
-        deployment_state_update_result = deployment_state.update(target_capacity=1)
+        # Increase target_capacity to 1, should have 1 replica start up.
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=1,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
         check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
-        deployment_state.update(target_capacity=0)
+        deployment_state.update()
         check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Set target_capacity to 50, should have 4 more replicas start up.
-        deployment_state_update_result = deployment_state.update(target_capacity=50)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=50,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
@@ -3531,19 +3800,28 @@ class TestTargetCapacity:
             total=5,
             by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING, 4)],
         )
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
-        deployment_state.update(target_capacity=50)
+        deployment_state.update()
         check_counts(deployment_state, total=5, by_state=[(ReplicaState.RUNNING, 5)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Set target_capacity to 100, should have 5 more replicas start up.
-        deployment_state_update_result = deployment_state.update(target_capacity=100)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=100,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
@@ -3552,29 +3830,39 @@ class TestTargetCapacity:
             total=10,
             by_state=[(ReplicaState.RUNNING, 5), (ReplicaState.STARTING, 5)],
         )
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
-        deployment_state.update(target_capacity=100)
+        deployment_state.update()
         check_counts(deployment_state, total=10, by_state=[(ReplicaState.RUNNING, 10)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    def test_clear_target_capacity(self, mock_deployment_state):
+    def test_clear_target_capacity(
+        self, mock_deployment_state: Tuple[DeploymentState, Mock, Mock]
+    ):
         """
         Deploy with target_capacity set, should apply immediately.
         """
-        deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+        deployment_state, _, _ = mock_deployment_state
 
-        b_info_1, b_version_1 = deployment_info(num_replicas=10)
-        updating = deployment_state.deploy(b_info_1)
-        assert updating
+        code_version = "arbitrary_version"
+        b_info_1, _ = deployment_info(num_replicas=10, version=code_version)
 
         # Start with target_capacity set to 50, should have 5 replicas start up.
-        deployment_state_update_result = deployment_state.update(target_capacity=50)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=50,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
@@ -3584,11 +3872,18 @@ class TestTargetCapacity:
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
-        deployment_state.update(target_capacity=50)
+        deployment_state.update()
         check_counts(deployment_state, total=5, by_state=[(ReplicaState.RUNNING, 5)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Clear target_capacity, should have 5 more replicas start up.
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=None,
+            target_capacity_direction=None,
+        )
+
         deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
@@ -3598,9 +3893,11 @@ class TestTargetCapacity:
             total=10,
             by_state=[(ReplicaState.RUNNING, 5), (ReplicaState.STARTING, 5)],
         )
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
@@ -3609,85 +3906,104 @@ class TestTargetCapacity:
         check_counts(deployment_state, total=10, by_state=[(ReplicaState.RUNNING, 10)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    def test_target_num_replicas_is_zero(self, mock_deployment_state):
+    def test_target_num_replicas_is_zero(
+        self, mock_deployment_state: Tuple[DeploymentState, Mock, Mock]
+    ):
         """
         If the target `num_replicas` is zero (i.e., scale-to-zero is enabled and it's
         autoscaled down), then replicas should remain at zero regardless of
         target_capacity.
         """
-        deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+        deployment_state, _, _ = mock_deployment_state
 
-        # Start with target num_replicas at 1.
-        b_info_1, b_version_1 = deployment_info(num_replicas=1)
-        updating = deployment_state.deploy(b_info_1)
-        assert updating
+        # Set num_replicas to 0.
+        code_version = "arbitrary_version"
+        b_info_1, _ = deployment_info(num_replicas=0, version=code_version)
 
-        deployment_state_update_result = deployment_state.update(target_capacity=50)
+        # Start with target_capacity of 50.
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=50,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
-        check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+        check_counts(deployment_state, total=0)
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
         deployment_state.update()
-        check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+        check_counts(deployment_state, total=0)
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        # Now update target num_replicas to 0, should downscale to 0 replicas.
-        deployment_state._target_state.num_replicas = 0
-        deployment_state_update_result = deployment_state.update(target_capacity=50)
-        replicas_to_stop = deployment_state._deployment_scheduler.schedule(
-            {}, {deployment_state._id: deployment_state_update_result.downscale}
-        )[deployment_state._id]
-        deployment_state.stop_replicas(replicas_to_stop)
-        check_counts(
-            deployment_state,
-            total=1,
-            by_state=[(ReplicaState.STOPPING, 1)],
-        )
-
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be downscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
-
-        for replica in deployment_state._replicas.get([ReplicaState.STOPPING]):
-            replica._actor.set_done_stopping()
-
-        deployment_state.update(target_capacity=50)
+        deployment_state.update()
         check_counts(deployment_state, total=0)
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Regardless of target_capacity, should stay at 0 replicas.
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=None,
+            target_capacity_direction=None,
+        )
+
         deployment_state_update_result = deployment_state.update()
         assert not deployment_state_update_result.upscale
         assert not deployment_state_update_result.downscale
         check_counts(deployment_state, total=0)
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        deployment_state_update_result = deployment_state.update(target_capacity=0)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=0,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+        deployment_state_update_result = deployment_state.update()
         assert not deployment_state_update_result.upscale
         assert not deployment_state_update_result.downscale
         check_counts(deployment_state, total=0)
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        deployment_state_update_result = deployment_state.update(target_capacity=50)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=50,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+        deployment_state_update_result = deployment_state.update()
         assert not deployment_state_update_result.upscale
         assert not deployment_state_update_result.downscale
         check_counts(deployment_state, total=0)
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        deployment_state_update_result = deployment_state.update(target_capacity=100)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=100,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
         assert not deployment_state_update_result.upscale
         assert not deployment_state_update_result.downscale
         check_counts(deployment_state, total=0)
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Now scale back up to 1 replica.
+        b_info_2, _ = deployment_info(num_replicas=1, version=code_version)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_2,
+            target_capacity=100,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
         deployment_state._target_state.num_replicas = 1
         deployment_state_update_result = deployment_state.update()
 
@@ -3695,9 +4011,11 @@ class TestTargetCapacity:
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
         check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
@@ -3707,49 +4025,79 @@ class TestTargetCapacity:
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
     # TODO(edoakes): this test should be updated to go through the autoscaling policy.
-    def test_target_capacity_with_changing_num_replicas(self, mock_deployment_state):
+    def test_target_capacity_with_changing_num_replicas(
+        self, mock_deployment_state: Tuple[DeploymentState, Mock, Mock]
+    ):
         """
         Test that target_capacity works with changing num_replicas (emulating
         autoscaling).
         """
-        deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+        deployment_state, _, _ = mock_deployment_state
 
-        b_info_1, b_version_1 = deployment_info(num_replicas=2)
-        updating = deployment_state.deploy(b_info_1)
-        assert updating
+        code_version = "arbitrary_version"
+        b_info_1, _ = deployment_info(num_replicas=2, version=code_version)
 
-        # Start with target_capacity set to 0, should have no replicas start up.
-        deployment_state_update_result = deployment_state.update(target_capacity=0)
+        # Start with target_capacity set to 0, should have 0 replica start up
+        # regardless of the autoscaling decision.
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=0,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state.update()
         check_counts(deployment_state, total=0)
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        # Increase target_capacity to 1, should have 1 replica start up regardless
-        # of the autoscaling decision.
-        deployment_state_update_result = deployment_state.update(target_capacity=1)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_1,
+            target_capacity=1,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+        deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
         check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+        # TODO (shrekris): once this test uses the autoscaling logic, this
+        # status trigger should be DeploymentStatusTrigger.AUTOSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
-        deployment_state.update(target_capacity=0)
+        deployment_state.update()
         check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Increase the target number of replicas. Should still only have 1.
-        deployment_state._target_state.num_replicas = 10
+        b_info_2, _ = deployment_info(num_replicas=10, version=code_version)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_2,
+            target_capacity=1,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
 
-        deployment_state.update(target_capacity=0)
+        deployment_state.update()
         check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Increase target_capacity to 50, should have 4 more replicas start up.
-        deployment_state_update_result = deployment_state.update(target_capacity=50)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_2,
+            target_capacity=50,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
@@ -3758,19 +4106,31 @@ class TestTargetCapacity:
             total=5,
             by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING, 4)],
         )
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+        # TODO (shrekris): once this test uses the autoscaling logic, this
+        # status trigger should be DeploymentStatusTrigger.AUTOSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
-        deployment_state.update(target_capacity=50)
+        deployment_state.update()
         check_counts(deployment_state, total=5, by_state=[(ReplicaState.RUNNING, 5)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Reduce num_replicas and remove target_capacity, should stay the same.
-        deployment_state._target_state.num_replicas = 5
+        b_info_3, _ = deployment_info(num_replicas=5, version=code_version)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_3,
+            target_capacity=None,
+            target_capacity_direction=None,
+        )
+
         deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
@@ -3780,18 +4140,27 @@ class TestTargetCapacity:
             total=5,
             by_state=[(ReplicaState.RUNNING, 5)],
         )
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        deployment_state.update(target_capacity=50)
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.UPSCALE_COMPLETED
+        )
+
+        deployment_state.update()
         check_counts(deployment_state, total=5, by_state=[(ReplicaState.RUNNING, 5)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Set target_capacity to 50 and increase num_replicas to 6, should have 2 stop.
-        deployment_state._target_state.num_replicas = 6
-        deployment_state_update_result = deployment_state.update(target_capacity=50)
+        b_info_4, _ = deployment_info(num_replicas=6, version=code_version)
+        self.update_target_capacity(
+            deployment_state,
+            b_info_4,
+            target_capacity=50,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
 
+        deployment_state_update_result = deployment_state.update()
         replicas_to_stop = deployment_state._deployment_scheduler.schedule(
             {}, {deployment_state._id: deployment_state_update_result.downscale}
         )[deployment_state._id]
@@ -3802,18 +4171,29 @@ class TestTargetCapacity:
             by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STOPPING, 2)],
         )
 
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be downscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+        # TODO (shrekris): once this test uses the autoscaling logic, this
+        # status trigger should be DeploymentStatusTrigger.AUTOSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get([ReplicaState.STOPPING]):
             replica._actor.set_done_stopping()
 
-        deployment_state.update(target_capacity=50)
+        deployment_state.update()
         check_counts(deployment_state, total=3, by_state=[(ReplicaState.RUNNING, 3)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Unset target capacity, should scale back up to 6.
+        self.update_target_capacity(
+            deployment_state,
+            b_info_4,
+            target_capacity=None,
+            target_capacity_direction=None,
+        )
+
         deployment_state_update_result = deployment_state.update()
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
@@ -3823,9 +4203,13 @@ class TestTargetCapacity:
             total=6,
             by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
         )
-        # TODO(edoakes): when we update the state machine to include
-        # upscaling/downscaling, this should be upscaling.
-        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+        # TODO (shrekris): once this test uses the autoscaling logic, this
+        # status trigger should be DeploymentStatusTrigger.AUTOSCALING
+        assert (
+            deployment_state.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
 
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()

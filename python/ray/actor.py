@@ -25,8 +25,8 @@ from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_gr
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
+    ObjectRefGenerator,
     PythonFunctionDescriptor,
-    StreamingObjectRefGenerator,
     raise_sys_exit_with_custom_error_message,
 )
 from ray.exceptions import AsyncioActorExit
@@ -1273,7 +1273,7 @@ class ActorHandle:
             # that is for the generator task.
             assert len(object_refs) == 1
             generator_ref = object_refs[0]
-            return StreamingObjectRefGenerator(generator_ref, worker)
+            return ObjectRefGenerator(generator_ref, worker)
         if len(object_refs) == 1:
             object_refs = object_refs[0]
         elif len(object_refs) == 0:
@@ -1419,13 +1419,15 @@ def _modify_class(cls):
             "'class ClassName(object):' instead of 'class ClassName:'."
         )
 
-    # Modify the class to have additional methods
-    # for checking actor alive status and to terminate the worker.
+    # Modify the class to have additional default methods.
     class Class(cls):
         __ray_actor_class__ = cls  # The original actor class
 
         def __ray_ready__(self):
             return True
+
+        def __ray_call__(self, fn, *args, **kwargs):
+            return fn(self, *args, **kwargs)
 
         def __ray_terminate__(self):
             worker = ray._private.worker.global_worker
