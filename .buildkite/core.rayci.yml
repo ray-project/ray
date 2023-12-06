@@ -29,7 +29,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,manual
 
   - label: ":ray: core: redis tests"
     tags: python
@@ -39,7 +39,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,manual
 
   - label: ":ray: core: workflow tests"
     tags: 
@@ -250,6 +250,21 @@ steps:
       - ci/ci.sh test_cpp
     depends_on: oss-ci-base_build
     job_env: oss-ci-base_build
+
+  - label: ":ray: core: HA integration tests"
+    tags:
+      - python
+      - docker
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu --canonical-tag ha_integration
+      - docker tag rayproject/ray:ha_integration ray_ci:v1
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
+    depends_on:
+      - manylinux
+      - forge
+      - raycpubase
+      - corebuild
 
   - label: ":windows: python tests"
     tags:

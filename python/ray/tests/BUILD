@@ -290,10 +290,16 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
     "test_gcs_ha_e2e_2.py",
-    "test_memory_pressure.py",
   ],
   size = "medium",
-  tags = ["exclusive", "team:core", "xcommit"],
+  tags = ["exclusive", "ha_integration", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = ["test_memory_pressure.py"],
+  size = "medium",
+  tags = ["exclusive", "mem_pressure", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
