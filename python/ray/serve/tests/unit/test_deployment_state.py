@@ -35,11 +35,11 @@ from ray.serve._private.deployment_state import (
     ReplicaStateContainer,
     VersionedReplica,
 )
+from ray.serve._private.test_utils import MockKVStore, MockTimer
 from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_letters,
 )
-from ray.serve.tests.common.utils import MockKVStore, MockTimer
 
 
 class FakeRemoteFunction:
