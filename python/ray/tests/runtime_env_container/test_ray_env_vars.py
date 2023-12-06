@@ -1,6 +1,7 @@
-import ray
-import numpy as np
 import argparse
+import os
+
+import ray
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
@@ -10,13 +11,14 @@ worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/worke
 
 
 @ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
-def create_ref():
-    with open("file.txt") as f:
-        assert f.read().strip() == "helloworldalice"
-
-    ref = ray.put(np.zeros(100_000_000))
-    return ref
+def f():
+    return os.environ.get("RAY_TEST_ABC")
 
 
-wrapped_ref = create_ref.remote()
-assert ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
+@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
+def g():
+    return os.environ.get("TEST_ABC")
+
+
+assert ray.get(f.remote()) == "DEF"
+assert ray.get(g.remote()) is None

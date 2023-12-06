@@ -173,6 +173,11 @@ def podman_docker_cluster():
         "/var/run/docker.sock:/var/run/docker.sock",
         "-v",
         "/var/lib/containers:/var/lib/containers",
+        # For testing environment variables
+        "--env",
+        "RAY_TEST_ABC=1",
+        "--env",
+        "TEST_ABC=1",
         IMAGE_NAME,
         "tail",
         "-f",

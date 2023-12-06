@@ -42,9 +42,12 @@ class ContainerManager:
             # order for the Ray Python worker to access the mounted ray
             # tmp dir, we need to use keep-id mode which maps the user
             # as itself (instead of as `root`) into the container.
+            # https://www.redhat.com/sysadmin/rootless-podman-user-namespace-modes
             "--userns=keep-id",
         ]
 
+        # The RAY_RAYLET_PID and RAY_JOB_ID environment variables are
+        # needed for the default worker.
         container_command.append("--env")
         container_command.append("RAY_RAYLET_PID=" + os.getenv("RAY_RAYLET_PID"))
         container_command.append("--env")

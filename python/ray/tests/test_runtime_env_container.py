@@ -11,8 +11,8 @@ from ray.tests.conftest_docker import run_in_container, NESTED_IMAGE_NAME
 # NOTE(zcin): The actual test code are in python scripts under
 # python/ray/tests/runtime_env_container. The scripts are copied over to
 # the docker container that's started by the `podman_docker_cluster`
-# fixture, so that the tests can be run by invoking the scripts from
-# within the pytests in this file
+# fixture, so that the tests can be run by invoking the test scripts
+# using `python test.py` from within the pytests in this file
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
@@ -39,6 +39,15 @@ def test_log_file_exists(podman_docker_cluster):
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_log_file_exists.py", "--image", NESTED_IMAGE_NAME]
+    run_in_container([cmd], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_ray_env_vars(podman_docker_cluster):
+    """Test ray.put and ray.get."""
+
+    container_id = podman_docker_cluster
+    cmd = ["python", "tests/test_ray_env_vars.py", "--image", NESTED_IMAGE_NAME]
     run_in_container([cmd], container_id)
 
 
@@ -82,9 +91,15 @@ def test_serve_telemetry(podman_docker_cluster):
     run_in_container([cmd], container_id)
 
 
-class TestValidation:
+EXPECTED_ERROR = (
+    "The 'container' field currently cannot be used "
+    "together with other fields of runtime_env."
+)
+
+
+class TestContainerRuntimeEnvWithOtherRuntimeEnv:
     def test_container_with_env_vars(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
             @ray.remote(
                 runtime_env={
@@ -99,7 +114,7 @@ class TestValidation:
                 return ray.put((1, 10))
 
     def test_container_with_pip(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
             @ray.remote(
                 runtime_env={
@@ -114,7 +129,7 @@ class TestValidation:
                 return ray.put((1, 10))
 
     def test_container_with_conda(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
             @ray.remote(
                 runtime_env={
@@ -129,7 +144,7 @@ class TestValidation:
                 return ray.put((1, 10))
 
     def test_container_with_py_modules(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
             @ray.remote(
                 runtime_env={
@@ -144,7 +159,7 @@ class TestValidation:
                 return ray.put((1, 10))
 
     def test_container_with_working_dir(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
             @ray.remote(
                 runtime_env={
@@ -159,7 +174,7 @@ class TestValidation:
                 return ray.put((1, 10))
 
     def test_container_with_env_vars_and_working_dir(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
             @ray.remote(
                 runtime_env={
