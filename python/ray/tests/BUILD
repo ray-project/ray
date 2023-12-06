@@ -250,6 +250,7 @@ py_test_module_list(
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
+    "test_channel.py",
     "test_concurrency_group.py",
     "test_component_failures.py",
     "test_cross_language.py",
