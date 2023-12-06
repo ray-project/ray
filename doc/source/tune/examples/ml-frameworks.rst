@@ -103,3 +103,11 @@ At the end of these guides you will often find links to even more examples.
 
             End-to-end Example for Tuning a TensorFlow Model
 
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune_train_torch_example
+
+            End-to-end Example for Tuning a PyTorch Model with PBT
+
