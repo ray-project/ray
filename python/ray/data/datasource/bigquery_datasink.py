@@ -35,8 +35,8 @@ class _BigQueryDatasink(Datasink):
         self.max_retry_cnt = max_retry_cnt
 
     def on_write_start(self) -> None:
+        from google.api_core import exceptions
         from google.cloud import bigquery
-        from google.cloud.exceptions import NotFound
 
         if self.project_id is None or self.dataset is None:
             raise ValueError("project_id and dataset are required args")
@@ -50,7 +50,7 @@ class _BigQueryDatasink(Datasink):
                 f"Dataset {dataset_id} already exists. "
                 "The table will be overwritten if it already exists."
             )
-        except NotFound:
+        except exceptions.NotFound:
             client.create_dataset(f"{self.project_id}.{dataset_id}", timeout=30)
             logger.info("Created dataset " + dataset_id)
 
