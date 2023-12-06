@@ -6,13 +6,16 @@ Ray Generators
 `Python generators <https://docs.python.org/3/howto/functional.html#generators>`_ are functions
 that behave like iterators, yielding one value per iteration. Ray also supports the generators API.
 
+Any generator function decorated with ``ray.remote`` becomes a Ray generator task.
+Generator tasks stream outputs back to the caller before the task finishes.
+
 .. code-block:: diff
 
     +import ray
      import time
 
      # Takes 25 seconds to finish.
-    +@ray.remote(num_returns="streaming")
+    +@ray.remote
      def f():
          for i in range(5):
              time.sleep(5)
@@ -49,7 +52,7 @@ before the task ``f`` finishes.
 
 Getting started
 ---------------
-Define a Python generator function and specify ``num_returns="streaming"`` 
+Define a Python generator function and decorate it with ``ray.remote``
 to create a Ray generator.
 
 .. literalinclude:: doc_code/streaming_generator.py
@@ -57,8 +60,8 @@ to create a Ray generator.
     :start-after: __streaming_generator_define_start__
     :end-before: __streaming_generator_define_end__
 
-The Ray generator task returns ``StreamingObjectRefGenerator`` (the API is subject to change), which is
-compatible to generator and async generator APIs. You can access the
+The Ray generator task returns an ``ObjectRefGenerator`` object, which is
+compatible with generator and async generator APIs. You can access the
 ``next``, ``__iter__``, ``__anext__``, ``__aiter__`` APIs from the class.
 
 Whenever a task invokes ``yield``, a corresponding output is ready and availabale from a generator as a Ray object reference. 
@@ -67,7 +70,7 @@ If ``next`` has no more items to generate, it raises ``StopIteration``. If ``__a
 ``StopAsyncIteration``
 
 The ``next`` API blocks the thread until the task generates a next object reference with ``yield``.
-Since the ``StreamingObjectRefGenerator`` is just a Python generator, you can also simply use a for loop to
+Since the ``ObjectRefGenerator`` is just a Python generator, you can also use a for loop to
 iterate object references. 
 
 If you want to avoid blocking a thread, you can either use asyncio or :ref:`ray.wait API <generators-wait>`.
@@ -114,7 +117,7 @@ regular actors, :ref:`async actors <async-actors>`, and :ref:`threaded actors <t
 
 Using the Ray generator with asyncio
 ------------------------------------
-The returned ``StreamingObjectRefGenerator`` is also compatible with asyncio. You can
+The returned ``ObjectRefGenerator`` is also compatible with asyncio. You can
 use ``__anext__`` or ``async for`` loops.
 
 .. literalinclude:: doc_code/streaming_generator.py
@@ -162,12 +165,12 @@ Unblocking wait is possible with the Ray generator in the following ways:
 
 **Wait until a generator task completes**
 
-``StreamingObjectRefGenerator.completed()`` returns an object reference that is available when a generator task finishes or errors.
-For example, you can do ``ray.get(gen.compelted())`` to wait until a task completes. Note that using ``ray.get`` to ``StreamingObjectRefGenerator`` isn't allowed.
+``ObjectRefGenerator`` has an API ``completed``. It returns an object reference that is available when a generator task finishes or errors.
+For example, you can do ``ray.get(<generator_instance>.compelted())`` to wait until a task completes. Note that using ``ray.get`` to ``ObjectRefGenerator`` isn't allowed.
 
 **Use asyncio and await**
 
-``StreamingObjectRefGenerator`` is compatible with asyncio. You can create multiple asyncio tasks that create a generator task
+``ObjectRefGenerator`` is compatible with asyncio. You can create multiple asyncio tasks that create a generator task
 and wait for it to avoid blocking a thread.
 
 .. literalinclude:: doc_code/streaming_generator.py
@@ -177,8 +180,8 @@ and wait for it to avoid blocking a thread.
 
 **Use ray.wait**
 
-You can pass ``StreamingObjectRefGenerator`` as an input to ``ray.wait``. The generator is "ready" if a `next item`
-is available. Once a generator is found from a ready list, ``next(gen)`` returns the next object reference immediately without blocking. See the example below example for more details.
+You can pass ``ObjectRefGenerator`` as an input to ``ray.wait``. The generator is "ready" if a `next item`
+is available. Once Ray finds from a ready list, ``next(gen)`` returns the next object reference immediately without blocking. See the example below for more details.
 
 .. literalinclude:: doc_code/streaming_generator.py
     :language: python
@@ -197,7 +200,7 @@ all input arguments (such as ``timeout``, ``num_returns``, and ``fetch_local``) 
 
 Thread safety
 -------------
-``StreamingObjectRefGenerator`` object is not thread-safe.
+``ObjectRefGenerator`` object is not thread-safe.
 
 Limitation
 ----------
@@ -205,4 +208,4 @@ Ray generators don't support these features:
 
 - ``throw``, ``send``, and ``close`` APIs.
 - ``return`` statements from generators.
-- Passing ``StreamingObjectRefGenerator`` to another task or actor.
+- Passing ``ObjectRefGenerator`` to another task or actor.
