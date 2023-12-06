@@ -589,9 +589,9 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise RaySystemError(message)
 
 
-cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
+cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj) nogil:
     """Return True if the given object is a plasma object."""
-    assert obj.get() != NULL
+    # assert obj.get() != NULL
     if (obj.get().GetData().get() != NULL
             and obj.get().GetData().get().IsPlasmaBuffer()):
         return True
@@ -1293,12 +1293,12 @@ cdef report_streaming_generator_output(
     # usage asap.
     del output_or_exception
 
-    context.streaming_generator_returns[0].push_back(
-        c_pair[CObjectID, c_bool](
-            return_obj.first,
-            is_plasma_object(return_obj.second)))
-
     with nogil:
+        context.streaming_generator_returns[0].push_back(
+            c_pair[CObjectID, c_bool](
+                return_obj.first,
+                is_plasma_object(return_obj.second)))
+
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
             return_obj,
             context.generator_id,
@@ -4528,7 +4528,7 @@ cdef class CoreWorker:
         if self.thread_pool_for_async_event_loop is None:
             # Theoretically, we can use multiple threads,
             self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
-                max_workers=1)
+                max_workers=2)
         return self.thread_pool_for_async_event_loop
 
     def get_event_loop(self, function_descriptor, specified_cgname):
