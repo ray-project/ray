@@ -76,7 +76,7 @@ class DefaultLearnerConnector(ConnectorV2):
                         # Episode starts somewhere in the middle (is a cut continuation
                         # chunk) -> Use previous chunk's last STATE_OUT as initial state.
                         else episode.get_extra_model_outputs(
-                            key=STATE_OUT, indices=-len(episode)-1
+                            key=STATE_OUT, indices=-1, neg_indices_left_of_zero=True
                         )
                     ),
                     state_outs,

@@ -175,7 +175,7 @@ class TorchGRUEncoder(TorchModel, Encoder):
         assert len(gru_input_dims) == 1
         gru_input_dim = gru_input_dims[0]
 
-        # Create the torch LSTM layer.
+        # Create the torch GRU layer.
         self.gru = nn.GRU(
             gru_input_dim,
             config.hidden_dim,

@@ -1418,9 +1418,10 @@ class SingleAgentEpisode:
                 SampleBatch.EPS_ID: eps_id,
                 # Retrieve obs, infos, actions, rewards using our get_... APIs,
                 # which return all relevant timesteps (excluding the lookback
-                # buffer!).
+                # buffer!). Slice off last obs and infos to have the same number
+                # of them as we have actions and rewards.
                 SampleBatch.OBS: self.get_observations(slice(None, -1)),
-                SampleBatch.INFOS: self.get_infos(),
+                SampleBatch.INFOS: self.get_infos(slice(None, -1)),
                 SampleBatch.ACTIONS: self.get_actions(),
                 SampleBatch.REWARDS: self.get_rewards(),
             },
@@ -1443,10 +1444,14 @@ class SingleAgentEpisode:
         """Calculates an episode's return, excluding the lookback buffer's rewards.
 
         The return is computed by a simple sum, neglecting the discount factor.
+        Note that if `self` is a continuation chunk (resulting from a call to
+        `self.cut()`), the previous chunk's rewards are NOT counted and thus NOT
+        part of the returned reward sum.
 
         Returns:
             The sum of rewards collected during this episode, excluding possible data
-            inside the lookback buffer.
+            inside the lookback buffer and excluding possible data in a predecessor
+            chunk.
         """
         return sum(self.get_rewards())
 
@@ -1468,7 +1473,7 @@ class SingleAgentEpisode:
         return self.t - self.t_started
 
     def __repr__(self):
-        return f"SAEps({self.id_} len={len(self)})"
+        return f"SAEps(len={len(self)} done={self.is_done} R={self.get_return()} id_={self.id_})"
 
     def __getitem__(self, item: slice) -> "SingleAgentEpisode":
         """Enable squared bracket indexing- and slicing syntax, e.g. episode[-4:]."""

@@ -44,6 +44,9 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         prev_a = []
         prev_r = []
         for episode in episodes:
+            # TODO (sven): Get rid of this distinction. With the new Episode APIs,
+            #  this should work the same, whether on finalized or non-finalized
+            #  episodes.
             # Learner connector pipeline. Episodes have been finalized/numpy'ized.
             if self.as_learner_connector:
                 assert episode.is_finalized

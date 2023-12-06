@@ -195,18 +195,18 @@ class SingleAgentEnvRunner(EnvRunner):
             # Compute an action using the RLModule.
             else:
                 from time import time
-                t0 = time()
+                #t0 = time()
                 to_module = self.env_to_module(
                     episodes=self._episodes,
                     ctx=self.connector_ctx,
                 )
-                t1 = time()
+                #t1 = time()
                 # Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(to_module)
                 else:
                     to_env = self.module.forward_inference(to_module)
-                t2 = time()
+                #t2 = time()
 
                 to_env = self.module_to_env(
                     input_=to_env,
@@ -218,11 +218,11 @@ class SingleAgentEnvRunner(EnvRunner):
                 t3 = time()
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
-            t4 = time()
-            print(f"env->module: {t1-t0}sec")
-            print(f"module.fwd: {t2-t1}sec")
-            print(f"module->env: {t3-t2}sec")
-            print(f"env.step: {t4-t3}sec")
+            #t4 = time()
+            #print(f"env->module: {t1-t0}sec")
+            #print(f"module.fwd: {t2-t1}sec")
+            #print(f"module->env: {t3-t2}sec")
+            #print(f"env.step: {t4-t3}sec")
 
             ts += self.num_envs
 
@@ -240,10 +240,12 @@ class SingleAgentEnvRunner(EnvRunner):
                     # the info dict.
                     self._episodes[i].add_env_step(
                         # Gym vector env provides the `"final_observation"`.
-                        infos[i]["final_observation"],
+                        # Pop these out of the infos dict so this information doesn't
+                        # appear in the next episode as well (at index=0). 
+                        infos[i].pop("final_observation"),
                         actions[i],
                         rewards[i],
-                        infos=infos[i]["final_info"],
+                        infos=infos[i].pop("final_info"),
                         terminated=terminateds[i],
                         truncated=truncateds[i],
                         extra_model_outputs=extra_model_output,
@@ -374,10 +376,10 @@ class SingleAgentEnvRunner(EnvRunner):
                     eps += 1
 
                     episodes[i].add_env_step(
-                        infos[i]["final_observation"],
+                        infos[i].pop("final_observation"),
                         actions[i],
                         rewards[i],
-                        infos=infos[i]["final_info"],
+                        infos=infos[i].pop("final_info"),
                         terminated=terminateds[i],
                         truncated=truncateds[i],
                         extra_model_outputs=extra_model_output,
