@@ -3,22 +3,24 @@ import asyncio
 import enum
 import logging
 import time
-from typing import Tuple, Union, Coroutine
+from typing import Coroutine, Tuple, Union
 
 import numpy as np
 
 from ray.actor import ActorHandle
 from ray.runtime_env import RuntimeEnv
-from ray.serve._private.benchmarks.common import Blackhole, run_throughput_benchmark
+from ray.serve._private.benchmarks.common import (
+    Blackhole,
+    collect_profile_events,
+    run_throughput_benchmark,
+)
+from ray.serve._private.benchmarks.serialization.common import PayloadPydantic
 from ray.serve.handle import DeploymentHandle
 
-
 GRPC_DEBUG_RUNTIME_ENV = RuntimeEnv(
-    env_vars={
-        "GRPC_TRACE": "http",
-        "GRPC_VERBOSITY": "debug"
-    },
+    env_vars={"GRPC_TRACE": "http", "GRPC_VERBOSITY": "debug"},
 )
+
 
 class IOMode(enum.Enum):
     SYNC = "SYNC"
@@ -33,14 +35,28 @@ class Endpoint:
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
     def stream(self):
+        payload = PayloadPydantic(
+            text="Test output",
+            floats=[float(f) for f in range(1, 100)],
+            ints=[i for i in range(1, 100)],
+            ts=time.time(),
+            reason="Success!",
+        )
+
         for i in range(self._tokens_per_request):
-            # yield "OK".encode('utf-8')
-            yield "OK"
+            yield payload
 
     async def aio_stream(self):
+        payload = PayloadPydantic(
+            text="Test output",
+            floats=[float(f) for f in range(1, 100)],
+            ints=[i for i in range(1, 100)],
+            ts=time.time(),
+            reason="Success!",
+        )
+
         for i in range(self._tokens_per_request):
-            # yield "OK".encode('utf-8')
-            yield "OK"
+            yield payload
 
 
 class Caller(Blackhole):
@@ -95,12 +111,14 @@ class Caller(Blackhole):
         return dur_s * 1000  # ms
 
     async def run_benchmark(self) -> Tuple[float, float]:
-        total_runtime = await run_throughput_benchmark(
+        coro = run_throughput_benchmark(
             fn=self._do_single_batch,
             multiplier=self._batch_size * self._tokens_per_request,
             num_trials=self._num_trials,
             trial_runtime=self._trial_runtime,
         )
+        # total_runtime = await collect_profile_events(coro)
+        total_runtime = await coro
 
         p50, p75, p99 = np.percentile(self._durations, [50, 75, 99])
 
