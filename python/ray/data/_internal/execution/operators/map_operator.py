@@ -7,7 +7,7 @@ from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Un
 
 import ray
 from ray import ObjectRef
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -80,7 +80,7 @@ class MapOperator(OneToOneOperator, ABC):
         # TODO(hchen): This is a workaround for a bug of lineage reconstruction.
         # When the streaming generator ref is GC'ed, the objects it generated
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
-        self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
+        self._finished_streaming_gens: List[ObjectRefGenerator] = []
         super().__init__(name, input_op, target_max_block_size)
 
         # If set, then all output blocks will be split into
@@ -275,7 +275,7 @@ class MapOperator(OneToOneOperator, ABC):
 
     def _submit_data_task(
         self,
-        gen: StreamingObjectRefGenerator,
+        gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
     ):
