@@ -486,28 +486,34 @@ void raylet::RayletClient::ReleaseUnusedBundles(
 
 void raylet::RayletClient::PrepareVirtualClusterBundle(
     const VirtualClusterBundleSpec &bundle_spec,
+    int64_t seqno,
     const ray::rpc::ClientCallback<ray::rpc::PrepareVirtualClusterBundleReply>
         &callback) {
   rpc::PrepareVirtualClusterBundleRequest request;
   request.set_virtual_cluster_id(bundle_spec.GetVirtualClusterId().Binary());
   *request.mutable_bundle_spec() = bundle_spec.GetMessage();
+  request.set_seqno(seqno);
   grpc_client_->PrepareVirtualClusterBundle(request, callback);
 }
 
 void raylet::RayletClient::CommitVirtualClusterBundle(
     const VirtualClusterID &virtual_cluster_id,
+    int64_t seqno,
     const ray::rpc::ClientCallback<ray::rpc::CommitVirtualClusterBundleReply> &callback) {
   rpc::CommitVirtualClusterBundleRequest request;
   request.set_virtual_cluster_id(virtual_cluster_id.Binary());
+  request.set_seqno(seqno);
 
   grpc_client_->CommitVirtualClusterBundle(request, callback);
 }
 
 void raylet::RayletClient::ReturnVirtualClusterBundle(
     const VirtualClusterID &virtual_cluster_id,
+    int64_t seqno,
     const ray::rpc::ClientCallback<ray::rpc::ReturnVirtualClusterBundleReply> &callback) {
   rpc::ReturnVirtualClusterBundleRequest request;
   request.set_virtual_cluster_id(virtual_cluster_id.Binary());
+  request.set_seqno(seqno);
   grpc_client_->ReturnVirtualClusterBundle(request, callback);
 }
 

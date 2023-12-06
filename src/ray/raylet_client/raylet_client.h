@@ -151,6 +151,7 @@ class ResourceReserveInterface {
   /// \return ray::Status
   virtual void PrepareVirtualClusterBundle(
       const VirtualClusterBundleSpec &bundle_spec,
+      int64_t seqno,
       const ray::rpc::ClientCallback<ray::rpc::PrepareVirtualClusterBundleReply>
           &callback) = 0;
 
@@ -160,6 +161,7 @@ class ResourceReserveInterface {
   /// ray::Status
   virtual void CommitVirtualClusterBundle(
       const VirtualClusterID &virtual_cluster_id,
+      int64_t seqno,
       const ray::rpc::ClientCallback<ray::rpc::CommitVirtualClusterBundleReply>
           &callback) = 0;
 
@@ -169,6 +171,7 @@ class ResourceReserveInterface {
   /// \return ray::Status
   virtual void ReturnVirtualClusterBundle(
       const VirtualClusterID &virtual_cluster_id,
+      int64_t seqno,
       const ray::rpc::ClientCallback<ray::rpc::ReturnVirtualClusterBundleReply>
           &callback) = 0;
 
@@ -503,18 +506,21 @@ class RayletClient : public RayletClientInterface {
   /// Implements PrepareVirtualClusterBundleInterface.
   void PrepareVirtualClusterBundle(
       const VirtualClusterBundleSpec &bundle_spec,
+      int64_t seqno,
       const ray::rpc::ClientCallback<ray::rpc::PrepareVirtualClusterBundleReply>
           &callback) override;
 
   /// Implements CommitVirtualClusterBundleInterface.
   void CommitVirtualClusterBundle(
       const VirtualClusterID &virtual_cluster_id,
+      int64_t seqno,
       const ray::rpc::ClientCallback<ray::rpc::CommitVirtualClusterBundleReply> &callback)
       override;
 
   /// Implements ReturnVirtualClusterBundleInterface.
   void ReturnVirtualClusterBundle(
       const VirtualClusterID &virtual_cluster_id,
+      int64_t seqno,
       const ray::rpc::ClientCallback<ray::rpc::ReturnVirtualClusterBundleReply> &callback)
       override;
 

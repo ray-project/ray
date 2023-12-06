@@ -192,6 +192,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init cluster task manager.
   InitClusterTaskManager();
 
+  // Have to happen after InitGcsResourceManager
   InitGcsVirtualClusterManager(gcs_init_data);
 
   // Init gcs resource manager.
@@ -353,6 +354,9 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   node_resource_info_service_.reset(
       new rpc::NodeResourceInfoGrpcService(main_service_, *gcs_resource_manager_));
   rpc_server_.RegisterService(*node_resource_info_service_);
+
+  // TODO: figure out a better way to solve this mutual dependency.
+  gcs_virtual_cluster_manager_->SetGcsResourceManager(gcs_resource_manager_.get());
 
   periodical_runner_.RunFnPeriodically(
       [this] {
