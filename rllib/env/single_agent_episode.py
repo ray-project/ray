@@ -645,7 +645,7 @@ class SingleAgentEpisode:
                 into the lookback buffer.
             neg_indices_left_of_zero: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
-                buffer. For example, an episode with observations [4, 5, 6, 7, 8, 9],
+                buffer. For example, an episode with observations [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
                 respond to `get_observations(-1, neg_indices_left_of_zero=True)`
                 with `6` and to

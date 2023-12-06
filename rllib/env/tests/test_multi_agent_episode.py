@@ -1099,7 +1099,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertListEqual(episode_1.global_t_to_local_t["agent_5"][-2:], [99, 100])
         # Agent 5 has already died, so we need to convert back to list.
         self.assertListEqual(
-            list(episode_1.agent_episodes["agent_5"].rewards)[-2:],
+            episode_1.agent_episodes["agent_5"].rewards[-2:],
             last_rewards["agent_5"],
         )
         self.assertIn("agent_2", last_rewards)
@@ -1325,7 +1325,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertIn("agent_5", last_rewards)
         # Agent 5 already died, so we need to convert to list first.
         self.assertListEqual(
-            list(episode_1.agent_episodes["agent_5"].rewards)[-1:-3:-1],
+            episode_1.agent_episodes["agent_5"].rewards[-1:-3:-1],
             last_rewards["agent_5"],
         )
         self.assertIn("agent_8", last_rewards)
