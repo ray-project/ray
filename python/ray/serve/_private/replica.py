@@ -220,18 +220,18 @@ def create_replica_wrapper(actor_class_name: str):
             component_id = replica_name.replica_suffix
 
             configure_component_logger(
-                component_type=ServeComponentType.DEPLOYMENT,
+                component_type=ServeComponentType.REPLICA,
                 component_name=component_name,
                 component_id=component_id,
                 logging_config=logging_config,
             )
             configure_component_memory_profiler(
-                component_type=ServeComponentType.DEPLOYMENT,
+                component_type=ServeComponentType.REPLICA,
                 component_name=component_name,
                 component_id=component_id,
             )
             self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-                component_type=ServeComponentType.DEPLOYMENT,
+                component_type=ServeComponentType.REPLICA,
                 component_name=component_name,
                 component_id=component_id,
             )
@@ -683,7 +683,7 @@ class RayServeReplica:
         if deployment_config.logging_config:
             logging_config = LoggingConfig(**deployment_config.logging_config)
             configure_component_logger(
-                component_type=ServeComponentType.DEPLOYMENT,
+                component_type=ServeComponentType.REPLICA,
                 component_name=self.deployment_id.name,
                 component_id=self.replica_tag,
                 logging_config=logging_config,
