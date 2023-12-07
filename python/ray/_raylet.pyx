@@ -3507,13 +3507,6 @@ cdef class CoreWorker:
                          c_object_id,
                          ))
 
-    def experimental_mutable_object_get_current_output_ref(self, ObjectRef channel_ref):
-        cdef:
-            CObjectID c_channel_ref = channel_ref
-        with nogil:
-            return (CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalMutableObjectGetCurrentOutputRef(c_channel_ref))
-
     def experimental_mutable_object_read_release(self, object_refs):
         """
         For experimental.channel.Channel.

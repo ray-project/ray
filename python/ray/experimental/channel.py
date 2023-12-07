@@ -120,10 +120,6 @@ class Channel:
             num_readers,
         )
 
-    def get_current_output_ref(self) -> "ray.ObjectRef":
-        return self._worker.core_worker.experimental_mutable_object_get_current_output_ref(
-                self._base_ref)
-
     def begin_read(self) -> Any:
         """
         Read the latest value from the channel. This call will block until a

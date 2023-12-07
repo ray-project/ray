@@ -1307,10 +1307,6 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
           memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id));
     }
   }
-
-  if (is_experimental_mutable_object) {
-    RegisterChannel(*object_id);
-  }
   return Status::OK();
 }
 
