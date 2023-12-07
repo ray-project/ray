@@ -289,13 +289,6 @@ Ray Examples
 
         Tune Basic Parallel Experiments
 
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training tuning
-        :link: /tune/examples/batch_tuning
-        :link-type: doc
-
-        Batch Training and Tuning using Ray Tune
-
     .. grid-item-card:: :bdg-warning:`Video`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=3t26ucTy0Rs
