@@ -247,6 +247,8 @@ class PlasmaClient : public PlasmaClientInterface {
 
   Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
 
+  Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
+
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
   ///
@@ -301,8 +303,6 @@ class PlasmaClient : public PlasmaClientInterface {
              int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers,
              bool is_from_worker);
-
-  Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.
