@@ -3,6 +3,8 @@ import pytest
 import ray
 from ray.dag.input_node import InputNode
 from ray.dag.output_node import MultiOutputNode
+from ray.util.state import list_tasks
+from ray._private.test_utils import wait_for_condition
 
 
 def test_output_node(shared_ray_instance):
@@ -114,6 +116,32 @@ def test_tensor_parallel_dag(shared_ray_instance):
 
     forwarded = ray.get([worker.get_forwarded.remote() for worker in workers])
     assert forwarded == [ITER for _ in range(NUM_WORKERS)]
+
+
+def test_shared_output(shared_ray_instance):
+    @ray.remote
+    def shared_f():
+        return 1
+
+    @ray.remote
+    def g(input):
+        return input + 1
+
+    @ray.remote
+    def h(input):
+        return input + 2
+
+    x = shared_f.bind()
+    dag = MultiOutputNode([g.bind(x), h.bind(x)])
+
+    ray.get(dag.execute()) == [2, 3]
+
+    # Verify f ran only once.
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "shared_f")])
+        return len(tasks) == 1
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":
