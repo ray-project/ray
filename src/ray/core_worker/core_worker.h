@@ -841,7 +841,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
-  /// \param[in] max_retires max number of retry when the task fails.
+  /// \param[in] max_retries max number of retry when the task fails.
   /// \param[in] retry_exceptions whether a user exception/error is eligible to retry.
   /// \param[in] scheduling_strategy Strategy about how to schedule the task.
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
