@@ -28,9 +28,18 @@ export RELEASE_AWS_BUCKET="runtime-release-test-artifacts"
 RAY_WANT_COMMIT_IN_IMAGE="$(cat .UPSTREAM)"
 export RAY_WANT_COMMIT_IN_IMAGE
 cd release
-python3 ray_release/scripts/build_pipeline.py \
-    --test-collection-file release/release_runtime_tests.yaml \
-    --run-jailed-tests \
-    --run-unstable-tests \
-    --global-config runtime_config.yaml \
-    | buildkite-agent pipeline upload
+if [[ "${BUILDKITE_BRANCH}" != "releases/"* ]]; then
+    python3 ray_release/scripts/build_pipeline.py \
+        --test-collection-file release/release_runtime_tests.yaml \
+        --run-jailed-tests \
+        --run-unstable-tests \
+        --global-config runtime_config.yaml \
+        | buildkite-agent pipeline upload
+else
+    python3 ray_release/scripts/build_pipeline.py \
+        --test-collection-file release/release_runtime_tests.yaml \
+        --test-collection-file release/release_tests.yaml \
+        --run-jailed-tests \
+        --global-config runtime_config.yaml \
+        | buildkite-agent pipeline upload
+fi
