@@ -38,6 +38,34 @@
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
       -- python/ray/tests/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=mem_pressure,autoscaler_concurrency
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      -- python/ray/tests/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=mem_pressure,autoscaler_concurrency
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      -- python/ray/tests/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=mem_pressure,autoscaler_concurrency
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      -- python/ray/tests/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=mem_pressure,autoscaler_concurrency
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      -- python/ray/tests/...
 
 - label: ":kubernetes: operator"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
