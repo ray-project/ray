@@ -921,7 +921,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
-  /// \param[in] max_retires max number of retry when the task fails.
+  /// \param[in] max_retries max number of retry when the task fails.
   /// \param[in] serialized_retry_exception_allowlist A serialized exception list
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Empty string means an allow-all in the language worker.
