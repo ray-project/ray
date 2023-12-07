@@ -2,7 +2,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import grpc
 
+from ray.util.annotations import PublicAPI
 
+
+@PublicAPI(stability="beta")
 class RayServegRPCContext:
     """Context manager to set and get gRPC context.
 
