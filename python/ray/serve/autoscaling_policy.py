@@ -7,16 +7,11 @@ import requests
 
 from ray.serve.config import AutoscalingConfig
 from ray.util.annotations import PublicAPI
+from ray.serve._private.common import (
+    TargetCapacityDirection,
+)
 
 PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
-
-
-@PublicAPI(stability="beta")
-class TargetCapacityDirection(str, Enum):
-    """Determines what direction the target capacity is scaling."""
-
-    UP = "UP"
-    DOWN = "DOWN"
 
 
 @PublicAPI(stability="beta")

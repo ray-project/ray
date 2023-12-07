@@ -10,7 +10,6 @@ import ray
 from ray import cloudpickle
 from ray._private.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
-from ray.serve._private.autoscaling_policy import TargetCapacityDirection
 from ray.serve._private.common import (
     ApplicationStatus,
     ApplicationStatusInfo,
@@ -38,6 +37,7 @@ from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
 )
+from ray.serve.autoscaling_policy import TargetCapacityDirection
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import DeploymentDetails, ServeApplicationSchema

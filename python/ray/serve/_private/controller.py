@@ -12,7 +12,6 @@ from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
-from ray.serve._private.autoscaling_policy import TargetCapacityDirection
 from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
@@ -53,6 +52,7 @@ from ray.serve._private.utils import (
     get_all_live_placement_group_names,
     get_head_node_id,
 )
+from ray.serve.autoscaling_policy import TargetCapacityDirection
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,

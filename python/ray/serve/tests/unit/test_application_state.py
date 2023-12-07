@@ -10,7 +10,6 @@ from ray.serve._private.application_state import (
     ApplicationStateManager,
     override_deployment_info,
 )
-from ray.serve._private.autoscaling_policy import TargetCapacityDirection
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,

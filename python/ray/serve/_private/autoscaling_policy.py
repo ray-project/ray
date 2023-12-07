@@ -1,11 +1,11 @@
 import logging
 import math
-from decimal import ROUND_HALF_UP, Decimal
 from inspect import isclass
 from typing import List, Optional
 
 import ray
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
+from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.autoscaling_policy import (
     AutoscalingContext,
     AutoscalingPolicy,
@@ -95,30 +95,6 @@ def calculate_desired_num_replicas(
     return desired_num_replicas
 
 
-def get_capacity_adjusted_num_replicas(
-    num_replicas: int, target_capacity: Optional[float]
-) -> int:
-    """Return the target state `num_replicas` adjusted by the `target_capacity`.
-
-    The output will only ever be 0 if `target_capacity` is 0 or `num_replicas` is
-    0 (to support autoscaling deployments using scale-to-zero).
-
-    Rather than using the default `round` behavior in Python, which rounds half to
-    even, uses the `decimal` module to round half up (standard rounding behavior).
-    """
-    if target_capacity is None or target_capacity == 100:
-        return num_replicas
-
-    if target_capacity == 0 or num_replicas == 0:
-        return 0
-
-    adjusted_num_replicas = Decimal(num_replicas * target_capacity) / Decimal(100.0)
-    rounded_adjusted_num_replicas = adjusted_num_replicas.to_integral_value(
-        rounding=ROUND_HALF_UP
-    )
-    return max(1, int(rounded_adjusted_num_replicas))
-
-
 class BasicAutoscalingPolicy(AutoscalingPolicy):
     """The default autoscaling policy based on basic thresholds for scaling.
     There is a minimum threshold for the average queue length in the cluster
@@ -153,15 +129,13 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         # scale_up_periods or scale_down_periods.
         self.decision_counter = 0
 
-    def get_decision_num_replicas(
-        self, autoscaling_context: AutoscalingContext
-    ) -> int:
-        if len(context.current_num_ongoing_requests) == 0:
+    def get_decision_num_replicas(self, autoscaling_context: AutoscalingContext) -> int:
+        if len(autoscaling_context.current_num_ongoing_requests) == 0:
             # When 0 replicas and queries are queued, scale up the replicas
-            if context.current_handle_queued_queries > 0:
+            if autoscaling_context.current_handle_queued_queries > 0:
                 return max(
                     math.ceil(1 * self.config.get_upscale_smoothing_factor()),
-                    context.curr_target_num_replicas,
+                    autoscaling_context.curr_target_num_replicas,
                 )
             return autoscaling_context.curr_target_num_replicas
 
@@ -254,6 +228,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
                 self.config.min_replicas,
                 target_capacity,
             )
+
 
 class CustomScalingPolicy(AutoscalingPolicy):
     """A custom autoscaling policy to handle user specified scaling logic."""

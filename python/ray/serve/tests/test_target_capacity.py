@@ -11,10 +11,16 @@ from ray._private.pydantic_compat import BaseModel
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve import Application
-from ray.serve._private.autoscaling_policy import TargetCapacityDirection
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.common import (
+    ApplicationStatus,
+    DeploymentStatus,
+    DeploymentStatusTrigger,
+    ReplicaState,
+)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve.autoscaling_policy import TargetCapacityDirection
+from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
