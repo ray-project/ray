@@ -13,7 +13,6 @@ Ray Data Examples
     huggingface_vit_batch_prediction
     pytorch_resnet_batch_prediction
     batch_inference_object_detection
-    batch_training
 
 .. _data-recipes:
 
@@ -49,16 +48,3 @@ Batch inference
         .. button-ref:: xgboost-example-ref
 
             Tabular Data Training and Batch Inference with XGBoost
-
-Many model training
--------------------
-
-.. grid:: 1 2 2 3
-    :gutter: 1
-    :class-container: container pb-4
-
-    .. grid-item-card::
-
-        .. button-ref:: batch_training
-
-            Many Model Training with Ray Data

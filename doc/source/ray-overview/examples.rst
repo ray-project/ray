@@ -288,39 +288,12 @@ Ray Examples
 
         Training One Million ML Models in Record Time with Ray
 
-    .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item training
-        :link: https://www.anyscale.com/blog/many-models-batch-training-at-scale-with-ray-core
-
-        Many Models Batch Training at Scale with Ray Core
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training
-        :link: /ray-core/examples/batch_training
-        :link-type: doc
-
-        Batch Training with Ray Core
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing training
-        :link: /data/examples/batch_training
-        :link-type: doc
-
-        Batch Training with Ray Data
-
     .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item tuning
         :link: /tune/tutorials/tune-run
         :link-type: doc
 
         Tune Basic Parallel Experiments
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training tuning
-        :link: /tune/examples/batch_tuning
-        :link-type: doc
-
-        Batch Training and Tuning using Ray Tune
 
     .. grid-item-card:: :bdg-warning:`Video`
         :class-item: gallery-item
@@ -1143,13 +1116,6 @@ Ray Examples
         :link-type: doc
 
         Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing training
-        :link: /data/examples/batch_training
-        :link-type: doc
-
-        Many Model Training with Ray Data
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core inference
