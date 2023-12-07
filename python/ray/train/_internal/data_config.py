@@ -4,6 +4,7 @@ from typing import Dict, List, Literal, Optional, Union
 import ray
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
+from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data.preprocessor import Preprocessor
 
 # TODO(justinvyu): Fix the circular import error
@@ -94,9 +95,14 @@ class DataConfig:
             ds = ds.copy(ds)
             ds.context.execution_options = copy.deepcopy(self._execution_options)
 
-            # Set reeserved resources for training.
-            ds.context.execution_options.exclude_resources.cpu = self._num_train_cpus
-            ds.context.execution_options.exclude_resources.gpu = self._num_train_gpus
+            # Add training-reserved resources to Data's exclude_resources.
+            ds.context.execution_options.exclude_resources = (
+                ds.context.execution_options.exclude_resources.add(
+                    ExecutionResources(
+                        cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                    )
+                )
+            )
 
             if name in datasets_to_split:
                 for i, split in enumerate(

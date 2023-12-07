@@ -91,9 +91,11 @@ class ExecutionOptions:
             This is not supported in bulk execution mode. Autodetected by default.
         exclude_resources: Amount of resources to exclude from Ray Data.
             Set this if you have other workloads running on the same cluster.
-            For Ray Data + Ray Train, this should be automatically set.
-            Note for each resource type, resource_limits and exclude_resources can
-            not be both set.
+            Note,
+              - For Ray Data + Ray Train workloads, training resources will be
+                automatically added.
+              - For each resource type, resource_limits and exclude_resources can
+                not be both set.
         locality_with_output: Set this to prefer running tasks on the same node as the
             output node (node driving the execution). It can also be set to a list of
             node ids to spread the outputs across those nodes. Off by default.
@@ -110,7 +112,9 @@ class ExecutionOptions:
 
     resource_limits: ExecutionResources = field(default_factory=ExecutionResources)
 
-    exclude_resources: ExecutionResources = field(default_factory=ExecutionResources)
+    exclude_resources: ExecutionResources = field(
+        default_factory=lambda: ExecutionResources(cpu=0, gpu=0, object_store_memory=0)
+    )
 
     locality_with_output: Union[bool, List[NodeIdStr]] = False
 
@@ -125,7 +129,7 @@ class ExecutionOptions:
         for attr in ["cpu", "gpu", "object_store_memory"]:
             if (
                 getattr(self.resource_limits, attr) is not None
-                and getattr(self.exclude_resources, attr) is not None
+                and getattr(self.exclude_resources, attr, 0) > 0
             ):
                 raise ValueError(
                     "resource_limits and exclude_resources can not be"

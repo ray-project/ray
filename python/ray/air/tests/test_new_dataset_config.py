@@ -8,6 +8,8 @@ from ray import train
 from ray.train import DataConfig, ScalingConfig
 from ray.data import DataIterator
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.data.context import DataContext
+from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
 from ray.tests.conftest import *  # noqa
 
 
@@ -263,8 +265,7 @@ def test_materialized_preprocessing(ray_start_4_cpus):
 
 
 def test_data_config_default_resource_limits(shutdown_only):
-    """Test that DataConfig's default resource limits should exclude the resources
-    used by training."""
+    """Test that DataConfig should exclude training resources from Data."""
     cluster_cpus, cluster_gpus = 20, 10
     num_workers = 2
     # Resources used by training workers.
@@ -273,6 +274,9 @@ def test_data_config_default_resource_limits(shutdown_only):
     default_trainer_cpus, default_trainer_gpus = 1, 0
     num_train_cpus = num_workers * cpus_per_worker + default_trainer_cpus
     num_train_gpus = num_workers * gpus_per_worker + default_trainer_gpus
+
+    init_exclude_cpus = 2
+    init_exclude_gpus = 1
 
     ray.init(num_cpus=cluster_cpus, num_gpus=cluster_gpus)
 
@@ -283,10 +287,15 @@ def test_data_config_default_resource_limits(shutdown_only):
                 exclude_resources = (
                     train_ds._base_dataset.context.execution_options.exclude_resources
                 )
-                assert exclude_resources.cpu == num_train_cpus
-                assert exclude_resources.gpu == num_train_gpus
+                assert exclude_resources.cpu == num_train_cpus + init_exclude_cpus
+                assert exclude_resources.gpu == num_train_gpus + init_exclude_gpus
 
             kwargs.pop("scaling_config", None)
+
+            execution_options = ExecutionOptions()
+            execution_options.exclude_resources.cpu = init_exclude_cpus
+            execution_options.exclude_resources.gpu = init_exclude_gpus
+
             super().__init__(
                 train_loop_per_worker=train_loop_fn,
                 scaling_config=ScalingConfig(
@@ -298,7 +307,7 @@ def test_data_config_default_resource_limits(shutdown_only):
                     },
                 ),
                 datasets={"train": ray.data.range(10)},
-                dataset_config=DataConfig(),
+                dataset_config=DataConfig(execution_options=execution_options),
                 **kwargs,
             )
 
