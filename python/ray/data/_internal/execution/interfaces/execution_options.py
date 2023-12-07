@@ -92,7 +92,7 @@ class ExecutionOptions:
         exclude_resources: Amount of resources to exclude from Ray Data.
             Set this if you have other workloads running on the same cluster.
             Note,
-              - For Ray Data + Ray Train workloads, training resources will be
+              - If using Ray Data with Ray Train, training resources will be
                 automatically added.
               - For each resource type, resource_limits and exclude_resources can
                 not be both set.
@@ -132,6 +132,6 @@ class ExecutionOptions:
                 and getattr(self.exclude_resources, attr, 0) > 0
             ):
                 raise ValueError(
-                    "resource_limits and exclude_resources can not be"
-                    f" both set for {attr} resource."
+                    "resource_limits and exclude_resources cannot "
+                    f" both be set for {attr} resource."
                 )
