@@ -128,6 +128,6 @@ class ExecutionOptions:
                 and getattr(self.exclude_resources, attr) is not None
             ):
                 raise ValueError(
-                    "resource_limits and exclude_resources can not be"
-                    f" both set for {attr} resource."
+                    "resource_limits and exclude_resources cannot "
+                    f" both be set for {attr} resource."
                 )
