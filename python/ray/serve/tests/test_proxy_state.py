@@ -66,9 +66,6 @@ class FakeProxyWrapper(ProxyWrapper):
     def reset_health_check(self):
         pass
 
-    def start_new_ready_check(self):
-        pass
-
     def start_new_health_check(self):
         self.health_check_ongoing = True
 

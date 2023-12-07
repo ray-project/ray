@@ -208,10 +208,6 @@ class ActorProxyWrapper(ProxyWrapper):
         """Reset the health check object reference."""
         self._health_check_obj_ref = None
 
-    def start_new_ready_check(self):
-        """Start a new ready check on the proxy actor."""
-        self._ready_obj_ref = self._actor_handle.ready.remote()
-
     def start_new_health_check(self):
         """Start a new health check on the proxy actor."""
         self._health_check_obj_ref = self._actor_handle.check_health.remote()
@@ -238,14 +234,18 @@ class ActorProxyWrapper(ProxyWrapper):
         is dead, return FINISHED_FAILED status.
         """
         try:
-            finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
-            if finished:
-                worker_id, log_file_path = json.loads(ray.get(finished[0]))
-                self.worker_id = worker_id
-                self.log_file_path = log_file_path
-                return ProxyWrapperCallStatus.FINISHED_SUCCEED
-            else:
+            if self._ready_obj_ref is None:
+                self._ready_obj_ref = self._actor_handle.ready.remote()
                 return ProxyWrapperCallStatus.PENDING
+            else:
+                finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
+                if finished:
+                    worker_id, log_file_path = json.loads(ray.get(finished[0]))
+                    self.worker_id = worker_id
+                    self.log_file_path = log_file_path
+                    return ProxyWrapperCallStatus.FINISHED_SUCCEED
+                else:
+                    return ProxyWrapperCallStatus.PENDING
         except RayActorError:
             return ProxyWrapperCallStatus.FINISHED_FAILED
 
@@ -328,7 +328,6 @@ class ProxyState:
         timer: TimerBase = Timer(),
     ):
         self._actor_proxy_wrapper = actor_proxy_wrapper
-        self._actor_proxy_wrapper.start_new_ready_check()
         self._actor_name = actor_name
         self._node_id = node_id
         self._status = ProxyStatus.STARTING
