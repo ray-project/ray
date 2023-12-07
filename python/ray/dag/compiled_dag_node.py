@@ -181,7 +181,17 @@ class CompiledDAG:
             self._preprocess()
 
     def _compile(self) -> Tuple[ChannelType, Union[ChannelType, List[ChannelType]]]:
-        """ """
+        """Compile an execution path. This allocates channels for adjacent
+        tasks to send/receive values. An infinite task is submitted to each
+        actor in the DAG that repeatedly receives from input channel(s) and
+        sends to output channel(s).
+
+        Returns:
+            A tuple of (input channel, output channel(s)). The input channel
+            that should be used by the caller to submit a DAG execution. The
+            output channel(s) should be read by the caller to get the DAG
+            output.
+        """
         from ray.dag import DAGNode, InputNode, OutputNode, ClassMethodNode
 
         if self.input_task_idx is None:
