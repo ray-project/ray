@@ -94,7 +94,7 @@ class DataConfig:
             ds = ds.copy(ds)
             ds.context.execution_options = copy.deepcopy(self._execution_options)
 
-            # Set reeserved resources for training.
+            # Set reserved resources for training.
             ds.context.execution_options.exclude_resources.cpu = self._num_train_cpus
             ds.context.execution_options.exclude_resources.gpu = self._num_train_gpus
 
