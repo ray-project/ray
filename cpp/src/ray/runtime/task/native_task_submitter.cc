@@ -69,7 +69,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   options.generator_backpressure_num_objects = -1;
   std::vector<rpc::ObjectReference> return_refs;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
-    // NOTE: per-method max_retries and retry_exceptions are not supported in Ray CPP for
+    // NOTE: Ray CPP doesn't support per-method max_retries and retry_exceptions
     // now.
     const auto native_actor_handle = core_worker.GetActorHandle(invocation.actor_id);
     int max_retries = native_actor_handle->MaxTaskRetries();
