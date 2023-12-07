@@ -982,6 +982,7 @@ def serialize_retry_exception_allowlist(retry_exception_allowlist, function_desc
 
 
 cdef c_bool determine_if_retryable(
+    c_bool should_retry_exceptions,
     Exception e,
     const c_string serialized_retry_exception_allowlist,
     FunctionDescriptor function_descriptor,
@@ -996,6 +997,8 @@ cdef c_bool determine_if_retryable(
         - Deserialization of exception allowlist fails (TypeError)
         - Exception allowlist is not None and not a tuple (AssertionError)
     """
+    if not should_retry_exceptions:
+        return False
     if len(serialized_retry_exception_allowlist) == 0:
         # No exception allowlist specified, default to all retryable.
         return True
@@ -1518,12 +1521,13 @@ cdef create_generator_error_object(
         CoreWorker core_worker = worker.core_worker
 
     is_retryable_error[0] = determine_if_retryable(
+        should_retry_exceptions,
         e,
         serialized_retry_exception_allowlist,
         function_descriptor,
     )
 
-    if is_retryable_error[0] and should_retry_exceptions:
+    if is_retryable_error[0]:
         logger.debug(
             "Task failed with retryable exception:"
             " {}.".format(task_id), exc_info=True)
@@ -1584,11 +1588,12 @@ cdef execute_dynamic_generator_and_store_task_outputs(
             generator_id)
     except Exception as error:
         is_retryable_error[0] = determine_if_retryable(
+            should_retry_exceptions,
             error,
             serialized_retry_exception_allowlist,
             function_descriptor,
         )
-        if is_retryable_error[0] and should_retry_exceptions:
+        if is_retryable_error[0]:
             logger.info("Task failed with retryable exception:"
                         " {}.".format(
                             core_worker.get_current_task_id()),
@@ -1885,13 +1890,12 @@ cdef void execute_task(
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
                 except Exception as e:
-                    retryable = (should_retry_exceptions and
-                                determine_if_retryable(
+                    is_retryable_error[0] = determine_if_retryable(
+                                    should_retry_exceptions,
                                     e,
                                     serialized_retry_exception_allowlist,
                                     function_descriptor,
-                                ))
-                    is_retryable_error[0] = retryable
+                                )
                     if is_retryable_error[0]:
                         logger.debug("Task failed with retryable exception:"
                                      " {}.".format(
