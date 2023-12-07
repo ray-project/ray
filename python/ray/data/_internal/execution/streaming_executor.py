@@ -73,6 +73,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
+        self._execution_started = False
         self._shutdown = False
 
         # Internal execution state shared across thread boundaries. We run the control
@@ -133,6 +134,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._get_operator_tags(),
         )
         self.start()
+        self._execution_started = True
 
         class StreamIterator(OutputIterator):
             def __init__(self, outer: Executor):
@@ -165,7 +167,7 @@ class StreamingExecutor(Executor, threading.Thread):
         global _num_shutdown
 
         with self._shutdown_lock:
-            if self._shutdown:
+            if not self._execution_started or self._shutdown:
                 return
             logger.get_logger().debug(f"Shutting down {self}.")
             _num_shutdown += 1
