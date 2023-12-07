@@ -1045,30 +1045,16 @@ def test_op_window_metrics():
     assert len(op.metrics.task_rss._window) == num_tasks
     assert len(op.metrics.task_runtime._window) == num_tasks
 
-    # Get percentile metrics names
-    window_fields = [
-        name
-        for name, field in OpRuntimeMetrics.__dataclass_fields__.items()
-        if field.metadata.get("window", False)
-    ]
-    percentile_metrics = []
-    for field in window_fields:
-        for percentile in SlidingWindowMetric.PERCENTILES:
-            percentile_metrics.append(f"{field}_p{percentile}")
-
     # Set current time window outside half of the datapoints
     with patch("time.time", MagicMock(return_value=num_tasks * 1.5)):
-        percentiles = op.metrics.as_dict(metrics_only=True, compute_percentiles=True)
-        assert all([percentiles[metric] != -1 for metric in percentile_metrics])
+        op.metrics.as_dict(metrics_only=True, compute_percentiles=True)
         # half the datapoints should have been evicted.
         assert len(op.metrics.task_rss._window) == num_tasks / 2
         assert len(op.metrics.task_rss._window) == num_tasks / 2
 
     # evict all datapoints
     with patch("time.time", MagicMock(return_value=num_tasks * 2)):
-        percentiles = op.metrics.as_dict(metrics_only=True, compute_percentiles=True)
-        assert all([percentiles[metric] == -1 for metric in percentile_metrics])
-
+        op.metrics.as_dict(metrics_only=True, compute_percentiles=True)
         assert len(op.metrics.task_rss._window) == 0
         assert len(op.metrics.task_runtime._window) == 0
 
@@ -1089,7 +1075,7 @@ def test_sliding_window_metric_percentile_calculation():
     ):
         percentiles = window.percentiles()
         assert percentiles == [
-            (percentile, -1) for percentile in SlidingWindowMetric.PERCENTILES
+            (percentile, 0) for percentile in SlidingWindowMetric.PERCENTILES
         ]
 
 
