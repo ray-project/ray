@@ -47,8 +47,9 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - pip install -e python
-      - bazel test --config=ci $(./ci/run/bazel_export_options)
+      - (cd dashboard/client && npm ci && npm run build)
+      - pip install -e python[client]
+      - bazel test --config=ci --jobs=1 $(./ci/run/bazel_export_options)
         --test_tag_filters=mem_pressure -- //python/ray/tests/...
     job_env: corebuild
 
