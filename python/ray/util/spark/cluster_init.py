@@ -514,7 +514,7 @@ def _setup_ray_cluster(
 
     port_exclude_list.append(ray_client_server_port)
 
-    autoscale = (min_worker_nodes < max_worker_nodes)
+    autoscale = min_worker_nodes < max_worker_nodes
     if autoscale:
         spark_job_server_port = get_random_unused_port(
             ray_head_ip,
