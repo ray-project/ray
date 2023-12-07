@@ -31,7 +31,7 @@ class TroubleMaker:
     def may_raise_n_times(self, counter, n):
         """
         Raises if there were n calls before this call.
-        returns the number of calls before this call, if it's > n.
+        Returns the number of calls before this call, if it's > n.
         """
         c = ray.get(counter.increment.remote())
         print(f"may_raise_n_times, n = {n}, count = {c}")
