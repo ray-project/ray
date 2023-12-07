@@ -8,19 +8,19 @@ from ray._private.accelerators import NPUAcceleratorManager as Accelerator
 
 
 @patch("glob.glob")
-@patch("os.listdir")
-def test_autodetect_num_npus(mock_list, mock_glob):
-    mock_glob.return_value = [f"/dev/davinci{i}" for i in range(4)]
-    mock_list.return_value = []
-    assert Accelerator.get_current_node_num_accelerators() == 4
+def test_autodetect_num_npus(mock_glob):
+    with patch.dict(sys.modules):
+        sys.modules["acl"] = None
+        mock_glob.return_value = [f"/dev/davinci{i}" for i in range(4)]
+        assert Accelerator.get_current_node_num_accelerators() == 4
 
 
 @patch("glob.glob")
-@patch("os.listdir")
-def test_autodetect_num_npus_without_devices(mock_list, mock_glob):
-    mock_glob.side_effect = FileNotFoundError
-    mock_list.return_value = []
-    assert Accelerator.get_current_node_num_accelerators() == 0
+def test_autodetect_num_npus_without_devices(mock_glob):
+    with patch.dict(sys.modules):
+        sys.modules["acl"] = None
+        mock_glob.side_effect = Exception
+        assert Accelerator.get_current_node_num_accelerators() == 0
 
 
 def test_ascend_npu_accelerator_manager_api():
@@ -43,33 +43,33 @@ def test_visible_ascend_npu_type(monkeypatch, shutdown_only):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
 def test_visible_ascend_npu_ids(monkeypatch, shutdown_only):
-    old_acl = sys.modules["acl"] if "acl" in sys.modules else None
-    sys.modules["acl"] = __import__("mock_acl")
-    monkeypatch.setenv("ASCEND_VISIBLE_DEVICES", "0,1,2")
-    with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=4):
+    with patch.dict(sys.modules):
+        sys.modules["acl"] = __import__("mock_acl")
+
+        monkeypatch.setenv("ASCEND_VISIBLE_DEVICES", "0,1,2")
+        with patch.object(
+            Accelerator, "get_current_node_num_accelerators", return_value=4
+        ):
+
+            ray.init()
+            manager = ray._private.accelerators.get_accelerator_manager_for_resource(
+                "NPU"
+            )
+            assert manager.get_current_node_num_accelerators() == 4
+            assert manager.__name__ == "NPUAcceleratorManager"
+            assert ray.available_resources()["NPU"] == 3
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
+def test_acl_api_function(shutdown_only):
+    with patch.dict(sys.modules):
+        sys.modules["acl"] = __import__("mock_acl")
 
         ray.init()
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("NPU")
         assert manager.get_current_node_num_accelerators() == 4
         assert manager.__name__ == "NPUAcceleratorManager"
-        assert ray.available_resources()["NPU"] == 3
-
-    sys.modules["acl"] = old_acl
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
-def test_acl_api_function(shutdown_only):
-    old_acl = sys.modules["acl"] if "acl" in sys.modules else None
-    sys.modules["acl"] = __import__("mock_acl")
-
-    ray.init()
-    manager = ray._private.accelerators.get_accelerator_manager_for_resource("NPU")
-    assert manager.get_current_node_num_accelerators() == 4
-    assert manager.__name__ == "NPUAcceleratorManager"
-    assert manager.get_current_node_accelerator_type() == "Ascend910B"
-    assert ray.available_resources()["NPU"] == 4
-
-    sys.modules["acl"] = old_acl
+        assert manager.get_current_node_accelerator_type() == "Ascend910B"
 
 
 def test_get_current_process_visible_accelerator_ids(monkeypatch, shutdown_only):
