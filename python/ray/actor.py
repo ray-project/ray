@@ -1389,7 +1389,7 @@ class ActorHandle:
             item,  # method_name
             ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,
             0,  # max_retries
-            False,  # retry_exceptions,
+            False,  # retry_exceptions
             False,  # is_generator
             self._ray_method_generator_backpressure_num_objects.get(item, -1),
             # Currently, cross-lang actor method not support decorator
