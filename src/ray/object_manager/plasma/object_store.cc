@@ -47,9 +47,11 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   entry->construct_duration = -1;
   entry->source = source;
 
-  auto plasma_header = entry->GetPlasmaObjectHeader();
-  *plasma_header = ray::PlasmaObjectHeader{};
-  plasma_header->Init();
+  if (object_info.is_mutable) {
+    auto plasma_header = entry->GetPlasmaObjectHeader();
+    *plasma_header = ray::PlasmaObjectHeader{};
+    plasma_header->Init();
+  }
 
   RAY_LOG(DEBUG) << "create object " << object_info.object_id << " succeeded";
   return entry;
@@ -70,12 +72,6 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
   }
   entry->state = ObjectState::PLASMA_SEALED;
   entry->construct_duration = std::time(nullptr) - entry->create_time;
-  auto plasma_header = entry->GetPlasmaObjectHeader();
-#ifndef _WIN32
-  if (!entry->object_info.is_mutable) {
-    RAY_CHECK(plasma_header->num_readers == -1) << plasma_header->num_readers;
-  }
-#endif
   return entry;
 }
 
@@ -84,8 +80,10 @@ bool ObjectStore::DeleteObject(const ObjectID &object_id) {
   if (entry == nullptr) {
     return false;
   }
-  auto plasma_header = entry->GetPlasmaObjectHeader();
-  plasma_header->Destroy();
+  if (entry->object_info.is_mutable) {
+    auto plasma_header = entry->GetPlasmaObjectHeader();
+    plasma_header->Destroy();
+  }
 
   allocator_.Free(std::move(entry->allocation));
   object_table_.erase(object_id);

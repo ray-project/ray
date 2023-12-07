@@ -123,6 +123,11 @@ Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteAcquire(
       data);
 }
 
+Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteRelease(
+    const ObjectID &object_id) {
+  return store_client_.ExperimentalMutableObjectWriteRelease(object_id);
+}
+
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
                                              const size_t data_size,
                                              const ObjectID &object_id,

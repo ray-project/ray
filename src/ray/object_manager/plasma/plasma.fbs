@@ -112,6 +112,9 @@ struct PlasmaObjectSpec {
   allocated_size: ulong;
   // Device to create buffer on.
   device_num: int;
+  // Whether this is an experimental mutable object that can be written
+  // multiple times by a client.
+  is_experimental_mutable_object: bool;
 }
 
 table PlasmaGetDebugStringRequest {

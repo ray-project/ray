@@ -3502,11 +3502,10 @@ cdef class CoreWorker:
         if data_size > 0:
             (<SerializedObject>serialized_object).write_to(
                 Buffer.make(data))
-        check_status(
-            CCoreWorkerProcess.GetCoreWorker().SealExisting(
-                        c_object_id, pin_object=False,
-                        generator_id=CObjectID.Nil(),
-                        owner_address=null_owner_address))
+        check_status(CCoreWorkerProcess.GetCoreWorker()
+                     .ExperimentalMutableObjectWriteRelease(
+                         c_object_id,
+                         ))
 
     def experimental_mutable_object_get_current_output_ref(self, ObjectRef channel_ref):
         cdef:

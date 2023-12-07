@@ -98,11 +98,6 @@ struct ObjectInUseEntry {
 
   /// The below fields are experimental and used to implement
   /// ray.experimental.channel.
-  ///
-  /// Whether the object is mutable. Most objects are immutable and cannot be
-  /// written to after the initial Create and Seal call. Mutable objects are
-  /// used to implement ray.experimental.channel.
-  bool is_mutable = false;
   /// Whether we are the writer. For now, only the original creator of the
   /// mutable object may write to it.
   bool is_writer = false;
@@ -136,7 +131,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                 const ray::rpc::Address &owner_address,
-                                bool is_mutable,
+                                bool is_experimental_mutable_object,
                                 int64_t data_size,
                                 const uint8_t *metadata,
                                 int64_t metadata_size,
@@ -146,7 +141,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status RetryCreate(const ObjectID &object_id,
                      uint64_t request_id,
-                     bool is_mutable,
+                     bool is_experimental_mutable_object,
                      const uint8_t *metadata,
                      uint64_t *retry_with_request_id,
                      std::shared_ptr<Buffer> *data);
@@ -166,6 +161,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                                                int64_t metadata_size,
                                                int64_t num_readers,
                                                std::shared_ptr<Buffer> *data);
+
+  Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
 
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
@@ -205,7 +202,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
  private:
   /// Helper method to read and process the reply of a create request.
   Status HandleCreateReply(const ObjectID &object_id,
-                           bool is_mutable,
+                           bool is_experimental_mutable_object,
                            const uint8_t *metadata,
                            uint64_t *retry_with_request_id,
                            std::shared_ptr<Buffer> *data);
@@ -235,13 +232,11 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val) const;
 
-#ifndef _WIN32
   ray::PlasmaObjectHeader *GetPlasmaObjectHeader(const PlasmaObject &object) const {
     auto base_ptr = LookupMmappedFile(object.store_fd);
     auto header_ptr = base_ptr + object.header_offset;
     return reinterpret_cast<ray::PlasmaObjectHeader *>(header_ptr);
   }
-#endif
 
   void InsertObjectInUse(const ObjectID &object_id,
                          std::unique_ptr<PlasmaObject> object,
@@ -343,7 +338,7 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id) {
 }
 
 Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
-                                             bool is_mutable,
+                                             bool is_experimental_mutable_object,
                                              const uint8_t *metadata,
                                              uint64_t *retry_with_request_id,
                                              std::shared_ptr<Buffer> *data) {
@@ -409,25 +404,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   RAY_CHECK(object_entry != objects_in_use_.end());
   auto &entry = object_entry->second;
   RAY_CHECK(!entry->is_sealed);
-  entry->is_mutable = is_mutable;
-
-#ifndef _WIN32
-  auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  if (entry->is_mutable) {
-    entry->is_writer = true;
-  } else {
-    // The first creation's version is always 1.
-    RAY_CHECK(entry->next_version_to_write == 1);
-    // The corresponding WriteRelease takes place in Seal.
-    // When an object is first created, the data size is equivalent to
-    // buffer size.
-    plasma_header->WriteAcquire(entry->next_version_to_write,
-                                entry->object.data_size,
-                                entry->object.metadata_size,
-                                // Anyone may read an immutable object.
-                                /*num_readers=*/-1);
-  }
-#endif
+  entry->is_writer = true;
 
   return Status::OK();
 }
@@ -453,7 +430,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
   RAY_CHECK(object_entry != objects_in_use_.end());
 
   auto &entry = object_entry->second;
-  RAY_CHECK(entry->is_mutable);
+  RAY_CHECK(entry->object.is_experimental_mutable_object);
   RAY_CHECK(entry->is_sealed) << "Must Seal before writing again to a mutable object";
 
   RAY_LOG(DEBUG) << "Write mutable object " << object_id;
@@ -488,9 +465,39 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
   return Status::OK();
 }
 
+Status PlasmaClient::Impl::ExperimentalMutableObjectWriteRelease(
+    const ObjectID &object_id) {
+#ifndef _WIN32
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  auto object_entry = objects_in_use_.find(object_id);
+  if (object_entry == objects_in_use_.end()) {
+    return Status::Invalid(
+        "Plasma buffer for mutable object not in scope. Are you sure you're the writer?");
+  }
+  if (!object_entry->second->is_writer) {
+    return Status::Invalid(
+        "Mutable objects can only be written by the original creator process.");
+  }
+  RAY_CHECK(object_entry != objects_in_use_.end());
+
+  auto &entry = object_entry->second;
+  RAY_CHECK(entry->object.is_experimental_mutable_object);
+  RAY_CHECK(!entry->is_sealed)
+      << "Must WriteAcquire before WriteRelease on a mutable object";
+
+  entry->is_sealed = true;
+  auto plasma_header = GetPlasmaObjectHeader(entry->object);
+  plasma_header->WriteRelease(
+      /*write_version=*/entry->next_version_to_write);
+  // The next Write must pass a higher version.
+  entry->next_version_to_write++;
+#endif
+  return Status::OK();
+}
+
 Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                                   const ray::rpc::Address &owner_address,
-                                                  bool is_mutable,
+                                                  bool is_experimental_mutable_object,
                                                   int64_t data_size,
                                                   const uint8_t *metadata,
                                                   int64_t metadata_size,
@@ -505,14 +512,14 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_,
                                       object_id,
                                       owner_address,
-                                      is_mutable,
+                                      is_experimental_mutable_object,
                                       data_size,
                                       metadata_size,
                                       source,
                                       device_num,
                                       /*try_immediately=*/false));
-  Status status =
-      HandleCreateReply(object_id, is_mutable, metadata, &retry_with_request_id, data);
+  Status status = HandleCreateReply(
+      object_id, is_experimental_mutable_object, metadata, &retry_with_request_id, data);
 
   while (retry_with_request_id > 0) {
     guard.unlock();
@@ -524,7 +531,7 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                    << retry_with_request_id;
     status = RetryCreate(object_id,
                          retry_with_request_id,
-                         is_mutable,
+                         is_experimental_mutable_object,
                          metadata,
                          &retry_with_request_id,
                          data);
@@ -535,13 +542,14 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
 
 Status PlasmaClient::Impl::RetryCreate(const ObjectID &object_id,
                                        uint64_t request_id,
-                                       bool is_mutable,
+                                       bool is_experimental_mutable_object,
                                        const uint8_t *metadata,
                                        uint64_t *retry_with_request_id,
                                        std::shared_ptr<Buffer> *data) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   RAY_RETURN_NOT_OK(SendCreateRetryRequest(store_conn_, object_id, request_id));
-  return HandleCreateReply(object_id, is_mutable, metadata, retry_with_request_id, data);
+  return HandleCreateReply(
+      object_id, is_experimental_mutable_object, metadata, retry_with_request_id, data);
 }
 
 Status PlasmaClient::Impl::TryCreateImmediately(const ObjectID &object_id,
@@ -559,13 +567,14 @@ Status PlasmaClient::Impl::TryCreateImmediately(const ObjectID &object_id,
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_,
                                       object_id,
                                       owner_address,
-                                      /*is_mutable=*/false,
+                                      /*is_experimental_mutable_object=*/false,
                                       data_size,
                                       metadata_size,
                                       source,
                                       device_num,
                                       /*try_immediately=*/true));
-  return HandleCreateReply(object_id, /*is_mutable=*/false, metadata, nullptr, data);
+  return HandleCreateReply(
+      object_id, /*is_experimental_mutable_object=*/false, metadata, nullptr, data);
 }
 
 Status PlasmaClient::Impl::GetBuffers(
@@ -594,8 +603,10 @@ Status PlasmaClient::Impl::GetBuffers(
           << "Attempting to get an object that this client created but hasn't sealed.";
       all_present = false;
     } else {
-      // Wait for the object to become ready to read.
-      RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry->second));
+      if (object_entry->second->object.is_experimental_mutable_object) {
+        // Wait for the object to become ready to read.
+        RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry->second));
+      }
 
       PlasmaObject *object = &object_entry->second->object;
 
@@ -679,7 +690,7 @@ Status PlasmaClient::Impl::GetBuffers(
       auto &object_entry = objects_in_use_[received_object_ids[i]];
 
       // Wait for the object to become ready to read.
-      if (!object_entry->read_acquired) {
+      if (object_entry->object.is_experimental_mutable_object) {
         RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry));
       }
       std::shared_ptr<Buffer> physical_buf;
@@ -733,6 +744,7 @@ Status PlasmaClient::Impl::EnsureGetAcquired(
     std::unique_ptr<ObjectInUseEntry> &object_entry) {
 #ifndef _WIN32
   PlasmaObject *object = &object_entry->object;
+  RAY_CHECK(object->is_experimental_mutable_object);
   auto plasma_header = GetPlasmaObjectHeader(*object);
   if (object_entry->read_acquired) {
     return Status::OK();
@@ -747,19 +759,17 @@ Status PlasmaClient::Impl::EnsureGetAcquired(
   }
 
   object_entry->read_acquired = true;
-  if (version_read > 0) {
-    object_entry->is_mutable = true;
-    object_entry->next_version_to_read = version_read;
+  RAY_CHECK(version_read > 0);
+  object_entry->next_version_to_read = version_read;
 
-    // The data and metadata size may have changed, so update here before we
-    // create the Get buffer to return.
-    object_entry->object.data_size = plasma_header->data_size;
-    object_entry->object.metadata_size = plasma_header->metadata_size;
-    object_entry->object.metadata_offset =
-        object_entry->object.data_offset + object_entry->object.data_size;
-    RAY_CHECK(object_entry->object.data_size + object_entry->object.metadata_size <=
-              object_entry->object.allocated_size);
-  }
+  // The data and metadata size may have changed, so update here before we
+  // create the Get buffer to return.
+  object_entry->object.data_size = plasma_header->data_size;
+  object_entry->object.metadata_size = plasma_header->metadata_size;
+  object_entry->object.metadata_offset =
+      object_entry->object.data_offset + object_entry->object.data_size;
+  RAY_CHECK(object_entry->object.data_size + object_entry->object.metadata_size <=
+            object_entry->object.allocated_size);
 #endif
   return Status::OK();
 }
@@ -780,7 +790,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectReadRelease(
   if (!entry->is_sealed) {
     return Status::ObjectNotFound("ray.release() called on an object that is not sealed");
   }
-  if (!entry->is_mutable) {
+  if (!entry->object.is_experimental_mutable_object) {
     return Status::ObjectNotFound(
         "ray.release() called on an object that is not mutable");
   }
@@ -816,7 +826,7 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   const auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
 
-  if (!object_entry->second->is_mutable) {
+  if (!object_entry->second->object.is_experimental_mutable_object) {
     // Release only applies to immutable objects.
     // TODO(swang): Add a delete call to properly clean up mutable objects.
     object_entry->second->count -= 1;
@@ -894,32 +904,20 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   }
 
   object_entry->second->is_sealed = true;
-#ifndef _WIN32
-  auto plasma_header = GetPlasmaObjectHeader(object_entry->second->object);
-  plasma_header->WriteRelease(
-      /*write_version=*/object_entry->second->next_version_to_write);
-  // The next Write must pass a higher version.
-  object_entry->second->next_version_to_write++;
-
-  if (plasma_header->num_readers <= 0) {
-#else
-  {
-#endif
-    // Send the seal request to Plasma. This is the normal Seal path, used for
-    // immutable objects and the initial Create call for mutable objects.
-    RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
-    std::vector<uint8_t> buffer;
-    RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
-    ObjectID sealed_id;
-    RAY_RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
-    RAY_CHECK(sealed_id == object_id);
-    // We call PlasmaClient::Release to decrement the number of instances of this
-    // object
-    // that are currently being used by this client. The corresponding increment
-    // happened in plasma_create and was used to ensure that the object was not
-    // released before the call to PlasmaClient::Seal.
-    RAY_RETURN_NOT_OK(Release(object_id));
-  }
+  // Send the seal request to Plasma. This is the normal Seal path, used for
+  // immutable objects and the initial Create call for mutable objects.
+  RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
+  std::vector<uint8_t> buffer;
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
+  ObjectID sealed_id;
+  RAY_RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
+  RAY_CHECK(sealed_id == object_id);
+  // We call PlasmaClient::Release to decrement the number of instances of this
+  // object
+  // that are currently being used by this client. The corresponding increment
+  // happened in plasma_create and was used to ensure that the object was not
+  // released before the call to PlasmaClient::Seal.
+  RAY_RETURN_NOT_OK(Release(object_id));
 
   return Status::OK();
 }
@@ -1061,9 +1059,13 @@ Status PlasmaClient::ExperimentalMutableObjectWriteAcquire(
       object_id, data_size, metadata, metadata_size, num_readers, data);
 }
 
+Status PlasmaClient::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {
+  return impl_->ExperimentalMutableObjectWriteRelease(object_id);
+}
+
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             const ray::rpc::Address &owner_address,
-                                            bool is_mutable,
+                                            bool is_experimental_mutable_object,
                                             int64_t data_size,
                                             const uint8_t *metadata,
                                             int64_t metadata_size,
@@ -1072,7 +1074,7 @@ Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             int device_num) {
   return impl_->CreateAndSpillIfNeeded(object_id,
                                        owner_address,
-                                       is_mutable,
+                                       is_experimental_mutable_object,
                                        data_size,
                                        metadata,
                                        metadata_size,

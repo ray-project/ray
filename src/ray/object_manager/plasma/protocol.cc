@@ -200,7 +200,7 @@ Status SendCreateRetryRequest(const std::shared_ptr<StoreConn> &store_conn,
 Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                          ObjectID object_id,
                          const ray::rpc::Address &owner_address,
-                         bool is_mutable,
+                         bool is_experimental_mutable_object,
                          int64_t data_size,
                          int64_t metadata_size,
                          flatbuf::ObjectSource source,
@@ -214,7 +214,7 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                                     fbb.CreateString(owner_address.ip_address()),
                                     owner_address.port(),
                                     fbb.CreateString(owner_address.worker_id()),
-                                    is_mutable,
+                                    is_experimental_mutable_object,
                                     data_size,
                                     metadata_size,
                                     source,
@@ -269,7 +269,8 @@ Status SendCreateReply(const std::shared_ptr<Client> &client,
                                  object.metadata_offset,
                                  object.metadata_size,
                                  object.allocated_size,
-                                 object.device_num);
+                                 object.device_num,
+                                 object.is_experimental_mutable_object);
   auto object_string = fbb.CreateString(object_id.Binary());
   fb::PlasmaCreateReplyBuilder crb(fbb);
   crb.add_error(static_cast<PlasmaError>(error_code));
@@ -311,6 +312,8 @@ Status ReadCreateReply(uint8_t *data,
   object->metadata_offset = message->plasma_object()->metadata_offset();
   object->metadata_size = message->plasma_object()->metadata_size();
   object->allocated_size = message->plasma_object()->allocated_size();
+  object->is_experimental_mutable_object =
+      message->plasma_object()->is_experimental_mutable_object();
 
   store_fd->first = INT2FD(message->store_fd());
   store_fd->second = message->unique_fd_id();
@@ -627,7 +630,8 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                                        object.metadata_offset,
                                        object.metadata_size,
                                        object.allocated_size,
-                                       object.device_num));
+                                       object.device_num,
+                                       object.is_experimental_mutable_object));
   }
   std::vector<int> store_fds_as_int;
   std::vector<int64_t> unique_fd_ids;
@@ -670,6 +674,8 @@ Status ReadGetReply(uint8_t *data,
     plasma_objects[i].metadata_size = object->metadata_size();
     plasma_objects[i].allocated_size = object->allocated_size();
     plasma_objects[i].device_num = object->device_num();
+    plasma_objects[i].is_experimental_mutable_object =
+        object->is_experimental_mutable_object();
   }
   RAY_CHECK(message->store_fds()->size() == message->mmap_sizes()->size());
   for (uoffset_t i = 0; i < message->store_fds()->size(); i++) {

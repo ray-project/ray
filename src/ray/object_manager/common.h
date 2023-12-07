@@ -141,7 +141,7 @@ struct PlasmaObjectHeader {
 /// A struct that includes info about the object.
 struct ObjectInfo {
   ObjectID object_id;
-  bool is_mutable;
+  bool is_mutable = false;
   int64_t data_size = 0;
   int64_t metadata_size = 0;
   /// Owner's raylet ID.
@@ -154,7 +154,7 @@ struct ObjectInfo {
   WorkerID owner_worker_id;
 
   int64_t GetObjectSize() const {
-    return sizeof(PlasmaObjectHeader) + data_size + metadata_size;
+    return data_size + metadata_size + (is_mutable ? sizeof(PlasmaObjectHeader) : 0);
   }
 
   bool operator==(const ObjectInfo &other) const {

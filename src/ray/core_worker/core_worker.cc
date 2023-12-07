@@ -1340,6 +1340,10 @@ Status CoreWorker::ExperimentalMutableObjectWriteAcquire(
       object_id, metadata, data_size, num_readers, data);
 }
 
+Status CoreWorker::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {
+  return plasma_store_provider_->ExperimentalMutableObjectWriteRelease(object_id);
+}
+
 Status CoreWorker::SealOwned(const ObjectID &object_id,
                              bool pin_object,
                              const std::unique_ptr<rpc::Address> &owner_address) {
