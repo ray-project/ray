@@ -53,7 +53,6 @@ class FakeProxyWrapper(ProxyWrapper):
         self.drained = ProxyWrapperCallStatus.FINISHED_SUCCEED
         self.worker_id = "mock_worker_id"
         self.log_file_path = "mock_log_file_path"
-        self.health_check_ongoing = False
         self.is_draining = False
         self.shutdown = False
         self.num_health_checks = 0
@@ -66,18 +65,14 @@ class FakeProxyWrapper(ProxyWrapper):
     def reset_health_check(self):
         pass
 
-    def start_new_health_check(self):
-        self.health_check_ongoing = True
-
     def start_new_drained_check(self):
         self.is_draining = True
 
-    def is_ready(self) -> ProxyWrapperCallStatus:
+    def is_ready(self, timeout_s: float) -> ProxyWrapperCallStatus:
         return self.ready
 
-    def is_healthy(self) -> ProxyWrapperCallStatus:
+    def is_healthy(self, timeout_s: float) -> ProxyWrapperCallStatus:
         self.num_health_checks += 1
-        self.health_check_ongoing = False
         return self.health
 
     def is_drained(self) -> ProxyWrapperCallStatus:
@@ -135,7 +130,7 @@ def _create_proxy_state(
         node_ip="mock_node_ip",
         timer=timer,
     )
-    state.set_status(status=status)
+    state._set_status(status=status)
     return state
 
 
@@ -226,7 +221,7 @@ def test_proxy_state_update_restarts_unhealthy_proxies(all_nodes):
     old_proxy = old_proxy_state.actor_handle
 
     # Make the old proxy unhealthy.
-    old_proxy_state.set_status(ProxyStatus.UNHEALTHY)
+    old_proxy_state._set_status(ProxyStatus.UNHEALTHY)
 
     # Continuously trigger update and wait for status to be changed to HEALTHY.
     wait_for_condition(

@@ -108,8 +108,8 @@ PROXY_READY_CHECK_TIMEOUT_S = (
     float(os.environ.get("RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", "5")) or 5
 )
 
-#: Number of times in a row that a HTTP proxy must fail the health check before
-#: being marked unhealthy.
+# Number of times in a row that a HTTP proxy must fail the health check before
+# being marked unhealthy.
 PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 # The minimum drain period for a HTTP proxy.

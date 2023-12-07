@@ -366,8 +366,12 @@ class ProxyState:
     def proxy_restart_count(self) -> int:
         return self._proxy_restart_count
 
-    def set_status(self, status: ProxyStatus) -> None:
-        """Sets _status and updates _actor_details with the new status."""
+    def _set_status(self, status: ProxyStatus) -> None:
+        """Sets _status and updates _actor_details with the new status.
+
+        NOTE: This method should not be used directly, instead please
+              use `try_update_status` method
+        """
         self._status = status
         self.update_actor_details(status=self._status)
 
@@ -384,26 +388,21 @@ class ProxyState:
             self._consecutive_health_check_failures += 1
             # Early return to skip setting UNHEALTHY status if there are still room for
             # retry.
-            if (
-                self._consecutive_health_check_failures
-                < PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-            ):
+            if self._consecutive_health_check_failures < PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD:
                 return
-
-        # Reset self._consecutive_health_check_failures when status is not UNHEALTHY.
-        if status != ProxyStatus.UNHEALTHY:
+            else:
+                # If all retries have been exhausted and setting the status to UNHEALTHY, log a
+                # warning message to the user.
+                logger.warning(
+                    f"Proxy {self._actor_name} failed the health check "
+                    f"{self._consecutive_health_check_failures} times in a row, marking it "
+                    f"unhealthy."
+                )
+        else:
+            # Reset self._consecutive_health_check_failures when status is not UNHEALTHY.
             self._consecutive_health_check_failures = 0
 
-        self.set_status(status=status)
-
-        # If all retries have been exhausted and setting the status to UNHEALTHY, log a
-        # warning message to the user.
-        if status == ProxyStatus.UNHEALTHY:
-            logger.warning(
-                f"Proxy {self._actor_name} failed the health check "
-                f"{self._consecutive_health_check_failures} times in a row, marking it "
-                f"unhealthy."
-            )
+        self._set_status(status=status)
 
     def update_actor_details(self, **kwargs) -> None:
         """Updates _actor_details with passed in kwargs."""
@@ -457,7 +456,7 @@ class ProxyState:
             try:
                 drained_call_status = self._actor_proxy_wrapper.is_drained()
                 if drained_call_status == ProxyWrapperCallStatus.FINISHED_SUCCEED:
-                    self.set_status(ProxyStatus.DRAINED)
+                    self.try_update_status(ProxyStatus.DRAINED)
             except Exception as e:
                 logger.warning(f"Drain check for proxy {self._actor_name} failed: {e}.")
         elif (
@@ -508,7 +507,7 @@ class ProxyState:
         ) * PROXY_READY_CHECK_TIMEOUT_S
         if self._status == ProxyStatus.STARTING:
             try:
-                ready_call_status = self._actor_proxy_wrapper.is_ready()
+                ready_call_status = self._actor_proxy_wrapper.is_ready(ready_check_timeout)
                 if ready_call_status == ProxyWrapperCallStatus.FINISHED_SUCCEED:
                     self.try_update_status(ProxyStatus.HEALTHY)
                     self.update_actor_details(
@@ -517,7 +516,7 @@ class ProxyState:
                         status=self._status,
                     )
                 elif ready_call_status == ProxyWrapperCallStatus.FINISHED_FAILED:
-                    self.set_status(ProxyStatus.UNHEALTHY)
+                    self.try_update_status(ProxyStatus.UNHEALTHY)
                     logger.warning(
                         "Unexpected actor death when checking readiness of "
                         f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
@@ -550,7 +549,7 @@ class ProxyState:
 
         if (self._status == ProxyStatus.HEALTHY) and draining:
             logger.info(f"Start to drain the proxy actor on node {self._node_id}")
-            self.set_status(ProxyStatus.DRAINING)
+            self.try_update_status(ProxyStatus.DRAINING)
             # All the update_draining calls are ordered via `_after`.
             self._actor_proxy_wrapper.update_draining(draining=True)
             assert self._actor_proxy_wrapper.is_draining is False
@@ -559,7 +558,7 @@ class ProxyState:
 
         if (self._status == ProxyStatus.DRAINING) and not draining:
             logger.info(f"Stop draining the proxy actor on node {self._node_id}")
-            self.set_status(ProxyStatus.HEALTHY)
+            self.try_update_status(ProxyStatus.HEALTHY)
             self._actor_proxy_wrapper.update_draining(draining=False)
             self._actor_proxy_wrapper.reset_drained_check()
             self._last_drain_check_time = None
