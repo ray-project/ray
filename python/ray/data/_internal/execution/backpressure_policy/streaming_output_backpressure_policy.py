@@ -136,8 +136,9 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             return
         self._warning_printed = True
         msg = (
-            f"Operator {op} is running but has no outputs for {idle_time} seconds. Execution may be slower than expected.\n\n"
-            " Ignore this warning if your UDF is expected to be slow."
+            f"Operator {op} is running but has no outputs for {idle_time} seconds."
+            " Execution may be slower than expected.\n"
+            "Ignore this warning if your UDF is expected to be slow."
             " Otherwise, this can happen when there are fewer cluster resources"
             " available to Ray Data than expected."
             " If you have non-Data tasks or actors running in the cluster, exclude"
