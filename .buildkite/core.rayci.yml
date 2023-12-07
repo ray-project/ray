@@ -27,7 +27,7 @@ steps:
     instance_type: large
     parallelism: 4
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,container,manual
 
@@ -36,10 +36,22 @@ steps:
     instance_type: large
     parallelism: 4
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,container,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,xcommit,container,manual
+
+  - label: ":ray: core: memory pressure tests"
+    tags:
+      - python
+      - oss
+    instance_type: medium
+    commands:
+      - (cd dashboard/client && npm ci && npm run build)
+      - pip install -e python[client]
+      - bazel test --config=ci --jobs=1 $(./ci/run/bazel_export_options)
+        --test_tag_filters=mem_pressure -- //python/ray/tests/...
+    job_env: corebuild
 
   - label: ":ray: core: workflow tests"
     tags: 
@@ -48,11 +60,11 @@ steps:
     instance_type: medium
     parallelism: 2
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --except-tags use_all_core
         --parallelism-per-worker 2
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --skip-ray-installation
         --only-tags use_all_core
