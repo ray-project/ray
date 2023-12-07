@@ -145,7 +145,8 @@ Note that by default, retrying on user raised exceptions is disabled. To enable 
 
 You can set ``retry_exceptions`` in the `@ray.method(retry_exceptions=...)` decorator, or in the `.options(retry_exceptions=...)` in the method call.
 
-- (Default case) If ``retry_exceptions == False``: no retries for user exceptions.
+Retry behavior depends on the value you set ``retry_exceptions`` to:
+- ``retry_exceptions == False`` (default): No retries for user exceptions.
 - If ``retry_exceptions == True``: a method may be retried on user exception for up to ``max_retries`` times.
 - If ``retry_exceptions`` is a list of exceptions: a method may be retried on user exception for up to ``max_retries`` times, only if it raises an exception from these specific classes.
 
