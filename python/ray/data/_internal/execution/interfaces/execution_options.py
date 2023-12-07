@@ -92,10 +92,10 @@ class ExecutionOptions:
         exclude_resources: Amount of resources to exclude from Ray Data.
             Set this if you have other workloads running on the same cluster.
             Note,
-              - If using Ray Data with Ray Train, training resources will be
-                automatically added.
-              - For each resource type, resource_limits and exclude_resources can
-                not be both set.
+            - If using Ray Data with Ray Train, training resources will be
+            automatically excluded.
+            - For each resource type, resource_limits and exclude_resources can
+            not be both set.
         locality_with_output: Set this to prefer running tasks on the same node as the
             output node (node driving the execution). It can also be set to a list of
             node ids to spread the outputs across those nodes. Off by default.
