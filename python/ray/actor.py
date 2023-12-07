@@ -124,7 +124,7 @@ class ActorMethod:
             DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
             and "streaming" for a generator task (when `is_generator` is True).
         _max_retries: Number of retries on method failure.
-        _retry_exceptions: Boolean of whether we want to retry all user-raised
+        _retry_exceptions: Boolean of whether you want to retry all user-raised
             exceptions, or a list of allowlist exceptions to retry.
         _is_generator: True if a given method is a Python generator.
         _generator_backpressure_num_objects: Generator-only config.
