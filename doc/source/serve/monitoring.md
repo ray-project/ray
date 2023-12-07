@@ -234,7 +234,7 @@ In addition to the standard Python logger, Serve supports custom logging. Custom
 For a detailed overview of logging in Ray, see [Ray Logging](configure-logging).
 
 ### Configure Serve logging 
-In ray 2.9, logging_config API is introduced to configure logging for Ray Serve. You can configure logging for Ray Serve by passing a dictionary to `logging_config` argument of `serve.run` or `@serve.deployment`.
+From ray 2.9, logging_config API is introduced to configure logging for Ray Serve. You can configure logging for Ray Serve by passing a dictionary to `logging_config` argument of `serve.run` or `@serve.deployment`.
 
 #### Configure logging format
 You can configure json logging format by passing `encoding=JSON` to `logging_config` argument `@serve.deployment`. For example
@@ -263,7 +263,7 @@ You can configure to use different directory for logging by passing `log_dir` to
 The `Model` replica log file should be at `/my_dirs` directory.
 
 #### Configure logging level
-You can configure logging level by passing `level` to `logging_config` argument `@serve.deployment`. For example
+You can configure logging level by passing `log_level` to `logging_config` argument `@serve.deployment`. For example
 
 ```{literalinclude} doc_code/monitoring/logging_config.py
 :start-after: __level_start__
