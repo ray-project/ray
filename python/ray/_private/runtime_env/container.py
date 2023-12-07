@@ -58,7 +58,7 @@ class ContainerManager:
                 "RAY_JOB_ID",
             ]:
                 container_command.append("--env")
-                container_command.append(f"{env_var_name}={env_var_value}")
+                container_command.append(f"{env_var_name}='{env_var_value}'")
 
         if runtime_env.py_container_run_options():
             container_command.extend(runtime_env.py_container_run_options())
