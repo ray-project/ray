@@ -150,7 +150,7 @@ Retry behavior depends on the value you set ``retry_exceptions`` to:
 - ``retry_exceptions == True``: Ray retries a method on user exception up to ``max_retries`` times.
 - ``retry_exceptions`` is a list of exceptions: Ray retries a method on user exception up to ``max_retries`` times, only if the method raises an exception from these specific classes.
 
-``max_retries`` works for both exceptions and actor crashes. It's determined in this order:
+``max_retries`` applies to both exceptions and actor crashes. Ray searches for the first non-default value of ``max_retries`` in this order:
 
 - the method call's `.options(max_retries=2)`, or if not set,
 - the method definition's `@ray.method(max_retries=2)` decorator, of if not set,
