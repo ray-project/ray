@@ -443,7 +443,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   RAY_CHECK(callOptions != nullptr);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
-  // NOTE: an actor method call from Java ActorHandle only recognizes the actor's
+  // NOTE: An actor method call from Java ActorHandle only recognizes the actor's
   // max_task_retries. It does NOT recognize per-method max_retries. It also only retries
   // on actor death, not on user exceptions. The max_task_retries is read from CoreWorker.
   // TODO: support Java max_retries and retry_exceptions.
