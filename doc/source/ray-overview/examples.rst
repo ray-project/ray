@@ -55,7 +55,7 @@ Ray Examples
     :class-container: gallery-container container pb-3
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data-processing generative-ai huggingface inference large-language-models monitoring natural-language-processing pytorch serving tracking training tuning
+        :class-item: gallery-item generative-ai huggingface inference large-language-models monitoring natural-language-processing pytorch serving tracking training tuning
         :link: https://madewithml.com/#course
 
         Self-paced course on taking your ML applications to production
@@ -270,13 +270,13 @@ Ray Examples
         Streaming distributed execution across CPUs and GPUs
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item large-language-models natural-language-processing data-processing inference generative-ai
+        :class-item: gallery-item large-language-models natural-language-processing inference generative-ai
         :link: https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding
 
         Using Ray Data to parallelize LangChain inference
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item data-processing inference
+        :class-item: gallery-item inference
         :link: /data/batch_inference
         :link-type: doc
 
@@ -302,7 +302,7 @@ Ray Examples
         Batch Training with Ray Core
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing training
+        :class-item: gallery-item training
         :link: /data/examples/batch_training
         :link-type: doc
 
@@ -553,7 +553,7 @@ Ray Examples
         End-to-end PyTorch Lightning Training Example
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing training natural-language-processing
+        :class-item: gallery-item training natural-language-processing
         :link: lightning_advanced_example
         :link-type: ref
 
@@ -1145,7 +1145,7 @@ Ray Examples
         Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing training
+        :class-item: gallery-item data training
         :link: /data/examples/batch_training
         :link-type: doc
 
