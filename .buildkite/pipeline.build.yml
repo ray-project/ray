@@ -23,22 +23,6 @@
       --test_tag_filters=-post_wheel_build,-gpu,xcommit
       python/ray/serve/tests/...
 
-- label: "core memory pressure tests"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bash ./ci/ci.sh prepare_docker
-    - ./ci/env/env_info.sh
-    - pip install ray[client]
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=mem_pressure
-      --test_env=DOCKER_HOST=tcp://docker:2376
-      --test_env=DOCKER_TLS_VERIFY=1
-      --test_env=DOCKER_CERT_PATH=/certs/client
-      --test_env=DOCKER_TLS_CERTDIR=/certs
-      -- python/ray/tests/...
-
 - label: ":kubernetes: operator"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: medium
