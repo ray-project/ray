@@ -349,9 +349,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         ip = DataSource.node_id_to_ip[node_id]
 
-        duration = int(req.query.get("duration", 5))
-        if duration > 60:
-            raise ValueError(f"The max duration allowed is 60: {duration}.")
+        duration_s = int(req.query.get("duration", 5))
+        if duration_s > 60:
+            raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
         format = req.query.get("format", "flamegraph")
 
         # Default not using `--native` for profiling
@@ -373,7 +373,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
-                pid=pid, duration=duration, format=format, native=native
+                pid=pid, duration=duration_s, format=format, native=native
             )
         )
 
@@ -446,7 +446,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id = req.query.get("node_id")
 
-        duration = int(req.query.get("duration", 30))
+        duration_s = int(req.query.get("duration", 30))
 
         # Default not using `--native`, `--leaks` and `--format` for profiling
         format = req.query.get("format", "flamegraph")
@@ -471,7 +471,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         reply = await reporter_stub.MemoryProfiling(
             reporter_pb2.MemoryProfilingRequest(
-                pid=pid, format=format, leaks=leaks, duration=duration, native=native
+                pid=pid, format=format, leaks=leaks, duration=duration_s, native=native
             )
         )
 
@@ -538,9 +538,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             reporter_stub = list(self._stubs.values())[0]
         pid = int(req.query["pid"])
-        duration = int(req.query.get("duration", 5))
-        if duration > 60:
-            raise ValueError(f"The max duration allowed is 60: {duration}.")
+        duration_s = int(req.query.get("duration", 5))
+        if duration_s > 60:
+            raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
         format = req.query.get("format", "flamegraph")
 
         # Default not using `--native` for profiling
@@ -552,7 +552,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
-                pid=pid, duration=duration, format=format, native=native
+                pid=pid, duration=duration_s, format=format, native=native
             )
         )
         if reply.success:
@@ -577,7 +577,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             reporter_stub = list(self._stubs.values())[0]
         pid = int(req.query["pid"])
-        duration = int(req.query.get("duration", 30))
+        duration_s = int(req.query.get("duration", 30))
 
         # Default not using `--native`, `--leaks` and `--format` for profiling
         format = req.query.get("format", "flamegraph")
@@ -586,7 +586,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         reply = await reporter_stub.MemoryProfiling(
             reporter_pb2.MemoryProfilingRequest(
-                pid=pid, format=format, leaks=leaks, duration=duration, native=native
+                pid=pid, format=format, leaks=leaks, duration=duration_s, native=native
             )
         )
         if not reply.success:

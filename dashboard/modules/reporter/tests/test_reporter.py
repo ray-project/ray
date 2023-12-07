@@ -804,7 +804,7 @@ def test_reporter_worker_cpu_percent():
 )
 def test_get_task_traceback_running_task(shutdown_only):
     """
-    Verify that we throw an error for a non-running task.
+    Verify that we can get the traceback for a running task.
 
     """
     address_info = ray.init()
@@ -847,7 +847,7 @@ def test_get_task_traceback_running_task(shutdown_only):
 @pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
 def test_get_memory_profile_running_task(shutdown_only):
     """
-    Verify that we throw an error for a non-running task.
+    Verify that we can get the memory profile for a running task.
 
     """
     address_info = ray.init()

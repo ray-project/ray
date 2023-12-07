@@ -232,7 +232,7 @@ class MemoryProfilingManager:
                 cmd, self.profiler, stdout, stderr
             )
         else:
-            return True, f"Success ataching memray to process {pid}"
+            return True, f"Success attaching memray to process {pid}"
 
     async def detach_profiler(
         self,

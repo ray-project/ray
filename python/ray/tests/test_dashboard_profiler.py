@@ -23,7 +23,7 @@ from ray._private.test_utils import (
 )
 @pytest.mark.parametrize("native", ["0", "1"])
 def test_profiler_endpoints(ray_start_with_dashboard, native):
-    # Sanity check py-spy and are installed.
+    # Sanity check py-spy are installed.
     subprocess.check_call(["py-spy", "--version"])
 
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -99,6 +99,7 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
 @pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
 @pytest.mark.parametrize("leaks", ["0", "1"])
 def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
+    # Sanity check memray are installed.
     subprocess.check_call(["memray", "--version"])
 
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -176,8 +177,9 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
     reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
 )
 def test_profiler_failure_message(ray_start_with_dashboard):
-    # Sanity check py-spy is installed.
+    # Sanity check py-spy and memray is installed.
     subprocess.check_call(["py-spy", "--version"])
+    subprocess.check_call(["memray", "--version"])
 
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard

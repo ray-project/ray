@@ -10,9 +10,24 @@ import {
   MenuItem,
   Select,
   TextField,
+  Typography,
 } from "@material-ui/core";
+import { makeStyles } from '@material-ui/core/styles';
 import React, { PropsWithChildren, useState } from "react";
 import { ClassNameProps } from "./props";
+
+const buttonLinkStyles = makeStyles((theme) => ({
+  buttonLink: {
+    color: theme.palette.primary.main,
+    textDecoration: 'none',
+    textTransform: 'capitalize',
+    padding: '0px',
+    '&:hover': {
+      backgroundColor: 'transparent',
+      textDecoration: 'underline',
+    },
+  },
+}));
 
 type CpuProfilingLinkProps = PropsWithChildren<
   {
@@ -133,8 +148,7 @@ export const ProfilerButton = ({
   type = "",
 }: MemoryProfilingButtonProps) => {
   const [duration, setDuration] = useState<number | null>(5);
-  const [native, setNative] = useState<boolean>(false);
-  const [leaks, setLeaks] = useState<boolean>(false);
+  const [leaks, setLeaks] = useState<boolean>(true);
   const [open, setOpen] = useState<boolean>(false);
   const [format, setFormat] = useState("flamegraph");
 
@@ -146,10 +160,14 @@ export const ProfilerButton = ({
     setOpen(false);
   };
 
+  const buttonLinkClasses = buttonLinkStyles();
+
   return (
     <div>
-      <Button variant="text" color="primary" onClick={handleOpen}>
-        Profile&nbsp;Memory{type ? ` (${type})` : ""}
+      <Button className={buttonLinkClasses.buttonLink} onClick={handleOpen}>
+        <Typography component={Link} style={{fontSize: '14px'}}>
+          Memory&nbsp;Profiling{type ? ` (${type})` : ""}
+        </Typography>
       </Button>
 
       <Dialog open={open} onClose={handleClose}>
@@ -167,23 +185,12 @@ export const ProfilerButton = ({
             <MenuItem value="table">Table</MenuItem>
           </Select>
           <br />
-          <InputLabel id="format-label">Duration</InputLabel>
           <TextField
-            label="Duration"
+            label="Duration (seconds)"
             type="number"
             value={duration !== null ? duration : ""}
             onChange={(e) => setDuration(parseInt(e.target.value, 10))}
             required
-          />
-          <br />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={native}
-                onChange={(e) => setNative(e.target.checked)}
-              />
-            }
-            label="Native"
           />
           <br />
           <FormControlLabel
@@ -198,24 +205,23 @@ export const ProfilerButton = ({
         </DialogContent>
         <div
           style={{
-            padding: "16px",
+            padding: "12px",
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "center",
           }}
         >
-          <Button color="primary" variant="text" onClick={handleClose}>
+          <Button onClick={handleClose} color="primary" variant="text" style={{textTransform: 'capitalize'}}>
+            Cancel
+          </Button>
+          <br/>
+          <Button color="primary" variant="text" onClick={handleClose} style={{textTransform: 'capitalize'}}>
             <Link
-              href={`${profilerUrl}&format=${format}&duration=${duration}&native=${
-                native ? "1" : "0"
-              }&leaks=${leaks ? "1" : "0"}`}
+              href={`${profilerUrl}&format=${format}&duration=${duration}&native=0&leaks=${leaks ? "1" : "0"}`}
               rel="noreferrer"
               target="_blank"
             >
               Generate&nbsp;Report{type ? ` (${type})` : ""}
             </Link>
-          </Button>
-          <Button onClick={handleClose} color="primary" variant="text">
-            Cancel
           </Button>
         </div>
       </Dialog>
