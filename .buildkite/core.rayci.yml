@@ -47,7 +47,10 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags mem_pressure
+      - pip install -e python
+      - bazel test --config=ci $(./ci/run/bazel_export_options)
+        --test_tag_filters=mem_pressure -- //python/ray/tests/...
+    job_env: corebuild
 
   - label: ":ray: core: workflow tests"
     tags: 
