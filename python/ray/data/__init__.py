@@ -1,7 +1,7 @@
 # Short term workaround for https://github.com/ray-project/ray/issues/32435
 # Dataset has a hard dependency on pandas, so it doesn't need to be delayed.
 import pandas  # noqa
-from pkg_resources._vendor.packaging.version import parse as parse_version
+from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.compute import ActorPoolStrategy
