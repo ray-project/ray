@@ -39,6 +39,8 @@ std::string LanguageString(Language language) {
     return "java";
   } else if (language == Language::CPP) {
     return "cpp";
+  } else if (language == Language::JULIA) {
+    return "julia";
   }
   RAY_CHECK(false);
   return "";

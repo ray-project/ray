@@ -340,7 +340,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   std::to_string(worker_startup_token_counter_));
     worker_command_args.push_back("--worker-launch-time-ms=" +
                                   std::to_string(current_sys_time_ms()));
-  } else if (language == Language::CPP) {
+  } else if (language == Language::CPP || language == Language::JULIA) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
   }
@@ -836,7 +836,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   const auto job_id = driver->GetAssignedJobId();
   HandleJobStarted(job_id, job_config);
 
-  if (driver->GetLanguage() == Language::JAVA) {
+  if (driver->GetLanguage() == Language::JAVA || driver->GetLanguage() == Language::JULIA) {
     send_reply_callback(Status::OK(), port);
   } else {
     if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&

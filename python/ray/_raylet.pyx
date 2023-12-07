@@ -110,6 +110,7 @@ from ray.includes.common cimport (
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
+    LANGUAGE_JULIA,
     LocalMemoryBuffer,
     TASK_TYPE_NORMAL_TASK,
     TASK_TYPE_ACTOR_CREATION_TASK,
@@ -749,6 +750,8 @@ cdef class Language:
             return "CPP"
         elif <int32_t>self.lang == <int32_t>LANGUAGE_JAVA:
             return "JAVA"
+        elif <int32_t>self.lang == <int32_t>LANGUAGE_JULIA:
+            return "JULIA"
         else:
             raise Exception("Unexpected error")
 
@@ -758,6 +761,7 @@ cdef class Language:
     PYTHON = Language.from_native(LANGUAGE_PYTHON)
     CPP = Language.from_native(LANGUAGE_CPP)
     JAVA = Language.from_native(LANGUAGE_JAVA)
+    JULIA = Language.from_native(LANGUAGE_JULIA)
 
 
 cdef int prepare_resources(
