@@ -70,12 +70,28 @@ class ProxyWrapper(ABC):
 
     @abstractmethod
     def is_ready(self, timeout_s: float) -> ProxyWrapperCallStatus:
-        """Return the payload from proxy ready check when ready."""
+        """Return the payload from proxy ready check when ready.
+
+        Since actual readiness check is asynchronous, this method could return
+        either of the following statuses:
+
+            - FINISHED_SUCCEED: Readiness check finished successfully
+            - FINISHED_FAILED: Readiness check finished with failure (either timing out or failing)
+            - PENDING: Readiness check is still pending
+        """
         raise NotImplementedError
 
     @abstractmethod
     def is_healthy(self, timeout_s: float) -> ProxyWrapperCallStatus:
-        """Return whether the proxy actor is healthy or not."""
+        """Return whether the proxy actor is healthy or not.
+
+        Since actual health-check is asynchronous, this method could return
+        either of the following statuses:
+
+            - FINISHED_SUCCEED: Health-check finished successfully
+            - FINISHED_FAILED: Health-check finished with failure (either timing out or failing)
+            - PENDING: Health-check is still pending
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -123,7 +139,7 @@ class ActorProxyWrapper(ProxyWrapper):
             proxy_actor_class=proxy_actor_class,
             logging_config=logging_config,
         )
-        self._ready_future = None
+        self._ready_check_future = None
         self._health_check_future = None
         self._is_drained_obj_ref = None
         self._update_draining_obj_ref = None
@@ -219,27 +235,28 @@ class ActorProxyWrapper(ProxyWrapper):
     def is_ready(self, timeout_s: float) -> ProxyWrapperCallStatus:
         """Return the payload from proxy ready check when ready.
 
-        If the ongoing ready check is finished, and the value can be retrieved and
-        unpacked, set the worker_id and log_file_path attributes of the proxy actor
-        and return FINISHED_SUCCEED status. If the ongoing ready check is not finished,
-        return PENDING status. If the RayActorError is raised, meaning that the actor
-        is dead, return FINISHED_FAILED status.
+        Since actual readiness check is asynchronous, this method could return
+        either of the following statuses:
+
+            - FINISHED_SUCCEED: Readiness check finished successfully
+            - FINISHED_FAILED: Readiness check finished with failure (either timing out or failing)
+            - PENDING: Readiness check is still pending
         """
         try:
-            if self._ready_future is None:
-                self._ready_future = wrap_as_future(
+            if self._ready_check_future is None:
+                self._ready_check_future = wrap_as_future(
                     self._actor_handle.ready.remote(),
                     timeout_s=PROXY_READY_CHECK_TIMEOUT_S
                 )
 
                 return ProxyWrapperCallStatus.PENDING
             else:
-                if self._ready_future.done():
-                    worker_id, log_file_path = json.loads(self._ready_future.result())
+                if self._ready_check_future.done():
+                    worker_id, log_file_path = json.loads(self._ready_check_future.result())
                     self.worker_id = worker_id
                     self.log_file_path = log_file_path
 
-                    self._ready_future = None
+                    self._ready_check_future = None
                     return ProxyWrapperCallStatus.FINISHED_SUCCEED
                 else:
                     return ProxyWrapperCallStatus.PENDING
@@ -249,17 +266,18 @@ class ActorProxyWrapper(ProxyWrapper):
                     f"Didn't receive ready check response for proxy {self._node_id} after {timeout_s}s."
                 )
 
-            self._ready_future = None
+            self._ready_check_future = None
             return ProxyWrapperCallStatus.FINISHED_FAILED
 
     def is_healthy(self, timeout_s: float) -> ProxyWrapperCallStatus:
         """Return whether the proxy actor is healthy or not.
 
-        If the ongoing health check is finished, and the value can be retrieved,
-        reset _health_check_obj_ref to enable the next health check and return
-        FINISHED_SUCCEED status. If the ongoing ready check is not finished,
-        return PENDING status. If the RayActorError is raised, meaning that the actor
-        is dead, return FINISHED_FAILED status.
+        Since actual health-check is asynchronous, this method could return
+        either of the following statuses:
+
+            - FINISHED_SUCCEED: Health-check finished successfully
+            - FINISHED_FAILED: Health-check finished with failure (either timing out or failing)
+            - PENDING: Health-check is still pending
         """
         try:
             if self._health_check_future is None:

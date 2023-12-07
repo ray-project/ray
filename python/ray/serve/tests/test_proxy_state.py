@@ -62,9 +62,6 @@ class FakeProxyWrapper(ProxyWrapper):
     def actor_id(self) -> str:
         pass
 
-    def reset_health_check(self):
-        pass
-
     def start_new_drained_check(self):
         self.is_draining = True
 
@@ -719,7 +716,7 @@ def test_proxy_actor_healthy_during_draining():
     )
 
     # Drain the proxy.
-    proxy_state.update(draining=True)
+    proxy_state.reconcile(draining=True)
     assert proxy_state.status == ProxyStatus.DRAINING
 
     cur_num_health_checks = proxy_state._actor_proxy_wrapper.get_num_health_checks()
@@ -727,7 +724,7 @@ def test_proxy_actor_healthy_during_draining():
     def _update_until_two_more_health_checks():
         # Check 2 more health checks to make sure the proxy state
         # at least sees the first successful health check.
-        proxy_state.update(draining=True)
+        proxy_state.reconcile(draining=True)
         return (
             proxy_state._actor_proxy_wrapper.get_num_health_checks()
             == cur_num_health_checks + 2
