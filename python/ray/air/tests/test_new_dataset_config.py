@@ -271,12 +271,8 @@ def test_data_config_default_resource_limits(shutdown_only):
     cpus_per_worker, gpus_per_worker = 2, 1
     # Resources used by the trainer actor.
     default_trainer_cpus, default_trainer_gpus = 1, 0
-    expected_cpu_limit = (
-        cluster_cpus - num_workers * cpus_per_worker - default_trainer_cpus
-    )
-    expected_gpu_limit = (
-        cluster_gpus - num_workers * gpus_per_worker - default_trainer_gpus
-    )
+    num_train_cpus = num_workers * cpus_per_worker + default_trainer_cpus
+    num_train_gpus = num_workers * gpus_per_worker + default_trainer_gpus
 
     ray.init(num_cpus=cluster_cpus, num_gpus=cluster_gpus)
 
@@ -284,11 +280,11 @@ def test_data_config_default_resource_limits(shutdown_only):
         def __init__(self, **kwargs):
             def train_loop_fn():
                 train_ds = train.get_dataset_shard("train")
-                resource_limits = (
-                    train_ds._base_dataset.context.execution_options.resource_limits
+                exclude_resources = (
+                    train_ds._base_dataset.context.execution_options.exclude_resources
                 )
-                assert resource_limits.cpu == expected_cpu_limit
-                assert resource_limits.gpu == expected_gpu_limit
+                assert exclude_resources.cpu == num_train_cpus
+                assert exclude_resources.gpu == num_train_gpus
 
             kwargs.pop("scaling_config", None)
             super().__init__(
