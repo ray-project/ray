@@ -1277,7 +1277,7 @@ class ActorHandle:
             name: The name to give the actor method call task.
             num_returns: The number of return values for the method.
             max_retries: Number of retries when method fails.
-            retry_exceptions: Boolean of whether we want to retry all user-raised
+            retry_exceptions: Boolean of whether you want to retry all user-raised
                 exceptions, or a list of allowlist exceptions to retry.
 
         Returns:
