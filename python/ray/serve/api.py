@@ -48,7 +48,6 @@ from ray.serve.context import (
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
@@ -733,13 +732,6 @@ def get_multiplexed_model_id() -> str:
     """
     _request_context = ray.serve.context._serve_request_context.get()
     return _request_context.multiplexed_model_id
-
-
-@PublicAPI(stability="beta")
-def get_grpc_context() -> RayServegRPCContext:
-    """Get the grpc context for the current request."""
-    _request_context = ray.serve.context._serve_request_context.get()
-    return _request_context.grpc_context
 
 
 @PublicAPI(stability="alpha")

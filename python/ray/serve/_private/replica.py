@@ -40,6 +40,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import CONTROL_PLANE_CONCURRENCY_GROUP
+from ray.serve._private.grpc_util import GRPC_CONTEXT_ARG_NAME
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIMessageQueue,
@@ -769,7 +770,13 @@ class RayServeReplica:
         async with self.wrap_user_method_call(request_metadata):
             user_method = self.get_runner_method(request_metadata)
             user_request = pickle.loads(request.grpc_user_request)
-            result_generator = user_method(user_request)
+            if GRPC_CONTEXT_ARG_NAME in inspect.signature(user_method).parameters:
+                result_generator = user_method(
+                    user_request,
+                    request_metadata.grpc_context,
+                )
+            else:
+                result_generator = user_method(user_request)
             if inspect.iscoroutine(result_generator):
                 result_generator = await result_generator
 
@@ -808,7 +815,13 @@ class RayServeReplica:
 
             method_to_call = sync_to_async(runner_method)
 
-            result = await method_to_call(user_request)
+            if GRPC_CONTEXT_ARG_NAME in inspect.signature(runner_method).parameters:
+                result = await method_to_call(
+                    user_request,
+                    request_metadata.grpc_context,
+                )
+            else:
+                result = await method_to_call(user_request)
             return request_metadata.grpc_context, result.SerializeToString()
 
     async def call_user_method(

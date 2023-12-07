@@ -62,8 +62,16 @@ class RayServegRPCContext:
     def set_details(self, details: str):
         self._details = details
 
+    def _request_id_metadata(self) -> List[Tuple[str, str]]:
+        # Request id metadata should be carried over to the trailing metadata and passed
+        # back to the request client. This function helped to pick it out if existed.
+        for key, value in self._trailing_metadata:
+            if key == "request_id":
+                return [(key, value)]
+        return []
+
     def set_trailing_metadata(self, trailing_metadata: List[Tuple[str, str]]):
-        self._trailing_metadata += trailing_metadata
+        self._trailing_metadata = self._request_id_metadata() + trailing_metadata
 
     def set_on_grpc_context(self, grpc_context: grpc._cython.cygrpc._ServicerContext):
         if self._code:

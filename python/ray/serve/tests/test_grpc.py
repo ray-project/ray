@@ -600,15 +600,13 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
 
     @serve.deployment()
     class HelloModel:
-        def __call__(self, user_message):
-            grpc_context = serve.get_grpc_context()
+        def __call__(self, user_message, grpc_context):
             grpc_context.set_code(error_code)
             grpc_context.set_details(error_message)
             grpc_context.set_trailing_metadata([trailing_metadata])
             return serve_pb2.UserDefinedResponse(greeting="hello")
 
-        def Streaming(self, user_message):
-            grpc_context = serve.get_grpc_context()
+        def Streaming(self, user_message, grpc_context):
             grpc_context.set_code(error_code)
             grpc_context.set_details(error_message)
             grpc_context.set_trailing_metadata([trailing_metadata])
@@ -632,6 +630,8 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
     assert rpc_error.code() == error_code
     assert error_message == rpc_error.details()
     assert trailing_metadata in rpc_error.trailing_metadata()
+    # request_id should always be set in the trailing metadata.
+    assert any([key == "request_id" for key, _ in rpc_error.trailing_metadata()])
 
 
 if __name__ == "__main__":
