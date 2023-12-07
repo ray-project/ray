@@ -1,4 +1,16 @@
-import { Button, Link, TextField } from "@material-ui/core";
+import {
+  Button,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  InputLabel,
+  Link,
+  MenuItem,
+  Select,
+  TextField,
+} from "@material-ui/core";
 import React, { PropsWithChildren, useState } from "react";
 import { ClassNameProps } from "./props";
 
@@ -28,6 +40,11 @@ type TaskMemoryProfilingProps = {
   taskId: string | null | undefined;
   attemptNumber: number;
   nodeId: string;
+};
+
+type MemoryProfilingButtonProps = {
+  profilerUrl: string;
+  type: string | null;
 };
 
 export const TaskCpuProfilingLink = ({
@@ -111,37 +128,45 @@ export const CpuProfilingLink = ({
   );
 };
 
-export const MemoryProfilingButton = ({
-  pid,
-  ip,
+export const ProfilerButton = ({
+  profilerUrl,
   type = "",
-}: MemoryProfilingProps) => {
-  const [duration, setDuration] = useState<number | null>(10);
-  const [fillDuration, setFillDuration] = useState<boolean>(false);
+}: MemoryProfilingButtonProps) => {
+  const [duration, setDuration] = useState<number | null>(5);
+  const [native, setNative] = useState<boolean>(false);
+  const [leaks, setLeaks] = useState<boolean>(false);
+  const [open, setOpen] = useState<boolean>(false);
+  const [format, setFormat] = useState("flamegraph");
 
-  const handleButtonClick = () => {
-    setFillDuration(true);
-  };
-  const handleInputSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFillDuration(false);
+  const handleOpen = () => {
+    setOpen(true);
   };
 
-  if (!pid || !ip) {
-    return <div></div>;
-  }
+  const handleClose = () => {
+    setOpen(false);
+  };
+
   return (
     <div>
-      {!fillDuration ? (
-        <Button
-          variant="text"
-          onClick={handleButtonClick}
-          style={{ color: "blue" }}
-        >
-          Profile&nbsp;Memory{type ? ` (${type})` : ""}
-        </Button>
-      ) : (
-        <form onSubmit={handleInputSubmit}>
+      <Button variant="text" color="primary" onClick={handleOpen}>
+        Profile&nbsp;Memory{type ? ` (${type})` : ""}
+      </Button>
+
+      <Dialog open={open} onClose={handleClose}>
+        <DialogTitle>Memory Profiling Config</DialogTitle>
+        <DialogContent>
+          <InputLabel id="format-label">Format</InputLabel>
+          <Select
+            labelId="format-label"
+            id="format"
+            value={format}
+            onChange={(e) => setFormat(e.target.value as string)}
+            fullWidth
+          >
+            <MenuItem value="flamegraph">Flamegraph</MenuItem>
+            <MenuItem value="table">Table</MenuItem>
+          </Select>
+          <br />
           <TextField
             label="Duration"
             type="number"
@@ -149,19 +174,65 @@ export const MemoryProfilingButton = ({
             onChange={(e) => setDuration(parseInt(e.target.value, 10))}
             required
           />
-          <Button variant="text">
+          <br />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={native}
+                onChange={(e) => setNative(e.target.checked)}
+              />
+            }
+            label="Native"
+          />
+          <br />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={leaks}
+                onChange={(e) => setLeaks(e.target.checked)}
+              />
+            }
+            label="Leaks"
+          />
+        </DialogContent>
+        <div
+          style={{
+            padding: "16px",
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
+          <Button color="primary" variant="text" onClick={handleClose}>
             <Link
-              href={`worker/memory_profile?pid=${pid}&ip=${ip}&duration=${duration}&native=0&leaks=1`}
+              href={`${profilerUrl}&format=${format}&duration=${duration}&native=${
+                native ? "1" : "0"
+              }&leaks=${leaks ? "1" : "0"}`}
               rel="noreferrer"
               target="_blank"
             >
-              Show&nbsp;Flame&nbsp;Graph{type ? ` (${type})` : ""}
+              Generate&nbsp;Report{type ? ` (${type})` : ""}
             </Link>
           </Button>
-        </form>
-      )}
+          <Button onClick={handleClose} color="primary" variant="text">
+            Cancel
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
+};
+
+export const MemoryProfilingButton = ({
+  pid,
+  ip,
+  type = "",
+}: MemoryProfilingProps) => {
+  if (!pid || !ip) {
+    return <div></div>;
+  }
+  const profilerUrl = `worker/memory_profile?pid=${pid}&ip=${ip}`;
+
+  return <ProfilerButton profilerUrl={profilerUrl} type={type} />;
 };
 
 export const TaskMemoryProfilingButton = ({
@@ -169,49 +240,10 @@ export const TaskMemoryProfilingButton = ({
   attemptNumber,
   nodeId,
 }: TaskMemoryProfilingProps) => {
-  const [duration, setDuration] = useState<number | null>(10);
-  const [fillDuration, setFillDuration] = useState<boolean>(false);
-  const handleButtonClick = () => {
-    setFillDuration(true);
-  };
-  const handleInputSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFillDuration(false);
-  };
-
   if (!taskId) {
     return null;
   }
-  return (
-    <div>
-      {!fillDuration ? (
-        <Button
-          variant="text"
-          onClick={handleButtonClick}
-          style={{ color: "blue" }}
-        >
-          Profile&nbsp;Memory
-        </Button>
-      ) : (
-        <form onSubmit={handleInputSubmit}>
-          <TextField
-            label="Duration"
-            type="number"
-            value={duration !== null ? duration : ""}
-            onChange={(e) => setDuration(parseInt(e.target.value, 10))}
-            required
-          />
-          <Button variant="text">
-            <Link
-              href={`task/memory_profile?task_id=${taskId}&duration=${duration}&attempt_number=${attemptNumber}&node_id=${nodeId}`}
-              rel="noreferrer"
-              target="_blank"
-            >
-              Show&nbsp;Flame&nbsp;Graph
-            </Link>
-          </Button>
-        </form>
-      )}
-    </div>
-  );
+  const profilerUrl = `task/memory_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`;
+
+  return <ProfilerButton profilerUrl={profilerUrl} type="" />;
 };
