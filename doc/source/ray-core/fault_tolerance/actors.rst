@@ -154,7 +154,7 @@ Retry behavior depends on the value you set ``retry_exceptions`` to:
 
 - The method call's value, for example, `.options(max_retries=2)`. Ray ignores this value if you didn't set it.
 - The method definition's value, for example, `@ray.method(max_retries=2)`. Ray ignores this value if you didn't set it.
-- the Actor class definition's `@ray.remote(max_task_retries=2)` decorator, or if not set,
+- The Actor class definition's value, for example, `@ray.remote(max_task_retries=2)` decorator. Ray ignores this value if you didn't set it.
 - defaults to 0.
 
 For example, for an method with `max_retries=5` and `retry_exceptions=True`, and the actor has `max_restarts=2`, it may be executed up to 6 times: once for the initial invocation, and 5 retries. The 6 invocations may include 2 actor crashes. If all 6 invocations runs out, a `ray.get` call to the result Ray ObjectRef raises the exception raised in the last invocation, or `ray.exceptions.RayActorError` if the actor crashed in the last invocation.
