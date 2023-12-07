@@ -878,6 +878,7 @@ def test_get_memory_profile_running_task(shutdown_only):
         resp = requests.get(f"{webui_url}/task/memory_profile", params=params)
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
+        assert resp.status_code == 200
         assert "memray" in resp.text
         return True
 

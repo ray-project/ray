@@ -159,7 +159,7 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
             assert "flamegraph report" in content, content
 
     assert wait_until_succeeded_without_exception(
-        get_actor_memory_flamegraph,
+        get_actor_memory_multiple_flamegraphs,
         (requests.RequestException, AssertionError),
         timeout_ms=20000,
         retry_interval_ms=1000,
