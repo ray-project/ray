@@ -216,11 +216,10 @@ class ResourceSpec(
                 if accelerator_resource_name == "GPU":
                     num_gpus = num_accelerators
                     gpu_memory = (
-                        self.gpu_memory
-                        if self.gpu_memory
-                        else (
-                            num_accelerators
-                            * accelerator_manager.get_current_node_accelerator_memory()
+                        num_accelerators * (
+                            self.gpu_memory if self.gpu_memory
+                            else 
+                            accelerator_manager.get_current_node_accelerator_memory()
                         )
                     )
                 else:
