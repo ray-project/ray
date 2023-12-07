@@ -120,6 +120,8 @@ class gRPCProxyRequest(ProxyRequest):
         self.request_id = None
         self.method_name = "__call__"
         self.multiplexed_model_id = DEFAULT.VALUE
+        # ray_serve_grpc_context is a class implemented by us to be able to serialize
+        # the object and pass into the deployment.
         self.ray_serve_grpc_context = RayServegRPCContext(context)
         self.setup_variables()
 
@@ -161,6 +163,9 @@ class gRPCProxyRequest(ProxyRequest):
         return self.request
 
     def send_request_id(self, request_id: str):
+        # Setting the trailing metadata on the ray_serve_grpc_context object, so it's
+        # not overriding the ones set from the user and will be sent back to the
+        # client altogether.
         self.ray_serve_grpc_context.set_trailing_metadata([("request_id", request_id)])
 
     def request_object(self, proxy_handle: ActorHandle) -> gRPCRequest:

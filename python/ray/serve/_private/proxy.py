@@ -641,7 +641,11 @@ class gRPCProxy(GenericProxy):
                     response = message
 
             # Only the latest code and details will take effect. If the user already
-            # set them in the context, skip setting them with Serve's default values.
+            # set them to a truthy value in the context, skip setting them with Serve's
+            # default values. By default, if nothing is set, the code is 0 and the
+            # details is "", which both are falsy. So if the user did not set them or
+            # if they're explicitly set to falsy values, such as None, Serve will
+            # continue to set them with our default values.
             if not context.code():
                 context.set_code(status.code)
             if not context.details():
@@ -674,7 +678,11 @@ class gRPCProxy(GenericProxy):
                     yield message
 
             # Only the latest code and details will take effect. If the user already
-            # set them in the context, skip setting them with Serve's default values.
+            # set them to a truthy value in the context, skip setting them with Serve's
+            # default values. By default, if nothing is set, the code is 0 and the
+            # details is "", which both are falsy. So if the user did not set them or
+            # if they're explicitly set to falsy values, such as None, Serve will
+            # continue to set them with our default values.
             if not context.code():
                 context.set_code(status.code)
             if not context.details():
