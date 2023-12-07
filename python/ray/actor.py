@@ -365,7 +365,7 @@ class _ActorClassMethodMetadata(object):
                 self.num_returns[method_name] = None
 
             # Only contains entries from `@ray.method(max_retries=...)`
-            # We may not populate the others with max_task_retries here since it may be
+            # Ray may not populate the others with max_task_retries here because you may have
             # set in `actor.method.options(max_retries=...)`. So we always store both
             # max_retries and max_task_retries, and favor the former.
             if hasattr(method, "__ray_max_retries__"):
