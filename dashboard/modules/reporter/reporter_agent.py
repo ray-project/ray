@@ -7,7 +7,6 @@ import socket
 import sys
 import traceback
 import warnings
-import time
 
 import psutil
 
@@ -380,15 +379,16 @@ class ReporterAgent(
         duration = request.duration
         native = request.native
         p = MemoryProfilingManager(self._log_dir)
-        success, output = await p.attach_profiler(pid, duration=duration, native=native)
+        success, output = await p.attach_profiler(pid, native=native)
+        profiler_filename = output.split("\n")[-1]
         if not success:
-            if "The given process ID does not exist." in output:
-                pass
             return reporter_pb2.MemoryProfilingReply(output=output, success=success)
-        else:
-            await asyncio.sleep(duration + 1)  # add 1 second overhead
-            success, output = await p.detach_profiler(pid)
-        success, output = await p.get_profile_result(pid, format=format, leaks=leaks)
+
+        await asyncio.sleep(duration + 1)  # add 1 second overhead
+        success, output = await p.detach_profiler(pid)
+        success, output = await p.get_profile_result(
+            pid, profiler_filename=profiler_filename, format=format, leaks=leaks
+        )
         return reporter_pb2.MemoryProfilingReply(output=output, success=success)
 
     async def ReportOCMetrics(self, request, context):

@@ -12,19 +12,19 @@ import {
   TextField,
   Typography,
 } from "@material-ui/core";
-import { makeStyles } from '@material-ui/core/styles';
+import { makeStyles } from "@material-ui/core/styles";
 import React, { PropsWithChildren, useState } from "react";
 import { ClassNameProps } from "./props";
 
 const buttonLinkStyles = makeStyles((theme) => ({
   buttonLink: {
     color: theme.palette.primary.main,
-    textDecoration: 'none',
-    textTransform: 'capitalize',
-    padding: '0px',
-    '&:hover': {
-      backgroundColor: 'transparent',
-      textDecoration: 'underline',
+    textDecoration: "none",
+    textTransform: "capitalize",
+    padding: "0px",
+    "&:hover": {
+      backgroundColor: "transparent",
+      textDecoration: "underline",
     },
   },
 }));
@@ -165,7 +165,7 @@ export const ProfilerButton = ({
   return (
     <div>
       <Button className={buttonLinkClasses.buttonLink} onClick={handleOpen}>
-        <Typography component={Link} style={{fontSize: '14px'}}>
+        <Typography component={Link} style={{ fontSize: "14px" }}>
           Memory&nbsp;Profiling{type ? ` (${type})` : ""}
         </Typography>
       </Button>
@@ -210,13 +210,25 @@ export const ProfilerButton = ({
             justifyContent: "center",
           }}
         >
-          <Button onClick={handleClose} color="primary" variant="text" style={{textTransform: 'capitalize'}}>
+          <Button
+            onClick={handleClose}
+            color="primary"
+            variant="text"
+            style={{ textTransform: "capitalize" }}
+          >
             Cancel
           </Button>
-          <br/>
-          <Button color="primary" variant="text" onClick={handleClose} style={{textTransform: 'capitalize'}}>
+          <br />
+          <Button
+            color="primary"
+            variant="text"
+            onClick={handleClose}
+            style={{ textTransform: "capitalize" }}
+          >
             <Link
-              href={`${profilerUrl}&format=${format}&duration=${duration}&native=0&leaks=${leaks ? "1" : "0"}`}
+              href={`${profilerUrl}&format=${format}&duration=${duration}&native=0&leaks=${
+                leaks ? "1" : "0"
+              }`}
               rel="noreferrer"
               target="_blank"
             >

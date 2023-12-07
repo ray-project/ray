@@ -1,9 +1,10 @@
 import asyncio
 import shutil
 import subprocess
+import os
 import sys
 from pathlib import Path
-from typing import Optional
+from datetime import datetime
 
 import logging
 
@@ -152,22 +153,26 @@ class CpuProfilingManager:
 
 class MemoryProfilingManager:
     def __init__(self, profile_dir_path: str):
-        self.profile_dir_path = Path(profile_dir_path)
+        self.profile_dir_path = Path(profile_dir_path) / "memray"
         self.profile_dir_path.mkdir(exist_ok=True)
         self.profiler = "memray"
 
+        if not self.profile_dir_path.exists():
+            self.profile_dir_path.mkdir()
+
     async def get_profile_result(
-        self, pid: int, format="flamegraph", leaks=False
+        self, pid: int, profiler_filename: str, format="flamegraph", leaks=False
     ) -> (bool, str):
         memray = shutil.which(self.profiler)
         if memray is None:
             return False, "memray is not installed"
 
-        profile_file_path = self.profile_dir_path / f"{pid}_memory_profiling.bin"
+        profile_file_path = self.profile_dir_path / profiler_filename
         if not Path(profile_file_path).is_file():
             return False, f"process {pid} has not been profiled"
 
-        profile_visualize_path = self.profile_dir_path / f"{pid}_memory_profiling.html"
+        profiler_name, _ = os.path.splitext(profiler_filename)
+        profile_visualize_path = self.profile_dir_path / f"{profiler_name}.html"
         if format == "flamegraph":
             visualize_cmd = [
                 memray,
@@ -204,14 +209,14 @@ class MemoryProfilingManager:
 
         return True, open(profile_visualize_path, "rb").read()
 
-    async def attach_profiler(
-        self, pid: int, duration: Optional[float] = None, native: bool = False
-    ) -> (bool, str):
+    async def attach_profiler(self, pid: int, native: bool = False) -> (bool, str):
         memray = shutil.which(self.profiler)
         if memray is None:
             return False, "memray is not installed"
 
-        profile_file_path = self.profile_dir_path / f"{pid}_memory_profiling.bin"
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        profiler_filename = f"{pid}_memory_profiling_{timestamp}.bin"
+        profile_file_path = self.profile_dir_path / profiler_filename
         cmd = [memray, "attach", "-o", profile_file_path, "-f"]
 
         if native:
@@ -232,7 +237,13 @@ class MemoryProfilingManager:
                 cmd, self.profiler, stdout, stderr
             )
         else:
-            return True, f"Success attaching memray to process {pid}"
+            return (
+                True,
+                (
+                    f"Success attaching memray to process {pid} ",
+                    f"with resulted report:\n{profiler_filename}",
+                ),
+            )
 
     async def detach_profiler(
         self,
