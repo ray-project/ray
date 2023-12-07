@@ -167,6 +167,7 @@ export const ProfilerButton = ({
             <MenuItem value="table">Table</MenuItem>
           </Select>
           <br />
+          <InputLabel id="format-label">Duration</InputLabel>
           <TextField
             label="Duration"
             type="number"
