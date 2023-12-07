@@ -46,7 +46,7 @@ class TroubleMaker:
         Increments the counter and performs an action based on the param actions[count].
         If count >= len(actions), return the count.
 
-        Note: this method is not marked with `max_retries`, we expect it to inherit
+        Note: This method doesn't set `max_retries`. Ray expects it to inherit
         max_task_retries = 3.
 
         @param actions: List["raise" | "exit"]
