@@ -92,8 +92,8 @@ class ExecutionOptions:
         exclude_resources: Amount of resources to exclude from Ray Data.
             Set this if you have other workloads running on the same cluster.
             For Ray Data + Ray Train, this should be automatically set.
-            Also for each resource type, resource_limits and exclude_resources can not
-            be both set.
+            Note for each resource type, resource_limits and exclude_resources can
+            not be both set.
         locality_with_output: Set this to prefer running tasks on the same node as the
             output node (node driving the execution). It can also be set to a list of
             node ids to spread the outputs across those nodes. Off by default.
@@ -128,5 +128,6 @@ class ExecutionOptions:
                 and getattr(self.exclude_resources, attr) is not None
             ):
                 raise ValueError(
-                    f"resource_limits and exclude_resources can not be both set for {attr}"
+                    "resource_limits and exclude_resources can not be"
+                    f" both set for {attr} resource."
                 )

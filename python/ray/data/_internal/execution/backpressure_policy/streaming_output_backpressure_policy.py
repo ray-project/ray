@@ -131,17 +131,17 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
                         self._print_warning(state.op, cur_time - last_time)
         return max_blocks_to_read_per_op
 
-    def _print_warning(self, op: "PhysicalOperator", no_output_time: float):
+    def _print_warning(self, op: "PhysicalOperator", idle_time: float):
         if self._warning_printed:
             return
         self._warning_printed = True
         msg = (
-            f"Operator {op} is running but has no ouptputs for {no_output_time} seconds,"
+            f"Operator {op} is running but has no ouptputs for {idle_time} seconds,"
             " Ignore this warning if your UDF is expected to be slow."
-            " Otherwise, this can happen when there are fewer cluster resources available"
-            " to Ray Data than expected."
-            " If you have non-Data tasks or actors running in the cluster, exclude their"
-            " resources from Ray Data with"
+            " Otherwise, this can happen when there are fewer cluster resources"
+            " available to Ray Data than expected."
+            " If you have non-Data tasks or actors running in the cluster, exclude"
+            " their resources from Ray Data with"
             " `DataContext.get_current().execution_options.exclude_resources`."
             " This message will only print once."
         )
