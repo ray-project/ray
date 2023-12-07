@@ -79,7 +79,7 @@ try:
         if parse_version(pyarrow_version) >= parse_version("14.0.1"):
             pa.PyExtensionType.set_auto_load(True)
         # Import these arrow extension types to ensure that they are registered.
-        from ray.data.extensions.tensor_extension import (  # noqa
+        from ray.air.util.tensor_extensions.arrow import (  # noqa
             ArrowTensorType,
             ArrowVariableShapedTensorType,
         )
