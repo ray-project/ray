@@ -19,6 +19,7 @@ def plot(dag: DAGNode, to_file=None):
             extension = "png"
         else:
             extension = extension[1:]
+    print(to_file)
 
     graph = _dag_to_dot(dag)
     graph.write(to_file, format=extension)

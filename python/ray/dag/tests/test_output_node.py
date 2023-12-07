@@ -79,6 +79,10 @@ def test_dag_with_actor_handle(shared_ray_instance):
 
 
 def test_tensor_parallel_dag(shared_ray_instance):
+    """Simulate the TP DAG with N workers.
+    Input -> forward -> MultiOutput
+    """
+
     @ray.remote
     class Worker:
         def __init__(self, rank):
@@ -119,6 +123,10 @@ def test_tensor_parallel_dag(shared_ray_instance):
 
 
 def test_shared_output(shared_ray_instance):
+    """Verify when an upstream task output is shared by
+    multi output, the upstream task runs only once.
+    """
+
     @ray.remote
     def shared_f():
         return 1
@@ -142,6 +150,20 @@ def test_shared_output(shared_ray_instance):
         return len(tasks) == 1
 
     wait_for_condition(verify)
+
+
+def test_bind_failure(shared_ray_instance):
+    """Verify if an actor loses a reference,
+    it fails with correct error messages.
+    """
+
+    @ray.remote
+    class A:
+        def f(self):
+            pass
+
+    with pytest.raises(RuntimeError):
+        ray.get(A.remote().f.bind().execute())
 
 
 if __name__ == "__main__":

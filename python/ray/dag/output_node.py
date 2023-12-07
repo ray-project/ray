@@ -3,8 +3,10 @@ from typing import Any, Dict, List, Union, Tuple
 
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class MultiOutputNode(DAGNode):
     """Ray dag node used in DAG building API to mark the endpoint of DAG"""
 

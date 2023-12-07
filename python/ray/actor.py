@@ -141,7 +141,9 @@ class ActorMethod:
         decorator=None,
         hardref=False,
     ):
-        self._actor_ref = weakref.proxy(actor)
+        # NOTE: Do not access it directly.
+        # Should be accessed via `self._handle` API.
+        self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
         self._num_returns = num_returns
         self._is_generator = is_generator
@@ -206,6 +208,15 @@ class ActorMethod:
 
         return FuncWrapper()
 
+    @property
+    def _handle(self):
+        actor = self._actor_ref()
+        if actor is None:
+            # Ref is GC'ed. It happens when the actor handle is GC'ed
+            # when bind is called.
+            raise RuntimeError("Lost reference to actor")
+        return actor
+
     @wrap_auto_init
     @_tracing_actor_method_invocation
     def _bind(
@@ -224,8 +235,9 @@ class ActorMethod:
             "concurrency_group": concurrency_group,
             "_generator_backpressure_num_objects": _generator_backpressure_num_objects,
         }
+
         other_args_to_resolve = {
-            PARENT_CLASS_NODE_KEY: self._actor_ref,
+            PARENT_CLASS_NODE_KEY: self._handle,
         }
 
         node = ClassMethodNode(
@@ -256,9 +268,11 @@ class ActorMethod:
             )
 
         def invocation(args, kwargs):
-            actor = self._actor_hard_ref or self._actor_ref
+            actor = self._actor_hard_ref or self._handle
+
             if actor is None:
                 raise RuntimeError("Lost reference to actor")
+
             return actor._actor_method_call(
                 self._method_name,
                 args=args,
@@ -279,7 +293,7 @@ class ActorMethod:
 
     def __getstate__(self):
         return {
-            "actor": self._actor_ref,
+            "actor": self._handle,
             "method_name": self._method_name,
             "num_returns": self._num_returns,
             "decorator": self._decorator,
