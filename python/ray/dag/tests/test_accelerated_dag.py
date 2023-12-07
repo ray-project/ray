@@ -79,6 +79,52 @@ def test_scatter_gather_dag(ray_start_regular, num_actors):
             chan.end_read()
 
 
+def test_dag_errors(ray_start_regular):
+    a = Actor.remote(0)
+    dag = a.inc.bind(1)
+    with pytest.raises(
+        ValueError, match="Compiled DAGs currently require exactly one InputNode"
+    ):
+        dag.experimental_compile()
+
+    a2 = Actor.remote(0)
+    with InputNode() as inp:
+        dag = OutputNode([a.inc.bind(inp), a2.inc.bind(1)])
+    with pytest.raises(
+        ValueError,
+        match="Compiled DAGs require each task to take a ray.dag.InputNode or "
+        "at least one other DAGNode as an input",
+    ):
+        dag.experimental_compile()
+
+    @ray.remote
+    def f(x):
+        return x
+
+    with InputNode() as inp:
+        dag = f.bind(inp)
+    with pytest.raises(
+        ValueError, match="Compiled DAGs currently only support actor method nodes"
+    ):
+        dag.experimental_compile()
+
+    with InputNode() as inp:
+        dag = a.inc_two.bind(inp[0], inp[1])
+    with pytest.raises(
+        ValueError,
+        match="Compiled DAGs currently do not support kwargs or multiple args for InputNode",
+    ):
+        dag.experimental_compile()
+
+    with InputNode() as inp:
+        dag = a.inc_two.bind(inp.x, inp.y)
+    with pytest.raises(
+        ValueError,
+        match="Compiled DAGs currently do not support kwargs or multiple args for InputNode",
+    ):
+        dag.experimental_compile()
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

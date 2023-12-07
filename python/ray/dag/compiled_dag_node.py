@@ -90,14 +90,16 @@ class CompiledDAG:
         # idx counter.
         self.counter = 0
 
+        # Attributes that are set during preprocessing.
+        # Preprocessing identifies the input node and output node.
         self.input_task_idx = None
         self.output_task_idx = None
         self.has_single_output = False
-        self.node_idx_to_output_channels = {}
 
-        # Cached.
+        # Cached attributes that are set during compilation.
         self.dag_input_channel = None
         self.dag_output_channels = None
+        self.node_idx_to_output_channels = {}
         self.worker_task_refs = []
 
     def _add_node(self, node):
@@ -111,10 +113,38 @@ class CompiledDAG:
         upstream and downstream tasks, and to set the input and output node(s)
         of the DAG.
         """
-        from ray.dag import DAGNode, InputNode, OutputNode
+        from ray.dag import (
+            DAGNode,
+            ClassMethodNode,
+            FunctionNode,
+            InputAttributeNode,
+            InputNode,
+            OutputNode,
+        )
 
         # For each task node, set its upstream and downstream task nodes.
         for idx, task in self.idx_to_task.items():
+            dag_node = task.dag_node
+            if not (
+                isinstance(dag_node, InputNode)
+                or isinstance(dag_node, OutputNode)
+                or isinstance(dag_node, ClassMethodNode)
+            ):
+                if isinstance(dag_node, InputAttributeNode):
+                    # TODO(swang): Support multi args.
+                    raise ValueError(
+                        "Compiled DAGs currently do not support kwargs or multiple args for InputNode"
+                    )
+                elif isinstance(dag_node, FunctionNode):
+                    # TODO(swang): Support non-actor tasks.
+                    raise ValueError(
+                        "Compiled DAGs currently only support actor method nodes"
+                    )
+                else:
+                    raise ValueError(
+                        f"Found unsupported node of type {type(task.dag_node)}"
+                    )
+
             task.args = task.dag_node.get_args()
             for arg in task.args:
                 if isinstance(arg, DAGNode):
@@ -127,9 +157,8 @@ class CompiledDAG:
                 assert self.input_task_idx is None, "more than one InputNode found"
                 self.input_task_idx = idx
         # TODO: Support no-input DAGs (use an empty object to signal).
-        assert (
-            self.input_task_idx is not None
-        ), "no InputNode found, require exactly one"
+        if self.input_task_idx is None:
+            raise ValueError("Compiled DAGs currently require exactly one InputNode")
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -150,7 +179,7 @@ class CompiledDAG:
             self.input_task_idx, self.output_task_idx = None, None
             self._preprocess()
 
-    def _compiled(self) -> Tuple[ChannelType, Union[ChannelType, List[ChannelType]]]:
+    def _compile(self) -> Tuple[ChannelType, Union[ChannelType, List[ChannelType]]]:
         """ """
         from ray.dag import DAGNode, InputNode, OutputNode, ClassMethodNode
 
@@ -202,14 +231,23 @@ class CompiledDAG:
                 continue
 
             resolved_args = []
+            has_at_least_one_channel_input = False
             for arg in task.args:
                 if isinstance(arg, DAGNode):
                     arg_idx = self.dag_node_to_idx[arg]
                     arg_channel = self.idx_to_task[arg_idx].output_channel
                     assert arg_channel is not None
                     resolved_args.append(arg_channel)
+                    has_at_least_one_channel_input = True
                 else:
                     resolved_args.append(arg)
+            # TODO: Support no-input DAGs (use an empty object to signal).
+            if not has_at_least_one_channel_input:
+                raise ValueError(
+                    "Compiled DAGs require each task to take a "
+                    "ray.dag.InputNode or at least one other DAGNode as an "
+                    "input"
+                )
 
             # Assign the task with the correct input and output buffers.
             worker_fn = task.dag_node._get_remote_method("__ray_call__")
@@ -231,6 +269,9 @@ class CompiledDAG:
 
         assert self.dag_input_channel
         assert self.dag_output_channels
+        assert [
+            output_channel is not None for output_channel in self.dag_output_channels
+        ]
         # If no OutputNode was specified during the DAG creation, there is only
         # one output. Return a single output channel instead of a list of
         # channels.
@@ -255,12 +296,14 @@ class CompiledDAG:
         Returns:
             A list of Channels that can be used to read the DAG result.
         """
+        # These errors should already be caught during compilation, but just in
+        # case.
         if len(args) != 1:
-            raise NotImplementedError("Compiled DAGs support exactly one InputNode arg")
+            raise ValueError("Compiled DAGs support exactly one InputNode arg")
         if len(kwargs) != 0:
-            raise NotImplementedError("Compiled DAGs do not support kwargs")
+            raise ValueError("Compiled DAGs do not support kwargs")
 
-        input_channel, output_channels = self._compiled()
+        input_channel, output_channels = self._compile()
         input_channel.write(args[0])
         return output_channels
 
@@ -273,4 +316,5 @@ def build_compiled_dag_from_ray_dag(dag: "ray.dag.DAGNode"):
         return node
 
     dag.apply_recursive(_build_compiled_dag)
+    compiled_dag._compile()
     return compiled_dag
