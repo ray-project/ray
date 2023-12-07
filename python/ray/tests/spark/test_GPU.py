@@ -143,7 +143,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 num_cpus_worker_node=num_cpus_worker_node,
                 num_gpus_worker_node=num_gpus_worker_node,
                 head_node_options={"include_dashboard": False},
-                autoscale=True,
+                min_worker_nodes=0,
                 autoscale_idle_timeout_minutes=0.1,
             ):
                 ray.init()

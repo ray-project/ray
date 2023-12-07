@@ -243,7 +243,6 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 min_worker_nodes=min_worker_nodes,
                 num_cpus_worker_node=num_cpus_worker_node,
                 head_node_options={"include_dashboard": False},
-                autoscale=True,
                 autoscale_idle_timeout_minutes=0.1,
             ):
                 ray.init()
@@ -347,7 +346,7 @@ class TestSparkLocalCluster:
             num_gpus_head_node=2,
             object_store_memory_head_node=256 * 1024 * 1024,
             head_node_options={"include_dashboard": False},
-            autoscale=autoscale,
+            min_worker_nodes=(0 if autoscale else 1),
         )
 
         ray.init()
@@ -376,7 +375,7 @@ class TestSparkLocalCluster:
                     ):
                         setup_global_ray_cluster(
                             max_worker_nodes=1,
-                            autoscale=autoscale,
+                            min_worker_nodes=(0 if autoscale else 1),
                         )
                 except BaseException:
                     # For debugging testing failure.
@@ -418,7 +417,7 @@ class TestSparkLocalCluster:
             ):
                 setup_global_ray_cluster(
                     max_worker_nodes=1,
-                    autoscale=autoscale,
+                    min_worker_nodes=(0 if autoscale else 1),
                 )
 
         # shut down the cluster

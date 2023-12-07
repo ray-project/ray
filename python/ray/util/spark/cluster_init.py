@@ -463,7 +463,6 @@ def _setup_ray_cluster(
     worker_node_options: Dict,
     ray_temp_root_dir: str,
     collect_log_to_path: str,
-    autoscale: bool,
     autoscale_upscaling_speed: float,
     autoscale_idle_timeout_minutes: float,
     is_global: bool,
@@ -515,6 +514,7 @@ def _setup_ray_cluster(
 
     port_exclude_list.append(ray_client_server_port)
 
+    autoscale = (min_worker_nodes < max_worker_nodes)
     if autoscale:
         spark_job_server_port = get_random_unused_port(
             ray_head_ip,
@@ -898,7 +898,6 @@ def _setup_ray_cluster_internal(
     ray_temp_root_dir: Optional[str],
     strict_mode: bool,
     collect_log_to_path: Optional[str],
-    autoscale: bool,
     autoscale_upscaling_speed: Optional[float],
     autoscale_idle_timeout_minutes: Optional[float],
     is_global: bool,
@@ -1068,36 +1067,37 @@ def _setup_ray_cluster_internal(
     if max_worker_nodes is None:
         raise ValueError("Please set a number for 'max_worker_nodes' argument.")
     if max_worker_nodes == MAX_NUM_WORKER_NODES:
-        if autoscale:
+        if min_worker_nodes is not None:
             raise ValueError(
-                "If you set autoscale=True, you cannot set `max_worker_nodes` to "
-                "`MAX_NUM_WORKER_NODES`, instead, you should set `max_worker_nodes` "
-                "to the number that represents the upper bound of the ray worker "
-                "nodes number."
+                "If you set 'max_worker_nodes' to 'MAX_NUM_WORKER_NODES', autoscaling "
+                "is not supported, so that you cannot set 'min_worker_nodes' argument "
+                "and 'min_worker_nodes' is automatically set to be equal to "
+                "'max_worker_nodes'."
             )
 
         # max_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
         # spark task slots
         max_worker_nodes = get_max_num_concurrent_tasks(spark.sparkContext, res_profile)
+        min_worker_nodes = max_worker_nodes
     elif max_worker_nodes <= 0:
         raise ValueError(
             "The value of 'max_worker_nodes' argument must be either a positive "
             "integer or 'ray.util.spark.MAX_NUM_WORKER_NODES'."
         )
 
-    if autoscale:
-        if min_worker_nodes is None:
-            min_worker_nodes = 0
-        elif min_worker_nodes < 0 or min_worker_nodes > max_worker_nodes:
-            raise ValueError(
-                "The value of 'max_worker_nodes' argument must be an integer >= 0 "
-                "and <= 'max_worker_nodes'"
-            )
-    else:
-        if min_worker_nodes is not None:
-            raise ValueError(
-                "For non-autoscale mode, you cannot set 'min_worker_nodes' argument."
-            )
+    if "autoscale" in kwargs:
+        raise ValueError(
+            "'autoscale' argument is removed. You can set 'min_worker_nodes' argument "
+            "to be less than 'min_worker_nodes' to make autoscaling enabled."
+        )
+
+    if min_worker_nodes is None:
+        min_worker_nodes = max_worker_nodes
+    elif not (0 <= min_worker_nodes <= max_worker_nodes):
+        raise ValueError(
+            "The value of 'max_worker_nodes' argument must be an integer >= 0 "
+            "and <= 'max_worker_nodes'"
+        )
 
     insufficient_resources = []
 
@@ -1191,7 +1191,6 @@ def _setup_ray_cluster_internal(
             worker_node_options=worker_node_options,
             ray_temp_root_dir=ray_temp_root_dir,
             collect_log_to_path=collect_log_to_path,
-            autoscale=autoscale,
             autoscale_upscaling_speed=autoscale_upscaling_speed,
             autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
             is_global=is_global,
@@ -1224,7 +1223,6 @@ def setup_ray_cluster(
     ray_temp_root_dir: Optional[str] = None,
     strict_mode: bool = False,
     collect_log_to_path: Optional[str] = None,
-    autoscale: bool = False,
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
     **kwargs,
@@ -1244,13 +1242,7 @@ def setup_ray_cluster(
 
     Args:
         max_worker_nodes: This argument represents maximum ray worker nodes to start
-            for the ray cluster.
-            If autoscale=True, then the ray cluster starts with "min_worker_nodes"
-            number of worker node, and it can scale up to at most `num_worker_nodes`
-            worker nodes.
-            If autoscale=False, then the ray cluster starts with "max_worker_nodes"
-            number of worker nodes.
-            In non-autoscaling mode, you can
+            for the ray cluster. you can
             specify the `max_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
             represents a ray cluster
             configuration that will use all available resources configured for the
@@ -1259,7 +1251,10 @@ def setup_ray_cluster(
             shared ray cluster in non-scaling, it is recommended to set this argument
             to `ray.util.spark.MAX_NUM_WORKER_NODES`.
         min_worker_nodes: Minimal number of worker nodes in autoscaling mode.
-            This argument is only available in autoscaling mode.
+            if "max_worker_nodes" value is equal to "min_worker_nodes" argument,
+            or "min_worker_nodes" argument is not set, then autoscaling is disabled
+            and Ray cluster is launched with fixed number "max_worker_nodes" of
+            Ray worker nodes, otherwise autoscaling is enabled.
         num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
             provided, use spark application configuration 'spark.task.cpus' instead.
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
@@ -1315,10 +1310,6 @@ def setup_ray_cluster(
             recommend you to specify a local path starts with '/dbfs/', because the
             path mounts with a centralized storage device and stored data is persisted
             after Databricks spark cluster terminated.
-        autoscale: If True, enable autoscaling, the number of initial Ray worker nodes
-            is zero, and the maximum number of Ray worker nodes is set to
-            `max_worker_nodes`, minimal number of Ray worker nodes is set to
-            `min_worker_nodes`. Default value is False.
         autoscale_upscaling_speed: If autoscale enabled, it represents the number of
             nodes allowed to be pending as a multiple of the current number of nodes.
             The higher the value, the more aggressive upscaling will be. For example,
@@ -1359,7 +1350,6 @@ def setup_ray_cluster(
         ray_temp_root_dir=ray_temp_root_dir,
         strict_mode=strict_mode,
         collect_log_to_path=collect_log_to_path,
-        autoscale=autoscale,
         autoscale_upscaling_speed=autoscale_upscaling_speed,
         autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
         is_global=False,
@@ -1429,7 +1419,6 @@ def setup_global_ray_cluster(
         ray_temp_root_dir=None,
         strict_mode=strict_mode,
         collect_log_to_path=collect_log_to_path,
-        autoscale=autoscale,
         autoscale_upscaling_speed=autoscale_upscaling_speed,
         autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
         is_global=True,
