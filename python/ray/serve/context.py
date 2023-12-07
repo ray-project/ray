@@ -6,7 +6,7 @@ can use this state to access metadata or the Serve controller.
 import contextvars
 import logging
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import ray
 from ray.exceptions import RayActorError
@@ -14,7 +14,6 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__file__)
@@ -167,7 +166,7 @@ class _RequestContext:
     request_id: str = ""
     app_name: str = ""
     multiplexed_model_id: str = ""
-    grpc_context: Optional[RayServegRPCContext] = None
+    grpc_context: Optional[Any] = None
 
 
 _serve_request_context = contextvars.ContextVar(
