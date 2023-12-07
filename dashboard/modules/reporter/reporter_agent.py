@@ -386,7 +386,7 @@ class ReporterAgent(
                 pass
             return reporter_pb2.MemoryProfilingReply(output=output, success=success)
         else:
-            time.sleep(duration + 1)  # add 1 second overhead
+            await asyncio.sleep(duration + 1)  # add 1 second overhead
             success, output = await p.detach_profiler(pid)
         success, output = await p.get_profile_result(pid, format=format, leaks=leaks)
         return reporter_pb2.MemoryProfilingReply(output=output, success=success)
