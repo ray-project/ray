@@ -31,7 +31,7 @@ from ray.autoscaler._private.vsphere.gpu_utils import (
 )
 from ray.autoscaler._private.vsphere.pyvmomi_sdk_provider import PyvmomiSdkProvider
 from ray.autoscaler._private.vsphere.scheduler import SchedulerFactory
-from ray.autoscaler._private.vsphere.utils import Constants, is_ipv4, now_ts
+from ray.autoscaler._private.vsphere.utils import Constants, now_ts
 from ray.autoscaler._private.vsphere.vsphere_sdk_provider import VsphereSdkProvider
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
