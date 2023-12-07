@@ -163,10 +163,8 @@ class GcsStateTest : public ::testing::Test {
     EXPECT_CALL(*gcs_actor_manager_, PollOwnerForActorOutOfScope(_));
     MockGcsNodeTable node_table;
     MockGcsActorTaskSpecTable spec_table;
-    MockGcsActorTable actor_table;
     EXPECT_CALL(*gcs_table_storage_, ActorTaskSpecTable())
         .WillOnce(ReturnRef(spec_table));
-    // EXPECT_CALL(*gcs_table_storage_, ActorTable()).WillOnce(ReturnRef(actor_table));
     EXPECT_CALL(spec_table, Put(_, _, _)).WillOnce(Return(Status::OK()));
 
     gcs_actor_manager_->HandleRegisterActor(request, &reply, nullptr);
@@ -287,7 +285,7 @@ TEST_F(GcsStateTest, TestDrainNode) {
 
   ON_CALL(*gcs_publisher_, PublishError).WillByDefault(Return(Status::OK()));
 
-  // Set the expectation that we will get a preempted node.
+  // Set the expectation that we will get a preempted node. This is the actual test!
   MockGcsNodeTable node_table;
   EXPECT_CALL(*gcs_table_storage_, NodeTable()).WillOnce(ReturnRef(node_table));
   EXPECT_CALL(node_table, Put(node_id, IsPreemptedNode(), _))

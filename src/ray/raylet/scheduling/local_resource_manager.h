@@ -153,7 +153,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Change the local node to the draining state.
   /// After that, no new tasks can be scheduled onto the local node.
-  void SetLocalNodeDraining(DrainNodeReason drain_reason);
+  void SetLocalNodeDraining();
 
   bool IsLocalNodeDraining() const { return is_local_node_draining_; }
 

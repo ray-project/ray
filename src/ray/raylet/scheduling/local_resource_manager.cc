@@ -44,6 +44,11 @@ LocalResourceManager::LocalResourceManager(
   RAY_LOG(DEBUG) << "local resources: " << local_resources_.DebugString();
 }
 
+void LocalResourceManager::SetLocalNodeDraining() {
+  is_local_node_draining_ = true;
+  OnResourceOrStateChanged();
+}
+
 void LocalResourceManager::AddLocalResourceInstances(
     scheduling::ResourceID resource_id, const std::vector<FixedPoint> &instances) {
   local_resources_.available.Add(resource_id, instances);
