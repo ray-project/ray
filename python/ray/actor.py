@@ -366,8 +366,8 @@ class _ActorClassMethodMetadata(object):
 
             # Only contains entries from `@ray.method(max_retries=...)`
             # Ray may not populate the others with max_task_retries here because you may
-            # have set in `actor.method.options(max_retries=...)`. So Ray always stores both
-            # max_retries and max_task_retries, and favors the former.
+            # have set in `actor.method.options(max_retries=...)`. So Ray always stores
+            # both max_retries and max_task_retries, and favors the former.
             if hasattr(method, "__ray_max_retries__"):
                 self.max_retries[method_name] = method.__ray_max_retries__
 
@@ -673,8 +673,9 @@ class ActorClass:
                 system will retry the failed task up to n times, after which the
                 task will throw a `RayActorError` exception upon :obj:`ray.get`.
                 Note that Python exceptions are not considered system errors
-                and don't trigger retries. You can override this number with the method's
-                "max_retries" option at @ray.method decorator or at .option() time.
+                and don't trigger retries. You can override this number with the
+                method's "max_retries" option at @ray.method decorator or at .option()
+                time.
             max_pending_calls: Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
