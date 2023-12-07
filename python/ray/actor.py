@@ -673,7 +673,7 @@ class ActorClass:
                 system will retry the failed task up to n times, after which the
                 task will throw a `RayActorError` exception upon :obj:`ray.get`.
                 Note that Python exceptions are not considered system errors
-                and will not trigger retries. This number can be overriden by method's
+                and don't trigger retries. You can override this number with the method's
                 "max_retries" option at @ray.method decorator or at .option() time.
             max_pending_calls: Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
