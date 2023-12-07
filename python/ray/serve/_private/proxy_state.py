@@ -233,77 +233,55 @@ class ActorProxyWrapper(ProxyWrapper):
         )
 
     def is_ready(self, timeout_s: float) -> ProxyWrapperCallStatus:
-        """Return the payload from proxy ready check when ready.
+        if self._ready_check_future is None:
+            self._ready_check_future = wrap_as_future(
+                self._actor_handle.ready.remote(),
+                timeout_s=PROXY_READY_CHECK_TIMEOUT_S
+            )
+            return ProxyWrapperCallStatus.PENDING
+        elif self._ready_check_future.done():
+            try:
+                worker_id, log_file_path = json.loads(self._ready_check_future.result())
+                self.worker_id = worker_id
+                self.log_file_path = log_file_path
 
-        Since actual readiness check is asynchronous, this method could return
-        either of the following statuses:
-
-            - FINISHED_SUCCEED: Readiness check finished successfully
-            - FINISHED_FAILED: Readiness check finished with failure (either timing out or failing)
-            - PENDING: Readiness check is still pending
-        """
-        try:
-            if self._ready_check_future is None:
-                self._ready_check_future = wrap_as_future(
-                    self._actor_handle.ready.remote(),
-                    timeout_s=PROXY_READY_CHECK_TIMEOUT_S
-                )
-
-                return ProxyWrapperCallStatus.PENDING
-            else:
-                if self._ready_check_future.done():
-                    worker_id, log_file_path = json.loads(self._ready_check_future.result())
-                    self.worker_id = worker_id
-                    self.log_file_path = log_file_path
-
-                    self._ready_check_future = None
-                    return ProxyWrapperCallStatus.FINISHED_SUCCEED
-                else:
-                    return ProxyWrapperCallStatus.PENDING
-        except Exception as e:
-            if isinstance(e, TimeoutError):
-                logger.warning(
-                    f"Didn't receive ready check response for proxy {self._node_id} after {timeout_s}s."
-                )
+                check_status = ProxyWrapperCallStatus.FINISHED_SUCCEED
+            except Exception as e:
+                check_status = ProxyWrapperCallStatus.FINISHED_FAILED
+                if isinstance(e, TimeoutError):
+                    logger.warning(
+                        f"Didn't receive ready check response for proxy {self._node_id} after {timeout_s}s."
+                    )
 
             self._ready_check_future = None
-            return ProxyWrapperCallStatus.FINISHED_FAILED
+            return check_status
+        else:
+            return ProxyWrapperCallStatus.PENDING
 
     def is_healthy(self, timeout_s: float) -> ProxyWrapperCallStatus:
-        """Return whether the proxy actor is healthy or not.
-
-        Since actual health-check is asynchronous, this method could return
-        either of the following statuses:
-
-            - FINISHED_SUCCEED: Health-check finished successfully
-            - FINISHED_FAILED: Health-check finished with failure (either timing out or failing)
-            - PENDING: Health-check is still pending
-        """
-        try:
-            if self._health_check_future is None:
-                self._health_check_future = wrap_as_future(
-                    self._actor_handle.check_health.remote(),
-                    timeout_s=timeout_s
-                )
-                return ProxyWrapperCallStatus.PENDING
-            else:
-                if self._health_check_future.done:
-                    # NOTE: Since `check_health` method is responding with nothing, sole purpose
-                    #       of `ray.get` here is to extract any potential exceptions
-                    ray.get(self._health_check_future)
-
-                    self._health_check_future = None
-                    return ProxyWrapperCallStatus.FINISHED_SUCCEED
-                else:
-                    return ProxyWrapperCallStatus.PENDING
-        except Exception as e:
-            if isinstance(e, TimeoutError):
-                logger.warning(
-                    f"Didn't receive health check response for proxy {self._node_id} after {timeout_s}s."
-                )
+        if self._health_check_future is None:
+            self._health_check_future = wrap_as_future(
+                self._actor_handle.check_health.remote(),
+                timeout_s=timeout_s
+            )
+            return ProxyWrapperCallStatus.PENDING
+        elif self._health_check_future.done:
+            try:
+                # NOTE: Since `check_health` method is responding with nothing, sole purpose
+                #       of fetching the result is to extract any potential exceptions
+                self._health_check_future.result()
+                check_status = ProxyWrapperCallStatus.FINISHED_SUCCEED
+            except Exception as e:
+                check_status = ProxyWrapperCallStatus.FINISHED_FAILED
+                if isinstance(e, TimeoutError):
+                    logger.warning(
+                        f"Didn't receive health check response for proxy {self._node_id} after {timeout_s}s."
+                    )
 
             self._health_check_future = None
-            return ProxyWrapperCallStatus.FINISHED_FAILED
+            return check_status
+        else:
+            return ProxyWrapperCallStatus.PENDING
 
     def is_drained(self) -> ProxyWrapperCallStatus:
         """Return whether the proxy actor is drained or not.
