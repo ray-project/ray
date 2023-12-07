@@ -75,14 +75,8 @@ try:
         # PyArrow is mocked in documentation builds. In this case, we don't need to do
         # anything.
         pass
-    else:
-        if parse_version(pyarrow_version) >= parse_version("14.0.1"):
-            pa.PyExtensionType.set_auto_load(True)
-        # Import these arrow extension types to ensure that they are registered.
-        from ray.data.extensions.tensor_extension import (  # noqa
-            ArrowTensorType,
-            ArrowVariableShapedTensorType,
-        )
+    elif parse_version(pyarrow_version) >= parse_version("14.0.1"):
+        pa.PyExtensionType.set_auto_load(True)
 except ModuleNotFoundError:
     pass
 
