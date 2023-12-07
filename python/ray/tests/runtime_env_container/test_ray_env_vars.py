@@ -20,5 +20,5 @@ def g():
     return os.environ.get("TEST_ABC")
 
 
-assert ray.get(f.remote()) == "DEF"
+assert ray.get(f.remote()) == "1"
 assert ray.get(g.remote()) is None

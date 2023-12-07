@@ -19,4 +19,4 @@ def create_ref():
 
 
 wrapped_ref = create_ref.remote()
-assert ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)
+assert (ray.get(ray.get(wrapped_ref)) == np.zeros(100_000_000)).all()
