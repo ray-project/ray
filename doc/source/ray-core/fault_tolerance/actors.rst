@@ -148,7 +148,7 @@ You can set ``retry_exceptions`` in the `@ray.method(retry_exceptions=...)` deco
 Retry behavior depends on the value you set ``retry_exceptions`` to:
 - ``retry_exceptions == False`` (default): No retries for user exceptions.
 - ``retry_exceptions == True``: Ray retries a method on user exception up to ``max_retries`` times.
-- If ``retry_exceptions`` is a list of exceptions: a method may be retried on user exception for up to ``max_retries`` times, only if it raises an exception from these specific classes.
+- ``retry_exceptions`` is a list of exceptions: Ray retries a method on user exception up to ``max_retries`` times, only if the method raises an exception from these specific classes.
 
 ``max_retries`` works for both exceptions and actor crashes. It's determined in this order:
 
