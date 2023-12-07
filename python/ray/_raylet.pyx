@@ -975,7 +975,7 @@ def serialize_retry_exception_allowlist(retry_exception_allowlist, function_desc
         msg = (
             "Could not serialize the retry exception allowlist"
             f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
-            "Check "
+            "See "
             "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
             "for more information.")
         raise TypeError(msg) from e
