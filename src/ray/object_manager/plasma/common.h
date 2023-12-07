@@ -124,6 +124,7 @@ class LocalObject {
   const plasma::flatbuf::ObjectSource &GetSource() const { return source; }
 
   ray::PlasmaObjectHeader *GetPlasmaObjectHeader() const {
+    RAY_CHECK(object_info.is_mutable) << "Object is not mutable";
     auto header_ptr = static_cast<uint8_t *>(allocation.address);
     return reinterpret_cast<ray::PlasmaObjectHeader *>(header_ptr);
   }
@@ -135,9 +136,12 @@ class LocalObject {
     }
     object->store_fd = GetAllocation().fd;
     object->header_offset = GetAllocation().offset;
-    object->data_offset = GetAllocation().offset + sizeof(ray::PlasmaObjectHeader);
-    object->metadata_offset = GetAllocation().offset + sizeof(ray::PlasmaObjectHeader) +
-                              GetObjectInfo().data_size;
+    object->data_offset = GetAllocation().offset;
+    object->metadata_offset = GetAllocation().offset + GetObjectInfo().data_size;
+    if (object_info.is_mutable) {
+      object->data_offset += sizeof(ray::PlasmaObjectHeader);
+      object->metadata_offset += sizeof(ray::PlasmaObjectHeader);
+    };
     object->data_size = GetObjectInfo().data_size;
     object->metadata_size = GetObjectInfo().metadata_size;
     // Senders and receivers of a channel may store different data and metadata
