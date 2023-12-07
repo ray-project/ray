@@ -8,7 +8,6 @@ from ray import train
 from ray.train import DataConfig, ScalingConfig
 from ray.data import DataIterator
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.data.context import DataContext
 from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
 from ray.tests.conftest import *  # noqa
 
