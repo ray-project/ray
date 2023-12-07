@@ -98,7 +98,7 @@ class _UnboundClassMethodNode(object):
         # because we cannot serialize the weakref.
         self._actor = actor
         self._method_name = method_name
-        self._options = {}
+        self._options = options
 
     def bind(self, *args, **kwargs):
         other_args_to_resolve = {

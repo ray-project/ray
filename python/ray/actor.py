@@ -29,7 +29,7 @@ from ray._raylet import (
     PythonFunctionDescriptor,
     raise_sys_exit_with_custom_error_message,
 )
-from ray.dag.class_node import PARENT_CLASS_NODE_KEY, ClassMethodNode
+from ray.dag.class_node import PARENT_CLASS_NODE_KEY, ClassMethodNode, PREV_CLASS_METHOD_CALL_KEY
 from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
@@ -238,6 +238,7 @@ class ActorMethod:
 
         other_args_to_resolve = {
             PARENT_CLASS_NODE_KEY: self._handle,
+            PREV_CLASS_METHOD_CALL_KEY: None,
         }
 
         node = ClassMethodNode(
