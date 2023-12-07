@@ -312,6 +312,8 @@ Status ReadCreateReply(uint8_t *data,
   object->metadata_offset = message->plasma_object()->metadata_offset();
   object->metadata_size = message->plasma_object()->metadata_size();
   object->allocated_size = message->plasma_object()->allocated_size();
+  object->is_experimental_mutable_object =
+      message->plasma_object()->is_experimental_mutable_object();
 
   store_fd->first = INT2FD(message->store_fd());
   store_fd->second = message->unique_fd_id();
@@ -672,6 +674,8 @@ Status ReadGetReply(uint8_t *data,
     plasma_objects[i].metadata_size = object->metadata_size();
     plasma_objects[i].allocated_size = object->allocated_size();
     plasma_objects[i].device_num = object->device_num();
+    plasma_objects[i].is_experimental_mutable_object =
+        object->is_experimental_mutable_object();
   }
   RAY_CHECK(message->store_fds()->size() == message->mmap_sizes()->size());
   for (uoffset_t i = 0; i < message->store_fds()->size(); i++) {
