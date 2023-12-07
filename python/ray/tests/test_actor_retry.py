@@ -98,6 +98,19 @@ class AsyncTroubleMaker:
         else:
             return c
 
+    @ray.method(num_returns="streaming")  # retry_exceptions=None aka False.
+    async def yield_or_raise(self, counter, actions):
+        while True:
+            c = await counter.increment.remote()
+            a = actions[c]
+            if isinstance(a, BaseException):
+                raise a
+            else:
+                yield a
+            if c == len(actions) - 1:
+                # don't over call counter. Only call #yield and #raise times.
+                return
+
 
 def test_method_raise_5_times(shutdown_only):
     counter = Counter.remote()
@@ -124,6 +137,93 @@ def test_method_no_retry_without_retry_exceptions(shutdown_only):
             )
         )
     assert ray.get(counter.get_count.remote()) == 1
+
+
+def test_generator_method_no_retry_without_retry_exceptions(shutdown_only):
+    counter = Counter.remote()
+    trouble_maker = AsyncTroubleMaker.remote()
+
+    gen = trouble_maker.yield_or_raise.remote(
+        counter,
+        [
+            # First round: 1 then raise
+            1,
+            MyError(),
+            # No retry, no second round
+            1,
+            2,
+        ],
+    )
+    assert ray.get(next(gen)) == 1
+    with pytest.raises(MyError):
+        ray.get(next(gen))
+    with pytest.raises(StopIteration):
+        ray.get(next(gen))
+    assert ray.get(counter.get_count.remote()) == 2
+
+
+def test_generator_method_retry_exact_times(shutdown_only):
+    counter = Counter.remote()
+    trouble_maker = AsyncTroubleMaker.remote()
+
+    # Should retry out max_task_retries=3 times
+    gen = trouble_maker.yield_or_raise.options(retry_exceptions=[MyError]).remote(
+        counter,
+        [
+            # First round
+            1,
+            MyError(),
+            # retry 1
+            1,
+            MyError(),
+            # retry 2
+            1,
+            MyError(),
+            # retry 3
+            1,
+            2,
+            3,
+        ],
+    )
+    assert ray.get(next(gen)) == 1
+    assert ray.get(next(gen)) == 2
+    assert ray.get(next(gen)) == 3
+    with pytest.raises(StopIteration):
+        ray.get(next(gen))
+    assert ray.get(counter.get_count.remote()) == 9
+
+
+def test_generator_method_does_not_over_retry(shutdown_only):
+    counter = Counter.remote()
+    trouble_maker = AsyncTroubleMaker.remote()
+
+    # Should retry out max_task_retries=3 times
+    gen = trouble_maker.yield_or_raise.options(retry_exceptions=[MyError]).remote(
+        counter,
+        [
+            # First round
+            1,
+            MyError(),
+            # retry 1
+            1,
+            MyError(),
+            # retry 2,
+            1,
+            MyError(),
+            # retry 3
+            1,
+            MyError(),
+            # no retry 4!
+            1,
+            2,
+        ],
+    )
+    assert ray.get(next(gen)) == 1
+    with pytest.raises(MyError):
+        ray.get(next(gen))
+    with pytest.raises(StopIteration):
+        ray.get(next(gen))
+    assert ray.get(counter.get_count.remote()) == 8
 
 
 def test_options_takes_precedence(shutdown_only):
