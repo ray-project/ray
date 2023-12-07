@@ -35,14 +35,6 @@ Machine Learning Examples
             Build Batch Prediction Using Ray
 
     .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: batch_training
-
-            Build Batch Training Using Ray
-
-    .. grid-item-card::
         :img-top: images/param_actor.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
