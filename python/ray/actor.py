@@ -1156,7 +1156,7 @@ class ActorHandle:
         _ray_method_max_retries: Max number of retries on method failure.
         _ray_method_num_returns: The default number of return values for
             each method.
-        _ray_method_retry_exceptions: The default value of boolean of whether we want
+        _ray_method_retry_exceptions: The default value of boolean of whether you want
             to retry all user-raised exceptions, or a list of allowlist exceptions to
             retry.
         _ray_method_generator_backpressure_num_objects: Generator-only
