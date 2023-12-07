@@ -141,7 +141,7 @@ Actor method exceptions
 
 Sometime you want to retry when an actor method raises exceptions. Use ``max_retries`` with ``retry_exceptions`` to retry.
 
-Note: this behavior of retrying on user raised exceptions is disabled by default. If you enable it, you need to make sure the method is idempotent, meaning invoking it multiple times should be equivalent to invoking it only once.
+Note that by default, retrying on user raised exceptions is disabled. To enable it, make sure the method is idempotent, that is, invoking it multiple times should be equivalent to invoking it only once.
 
 ``retry_exceptions`` can be set to `@ray.method(retry_exceptions=...)` decorator, or in the `.options(retry_exceptions=...)` in the method call.
 
