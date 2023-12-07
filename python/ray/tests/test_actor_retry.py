@@ -30,7 +30,7 @@ class TroubleMaker:
     @ray.method(max_retries=5, retry_exceptions=[MyError])
     def may_raise_n_times(self, counter, n):
         """
-        raises if there had been n calls before this call.
+        Raises if there were n calls before this call.
         returns the number of calls before this call, if it's > n.
         """
         c = ray.get(counter.increment.remote())
