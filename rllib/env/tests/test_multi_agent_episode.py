@@ -258,9 +258,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertEqual(len(episode.agent_episodes["agent_2"]), 1)
         self.assertEqual(len(episode.agent_episodes["agent_3"]), 1)
         self.assertEqual(len(episode.agent_episodes["agent_4"]), 1)
-        # Assert now that applying length on agent 5's episode raises an error.
-        with self.assertRaises(AssertionError):
-            len(episode.agent_episodes["agent_5"])
+        self.assertEqual(len(episode.agent_episodes["agent_5"]), 0)
 
         # TODO (simon): Also test the other structs inside the MAE for agent 5 and
         # the other agents.
@@ -790,7 +788,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Test with initial observations only.
         episode_init_only = MultiAgentEpisode(agent_ids=agent_ids)
         episode_init_only.add_env_reset(
-            observation=observations[0],
+            observations=observations[0],
             infos=infos[0],
         )
         # Get the last observation for agents and assert that its correct.
@@ -846,94 +844,122 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertEqual(last_actions["agent_3"][1], actions[-2]["agent_3"])
 
         # --- extra_model_outputs ---
-        last_extra_model_outputs = episode.get_extra_model_outputs()
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_1"][0], extra_model_outputs[-1]["agent_1"]
+        last_extra_model_outputs = episode.get_extra_model_outputs("extra")
+        self.assertEqual(
+            last_extra_model_outputs["agent_1"][0],
+            extra_model_outputs[-1]["agent_1"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_3"][0], extra_model_outputs[-1]["agent_3"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_3"][0],
+            extra_model_outputs[-1]["agent_3"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_4"][0], extra_model_outputs[-1]["agent_4"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_4"][0],
+            extra_model_outputs[-1]["agent_4"]["extra"],
         )
 
         # Request the last two outputs.
-        last_extra_model_outputs = episode.get_extra_model_outputs(indices=[-1, -2])
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_1"][0], extra_model_outputs[-1]["agent_1"]
+        last_extra_model_outputs = episode.get_extra_model_outputs(
+            "extra", indices=[-1, -2]
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_3"][0], extra_model_outputs[-1]["agent_3"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_1"][0],
+            extra_model_outputs[-1]["agent_1"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_4"][0], extra_model_outputs[-1]["agent_4"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_3"][0],
+            extra_model_outputs[-1]["agent_3"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_1"][1], extra_model_outputs[-2]["agent_1"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_4"][0],
+            extra_model_outputs[-1]["agent_4"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_2"][0], extra_model_outputs[-2]["agent_2"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_1"][1],
+            extra_model_outputs[-2]["agent_1"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_3"][1], extra_model_outputs[-2]["agent_3"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_2"][0],
+            extra_model_outputs[-2]["agent_2"]["extra"],
+        )
+        self.assertEqual(
+            last_extra_model_outputs["agent_3"][1],
+            extra_model_outputs[-2]["agent_3"]["extra"],
         )
 
         # Now request lists.
-        last_extra_model_outputs = episode.get_extra_model_outputs(as_list=True)
-        self.assertDictEqual(
-            last_extra_model_outputs[0]["agent_1"], extra_model_outputs[-1]["agent_1"]
+        last_extra_model_outputs = episode.get_extra_model_outputs(
+            "extra", as_list=True
         )
-        self.assertDictEqual(
-            last_extra_model_outputs[0]["agent_3"], extra_model_outputs[-1]["agent_3"]
+        self.assertEqual(
+            last_extra_model_outputs[0]["agent_1"],
+            extra_model_outputs[-1]["agent_1"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs[0]["agent_4"], extra_model_outputs[-1]["agent_4"]
+        self.assertEqual(
+            last_extra_model_outputs[0]["agent_3"],
+            extra_model_outputs[-1]["agent_3"]["extra"],
+        )
+        self.assertEqual(
+            last_extra_model_outputs[0]["agent_4"],
+            extra_model_outputs[-1]["agent_4"]["extra"],
         )
         # Request the last two extra model outputs and return as a list.
         last_extra_model_outputs = episode.get_extra_model_outputs(
-            [-1, -2], as_list=True
+            "extra", [-1, -2], as_list=True
         )
-        self.assertDictEqual(
-            last_extra_model_outputs[0]["agent_1"], extra_model_outputs[-1]["agent_1"]
+        self.assertEqual(
+            last_extra_model_outputs[0]["agent_1"],
+            extra_model_outputs[-1]["agent_1"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs[0]["agent_3"], extra_model_outputs[-1]["agent_3"]
+        self.assertEqual(
+            last_extra_model_outputs[0]["agent_3"],
+            extra_model_outputs[-1]["agent_3"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs[0]["agent_4"], extra_model_outputs[-1]["agent_4"]
+        self.assertEqual(
+            last_extra_model_outputs[0]["agent_4"],
+            extra_model_outputs[-1]["agent_4"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs[1]["agent_1"], extra_model_outputs[-2]["agent_1"]
+        self.assertEqual(
+            last_extra_model_outputs[1]["agent_1"],
+            extra_model_outputs[-2]["agent_1"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs[1]["agent_2"], extra_model_outputs[-2]["agent_2"]
+        self.assertEqual(
+            last_extra_model_outputs[1]["agent_2"],
+            extra_model_outputs[-2]["agent_2"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs[1]["agent_3"], extra_model_outputs[-2]["agent_3"]
+        self.assertEqual(
+            last_extra_model_outputs[1]["agent_3"],
+            extra_model_outputs[-2]["agent_3"]["extra"],
         )
 
         # Now request the last extra model outputs at the local timesteps, i.e.
         # for each agent its last two actions.
         last_extra_model_outputs = episode.get_extra_model_outputs(
-            [-1, -2], global_ts=False
+            "extra", [-1, -2], global_ts=False
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_1"][0], extra_model_outputs[-1]["agent_1"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_1"][0],
+            extra_model_outputs[-1]["agent_1"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_3"][0], extra_model_outputs[-1]["agent_3"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_3"][0],
+            extra_model_outputs[-1]["agent_3"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_4"][0], extra_model_outputs[-1]["agent_4"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_4"][0],
+            extra_model_outputs[-1]["agent_4"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_1"][1], extra_model_outputs[-2]["agent_1"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_1"][1],
+            extra_model_outputs[-2]["agent_1"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_2"][0], extra_model_outputs[-2]["agent_2"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_2"][0],
+            extra_model_outputs[-2]["agent_2"]["extra"],
         )
-        self.assertDictEqual(
-            last_extra_model_outputs["agent_3"][1], extra_model_outputs[-2]["agent_3"]
+        self.assertEqual(
+            last_extra_model_outputs["agent_3"][1],
+            extra_model_outputs[-2]["agent_3"]["extra"],
         )
 
         # TODO (simon): Not tested with `global_ts=False`.
@@ -1073,7 +1099,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertListEqual(episode_1.global_t_to_local_t["agent_5"][-2:], [99, 100])
         # Agent 5 has already died, so we need to convert back to list.
         self.assertListEqual(
-            episode_1.agent_episodes["agent_5"].rewards.tolist()[-2:],
+            episode_1.agent_episodes["agent_5"].rewards[-2:],
             last_rewards["agent_5"],
         )
         self.assertIn("agent_2", last_rewards)
@@ -1299,7 +1325,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertIn("agent_5", last_rewards)
         # Agent 5 already died, so we need to convert to list first.
         self.assertListEqual(
-            episode_1.agent_episodes["agent_5"].rewards.tolist()[-1:-3:-1],
+            episode_1.agent_episodes["agent_5"].rewards[-1:-3:-1],
             last_rewards["agent_5"],
         )
         self.assertIn("agent_8", last_rewards)
