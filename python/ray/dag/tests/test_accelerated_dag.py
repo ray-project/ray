@@ -24,6 +24,11 @@ class Actor:
         self.i += x
         return self.i
 
+    def inc_two(self, x, y):
+        self.i += x
+        self.i += y
+        return self.i
+
 
 def test_single_output_dag(ray_start_regular):
     a = Actor.remote(0)
@@ -37,6 +42,22 @@ def test_single_output_dag(ray_start_regular):
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
         assert result == i + 1
+        output_channel.end_read()
+
+
+def test_regular_args(ray_start_regular):
+    # Test passing regular args to .bind in addition to DAGNode args.
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc_two.bind(2, i)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(1)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (i + 1) * 3
         output_channel.end_read()
 
 

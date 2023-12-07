@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union
+from typing import Any, List, Tuple, Union
 
 import ray
 import ray.experimental.channel as ray_channel
@@ -27,18 +27,30 @@ def do_allocate_channel(
 
 def do_exec_compiled_task(
     self,
-    input_channels: List["ray_channel.Channel"],
+    inputs: List[Union[Any, "ray_channel.Channel"]],
     actor_method_name: str,
 ):
     try:
-        self._input_channels = input_channels
         method = getattr(self, actor_method_name)
+
+        resolved_inputs = []
+        input_channel_idxs = []
+        # Add placeholders for input channels.
+        for inp in inputs:
+            if isinstance(inp, ray_channel.Channel):
+                input_channel_idxs.append((len(resolved_inputs), inp))
+                resolved_inputs.append(None)
+            else:
+                resolved_inputs.append(inp)
+
         while True:
-            inputs = [chan.begin_read() for chan in input_channels]
-            output_val = method(*inputs)
+            for idx, chan in input_channel_idxs:
+                resolved_inputs[idx] = chan.begin_read()
+
+            output_val = method(*resolved_inputs)
 
             self._output_channel.write(output_val)
-            for chan in input_channels:
+            for _, chan in input_channel_idxs:
                 chan.end_read()
 
     except Exception as e:
@@ -122,10 +134,7 @@ class CompiledDAG:
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
             if len(task.dependent_node_idxs) == 0:
-                assert self.output_task_idx is None, (
-                    "More than one output node found, "
-                    "make sure only one node has 0 dependent tasks"
-                )
+                assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
 
         assert self.output_task_idx is not None
@@ -194,12 +203,13 @@ class CompiledDAG:
 
             resolved_args = []
             for arg in task.args:
-                # TODO(swang): Support non-ObjectRef args.
-                assert isinstance(arg, DAGNode)
-                arg_idx = self.dag_node_to_idx[arg]
-                arg_buffer = self.idx_to_task[arg_idx].output_channel
-                assert arg_buffer is not None
-                resolved_args.append(arg_buffer)
+                if isinstance(arg, DAGNode):
+                    arg_idx = self.dag_node_to_idx[arg]
+                    arg_channel = self.idx_to_task[arg_idx].output_channel
+                    assert arg_channel is not None
+                    resolved_args.append(arg_channel)
+                else:
+                    resolved_args.append(arg)
 
             # Assign the task with the correct input and output buffers.
             worker_fn = task.dag_node._get_remote_method("__ray_call__")
