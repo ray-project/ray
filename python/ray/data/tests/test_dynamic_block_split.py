@@ -612,6 +612,31 @@ def test_block_slicing(
         assert size >= target_max_block_size / 2
 
 
+@pytest.mark.parametrize(
+    "target_max_block_size",
+    [128, 256, 512],
+)
+def test_dynamic_block_split_deterministic(
+    ray_start_regular_shared, target_max_block_size
+):
+    # Tests the determinism of block splitting.
+    TEST_ITERATIONS = 10
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_max_block_size = target_max_block_size
+
+    # ~800 bytes per block
+    ds = ray.data.range(1000, parallelism=10).map_batches(lambda x: x)
+    data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
+    # Maps: first item of block -> block
+    block_map = {block["id"][0]: block for block in data}
+    # Iterate over multiple executions of the dataset,
+    # and check that blocks were split in the same way
+    for _ in range(TEST_ITERATIONS):
+        data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
+        for block in data:
+            assert block_map[block["id"][0]] == block
+
+
 if __name__ == "__main__":
     import sys
 
