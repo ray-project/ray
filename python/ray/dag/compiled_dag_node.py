@@ -133,7 +133,8 @@ class CompiledDAG:
                 if isinstance(dag_node, InputAttributeNode):
                     # TODO(swang): Support multi args.
                     raise ValueError(
-                        "Compiled DAGs currently do not support kwargs or multiple args for InputNode"
+                        "Compiled DAGs currently do not support kwargs or "
+                        "multiple args for InputNode"
                     )
                 elif isinstance(dag_node, FunctionNode):
                     # TODO(swang): Support non-actor tasks.

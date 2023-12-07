@@ -112,7 +112,8 @@ def test_dag_errors(ray_start_regular):
         dag = a.inc_two.bind(inp[0], inp[1])
     with pytest.raises(
         ValueError,
-        match="Compiled DAGs currently do not support kwargs or multiple args for InputNode",
+        match="Compiled DAGs currently do not support kwargs or multiple args "
+        "for InputNode",
     ):
         dag.experimental_compile()
 
@@ -120,7 +121,8 @@ def test_dag_errors(ray_start_regular):
         dag = a.inc_two.bind(inp.x, inp.y)
     with pytest.raises(
         ValueError,
-        match="Compiled DAGs currently do not support kwargs or multiple args for InputNode",
+        match="Compiled DAGs currently do not support kwargs or multiple args "
+        "for InputNode",
     ):
         dag.experimental_compile()
 
