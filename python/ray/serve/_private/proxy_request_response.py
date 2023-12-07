@@ -10,8 +10,8 @@ from starlette.types import Receive, Scope, Send
 from ray.actor import ActorHandle
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.grpc_util import RayServegRPCContext
 from ray.serve._private.utils import DEFAULT
+from ray.serve.grpc_util import RayServegRPCContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

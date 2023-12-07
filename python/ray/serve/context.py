@@ -13,8 +13,8 @@ from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
-from ray.serve._private.grpc_util import RayServegRPCContext
 from ray.serve.exceptions import RayServeException
+from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__file__)

@@ -15,7 +15,6 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.grpc_util import RayServegRPCContext
 from ray.serve._private.proxy import (
     DRAINED_MESSAGE,
     HEALTH_CHECK_SUCCESS_MESSAGE,
@@ -27,6 +26,7 @@ from ray.serve._private.proxy_request_response import ProxyRequest
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.test_utils import FakeGrpcContext
 from ray.serve.generated import serve_pb2
+from ray.serve.grpc_util import RayServegRPCContext
 
 
 class FakeRef:

@@ -84,7 +84,7 @@ class DummyServicer:
 class RayServegRPCContext:
     """Context manager to set and get gRPC context.
 
-    This class implenents the most of the methods on ServicerContext
+    This class implements most of the methods from ServicerContext
     (see: https://grpc.github.io/grpc/python/grpc.html#grpc.ServicerContext) so it's
     serializable and can pass with the request to be used on the deployment.
     """
