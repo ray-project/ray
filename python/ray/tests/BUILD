@@ -303,6 +303,15 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+# These tests are flaky due to concurrency bugs in the autoscaler.
+# See https://github.com/ray-project/ray/issues/41186.
+py_test_module_list(
+  files = ["test_autoscaler.py"],
+  size = "small",
+  tags = ["exclusive", "autoscaler_concurrency", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test_module_list(
   files = [
     "test_autoscaler_e2e.py",
@@ -314,7 +323,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_util.py",
     "test_autoscaler_gcp.py",

@@ -32,7 +32,7 @@
     - ./ci/env/env_info.sh
     - pip install ray[client]
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=mem_pressure
+      --test_tag_filters=mem_pressure,autoscaler_concurrency
       --test_env=DOCKER_HOST=tcp://docker:2376
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
