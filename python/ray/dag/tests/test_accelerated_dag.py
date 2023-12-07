@@ -25,10 +25,24 @@ class Actor:
         return self.i
 
 
+def test_single_output_dag(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(1)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == i + 1
+        output_channel.end_read()
+
+
 @pytest.mark.parametrize("num_actors", [1, 4])
 def test_scatter_gather_dag(ray_start_regular, num_actors):
-    init_val = 0
-    actors = [Actor.remote(init_val) for _ in range(num_actors)]
+    actors = [Actor.remote(0) for _ in range(num_actors)]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
         dag = OutputNode(out)
@@ -39,7 +53,7 @@ def test_scatter_gather_dag(ray_start_regular, num_actors):
         output_channels = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
         results = [chan.begin_read() for chan in output_channels]
-        assert results == [init_val + i + 1] * num_actors
+        assert results == [i + 1] * num_actors
         for chan in output_channels:
             chan.end_read()
 

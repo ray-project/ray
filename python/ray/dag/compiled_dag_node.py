@@ -1,10 +1,12 @@
-from typing import List
+from typing import List, Tuple, Union
 
 import ray
 import ray.experimental.channel as ray_channel
 
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
+
+ChannelType = "ray.experimental.channel.Channel"
 
 
 def allocate_channel(buffer_size_bytes: int = MAX_BUFFER_SIZE, num_readers: int = 1):
@@ -52,7 +54,7 @@ class CompiledTask:
         self.dag_node = dag_node
 
         self.args = []
-        self.dependent_node_idxs = []
+        self.dependent_node_idxs = set()
         self.output_channel = None
 
     @property
@@ -78,6 +80,7 @@ class CompiledDAG:
 
         self.input_task_idx = None
         self.output_task_idx = None
+        self.has_single_output = False
         self.node_idx_to_output_channels = {}
 
         # Cached.
@@ -92,14 +95,22 @@ class CompiledDAG:
         self.counter += 1
 
     def _preprocess(self):
-        from ray.dag import DAGNode, InputNode
+        """Before compiling, preprocess the DAG to build an index from task to
+        upstream and downstream tasks, and to set the input and output node(s)
+        of the DAG.
+        """
+        from ray.dag import DAGNode, InputNode, OutputNode
 
+        # For each task node, set its upstream and downstream task nodes.
         for idx, task in self.idx_to_task.items():
             task.args = task.dag_node.get_args()
             for arg in task.args:
                 if isinstance(arg, DAGNode):
                     arg_idx = self.dag_node_to_idx[arg]
-                    self.idx_to_task[arg_idx].dependent_node_idxs.append(idx)
+                    self.idx_to_task[arg_idx].dependent_node_idxs.add(idx)
+
+        # Find the input node to the DAG.
+        for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "more than one InputNode found"
                 self.input_task_idx = idx
@@ -108,6 +119,7 @@ class CompiledDAG:
             self.input_task_idx is not None
         ), "no InputNode found, require exactly one"
 
+        # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
             if len(task.dependent_node_idxs) == 0:
                 assert self.output_task_idx is None, (
@@ -116,8 +128,25 @@ class CompiledDAG:
                 )
                 self.output_task_idx = idx
 
-    def _compiled(self):
+        assert self.output_task_idx is not None
+        output_node = self.idx_to_task[self.output_task_idx].dag_node
+        # Add an OutputNode to the end of the DAG if it's not already there.
+        if not isinstance(output_node, OutputNode):
+            self.has_single_output = True
+            output_node = OutputNode([output_node])
+            self._add_node(output_node)
+            self.output_task_idx = self.dag_node_to_idx[output_node]
+            # Preprocess one more time so that we have the right output node
+            # now.
+            self.input_task_idx, self.output_task_idx = None, None
+            self._preprocess()
+
+    def _compiled(self) -> Tuple[ChannelType, Union[ChannelType, List[ChannelType]]]:
+        """ """
         from ray.dag import DAGNode, InputNode, OutputNode, ClassMethodNode
+
+        if self.input_task_idx is None:
+            self._preprocess()
 
         if self.dag_input_channel is not None and self.dag_output_channels is not None:
             # Driver should ray.put on input, ray.get/release on output
@@ -153,11 +182,6 @@ class CompiledDAG:
 
             for idx in task.dependent_node_idxs:
                 queue.append(idx)
-
-        output_node = self.idx_to_task[self.output_task_idx].dag_node
-        # TODO: Add an OutputNode to the end of the DAG if
-        # it's not already there.
-        assert isinstance(output_node, OutputNode)
 
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
@@ -197,6 +221,13 @@ class CompiledDAG:
 
         assert self.dag_input_channel
         assert self.dag_output_channels
+        # If no OutputNode was specified during the DAG creation, there is only
+        # one output. Return a single output channel instead of a list of
+        # channels.
+        if self.has_single_output:
+            assert len(self.dag_output_channels) == 1
+            self.dag_output_channels = self.dag_output_channels[0]
+
         # Driver should ray.put on input, ray.get/release on output
         return (self.dag_input_channel, self.dag_output_channels)
 
@@ -204,7 +235,7 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-    ) -> List["ray.experimental.channel.Channel"]:
+    ) -> Union[ChannelType, List[ChannelType]]:
         """Execute this DAG using the compiled execution path.
 
         Args:
@@ -232,5 +263,4 @@ def build_compiled_dag_from_ray_dag(dag: "ray.dag.DAGNode"):
         return node
 
     dag.apply_recursive(_build_compiled_dag)
-    compiled_dag._preprocess()
     return compiled_dag
