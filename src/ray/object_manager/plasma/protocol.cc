@@ -200,7 +200,7 @@ Status SendCreateRetryRequest(const std::shared_ptr<StoreConn> &store_conn,
 Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                          ObjectID object_id,
                          const ray::rpc::Address &owner_address,
-                         bool is_mutable,
+                         bool is_experimental_mutable_object,
                          int64_t data_size,
                          int64_t metadata_size,
                          flatbuf::ObjectSource source,
@@ -214,7 +214,7 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                                     fbb.CreateString(owner_address.ip_address()),
                                     owner_address.port(),
                                     fbb.CreateString(owner_address.worker_id()),
-                                    is_mutable,
+                                    is_experimental_mutable_object,
                                     data_size,
                                     metadata_size,
                                     source,
@@ -269,7 +269,8 @@ Status SendCreateReply(const std::shared_ptr<Client> &client,
                                  object.metadata_offset,
                                  object.metadata_size,
                                  object.allocated_size,
-                                 object.device_num);
+                                 object.device_num,
+                                 object.is_experimental_mutable_object);
   auto object_string = fbb.CreateString(object_id.Binary());
   fb::PlasmaCreateReplyBuilder crb(fbb);
   crb.add_error(static_cast<PlasmaError>(error_code));
@@ -627,7 +628,8 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                                        object.metadata_offset,
                                        object.metadata_size,
                                        object.allocated_size,
-                                       object.device_num));
+                                       object.device_num,
+                                       object.is_experimental_mutable_object));
   }
   std::vector<int> store_fds_as_int;
   std::vector<int64_t> unique_fd_ids;

@@ -246,6 +246,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   uint64_t data_size,
                                   int64_t num_readers,
                                   shared_ptr[CBuffer] *data)
+        CRayStatus ExperimentalMutableObjectWriteRelease(
+                                  const CObjectID &object_id)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,

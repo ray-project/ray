@@ -103,6 +103,13 @@ class PlasmaClientInterface {
                                                        int64_t num_readers,
                                                        std::shared_ptr<Buffer> *data) = 0;
 
+  /// Experimental method for mutable objects. Releases a write lock on the
+  /// object, allowing readers to read. This is the equivalent of "Seal" for
+  /// normal objects.
+  ///
+  /// \param[in] object_id The ID of the object.
+  virtual Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) = 0;
+
   /// Experimental method for mutable objects. Releases the objects, allowing them
   /// to be written again. If the caller did not previously Get the objects,
   /// then this first blocks until the latest value is available to read, then
@@ -237,6 +244,8 @@ class PlasmaClient : public PlasmaClientInterface {
                                                int64_t metadata_size,
                                                int64_t num_readers,
                                                std::shared_ptr<Buffer> *data);
+
+  Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
