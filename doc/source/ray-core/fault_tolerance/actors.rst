@@ -152,7 +152,7 @@ Retry behavior depends on the value you set ``retry_exceptions`` to:
 
 ``max_retries`` applies to both exceptions and actor crashes. Ray searches for the first non-default value of ``max_retries`` in this order:
 
-- the method call's `.options(max_retries=2)`, or if not set,
+- The method call's value, for example, `.options(max_retries=2)`. Ray ignores this value if you didn't set it.
 - the method definition's `@ray.method(max_retries=2)` decorator, of if not set,
 - the Actor class definition's `@ray.remote(max_task_retries=2)` decorator, or if not set,
 - defaults to 0.
