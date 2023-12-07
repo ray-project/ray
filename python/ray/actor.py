@@ -299,7 +299,7 @@ class _ActorClassMethodMetadata(object):
         num_returns: The default number of return values for
             each actor method.
         max_retries: Number of retries on method failure.
-        retry_exceptions: Boolean of whether we want to retry all user-raised
+        retry_exceptions: Boolean of whether you want to retry all user-raised
             exceptions, or a list of allowlist exceptions to retry, for each method.
     """
 
