@@ -16,7 +16,7 @@ from typing import (
 import uuid
 import asyncio
 
-from ray.dag.compiled_dag_node import build_compiled_dag
+from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 
 T = TypeVar("T")
 
@@ -107,18 +107,19 @@ class DAGNode(DAGNodeBase):
     def clear_cache(self):
         self.cache_from_last_execute = {}
 
-    def compiled(self) -> Tuple[ray.ObjectRef]:
+    def experimental_compile(self) -> "ray.dag.CompiledDAG":
+        """Compile an accelerated execution path for this DAG. The compiled DAG
+        is cached.
+        """
         if self._compiled_dag is None:
-            self._compiled_dag = build_compiled_dag(self)
+            self._compiled_dag = build_compiled_dag_from_ray_dag(self)
 
-        return self._compiled_dag.compiled()
+        return self._compiled_dag
 
     def execute(
         self,
         *args,
         _ray_cache_refs: bool = False,
-        _ray_cache_actors: bool = True,
-        compiled: bool = False,
         **kwargs,
     ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this DAG using the Ray default executor _execute_impl().
@@ -130,30 +131,14 @@ class DAGNode(DAGNodeBase):
                 - Serve handles for class nodes
                 - resolved values representing user input at runtime
         """
-        if compiled:
-            assert len(args) == 1, "Compiled DAGs support exactly one InputNode arg"
-            input_ref, output_channels = self.compiled()
-            input_ref.write(args[0])
-            return output_channels
 
         def executor(node):
             return node._execute_impl(*args, **kwargs)
 
-        cache = {}
+        result = self.apply_recursive(executor)
         if _ray_cache_refs:
-            cache = self.cache_from_last_execute
-        elif _ray_cache_actors:
-            for key, ref in self.cache_from_last_execute.items():
-                if isinstance(ref, ray.actor.ActorHandle):
-                    cache[key] = ref
-        result = self.apply_recursive(executor, cache=cache)
-        if _ray_cache_refs or _ray_cache_actors:
             self.cache_from_last_execute = executor.cache
         return result
-
-    def destroy_compiled_dag(self):
-        _, _, _, monitor = self.compiled()
-        monitor.destroy()
 
     def _get_toplevel_child_nodes(self) -> List["DAGNode"]:
         """Return the list of nodes specified as top-level args.

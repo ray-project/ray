@@ -3,13 +3,12 @@ import logging
 import os
 import sys
 
-import numpy as np
 import pytest
 
 import ray
 import ray.cluster_utils
-import ray.experimental.channel as ray_channel
-from ray.dag import DAGNode, InputNode, OutputNode
+from ray.dag import InputNode, OutputNode
+from ray.tests.conftest import *  # noqa
 
 
 logger = logging.getLogger(__name__)
@@ -34,8 +33,10 @@ def test_scatter_gather_dag(ray_start_regular, num_actors):
         out = [a.inc.bind(i) for a in actors]
         dag = OutputNode(out)
 
+    compiled_dag = dag.experimental_compile()
+
     for i in range(3):
-        output_channels = dag.execute(1, compiled=True)
+        output_channels = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
         results = [chan.begin_read() for chan in output_channels]
         assert results == [init_val + i + 1] * num_actors

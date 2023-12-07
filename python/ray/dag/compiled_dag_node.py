@@ -81,17 +81,17 @@ class CompiledDAG:
         self.node_idx_to_output_channels = {}
 
         # Cached.
-        self.dag_input_ref = None
+        self.dag_input_channel = None
         self.dag_output_channels = None
         self.worker_task_refs = []
 
-    def add_node(self, node):
+    def _add_node(self, node):
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    def preprocess(self):
+    def _preprocess(self):
         from ray.dag import DAGNode, InputNode
 
         for idx, task in self.idx_to_task.items():
@@ -116,13 +116,13 @@ class CompiledDAG:
                 )
                 self.output_task_idx = idx
 
-    def compiled(self):
+    def _compiled(self):
         from ray.dag import DAGNode, InputNode, OutputNode, ClassMethodNode
 
-        if self.dag_input_ref is not None and self.dag_output_channels is not None:
+        if self.dag_input_channel is not None and self.dag_output_channels is not None:
             # Driver should ray.put on input, ray.get/release on output
             return (
-                self.dag_input_ref,
+                self.dag_input_channel,
                 self.dag_output_channels,
             )
 
@@ -177,7 +177,7 @@ class CompiledDAG:
                 assert arg_buffer is not None
                 resolved_args.append(arg_buffer)
 
-            # TODO: Assign the task with the correct input and output buffers.
+            # Assign the task with the correct input and output buffers.
             worker_fn = task.dag_node._get_remote_method("__ray_call__")
             self.worker_task_refs.append(
                 worker_fn.remote(
@@ -187,7 +187,7 @@ class CompiledDAG:
                 )
             )
 
-        self.dag_input_ref = self.idx_to_task[self.input_task_idx].output_channel
+        self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:
@@ -195,19 +195,42 @@ class CompiledDAG:
             output_idx = self.dag_node_to_idx[output]
             self.dag_output_channels.append(self.idx_to_task[output_idx].output_channel)
 
-        assert self.dag_input_ref
+        assert self.dag_input_channel
         assert self.dag_output_channels
         # Driver should ray.put on input, ray.get/release on output
-        return (self.dag_input_ref, self.dag_output_channels)
+        return (self.dag_input_channel, self.dag_output_channels)
+
+    def execute(
+        self,
+        *args,
+        **kwargs,
+    ) -> List["ray.experimental.channel.Channel"]:
+        """Execute this DAG using the compiled execution path.
+
+        Args:
+            args: Args to the InputNode.
+            kwargs: Kwargs to the InputNode. Not supported yet.
+
+        Returns:
+            A list of Channels that can be used to read the DAG result.
+        """
+        if len(args) != 1:
+            raise NotImplementedError("Compiled DAGs support exactly one InputNode arg")
+        if len(kwargs) != 0:
+            raise NotImplementedError("Compiled DAGs do not support kwargs")
+
+        input_channel, output_channels = self._compiled()
+        input_channel.write(args[0])
+        return output_channels
 
 
-def build_compiled_dag(dag: "ray.dag.DAGNode"):
+def build_compiled_dag_from_ray_dag(dag: "ray.dag.DAGNode"):
     compiled_dag = CompiledDAG()
 
     def _build_compiled_dag(node):
-        compiled_dag.add_node(node)
+        compiled_dag._add_node(node)
         return node
 
     dag.apply_recursive(_build_compiled_dag)
-    compiled_dag.preprocess()
+    compiled_dag._preprocess()
     return compiled_dag
