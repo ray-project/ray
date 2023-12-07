@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import os
-import random
 import traceback
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -48,28 +47,7 @@ class ProxyWrapper(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def start_new_ready_check(self):
-        """Start a new ready check on the proxy actor."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def start_new_health_check(self):
-        """Start a new health check on the proxy actor."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def start_new_drained_check(self):
-        """Start a new drained check on the proxy actor.
-
-        This is triggered once the proxy actor is set to draining. We will leave some
-        time padding for the proxy actor to finish the ongoing requests. Once all
-        ongoing requests are finished and the minimum draining time is met, the proxy
-        actor will be transition to drained state and ready to be killed.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def is_ready(self, timeout_s: float) -> ProxyWrapperCallStatus:
+    def is_ready(self, timeout_s: float) -> Tuple[ProxyWrapperCallStatus, Tuple]:
         """Return the payload from proxy ready check when ready.
 
         Since actual readiness check is asynchronous, this method could return
@@ -83,7 +61,7 @@ class ProxyWrapper(ABC):
 
     @abstractmethod
     def is_healthy(self, timeout_s: float) -> ProxyWrapperCallStatus:
-        """Return whether the proxy actor is healthy or not.
+        """Return whether the proxy actor is healthy
 
         Since actual health-check is asynchronous, this method could return
         either of the following statuses:
@@ -95,8 +73,16 @@ class ProxyWrapper(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def is_drained(self) -> ProxyWrapperCallStatus:
-        """Return whether the proxy actor is drained or not."""
+    def is_drained(self) -> Tuple[ProxyWrapperCallStatus, bool]:
+        """Return whether the proxy actor is drained
+
+        Since actual check whether proxy is drained is asynchronous, this method could return
+        either of the following statuses:
+
+            - FINISHED_SUCCEED: Drain-check finished successfully
+            - FINISHED_FAILED: Drain-check finished with failure
+            - PENDING: Drain-check is still pending
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -141,13 +127,11 @@ class ActorProxyWrapper(ProxyWrapper):
         )
         self._ready_check_future = None
         self._health_check_future = None
-        self._is_drained_obj_ref = None
+        self._drained_check_future = None
+
         self._update_draining_obj_ref = None
 
         self._node_id = node_id
-
-        self.worker_id = None
-        self.log_file_path = None
 
     @staticmethod
     def _get_or_create_proxy_actor(
@@ -211,52 +195,27 @@ class ActorProxyWrapper(ProxyWrapper):
         """
         return self._actor_handle
 
-    @property
-    def is_draining(self) -> bool:
-        """Return whether the drained check is ongoing or not."""
-        return self._is_drained_obj_ref is not None
-
-    def reset_drained_check(self):
-        """Reset the drained check object reference."""
-        self._is_drained_obj_ref = None
-
-    def start_new_drained_check(self):
-        """Start a new drained check on the proxy actor.
-
-        This is triggered once the proxy actor is set to draining. We will leave some
-        time padding for the proxy actor to finish the ongoing requests. Once all
-        ongoing requests are finished and the minimum draining time is met, the proxy
-        actor will be transition to drained state and ready to be killed.
-        """
-        self._is_drained_obj_ref = self._actor_handle.is_drained.remote(
-            _after=self._update_draining_obj_ref
-        )
-
-    def is_ready(self, timeout_s: float) -> ProxyWrapperCallStatus:
+    def is_ready(self, timeout_s: float) -> Tuple[ProxyWrapperCallStatus, Optional[Tuple[str, str]]]:
         if self._ready_check_future is None:
             self._ready_check_future = wrap_as_future(
                 self._actor_handle.ready.remote(),
                 timeout_s=PROXY_READY_CHECK_TIMEOUT_S
             )
-            return ProxyWrapperCallStatus.PENDING
+            return ProxyWrapperCallStatus.PENDING, None
         elif self._ready_check_future.done():
             try:
                 worker_id, log_file_path = json.loads(self._ready_check_future.result())
-                self.worker_id = worker_id
-                self.log_file_path = log_file_path
-
-                check_status = ProxyWrapperCallStatus.FINISHED_SUCCEED
+                return ProxyWrapperCallStatus.FINISHED_SUCCEED, (worker_id, log_file_path)
             except Exception as e:
-                check_status = ProxyWrapperCallStatus.FINISHED_FAILED
                 if isinstance(e, TimeoutError):
                     logger.warning(
                         f"Didn't receive ready check response for proxy {self._node_id} after {timeout_s}s."
                     )
-
-            self._ready_check_future = None
-            return check_status
+                return ProxyWrapperCallStatus.FINISHED_FAILED, None
+            finally:
+                self._ready_check_future = None
         else:
-            return ProxyWrapperCallStatus.PENDING
+            return ProxyWrapperCallStatus.PENDING, None
 
     def is_healthy(self, timeout_s: float) -> ProxyWrapperCallStatus:
         if self._health_check_future is None:
@@ -270,41 +229,42 @@ class ActorProxyWrapper(ProxyWrapper):
                 # NOTE: Since `check_health` method is responding with nothing, sole purpose
                 #       of fetching the result is to extract any potential exceptions
                 self._health_check_future.result()
-                check_status = ProxyWrapperCallStatus.FINISHED_SUCCEED
+                return ProxyWrapperCallStatus.FINISHED_SUCCEED
             except Exception as e:
-                check_status = ProxyWrapperCallStatus.FINISHED_FAILED
                 if isinstance(e, TimeoutError):
                     logger.warning(
                         f"Didn't receive health check response for proxy {self._node_id} after {timeout_s}s."
                     )
-
-            self._health_check_future = None
-            return check_status
-        else:
-            return ProxyWrapperCallStatus.PENDING
-
-    def is_drained(self) -> ProxyWrapperCallStatus:
-        """Return whether the proxy actor is drained or not.
-
-        If the ongoing drained check is finished, and the value can be retrieved,
-        reset _is_drained_obj_ref to ensure drained check is finished and return
-        FINISHED_SUCCEED status. If the ongoing ready check is not finished,
-        return PENDING status.
-        """
-        finished, _ = ray.wait([self._is_drained_obj_ref], timeout=0)
-        if finished:
-            self._is_drained_obj_ref = None
-            is_drained = ray.get(finished[0])
-            if is_drained:
-                return ProxyWrapperCallStatus.FINISHED_SUCCEED
-            else:
-                # NOTE: Even though call returned successfully, we have to
-                #       report it as FINISHED_FAILED to make sure that
-                #       draining process doesn't move forward until draining
-                #       completes
                 return ProxyWrapperCallStatus.FINISHED_FAILED
+            finally:
+                self._health_check_future = None
         else:
             return ProxyWrapperCallStatus.PENDING
+
+    def is_drained(self) -> Tuple[ProxyWrapperCallStatus, Optional[bool]]:
+        if self._drained_check_future is None:
+            self._drained_check_future = wrap_as_future(
+                self._actor_handle.is_drained.remote(),
+                # NOTE: We use the same timeout as for health-checking
+                timeout_s=PROXY_HEALTH_CHECK_TIMEOUT_S
+            )
+            return ProxyWrapperCallStatus.PENDING, None
+        elif self._drained_check_future.done:
+            try:
+                # NOTE: Since `check_health` method is responding with nothing, sole purpose
+                #       of fetching the result is to extract any potential exceptions
+                is_drained = self._drained_check_future.result()
+                return ProxyWrapperCallStatus.FINISHED_SUCCEED, is_drained
+            except Exception as e:
+                if isinstance(e, TimeoutError):
+                    logger.warning(
+                        f"Didn't receive health check response for proxy {self._node_id} after {PROXY_HEALTH_CHECK_TIMEOUT_S}s."
+                    )
+                return ProxyWrapperCallStatus.FINISHED_FAILED, None
+            finally:
+                self._drained_check_future = None
+        else:
+            return ProxyWrapperCallStatus.PENDING, None
 
     def is_shutdown(self) -> bool:
         """Return whether the proxy actor is shutdown.
@@ -322,9 +282,18 @@ class ActorProxyWrapper(ProxyWrapper):
 
     def update_draining(self, draining: bool):
         """Update the draining status of the proxy actor."""
+        # NOTE: All update_draining calls are implicitly serialized, by specifying `ObjectRef` of the
+        #       previous call
         self._update_draining_obj_ref = self._actor_handle.update_draining.remote(
             draining, _after=self._update_draining_obj_ref
         )
+        # In case of cancelled draining, make sure pending draining check is cancelled
+        # as well
+        if not draining:
+            future = self._drained_check_future
+            self._drained_check_future = None
+            if future:
+                future.cancel()
 
     def kill(self):
         """Kill the proxy actor."""
@@ -346,11 +315,11 @@ class ProxyState:
         self._node_id = node_id
         self._status = ProxyStatus.STARTING
         self._timer = timer
-        self._last_health_check_time: float = self._timer.time()
         self._shutting_down = False
         self._consecutive_health_check_failures: int = 0
         self._proxy_restart_count = proxy_restart_count
-        self._last_drain_check_time: float = None
+        self._last_health_check_time: Optional[float] = None
+        self._last_drain_check_time: Optional[float] = None
 
         self._actor_details = ProxyDetails(
             node_id=node_id,
@@ -820,3 +789,26 @@ class ProxyStateManager:
             proxy_state = self._proxy_states.pop(node_id)
             self._proxy_restart_counts[node_id] = proxy_state.proxy_restart_count + 1
             proxy_state.shutdown()
+
+
+def _try_cancel_future(fut: asyncio.Future, e: Exception):
+    if not fut.done():
+        fut.cancel()
+        fut.set_exception(e)
+
+
+def wrap_as_future(ref: ObjectRef, timeout_s: float) -> asyncio.Future:
+    loop = asyncio.get_running_loop()
+
+    fut = asyncio.wrap_future(ref.future(), loop=loop)
+    # Schedule cancellation for the future
+    timeout_handler = loop.call_later(
+        timeout_s,
+        _try_cancel_future,
+        fut,
+        TimeoutError(f"Future cancelled after timeout {timeout_s}s")
+    )
+    # Cancel timeout handler upon completion of the future
+    fut.add_done_callback(lambda _: timeout_handler.cancel())
+
+    return fut
