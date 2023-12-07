@@ -139,7 +139,7 @@ If ``max_restarts`` is set, you can also allow Ray to automatically restart the 
 Actor method exceptions
 -----------------------
 
-Sometime it's desired to retry when an actor method raises exceptions. You can use ``max_retries`` in combination with ``retry_exceptions`` to achieve it.
+Sometime you want to retry when an actor method raises exceptions. Use ``max_retries`` with ``retry_exceptions`` to retry.
 
 Note: this behavior of retrying on user raised exceptions is disabled by default. If you enable it, you need to make sure the method is idempotent, meaning invoking it multiple times should be equivalent to invoking it only once.
 
