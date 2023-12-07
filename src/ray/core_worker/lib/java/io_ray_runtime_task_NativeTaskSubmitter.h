@@ -44,7 +44,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeSubmitActorTask
  * Signature:
- * ([BLio/ray/runtime/functionmanager/FunctionDescriptor;ILjava/util/List;ILio/ray/api/options/CallOptions;IZLjava/lang/String;)Ljava/util/List;
+ * ([BLio/ray/runtime/functionmanager/FunctionDescriptor;ILjava/util/List;ILio/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
