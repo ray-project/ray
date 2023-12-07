@@ -17,7 +17,6 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    OpRuntimeMetrics,
     SlidingWindowMetric,
 )
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
