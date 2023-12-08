@@ -6,7 +6,7 @@ KubeRay generates a `ray start` command for each Ray Pod.
 Sometimes, you may want to execute certain commands either before or after the ray start command, or you may wish to define the container's command yourself.
 This document shows you how to do that.
 
-## Part 1: Specify your custom container command without any generated `ray start` command
+## Part 1: Specify a custom container command, optionally including the generated `ray start` command
 
 Starting with KubeRay v1.1.0, if users add the annotation `ray.io/overwrite-container-cmd: "true"` to a RayCluster, KubeRay respects the container `command` and `args` as provided by the users, without including any generated command.
 
