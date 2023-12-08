@@ -59,7 +59,6 @@ from ray.serve._private.utils import (
     msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
-from ray.serve.autoscaling_policy import AutoscalingContext
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,
@@ -1512,18 +1511,16 @@ class DeploymentState:
             return False
 
         # Decide new target num_replicas.
-        autoscaling_policy = deployment_info.autoscaling_policy
-        if autoscaling_policy is not None:
-            if (
-                deployment_settings_changed
-                and autoscaling_policy.config.initial_replicas is not None
-            ):
+        autoscaling_policy_manager = deployment_info.autoscaling_policy_manager
+        if autoscaling_policy_manager.should_autoscale():
+            initial_replicas = autoscaling_policy_manager.config.initial_replicas
+            if deployment_settings_changed and initial_replicas is not None:
                 target_num_replicas = get_capacity_adjusted_num_replicas(
-                    autoscaling_policy.config.initial_replicas,
+                    initial_replicas,
                     deployment_info.target_capacity,
                 )
             else:
-                target_num_replicas = autoscaling_policy.apply_bounds(
+                target_num_replicas = autoscaling_policy_manager.apply_bounds(
                     self._target_state.target_num_replicas,
                     deployment_info.target_capacity,
                     deployment_info.target_capacity_direction,
@@ -1585,20 +1582,19 @@ class DeploymentState:
             return
 
         current_num_ongoing_requests = self.get_replica_current_ongoing_requests()
-        autoscaling_context = AutoscalingContext(
+        autoscaling_policy_manager = self.autoscaling_policy_manager
+        decision_num_replicas = autoscaling_policy_manager.get_decision_num_replicas(
             curr_target_num_replicas=self._target_state.target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
             target_capacity=self._target_state.info.target_capacity,
             target_capacity_direction=self._target_state.info.target_capacity_direction,
         )
-        decision_num_replicas = (
-            self.autoscaling_policy_manager.get_decision_num_replicas(
-                autoscaling_context=autoscaling_context,
-            )
-        )
 
-        if decision_num_replicas is None:
+        if (
+            decision_num_replicas is None
+            or decision_num_replicas == self._target_state.target_num_replicas
+        ):
             return
 
         logger.info(
@@ -1643,19 +1639,11 @@ class DeploymentState:
             states=[ReplicaState.RUNNING], version=target_version
         )
 
-        autoscaling_policy = self._target_state.info.autoscaling_policy
-        assert autoscaling_policy is not None
-
-        lower_bound = autoscaling_policy.get_current_lower_bound(
+        return self.autoscaling_policy_manager.is_within_bounds(
+            num_replicas_running_at_target_version,
             self._target_state.info.target_capacity,
             self._target_state.info.target_capacity_direction,
         )
-        upper_bound = get_capacity_adjusted_num_replicas(
-            autoscaling_policy.config.max_replicas,
-            self._target_state.info.target_capacity,
-        )
-
-        return lower_bound <= num_replicas_running_at_target_version <= upper_bound
 
     def delete(self) -> None:
         if not self._target_state.deleting:

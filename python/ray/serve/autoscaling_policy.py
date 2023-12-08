@@ -5,11 +5,9 @@ from typing import Any, List, Optional
 
 import requests
 
+from ray.serve._private.common import TargetCapacityDirection
 from ray.serve.config import AutoscalingConfig
 from ray.util.annotations import PublicAPI
-from ray.serve._private.common import (
-    TargetCapacityDirection,
-)
 
 PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
 
@@ -24,12 +22,23 @@ class AutoscalingContext:
 
     def __init__(
         self,
+        config: AutoscalingConfig,
+    ):
+        self.config = config
+        self.curr_target_num_replicas = 0
+        self.current_num_ongoing_requests = []
+        self.current_handle_queued_queries = 0.0
+        self.override_min_replicas = 0
+        self.target_capacity = None
+        self.decision_counter = 0
+
+    def update(
+        self,
         curr_target_num_replicas: int,
         current_num_ongoing_requests: List[float],
         current_handle_queued_queries: float,
+        override_min_replicas: int,
         target_capacity: Optional[float] = None,
-        target_capacity_scale_direction: Optional[TargetCapacityDirection] = None,
-        adjust_capacity: bool = False,
     ):
         """
         Arguments:
@@ -40,66 +49,11 @@ class AutoscalingContext:
             current_handle_queued_queries: The number of handle queued queries,
                 if there are multiple handles, the max number of queries at
                 a single handle should be passed in
+            override_min_replicas: The minimum number of replicas.
             target_capacity: The target capacity of the deployment.
-            target_capacity_scale_direction: The direction of the target capacity scale.
-            adjust_capacity: whether the number of replicas should be adjusted by
-                the current target_capacity.
         """
         self.curr_target_num_replicas = curr_target_num_replicas
         self.current_num_ongoing_requests = current_num_ongoing_requests
         self.current_handle_queued_queries = current_handle_queued_queries
+        self.override_min_replicas = override_min_replicas
         self.target_capacity = target_capacity
-        self.target_capacity_scale_direction = target_capacity_scale_direction
-        self.adjust_capacity = adjust_capacity
-
-    @staticmethod
-    def prometheus_metrics(metrics_name: str) -> List[Any]:
-        """Return the current metrics from Prometheus given the metrics name."""
-        try:
-            resp = requests.get(
-                f"{PROMETHEUS_HOST}/api/v1/query",
-                params={"query": metrics_name},
-            )
-            return resp.json()["data"]["result"]
-        except requests.exceptions.ConnectionError:
-            return []
-        except requests.exceptions.JSONDecodeError:
-            return []
-        except KeyError:
-            return []
-
-    @property
-    def cpu_utilization(self) -> List[Any]:
-        return self.prometheus_metrics("ray_node_cpu_utilization")
-
-    @property
-    def gpu_utilization(self) -> List[Any]:
-        return self.prometheus_metrics("ray_node_gpus_utilization")
-
-
-@PublicAPI(stability="beta")
-class AutoscalingPolicy:
-    """Defines the interface for an autoscaling policy.
-
-    To add a new autoscaling policy, a class should be defined that provides
-    this interface. The class may be stateful, in which case it may also want
-    to provide a non-default constructor. However, this state will be lost when
-    the controller recovers from a failure.
-    """
-
-    __metaclass__ = ABCMeta
-
-    def __init__(self, config: AutoscalingConfig):
-        """Initialize the policy using the specified config dictionary."""
-        self.config = config
-
-    @abstractmethod
-    def get_decision_num_replicas(
-        self, autoscaling_context: AutoscalingContext
-    ) -> Optional[int]:
-        """Make a decision to scale replicas.
-
-        Returns:
-            int: The new number of replicas to scale to.
-        """
-        return autoscaling_context.curr_target_num_replicas
