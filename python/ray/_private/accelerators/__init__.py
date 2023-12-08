@@ -1,4 +1,4 @@
-from typing import Set
+from typing import Set, Optional
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
@@ -33,21 +33,23 @@ _resource_name_to_accelerator_manager = {
     accelerator_manager.get_resource_name(): accelerator_manager
     for accelerator_manager in get_all_accelerator_managers()
 }
+# Special handling for GPU resource name since multiple accelerator managers
+# have the same GPU resource name.
+if IntelGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
+    _resource_name_to_accelerator_manager["GPU"] = IntelGPUAcceleratorManager
+else:
+    _resource_name_to_accelerator_manager["GPU"] = NvidiaGPUAcceleratorManager
 
 
-def get_accelerator_manager_for_resource(resource_name: str) -> AcceleratorManager:
+def get_accelerator_manager_for_resource(
+    resource_name: str,
+) -> Optional[AcceleratorManager]:
     """Get the corresponding accelerator manager for the given
     accelerator resource name
 
     E.g., TPUAcceleratorManager is returned if resource name is "TPU"
     """
-    if resource_name == "GPU":
-        if IntelGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
-            return IntelGPUAcceleratorManager
-        else:
-            return NvidiaGPUAcceleratorManager
-    else:
-        return _resource_name_to_accelerator_manager.get(resource_name, None)
+    return _resource_name_to_accelerator_manager.get(resource_name, None)
 
 
 __all__ = [
