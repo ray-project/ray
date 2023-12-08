@@ -52,18 +52,8 @@ Custom- and Complex Models
    Example of using a custom Keras model.
 - `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
    Example of defining and registering a custom model with a supervised loss.
-- `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__:
-   Example of adding batch norm layers to a custom model.
-- `Eager execution <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__:
-   Example of how to leverage TensorFlow eager to simplify debugging and design of custom models and policies.
-- `Custom "Fast" Model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_fast_model.py>`__:
-   Example of a "fast" Model learning only one parameter for tf and torch.
 - `Custom model API example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_api.py>`__:
    Shows how to define a custom Model API in RLlib, such that it can be used inside certain algorithms.
-- `Trajectory View API utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/trajectory_view_api.py>`__:
-   An example on how a model can use the trajectory view API to specify its own input.
-- `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/mobilenet_v2_with_lstm.py>`__:
-   Implementations of `tf.keras.applications.mobilenet_v2.MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
 - `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/models/neural_computer.py>`__:
    Example of DeepMind's Differentiable Neural Computer for partially-observable environments.
 
@@ -80,12 +70,6 @@ Training Workflows
    How to setup a custom Logger object in RLlib.
 - `Custom metrics <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__:
    Example of how to output custom training metrics to TensorBoard.
-- `Custom Policy class (TensorFlow) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`__:
-   How to setup a custom TFPolicy.
-- `Custom Policy class (PyTorch) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py>`__:
-   How to setup a custom TorchPolicy.
-- `Using rollout workers directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__:
-   Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
 - `Custom execution plan function handling two different Policies (DQN and PPO) at the same time <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__:
    Example of how to use the exec. plan of an Algorithm to trin two different policies in parallel (also using multi-agent API).
 - `Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_experiment.py>`__:
