@@ -891,6 +891,7 @@ class Impala(Algorithm):
             if (
                 self.config.batch_mode == "truncate_episodes"
                 and self.config.enable_connectors
+                and self.config.recreate_failed_workers
                 and self.config.framework_str in ["tf", "tf2"]
             ):
                 if any(
