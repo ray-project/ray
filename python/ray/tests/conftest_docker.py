@@ -80,7 +80,7 @@ worker_node_vol = volume()
 head_node_container_name = "gcs" + str(int(time.time()))
 
 head_node = container(
-    image="ray_ci:v1",
+    image="rayproject/ray:ha_integration",
     name=head_node_container_name,
     network="{gcs_network.name}",
     command=[
@@ -111,7 +111,7 @@ head_node = container(
 )
 
 worker_node = container(
-    image="ray_ci:v1",
+    image="rayproject/ray:ha_integration",
     network="{gcs_network.name}",
     command=[
         "ray",
