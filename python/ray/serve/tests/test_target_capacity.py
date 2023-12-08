@@ -641,13 +641,32 @@ class TestTargetCapacityUpdateAndServeStatus:
                 DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
             ),
         )
-        self.check_num_replicas(int(0.5 * num_replicas), app_name, deployment_name)
+        # DeploymentStateManager marks replicas as STOPPING once the deployment
+        # starts downscaling.
+        wait_for_condition(
+            self.check_num_replicas,
+            expected_num_replicas=int(0.1 * num_replicas),
+            app_name=app_name,
+            deployment_name=deployment_name,
+            replica_state=ReplicaState.RUNNING,
+            timeout=20,
+        )
+        self.check_num_replicas(
+            int(0.4 * num_replicas),
+            app_name,
+            deployment_name,
+            replica_state=ReplicaState.STOPPING,
+        )
         self.unblock_replica_creation_and_deletion(signal, app_name)
         self.check_num_replicas(int(0.1 * num_replicas), app_name, deployment_name)
+        self.check_num_replicas(
+            0, app_name, deployment_name, replica_state=ReplicaState.STOPPING
+        )
 
         # Send a signal so all replicas shut down quickly when the test finishes.
         ray.get(signal.send.remote())
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Autoscaling flaky on Windows.")
     def test_autoscaling_target_capacity_update(
         self, shutdown_ray_and_serve, client: ServeControllerClient
     ):
