@@ -31,8 +31,6 @@ $ python autoregressive_action_dist.py --no-autoreg
 Compare learning curve on TensorBoard:
 $ cd ~/ray-results/; tensorboard --logdir .
 
-Other options for running this example:
-$ python attention_net.py --help
 """
 
 import argparse

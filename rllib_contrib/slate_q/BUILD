@@ -1,14 +1,5 @@
 # Examples
 
-py_test(
-    name = "example_recommender_system_with_recsim_and_slateq",
-    main = "recommender_system_with_recsim_and_slateq.py",
-    tags = ["team:rllib", "example"],
-    size = "large",
-    srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
-    args = ["--run-as-test"]
-)
-
 # Learning Tests
 
 # py_test(

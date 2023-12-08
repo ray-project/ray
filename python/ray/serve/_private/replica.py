@@ -23,8 +23,8 @@ from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
-    CONTROL_PLANE_CONCURRENCY_GROUP,
     DeploymentID,
+    ReplicaName,
     ReplicaTag,
     ServeComponentType,
     StreamingHTTPRequest,
@@ -40,6 +40,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.deployment_info import CONTROL_PLANE_CONCURRENCY_GROUP
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIMessageQueue,
@@ -98,22 +99,7 @@ def create_replica_wrapper(actor_class_name: str):
             else:
                 logging_config = LoggingConfig(**deployment_config.logging_config)
 
-            configure_component_logger(
-                component_type=ServeComponentType.DEPLOYMENT,
-                component_name=deployment_name,
-                component_id=replica_tag,
-                logging_config=logging_config,
-            )
-            configure_component_memory_profiler(
-                component_type=ServeComponentType.DEPLOYMENT,
-                component_name=deployment_name,
-                component_id=replica_tag,
-            )
-            self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-                component_type=ServeComponentType.DEPLOYMENT,
-                component_name=deployment_name,
-                component_id=replica_tag,
-            )
+            self._configure_logger_and_profilers(replica_tag, logging_config)
 
             self._event_loop = get_or_create_event_loop()
 
@@ -180,6 +166,11 @@ def create_replica_wrapper(actor_class_name: str):
             # method. After that, it calls `reconfigure` to trigger
             # user code initialization.
             async def initialize_replica():
+                logger.info(
+                    "Started initializing replica.",
+                    extra={"log_to_stderr": False},
+                )
+
                 if is_function:
                     _callable = deployment_def
                 else:
@@ -211,6 +202,10 @@ def create_replica_wrapper(actor_class_name: str):
                     app_name,
                 )
                 self._initialized = True
+                logger.info(
+                    "Finished initializing replica.",
+                    extra={"log_to_stderr": False},
+                )
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
@@ -220,6 +215,35 @@ def create_replica_wrapper(actor_class_name: str):
 
             # Used to guard `initialize_replica` so that it isn't called twice.
             self._replica_init_lock = asyncio.Lock()
+
+        def _configure_logger_and_profilers(
+            self, replica_tag: ReplicaTag, logging_config: LoggingConfig
+        ):
+            replica_name = ReplicaName.from_replica_tag(replica_tag)
+            if replica_name.app_name:
+                component_name = (
+                    f"{replica_name.app_name}_{replica_name.deployment_name}"
+                )
+            else:
+                component_name = f"{replica_name.deployment_name}"
+            component_id = replica_name.replica_suffix
+
+            configure_component_logger(
+                component_type=ServeComponentType.REPLICA,
+                component_name=component_name,
+                component_id=component_id,
+                logging_config=logging_config,
+            )
+            configure_component_memory_profiler(
+                component_type=ServeComponentType.REPLICA,
+                component_name=component_name,
+                component_id=component_id,
+            )
+            self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
+                component_type=ServeComponentType.REPLICA,
+                component_name=component_name,
+                component_id=component_id,
+            )
 
         @ray.method(concurrency_group=CONTROL_PLANE_CONCURRENCY_GROUP)
         def get_num_ongoing_requests(self) -> int:
@@ -668,7 +692,7 @@ class RayServeReplica:
         if deployment_config.logging_config:
             logging_config = LoggingConfig(**deployment_config.logging_config)
             configure_component_logger(
-                component_type=ServeComponentType.DEPLOYMENT,
+                component_type=ServeComponentType.REPLICA,
                 component_name=self.deployment_id.name,
                 component_id=self.replica_tag,
                 logging_config=logging_config,

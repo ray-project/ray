@@ -144,12 +144,12 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 }
 
 void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
-    const rpc::WorkerAddress &addr,
+    const rpc::Address &addr,
     std::shared_ptr<WorkerLeaseInterface> lease_client,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
     const SchedulingKey &scheduling_key,
     const TaskID &task_id) {
-  client_cache_->GetOrConnect(addr.ToProto());
+  client_cache_->GetOrConnect(addr);
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
   LeaseEntry new_lease_entry = LeaseEntry(
       std::move(lease_client), expiration, assigned_resources, scheduling_key, task_id);
@@ -160,13 +160,13 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 }
 
-void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
+void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::Address addr,
                                                  bool was_error,
                                                  const std::string &error_detail,
                                                  bool worker_exiting,
                                                  const SchedulingKey &scheduling_key) {
-  RAY_LOG(DEBUG) << "Returning worker " << addr.worker_id << " to raylet "
-                 << addr.raylet_id;
+  RAY_LOG(DEBUG) << "Returning worker " << WorkerID::FromBinary(addr.worker_id())
+                 << " to raylet " << NodeID::FromBinary(addr.raylet_id());
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
   auto &lease_entry = worker_to_lease_entry_[addr];
@@ -182,8 +182,12 @@ void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
-  auto status = lease_entry.lease_client->ReturnWorker(
-      addr.port, addr.worker_id, was_error, error_detail, worker_exiting);
+  auto status =
+      lease_entry.lease_client->ReturnWorker(addr.port(),
+                                             WorkerID::FromBinary(addr.worker_id()),
+                                             was_error,
+                                             error_detail,
+                                             worker_exiting);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
   }
@@ -191,7 +195,7 @@ void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
 }
 
 void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
-    const rpc::WorkerAddress &addr,
+    const rpc::Address &addr,
     const SchedulingKey &scheduling_key,
     bool was_error,
     const std::string &error_detail,
@@ -217,7 +221,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       ReturnWorker(addr, was_error, error_detail, worker_exiting, scheduling_key);
     }
   } else {
-    auto &client = *client_cache_->GetOrConnect(addr.ToProto());
+    auto &client = *client_cache_->GetOrConnect(addr);
 
     while (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = current_queue.front();
@@ -478,16 +482,20 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             } else if (!reply.worker_address().raylet_id().empty()) {
               // We got a lease for a worker. Add the lease client state and try to
               // assign work to the worker.
-              rpc::WorkerAddress addr(reply.worker_address());
               RAY_LOG(DEBUG) << "Lease granted to task " << task_id << " from raylet "
-                             << addr.raylet_id << " with worker " << addr.worker_id;
+                             << NodeID::FromBinary(reply.worker_address().raylet_id())
+                             << " with worker "
+                             << WorkerID::FromBinary(reply.worker_address().worker_id());
 
               auto resources_copy = reply.resource_mapping();
 
-              AddWorkerLeaseClient(
-                  addr, std::move(lease_client), resources_copy, scheduling_key, task_id);
+              AddWorkerLeaseClient(reply.worker_address(),
+                                   std::move(lease_client),
+                                   resources_copy,
+                                   scheduling_key,
+                                   task_id);
               RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
-              OnWorkerIdle(addr,
+              OnWorkerIdle(reply.worker_address(),
                            scheduling_key,
                            /*error=*/false,
                            /*error_detail*/ "",
@@ -590,13 +598,14 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
-    const rpc::WorkerAddress &addr,
+    const rpc::Address &addr,
     rpc::CoreWorkerClientInterface &client,
     const SchedulingKey &scheduling_key,
     const TaskSpecification &task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   RAY_LOG(DEBUG) << "Pushing task " << task_spec.TaskId() << " to worker "
-                 << addr.worker_id << " of raylet " << addr.raylet_id;
+                 << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
+                 << NodeID::FromBinary(addr.raylet_id());
   auto task_id = task_spec.TaskId();
   auto request = std::make_unique<rpc::PushTaskRequest>();
   bool is_actor = task_spec.IsActorTask();
@@ -607,8 +616,10 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   // access the task.
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
-  request->set_intended_worker_id(addr.worker_id.Binary());
-  task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id, addr.worker_id);
+  request->set_intended_worker_id(addr.worker_id());
+  task_finisher_->MarkTaskWaitingForExecution(task_id,
+                                              NodeID::FromBinary(addr.raylet_id()),
+                                              WorkerID::FromBinary(addr.worker_id()));
   client.PushNormalTask(
       std::move(request),
       [this,
@@ -621,7 +632,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
         {
           RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker "
-                         << addr.worker_id << " of raylet " << addr.raylet_id;
+                         << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
+                         << NodeID::FromBinary(addr.raylet_id());
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
 
@@ -680,7 +692,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                          gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
                                               reply.task_execution_error()))) {
             task_finisher_->CompletePendingTask(
-                task_id, reply, addr.ToProto(), reply.is_application_error());
+                task_id, reply, addr, reply.is_application_error());
           }
         }
       });
@@ -690,7 +702,7 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
     const Status &task_execution_status,
     const bool is_actor,
     const TaskID &task_id,
-    const rpc::WorkerAddress &addr,
+    const rpc::Address &addr,
     const Status &get_task_failure_cause_reply_status,
     const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
   rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
@@ -712,16 +724,17 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
   } else {
     RAY_LOG(DEBUG) << "Failed to fetch task result with status "
                    << get_task_failure_cause_reply_status.ToString()
-                   << " node id: " << addr.raylet_id << " ip: " << addr.ip_address;
+                   << " node id: " << NodeID::FromBinary(addr.raylet_id())
+                   << " ip: " << addr.ip_address();
     task_error_type = rpc::ErrorType::NODE_DIED;
     std::stringstream buffer;
-    buffer << "Task failed due to the node dying.\n\nThe node (IP: " << addr.ip_address
-           << ", node ID: " << addr.raylet_id
+    buffer << "Task failed due to the node dying.\n\nThe node (IP: " << addr.ip_address()
+           << ", node ID: " << NodeID::FromBinary(addr.raylet_id())
            << ") where this task was running crashed unexpectedly. "
            << "This can happen if: (1) the instance where the node was running failed, "
               "(2) raylet crashes unexpectedly (OOM, preempted node, etc).\n\n"
            << "To see more information about the crash, use `ray logs raylet.out -ip "
-           << addr.ip_address << "`";
+           << addr.ip_address() << "`";
     error_info = std::make_unique<rpc::RayErrorInfo>();
     error_info->set_error_message(buffer.str());
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
@@ -788,7 +801,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return Status::OK();
     }
     // Looks for an RPC handle for the worker executing the task.
-    auto maybe_client = client_cache_->GetByID(rpc_client->second.worker_id);
+    auto maybe_client =
+        client_cache_->GetByID(WorkerID::FromBinary(rpc_client->second.worker_id()));
     if (!maybe_client.has_value()) {
       // If we don't have a connection to that worker, we can't cancel it.
       // This case is reached for tasks that have unresolved dependencies.
@@ -852,7 +866,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
                                                        const rpc::Address &worker_addr,
                                                        bool force_kill,
                                                        bool recursive) {
-  auto maybe_client = client_cache_->GetByID(rpc::WorkerAddress(worker_addr).worker_id);
+  auto maybe_client =
+      client_cache_->GetByID(WorkerID::FromBinary(worker_addr.worker_id()));
 
   if (!maybe_client.has_value()) {
     return Status::Invalid("No remote worker found");

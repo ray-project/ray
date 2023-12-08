@@ -77,10 +77,10 @@ steps:
   - label: ":tapioca: build: doc"
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- doc
-    depends_on:
-      - docbuild
-      - forge
+      - cd doc
+      - FAST=True make html
+    depends_on: docbuild
+    job_env: docbuild
 
   - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
     tags:

@@ -45,17 +45,6 @@ void AddActorInfo(const ray::gcs::GcsActor *actor,
       actor_state == ray::rpc::ActorTableData::PENDING_CREATION);
 }
 
-const ray::rpc::ActorDeathCause GenNodeDiedCause(const ray::gcs::GcsActor *actor,
-                                                 const std::string ip_address,
-                                                 const NodeID &node_id) {
-  ray::rpc::ActorDeathCause death_cause;
-  auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
-  AddActorInfo(actor, actor_died_error_ctx);
-  actor_died_error_ctx->set_error_message(absl::StrCat(
-      "The actor is dead because its node has died. Node Id: ", node_id.Hex()));
-  return death_cause;
-}
-
 const ray::rpc::ActorDeathCause GenWorkerDiedCause(
     const ray::gcs::GcsActor *actor,
     const std::string &ip_address,
@@ -79,6 +68,7 @@ const ray::rpc::ActorDeathCause GenWorkerDiedCause(
   }
   return death_cause;
 }
+
 const ray::rpc::ActorDeathCause GenOwnerDiedCause(
     const ray::gcs::GcsActor *actor,
     const WorkerID &owner_id,
@@ -208,6 +198,25 @@ void GcsActor::SetAcquiredResources(ResourceRequest &&resource_request) {
 bool GcsActor::GetGrantOrReject() const { return grant_or_reject_; }
 void GcsActor::SetGrantOrReject(bool grant_or_reject) {
   grant_or_reject_ = grant_or_reject;
+}
+
+const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
+    const ray::gcs::GcsActor *actor,
+    const std::string ip_address,
+    std::shared_ptr<rpc::GcsNodeInfo> node) {
+  ray::rpc::ActorDeathCause death_cause;
+  auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
+  AddActorInfo(actor, actor_died_error_ctx);
+  actor_died_error_ctx->set_error_message(
+      absl::StrCat("The actor is dead because its node has died. Node Id: ",
+                   NodeID::FromBinary(node->node_id()).Hex()));
+
+  // TODO(vitsai): Publish this information as well
+  if (auto death_info = node->death_info();
+      death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED) {
+    actor_died_error_ctx->set_preempted(true);
+  }
+  return death_cause;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -1033,8 +1042,9 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause);
 }
 
-void GcsActorManager::OnNodeDead(const NodeID &node_id,
+void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
                                  const std::string node_ip_address) {
+  const auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Node " << node_id << " failed, reconstructing actors.";
   // Kill all children of owner actors on a dead node.
   const auto it = owners_.find(node_id);
@@ -1061,7 +1071,7 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
   for (auto &actor_id : scheduling_actor_ids) {
     ReconstructActor(actor_id,
                      /*need_reschedule=*/true,
-                     GenNodeDiedCause(GetActor(actor_id), node_ip_address, node_id));
+                     GenNodeDiedCause(GetActor(actor_id), node_ip_address, node));
   }
 
   // Try reconstructing all workers created on the node.
@@ -1072,10 +1082,9 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
     created_actors_.erase(iter);
     for (auto &entry : created_actors) {
       // Reconstruct the removed actor.
-      ReconstructActor(
-          entry.second,
-          /*need_reschedule=*/true,
-          GenNodeDiedCause(GetActor(entry.second), node_ip_address, node_id));
+      ReconstructActor(entry.second,
+                       /*need_reschedule=*/true,
+                       GenNodeDiedCause(GetActor(entry.second), node_ip_address, node));
     }
   }
 
@@ -1094,6 +1103,32 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
                                        node_ip_address));
       }
     }
+  }
+}
+
+void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
+  // The node has received a drain request, so we mark all of its actors
+  // preempted. This state will be published to the raylets so that the
+  // preemption may be retrieved upon actor death.
+  if (created_actors_.find(node_id) == created_actors_.end()) {
+    return;
+  }
+
+  for (const auto &id_iter : created_actors_.find(node_id)->second) {
+    auto actor_iter = registered_actors_.find(id_iter.second);
+    RAY_CHECK(actor_iter != registered_actors_.end())
+        << "Could not find actor " << id_iter.second.Hex() << " in registered actors.";
+
+    actor_iter->second->GetMutableActorTableData()->set_preempted(true);
+
+    const auto &actor_id = id_iter.second;
+    const auto &actor_table_data = actor_iter->second->GetActorTableData();
+
+    RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
+        actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
+          RAY_CHECK_OK(gcs_publisher_->PublishActor(
+              actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
+        }));
   }
 }
 

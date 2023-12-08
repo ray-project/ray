@@ -159,25 +159,45 @@ def test_split_map(shutdown_only, use_actors):
     ray.shutdown()
     ray.init(num_cpus=3)
     kwargs = {}
+
+    def arrow_udf(x):
+        return ARROW_LARGE_VALUE
+
+    def identity_udf(x):
+        return x
+
+    class ArrowUDFClass:
+        def __call__(self, x):
+            return ARROW_LARGE_VALUE
+
+    class IdentityUDFClass:
+        def __call__(self, x):
+            return x
+
     if use_actors:
         kwargs = {"compute": ray.data.ActorPoolStrategy()}
+        arrow_fn = ArrowUDFClass
+        identity_fn = IdentityUDFClass
+    else:
+        arrow_fn = arrow_udf
+        identity_fn = identity_udf
 
     # Arrow block
     ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = 20_000_000
     ctx.target_max_block_size = 20_000_000
-    ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE, **kwargs)
-    nblocks = len(ds2.map(lambda x: x, **kwargs).get_internal_block_refs())
+    ds2 = ray.data.range(1000, parallelism=1).map(arrow_fn, **kwargs)
+    nblocks = len(ds2.map(identity_fn, **kwargs).get_internal_block_refs())
     assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds2.map(lambda x: x, **kwargs).get_internal_block_refs())
+    nblocks = len(ds2.map(identity_fn, **kwargs).get_internal_block_refs())
     assert 4 < nblocks < 7 or use_actors, nblocks
 
     # Disabled.
     # Setting infinite block size effectively disables block splitting.
     ctx.target_max_block_size = float("inf")
-    ds3 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE, **kwargs)
-    nblocks = len(ds3.map(lambda x: x, **kwargs).get_internal_block_refs())
+    ds3 = ray.data.range(1000, parallelism=1).map(arrow_fn, **kwargs)
+    nblocks = len(ds3.map(identity_fn, **kwargs).get_internal_block_refs())
     assert nblocks == 1, nblocks
 
 
