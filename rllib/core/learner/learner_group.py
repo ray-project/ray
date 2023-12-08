@@ -537,11 +537,13 @@ class LearnerGroup:
         # If container given, construct a simple callable returning True
         # if the ModuleID is found in the list/set of IDs.
         elif not callable(should_module_be_updated_fn):
-            assert isinstance(should_module_be_updated_fn, (list, set, tuple)), (
-                "ERROR: `should_module_be_updated_fn`must be a [list|set|tuple] or a "
-                "callable taking a ModuleID and a MultiAgentBatch and returning "
-                "True|False (to be updated or not?)."
-            )
+            if not isinstance(should_module_be_updated_fn, (list, set, tuple)):
+                raise ValueError(
+                    "`should_module_be_updated_fn` arg must either be a [list|set|"
+                    "tuple] or a callable taking a ModuleID and a MultiAgentBatch as "
+                    "call args and returning True|False (whether module is to be "
+                    "updated or not?)."
+                )
             module_ids = set(should_module_be_updated_fn)
 
             def should_module_be_updated_fn(mid, batch=None):
