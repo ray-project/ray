@@ -148,9 +148,7 @@ Special Action- and Observation Spaces
 - `Nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/nested_action_spaces.py>`__:
    Learning in arbitrarily nested action spaces.
 - `Parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__:
-   Example of how to handle variable-length or parametric action spaces (see also `this example here <https://github.com/ray-project/ray/blob/master/rllib/examples/random_parametric_agent.py>`__).
-- `Custom observation filters <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_observation_filters.py>`__:
-   How to filter raw observations coming from the environment for further processing by the Agent's model(s).
+   Example of how to handle variable-length or parametric action spaces.
 - `Using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/complex_struct_space.py>`__:
    How to use RLlib's `Repeated` space to handle variable length observations.
 - `Autoregressive action distribution example <https://github.com/ray-project/ray/blob/master/rllib/examples/autoregressive_action_dist.py>`__:
