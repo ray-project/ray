@@ -18,7 +18,7 @@ class TestAnyscaleDockerContainer(RayCITestBase):
             self.cmds.append(input)
 
         with mock.patch(
-            "ci.ray_ci.docker_container.Container.run_script",
+            "ci.ray_ci.docker_container.LinuxContainer.run_script",
             side_effect=_mock_run_script,
         ), mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "test_branch"}):
             container = AnyscaleDockerContainer(
