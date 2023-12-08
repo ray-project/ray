@@ -1022,7 +1022,9 @@ class MultiAgentEpisode:
                     # original action timestep (global one). Right now the
                     # `global_reward_t` might serve here.
                     # Buffer the action.
-                    self.agent_buffers[agent_id]["actions"].put_nowait(actions[agent_id])
+                    self.agent_buffers[agent_id]["actions"].put_nowait(
+                        actions[agent_id]
+                    )
                     # Record the timestep for the action.
                     self.global_actions_t[agent_id].append(self.t)
                     # If available, buffer also reward. Note, if the agent is terminated

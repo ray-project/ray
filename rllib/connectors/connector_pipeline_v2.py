@@ -135,8 +135,8 @@ class ConnectorPipelineV2(ConnectorV2):
                 ret = connector(input_=ret, episodes=episodes, ctx=ctx)
         return ret
 
-    #@override(ConnectorV2)
-    #def serialize(self):
+    # @override(ConnectorV2)
+    # def serialize(self):
     #    children = []
     #    for c in self.connectors:
     #        state = c.serialize()
@@ -148,9 +148,9 @@ class ConnectorPipelineV2(ConnectorV2):
     #        children.append(state)
     #    return ConnectorPipelineV2.__name__, children
     #
-    #@override(ConnectorV2)
-    #@staticmethod
-    #def from_state(ctx: ConnectorContextV2, params: List[Any]):
+    # @override(ConnectorV2)
+    # @staticmethod
+    # def from_state(ctx: ConnectorContextV2, params: List[Any]):
     #    assert (
     #        type(params) == list
     #    ), "AgentConnectorPipeline takes a list of connector params."
@@ -219,7 +219,9 @@ class ConnectorPipelineV2(ConnectorV2):
 
 
 class EnvToModulePipeline(ConnectorPipelineV2):
-    def __init__(self, *, ctx, connectors: Optional[List[ConnectorV2]] = None, **kwargs):
+    def __init__(
+        self, *, ctx, connectors: Optional[List[ConnectorV2]] = None, **kwargs
+    ):
         super().__init__(ctx=ctx, connectors=connectors, **kwargs)
         # Add the default final connector piece for env-to-module pipelines:
         # Extracting last obs from episodes and add them to input, iff this has not
@@ -242,7 +244,9 @@ class EnvToModulePipeline(ConnectorPipelineV2):
 
 
 class ModuleToEnvPipeline(ConnectorPipelineV2):
-    def __init__(self, *, ctx, connectors: Optional[List[ConnectorV2]] = None, **kwargs):
+    def __init__(
+        self, *, ctx, connectors: Optional[List[ConnectorV2]] = None, **kwargs
+    ):
         super().__init__(ctx=ctx, connectors=connectors, **kwargs)
 
         # Add the default final connector piece for env-to-module pipelines:

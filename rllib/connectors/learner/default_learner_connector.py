@@ -34,6 +34,7 @@ class DefaultLearnerConnector(ConnectorV2):
     their own data and store it under those keys (in `input_`). In such a case, this
     connector will not touch the data under these keys.
     """
+
     def __call__(self, input_: Any, episodes, ctx: ConnectorContextV2, **kwargs):
         # If episodes are provided, extract the essential data from them, but only if
         # this data is not present yet in `input_`.
@@ -65,22 +66,25 @@ class DefaultLearnerConnector(ConnectorV2):
             for episode, data_dict in zip(episodes, data_dicts):
                 # Remove state outs (should not be part of the T-axis rearrangements).
                 state_outs = data_dict.pop(STATE_OUT)
-                state_ins.append(tree.map_structure(
-                    # [::T] = only keep every Tth (max_seq_len) state in.
-                    # [:-1] = shift state outs by one (ignore very last state out, but
-                    # therefore add the init state at the beginning).
-                    lambda i, o: np.concatenate([[i], o[:-1]])[::T],
-                    (
-                        # Episode has a (reset) beginning -> Prepend initial state.
-                        init_state if episode.t_started == 0
-                        # Episode starts somewhere in the middle (is a cut continuation
-                        # chunk) -> Use previous chunk's last STATE_OUT as initial state.
-                        else episode.get_extra_model_outputs(
-                            key=STATE_OUT, indices=-1, neg_indices_left_of_zero=True
-                        )
-                    ),
-                    state_outs,
-                ))
+                state_ins.append(
+                    tree.map_structure(
+                        # [::T] = only keep every Tth (max_seq_len) state in.
+                        # [:-1] = shift state outs by one (ignore very last state out, but
+                        # therefore add the init state at the beginning).
+                        lambda i, o: np.concatenate([[i], o[:-1]])[::T],
+                        (
+                            # Episode has a (reset) beginning -> Prepend initial state.
+                            init_state
+                            if episode.t_started == 0
+                            # Episode starts somewhere in the middle (is a cut continuation
+                            # chunk) -> Use previous chunk's last STATE_OUT as initial state.
+                            else episode.get_extra_model_outputs(
+                                key=STATE_OUT, indices=-1, neg_indices_left_of_zero=True
+                            )
+                        ),
+                        state_outs,
+                    )
+                )
             # Concatenate the individual episodes' state ins.
             state_in = tree.map_structure(lambda *s: np.concatenate(s), *state_ins)
 
@@ -112,8 +116,8 @@ class DefaultLearnerConnector(ConnectorV2):
             SampleBatch.REWARDS,
             SampleBatch.TERMINATEDS,
             SampleBatch.TRUNCATEDS,
-            SampleBatch.T,#TODO: remove (normally not needed in train batch)
-            *episodes[0].extra_model_outputs.keys()
+            SampleBatch.T,  # TODO: remove (normally not needed in train batch)
+            *episodes[0].extra_model_outputs.keys(),
         ]:
             if key not in input_ and key != STATE_OUT:
                 # Concatenate everything together (along B-axis=0).
@@ -134,7 +138,10 @@ class DefaultLearnerConnector(ConnectorV2):
             # the STATE_IN column to `input_`.
             input_[STATE_IN] = state_in
             # Create the zero-padding loss mask.
-            input_["loss_mask"], input_[SampleBatch.SEQ_LENS] = create_mask_and_seq_lens(
+            (
+                input_["loss_mask"],
+                input_[SampleBatch.SEQ_LENS],
+            ) = create_mask_and_seq_lens(
                 episode_lens=[len(episode) for episode in episodes],
                 T=T,
             )
@@ -157,7 +164,9 @@ def split_and_pad(episodes_data, T):
 
             # Pad the chunk if it's shorter than T
             if chunk.shape[0] < T:
-                padding_shape = [(0, T - chunk.shape[0])] + [(0, 0) for _ in range(chunk.ndim - 1)]
+                padding_shape = [(0, T - chunk.shape[0])] + [
+                    (0, 0) for _ in range(chunk.ndim - 1)
+                ]
                 chunk = np.pad(chunk, pad_width=padding_shape, mode="constant")
 
             all_chunks.append(chunk)
@@ -177,7 +186,7 @@ def split_and_pad_single_record(data, episodes, T):
     idx = 0
     for episode in episodes:
         len_ = len(episode)
-        episodes_data.append(data[idx:idx + len_])
+        episodes_data.append(data[idx : idx + len_])
         idx += len_
     return split_and_pad(episodes_data, T)
 

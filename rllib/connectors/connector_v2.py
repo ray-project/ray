@@ -63,8 +63,8 @@ class ConnectorV2(abc.ABC):
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    #@abc.abstractmethod
-    #def serialize(self) -> Tuple[str, Any]:
+    # @abc.abstractmethod
+    # def serialize(self) -> Tuple[str, Any]:
     #    """Serialize a connector into a JSON serializable Tuple.
 
     #    `serialize()` is required, so that all Connectors are serializable.
@@ -77,9 +77,9 @@ class ConnectorV2(abc.ABC):
     #        state can simply be None.
     #    """
 
-    #@staticmethod
-    #@abc.abstractmethod
-    #def from_state(ctx: ConnectorContextV2, params: Any) -> "ConnectorV2":
+    # @staticmethod
+    # @abc.abstractmethod
+    # def from_state(ctx: ConnectorContextV2, params: Any) -> "ConnectorV2":
     #    """De-serialize a JSON params back into a Connector.
 
     #    `from_state()` is required, so that all Connectors are serializable.

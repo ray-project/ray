@@ -9,6 +9,7 @@ from ray.rllib.utils.spaces.space_utils import batch, get_dummy_batch_for_space
 
 class _PrevRewardPrevActionConnector(ConnectorV2):
     """A connector piece that adds previous rewards and actions to the input."""
+
     def __init__(
         self,
         *,
@@ -53,38 +54,50 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                 # Loop through each timestep in the episode and add the previous n
                 # actions and previous m rewards (based on that timestep) to the batch.
                 for ts in range(len(episode)):
-                    prev_a.append(episode.get_actions(
-                        # Extract n actions from `ts - n` to `ts` (excluding `ts`).
-                        indices=slice(ts - self.n_prev_actions, ts),
-                        # Make sure negative indices are NOT interpreted as "counting
-                        # from the end", but as absolute indices meaning they refer
-                        # to timesteps before 0 (which is the lookback buffer).
-                        neg_indices_left_of_zero=True,
-                        # In case we are at the very beginning of the episode, e.g.
-                        # ts==0, fill the left side with zero-actions.
-                        fill=0.0,
-                        # Return one-hot arrays for those action components that are
-                        # discrete or multi-discrete.
-                        one_hot_discrete=True,
-                    ))
+                    prev_a.append(
+                        episode.get_actions(
+                            # Extract n actions from `ts - n` to `ts` (excluding `ts`).
+                            indices=slice(ts - self.n_prev_actions, ts),
+                            # Make sure negative indices are NOT interpreted as "counting
+                            # from the end", but as absolute indices meaning they refer
+                            # to timesteps before 0 (which is the lookback buffer).
+                            neg_indices_left_of_zero=True,
+                            # In case we are at the very beginning of the episode, e.g.
+                            # ts==0, fill the left side with zero-actions.
+                            fill=0.0,
+                            # Return one-hot arrays for those action components that are
+                            # discrete or multi-discrete.
+                            one_hot_discrete=True,
+                        )
+                    )
                     # Do the same for rewards.
-                    prev_r.append(episode.get_rewards(
-                        indices=slice(ts - self.n_prev_rewards, ts),
-                        neg_indices_left_of_zero=True,
-                        fill=0.0,
-                    ))
+                    prev_r.append(
+                        episode.get_rewards(
+                            indices=slice(ts - self.n_prev_rewards, ts),
+                            neg_indices_left_of_zero=True,
+                            fill=0.0,
+                        )
+                    )
             # Env-to-module pipeline. Episodes still operate on lists.
             else:
                 assert not episode.is_finalized
-                prev_a.append(batch(episode.get_actions(
-                    indices=slice(-self.n_prev_actions, None),
-                    fill=0.0,
-                    one_hot_discrete=True,
-                )))
-                prev_r.append(np.array(episode.get_rewards(
-                    indices=slice(-self.n_prev_rewards, None),
-                    fill=0.0,
-                )))
+                prev_a.append(
+                    batch(
+                        episode.get_actions(
+                            indices=slice(-self.n_prev_actions, None),
+                            fill=0.0,
+                            one_hot_discrete=True,
+                        )
+                    )
+                )
+                prev_r.append(
+                    np.array(
+                        episode.get_rewards(
+                            indices=slice(-self.n_prev_rewards, None),
+                            fill=0.0,
+                        )
+                    )
+                )
 
         input_[SampleBatch.PREV_ACTIONS] = batch(prev_a)
         input_[SampleBatch.PREV_REWARDS] = np.array(prev_r)

@@ -149,7 +149,9 @@ class SingleAgentEpisode:
         observation_space: Optional[gym.Space] = None,
         actions: Optional[Union[List[ActType], BufferWithInfiniteLookback]] = None,
         action_space: Optional[gym.Space] = None,
-        rewards: Optional[Union[List[SupportsFloat], BufferWithInfiniteLookback]] = None,
+        rewards: Optional[
+            Union[List[SupportsFloat], BufferWithInfiniteLookback]
+        ] = None,
         infos: Optional[Union[List[Dict], BufferWithInfiniteLookback]] = None,
         terminated: bool = False,
         truncated: bool = False,
@@ -1380,7 +1382,8 @@ class SingleAgentEpisode:
                         neg_indices_left_of_zero=neg_indices_left_of_zero,
                     ),
                     lookback=v.lookback,
-                ) for k, v in self.extra_model_outputs.items()
+                )
+                for k, v in self.extra_model_outputs.items()
             },
             terminated=(self.is_terminated if keep_done else False),
             truncated=(self.is_truncated if keep_done else False),

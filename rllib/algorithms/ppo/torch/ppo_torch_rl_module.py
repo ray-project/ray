@@ -32,11 +32,11 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        #"""PPO forward pass during exploration.
-        #Besides the action distribution, this method also returns the parameters of the
-        #policy distribution to be used for computing KL divergence between the old
-        #policy and the new policy during training.
-        #"""
+        # """PPO forward pass during exploration.
+        # Besides the action distribution, this method also returns the parameters of the
+        # policy distribution to be used for computing KL divergence between the old
+        # policy and the new policy during training.
+        # """
         return self._forward_inference(batch)
         output = {}
 

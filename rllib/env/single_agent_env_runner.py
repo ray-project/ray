@@ -42,9 +42,8 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        if (
-            isinstance(self.config.env, str)
-            and _global_registry.contains(ENV_CREATOR, self.config.env)
+        if isinstance(self.config.env, str) and _global_registry.contains(
+            ENV_CREATOR, self.config.env
         ):
             entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
@@ -173,7 +172,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 SingleAgentEpisode(
                     observation_space=self.env.single_observation_space,
                     action_space=self.env.single_action_space,
-                ) for _ in range(self.num_envs)
+                )
+                for _ in range(self.num_envs)
             ]
 
             # Set initial obs in the episodes.
@@ -195,18 +195,19 @@ class SingleAgentEnvRunner(EnvRunner):
             # Compute an action using the RLModule.
             else:
                 from time import time
-                #t0 = time()
+
+                # t0 = time()
                 to_module = self.env_to_module(
                     episodes=self._episodes,
                     ctx=self.connector_ctx,
                 )
-                #t1 = time()
+                # t1 = time()
                 # Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(to_module)
                 else:
                     to_env = self.module.forward_inference(to_module)
-                #t2 = time()
+                # t2 = time()
 
                 to_env = self.module_to_env(
                     input_=to_env,
@@ -218,11 +219,11 @@ class SingleAgentEnvRunner(EnvRunner):
                 t3 = time()
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
-            #t4 = time()
-            #print(f"env->module: {t1-t0}sec")
-            #print(f"module.fwd: {t2-t1}sec")
-            #print(f"module->env: {t3-t2}sec")
-            #print(f"env.step: {t4-t3}sec")
+            # t4 = time()
+            # print(f"env->module: {t1-t0}sec")
+            # print(f"module.fwd: {t2-t1}sec")
+            # print(f"module->env: {t3-t2}sec")
+            # print(f"env.step: {t4-t3}sec")
 
             ts += self.num_envs
 
@@ -241,7 +242,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._episodes[i].add_env_step(
                         # Gym vector env provides the `"final_observation"`.
                         # Pop these out of the infos dict so this information doesn't
-                        # appear in the next episode as well (at index=0). 
+                        # appear in the next episode as well (at index=0).
                         infos[i].pop("final_observation"),
                         actions[i],
                         rewards[i],
@@ -324,7 +325,8 @@ class SingleAgentEnvRunner(EnvRunner):
             SingleAgentEpisode(
                 observation_space=self.env.single_observation_space,
                 action_space=self.env.single_action_space,
-            ) for _ in range(self.num_envs)
+            )
+            for _ in range(self.num_envs)
         ]
 
         render_images = [None] * self.num_envs

@@ -4,10 +4,10 @@ import os
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.connectors.env_to_module.prev_action_prev_reward import (
-    PrevRewardPrevActionEnvToModule
+    PrevRewardPrevActionEnvToModule,
 )
 from ray.rllib.connectors.learner.prev_action_prev_reward import (
-    PrevRewardPrevActionLearner
+    PrevRewardPrevActionLearner,
 )
 from ray.rllib.connectors.connector_pipeline_v2 import (
     ConnectorPipelineV2,
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init()#local_mode=True)#TODO
+    ray.init()  # local_mode=True)#TODO
 
     # Define our custom connector pipelines.
     def make_sampling_connectors(env, rl_module):
@@ -58,8 +58,7 @@ if __name__ == "__main__":
         ctx = ConnectorContextV2(rl_module=rl_module, env=env)
         # Create the env-to-module connector.
         env_to_module = EnvToModulePipeline(
-            ctx=ctx,
-            connectors=[PrevRewardPrevActionEnvToModule(ctx=ctx)]
+            ctx=ctx, connectors=[PrevRewardPrevActionEnvToModule(ctx=ctx)]
         )
         # Leave module-to-env undefined as we don't need any special behavior
         # here.
@@ -84,14 +83,14 @@ if __name__ == "__main__":
         )
         return learner_connector, ctx
 
-
     from ray.rllib.algorithms.dreamerv3.utils.debugging import CartPoleDebug
+
     config = (
         PPOConfig()
         # Use new API stack.
         .experimental(_enable_new_api_stack=True)
         .framework(args.framework)
-        .environment(StatelessCartPole)#"CartPole-v1")
+        .environment(StatelessCartPole)  # "CartPole-v1")
         # And new EnvRunner.
         .rollouts(
             env_runner_cls=SingleAgentEnvRunner,

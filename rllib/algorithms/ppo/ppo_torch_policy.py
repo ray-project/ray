@@ -146,9 +146,9 @@ class PPOTorchPolicy(
         # Ignore the value function.
         else:
             value_fn_out = torch.tensor(0.0).to(surrogate_loss.device)
-            vf_loss_clipped = mean_vf_loss = mean_vf_loss_unclipped = (
-                torch.tensor(0.0).to(surrogate_loss.device)
-            )
+            vf_loss_clipped = mean_vf_loss = mean_vf_loss_unclipped = torch.tensor(
+                0.0
+            ).to(surrogate_loss.device)
 
         total_loss = reduce_mean_valid(
             -surrogate_loss

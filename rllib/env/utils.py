@@ -219,7 +219,9 @@ class BufferWithInfiniteLookback:
                 method).
         """
         if self.finalized:
-            self.data = tree.map_structure(lambda s: np.delete(s, index, axis=0), self.data)
+            self.data = tree.map_structure(
+                lambda s: np.delete(s, index, axis=0), self.data
+            )
         else:
             self.data.pop(index)
 
@@ -422,8 +424,8 @@ class BufferWithInfiniteLookback:
         neg_indices_left_of_zero=False,
         one_hot_discrete=False,
     ):
-        slice_, slice_len, fill_left_count, fill_right_count = (
-            self._interpret_slice(slice_, neg_indices_left_of_zero)
+        slice_, slice_len, fill_left_count, fill_right_count = self._interpret_slice(
+            slice_, neg_indices_left_of_zero
         )
 
         # Perform the actual slice.
@@ -449,7 +451,9 @@ class BufferWithInfiniteLookback:
                     )
                     if data_slice is not None:
                         data_slice = tree.map_structure(
-                            lambda s0, s: np.concatenate([s0, s]), fill_batch, data_slice
+                            lambda s0, s: np.concatenate([s0, s]),
+                            fill_batch,
+                            data_slice,
                         )
                     else:
                         data_slice = fill_batch
@@ -462,7 +466,9 @@ class BufferWithInfiniteLookback:
                     )
                     if data_slice is not None:
                         data_slice = tree.map_structure(
-                            lambda s0, s: np.concatenate([s, s0]), fill_batch, data_slice
+                            lambda s0, s: np.concatenate([s, s0]),
+                            fill_batch,
+                            data_slice,
                         )
                     else:
                         data_slice = fill_batch
@@ -490,21 +496,19 @@ class BufferWithInfiniteLookback:
         slice_,
         neg_indices_left_of_zero=False,
     ):
-        slice_, _, _, _ = (
-            self._interpret_slice(slice_, neg_indices_left_of_zero)
-        )
+        slice_, _, _, _ = self._interpret_slice(slice_, neg_indices_left_of_zero)
 
         # Check, whether the setting to new_data changes the length of self
         # (it shouldn't). If it does, raise an error.
         try:
             if self.finalized:
-    
+
                 def __set(s, n):
                     if self.space:
                         assert self.space.contains(n[0])
                     assert len(s[slice_]) == len(n)
                     s[slice_] = n
-    
+
                 tree.map_structure(__set, self.data, new_data)
             else:
                 if self.space:
@@ -660,10 +664,7 @@ class BufferWithInfiniteLookback:
 
         step = slice_.step if slice_.step is not None else 1
         slice_ = slice(start, stop, step)
-        slice_len = max(
-            0,
-            (stop - start + (step - (1 if step > 0 else -1))) // step
-        )
+        slice_len = max(0, (stop - start + (step - (1 if step > 0 else -1))) // step)
         return slice_, slice_len, fill_left_count, fill_right_count
 
     def _one_hot(self, data, space_struct):

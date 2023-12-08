@@ -45,7 +45,6 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
 )
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once

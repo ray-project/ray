@@ -212,7 +212,9 @@ class LearnerGroup:
             ]
         else:
 
-            def _learner_update(learner: Learner, batch_shard=None, episodes_shard=None):
+            def _learner_update(
+                learner: Learner, batch_shard=None, episodes_shard=None
+            ):
                 return learner.update(
                     batch=batch_shard,
                     episodes=episodes_shard,
@@ -228,7 +230,9 @@ class LearnerGroup:
                     self._worker_manager.foreach_actor(
                         [
                             partial(_learner_update, batch_shard=batch_shard)
-                            for batch_shard in ShardBatchIterator(train_batch, len(self._workers))
+                            for batch_shard in ShardBatchIterator(
+                                train_batch, len(self._workers)
+                            )
                         ]
                     )
                 )
@@ -238,7 +242,9 @@ class LearnerGroup:
                     self._worker_manager.foreach_actor(
                         [
                             partial(_learner_update, episodes_shard=episodes_shard)
-                            for episodes_shard in ShardEpisodesIterator(episodes, len(self._workers))
+                            for episodes_shard in ShardEpisodesIterator(
+                                episodes, len(self._workers)
+                            )
                         ]
                     )
                 )

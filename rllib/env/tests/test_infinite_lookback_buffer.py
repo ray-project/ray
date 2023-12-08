@@ -13,10 +13,12 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         {
             "a": gym.spaces.Discrete(4),
             "b": gym.spaces.Box(-1.0, 1.0, (2, 3), np.float32),
-            "c": gym.spaces.Tuple([
-                gym.spaces.MultiDiscrete([2, 3]),
-                gym.spaces.Box(-1.0, 1.0, (1,), np.float32),
-            ]),
+            "c": gym.spaces.Tuple(
+                [
+                    gym.spaces.MultiDiscrete([2, 3]),
+                    gym.spaces.Box(-1.0, 1.0, (1,), np.float32),
+                ]
+            ),
         }
     )
 
@@ -463,7 +465,9 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
             check(buffer.get(-5, fill=0.0), self.buffer_0)
             check(buffer.get([-5, 5], fill=0.0), batch_([self.buffer_0, self.buffer_0]))
             check(buffer.get([-5, 1], fill=0.0), batch_([self.buffer_0, self.buffer_3]))
-            check(buffer.get([1, -10], fill=0.0), batch_([self.buffer_3, self.buffer_0]))
+            check(
+                buffer.get([1, -10], fill=0.0), batch_([self.buffer_3, self.buffer_0])
+            )
             check(
                 buffer.get([-10], fill=0.0, one_hot_discrete=True),
                 batch_([self.buffer_0_one_hot]),
@@ -492,7 +496,7 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
 
     def test_set(self):
         buffer = BufferWithInfiniteLookback(
-            data=[0, 1,  2, 3, 4, 5, 6, 7],
+            data=[0, 1, 2, 3, 4, 5, 6, 7],
             lookback=2,
         )
         # Directly via the []-notation.
@@ -544,7 +548,9 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         check(buffer.data, [0, 1, 2, 3, 4, 5, 6, 7])
 
         # Via the `set` method with going into the lookback buffer.
-        buffer.set([100, 200, 300], at_indices=slice(-1, 2), neg_indices_left_of_zero=True)
+        buffer.set(
+            [100, 200, 300], at_indices=slice(-1, 2), neg_indices_left_of_zero=True
+        )
         check(buffer.data, [0, 100, 200, 300, 4, 5, 6, 7])
         buffer.set(-999, at_indices=-2, neg_indices_left_of_zero=True)
         check(buffer.data, [-999, 100, 200, 300, 4, 5, 6, 7])
@@ -585,7 +591,6 @@ class TestBufferWithInfiniteLookback(unittest.TestCase):
         # Actual buffer has been changed by our set above.
         check(buffer.data[2], self.buffer_1)
         check(buffer.data[3], self.buffer_3)
-
 
 
 if __name__ == "__main__":

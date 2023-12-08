@@ -100,7 +100,9 @@ path: /tmp/
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
+    from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorContextV2
     from ray.rllib.core.learner import Learner
+    from ray.rllib.core.rl_module.rl_module import RLModule
     from ray.rllib.evaluation.episode import Episode as OldEpisode
 
 logger = logging.getLogger(__name__)
@@ -1536,8 +1538,8 @@ class AlgorithmConfig(_Config):
                 and action connectors.
             sampling_connectors: A callable taking an Env and RLModule as input args
                 and returning a tuple consisting of an env-to-module ConnectorV2
-                (might be a pipeline), a module-to-env ConnectorV2 (might be a pipeline),
-                and an initial ConnectorContextV2 object.
+                (might be a pipeline), a module-to-env ConnectorV2 (might be a
+                pipeline), and an initial ConnectorContextV2 object.
             episode_lookback_horizon: The amount of data (in timesteps) to keep from the
                 preceeding episode chunk when a new chunk (for the same episode) is
                 generated to continue sampling at a later time. The larger this value,

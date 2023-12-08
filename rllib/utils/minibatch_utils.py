@@ -86,7 +86,10 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     def get_len(b):
                         return len(b[SampleBatch.SEQ_LENS])
 
-                    n_steps = int(get_len(module_batch) * (self._minibatch_size / len(module_batch)))
+                    n_steps = int(
+                        get_len(module_batch)
+                        * (self._minibatch_size / len(module_batch))
+                    )
 
                 else:
                     n_steps = self._minibatch_size
@@ -170,6 +173,7 @@ class ShardEpisodesIterator:
     Yields:
         A sub-list of Episodes of size roughly `len(episodes) / num_shards`.
     """
+
     def __init__(self, episodes: List[EpisodeType], num_shards: int):
         self._episodes = sorted(episodes, key=len, reverse=True)
         self._num_shards = num_shards
