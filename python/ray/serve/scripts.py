@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_graph_build import build as pipeline_build
@@ -371,6 +372,17 @@ def deploy(config_file_name: str, address: str):
         "will be ignored if running a config file."
     ),
 )
+@click.option(
+    "--name",
+    required=False,
+    default=SERVE_DEFAULT_APP_NAME,
+    type=str,
+    help=(
+        "Name of the application. This should only be used "
+        "when running an application specified by import path and "
+        "will be ignored if running a config file."
+    ),
+)
 def run(
     config_or_import_path: str,
     arguments: Tuple[str],
@@ -384,6 +396,7 @@ def run(
     blocking: bool,
     reload: bool,
     route_prefix: str,
+    name: str,
 ):
     if host is not None or port is not None:
         cli_logger.warning(
@@ -479,7 +492,7 @@ def run(
             client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
         else:
-            serve.run(app, route_prefix=route_prefix, host=host, port=port)
+            serve.run(app, name=name, route_prefix=route_prefix, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")
 
         if reload:
@@ -506,7 +519,9 @@ def run(
                     app = _private_api.call_app_builder_with_args_if_necessary(
                         import_attr(import_path, reload_module=True), args_dict
                     )
-                    serve.run(app, route_prefix=route_prefix, host=host, port=port)
+                    serve.run(
+                        app, name=name, route_prefix=route_prefix, host=host, port=port
+                    )
 
         if blocking:
             while True:

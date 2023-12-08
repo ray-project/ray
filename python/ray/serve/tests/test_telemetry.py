@@ -13,16 +13,16 @@ from ray._private.test_utils import wait_for_condition
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
-from ray.serve._private.usage import ServeUsageTag
-from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeDeploySchema
-from ray.serve.tests.common.utils import (
+from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
     TelemetryStorage,
     check_ray_started,
     receiver_app,
     start_telemetry_app,
 )
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve.context import _get_global_client
+from ray.serve.schema import ServeDeploySchema
 
 
 def test_fastapi_detected(manage_ray_with_telemetry):
@@ -136,7 +136,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "import_path": "ray.serve._private.test_utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
             {
@@ -194,7 +194,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "import_path": "ray.serve._private.test_utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
         ]
@@ -277,7 +277,7 @@ def test_lightweight_config_options(
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "import_path": "ray.serve._private.test_utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
             {

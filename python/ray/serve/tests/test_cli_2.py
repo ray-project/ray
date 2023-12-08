@@ -18,13 +18,7 @@ from ray import serve
 from ray._private.pydantic_compat import BaseModel
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.handle import DeploymentHandle
-from ray.serve.tests.common.remote_uris import (
-    TEST_DAG_PINNED_URI,
-    TEST_DEPLOY_GROUP_PINNED_URI,
-)
-from ray.serve.tests.common.utils import (
+from ray.serve._private.test_utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -32,6 +26,12 @@ from ray.serve.tests.common.utils import (
     ping_grpc_list_applications,
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
+)
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.handle import DeploymentHandle
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_DEPLOY_GROUP_PINNED_URI,
 )
 from ray.serve.tests.conftest import check_ray_stop
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
@@ -493,19 +493,19 @@ def test_run_teardown(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_route_prefix_default(ray_start_stop):
-    """Test `serve run` with route prefix option."""
+def test_run_route_prefix_and_name_default(ray_start_stop):
+    """Test `serve run` without route_prefix and name options."""
 
     p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_2.echo_app"])
 
-    wait_for_condition(check_app_running, app_name="default")
+    wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
     assert ping_endpoint("/") == "hello"
     p.send_signal(signal.SIGINT)
     p.wait()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_route_prefix_override(ray_start_stop):
+def test_run_route_prefix_and_name_override(ray_start_stop):
     """Test `serve run` with route prefix option."""
 
     p = subprocess.Popen(
@@ -513,11 +513,12 @@ def test_run_route_prefix_override(ray_start_stop):
             "serve",
             "run",
             "--route-prefix=/hello",
+            "--name=hello_app",
             "ray.serve.tests.test_cli_2.echo_app",
         ],
     )
 
-    wait_for_condition(check_app_running, app_name="default")
+    wait_for_condition(check_app_running, app_name="hello_app")
     assert "Path '/' not found" in ping_endpoint("/")
     assert ping_endpoint("/hello") == "hello"
     p.send_signal(signal.SIGINT)
