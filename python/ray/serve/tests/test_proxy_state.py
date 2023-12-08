@@ -198,7 +198,7 @@ def test_node_selection(all_nodes):
 
 
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 5)
-def test_proxy_state_reconcile_restarts_unhealthy_proxies(all_nodes):
+def test_proxy_state_manager_restarts_unhealthy_proxies(all_nodes):
     """Test the update method in ProxyStateManager would
        kill and restart unhealthy proxies.
     """
@@ -629,9 +629,9 @@ def test_is_ready_for_shutdown(all_nodes):
     wait_for_condition(check_is_ready_for_shutdown)
 
 
-@patch("ray.serve._private.proxy_state.PROXY_READY_CHECK_TIMEOUT_S", 0.1)
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD", 1)
 @pytest.mark.parametrize("number_of_worker_nodes", [1])
-def test_proxy_starting_timeout_longer_than_env(number_of_worker_nodes, all_nodes):
+def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nodes):
     """Test update method on ProxyStateManager when the proxy state is STARTING and
     when the ready call takes longer than PROXY_READY_CHECK_TIMEOUT_S.
 
@@ -652,57 +652,62 @@ def test_proxy_starting_timeout_longer_than_env(number_of_worker_nodes, all_node
 
     # Run update to create proxy states.
     proxy_state_manager.update(proxy_nodes=node_ids)
-    old_proxy_states = {
-        node_id: state for node_id, state in proxy_state_manager._proxy_states.items()
-    }
 
     # Ensure 2 proxies are created, one for the head node and another for the worker.
     assert len(proxy_state_manager._proxy_states) == len(node_ids)
 
-    # Ensure the proxy state statuses before update are STARTING. Also, setting the
-    # ready call status to be pending to simulate the call never respond.
-    def check_proxy_state_starting(_proxy_state_manager: ProxyStateManager):
-        for proxy_state in _proxy_state_manager._proxy_states.values():
-            assert proxy_state.status == ProxyStatus.STARTING
-            proxy_state._actor_proxy_wrapper.is_ready_response = None
+    # Ensure the proxy state statuses before update are STARTING, set the
+    # readiness check to failing
+    for node_id in node_ids:
+        proxy_state = proxy_state_manager._proxy_states[node_id]
 
-    # Trigger update and ensure proxy states are restarted due to time advanced
-    # longer than PROXY_READY_CHECK_TIMEOUT_S of 0.1s.
-    check_proxy_state_starting(_proxy_state_manager=proxy_state_manager)
-    fake_time.advance(0.11)
-    proxy_state_manager.update(proxy_nodes=node_ids)
-    assert all(
-        [
-            proxy_state_manager._proxy_states[node_id] != old_proxy_states[node_id]
-            for node_id in node_ids
-        ]
-    )
+        assert proxy_state.status == ProxyStatus.STARTING
+        proxy_state._actor_proxy_wrapper.is_ready_response = False
 
-    # Trigger another update with the same advance time and this time the
-    # proxy states should not be restarted again with the backoff timeout.
-    old_proxy_states = {
+    # Capture current proxy states (prior to updating)
+    prev_proxy_states = {
         node_id: state for node_id, state in proxy_state_manager._proxy_states.items()
     }
-    check_proxy_state_starting(_proxy_state_manager=proxy_state_manager)
-    fake_time.advance(0.11)
-    proxy_state_manager.update(proxy_nodes=node_ids)
-    assert all(
-        [
-            proxy_state_manager._proxy_states[node_id] == old_proxy_states[node_id]
-            for node_id in node_ids
-        ]
-    )
 
-    # Ensure the proxy states turns healthy after the ready call is unblocked.
-    for proxy_state in proxy_state_manager._proxy_states.values():
-        proxy_state._actor_proxy_wrapper.is_ready_response = True
+    # Trigger PSM to reconcile
     proxy_state_manager.update(proxy_nodes=node_ids)
-    assert all(
-        [
-            proxy_state_manager._proxy_states[node_id].status == ProxyStatus.HEALTHY
-            for node_id in node_ids
-        ]
-    )
+
+    # Ensure the proxy state statuses before update are STARTING, set the
+    # readiness check to failing
+    for node_id in node_ids:
+        proxy_state = proxy_state_manager._proxy_states[node_id]
+        prev_proxy_state = prev_proxy_states[node_id]
+        # Assert
+        #   - All proxies are restarted
+        #   - Previous proxy states are UNHEALTHY
+        #   - New proxy states are STARTING
+        assert proxy_state != prev_proxy_state
+        assert prev_proxy_state.status == ProxyStatus.UNHEALTHY
+        assert proxy_state.status == ProxyStatus.STARTING
+        # Mark new proxy readiness checks as passing
+        proxy_state._actor_proxy_wrapper.is_ready_response = True
+
+    # Capture current proxy states again (prior to updating)
+    prev_proxy_states = {
+        node_id: state for node_id, state in proxy_state_manager._proxy_states.items()
+    }
+
+    # Trigger PSM to reconcile
+    proxy_state_manager.update(proxy_nodes=node_ids)
+
+    # Ensure the proxy state statuses before update are STARTING, set the
+    # readiness check to failing
+    for node_id in node_ids:
+        proxy_state = proxy_state_manager._proxy_states[node_id]
+        prev_proxy_state = prev_proxy_states[node_id]
+        # Assert
+        #   - All proxies are restarted
+        #   - Previous proxy states are UNHEALTHY
+        #   - New proxy states are STARTING
+        assert proxy_state == prev_proxy_state
+        assert prev_proxy_state.status == ProxyStatus.HEALTHY
+        assert proxy_state.status == ProxyStatus.HEALTHY
+
 
 
 if __name__ == "__main__":
