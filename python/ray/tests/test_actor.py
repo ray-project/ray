@@ -1194,6 +1194,7 @@ def test_actor_autocomplete(ray_start_regular_shared):
     else:
         assert set(method_options) == {"options", "remote", "bind"}
 
+
 def test_actor_mro(ray_start_regular_shared):
     @ray.remote
     class Foo:
