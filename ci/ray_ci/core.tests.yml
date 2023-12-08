@@ -1,4 +1,2 @@
 flaky_tests:
-  - //python/ray/tests:test_client_library_integration
-  - //src/ray/common/test:ray_syncer_test
   - //python/ray/tests:test_autoscaler
