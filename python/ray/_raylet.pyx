@@ -3278,7 +3278,7 @@ cdef class CoreWorker:
 
     def get_current_task_id(self) -> TaskID:
         """Return the current task ID.
-        
+
         If it is a normal task, it returns the TaskID from the main thread.
         If it is a threaded actor, it returns the TaskID for the current thread.
         If it is async actor, it returns the TaskID stored in contextVar for
