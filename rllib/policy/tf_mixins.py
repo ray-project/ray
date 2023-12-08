@@ -320,14 +320,11 @@ class ValueNetworkMixin:
 
         self._value = value
         self._should_cache_extra_action = config["framework"] == "tf"
+        print(f"_should_cache_extra_action={self._should_cache_extra_action}")
         self._cached_extra_action_fetches = None
 
     def _extra_action_out_impl(self) -> Dict[str, TensorType]:
         extra_action_out = super().extra_action_out_fn()
-        # Keras models return values for each call in third return argument
-        # (dict).
-        if isinstance(self.model, tf.keras.Model):
-            return extra_action_out
         # Return value function outputs. VF estimates will hence be added to the
         # SampleBatches produced by the sampler(s) to generate the train batches
         # going into the loss function.
@@ -336,11 +333,11 @@ class ValueNetworkMixin:
                 SampleBatch.VF_PREDS: self.model.value_function(),
             }
         )
+        print(f"extra_action_out={extra_action_out}")
         return extra_action_out
 
     def extra_action_out_fn(self) -> Dict[str, TensorType]:
-        if not self._should_cache_extra_action:
-            return self._extra_action_out_impl()
+        return self._extra_action_out_impl()
 
         # Note: there are 2 reasons we are caching the extra_action_fetches for
         # TF1 static graph here.

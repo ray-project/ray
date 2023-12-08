@@ -340,6 +340,7 @@ class EnvRunnerV2:
             Object containing state, action, reward, terminal condition,
             and other fields as dictated by `policy`.
         """
+        #self.__step = 0
         while True:
             outputs = self.step()
             for o in outputs:
@@ -351,6 +352,9 @@ class EnvRunnerV2:
         self._perf_stats.incr("iters", 1)
 
         t0 = time.time()
+        #print(f"polling {self.__step}")
+        #self.__step += 1
+        #self.__step %= 50
         # Get observations from all ready agents.
         # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         (
@@ -374,6 +378,15 @@ class EnvRunnerV2:
             truncateds=truncateds,
             infos=infos,
         )
+        if outputs:
+            for o in outputs:
+                if isinstance(o, SampleBatch):
+                    raise NotImplementedError
+                elif isinstance(o, MultiAgentBatch):
+                    print(
+                        f"polled and got outputs action_dist_inputs len={o['default_policy']['action_dist_inputs'].shape[0]}"
+                        f" obs len={o['default_policy']['obs'].shape[0]}"
+                    )
         self._perf_stats.incr("raw_obs_processing_time", time.time() - t1)
 
         # Do batched policy eval (accross vectorized envs).
@@ -492,6 +505,7 @@ class EnvRunnerV2:
                     "as observation, the terminateds[__all__] flag must also be set to "
                     "True!"
                 )
+                assert False
                 # all_agents_obs is an Exception here.
                 # Drop this episode and skip to next.
                 self._handle_done_episode(

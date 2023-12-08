@@ -878,6 +878,7 @@ class Impala(Algorithm):
                 self.batch_being_built = []
 
         for batch in batches:
+            print(f"in concatenate_batches_and_pre_queue {batch['default_policy']['action_dist_inputs'].shape[0]}")
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
 
@@ -918,10 +919,13 @@ class Impala(Algorithm):
                     timeout_seconds=self._timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
+                if len(sample_batches) > 0:
+                    print(f"in IMPALA.get_samples_from_workers: {[b[1]['default_policy']['action_dist_inputs'].shape[0] for b in sample_batches]}")
             elif (
                 self.workers.local_worker()
                 and self.workers.local_worker().async_env is not None
             ):
+                assert False
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
                 if return_object_refs:
@@ -929,7 +933,7 @@ class Impala(Algorithm):
                 sample_batches = [(0, sample_batch)]
             else:
                 # Not much we can do. Return empty list and wait.
-                return []
+                sample_batches = []
 
         return sample_batches
 
@@ -1064,6 +1068,7 @@ class Impala(Algorithm):
         processed_batches = []
 
         for batch in batches:
+            print(f"in process_experiences_directly {batch['default_policy']['action_dist_inputs'].shape[0]}")#TODO
             assert not isinstance(
                 batch, ObjectRef
             ), "process_experiences_directly can not handle ObjectRefs. "

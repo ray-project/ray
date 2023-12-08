@@ -423,12 +423,10 @@ class SimpleListCollector(SampleCollector):
         check_dones: bool = False,
         build: bool = False,
     ) -> Union[None, SampleBatch, MultiAgentBatch]:
+        assert False
         episode_id = episode.episode_id
         policy_collector_group = episode.batch_builder
 
-        # TODO: (sven) Once we implement multi-agent communication channels,
-        #  we have to resolve the restriction of only sending other agent
-        #  batches from the same policy to the postprocess methods.
         # Build SampleBatches for the given episode.
         pre_batches = {}
         for (eps_id, agent_id), collector in self.agent_collectors.items():
@@ -438,6 +436,7 @@ class SimpleListCollector(SampleCollector):
             pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
             policy = self.policy_map[pid]
             pre_batch = collector.build_for_training(policy.view_requirements)
+            print(f"build pre-batch len vf_preds={pre_batch['vf_preds'].shape[0]} obs len={pre_batch['obs'].shape[0]}")
             pre_batches[agent_id] = (policy, pre_batch)
 
         # Apply reward clipping before calling postprocessing functions.

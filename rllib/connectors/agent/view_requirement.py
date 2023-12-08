@@ -114,8 +114,10 @@ class ViewRequirementAgentConnector(AgentConnector):
                 init_infos=d.get(SampleBatch.INFOS),
             )
         else:
+            assert "vf_preds" in d
             agent_collector.add_action_reward_next_obs(d)
         sample_batch = agent_collector.build_for_inference()
+        #assert sample_batch['vf_preds'].shape[0] == sample_batch['obs'].shape[0]
 
         return_data = AgentConnectorDataType(
             env_id, agent_id, AgentConnectorsOutput(training_dict, sample_batch)
