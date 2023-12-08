@@ -19,6 +19,7 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     EndpointInfo,
     EndpointTag,
+    TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -37,7 +38,6 @@ from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
 )
-from ray.serve.autoscaling_policy import TargetCapacityDirection
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import DeploymentDetails, ServeApplicationSchema

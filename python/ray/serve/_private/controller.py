@@ -20,6 +20,7 @@ from ray.serve._private.common import (
     NodeId,
     RunningReplicaInfo,
     StatusOverview,
+    TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
@@ -52,7 +53,6 @@ from ray.serve._private.utils import (
     get_all_live_placement_group_names,
     get_head_node_id,
 )
-from ray.serve.autoscaling_policy import TargetCapacityDirection
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,

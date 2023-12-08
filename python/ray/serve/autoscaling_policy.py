@@ -1,11 +1,6 @@
 import os
-from abc import ABCMeta, abstractmethod
-from enum import Enum
-from typing import Any, List, Optional
+from typing import List, Optional
 
-import requests
-
-from ray.serve._private.common import TargetCapacityDirection
 from ray.serve.config import AutoscalingConfig
 from ray.util.annotations import PublicAPI
 

@@ -19,7 +19,6 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
-from ray.util.annotations import PublicAPI
 
 
 class DeploymentID(NamedTuple):
@@ -383,7 +382,6 @@ class RequestProtocol(str, Enum):
     GRPC = "gRPC"
 
 
-@PublicAPI(stability="beta")
 class TargetCapacityDirection(str, Enum):
     """Determines what direction the target capacity is scaling."""
 
