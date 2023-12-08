@@ -179,15 +179,15 @@ class ShardEpisodesIterator:
         self._num_shards = num_shards
 
     def __iter__(self):
-        # Initialize sub-lists and their total lengths
+        # Initialize sub-lists and their total lengths.
         sublists = [[] for _ in range(self._num_shards)]
         lengths = [0 for _ in range(self._num_shards)]
 
-        for episodes in self._episodes:
-            # Find the sub-list with the minimum total length and add the item to it
+        for episode in self._episodes:
+            # Find the sub-list with the minimum total length and add the item to it.
             min_index = lengths.index(min(lengths))
-            sublists[min_index].append(item)
-            lengths[min_index] += len(item)
+            sublists[min_index].append(episode)
+            lengths[min_index] += len(episode)
 
         for sublist in sublists:
             yield sublist

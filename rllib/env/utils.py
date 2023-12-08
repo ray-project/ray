@@ -588,7 +588,7 @@ class BufferWithInfiniteLookback:
                 if self.space:
                     assert self.space.contains(new_data)
                 self.data[actual_idx] = new_data
-        except IndexError as e:
+        except IndexError:
             raise IndexError(
                 f"Cannot `set()` value at index {idx} (option "
                 f"neg_indices_left_of_zero={neg_indices_left_of_zero})! Out of range "

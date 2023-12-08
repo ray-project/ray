@@ -194,20 +194,15 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions = self.env.action_space.sample()
             # Compute an action using the RLModule.
             else:
-                from time import time
-
-                # t0 = time()
                 to_module = self.env_to_module(
                     episodes=self._episodes,
                     ctx=self.connector_ctx,
                 )
-                # t1 = time()
                 # Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(to_module)
                 else:
                     to_env = self.module.forward_inference(to_module)
-                # t2 = time()
 
                 to_env = self.module_to_env(
                     input_=to_env,
@@ -216,14 +211,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 )
                 to_env = convert_to_numpy(to_env)
                 actions = to_env.pop(SampleBatch.ACTIONS)
-                t3 = time()
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
-            # t4 = time()
-            # print(f"env->module: {t1-t0}sec")
-            # print(f"module.fwd: {t2-t1}sec")
-            # print(f"module->env: {t3-t2}sec")
-            # print(f"env.step: {t4-t3}sec")
 
             ts += self.num_envs
 

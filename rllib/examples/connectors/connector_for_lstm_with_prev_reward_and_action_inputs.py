@@ -40,7 +40,7 @@ parser.add_argument(
     "--stop-timesteps", type=int, default=1000000, help="Number of timesteps to train."
 )
 parser.add_argument(
-    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
+    "--stop-reward", type=float, default=400.0, help="Reward at which we stop training."
 )
 
 
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init()  # local_mode=True)#TODO
+    ray.init()
 
     # Define our custom connector pipelines.
     def make_sampling_connectors(env, rl_module):
@@ -83,14 +83,12 @@ if __name__ == "__main__":
         )
         return learner_connector, ctx
 
-    from ray.rllib.algorithms.dreamerv3.utils.debugging import CartPoleDebug
-
     config = (
         PPOConfig()
         # Use new API stack.
         .experimental(_enable_new_api_stack=True)
         .framework(args.framework)
-        .environment(StatelessCartPole)  # "CartPole-v1")
+        .environment(StatelessCartPole)
         # And new EnvRunner.
         .rollouts(
             env_runner_cls=SingleAgentEnvRunner,
@@ -120,10 +118,11 @@ if __name__ == "__main__":
         config.algo_class,
         param_space=config.to_dict(),
         run_config=air.RunConfig(stop=stop),
-        tune_config=tune.TuneConfig(num_samples=10),
+        tune_config=tune.TuneConfig(num_samples=5),
     )
     results = tuner.fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
+
     ray.shutdown()

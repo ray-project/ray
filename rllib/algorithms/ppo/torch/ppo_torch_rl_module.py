@@ -20,23 +20,26 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
+        # Encoder forward pass.
         encoder_outs = self.encoder(batch)
         if STATE_OUT in encoder_outs:
             output[STATE_OUT] = encoder_outs[STATE_OUT]
 
-        # Actions
-        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        # Pi head.
+        output[SampleBatch.ACTION_DIST_INPUTS] = self.pi(
+            encoder_outs[ENCODER_OUT][ACTOR]
+        )
 
         return output
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        # """PPO forward pass during exploration.
-        # Besides the action distribution, this method also returns the parameters of the
-        # policy distribution to be used for computing KL divergence between the old
-        # policy and the new policy during training.
-        # """
+        """PPO forward pass during exploration.
+
+        Besides the action distribution, this method also returns the parameters of
+        the policy distribution to be used for computing KL divergence between the old
+        policy and the new policy during training.
+        """
         return self._forward_inference(batch)
         output = {}
 

@@ -69,15 +69,16 @@ class DefaultLearnerConnector(ConnectorV2):
                 state_ins.append(
                     tree.map_structure(
                         # [::T] = only keep every Tth (max_seq_len) state in.
-                        # [:-1] = shift state outs by one (ignore very last state out, but
-                        # therefore add the init state at the beginning).
+                        # [:-1] = shift state outs by one (ignore very last state out,
+                        # but therefore add the init state at the beginning).
                         lambda i, o: np.concatenate([[i], o[:-1]])[::T],
                         (
                             # Episode has a (reset) beginning -> Prepend initial state.
                             init_state
                             if episode.t_started == 0
-                            # Episode starts somewhere in the middle (is a cut continuation
-                            # chunk) -> Use previous chunk's last STATE_OUT as initial state.
+                            # Episode starts somewhere in the middle (is a cut
+                            # continuation chunk) -> Use previous chunk's last STATE_OUT
+                            # as initial state.
                             else episode.get_extra_model_outputs(
                                 key=STATE_OUT, indices=-1, neg_indices_left_of_zero=True
                             )
@@ -174,8 +175,9 @@ def split_and_pad(episodes_data, T):
     # Combine all chunks into a single array
     result = np.concatenate(all_chunks, axis=0)
 
-    # Reshape the array to include the time dimension T
-    # The new shape should be (-1, T) + original dimensions (excluding the batch dimension)
+    # Reshape the array to include the time dimension T.
+    # The new shape should be (-1, T) + original dimensions (excluding the batch
+    # dimension)
     result = result.reshape((-1, T) + result.shape[1:])
 
     return result

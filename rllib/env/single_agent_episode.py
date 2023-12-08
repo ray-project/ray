@@ -1476,7 +1476,10 @@ class SingleAgentEpisode:
         return self.t - self.t_started
 
     def __repr__(self):
-        return f"SAEps(len={len(self)} done={self.is_done} R={self.get_return()} id_={self.id_})"
+        return (
+            f"SAEps(len={len(self)} done={self.is_done} "
+            f"R={self.get_return()} id_={self.id_})"
+        )
 
     def __getitem__(self, item: slice) -> "SingleAgentEpisode":
         """Enable squared bracket indexing- and slicing syntax, e.g. episode[-4:]."""

@@ -1,5 +1,5 @@
 import abc
-from typing import Any, List, Tuple
+from typing import Any, List
 
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.connectors.input_output_types import INPUT_OUTPUT_TYPES
@@ -18,7 +18,8 @@ class ConnectorV2(abc.ABC):
     Connectors may be training-aware, for example, behave slightly differently
     during training and inference.
 
-    All connectors are required to be serializable and implement the `serialize()` method.
+    All connectors are required to be serializable and implement the `serialize()`
+    method.
     """
 
     # Set these in ALL subclasses.
