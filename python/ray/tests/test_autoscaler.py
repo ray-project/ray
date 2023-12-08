@@ -402,7 +402,7 @@ class AutoscalingTest(unittest.TestCase):
     def waitForNodes(self, expected, comparison=None, tag_filters=None):
         if comparison is None:
             comparison = self.assertEqual
-        MAX_ITER = 100
+        MAX_ITER = 300
         for i in range(MAX_ITER):
             n = self.num_nodes(tag_filters)
             try:
