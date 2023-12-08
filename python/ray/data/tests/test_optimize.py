@@ -227,26 +227,6 @@ def _assert_has_stages(stages, stage_names):
         assert stage.name == name
 
 
-@pytest.mark.skipif(
-    ray.data.DatasetContext.get_current().optimizer_enabled,
-    reason="Deprecated with new optimizer path.",
-)
-def test_stage_linking(ray_start_regular_shared):
-    # Test lazy dataset.
-    ds = ray.data.range(10)
-    assert len(ds._plan._stages_before_snapshot) == 0
-    assert len(ds._plan._stages_after_snapshot) == 0
-    assert ds._plan._last_optimized_stages is None
-    ds = ds.map(column_udf("id", lambda x: x + 1))
-    assert len(ds._plan._stages_before_snapshot) == 0
-    _assert_has_stages(ds._plan._stages_after_snapshot, ["Map"])
-    assert ds._plan._last_optimized_stages is None
-    ds = ds.materialize()
-    _assert_has_stages(ds._plan._stages_before_snapshot, ["Map"])
-    assert len(ds._plan._stages_after_snapshot) == 0
-    _assert_has_stages(ds._plan._last_optimized_stages, ["ReadRange->Map"])
-
-
 def test_optimize_reorder(ray_start_regular_shared):
     context = DataContext.get_current()
     context.optimize_fuse_stages = True

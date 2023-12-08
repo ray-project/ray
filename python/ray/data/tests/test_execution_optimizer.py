@@ -1484,7 +1484,10 @@ def test_blocks_to_input_buffer_op_name(
     enable_streaming_executor,
 ):
     ds: ray.data.Dataset = ray.data.range(10)
-    blocks, _, _ = ds._plan._optimize()
+
+    # Note that this is only called to get the resulting LazyBlockList of ReadTasks
+    # after plan optimization, and does not trigger execution of the tasks.
+    blocks = ds._plan.execute()
     assert hasattr(blocks, "_tasks"), blocks
     physical_op = _blocks_to_input_buffer(blocks, owns_blocks=False)
     assert physical_op.name == "ReadRange"

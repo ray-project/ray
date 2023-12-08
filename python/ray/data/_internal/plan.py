@@ -33,12 +33,6 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
-from ray.data._internal.logical.rules.set_read_parallelism import (
-    compute_additional_split_factor,
-)
-from ray.data._internal.planner.plan_read_op import (
-    apply_output_blocks_handling_to_read_task,
-)
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import (
     capitalize,
@@ -647,30 +641,11 @@ class ExecutionPlan:
                     blocks._owned_by_consumer = False
 
             else:
-                blocks, stats, stages = self._optimize()
+                raise DeprecationWarning(
+                    "Legacy Dataset execution backend is "
+                    "deprecated starting in Ray 2.10."
+                )
 
-                for stage_idx, stage in enumerate(stages):
-                    if allow_clear_input_blocks:
-                        clear_input_blocks = self._should_clear_input_blocks(
-                            blocks, stage_idx
-                        )
-                    else:
-                        clear_input_blocks = False
-                    stats_builder = stats.child_builder(stage.name)
-                    blocks, stage_info = stage(
-                        blocks, clear_input_blocks, self._run_by_consumer
-                    )
-                    if stage_info:
-                        stats = stats_builder.build_multistage(stage_info)
-                    else:
-                        stats = stats_builder.build(blocks)
-                    stats.dataset_uuid = self._dataset_uuid
-                    stats_summary_string = stats.to_summary().to_string(
-                        include_parent=False,
-                    )
-                    logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                        stats_summary_string,
-                    )
             # Retrieve memory-related stats from ray.
             reply = get_memory_info_reply(
                 get_state_from_address(ray.get_runtime_context().gcs_address)
@@ -767,61 +742,6 @@ class ExecutionPlan:
             # Otherwise, we have non-lazy input blocks that's the source of this
             # execution plan, so we don't clear these.
             return False
-
-    def _optimize(self) -> Tuple[BlockList, DatasetStats, List[Stage]]:
-        """Apply stage fusion optimizations, returning an updated source block list and
-        associated stats, and a set of optimized stages.
-        """
-        context = self._context
-        blocks, stats, stages = self._get_source_blocks_and_stages()
-        logical_op = self._logical_plan.dag
-        if isinstance(logical_op, Read) and isinstance(blocks, LazyBlockList):
-            # TODO(swang): Currently the legacy backend is used to execute
-            # Datasets that only contain a Read. Handle read task parallelism
-            # and output block splitting here. This duplicates logic in
-            # SetReadParallelismRule and can be removed once legacy backend
-            # is deprecated.
-            ctx = DataContext.get_current()
-            (
-                detected_parallelism,
-                reason,
-                estimated_num_blocks,
-                k,
-            ) = compute_additional_split_factor(
-                logical_op._datasource_or_legacy_reader,
-                logical_op._parallelism,
-                logical_op._mem_size,
-                ctx.target_max_block_size,
-                cur_additional_split_factor=None,
-            )
-            if logical_op._parallelism == -1:
-                assert reason != ""
-                logger.get_logger().info(
-                    f"Using autodetected parallelism={detected_parallelism} "
-                    f"for stage {logical_op.name} to satisfy {reason}."
-                )
-            if k is not None:
-                logger.get_logger().info(
-                    f"To satisfy the requested parallelism of {detected_parallelism}, "
-                    f"each read task output is split into {k} smaller blocks."
-                )
-
-            for read_task in blocks._tasks:
-                apply_output_blocks_handling_to_read_task(read_task, k)
-            blocks._estimated_num_blocks = estimated_num_blocks
-
-        if context.optimize_reorder_stages:
-            stages = _reorder_stages(stages)
-        if context.optimize_fuse_stages:
-            if context.optimize_fuse_read_stages:
-                # If using a lazy datasource, rewrite read stage into one-to-one stage
-                # so it can be fused into downstream stages.
-                blocks, stats, stages = _rewrite_read_stages(
-                    blocks, stats, stages, self._dataset_uuid
-                )
-            stages = _fuse_one_to_one_stages(stages)
-            self._last_optimized_stages = stages
-        return blocks, stats, stages
 
     def _get_source_blocks_and_stages(
         self,
