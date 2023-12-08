@@ -1115,7 +1115,7 @@ class ProxyActor:
         self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
-                LongPollNamespace.SYSTEM_LOGGING_CONFIG: self._update_logging_config,
+                LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
             },
             call_in_event_loop=get_or_create_event_loop(),
         )
