@@ -1,6 +1,5 @@
 import json
-import time
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 from unittest.mock import patch
 
 import pytest
@@ -9,11 +8,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import ProxyStatus
 from ray.serve._private.constants import PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-from ray.serve._private.proxy_state import (
-    ProxyState,
-    ProxyStateManager,
-    ProxyWrapper,
-)
+from ray.serve._private.proxy_state import ProxyState, ProxyStateManager, ProxyWrapper
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import Timer
 from ray.serve.config import DeploymentMode, HTTPOptions
@@ -200,7 +195,7 @@ def test_node_selection(all_nodes):
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 5)
 def test_proxy_state_manager_restarts_unhealthy_proxies(all_nodes):
     """Test the update method in ProxyStateManager would
-       kill and restart unhealthy proxies.
+    kill and restart unhealthy proxies.
     """
 
     timer = MockTimer()
@@ -282,7 +277,8 @@ def test_proxy_state_reconcile_readiness_check_pending():
     # Ensure the proxy status before update is STARTING.
     assert proxy_state.status == ProxyStatus.STARTING
 
-    # When the proxy readiness check is pending, the proxy wrapper is_ready will return None
+    # When the proxy readiness check is pending, the proxy wrapper is_ready
+    # will return None
     proxy_state._actor_proxy_wrapper.is_ready_response = None
 
     # Trigger update. The status do not change, while readiness check is pending
@@ -309,7 +305,8 @@ def test_proxy_state_reconcile_readiness_check_fails():
     proxy_state.reconcile()
     assert proxy_state.status == ProxyStatus.STARTING
 
-    # After PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD failures, state should transition to UNHEALTHY
+    # After PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD failures, state should
+    # transition to UNHEALTHY
     for _ in range(PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1):
         proxy_state.reconcile()
 
@@ -345,13 +342,17 @@ def test_proxy_state_reconcile_health_check_transient_failures():
     # Simulate health-checks failing
     proxy_state._actor_proxy_wrapper.is_healthy_response = False
 
-    # Reconcile PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1 times, state should continue to stay HEALTHY
+    # Reconcile PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1 times, state should
+    # continue to stay HEALTHY
     for _ in range(PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1):
         _reconcile_and_check_proxy_status(proxy_state, ProxyStatus.HEALTHY)
         # Advance timer by 5 (to trigger new health-check)
         timer.advance(5)
 
-    assert proxy_state._actor_proxy_wrapper.get_num_health_checks() == PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1
+    assert (
+        proxy_state._actor_proxy_wrapper.get_num_health_checks()
+        == PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1
+    )
 
     # Simulate health-checks passing
     proxy_state._actor_proxy_wrapper.is_healthy_response = True
@@ -373,15 +374,20 @@ def test_proxy_state_reconcile_health_check_persistent_failures():
     # Simulate health-checks failing
     proxy_state._actor_proxy_wrapper.is_healthy_response = False
 
-    # Reconcile PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1 times, state should continue to stay HEALTHY
+    # Reconcile PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1 times, state should
+    # continue to stay HEALTHY
     for _ in range(PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1):
         _reconcile_and_check_proxy_status(proxy_state, ProxyStatus.HEALTHY)
         # Advance timer by 5 (to trigger new health-check)
         timer.advance(5)
 
-    assert proxy_state._actor_proxy_wrapper.get_num_health_checks() == PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1
+    assert (
+        proxy_state._actor_proxy_wrapper.get_num_health_checks()
+        == PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1
+    )
 
-    # On PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD iteration, state transitions to UNHEALTHY
+    # On PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD iteration, state transitions to
+    # UNHEALTHY
     _reconcile_and_check_proxy_status(proxy_state, ProxyStatus.UNHEALTHY)
     # Ensure _consecutive_health_check_failures is correct
     assert proxy_state._consecutive_health_check_failures == 3
@@ -707,7 +713,6 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
         assert proxy_state == prev_proxy_state
         assert prev_proxy_state.status == ProxyStatus.HEALTHY
         assert proxy_state.status == ProxyStatus.HEALTHY
-
 
 
 if __name__ == "__main__":

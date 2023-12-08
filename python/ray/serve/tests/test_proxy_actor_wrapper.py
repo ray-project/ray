@@ -1,6 +1,6 @@
 import asyncio
 import concurrent.futures
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -12,11 +12,7 @@ from ray.serve.schema import LoggingConfig
 def _create_object_ref_mock():
     fut = concurrent.futures.Future()
 
-    ray_object_ref_mock = Mock(
-        future=Mock(
-            return_value=fut
-        )
-    )
+    ray_object_ref_mock = Mock(future=Mock(return_value=fut))
 
     return ray_object_ref_mock, fut
 
@@ -25,7 +21,7 @@ def _create_mocked_actor_proxy_wrapper(actor_handle_mock):
     return ActorProxyWrapper(
         logging_config=LoggingConfig(),
         actor_handle=actor_handle_mock,
-        node_id="some_node_id"
+        node_id="some_node_id",
     )
 
 
@@ -68,7 +64,8 @@ async def test_wrap_as_future_success():
     #          should not be affected by the cancellation callback
 
     object_ref_mock, fut = _create_object_ref_mock()
-    # Purposefully set timeout to 0, ie future has to be cancelled upon next event-loop iteration
+    # Purposefully set timeout to 0, ie future has to be cancelled upon next
+    # event-loop iteration
     aio_fut = wrap_as_future(ref=object_ref_mock, timeout_s=0)
 
     assert not aio_fut.done()
@@ -82,25 +79,20 @@ async def test_wrap_as_future_success():
 
 
 @pytest.mark.parametrize(
-    ("response", "is_ready"), [
+    ("response", "is_ready"),
+    [
         # ProxyActor.ready responds with an tuple/array of 2 strings
         ('["foo", "bar"]', True),
-        ('malformed_json', False),
-        (Exception(), False)
-    ]
+        ("malformed_json", False),
+        (Exception(), False),
+    ],
 )
 @pytest.mark.asyncio
 async def test_is_ready_check_success(response, is_ready):
-    """Tests calling is_ready method on ProxyActorWrapper, mocking out underlying ActorHandle response
-    """
+    """Tests calling is_ready method on ProxyActorWrapper, mocking out underlying
+    ActorHandle response"""
     object_ref_mock, fut = _create_object_ref_mock()
-    actor_handle_mock = Mock(
-        ready=Mock(
-            remote=Mock(
-                return_value=object_ref_mock
-            )
-        )
-    )
+    actor_handle_mock = Mock(ready=Mock(remote=Mock(return_value=object_ref_mock)))
 
     proxy_wrapper = _create_mocked_actor_proxy_wrapper(actor_handle_mock)
 
@@ -125,13 +117,7 @@ async def test_is_ready_check_success(response, is_ready):
 @pytest.mark.asyncio
 async def test_is_ready_check_timeout():
     object_ref_mock, fut = _create_object_ref_mock()
-    actor_handle_mock = Mock(
-        ready=Mock(
-            remote=Mock(
-                return_value=object_ref_mock
-            )
-        )
-    )
+    actor_handle_mock = Mock(ready=Mock(remote=Mock(return_value=object_ref_mock)))
 
     proxy_wrapper = _create_mocked_actor_proxy_wrapper(actor_handle_mock)
 
@@ -144,22 +130,19 @@ async def test_is_ready_check_timeout():
 
 
 @pytest.mark.parametrize(
-    ("response", "is_healthy"), [
+    ("response", "is_healthy"),
+    [
         (None, True),
         (RayTaskError("check_health", "<traceback>", "cuz"), False),
-    ]
+    ],
 )
 @pytest.mark.asyncio
 async def test_is_healthy_check_success(response, is_healthy):
-    """Tests calling is_healthy method on ProxyActorWrapper, mocking out underlying ActorHandle response
-    """
+    """Tests calling is_healthy method on ProxyActorWrapper, mocking out underlying
+    ActorHandle response"""
     object_ref_mock, fut = _create_object_ref_mock()
     actor_handle_mock = Mock(
-        check_health=Mock(
-            remote=Mock(
-                return_value=object_ref_mock
-            )
-        )
+        check_health=Mock(remote=Mock(return_value=object_ref_mock))
     )
 
     proxy_wrapper = _create_mocked_actor_proxy_wrapper(actor_handle_mock)
@@ -188,11 +171,7 @@ async def test_is_healthy_check_success(response, is_healthy):
 async def test_is_healthy_check_timeout():
     object_ref_mock, fut = _create_object_ref_mock()
     actor_handle_mock = Mock(
-        check_health=Mock(
-            remote=Mock(
-                return_value=object_ref_mock
-            )
-        )
+        check_health=Mock(remote=Mock(return_value=object_ref_mock))
     )
 
     proxy_wrapper = _create_mocked_actor_proxy_wrapper(actor_handle_mock)
@@ -206,24 +185,19 @@ async def test_is_healthy_check_timeout():
 
 
 @pytest.mark.parametrize(
-    ("response", "is_drained"), [
+    ("response", "is_drained"),
+    [
         (True, True),
         (False, False),
         (RayTaskError("is_drained", "<traceback>", "cuz"), False),
-    ]
+    ],
 )
 @pytest.mark.asyncio
 async def test_is_drained_check_success(response, is_drained):
-    """Tests calling is_drained method on ProxyActorWrapper, mocking out underlying ActorHandle response
-    """
+    """Tests calling is_drained method on ProxyActorWrapper, mocking out underlying
+    ActorHandle response"""
     object_ref_mock, fut = _create_object_ref_mock()
-    actor_handle_mock = Mock(
-        is_drained=Mock(
-            remote=Mock(
-                return_value=object_ref_mock
-            )
-        )
-    )
+    actor_handle_mock = Mock(is_drained=Mock(remote=Mock(return_value=object_ref_mock)))
 
     proxy_wrapper = _create_mocked_actor_proxy_wrapper(actor_handle_mock)
 
@@ -250,13 +224,7 @@ async def test_is_drained_check_success(response, is_drained):
 @pytest.mark.asyncio
 async def test_is_drained_check_timeout():
     object_ref_mock, fut = _create_object_ref_mock()
-    actor_handle_mock = Mock(
-        is_drained=Mock(
-            remote=Mock(
-                return_value=object_ref_mock
-            )
-        )
-    )
+    actor_handle_mock = Mock(is_drained=Mock(remote=Mock(return_value=object_ref_mock)))
 
     proxy_wrapper = _create_mocked_actor_proxy_wrapper(actor_handle_mock)
 
@@ -267,3 +235,8 @@ async def test_is_drained_check_timeout():
 
     assert proxy_wrapper.is_drained(timeout_s=0) is False
 
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
