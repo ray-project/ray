@@ -109,6 +109,8 @@ class TesterContainer(Container):
             test_cmd += f"--test_env {env} "
         if test_arg:
             test_cmd += f"--test_arg {test_arg} "
+        if "test_autoscaler" in ' '.join(test_targets):
+            test_cmd += f"--runs_per_test=30 --flaky_test_attempts=1 "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
         return subprocess.Popen(self.get_run_command(commands, gpu_ids))
