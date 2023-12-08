@@ -5,7 +5,7 @@ import time
 import gc
 import random
 import asyncio
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel
 
 import ray
@@ -139,10 +139,11 @@ def test_local_gc_not_hang(shutdown_only, monkeypatch):
 
 def test_sync_async_mix_regression_test(shutdown_only):
     """Verify when sync and async tasks are mixed up
-        it doesn't raise a segfault
+    it doesn't raise a segfault
 
-        https://github.com/ray-project/ray/issues/41346
+    https://github.com/ray-project/ray/issues/41346
     """
+
     class PayloadPydantic(BaseModel):
         class Error(BaseModel):
             msg: str
@@ -150,8 +151,6 @@ def test_sync_async_mix_regression_test(shutdown_only):
             type: str
 
         text: Optional[str] = None
-        floats: Optional[List[float]] = None
-        ints: Optional[List[int]] = None
         ts: Optional[float] = None
         reason: Optional[str] = None
         error: Optional[Error] = None
@@ -169,26 +168,20 @@ def test_sync_async_mix_regression_test(shutdown_only):
                 await ref
 
         async def start(self):
-            await asyncio.gather(
-                *[
-                    self.stream()
-                    for _ in range(2)
-                ])
+            await asyncio.gather(*[self.stream() for _ in range(2)])
 
     @ray.remote
     class A:
         def stream(self, i):
             payload = PayloadPydantic(
                 text="Test output",
-                floats=list(float(f) for f in range(1, 100)),
-                ints=list(i for i in range(1, 100)),
                 ts=time.time(),
                 reason="Success!",
             )
 
             for _ in range(10):
                 yield payload
-        
+
         async def aio_stream(self):
             for _ in range(10):
                 yield 1
