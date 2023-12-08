@@ -163,7 +163,6 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                 << options_.gcs_port_ << ".";
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
-  RAY_LOG(INFO) << "Connecting to node info stub.";
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   RAY_LOG(INFO) << "checking cluster given cluster id";
   if (cluster_id.IsNil()) {
@@ -177,37 +176,30 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
     Status connect_status;
     for (; tries > 0; tries--) {
       grpc::ClientContext context;
-      RAY_LOG(INFO) << "preparing context in attempt: " << tries << " from " << num_retries;
       PrepareContext(context, timeout_ms);
-      RAY_LOG(INFO) << "connecting to grpc server";
       connect_status =
           GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
 
       if (connect_status.ok()) {
         cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
-        RAY_LOG(INFO) << "Received cluster ID from GCS server: " << cluster_id_;
         RAY_CHECK(!cluster_id_.IsNil());
         break;
       } else if (!connect_status.IsGrpcError()) {
         return HandleGcsError(reply.status());
       }
-      RAY_LOG(INFO) << "thread sleeping for 1 second";
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-      RAY_LOG(INFO) << "creating new channel inside retries";
       channel_ =
           rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
-      RAY_LOG(INFO) << "creating connect to node info stub inside retries";
       node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
-      RAY_LOG(INFO) << "continue retrying";
+      RAY_LOG(INFO) << "continue retrying in attempt: " << tries << " from " << num_retries;
     }
     RAY_RETURN_NOT_OK(connect_status);
   } else {
     cluster_id_ = cluster_id;
-    RAY_LOG(INFO) << "Client initialized with provided cluster ID: " << cluster_id_;
+    RAY_LOG(DEBUG) << "Client initialized with provided cluster ID: " << cluster_id_;
   }
 
   RAY_CHECK(!cluster_id_.IsNil()) << "Unexpected nil cluster ID.";
-  RAY_LOG(INFO) << "creating other stub";
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
