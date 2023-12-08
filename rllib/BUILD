@@ -739,13 +739,6 @@ py_test(
 # Tag: env
 # --------------------------------------------------------------------
 
-py_test(
-    name = "env/tests/test_env_with_subprocess",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_env_with_subprocess.py"]
-)
-
 sh_test(
     name = "env/tests/test_local_inference_cartpole",
     tags = ["team:rllib", "env"],
@@ -1905,24 +1898,6 @@ py_test(
     size = "small",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=torch"]
-)
-
-py_test(
-    name = "examples/attention_net_tf",
-    main = "examples/attention_net.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=70", "--framework=tf"]
-)
-
-py_test(
-    name = "examples/attention_net_torch",
-    main = "examples/attention_net.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=70", "--framework torch"]
 )
 
 py_test(

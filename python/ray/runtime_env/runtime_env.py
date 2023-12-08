@@ -339,6 +339,14 @@ class RuntimeEnv(dict):
                 "#create-env-file-manually"
             )
 
+        if self.get("container"):
+            if len(runtime_env) > 1:
+                raise ValueError(
+                    "The 'container' field currently cannot be used "
+                    "together with other fields of runtime_env. "
+                    f"Specified fields: {runtime_env.keys()}"
+                )
+
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = self.get(option)
             if option_val is not None:

@@ -3,11 +3,11 @@ import subprocess
 from typing import List, Optional
 
 from ci.ray_ci.utils import shard_tests, chunk_into_n
-from ci.ray_ci.container import Container
+from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.utils import logger
 
 
-class TesterContainer(Container):
+class TesterContainer(LinuxContainer):
     """
     A wrapper for running tests in ray ci docker container
     """
@@ -121,4 +121,4 @@ class TesterContainer(Container):
             test_cmd += f"--test_arg {test_arg} "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
-        return subprocess.Popen(self._get_run_command(commands, gpu_ids))
+        return subprocess.Popen(self.get_run_command(commands, gpu_ids))

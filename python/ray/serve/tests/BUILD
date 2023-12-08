@@ -167,6 +167,6 @@ py_test(
     name = "test_serve_ha",
     srcs = ["test_serve_ha.py"],
     size = "medium",
-    tags = ["exclusive", "team:serve", "xcommit"],
+    tags = ["exclusive", "team:serve", "ha_integration"],
     deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
