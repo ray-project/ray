@@ -76,8 +76,7 @@ public class Serve {
             .orElse(Integer.valueOf(System.getProperty(RayServeConfig.PROXY_HTTP_PORT, "8000")));
     PyActorHandle controllerAvatar =
         Ray.actor(
-                PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"),
-                httpPort)
+                PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"), httpPort)
             .setName(Constants.SERVE_CONTROLLER_NAME + "_AVATAR")
             .setLifetime(ActorLifetime.DETACHED)
             .setMaxRestarts(-1)

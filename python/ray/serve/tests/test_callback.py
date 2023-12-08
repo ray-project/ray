@@ -173,7 +173,6 @@ def test_callback_fail(ray_instance):
 
     actor_def = ray.serve._private.controller.ServeController
     handle = actor_def.remote(
-        "controller",
         http_config={},
         system_logging_config=LoggingConfig(),
     )
