@@ -265,6 +265,7 @@ class _DeploymentHandleBase:
             multiplexed_model_id=self.handle_options.multiplexed_model_id,
             is_streaming=self.handle_options.stream,
             _request_protocol=self.handle_options._request_protocol,
+            grpc_context=_request_context.grpc_context,
         )
         self.request_counter.inc(
             tags={
