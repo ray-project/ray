@@ -403,7 +403,7 @@ Here's a simple example of a trivial torch policy `(runnable file here) <https:/
         name="MyTorchPolicy",
         loss_fn=policy_gradient_loss)
 
-Now, building on the TF examples above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c_torch_policy.py>`__ is defined:
+Now, building on the TF examples above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/rllib_contrib/a3c/src/rllib_a3c/a3c/a3c_torch_policy.py>`__ is defined:
 
 .. code-block:: python
 
