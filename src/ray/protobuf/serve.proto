@@ -62,7 +62,7 @@ message AutoscalingConfig {
   optional double downscale_smoothing_factor = 11;
 
   // The import path or serialized callable for the autoscaling policy.
-  optional string autoscaling_policy = 12;
+  optional string policy = 12;
 }
 
 //[Begin] LOGGING CONFIG

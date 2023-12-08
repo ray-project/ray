@@ -1,6 +1,12 @@
+import math
 import os
 from typing import List, Optional
 
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.utils import (
+    calculate_desired_num_replicas,
+    get_capacity_adjusted_num_replicas,
+)
 from ray.serve.config import AutoscalingConfig
 from ray.util.annotations import PublicAPI
 
@@ -52,3 +58,75 @@ class AutoscalingContext:
         self.current_handle_queued_queries = current_handle_queued_queries
         self.override_min_replicas = override_min_replicas
         self.target_capacity = target_capacity
+
+
+@PublicAPI(stability="stable")
+def basic_autoscaling_policy(context: AutoscalingContext) -> int:
+    """The default autoscaling policy based on basic thresholds for scaling.
+    There is a minimum threshold for the average queue length in the cluster
+    to scale up and a maximum threshold to scale down. Each period, a 'scale
+    up' or 'scale down' decision is made. This decision must be made for a
+    specified number of periods in a row before the number of replicas is
+    actually scaled. See config options for more details.  Assumes
+    `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
+    seconds.
+    """
+
+    if len(context.current_num_ongoing_requests) == 0:
+        # When 0 replicas and queries are queued, scale up the replicas
+        if context.current_handle_queued_queries > 0:
+            return max(
+                math.ceil(1 * context.config.get_upscale_smoothing_factor()),
+                context.curr_target_num_replicas,
+            )
+        return context.curr_target_num_replicas
+
+    decision_num_replicas = context.curr_target_num_replicas
+
+    desired_num_replicas = calculate_desired_num_replicas(
+        context.config,
+        context.current_num_ongoing_requests,
+        override_min_replicas=context.override_min_replicas,
+        override_max_replicas=get_capacity_adjusted_num_replicas(
+            context.config.max_replicas,
+            context.target_capacity,
+        ),
+    )
+    # Scale up.
+    if desired_num_replicas > context.curr_target_num_replicas:
+        # If the previous decision was to scale down (the counter was
+        # negative), we reset it and then increment it (set to 1).
+        # Otherwise, just increment.
+        if context.decision_counter < 0:
+            context.decision_counter = 0
+        context.decision_counter += 1
+
+        # Only actually scale the replicas if we've made this decision for
+        # 'scale_up_consecutive_periods' in a row.
+        if context.decision_counter > int(
+            context.config.upscale_delay_s / CONTROL_LOOP_PERIOD_S
+        ):
+            context.decision_counter = 0
+            decision_num_replicas = desired_num_replicas
+
+    # Scale down.
+    elif desired_num_replicas < context.curr_target_num_replicas:
+        # If the previous decision was to scale up (the counter was
+        # positive), reset it to zero before decrementing.
+        if context.decision_counter > 0:
+            context.decision_counter = 0
+        context.decision_counter -= 1
+
+        # Only actually scale the replicas if we've made this decision for
+        # 'scale_down_consecutive_periods' in a row.
+        if context.decision_counter < -int(
+            context.config.downscale_delay_s / CONTROL_LOOP_PERIOD_S
+        ):
+            context.decision_counter = 0
+            decision_num_replicas = desired_num_replicas
+
+    # Do nothing.
+    else:
+        context.decision_counter = 0
+
+    return decision_num_replicas

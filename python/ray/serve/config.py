@@ -23,9 +23,7 @@ from ray.serve._private.constants import (
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-DEFAULT_AUTOSCALING_POLICY = (
-    "ray.serve._private.autoscaling_policy:BasicAutoscalingPolicy"
-)
+DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:basic_autoscaling_policy"
 
 
 @PublicAPI(stability="stable")
@@ -65,16 +63,13 @@ class AutoscalingConfig(BaseModel):
     upscale_delay_s: NonNegativeFloat = 30.0
 
     # Custom autoscaling config. Defaulting to the request based autoscaler.
-    autoscaling_policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
+    policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
         # Ignore this validation if custom scaling is used.
-        autoscaling_policy = values.get("autoscaling_policy")
-        if (
-            autoscaling_policy is not None
-            and autoscaling_policy != DEFAULT_AUTOSCALING_POLICY
-        ):
+        policy = values.get("policy")
+        if policy is not None and policy != DEFAULT_AUTOSCALING_POLICY:
             return max_replicas
 
         min_replicas = values.get("min_replicas")
@@ -99,18 +94,18 @@ class AutoscalingConfig(BaseModel):
 
         return max_replicas
 
-    @validator("autoscaling_policy", always=True)
-    def serialize_autoscaling_policy(cls, autoscaling_policy, values):
-        if isinstance(autoscaling_policy, Callable):
-            return pickle.dumps(autoscaling_policy, 0).decode()
+    @validator("policy", always=True)
+    def serialize_policy(cls, policy, values):
+        if isinstance(policy, Callable):
+            return pickle.dumps(policy, 0).decode()
 
-        return autoscaling_policy
+        return policy
 
-    def get_autoscaling_policy(self) -> Callable:
+    def get_policy(self) -> Callable:
         try:
-            return import_attr(self.autoscaling_policy)
+            return import_attr(self.policy)
         except ModuleNotFoundError:
-            return pickle.loads(self.autoscaling_policy.encode())
+            return pickle.loads(self.policy.encode())
 
     def get_upscale_smoothing_factor(self) -> PositiveFloat:
         return self.upscale_smoothing_factor or self.smoothing_factor
