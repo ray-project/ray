@@ -192,7 +192,7 @@ class ActorProxyWrapper(ProxyWrapper):
         if self._ready_check_future is None:
             self._ready_check_future = wrap_as_future(
                 self._actor_handle.ready.remote(),
-                timeout_s=PROXY_READY_CHECK_TIMEOUT_S
+                timeout_s=timeout_s
             )
             return None
         elif self._ready_check_future.done():
@@ -204,8 +204,14 @@ class ActorProxyWrapper(ProxyWrapper):
             except Exception as e:
                 if isinstance(e, TimeoutError):
                     logger.warning(
-                        f"Didn't receive ready check response for proxy {self._node_id} after {timeout_s}s."
+                        f"Proxy actor readiness check for proxy on {self._node_id} didn't complete in {timeout_s}s."
                     )
+                else:
+                    logger.error(
+                        f"Unexpected error invoking readiness check for proxy on {self._node_id}",
+                        exc_info=e,
+                    )
+
                 return False
             finally:
                 self._ready_check_future = None
@@ -219,7 +225,7 @@ class ActorProxyWrapper(ProxyWrapper):
                 timeout_s=timeout_s
             )
             return None
-        elif self._health_check_future.done:
+        elif self._health_check_future.done():
             try:
                 # NOTE: Since `check_health` method is responding with nothing, sole purpose
                 #       of fetching the result is to extract any potential exceptions
@@ -230,15 +236,19 @@ class ActorProxyWrapper(ProxyWrapper):
                     logger.warning(
                         f"Didn't receive health check response for proxy {self._node_id} after {timeout_s}s."
                     )
+                else:
+                    logger.error(
+                        f"Unexpected error invoking health check for proxy on {self._node_id}",
+                        exc_info=e,
+                    )
+
                 return False
             finally:
                 self._health_check_future = None
         else:
             return None
 
-    def is_drained(self) -> Optional[bool]:
-        timeout_s = PROXY_HEALTH_CHECK_TIMEOUT_S
-
+    def is_drained(self, timeout_s: float = PROXY_HEALTH_CHECK_TIMEOUT_S) -> Optional[bool]:
         if self._drained_check_future is None:
             self._drained_check_future = wrap_as_future(
                 self._actor_handle.is_drained.remote(),
@@ -246,7 +256,7 @@ class ActorProxyWrapper(ProxyWrapper):
                 timeout_s=timeout_s
             )
             return None
-        elif self._drained_check_future.done:
+        elif self._drained_check_future.done():
             try:
                 # NOTE: Since `check_health` method is responding with nothing, sole purpose
                 #       of fetching the result is to extract any potential exceptions
@@ -393,11 +403,12 @@ class ProxyState:
     def reconcile(self, draining: bool = False):
         try:
             self._reconcile_internal(draining)
-        except Exception:
+        except Exception as e:
             self.try_update_status(ProxyStatus.UNHEALTHY)
             logger.error(
                 "Unexpected error occurred when reconciling stae of "
-                f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
+                f"proxy on node {self._node_id}",
+                exc_info=e,
             )
 
     def _reconcile_internal(self, draining: bool):
@@ -732,22 +743,21 @@ class ProxyStateManager:
 
 def _try_cancel_future(fut: asyncio.Future, e: Exception):
     if not fut.done():
-        fut.cancel()
         fut.set_exception(e)
 
 
 def wrap_as_future(ref: ObjectRef, timeout_s: float) -> asyncio.Future:
     loop = asyncio.get_running_loop()
 
-    fut = asyncio.wrap_future(ref.future(), loop=loop)
+    aio_fut = asyncio.wrap_future(ref.future(), loop=loop)
     # Schedule cancellation for the future
     timeout_handler = loop.call_later(
-        timeout_s,
+        max(timeout_s, 0),
         _try_cancel_future,
-        fut,
+        aio_fut,
         TimeoutError(f"Future cancelled after timeout {timeout_s}s")
     )
     # Cancel timeout handler upon completion of the future
-    fut.add_done_callback(lambda _: timeout_handler.cancel())
+    aio_fut.add_done_callback(lambda _: timeout_handler.cancel())
 
-    return fut
+    return aio_fut
