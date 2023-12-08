@@ -270,7 +270,6 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu --canonical-tag ha_integration
-      - docker tag rayproject/ray:ha_integration ray_ci:v1
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
     depends_on:
       - manylinux
