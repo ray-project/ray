@@ -2200,7 +2200,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Update the LearnerGroup's `should_module_be_updated_fn` function, but only
         # if the arg is explicitly provided here.
-        if policies_to_train is not None:
+        if self.config._enable_new_api_stack and policies_to_train is not None:
             self.learner_group.set_should_module_be_updated_fn(policies_to_train)
 
         # Update the evaluation worker set's workers, if required.
