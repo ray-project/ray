@@ -2692,7 +2692,7 @@ Status CoreWorker::ExecuteTask(
       RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
                      << " should return dynamic object " << dynamic_return_id;
 
-      AddLocalReference(dynamic_return_id, "<temporary (ObjectRefGenerator)>");
+      AddLocalReference(dynamic_return_id, "<temporary (DynamicObjectRefGenerator)>");
       reference_counter_->AddBorrowedObject(
           dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
     }
@@ -2930,7 +2930,7 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
                                              const TaskID &task_id,
                                              std::optional<ObjectIDIndexType> put_index) {
   const auto return_id = worker_context_.GetGeneratorReturnId(task_id, put_index);
-  AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
+  AddLocalReference(return_id, "<temporary (DynamicObjectRefGenerator)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
   return return_id;
 }
@@ -3056,7 +3056,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   SetActorId(actor_id);
   bool is_retryable_error;
   std::string application_error = "";
-  // TODO(swang): Support ObjectRefGenerators in local mode?
+  // TODO(swang): Support DynamicObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
   std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
   RAY_UNUSED(ExecuteTask(task_spec,
@@ -4300,7 +4300,9 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
   return return_ids;
 }
 
-void CoreWorker::RecordTaskLogStart(const std::string &stdout_path,
+void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
+                                    int32_t attempt_number,
+                                    const std::string &stdout_path,
                                     const std::string &stderr_path,
                                     int64_t stdout_start_offset,
                                     int64_t stderr_start_offset) const {
@@ -4317,14 +4319,16 @@ void CoreWorker::RecordTaskLogStart(const std::string &stdout_path,
   RAY_CHECK(current_task)
       << "We should have set the current task spec while executing the task.";
   task_manager_->RecordTaskStatusEvent(
-      current_task->AttemptNumber(),
-      *current_task,
+      task_id,
+      worker_context_.GetCurrentJobID(),
+      attempt_number,
       rpc::TaskStatus::NIL,
-      /* include_task_info */ false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
 }
 
-void CoreWorker::RecordTaskLogEnd(int64_t stdout_end_offset,
+void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
+                                  int32_t attempt_number,
+                                  int64_t stdout_end_offset,
                                   int64_t stderr_end_offset) const {
   if (options_.is_local_mode) {
     return;
@@ -4337,10 +4341,10 @@ void CoreWorker::RecordTaskLogEnd(int64_t stdout_end_offset,
   RAY_CHECK(current_task)
       << "We should have set the current task spec before executing the task.";
   task_manager_->RecordTaskStatusEvent(
-      current_task->AttemptNumber(),
-      *current_task,
+      task_id,
+      worker_context_.GetCurrentJobID(),
+      attempt_number,
       rpc::TaskStatus::NIL,
-      /* include_task_info */ false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
 }
 

@@ -65,7 +65,6 @@ def test_ray_datasetlike_mini_stress_test(
             threshold = -1
 
         @ray.remote(
-            num_returns="streaming",
             max_retries=-1,
             _generator_backpressure_num_objects=threshold,
         )
@@ -122,7 +121,7 @@ def test_local_gc_not_hang(shutdown_only, monkeypatch):
 
         ray.init()
 
-        @ray.remote(num_returns="streaming", _generator_backpressure_num_objects=1)
+        @ray.remote(_generator_backpressure_num_objects=1)
         def f():
             for _ in range(5):
                 yield 1

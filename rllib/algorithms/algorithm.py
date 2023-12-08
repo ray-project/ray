@@ -10,7 +10,7 @@ import logging
 import numpy as np
 import os
 from packaging import version
-import pkg_resources
+import importlib.metadata
 import re
 import tempfile
 import time
@@ -1565,6 +1565,9 @@ class Algorithm(Trainable, AlgorithmBase):
         restored = workers.probe_unhealthy_workers()
 
         if restored:
+            # Count the restored workers.
+            self._counters["total_num_restored_workers"] += len(restored)
+
             from_worker = workers.local_worker() or self.workers.local_worker()
             # Get the state of the correct (reference) worker. E.g. The local worker
             # of the main WorkerSet.
@@ -2508,7 +2511,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 # Check gym version (0.22 or higher?).
                 # If > 0.21, can't perform auto-wrapping of the given class as this
                 # would lead to a pickle error.
-                gym_version = pkg_resources.get_distribution("gym").version
+                gym_version = importlib.metadata.version("gym")
                 if version.parse(gym_version) >= version.parse("0.22"):
                     raise ValueError(
                         "Cannot specify a gym.Env class via `config.env` while setting "
