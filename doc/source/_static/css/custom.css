@@ -13,7 +13,18 @@
     --pst-color-primary: 4, 117, 222;
     --pst-color-text-secondary: #616161;
     --blue: #0475DE;
-    --sidebar-top: 5em;
+    --sidebar-top: 4em;
+    --navbar-brand-box-height: 8em;
+    --algolia-div-size: 5em;
+}
+
+#bd-docs-nav {
+  overflow: auto;
+  max-height: calc(100vh - var(--sidebar-top) - var(--navbar-brand-box-height) - var(--algolia-div-size));
+}
+
+.bd-search {
+  height: calc(--algolia-div-size);
 }
 
 /* Remove flicker for announcement top bar replacement */
@@ -38,7 +49,8 @@
 }
 
 div.navbar-brand-box {
-    padding-top: 4em;
+  padding-top: 4em;
+  height: calc(--navbar-brand-box-height);
 }
 
 td p {
@@ -58,11 +70,9 @@ tr.row-odd {
 }
 
 /* For Algolia search box
-    * overflow-y: to flow-over horizontally into main content
     * height: to prevent topbar overlap
 */
 #site-navigation {
-  overflow-y: auto;
   height: calc(100vh - var(--sidebar-top));
   position: sticky;
   top: var(--sidebar-top) !important;
@@ -127,12 +137,6 @@ tr.row-odd {
       margin-top: 20px;
     }
   }
-
-/* Make Algolia search box scrollable */
-.algolia-autocomplete .ds-dropdown-menu {
-    height: 60vh !important;
-    overflow-y: scroll !important;
-}
 
 .bd-sidebar__content {
   overflow-y: unset !important;
@@ -300,10 +304,11 @@ pre {
 
 
 .topnav {
-    background-color: white;
-    border-bottom: 1px solid rgba(0, 0, 0, .1);
-    display: flex;
-    align-items: center;
+  background-color: white;
+  border-bottom: 1px solid rgba(0, 0, 0, .1);
+  display: flex;
+  align-items: center;
+  height: var(--sidebar-top);
 }
 
 /* Content wrapper for the unified nav link / menus */
@@ -919,7 +924,7 @@ footer.col.footer > p {
 #kapa-widget-container figure {
     padding: 0 !important;
   }
-  
+
   .mantine-Modal-root figure {
     padding: 0 !important;
   }
