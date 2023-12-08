@@ -109,6 +109,11 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   ///
   /// The send position of the next task to send to this actor. This sequence
   /// number increases monotonically.
+  ///
+  /// If a task raised a retryable user exception, it's marked as "completed" via
+  /// `MarkSeqnoCompleted` and `next_task_reply_position` may be updated. Afterwards Ray
+  /// retries by creating another task pushed to the back of the queue, making it executes
+  /// later than all tasks pending in the queue.
   uint64_t next_send_position = 0;
   /// The offset at which the the actor should start its counter for this
   /// caller. This is used for actors that can be restarted, so that the new
