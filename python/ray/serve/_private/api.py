@@ -1,7 +1,7 @@
 import inspect
 import logging
 from types import FunctionType
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Union
 
 import ray
 from ray._private.pydantic_compat import is_subclass_of_base_model
@@ -113,7 +113,7 @@ def _start_controller(
     grpc_options: Union[None, dict, gRPCOptions] = None,
     system_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
-) -> Tuple[ActorHandle, str]:
+) -> ActorHandle:
     """Start Ray Serve controller.
 
     The function makes sure controller is ready to start deploying apps
@@ -121,7 +121,7 @@ def _start_controller(
 
     Parameters are same as ray.serve._private.api.serve_start().
 
-    Returns: A tuple with controller actor handle and controller name.
+    Returns: controller actor handle.
     """
 
     # Initialize ray if needed.
@@ -179,7 +179,7 @@ def _start_controller(
             raise TimeoutError(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
-    return controller, SERVE_CONTROLLER_NAME
+    return controller
 
 
 async def serve_start_async(
