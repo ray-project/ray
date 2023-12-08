@@ -205,6 +205,14 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   return Status::OK();
 }
 
+Status PythonGcsClient::InstallFailureSignalHandler() {
+  RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
+                 << options_.gcs_port_;
+  RayLog::InstallFailureSignalHandler(nullptr, /*call_previous_handler=*/true);
+  RayLog::InstallTerminateHandler();
+  return Status::OK();
+}
+
 Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addresses,
                                    int64_t timeout_ms,
                                    std::vector<bool> &result) {

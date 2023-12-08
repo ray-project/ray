@@ -2641,6 +2641,11 @@ cdef class GcsClient:
     @property
     def _nums_reconnect_retry(self):
         return self._nums_reconnect_retry
+    
+    @_auto_reconnect
+    def install_failure_signal_handler(self):
+        check_status(self.inner.get().InstallFailureSignalHandler())
+        return None
 
     @_auto_reconnect
     def check_alive(

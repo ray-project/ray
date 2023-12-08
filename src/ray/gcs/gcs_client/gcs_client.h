@@ -205,6 +205,8 @@ class RAY_EXPORT PythonGcsClient {
 
   Status Connect(const ClusterID &cluster_id, int64_t timeout_ms, size_t num_retries);
 
+  Status InstallFailureSignalHandler();
+
   Status CheckAlive(const std::vector<std::string> &raylet_addresses,
                     int64_t timeout_ms,
                     std::vector<bool> &result);

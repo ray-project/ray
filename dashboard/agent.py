@@ -7,6 +7,7 @@ import os
 import pathlib
 import sys
 import signal
+import atexit
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -26,9 +27,18 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
 )
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
+import faulthandler
+
+# Enable faulthandler
+faulthandler.enable()
 
 logger = logging.getLogger(__name__)
 
+original_exit = sys.exit
+def my_exit(code):
+   logger.info(f"Exit is called with code {code}")
+   original_exit(code)
+sys.exit = my_exit
 
 class DashboardAgent:
     def __init__(
@@ -85,6 +95,7 @@ class DashboardAgent:
         self.gcs_client = GcsClient(address=self.gcs_address)
         _initialize_internal_kv(self.gcs_client)
         assert _internal_kv_initialized()
+        self.gcs_client.install_failure_signal_handler()
         self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
 
         if not self.minimal:
