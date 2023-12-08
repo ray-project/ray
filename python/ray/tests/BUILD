@@ -492,6 +492,14 @@ py_test(
     deps = ["//:ray_lib", ":conftest"]
 )
 
+py_test(
+    name = "test_runtime_env_container",
+    size = "large",
+    srcs = ["test_runtime_env_container.py"],
+    tags = ["exclusive", "team:core", "container"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 # TODO(barakmich): aws/ might want its own buildfile, or
 #    py_test_module_list should support subdirectories.
 py_test(
@@ -656,7 +664,7 @@ py_test_module_list(
     "spark/test_utils.py",
     "spark/test_databricks_hook.py",
   ],
-  size = "large",
+  size = "enormous",
   tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
   data = [

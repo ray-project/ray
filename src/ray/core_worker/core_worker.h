@@ -1299,7 +1299,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param stderr_path Path to stderr log file.
   /// \param stdout_start_offset Start offset of the stdout for this task.
   /// \param stderr_start_offset Start offset of the stderr for this task.
-  void RecordTaskLogStart(const std::string &stdout_path,
+  void RecordTaskLogStart(const TaskID &task_id,
+                          int32_t attempt_number,
+                          const std::string &stdout_path,
                           const std::string &stderr_path,
                           int64_t stdout_start_offset,
                           int64_t stderr_start_offset) const;
@@ -1310,7 +1312,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param stdout_end_offset End offset of the stdout for this task.
   /// \param stderr_end_offset End offset of the stderr for this task.
-  void RecordTaskLogEnd(int64_t stdout_end_offset, int64_t stderr_end_offset) const;
+  void RecordTaskLogEnd(const TaskID &task_id,
+                        int32_t attempt_number,
+                        int64_t stdout_end_offset,
+                        int64_t stderr_end_offset) const;
 
   /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
   /// exit when it drains all tasks and cleans all owned objects.

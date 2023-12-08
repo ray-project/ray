@@ -1438,6 +1438,27 @@ void TaskManager::RecordMetrics() {
 }
 
 void TaskManager::RecordTaskStatusEvent(
+    const TaskID &task_id,
+    const JobID &job_id,
+    int32_t attempt_number,
+    rpc::TaskStatus status,
+    worker::TaskStatusEvent::TaskStateUpdate &&state_update) {
+  if (!task_event_buffer_.Enabled()) {
+    return;
+  }
+  auto task_event = std::make_unique<worker::TaskStatusEvent>(
+      task_id,
+      job_id,
+      attempt_number,
+      status,
+      /* timestamp */ absl::GetCurrentTimeNanos(),
+      /* task_spec */ nullptr,
+      std::move(state_update));
+
+  task_event_buffer_.AddTaskEvent(std::move(task_event));
+}
+
+void TaskManager::RecordTaskStatusEvent(
     int32_t attempt_number,
     const TaskSpecification &spec,
     rpc::TaskStatus status,
