@@ -139,7 +139,7 @@ If ``max_restarts`` is set, you can also allow Ray to automatically restart the 
 Actor method exceptions
 -----------------------
 
-Sometime you want to retry when an actor method raises exceptions. Use ``max_retries`` with ``retry_exceptions`` to retry.
+Sometime you want to retry when an actor method raises exceptions. Use ``max_task_retries`` with ``retry_exceptions`` to retry.
 
 Note that by default, retrying on user raised exceptions is disabled. To enable it, make sure the method is idempotent, that is, invoking it multiple times should be equivalent to invoking it only once.
 
@@ -150,10 +150,11 @@ Retry behavior depends on the value you set ``retry_exceptions`` to:
 - ``retry_exceptions == True``: Ray retries a method on user exception up to ``max_retries`` times.
 - ``retry_exceptions`` is a list of exceptions: Ray retries a method on user exception up to ``max_retries`` times, only if the method raises an exception from these specific classes.
 
-``max_retries`` applies to both exceptions and actor crashes. Ray searches for the first non-default value of ``max_retries`` in this order:
+``max_task_retries`` applies to both exceptions and actor crashes. Ray searches for the first non-default value of ``max_task_retries`` in this order:
 
-- The method call's value, for example, `actor.method.options(max_retries=2)`. Ray ignores this value if you didn't set it.
-- The method definition's value, for example, `@ray.method(max_retries=2)`. Ray ignores this value if you didn't set it.
+.. - The method call's value, for example, `actor.method.options(_max_retries=2)`. Ray ignores this value if you didn't set it.
+.. - The method definition's value, for example, `@ray.method(_max_retries=2)`. Ray ignores this value if you didn't set it.
+
 - The actor creation call's value, for example, `Actor.options(max_task_retries=2)`. Ray ignores this value if you didn't set it.
 - The Actor class definition's value, for example, `@ray.remote(max_task_retries=2)` decorator. Ray ignores this value if you didn't set it.
 - The default value,`0`.

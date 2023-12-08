@@ -27,7 +27,7 @@ class Counter:
 # TODO: also do work for async and threaded actors
 @ray.remote(max_task_retries=3)
 class TroubleMaker:
-    @ray.method(max_retries=5, retry_exceptions=[MyError])
+    @ray.method(_max_retries=5, retry_exceptions=[MyError])
     def may_raise_n_times(self, counter, n):
         """
         Raises if there were n calls before this call.
@@ -46,7 +46,7 @@ class TroubleMaker:
         Increments the counter and performs an action based on the param actions[count].
         If count >= len(actions), return the count.
 
-        Note: This method doesn't set `max_retries`. Ray expects it to inherit
+        Note: This method doesn't set `_max_retries`. Ray expects it to inherit
         max_task_retries = 3.
 
         @param actions: List["raise" | "exit"]
@@ -70,7 +70,7 @@ class AsyncTroubleMaker:
     Same as TroubleMaker, just all methods are async.
     """
 
-    @ray.method(max_retries=5, retry_exceptions=[MyError])
+    @ray.method(_max_retries=5, retry_exceptions=[MyError])
     async def may_raise_n_times(self, counter, n):
         c = ray.get(counter.increment.remote())
         print(f"may_raise_n_times, n = {n}, count = {c}")
@@ -231,7 +231,7 @@ def test_options_takes_precedence(shutdown_only):
     trouble_maker = TroubleMaker.remote()
     assert (
         ray.get(
-            trouble_maker.may_raise_n_times.options(max_retries=10).remote(counter, 10)
+            trouble_maker.may_raise_n_times.options(_max_retries=10).remote(counter, 10)
         )
         == 10
     )
@@ -244,7 +244,7 @@ def test_options_takes_precedence_no_over_retry(shutdown_only):
 
     with pytest.raises(MyError):
         ray.get(
-            trouble_maker.may_raise_n_times.options(max_retries=10).remote(counter, 11)
+            trouble_maker.may_raise_n_times.options(_max_retries=10).remote(counter, 11)
         )
     assert ray.get(counter.get_count.remote()) == 11
 
@@ -263,16 +263,16 @@ def test_options_takes_precedence_no_over_retry(shutdown_only):
     "is_async", [False, True], ids=lambda a: "async" if a else "sync"
 )
 @pytest.mark.parametrize("max_restarts", [-1, 4], ids=lambda r: f"max_restarts({r})")
-@pytest.mark.parametrize("max_retries", [-1, 4], ids=lambda r: f"max_retries({r})")
+@pytest.mark.parametrize("_max_retries", [-1, 4], ids=lambda r: f"_max_retries({r})")
 def test_method_raise_and_exit(
-    actions, is_async, max_restarts, max_retries, shutdown_only
+    actions, is_async, max_restarts, _max_retries, shutdown_only
 ):
     """
     Test we can endure a mix of raises and exits. Note the number of exits we can endure
     is subject to max_restarts.
 
     The retry behavior should work for Async actors.
-    The retry behavior should work if the max_retries or max_restarts are -1 (infinite
+    The retry behavior should work if the _max_retries or max_restarts are -1 (infinite
         retry).
     """
     actor_class = AsyncTroubleMaker if is_async else TroubleMaker
@@ -280,7 +280,7 @@ def test_method_raise_and_exit(
     trouble_maker = actor_class.options(max_restarts=max_restarts).remote()
     assert (
         ray.get(
-            trouble_maker.raise_or_exit.options(max_retries=max_retries).remote(
+            trouble_maker.raise_or_exit.options(_max_retries=_max_retries).remote(
                 counter, actions
             )
         )
@@ -299,7 +299,7 @@ def test_method_exit_and_raise_no_over_retry(shutdown_only):
     trouble_maker = TroubleMaker.options(max_restarts=1).remote()
     with pytest.raises(MyError):
         assert ray.get(
-            trouble_maker.raise_or_exit.options(max_retries=2).remote(
+            trouble_maker.raise_or_exit.options(_max_retries=2).remote(
                 counter, ["exit", "raise", "raise"]
             )
         )
@@ -308,13 +308,13 @@ def test_method_exit_and_raise_no_over_retry(shutdown_only):
 
 def test_method_exit_no_over_retry_max_restarts(shutdown_only):
     """
-    Even if we have enough max_retries, we may still raise due to max_restarts.
+    Even if we have enough _max_retries, we may still raise due to max_restarts.
     """
     counter = Counter.remote()
     trouble_maker = TroubleMaker.options(max_restarts=1).remote()
     with pytest.raises(ray.exceptions.RayActorError):
         assert ray.get(
-            trouble_maker.raise_or_exit.options(max_retries=4).remote(
+            trouble_maker.raise_or_exit.options(_max_retries=4).remote(
                 counter, ["raise", "exit", "exit"]
             )
         )
@@ -334,7 +334,7 @@ def test_exit_only(is_async, shutdown_only):
     trouble_maker = actor_class.options(max_restarts=2).remote()
     with pytest.raises(ray.exceptions.RayActorError):
         ret = ray.get(
-            trouble_maker.raise_or_exit.options(max_retries=2).remote(
+            trouble_maker.raise_or_exit.options(_max_retries=2).remote(
                 counter, ["exit", "exit", "exit"]
             )
         )
@@ -350,7 +350,7 @@ def test_exit_only_no_over_retry(shutdown_only):
     counter = Counter.remote()
     trouble_maker = TroubleMaker.options(max_restarts=2).remote()
     ray.get(
-        trouble_maker.raise_or_exit.options(max_retries=2).remote(
+        trouble_maker.raise_or_exit.options(_max_retries=2).remote(
             counter, ["exit", "exit"]
         )
     ) == 2

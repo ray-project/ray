@@ -72,7 +72,7 @@ def method(*args, **kwargs):
     valid_kwargs = [
         "num_returns",
         "concurrency_group",
-        "max_retries",
+        "_max_retries",
         "retry_exceptions",
         "_generator_backpressure_num_objects",
     ]
@@ -92,8 +92,8 @@ def method(*args, **kwargs):
     def annotate_method(method):
         if "num_returns" in kwargs:
             method.__ray_num_returns__ = kwargs["num_returns"]
-        if "max_retries" in kwargs:
-            method.__ray_max_retries__ = kwargs["max_retries"]
+        if "_max_retries" in kwargs:
+            method.__ray_max_retries__ = kwargs["_max_retries"]
         if "retry_exceptions" in kwargs:
             method.__ray_retry_exceptions__ = kwargs["retry_exceptions"]
         if "concurrency_group" in kwargs:
@@ -123,7 +123,7 @@ class ActorMethod:
             invocation should return. If None is given, it uses
             DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
             and "streaming" for a generator task (when `is_generator` is True).
-        _max_retries: Number of retries on method failure.
+        _max_retries: [Internal] Number of retries on method failure.
         _retry_exceptions: Boolean of whether you want to retry all user-raised
             exceptions, or a list of allowlist exceptions to retry.
         _is_generator: True if a given method is a Python generator.
@@ -144,7 +144,7 @@ class ActorMethod:
         actor,
         method_name,
         num_returns: Optional[Union[int, str]],
-        max_retries: int,
+        _max_retries: int,
         retry_exceptions: Union[bool, list, tuple],
         is_generator: bool,
         generator_backpressure_num_objects: int,
@@ -162,7 +162,7 @@ class ActorMethod:
             else:
                 self._num_returns = ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS
 
-        self._max_retries = max_retries
+        self._max_retries = _max_retries
         self._retry_exceptions = retry_exceptions
         self._is_generator = is_generator
         self._generator_backpressure_num_objects = generator_backpressure_num_objects
@@ -218,13 +218,14 @@ class ActorMethod:
         kwargs=None,
         name="",
         num_returns=None,
-        max_retries=None,
+        _max_retries=None,
         retry_exceptions=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
+        max_retries = _max_retries
         if max_retries is None:
             max_retries = self._max_retries
         if max_retries is None:
@@ -364,9 +365,9 @@ class _ActorClassMethodMetadata(object):
             else:
                 self.num_returns[method_name] = None
 
-            # Only contains entries from `@ray.method(max_retries=...)`
+            # Only contains entries from `@ray.method(_max_retries=...)`
             # Ray may not populate the others with max_task_retries here because you may
-            # have set in `actor.method.options(max_retries=...)`. So Ray always stores
+            # have set in `actor.method.options(_max_retries=...)`. So Ray always stores
             # both max_retries and max_task_retries, and favors the former.
             if hasattr(method, "__ray_max_retries__"):
                 self.max_retries[method_name] = method.__ray_max_retries__
@@ -673,9 +674,9 @@ class ActorClass:
                 system will retry the failed task up to n times, after which the
                 task will throw a `RayActorError` exception upon :obj:`ray.get`.
                 Note that Python exceptions are not considered system errors
-                and don't trigger retries. You can override this number with the
-                method's "max_retries" option at @ray.method decorator or at .option()
-                time.
+                and don't trigger retries. [Internal use: You can override this number
+                with the method's "_max_retries" option at @ray.method decorator or
+                at .option() time.]
             max_pending_calls: Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
