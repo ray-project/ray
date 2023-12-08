@@ -222,6 +222,48 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+# Tests against crashing or hanging environments.
+# Single-agent: Crash only.
+py_test(
+    name = "learning_tests_cartpole_crashing_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/cartpole-crashing-recreate-workers-appo.py"],
+    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
+)
+# Single-agent: Crash and stall.
+py_test(
+    name = "learning_tests_cartpole_crashing_and_stalling_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/cartpole-crashing-and-stalling-recreate-workers-appo.py"],
+    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
+)
+# Multi-agent: Crash only.
+py_test(
+    name = "learning_tests_multi_agent_cartpole_crashing_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-recreate-workers-appo.py"],
+    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
+)
+# Multi-agent: Crash and stall.
+py_test(
+    name = "learning_tests_multi_agent_cartpole_crashing_and_stalling_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-and-stalling-recreate-workers-appo.py"],
+    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
+)
+
 # CQL
 py_test(
     name = "learning_tests_pendulum_cql",
@@ -1569,7 +1611,6 @@ py_test(
     args = ["TestCheckpointRestorePPO"]
 )
 
-
 py_test(
     name = "tests/test_checkpoint_restore_ppo_gpu",
     main = "tests/test_algorithm_checkpoint_restore.py",
@@ -1587,7 +1628,6 @@ py_test(
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreOffPolicy"]
 )
-
 
 py_test(
     name = "tests/test_checkpoint_restore_off_policy_gpu",
