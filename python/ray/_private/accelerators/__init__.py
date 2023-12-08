@@ -29,18 +29,6 @@ def get_all_accelerator_resource_names() -> Set[str]:
     }
 
 
-_resource_name_to_accelerator_manager = {
-    accelerator_manager.get_resource_name(): accelerator_manager
-    for accelerator_manager in get_all_accelerator_managers()
-}
-# Special handling for GPU resource name since multiple accelerator managers
-# have the same GPU resource name.
-if IntelGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
-    _resource_name_to_accelerator_manager["GPU"] = IntelGPUAcceleratorManager
-else:
-    _resource_name_to_accelerator_manager["GPU"] = NvidiaGPUAcceleratorManager
-
-
 def get_accelerator_manager_for_resource(
     resource_name: str,
 ) -> Optional[AcceleratorManager]:
@@ -49,7 +37,26 @@ def get_accelerator_manager_for_resource(
 
     E.g., TPUAcceleratorManager is returned if resource name is "TPU"
     """
-    return _resource_name_to_accelerator_manager.get(resource_name, None)
+    try:
+        return get_accelerator_manager_for_resource._resource_name_to_accelerator_manager.get(  # noqa: E501
+            resource_name, None
+        )
+    except AttributeError:
+        # Lazy initialization.
+        resource_name_to_accelerator_manager = {
+            accelerator_manager.get_resource_name(): accelerator_manager
+            for accelerator_manager in get_all_accelerator_managers()
+        }
+        # Special handling for GPU resource name since multiple accelerator managers
+        # have the same GPU resource name.
+        if IntelGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
+            resource_name_to_accelerator_manager["GPU"] = IntelGPUAcceleratorManager
+        else:
+            resource_name_to_accelerator_manager["GPU"] = NvidiaGPUAcceleratorManager
+        get_accelerator_manager_for_resource._resource_name_to_accelerator_manager = (
+            resource_name_to_accelerator_manager
+        )
+        return resource_name_to_accelerator_manager.get(resource_name, None)
 
 
 __all__ = [
