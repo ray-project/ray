@@ -787,7 +787,8 @@ def test_put_with_logging_config(ray_start_stop):
 
     # Make sure deployment & controller both log in json format.
     resp = requests.post("http://localhost:8000/app").json()
-    expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+    replica_id = resp["replica"].split("#")[-1]
+    expected_log_regex = [f'"replica": "{replica_id}", ']
     check_log_file(resp["log_file"], expected_log_regex)
     expected_log_regex = ['.*"component_name": "controller".*']
     check_log_file(resp["controller_log_file"], expected_log_regex)
