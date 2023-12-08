@@ -80,8 +80,9 @@ def test_dag_with_actor_handle(shared_ray_instance):
 
 def test_dag_with_alive_actors_chained(shared_ray_instance):
     """Verify we can have multiple DAGs to the
-        same actor that are chained.
+    same actor that are chained.
     """
+
     @ray.remote
     class Actor:
         def __init__(self, init_value):
@@ -95,8 +96,8 @@ def test_dag_with_alive_actors_chained(shared_ray_instance):
         return x + y
 
     a1 = Actor.remote(10)
-    a1_dag = a1.add.bind(a1.add.bind(2)) # 22
-    a1_dag_2 = a1.add.bind(a1.add.bind(6)) # 26
+    a1_dag = a1.add.bind(a1.add.bind(2))  # 22
+    a1_dag_2 = a1.add.bind(a1.add.bind(6))  # 26
     dag = combine.bind(a1_dag, a1_dag_2)
 
     assert ray.get(dag.execute()) == 48

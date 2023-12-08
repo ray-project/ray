@@ -121,8 +121,6 @@ assert ray.get(refs) == [2, 3]
 # __dag_multi_output_node_begin__
 import ray
 
-ray.init()
-
 from ray.dag.input_node import InputNode
 from ray.dag.output_node import MultiOutputNode
 

@@ -29,7 +29,11 @@ from ray._raylet import (
     PythonFunctionDescriptor,
     raise_sys_exit_with_custom_error_message,
 )
-from ray.dag.class_node import PARENT_CLASS_NODE_KEY, ClassMethodNode, PREV_CLASS_METHOD_CALL_KEY
+from ray.dag.class_node import (
+    PARENT_CLASS_NODE_KEY,
+    PREV_CLASS_METHOD_CALL_KEY,
+    ClassMethodNode,
+)
 from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
