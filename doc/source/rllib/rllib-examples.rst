@@ -132,13 +132,11 @@ Multi-Agent and Hierarchical
    Example of alternating training between DQN and PPO.
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
-- `Iterated Prisoner's Dilemma environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/iterated_prisoners_dilemma_env.py>`__:
-   Example of an iterated prisoner's dilemma environment solved by RLlib.
 
 
 GPU examples
 ------------
-- `Example showing how to setup fractional GPUs <https://github.com/ray-project/ray/blob/master/rllib/examples/partial_gpus.py>`__:
+- `Example showing how to setup fractional GPUs <https://github.com/ray-project/ray/blob/master/rllib/examples/fractional_gpus.py>`__:
    Example of how to setup fractional GPUs for learning (driver) and environment rollouts (remote workers).
 
 
