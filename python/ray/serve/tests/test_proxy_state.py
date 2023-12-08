@@ -197,34 +197,42 @@ def test_node_selection(all_nodes):
     ]
 
 
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 5)
 def test_proxy_state_reconcile_restarts_unhealthy_proxies(all_nodes):
     """Test the update method in ProxyStateManager would
        kill and restart unhealthy proxies.
     """
 
-    proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager()
-    cluster_node_info_cache.alive_nodes = all_nodes
-    proxy_state_manager.update()
-
-    old_proxy_state = proxy_state_manager._proxy_states[HEAD_NODE_ID]
-    old_proxy = old_proxy_state.actor_handle
-
-    # Make the old proxy unhealthy.
-    old_proxy_state._set_status(ProxyStatus.UNHEALTHY)
-
-    # Continuously trigger update and wait for status to be changed to HEALTHY.
-    wait_for_condition(
-        condition_predictor=_update_and_check_proxy_state_manager,
-        proxy_state_manager=proxy_state_manager,
-        node_ids=[HEAD_NODE_ID],
-        statuses=[ProxyStatus.HEALTHY],
+    timer = MockTimer()
+    proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
+        timer=timer
     )
 
-    new_proxy = proxy_state_manager._proxy_states[HEAD_NODE_ID].actor_handle
+    cluster_node_info_cache.alive_nodes = all_nodes
+    # First iteration, refresh state
+    proxy_state_manager.update()
 
+    prev_proxy_state = proxy_state_manager._proxy_states[HEAD_NODE_ID]
+    # Mark existing head-node proxy UNHEALTHY
+    prev_proxy_state._set_status(ProxyStatus.UNHEALTHY)
+    old_proxy = prev_proxy_state.actor_handle
+
+    # Continuously trigger update and wait for status to be changed to HEALTHY.
+    for _ in range(1):
+        proxy_state_manager.update(proxy_nodes=set(HEAD_NODE_ID))
+        # Advance timer by 5 (to perform a health-check)
+        timer.advance(5)
+
+    new_proxy_state = proxy_state_manager._proxy_states[HEAD_NODE_ID]
+    # Previous proxy's state stays UNHEALTHY
+    assert prev_proxy_state.status == ProxyStatus.UNHEALTHY
     # Ensure the old proxy is getting shutdown.
-    assert old_proxy_state._shutting_down
+    assert prev_proxy_state._shutting_down
+    # New proxy's state should be STARTING
+    assert new_proxy_state.status == ProxyStatus.STARTING
+    assert new_proxy_state.proxy_restart_count == 1
 
+    new_proxy = new_proxy_state.actor_handle
     # Ensure the new proxy is completely different object than old proxy.
     assert new_proxy != old_proxy
 
@@ -399,6 +407,7 @@ def test_proxy_manager_update_proxies_states(all_nodes, number_of_worker_nodes):
             status=ProxyStatus.HEALTHY,
             node_id=node_id,
         )
+
     node_ids = [node_id for node_id, _ in all_nodes]
 
     # No target proxy nodes
@@ -475,61 +484,72 @@ def test_proxy_state_reconcile_draining_success():
     assert proxy_state.status == ProxyStatus.DRAINED
 
 
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
-@patch("ray.serve._private.proxy_state.PROXY_DRAIN_CHECK_PERIOD_S", 0)
+@patch("ray.serve._private.proxy_state.PROXY_DRAIN_CHECK_PERIOD_S", 5)
 @pytest.mark.parametrize("number_of_worker_nodes", [1])
-def test_proxy_actor_unhealthy_during_draining(all_nodes, number_of_worker_nodes):
+def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes):
     """Test the state transition from DRAINING to UNHEALTHY for the proxy actor."""
+
+    assert len(all_nodes) == 2, "There should be 2 nodes in this test"
+
+    timer = MockTimer(start_time=0)
+
     manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=DeploymentMode.EveryNode),
+        timer=timer,
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
-    worker_node_id = None
-    for node_id, node_ip_address in all_nodes:
+    for node_id, _ in all_nodes:
         manager._proxy_states[node_id] = _create_proxy_state(
             status=ProxyStatus.STARTING,
             node_id=node_id,
+            timer=timer,
         )
-        if node_id != HEAD_NODE_ID:
-            worker_node_id = node_id
 
-    node_ids = [node_id for node_id, _ in all_nodes]
+        manager._proxy_states[node_id]._actor_proxy_wrapper.is_ready_response = True
 
     # All nodes are target proxy nodes
-    proxy_nodes = set(node_ids)
-    wait_for_condition(
-        condition_predictor=_update_and_check_proxy_state_manager,
-        proxy_state_manager=manager,
-        node_ids=node_ids,
-        statuses=[ProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
-        proxy_nodes=proxy_nodes,
+    node_ids = [node_id for node_id, _ in all_nodes]
+
+    worker_node_id = node_ids[1]
+    worker_proxy_state = manager._proxy_states[worker_node_id]
+
+    # Reconcile all proxies states
+    manager.update(
+        proxy_nodes=(set(node_ids)),
     )
 
-    # No target proxy nodes
-    proxy_nodes = set()
+    # Assert all proxies are HEALTHY
+    proxy_statuses = [manager._proxy_states[node_id].status for node_id in node_ids]
+    assert [ProxyStatus.HEALTHY, ProxyStatus.HEALTHY] == proxy_statuses
 
-    # Head node proxy should continue to be HEALTHY.
-    # Worker node proxy should turn DRAINING.
-    wait_for_condition(
-        condition_predictor=_update_and_check_proxy_state_manager,
-        proxy_state_manager=manager,
-        node_ids=node_ids,
-        statuses=[ProxyStatus.HEALTHY]
-        + [ProxyStatus.DRAINING] * number_of_worker_nodes,
-        proxy_nodes=proxy_nodes,
+    # Reconcile proxies with empty set of target nodes (ie only proxy on the head-node
+    # should be preserved all the other should be drained)
+    worker_proxy_state._actor_proxy_wrapper.is_drained_response = False
+    N = 10
+    for _ in range(N):
+        manager.update(
+            proxy_nodes=set(),
+        )
+        timer.advance(5)
+        # Assert that
+        #   - Head-node proxy is HEALTHY
+        #   - Worker node proxy is DRAINING
+        proxy_statuses = [manager._proxy_states[node_id].status for node_id in node_ids]
+        assert [ProxyStatus.HEALTHY, ProxyStatus.DRAINING] == proxy_statuses
+
+    assert worker_proxy_state._actor_proxy_wrapper.get_num_drain_checks() == N - 1
+
+    # Mark target proxy as fully drained
+    worker_proxy_state._actor_proxy_wrapper.is_drained_response = True
+
+    # Reconcile proxies with empty set of target nodes (worker node proxy
+    # will be shutdown by now)
+    manager.update(
+        proxy_nodes=set(),
     )
 
-    # Kill the draining proxy actor
-    manager._proxy_states[
-        worker_node_id
-    ]._actor_proxy_wrapper.is_healthy_response = False
-
-    def check_worker_node_proxy_actor_is_removed():
-        manager.update(proxy_nodes=proxy_nodes)
-        return len(manager._proxy_states) == 1
-
-    wait_for_condition(condition_predictor=check_worker_node_proxy_actor_is_removed)
+    assert len(manager._proxy_states) == 1
     assert manager._proxy_states[HEAD_NODE_ID].status == ProxyStatus.HEALTHY
 
 
