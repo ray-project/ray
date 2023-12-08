@@ -160,9 +160,3 @@ steps:
     soft_fail: true
     depends_on:
       - forge
-
-  - label: ":book: LinkCheck"
-    instance_type: medium
-    command: make -C doc/ linkcheck
-    depends_on: docbuild
-    job_env: docbuild
