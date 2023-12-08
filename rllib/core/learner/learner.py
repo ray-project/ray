@@ -1068,7 +1068,7 @@ class Learner:
     def additional_update(
         self,
         *,
-        module_ids_to_update: Sequence[ModuleID],
+        module_ids_to_update: Optional[Sequence[ModuleID]] = None,
         timestep: int,
         **kwargs,
     ) -> Mapping[ModuleID, Any]:
@@ -1160,7 +1160,8 @@ class Learner:
                     )
 
         Args:
-            module_ids_to_update: The ids of the modules to update.
+            module_ids_to_update: The ids of the modules to update. If None, all
+                modules will be updated.
             timestep: The current timestep.
             **kwargs: Keyword arguments to use for the additional update.
 
@@ -1168,7 +1169,8 @@ class Learner:
             A dictionary of results from the update
         """
         results_all_modules = {}
-        for module_id in module_ids_to_update:
+        module_ids = module_ids_to_update or self.module.keys()
+        for module_id in module_ids:
             module_results = self.additional_update_for_module(
                 module_id=module_id,
                 hps=self.hps.get_hps_for_module(module_id),

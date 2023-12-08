@@ -534,7 +534,7 @@ class LearnerGroup:
         # If None, use default implementation (all modules should be updated).
         if should_module_be_updated_fn is None:
             should_module_be_updated_fn = _default_should_module_be_updated_fn
-        # If container given, construct a simple default callable returning True
+        # If container given, construct a simple callable returning True
         # if the ModuleID is found in the list/set of IDs.
         elif not callable(should_module_be_updated_fn):
             assert isinstance(should_module_be_updated_fn, (list, set, tuple)), (
@@ -542,10 +542,10 @@ class LearnerGroup:
                 "callable taking a ModuleID and a MultiAgentBatch and returning "
                 "True|False (to be updated or not?)."
             )
-            modules = set(should_module_be_updated_fn)
+            module_ids = set(should_module_be_updated_fn)
 
             def should_module_be_updated_fn(mid, batch=None):
-                return mid in modules
+                return mid in module_ids
 
         self._should_module_be_updated_fn = should_module_be_updated_fn
 
