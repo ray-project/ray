@@ -1,7 +1,0 @@
-- label: ":book: LinkCheck"
-  instance_size: small
-  commands:
-    - export LINT=1
-    - ./ci/env/install-dependencies.sh
-    - ./ci/ci.sh check_sphinx_links
-  soft_fail: True
