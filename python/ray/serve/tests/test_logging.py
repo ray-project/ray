@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import string
 import sys
 import time
 from contextlib import redirect_stderr
@@ -34,6 +35,11 @@ def serve_and_ray_shutdown():
 def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_MAX_BYTES", str(max_bytes))
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
+
+
+def _get_expected_replica_log_content(replica_tag: str):
+    app_name, deployment_name, replica_id = replica_tag.split("#")
+    return f"{app_name}_{deployment_name} {replica_id}"
 
 
 def test_log_rotation_config(monkeypatch, ray_shutdown):
@@ -87,7 +93,7 @@ def test_handle_access_log(serve_instance):
             return all(
                 [
                     name in s,
-                    replica_tag in s,
+                    _get_expected_replica_log_content(replica_tag) in s,
                     method_name.upper() in s,
                     ("ERROR" if fail else "OK") in s,
                     "ms" in s,
@@ -133,8 +139,14 @@ def test_user_logs(serve_instance):
 
         def check_stderr_log(replica_tag: str):
             s = f.getvalue()
+            app_name, deployment_name, replica_id = replica_tag.split("#")
             return all(
-                [name in s, replica_tag in s, stderr_msg in s, log_file_msg not in s]
+                [
+                    name in s,
+                    _get_expected_replica_log_content(replica_tag) in s,
+                    stderr_msg in s,
+                    log_file_msg not in s,
+                ]
             )
 
         # Only the stderr_msg should be logged to stderr.
@@ -144,7 +156,12 @@ def test_user_logs(serve_instance):
             with open(log_file_name, "r") as f:
                 s = f.read()
                 return all(
-                    [name in s, replica_tag in s, stderr_msg in s, log_file_msg in s]
+                    [
+                        name in s,
+                        _get_expected_replica_log_content(replica_tag) in s,
+                        stderr_msg in s,
+                        log_file_msg in s,
+                    ]
                 )
 
         # Both messages should be logged to the file.
@@ -170,26 +187,40 @@ def test_disable_access_log(serve_instance):
 
         for _ in range(10):
             time.sleep(0.1)
-            assert replica_tag not in f.getvalue()
+            assert _get_expected_replica_log_content(replica_tag) not in f.getvalue()
+
+
+def test_log_filenames_contain_only_posix_characters(serve_instance):
+    """Assert that all log filenames only consist of POSIX-compliant characters.
+
+    See: https://github.com/ray-project/ray/issues/41615
+    """
+
+    @serve.deployment
+    class A:
+        def __call__(self, *args) -> str:
+            return "hi"
+
+    serve.run(A.bind())
+
+    r = requests.get("http://localhost:8000/")
+    r.raise_for_status()
+    assert r.text == "hi"
+
+    acceptable_chars = string.ascii_letters + string.digits + "_" + "."
+    for filename in os.listdir(get_serve_logs_dir()):
+        assert all(char in acceptable_chars for char in filename)
 
 
 @pytest.mark.parametrize("json_log_format", [False, True])
 def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format):
     """Make sure all context information exist in the log message"""
 
-    if json_log_format:
-        serve_json_log_format = "1"
-    else:
-        serve_json_log_format = "0"
-    ray.init(
-        runtime_env={
-            "env_vars": {"RAY_SERVE_ENABLE_JSON_LOGGING": serve_json_log_format}
-        }
-    )
-
     logger = logging.getLogger("ray.serve")
 
-    @serve.deployment
+    @serve.deployment(
+        logging_config={"encoding": "JSON" if json_log_format else "TEXT"}
+    )
     def fn(*args):
         logger.info("user func")
         request_context = ray.serve.context._serve_request_context.get()
@@ -201,7 +232,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "replica": serve.get_replica_context().replica_tag,
         }
 
-    @serve.deployment
+    @serve.deployment(
+        logging_config={"encoding": "JSON" if json_log_format else "TEXT"}
+    )
     class Model:
         def __call__(self, req: starlette.requests.Request):
             logger.info("user log message from class method")
@@ -224,14 +257,14 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
         # Check the component log
         expected_log_infos = [
-            f"{resp['request_id']} {resp['route']} {resp['app_name']} replica.py",
-            f"{resp2['request_id']} {resp2['route']} {resp2['app_name']} replica.py",
+            f"{resp['request_id']} {resp['route']} replica.py",
+            f"{resp2['request_id']} {resp2['route']} replica.py",
         ]
 
         # Check User log
         user_log_regexes = [
-            f".*{resp['request_id']} {resp['route']} {resp['app_name']}.* user func.*",
-            f".*{resp2['request_id']} {resp2['route']} {resp2['app_name']}.* user log "
+            f".*{resp['request_id']} {resp['route']}.* user func.*",
+            f".*{resp2['request_id']} {resp2['route']}.* user log "
             "message from class method.*",
         ]
 
@@ -251,50 +284,48 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         check_log()
 
         # Check user log file
+        method_replica_id = resp["replica"].split("#")[-1]
+        class_method_replica_id = resp2["replica"].split("#")[-1]
         if json_log_format:
-            user_method_log_regexes = [
-                f'.*"deployment": "fn", '
-                f'"replica": "{resp["replica"]}", '
+            user_method_log_regex = (
+                f'.*"deployment": "{resp["app_name"]}_fn", '
+                f'"replica": "{method_replica_id}", '
                 f'"request_id": "{resp["request_id"]}", '
                 f'"route": "{resp["route"]}", '
-                f'"application": "{resp["app_name"]}", "message":.* user func.*',
-            ]
-            user_class_method_log_regexes = [
-                f'.*"deployment": "Model", '
-                f'"replica": "{resp2["replica"]}", '
+                f'"application": "{resp["app_name"]}", "message":.* user func.*'
+            )
+            user_class_method_log_regex = (
+                f'.*"deployment": "{resp2["app_name"]}_Model", '
+                f'"replica": "{class_method_replica_id}", '
                 f'"request_id": "{resp2["request_id"]}", '
                 f'"route": "{resp2["route"]}", '
                 f'"application": "{resp2["app_name"]}", "message":.* user log '
-                "message from class method.*",
-            ]
+                "message from class method.*"
+            )
         else:
-            user_method_log_regexes = [
-                f".*{resp['request_id']} {resp['route']} {resp['app_name']}.* "
-                f"user func.*",
-            ]
-            user_class_method_log_regexes = [
-                f".*{resp2['request_id']} {resp2['route']} {resp2['app_name']}.* "
-                f"user log message from class method.*",
-            ]
+            user_method_log_regex = (
+                f".*{resp['request_id']} {resp['route']}.* user func.*"
+            )
+            user_class_method_log_regex = (
+                f".*{resp2['request_id']} {resp2['route']}.* "
+                "user log message from class method.*"
+            )
 
         def check_log_file(log_file: str, expected_regex: list):
             with open(log_file, "r") as f:
                 s = f.read()
-                for regex in expected_regex:
-                    assert re.findall(regex, s) != []
+                assert re.findall(expected_regex, s) != []
 
-        check_log_file(resp["log_file"], user_method_log_regexes)
-        check_log_file(resp2["log_file"], user_class_method_log_regexes)
+        check_log_file(resp["log_file"], user_method_log_regex)
+        check_log_file(resp2["log_file"], user_class_method_log_regex)
 
 
 @pytest.mark.parametrize("raise_error", [True, False])
 def test_extra_field(serve_and_ray_shutdown, raise_error):
     """Test ray serve extra logging"""
-    ray.init(runtime_env={"env_vars": {"RAY_SERVE_ENABLE_JSON_LOGGING": "1"}})
-
     logger = logging.getLogger("ray.serve")
 
-    @serve.deployment
+    @serve.deployment(logging_config={"encoding": "JSON"})
     def fn(*args):
         if raise_error:
             logger.info("user_func", extra={SERVE_LOG_EXTRA_FIELDS: [123]})
@@ -369,10 +400,11 @@ class TestLoggingAPI:
         serve.run(Model.bind())
         resp = requests.get("http://127.0.0.1:8000/").json()
 
+        replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
-            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+            expected_log_regex = [f'"replica": "{replica_id}", ']
         else:
-            expected_log_regex = [f'.*{resp["replica"]}.*']
+            expected_log_regex = [f".*{replica_id}.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
     def test_log_level(self, serve_and_ray_shutdown):
@@ -493,12 +525,12 @@ class TestLoggingAPI:
             check_log_file(resp["log_file"], [".*model_debug_level.*"])
 
 
-@pytest.mark.parametrize("is_deployment_type_component", [False, True])
-def test_json_log_formatter(is_deployment_type_component):
+@pytest.mark.parametrize("is_replica_type_component", [False, True])
+def test_json_log_formatter(is_replica_type_component):
     """Test the json log formatter"""
 
-    if is_deployment_type_component:
-        component_type = ServeComponentType.DEPLOYMENT
+    if is_replica_type_component:
+        component_type = ServeComponentType.REPLICA
         formatter = ServeJSONFormatter("component", "component_id", component_type)
     else:
         formatter = ServeJSONFormatter("component", "component_id")
@@ -521,7 +553,7 @@ def test_json_log_formatter(is_deployment_type_component):
             assert formatted_record_dict[key] == expected_record[key]
 
     expected_json = {}
-    if is_deployment_type_component:
+    if is_replica_type_component:
         expected_json["deployment"] = "component"
         expected_json["replica"] = "component_id"
 
