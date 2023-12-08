@@ -400,6 +400,16 @@ class ProxyState:
         self._actor_details = ProxyDetails(**details_kwargs)
 
     def reconcile(self, draining: bool = False):
+        try:
+            self._reconcile_internal(draining)
+        except Exception:
+            self.try_update_status(ProxyStatus.UNHEALTHY)
+            logger.error(
+                "Unexpected error occurred when reconciling stae of "
+                f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
+            )
+
+    def _reconcile_internal(self, draining: bool):
         """Update the status of the current proxy.
 
         The state machine is:
@@ -409,26 +419,6 @@ class ProxyState:
 
         UNHEALTHY is a terminal state upon reaching which, Proxy is going to be
         restarted by the controller
-
-        1) When the proxy is already shutting down, in DRAINED or UNHEALTHY status,
-        do nothing.
-        2) When the proxy is starting, check ready object reference. If ready
-        object reference returns a successful call set status to HEALTHY. If the
-        call to ready() on the proxy actor has any exception or timeout, increment
-        the consecutive health check failure counter and retry on the next update call.
-        The status is only set to UNHEALTHY when all retries have exhausted.
-        3) When the proxy already has an in-progress health check. If health check
-        object returns a successful call, keep the current status. If the call has
-        any exception or timeout, count towards 1 of the consecutive health check
-        failures and retry on the next update call. The status is only set to UNHEALTHY
-        when all retries have exhausted.
-        4) When the proxy need to setup another health check (when none of the
-        above met and the time since the last health check is longer than
-        PROXY_HEALTH_CHECK_PERIOD_S with some margin). Reset
-        self._last_health_check_time and set up a new health check object so the next
-        update can call healthy check again.
-        5) Transition the status between HEALTHY and DRAINING.
-        6) When the proxy is draining, check whether it's drained or not.
         """
         if (
             self._shutting_down
@@ -443,27 +433,20 @@ class ProxyState:
         ) * PROXY_READY_CHECK_TIMEOUT_S
 
         if self._status == ProxyStatus.STARTING:
-            try:
-                is_ready_response = self._actor_proxy_wrapper.is_ready(ready_check_timeout)
-                if is_ready_response is not None:
-                    if is_ready_response:
-                        self.try_update_status(ProxyStatus.HEALTHY)
-                        self.update_actor_details(
-                            worker_id=self._actor_proxy_wrapper.worker_id,
-                            log_file_path=self._actor_proxy_wrapper.log_file_path,
-                            status=self._status,
-                        )
-                    else:
-                        self.try_update_status(ProxyStatus.UNHEALTHY)
-                        logger.warning(
-                            f"Proxy actor reported not ready on node {self._node_id}"
-                        )
-            except Exception:
-                self.try_update_status(ProxyStatus.UNHEALTHY)
-                logger.warning(
-                    "Unexpected error occurred when checking readiness of "
-                    f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
-                )
+            is_ready_response = self._actor_proxy_wrapper.is_ready(ready_check_timeout)
+            if is_ready_response is not None:
+                if is_ready_response:
+                    self.try_update_status(ProxyStatus.HEALTHY)
+                    self.update_actor_details(
+                        worker_id=self._actor_proxy_wrapper.worker_id,
+                        log_file_path=self._actor_proxy_wrapper.log_file_path,
+                        status=self._status,
+                    )
+                else:
+                    self.try_update_status(ProxyStatus.UNHEALTHY)
+                    logger.warning(
+                        f"Proxy actor reported not ready on node {self._node_id}"
+                    )
         else:
             # At this point, the proxy is either in HEALTHY or DRAINING status.
             assert self._status in {ProxyStatus.HEALTHY, ProxyStatus.DRAINING}
