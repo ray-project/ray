@@ -324,7 +324,6 @@ class MultiAgentEpisode:
     # TODO (simon): Users might want to receive only actions that have a
     # corresponding 'next observation' (i.e. no buffered actions). Take care of this.
     # Also in the `extra_model_outputs`.
-
     def get_actions(
         self,
         indices: Union[int, List[int]] = -1,
@@ -408,6 +407,7 @@ class MultiAgentEpisode:
 
     def get_extra_model_outputs(
         self,
+        key: str,
         indices: Union[int, List[int]] = -1,
         global_ts: bool = True,
         as_list: bool = False,
@@ -418,6 +418,8 @@ class MultiAgentEpisode:
         during the given index range.
 
         Args:
+            key: A string determining the key in the extra model outputs
+                dictionary to return. This parameter is mandatory.
             indices: Either a single index or a list of indices. The indices
                 can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
                 This defines the time indices for which the actions
@@ -430,6 +432,7 @@ class MultiAgentEpisode:
             timestep, actions are returned (i.e. not all agent ids are
             necessarily in the keys).
         """
+        assert key, "ERROR: When requesting extra model outputs a `key` is needed."
         buffered_outputs = {}
 
         if global_ts:
@@ -462,8 +465,9 @@ class MultiAgentEpisode:
                 # Then the buffer must be full and needs to be accessed.
                 # Note, we do not want to empty the buffer, but only read it.
                 buffered_outputs[agent_id] = [
-                    self.agent_buffers[agent_id]["extra_model_outputs"].queue[0]
+                    self.agent_buffers[agent_id]["extra_model_outputs"].queue[0][key]
                 ]
+
             else:
                 buffered_outputs[agent_id] = []
 
@@ -471,6 +475,7 @@ class MultiAgentEpisode:
         extra_model_outputs = self._getattr_by_index(
             "extra_model_outputs",
             indices=indices,
+            key=key,
             has_initial_value=True,
             global_ts=global_ts,
             global_ts_mapping=self.global_actions_t,
@@ -1554,9 +1559,10 @@ class MultiAgentEpisode:
             # Convert `extra_model_outputs` for this agent from list of dicts to dict
             # of lists.
             agent_extra_model_outputs = defaultdict(list)
-            for _model_out in _agent_extra_model_outputs:
-                for key, val in _model_out.items():
-                    agent_extra_model_outputs[key].append(val)
+            if _agent_extra_model_outputs:
+                for _model_out in _agent_extra_model_outputs:
+                    for key, val in _model_out.items():
+                        agent_extra_model_outputs[key].append(val)
 
             agent_is_terminated = terminateds.get(agent_id, False)
             agent_is_truncated = truncateds.get(agent_id, False)
@@ -1614,7 +1620,9 @@ class MultiAgentEpisode:
                         # TODO (simon): Check, if we need to use here also
                         # `ts_carriage_return`.
                         partial_agent_rewards_t.append(t + self.ts_carriage_return + 1)
-                        if (t + 1) in self.global_t_to_local_t[agent_id][1:]:
+                        if (
+                            t + self.ts_carriage_return + 1
+                        ) in self.global_t_to_local_t[agent_id][1:]:
                             agent_rewards.append(agent_reward)
                             agent_reward = 0.0
 
@@ -1645,6 +1653,7 @@ class MultiAgentEpisode:
         self,
         attr: str = "observations",
         indices: Union[int, List[int]] = -1,
+        key: Optional[str] = None,
         has_initial_value=False,
         global_ts: bool = True,
         global_ts_mapping: Optional[MultiAgentDict] = None,
@@ -1687,14 +1696,12 @@ class MultiAgentEpisode:
             # If a list should be returned.
             if as_list:
                 if buffered_values:
-                    # Note, for addition we have to ensure that both elements are lists
-                    # and terminated/truncated agents have numpy arrays.
                     return [
                         {
                             agent_id: (
-                                list(getattr(agent_eps, attr))
+                                getattr(agent_eps, attr).get(key)
                                 + buffered_values[agent_id]
-                            )[global_ts_mapping[agent_id].find_indices([idx], shift)[0]]
+                            )[global_ts_mapping[agent_id].find_indices([idx])[0]]
                             for agent_id, agent_eps in self.agent_episodes.items()
                             if global_ts_mapping[agent_id].find_indices([idx], shift)
                         }
@@ -1722,7 +1729,7 @@ class MultiAgentEpisode:
                         agent_id: list(
                             map(
                                 (
-                                    list(getattr(agent_eps, attr))
+                                    getattr(agent_eps, attr).get(key)
                                     + buffered_values[agent_id]
                                 ).__getitem__,
                                 global_ts_mapping[agent_id].find_indices(
@@ -1755,12 +1762,15 @@ class MultiAgentEpisode:
             if not isinstance(indices, list):
                 indices = [indices]
 
+            # If we have buffered values for the attribute we want to concatenate
+            # while searching for the indices.
             if buffered_values:
                 return {
                     agent_id: list(
                         map(
                             (
-                                getattr(agent_eps, attr) + buffered_values[agent_id]
+                                getattr(agent_eps, attr).get(key)
+                                + buffered_values[agent_id]
                             ).__getitem__,
                             set(indices).intersection(
                                 set(
