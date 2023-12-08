@@ -43,8 +43,6 @@ Environments and Adapters
    Use this example to try things out and watch the game and the learning progress live in the editor.
    Providing a compiled game, this example could also run in distributed fashion with `num_workers > 0`.
    For a more heavy-weight, distributed, cloud-based example, see ``Unity3D client/server`` below.
-- `Subprocess environment <https://github.com/ray-project/ray/blob/master/rllib/env/tests/test_env_with_subprocess.py>`__:
-   Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
 
 
 Custom- and Complex Models
