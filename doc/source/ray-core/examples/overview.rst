@@ -50,14 +50,6 @@ Machine Learning Examples
 
             Simple Parallel Model Selection
 
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_example-lm
-
-            Fault-Tolerant Fairseq Training
-
 
 Reinforcement Learning Examples
 -------------------------------

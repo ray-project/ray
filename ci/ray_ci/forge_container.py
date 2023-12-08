@@ -1,9 +1,9 @@
 import os
 
-from ci.ray_ci.container import Container
+from ci.ray_ci.linux_container import LinuxContainer
 
 
-class ForgeContainer(Container):
+class ForgeContainer(LinuxContainer):
     def __init__(self, architecture: str) -> None:
         super().__init__(
             "forge" if architecture == "x86_64" else "forge-aarch64",
