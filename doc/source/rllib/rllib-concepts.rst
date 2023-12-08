@@ -164,7 +164,7 @@ We can create an `Algorithm <#algorithms>`__ and try running this policy on a to
     tune.Tuner(MyAlgo, param_space={"env": "CartPole-v1", "num_workers": 2}).fit()
 
 
-If you run the above snippet, you'll probably notice that CartPole doesn't learn so well:
+If you run the above snippet, notice that CartPole doesn't learn so well:
 
 .. code-block:: bash
 
