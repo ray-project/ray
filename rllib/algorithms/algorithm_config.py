@@ -1157,6 +1157,7 @@ class AlgorithmConfig(_Config):
         *,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[ModuleID, Tuple[gym.Space, gym.Space]]] = None,
+        rl_module_spec: Optional[RLModuleSpec] = None,
     ) -> "LearnerGroup":
         """Builds and returns a new LearnerGroup object based on settings in `self`.
 
@@ -1176,13 +1177,12 @@ class AlgorithmConfig(_Config):
         Returns:
             The newly created LearnerGroup object.
         """
+        from ray.rllib.core.learner.learner_group import LearnerGroup
+
         # If `spaces` or `env` provided -> Create a MARL Module Spec first to be
         # passed into the LearnerGroup constructor.
-        rl_module_spec = None
-        if env is not None or spaces is not None:
+        if rl_module_spec is None and (env is not None or spaces is not None):
             rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
-
-        from ray.rllib.core.learner.learner_group import LearnerGroup
 
         # Construct the actual LearnerGroup.
         learner_group = LearnerGroup(config=self, module_spec=rl_module_spec)

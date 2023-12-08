@@ -112,11 +112,13 @@ class Learner:
 
         .. testcode::
 
+            import gymnasium as gym
+
+            from ray.rllib.algorithms.ppo.ppo import PPOConfig
+            from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
-            from ray.rllib.algorithms.ppo.ppo import PPOConfig
-            import gymnasium as gym
 
             env = gym.make("CartPole-v1")
 
@@ -929,18 +931,19 @@ class Learner:
 
         .. testcode::
 
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule
+            import gymnasium as gym
+
+            from ray.rllib.algorithms.ppo import (
+                LEARNER_RESULTS_CURR_KL_COEFF_KEY,
+                PPOConfig,
             )
-            from ray.rllib.algorithms.ppo import PPOConfig
             from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
             from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import (
                 PPOTorchLearner
             )
-            from ray.rllib.algorithms.ppo.ppo_learner import (
-                LEARNER_RESULTS_CURR_KL_COEFF_KEY
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule
             )
-            import gymnasium as gym
 
             env = gym.make("CartPole-v1")
             config = PPOConfig(
