@@ -884,17 +884,24 @@ class Impala(Algorithm):
             #  extra action outs) in the batch is one smaller than the number of obs/
             #  actions/rewards, which leads to a malformed train batch. IMPALA/APPO then
             #  crash inside the loss function (during v-trace operations). The following
-            #  if block prevents this from happening and it can be removed once we are
+            #  if-block prevents this from happening and it can be removed once we are
             #  on the new API stack for good (and use the new connectors and also no
-            #  longer AgentCollectors):
+            #  longer AgentCollectors, RolloutWorkers, Policies, TrajectoryView API,
+            #  etc..):
             if (
                 self.config.batch_mode == "truncate_episodes"
                 and self.config.enable_connectors
                 and self.config.framework_str in ["tf", "tf2"]
-                and SampleBatch.VF_PREDS in batch
-                and batch[SampleBatch.VF_PREDS].shape[0] != batch[SampleBatch.REWARDS].shape[0]
             ):
-                continue
+                if any(
+                    SampleBatch.VF_PREDS in pb
+                    and (
+                        pb[SampleBatch.VF_PREDS].shape[0]
+                        != pb[SampleBatch.REWARDS].shape[0]
+                    )
+                    for pb in batch.policy_batches.values()
+                ):
+                    continue
 
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
@@ -940,7 +947,6 @@ class Impala(Algorithm):
                 self.workers.local_worker()
                 and self.workers.local_worker().async_env is not None
             ):
-                assert False
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
                 if return_object_refs:

@@ -259,13 +259,10 @@ class EnvRunnerV2:
             )
         self._base_env = base_env
         self._multiple_episodes_in_batch = multiple_episodes_in_batch
-        print(f"multiple_episodes_in_batch={multiple_episodes_in_batch}")
         self._callbacks = callbacks
         self._perf_stats = perf_stats
         self._rollout_fragment_length = rollout_fragment_length
-        print(f"rollout_fragment_length={rollout_fragment_length}")
         self._count_steps_by = count_steps_by
-        print(f"count_steps_by={count_steps_by}")
         self._render = render
 
         # May be populated for image rendering.
@@ -343,7 +340,6 @@ class EnvRunnerV2:
             Object containing state, action, reward, terminal condition,
             and other fields as dictated by `policy`.
         """
-        #self.__step = 0
         while True:
             outputs = self.step()
             for o in outputs:
@@ -355,9 +351,6 @@ class EnvRunnerV2:
         self._perf_stats.incr("iters", 1)
 
         t0 = time.time()
-        #print(f"polling {self.__step}")
-        #self.__step += 1
-        #self.__step %= 50
         # Get observations from all ready agents.
         # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         (
@@ -381,15 +374,6 @@ class EnvRunnerV2:
             truncateds=truncateds,
             infos=infos,
         )
-        if outputs:
-            for o in outputs:
-                if isinstance(o, SampleBatch):
-                    raise NotImplementedError
-                elif isinstance(o, MultiAgentBatch):
-                    print(
-                        f"polled and got outputs action_dist_inputs: len action_dist_inputs={o['default_policy']['action_dist_inputs'].shape[0]}"
-                        f" obs={o['default_policy']['obs'].shape[0]}"
-                    )
         self._perf_stats.incr("raw_obs_processing_time", time.time() - t1)
 
         # Do batched policy eval (accross vectorized envs).
@@ -508,7 +492,6 @@ class EnvRunnerV2:
                     "as observation, the terminateds[__all__] flag must also be set to "
                     "True!"
                 )
-                assert False
                 # all_agents_obs is an Exception here.
                 # Drop this episode and skip to next.
                 self._handle_done_episode(
@@ -633,8 +616,6 @@ class EnvRunnerV2:
                     }
 
                     # Queue these fake obs for connector preprocessing too.
-                    print("queueing fake-dict w/o vf-preds!")
-                    assert False
                     sample_batches_by_policy[policy_id].append((agent_id, values_dict))
 
             # Run agent connectors.
@@ -1007,7 +988,6 @@ class EnvRunnerV2:
 
         # Reached the fragment-len -> We should build an MA-Batch.
         if built_steps + ongoing_steps >= self._rollout_fragment_length:
-            print(f"Inside _try_build_truncated_episode_multi_agent_batch built_steps={built_steps} ongoing_steps={ongoing_steps}")
             if self._count_steps_by != "agent_steps":
                 assert built_steps + ongoing_steps == self._rollout_fragment_length, (
                     f"built_steps ({built_steps}) + ongoing_steps ({ongoing_steps}) != "
@@ -1017,7 +997,6 @@ class EnvRunnerV2:
             # If we reached the fragment-len only because of `episode_id`
             # (still ongoing) -> postprocess `episode_id` first.
             if built_steps < self._rollout_fragment_length:
-                print("\tbuilt_steps < rollout postprocessing_episode ...")
                 episode.postprocess_episode(batch_builder=batch_builder, is_done=False)
 
             # If builder has collected some data,

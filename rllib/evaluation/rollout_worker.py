@@ -692,15 +692,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             )
 
         batches = [self.input_reader.next()]
-
-        #if "action_dist_inputs" in batches[0]['default_policy']:
-        #    print(f"in sample() on RolloutWorker {batches[0]['default_policy']['action_dist_inputs'].shape[0]}")
-        #else:
-        #    print(
-        #        f"in sample() on RolloutWorker: batch does NOT have action_dist_inputs and len={len(batches[0]['default_policy'])}"
-        #    )
-        #print(f"concating batches during sample(): lens={[len(b) for b in batches]}")
-
         steps_so_far = (
             batches[0].count
             if self.config.count_steps_by == "env_steps"
@@ -720,16 +711,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             len(batches) < max_batches
         ):
             batch = self.input_reader.next()
-
-            #if "action_dist_inputs" in batch['default_policy']:
-            #    print(
-            #        f"in sample() on RolloutWorker {batch['default_policy']['action_dist_inputs'].shape[0]}")
-            #else:
-            #    print(
-            #        f"in sample() on RolloutWorker: batch does NOT have action_dist_inputs and len={len(batch['default_policy'])}"
-            #    )
-            # print(f"concating batches during sample(): lens={[len(b) for b in batches]}")
-
             steps_so_far += (
                 batch.count
                 if self.config.count_steps_by == "env_steps"

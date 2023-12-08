@@ -275,7 +275,6 @@ class EpisodeV2:
             pid = self.policy_for(agent_id)
             policy = self.policy_map[pid]
             pre_batch = collector.build_for_training(policy.view_requirements)
-            print(f"\tpre_batch lens obs={pre_batch['obs'].shape[0]} vf_preds={pre_batch['vf_preds'].shape[0]}")
             pre_batches[agent_id] = (pid, policy, pre_batch)
 
         for agent_id, (pid, policy, pre_batch) in pre_batches.items():

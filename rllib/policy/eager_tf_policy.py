@@ -947,7 +947,6 @@ def _build_eager_tf_policy(
             if extra_action_out_fn:
                 extra_fetches.update(extra_action_out_fn(self))
 
-            assert "vf_preds" in extra_fetches
             return actions, state_out, extra_fetches
 
         # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in

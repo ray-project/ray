@@ -27,18 +27,17 @@ config = (
             "p_crash": 0.0001,  # prob to crash during step()
             "p_crash_reset": 0.001,  # prob to crash during reset()
             "crash_on_worker_indices": [1, 2],
-            #"init_time_s": 2.0,
-            #"p_stall": 0.0,#005,  # prob to stall during step()
-            #"p_stall_reset": 0.0,#01,  # prob to stall during reset()
-            #"stall_time_sec": (2, 5),  # stall between 2 and 10sec.
-            #"stall_on_worker_indices": [2, 3],
+            "init_time_s": 2.0,
+            "p_stall": 0.0005,  # prob to stall during step()
+            "p_stall_reset": 0.001,  # prob to stall during reset()
+            "stall_time_sec": (2, 5),  # stall between 2 and 10sec.
+            "stall_on_worker_indices": [2, 3],
         },
         # Disable env checking. Env checker doesn't handle Exceptions from
         # user envs, and will crash rollout worker.
         disable_env_checking=True,
     )
     .rollouts(
-        #enable_connectors=False,
         num_rollout_workers=1,
         num_envs_per_worker=1,
     )
@@ -46,34 +45,30 @@ config = (
     .fault_tolerance(
         recreate_failed_workers=True,
     )
-    #.evaluation(
-    #    evaluation_num_workers=1,
-    #    evaluation_interval=1,
-    #    evaluation_duration=25,
-    #    evaluation_duration_unit="episodes",
-    #    evaluation_parallel_to_training=True,
-    #    enable_async_evaluation=True,
-    #    evaluation_config=APPOConfig.overrides(
-    #        explore=False,
-    #        env_config={
-    #            # Make eval workers solid.
-    #            # This test is to prove that we can learn with crashing envs,
-    #            # not evaluate with crashing envs.
-    #            "p_crash": 0.0,
-    #            "p_crash_reset": 0.0,
-    #            "init_time_s": 0.0,
-    #            "p_stall": 0.0,
-    #            "p_stall_reset": 0.0,
-    #        },
-    #    ),
-    #)
+    .evaluation(
+        evaluation_num_workers=1,
+        evaluation_interval=1,
+        evaluation_duration=25,
+        evaluation_duration_unit="episodes",
+        evaluation_parallel_to_training=True,
+        enable_async_evaluation=True,
+        evaluation_config=APPOConfig.overrides(
+            explore=False,
+            env_config={
+                # Make eval workers solid.
+                # This test is to prove that we can learn with crashing envs,
+                # not evaluate with crashing envs.
+                "p_crash": 0.0,
+                "p_crash_reset": 0.0,
+                "init_time_s": 0.0,
+                "p_stall": 0.0,
+                "p_stall_reset": 0.0,
+            },
+        ),
+    )
 )
 
-#import ray
 
-#ray.init(local_mode=True)
-
-#TODO
-algo = config.framework("tf2").build()
-for _ in range(1000):
-    print(algo.train())
+# algo = config.framework("tf2").build()
+# for _ in range(1000):
+#     print(algo.train())

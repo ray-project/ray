@@ -548,9 +548,7 @@ class EagerTFPolicyV2(Policy):
             )
         # Update our global timestep by the batch size.
         self.global_timestep.assign_add(tree.flatten(ret[0])[0].shape.as_list()[0])
-        ret = convert_to_numpy(ret)
-        assert len(ret) == 3 and "vf_preds" in ret[2]
-        return ret
+        return convert_to_numpy(ret)
 
     # TODO(jungong) : deprecate this API and make compute_actions_from_input_dict the
     # only canonical entry point for inference.
@@ -567,7 +565,6 @@ class EagerTFPolicyV2(Policy):
         timestep=None,
         **kwargs,
     ):
-        assert False
         # Create input dict to simply pass the entire call to
         # self.compute_actions_from_input_dict().
         input_dict = SampleBatch(
