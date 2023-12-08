@@ -56,7 +56,7 @@ import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._raylet import raise_sys_exit_with_custom_error_message
-from ray._raylet import ObjectRefGenerator
+from ray._raylet import ObjectRefGenerator, TaskID
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -594,7 +594,7 @@ class Worker:
         """Set the worker's out file where stdout is redirected to"""
         self._out_file = out_file
 
-    def record_task_log_start(self):
+    def record_task_log_start(self, task_id: TaskID, attempt_number: int):
         """Record the task log info when task starts executing for
         non concurrent actor tasks."""
         if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
@@ -608,13 +608,15 @@ class Worker:
             return
 
         self.core_worker.record_task_log_start(
+            task_id,
+            attempt_number,
             self.get_out_file_path(),
             self.get_err_file_path(),
             self.get_current_out_offset(),
             self.get_current_err_offset(),
         )
 
-    def record_task_log_end(self):
+    def record_task_log_end(self, task_id: TaskID, attempt_number: int):
         """Record the task log info when task finishes executing for
         non concurrent actor tasks."""
         if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
@@ -628,7 +630,10 @@ class Worker:
             return
 
         self.core_worker.record_task_log_end(
-            self.get_current_out_offset(), self.get_current_err_offset()
+            task_id,
+            attempt_number,
+            self.get_current_out_offset(),
+            self.get_current_err_offset(),
         )
 
     def get_err_file_path(self) -> str:
