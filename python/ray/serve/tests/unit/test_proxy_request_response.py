@@ -244,7 +244,9 @@ class TestgRPCProxyRequest:
         assert proxy_request.is_health_request is False
 
         proxy_request.send_request_id(request_id=request_id)
-        context.set_trailing_metadata.assert_called_with([("request_id", request_id)])
+        assert proxy_request.ray_serve_grpc_context.trailing_metadata() == [
+            ("request_id", request_id)
+        ]
 
         proxy_handle = MagicMock()
         request_object = proxy_request.request_object(proxy_handle=proxy_handle)
