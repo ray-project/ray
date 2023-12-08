@@ -69,8 +69,8 @@ class RemoteTrainingHelper:
         local_learner.build()
 
         # make the state of the learner and the local learner_group identical
-        local_learner.set_state(learner_group.get_state())
-        check(local_learner.get_state(), learner_group.get_state())
+        local_learner.set_state(learner_group.get_state()["learner_state"])
+        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
         batch = batch.as_multi_agent()
