@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Mapping
+from typing import Any, Dict
 
 from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
@@ -38,7 +38,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         module_id: ModuleID,
         hps: PPOLearnerHyperparameters,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         # TODO (Kourosh): batch type is NestedDict.
         # TODO (Kourosh): We may or may not user module_id. For example if we have an

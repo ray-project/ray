@@ -4,8 +4,8 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Dict,
     List,
-    Mapping,
     Optional,
     Set,
     Type,
@@ -136,7 +136,7 @@ class LearnerGroup:
             self._inflight_request_tags: Set[str] = set()
             self._in_queue = deque(maxlen=max_queue_len)
 
-    def get_in_queue_stats(self) -> Mapping[str, Any]:
+    def get_in_queue_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
         return {
             "learner_group_queue_size": len(self._in_queue),
@@ -153,10 +153,10 @@ class LearnerGroup:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
+        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
-    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Do one or more gradient based updates to the Learner(s) based on given data.
 
         Args:
@@ -225,10 +225,10 @@ class LearnerGroup:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
+        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
-    ) -> Union[List[Mapping[str, Any]], List[List[Mapping[str, Any]]]]:
+    ) -> Union[List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
         """Asnychronously do gradient based updates to the Learner(s) with `batch`.
 
         Args:
@@ -367,7 +367,7 @@ class LearnerGroup:
         *,
         reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
         **kwargs,
-    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Apply additional non-gradient based updates to the Learners.
 
         For example, this could be used to do a polyak averaging update
@@ -437,7 +437,7 @@ class LearnerGroup:
                 refs.append(ref)
             ray.get(refs)
 
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
         """Get the weights of the MultiAgentRLModule maintained by each Learner.
 
         Args:
@@ -459,7 +459,7 @@ class LearnerGroup:
 
         return convert_to_numpy(state)
 
-    def set_weights(self, weights: Mapping[str, Any]) -> None:
+    def set_weights(self, weights: Dict[str, Any]) -> None:
         """Set the weights of the MultiAgentRLModule maintained by each Learner.
 
         The weights don't have to include all the modules in the MARLModule.
@@ -478,7 +478,7 @@ class LearnerGroup:
             # raise errors if any
             self._get_results(results_or_errors)
 
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self) -> Dict[str, Any]:
         """Get the states of this LearnerGroup.
 
         Contains the Learners' state (which should be the same across Learners) and
@@ -501,7 +501,7 @@ class LearnerGroup:
             "should_module_be_updated_fn": self.should_module_be_updated_fn,
         }
 
-    def set_state(self, state: Mapping[str, Any]) -> None:
+    def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of this LearnerGroup.
 
         Note that all Learners share the same state.
@@ -648,7 +648,7 @@ class LearnerGroup:
         *,
         marl_module_ckpt_dir: Optional[str] = None,
         modules_to_load: Optional[Set[str]] = None,
-        rl_module_ckpt_dirs: Optional[Mapping[ModuleID, str]] = None,
+        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ) -> None:
 
         """Load the checkpoints of the modules being trained by this LearnerGroup.
@@ -759,7 +759,7 @@ class LearnerGroup:
         *,
         marl_module_ckpt_dir: Optional[str] = None,
         modules_to_load: Optional[Set[str]] = None,
-        rl_module_ckpt_dirs: Optional[Mapping[ModuleID, str]] = None,
+        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ):
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 

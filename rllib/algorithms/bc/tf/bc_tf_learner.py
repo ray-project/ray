@@ -1,5 +1,5 @@
 import logging
-from typing import Mapping
+from typing import Dict
 
 from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
@@ -29,7 +29,7 @@ class BCTfLearner(TfLearner):
         module_id: ModuleID,
         hps: LearnerHyperparameters,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType]
+        fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # In the RNN case, we expect incoming tensors to be padded to the maximum
         # sequence length. We infer the max sequence length from the actions

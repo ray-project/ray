@@ -4,8 +4,8 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Dict,
     Hashable,
-    Mapping,
     Optional,
     Sequence,
     Tuple,
@@ -103,7 +103,7 @@ class TfLearner(Learner):
     @override(Learner)
     def compute_gradients(
         self,
-        loss_per_module: Mapping[str, TensorType],
+        loss_per_module: Dict[str, TensorType],
         gradient_tape: "tf.GradientTape",
         **kwargs,
     ) -> ParamDict:
@@ -262,11 +262,11 @@ class TfLearner(Learner):
             self._load_optimizer_state(path, new_optim, name)
 
     @override(Learner)
-    def set_module_state(self, state: Mapping[str, Any]) -> None:
+    def set_module_state(self, state: Dict[str, Any]) -> None:
         self._module.set_state(state)
 
     @override(Learner)
-    def get_optimizer_state(self) -> Mapping[str, Any]:
+    def get_optimizer_state(self) -> Dict[str, Any]:
         optim_state = {}
         with tf.init_scope():
             for name, optim in self._named_optimizers.items():
@@ -274,7 +274,7 @@ class TfLearner(Learner):
         return optim_state
 
     @override(Learner)
-    def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
+    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         for name, state_array in state.items():
             if name not in self._named_optimizers:
                 raise ValueError(

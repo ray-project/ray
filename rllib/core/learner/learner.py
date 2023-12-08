@@ -12,7 +12,6 @@ from typing import (
     Dict,
     List,
     Hashable,
-    Mapping,
     Optional,
     Sequence,
     Set,
@@ -552,7 +551,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def compute_gradients(
-        self, loss_per_module: Mapping[str, TensorType], **kwargs
+        self, loss_per_module: Dict[str, TensorType], **kwargs
     ) -> ParamDict:
         """Computes the gradients based on the given losses.
 
@@ -784,9 +783,7 @@ class Learner:
             if ref in param_dict and param_dict[ref] is not None
         }
 
-    def get_module_state(
-        self, module_ids: Optional[Set[str]] = None
-    ) -> Mapping[str, Any]:
+    def get_module_state(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
         """Returns the state of the underlying MultiAgentRLModule.
 
         The output should be numpy-friendly for easy serialization, not framework
@@ -804,7 +801,7 @@ class Learner:
         return convert_to_numpy({k: v for k, v in module_states.items()})
 
     @abc.abstractmethod
-    def set_module_state(self, state: Mapping[str, Any]) -> None:
+    def set_module_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of the underlying MultiAgentRLModule"""
 
     @abc.abstractmethod
@@ -853,10 +850,10 @@ class Learner:
         self,
         *,
         batch: MultiAgentBatch,
-        fwd_out: Mapping[str, Any],
-        loss_per_module: Mapping[str, TensorType],
+        fwd_out: Dict[str, Any],
+        loss_per_module: Dict[str, TensorType],
         metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
-    ) -> Mapping[str, Any]:
+    ) -> Dict[str, Any]:
         """Compile results from the update in a numpy-friendly format.
 
         Args:
@@ -987,7 +984,7 @@ class Learner:
         *,
         fwd_out: Union[MultiAgentBatch, NestedDict],
         batch: Union[MultiAgentBatch, NestedDict],
-    ) -> Union[TensorType, Mapping[str, Any]]:
+    ) -> Union[TensorType, Dict[str, Any]]:
         """Computes the loss for the module being optimized.
 
         This method must be overridden by multiagent-specific algorithm learners to
@@ -1042,7 +1039,7 @@ class Learner:
         module_id: ModuleID,
         hps: LearnerHyperparameters,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         """Computes the loss for a single module.
 
@@ -1071,7 +1068,7 @@ class Learner:
         module_ids_to_update: Optional[Sequence[ModuleID]] = None,
         timestep: int,
         **kwargs,
-    ) -> Mapping[ModuleID, Any]:
+    ) -> Dict[ModuleID, Any]:
         """Apply additional non-gradient based updates to this Algorithm.
 
         For example, this could be used to do a polyak averaging update
@@ -1170,7 +1167,8 @@ class Learner:
         """
         results_all_modules = {}
         module_ids = (
-            module_ids_to_update if module_ids_to_update is not None
+            module_ids_to_update
+            if module_ids_to_update is not None
             else self.module.keys()
         )
         for module_id in module_ids:
@@ -1232,10 +1230,10 @@ class Learner:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
+        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
             _reduce_mean_results
         ),
-    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Do `num_iters` minibatch updates given the original batch.
 
         Given a batch of episodes you can use this method to take more
@@ -1357,7 +1355,7 @@ class Learner:
 
         """
 
-    def set_state(self, state: Mapping[str, Any]) -> None:
+    def set_state(self, state: Dict[str, Any]) -> None:
         """Set the state of the learner.
 
         Args:
@@ -1384,7 +1382,7 @@ class Learner:
         self.set_module_state(module_state)
         self.set_optimizer_state(optimizer_state)
 
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self) -> Dict[str, Any]:
         """Get the state of the learner.
 
         Returns:
@@ -1397,7 +1395,7 @@ class Learner:
             "optimizer_state": self.get_optimizer_state(),
         }
 
-    def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
+    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of all optimizers currently registered in this Learner.
 
         Args:
@@ -1405,7 +1403,7 @@ class Learner:
         """
         raise NotImplementedError
 
-    def get_optimizer_state(self) -> Mapping[str, Any]:
+    def get_optimizer_state(self) -> Dict[str, Any]:
         """Returns the state of all optimizers currently registered in this Learner.
 
         Returns:
@@ -1583,7 +1581,7 @@ class Learner:
                 "(variables)!"
             )
 
-    def _check_result(self, result: Mapping[str, Any]) -> None:
+    def _check_result(self, result: Dict[str, Any]) -> None:
         """Checks whether the result has the correct format.
 
         All the keys should be referencing the module ids that got updated. There is a

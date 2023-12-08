@@ -1,4 +1,4 @@
-from typing import Any, Dict, Mapping
+from typing import Any, Dict
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.appo_learner import (
@@ -40,7 +40,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         module_id: ModuleID,
         hps: AppoLearnerHyperparameters,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
 
         values = fwd_out[SampleBatch.VF_PREDS]

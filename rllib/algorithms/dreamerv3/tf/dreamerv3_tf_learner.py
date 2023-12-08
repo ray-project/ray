@@ -7,7 +7,7 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from typing import Any, Dict, Mapping, Tuple
+from typing import Any, Dict, Tuple
 
 import gymnasium as gym
 
@@ -169,7 +169,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         module_id: ModuleID,
         hps: DreamerV3LearnerHyperparameters,
         batch: SampleBatch,
-        fwd_out: Mapping[str, TensorType],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         # World model losses.
         prediction_losses = self._compute_world_model_prediction_losses(
@@ -312,8 +312,8 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         hps: DreamerV3LearnerHyperparameters,
         rewards_B_T: TensorType,
         continues_B_T: TensorType,
-        fwd_out: Mapping[str, TensorType],
-    ) -> Mapping[str, TensorType]:
+        fwd_out: Dict[str, TensorType],
+    ) -> Dict[str, TensorType]:
         """Helper method computing all world-model related prediction losses.
 
         Prediction losses are used to train the predictors of the world model, which

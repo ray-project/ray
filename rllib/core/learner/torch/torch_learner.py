@@ -3,8 +3,8 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Dict,
     Hashable,
-    Mapping,
     Optional,
     Sequence,
     Union,
@@ -128,7 +128,7 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def compute_gradients(
-        self, loss_per_module: Mapping[str, TensorType], **kwargs
+        self, loss_per_module: Dict[str, TensorType], **kwargs
     ) -> ParamDict:
         for optim in self._optimizer_parameters:
             # set_to_none is a faster way to zero out the gradients
@@ -153,7 +153,7 @@ class TorchLearner(Learner):
             optim.step()
 
     @override(Learner)
-    def set_module_state(self, state: Mapping[str, Any]) -> None:
+    def set_module_state(self, state: Dict[str, Any]) -> None:
         """Sets the weights of the underlying MultiAgentRLModule"""
         state = convert_to_torch_tensor(state, device=self._device)
         return self._module.set_state(state)
@@ -177,7 +177,7 @@ class TorchLearner(Learner):
         self.set_optimizer_state(state)
 
     @override(Learner)
-    def get_optimizer_state(self) -> Mapping[str, Any]:
+    def get_optimizer_state(self) -> Dict[str, Any]:
         optimizer_name_state = {}
         for name, optim in self._named_optimizers.items():
             optim_state_dict = optim.state_dict()
@@ -186,7 +186,7 @@ class TorchLearner(Learner):
         return optimizer_name_state
 
     @override(Learner)
-    def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
+    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         for name, state_dict in state.items():
             if name not in self._named_optimizers:
                 raise ValueError(

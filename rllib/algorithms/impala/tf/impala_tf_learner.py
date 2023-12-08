@@ -1,4 +1,4 @@
-from typing import Mapping
+from typing import Dict
 
 from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearner,
@@ -26,7 +26,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         module_id: ModuleID,
         hps: ImpalaLearnerHyperparameters,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
         target_policy_dist = action_dist_class_train.from_logits(
