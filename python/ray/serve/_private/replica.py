@@ -33,6 +33,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
+    GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
@@ -41,7 +42,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import CONTROL_PLANE_CONCURRENCY_GROUP
-from ray.serve._private.grpc_util import GRPC_CONTEXT_ARG_NAME
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIMessageQueue,
@@ -797,7 +797,7 @@ class RayServeReplica:
             if GRPC_CONTEXT_ARG_NAME in inspect.signature(user_method).parameters:
                 result_generator = user_method(
                     user_request,
-                    request_metadata.grpc_context,
+                    grpc_context=request_metadata.grpc_context,
                 )
             else:
                 result_generator = user_method(user_request)
@@ -842,7 +842,7 @@ class RayServeReplica:
             if GRPC_CONTEXT_ARG_NAME in inspect.signature(runner_method).parameters:
                 result = await method_to_call(
                     user_request,
-                    request_metadata.grpc_context,
+                    grpc_context=request_metadata.grpc_context,
                 )
             else:
                 result = await method_to_call(user_request)

@@ -5,6 +5,7 @@ import grpc
 import pytest
 from google.protobuf.any_pb2 import Any as AnyProto
 
+from ray import cloudpickle
 from ray.serve._private.grpc_util import (
     DummyServicer,
     create_serve_grpc_server,
@@ -110,7 +111,13 @@ def test_grpc_server():
 def test_ray_serve_grpc_context_serializable():
     """RayServegRPCContext should be serializable."""
     context = RayServegRPCContext(FakeGrpcContext())
-    pickle.dumps(context)
+    pickled_context = pickle.dumps(context)
+    deserialized_context = pickle.loads(pickled_context)
+    assert deserialized_context.__dict__ == context.__dict__
+
+    cloudpickled_context = cloudpickle.dumps(context)
+    deserialized_context = pickle.loads(cloudpickled_context)
+    assert deserialized_context.__dict__ == context.__dict__
 
 
 if __name__ == "__main__":

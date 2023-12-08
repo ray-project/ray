@@ -121,7 +121,7 @@ class gRPCProxyRequest(ProxyRequest):
         self.method_name = "__call__"
         self.multiplexed_model_id = DEFAULT.VALUE
         # ray_serve_grpc_context is a class implemented by us to be able to serialize
-        # the object and pass into the deployment.
+        # the object and pass it into the deployment.
         self.ray_serve_grpc_context = RayServegRPCContext(context)
         self.setup_variables()
 

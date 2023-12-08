@@ -616,6 +616,20 @@ class gRPCProxy(GenericProxy):
         )
 
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+        def set_grpc_code_and_details(
+            context: grpc._cython.cygrpc._ServicerContext, status: ResponseStatus
+        ):
+            # Only the latest code and details will take effect. If the user already
+            # set them to a truthy value in the context, skip setting them with Serve's
+            # default values. By default, if nothing is set, the code is 0 and the
+            # details is "", which both are falsy. So if the user did not set them or
+            # if they're explicitly set to falsy values, such as None, Serve will
+            # continue to set them with our default values.
+            if not context.code():
+                context.set_code(status.code)
+            if not context.details():
+                context.set_details(status.message)
+
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -640,16 +654,7 @@ class gRPCProxy(GenericProxy):
                 else:
                     response = message
 
-            # Only the latest code and details will take effect. If the user already
-            # set them to a truthy value in the context, skip setting them with Serve's
-            # default values. By default, if nothing is set, the code is 0 and the
-            # details is "", which both are falsy. So if the user did not set them or
-            # if they're explicitly set to falsy values, such as None, Serve will
-            # continue to set them with our default values.
-            if not context.code():
-                context.set_code(status.code)
-            if not context.details():
-                context.set_details(status.message)
+            set_grpc_code_and_details(context, status)
 
             return response
 
@@ -677,16 +682,7 @@ class gRPCProxy(GenericProxy):
                 else:
                     yield message
 
-            # Only the latest code and details will take effect. If the user already
-            # set them to a truthy value in the context, skip setting them with Serve's
-            # default values. By default, if nothing is set, the code is 0 and the
-            # details is "", which both are falsy. So if the user did not set them or
-            # if they're explicitly set to falsy values, such as None, Serve will
-            # continue to set them with our default values.
-            if not context.code():
-                context.set_code(status.code)
-            if not context.details():
-                context.set_details(status.message)
+            set_grpc_code_and_details(context, status)
 
         return unary_stream if stream else unary_unary
 

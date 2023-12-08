@@ -10,8 +10,8 @@ class RayServegRPCContext:
     """Context manager to set and get gRPC context.
 
     This class implements most of the methods from ServicerContext
-    (see: https://grpc.github.io/grpc/python/grpc.html#grpc.ServicerContext) so it's
-    serializable and can pass with the request to be used on the deployment.
+    (see: https://grpc.github.io/grpc/python/grpc.html#grpc.ServicerContext). It's
+    serializable and can be passed with the request to be used on the deployment.
     """
 
     def __init__(self, grpc_context: grpc._cython.cygrpc._ServicerContext):
@@ -64,7 +64,7 @@ class RayServegRPCContext:
 
     def _request_id_metadata(self) -> List[Tuple[str, str]]:
         # Request id metadata should be carried over to the trailing metadata and passed
-        # back to the request client. This function helped to pick it out if existed.
+        # back to the request client. This function helps pick it out if it exists.
         for key, value in self._trailing_metadata:
             if key == "request_id":
                 return [(key, value)]

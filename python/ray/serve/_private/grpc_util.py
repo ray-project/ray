@@ -3,8 +3,6 @@ from typing import Sequence
 import grpc
 from grpc.aio._server import Server
 
-GRPC_CONTEXT_ARG_NAME = "grpc_context"
-
 
 class gRPCServer(Server):
     """Custom gRPC server to override gRPC method methods.
