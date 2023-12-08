@@ -1169,7 +1169,9 @@ class ServeControllerAvatar:
         http_proxy_port: int = 8000,
     ):
         try:
-            self._controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+            self._controller = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
         except ValueError:
             self._controller = None
         if self._controller is None:

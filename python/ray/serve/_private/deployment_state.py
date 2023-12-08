@@ -35,7 +35,6 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
-    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
