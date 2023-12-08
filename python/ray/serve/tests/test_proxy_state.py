@@ -451,8 +451,8 @@ def test_proxy_state_reconcile_draining_success():
     # Start with HEALTHY state
     proxy_state = _create_proxy_state(status=ProxyStatus.HEALTHY, timer=timer)
     # Simulate health-checks passing
-    proxy_state._actor_proxy_wrapper.is_healhy_response = True
-    # Simulate health-checks passing
+    proxy_state._actor_proxy_wrapper.is_healthy_response = True
+    # Simulate is_drained returning false
     proxy_state._actor_proxy_wrapper.is_drained_response = False
 
     for _ in range(10):
