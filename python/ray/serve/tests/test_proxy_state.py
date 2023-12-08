@@ -8,10 +8,7 @@ import pytest
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import ProxyStatus
-from ray.serve._private.constants import (
-    PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
-    SERVE_CONTROLLER_NAME,
-)
+from ray.serve._private.constants import PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 from ray.serve._private.proxy_state import (
     ProxyState,
     ProxyStateManager,
@@ -116,7 +113,6 @@ def _create_proxy_state_manager(
 ) -> (ProxyStateManager, ClusterNodeInfoCache):
     return (
         ProxyStateManager(
-            SERVE_CONTROLLER_NAME,
             config=http_options,
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
