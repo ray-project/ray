@@ -31,7 +31,7 @@ from ray.serve._private.utils import (
     Default,
     ensure_serialization_context,
     extract_self_if_method_call,
-    get_random_letters,
+    get_random_string,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -533,7 +533,7 @@ def run(
             "name": deployment._name,
             "replica_config": deployment._replica_config,
             "deployment_config": deployment._deployment_config,
-            "version": deployment._version or get_random_letters(),
+            "version": deployment._version or get_random_string(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "docs_path": deployment._docs_path,
