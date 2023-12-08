@@ -614,7 +614,7 @@ class ServeController:
             and proxy_state_is_shutdown
         ):
             logger.warning(
-                "All resources have shut down, shutting down controller!",
+                "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},
             )
             _controller_actor = ray.get_runtime_context().current_actor
