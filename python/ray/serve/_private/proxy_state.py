@@ -454,7 +454,7 @@ class ProxyState:
             assert self._status in {ProxyStatus.HEALTHY, ProxyStatus.DRAINING}
 
             should_check_health = self._last_health_check_time is None or (
-                self._timer.time() - self._last_health_check_time > PROXY_HEALTH_CHECK_PERIOD_S
+                self._timer.time() - self._last_health_check_time >= PROXY_HEALTH_CHECK_PERIOD_S
             )
             # Perform health-check for proxy's actor (if necessary)
             if should_check_health:
@@ -488,7 +488,7 @@ class ProxyState:
                     self.try_update_status(ProxyStatus.HEALTHY)
                 else:
                     should_check_drain = self._last_drain_check_time is None or (
-                        self._timer.time() - self._last_drain_check_time > PROXY_DRAIN_CHECK_PERIOD_S
+                        self._timer.time() - self._last_drain_check_time >= PROXY_DRAIN_CHECK_PERIOD_S
                     )
 
                     if should_check_drain:
