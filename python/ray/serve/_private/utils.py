@@ -138,12 +138,8 @@ def get_random_letters(length=6):
     return "".join(random.choices(string.ascii_letters, k=length))
 
 
-def format_actor_name(actor_name, controller_name=None, *modifiers):
-    if controller_name is None:
-        name = actor_name
-    else:
-        name = "{}:{}".format(controller_name, actor_name)
-
+def format_actor_name(actor_name, *modifiers):
+    name = actor_name
     for modifier in modifiers:
         name += "-{}".format(modifier)
 

@@ -56,10 +56,8 @@ class ServeControllerClient:
     def __init__(
         self,
         controller: ActorHandle,
-        controller_name: str,
     ):
         self._controller: ServeController = controller
-        self._controller_name = controller_name
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())

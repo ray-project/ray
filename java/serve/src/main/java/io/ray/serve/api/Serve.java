@@ -77,7 +77,6 @@ public class Serve {
     PyActorHandle controllerAvatar =
         Ray.actor(
                 PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"),
-                Constants.SERVE_CONTROLLER_NAME,
                 httpPort)
             .setName(Constants.SERVE_CONTROLLER_NAME + "_AVATAR")
             .setLifetime(ActorLifetime.DETACHED)

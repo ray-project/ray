@@ -163,7 +163,6 @@ def _start_controller(
         system_logging_config = LoggingConfig(**system_logging_config)
 
     controller = ServeController.options(**controller_actor_options).remote(
-        SERVE_CONTROLLER_NAME,
         http_config=http_options,
         grpc_options=grpc_options,
         system_logging_config=system_logging_config,
@@ -213,7 +212,7 @@ async def serve_start_async(
     except RayServeException:
         pass
 
-    controller, controller_name = (
+    controller = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
         .remote(http_options, grpc_options, system_logging_config, **kwargs)
@@ -221,7 +220,6 @@ async def serve_start_async(
 
     client = ServeControllerClient(
         controller,
-        controller_name,
     )
     _set_global_client(client)
     logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
@@ -288,13 +286,12 @@ def serve_start(
     except RayServeException:
         pass
 
-    controller, controller_name = _start_controller(
+    controller = _start_controller(
         http_options, grpc_options, system_logging_config, **kwargs
     )
 
     client = ServeControllerClient(
         controller,
-        controller_name,
     )
     _set_global_client(client)
     logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
