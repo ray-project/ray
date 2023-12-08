@@ -11,8 +11,8 @@ from ray.serve._private.grpc_util import (
     create_serve_grpc_server,
     gRPCServer,
 )
-from ray.serve._private.test_utils import FakeGrpcContext
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.tests.common.utils import FakeGrpcContext
 
 
 def fake_service_handler_factory(service_method: str, stream: bool) -> Callable:
