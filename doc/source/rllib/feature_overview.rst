@@ -6,27 +6,10 @@
 
     .. container:: buttons-float-left
 
-        .. https://docs.google.com/drawings/d/1i_yoxocyEOgiCxcfRZVKpNh0R_-2tQZOX4syquiytAI/edit?skip_itp2_check=true&pli=1
-
-        .. image:: images/sigils/rllib-sigil-tf-and-torch.svg
-            :width: 100
-            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py
-
-    .. container::
-
-        The most **popular deep-learning frameworks**: `PyTorch <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py>`_ and `TensorFlow
-        (tf1.x/2.x static-graph/eager/traced) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`_.
-
-
-.. container:: clear-both
-
-    .. container:: buttons-float-left
-
         .. https://docs.google.com/drawings/d/1yEOfeHvuLi5EzZKtGFQMfQ2NINzi3bUBrU3Z7bCiuKs/edit
 
         .. image:: images/sigils/rllib-sigil-distributed-learning.svg
             :width: 100
-            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/tune/framework.py
 
     .. container::
 
