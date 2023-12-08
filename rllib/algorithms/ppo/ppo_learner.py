@@ -81,49 +81,6 @@ class PPOLearner(Learner):
         batch,
         episodes,
     ):
-        #TEST
-        """import pickle
-        import os
-        import torch
-        old_path = "/Users/sven/ray_results/PPO_2023-11-14_14-55-07/PPO_CartPole-v1_6b976_00000_0_2023-11-14_14-55-07/"
-        with open(os.path.join(old_path, "batch_data.pkl"), "rb") as file:
-            old_batch = pickle.load(file)
-        old_advantages, old_value_targets = compute_advantages_and_value_targets(
-            values=old_batch["vf_preds"],
-            rewards=old_batch[SampleBatch.REWARDS],
-            terminateds=old_batch[SampleBatch.TERMINATEDS],
-            truncateds=old_batch[SampleBatch.TRUNCATEDS],
-            gamma=self.hps.gamma,
-            lambda_=self.hps.lambda_,
-        )
-        old_state_dict = torch.load(os.path.join(old_path, "model_weights.pth"))
-        old_to_new_mapping = {
-            '_hidden_layers.0._model.0.weight': "encoder.actor_encoder.net.mlp.0.weight",
-            '_hidden_layers.0._model.0.bias': "encoder.actor_encoder.net.mlp.0.bias",
-            '_hidden_layers.1._model.0.weight': "encoder.actor_encoder.net.mlp.2.weight",
-            '_hidden_layers.1._model.0.bias': "encoder.actor_encoder.net.mlp.2.bias",
-            '_logits._model.0.weight': "pi.net.mlp.0.weight",
-            '_logits._model.0.bias': "pi.net.mlp.0.bias",
-
-            '_value_branch_separate.0._model.0.weight': "encoder.critic_encoder.net.mlp.0.weight",
-            '_value_branch_separate.0._model.0.bias': "encoder.critic_encoder.net.mlp.0.bias",
-            '_value_branch_separate.1._model.0.weight': "encoder.critic_encoder.net.mlp.2.weight",
-            '_value_branch_separate.1._model.0.bias': "encoder.critic_encoder.net.mlp.2.bias",
-            '_value_branch._model.0.weight': "vf.net.mlp.0.weight",
-            '_value_branch._model.0.bias': "vf.net.mlp.0.bias",
-        }
-        sd = self.module["default_policy"].state_dict()
-        for k, v in old_state_dict.items():
-            nk = old_to_new_mapping[k]
-            assert nk in sd and sd[nk].shape == v.shape
-            sd[nk] = v
-        self.module["default_policy"].load_state_dict(sd)
-        old_batch.set_get_interceptor(None)
-        old_batch.pop("infos")
-        vf_preds_from_old_batch = convert_to_numpy(self._compute_values(old_batch))
-        """
-        #END TEST
-
         batch = batch or {}
         if not episodes:
             return batch, episodes
@@ -132,6 +89,7 @@ class PPOLearner(Learner):
         # (and distributed forward pass) for both vf predictions AND the bootstrap
         # vf computations.
         orig_truncateds = self._add_ts_to_episodes_and_truncate(episodes)
+        episode_lens_p1 = [len(e) for e in episodes]
 
         # Call the learner connector (on the artificially elongated episodes)
         # in order to get the batch to pass through the module for vf (and
@@ -143,33 +101,35 @@ class PPOLearner(Learner):
         )
         # Perform the value model's forward pass.
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
+        # Remove all zero-padding again, if applicable for the upcoming
+        # GAE computations.
+        vf_preds = self._unpad_if_necessary(episode_lens_p1, vf_preds)
         # Compute advantages and value targets.
         advantages, value_targets = compute_advantages_and_value_targets(
             values=vf_preds,
-            rewards=batch_for_vf[SampleBatch.REWARDS],
-            terminateds=batch_for_vf[SampleBatch.TERMINATEDS],
-            truncateds=batch_for_vf[SampleBatch.TRUNCATEDS],
+            rewards=self._unpad_if_necessary(
+                episode_lens_p1, batch_for_vf[SampleBatch.REWARDS]
+            ),
+            terminateds=self._unpad_if_necessary(
+                episode_lens_p1, batch_for_vf[SampleBatch.TERMINATEDS]
+            ),
+            truncateds=self._unpad_if_necessary(
+                episode_lens_p1, batch_for_vf[SampleBatch.TRUNCATEDS]
+            ),
             gamma=self.hps.gamma,
             lambda_=self.hps.lambda_,
         )
 
-        # Remove the extra timesteps again from vf_preds and advantages and
-        # un-zero-pad, if applicable.
-        # This makes sure that the new computed data (advantages, value targets, etc..)
-        # is in the plain 1D format (no time axis) as other custom connector created
-        # data would be in during the upcoming pass through the learner connector.
-        orig_shape = vf_preds.shape
-        episode_lens = [len(e) for e in episodes]
+        # Remove the extra timesteps again from vf_preds and advantages.
         (
             batch[SampleBatch.VF_PREDS],
             advantages,
             batch[Postprocessing.VALUE_TARGETS],
-        ) = (
-            self._remove_last_values_2d_and_unpad(
-                episode_lens, vf_preds, advantages, value_targets
-            ) if len(orig_shape) == 2 else self._remove_last_values_1d(
-                episode_lens, vf_preds, advantages, value_targets
-            )
+        ) = self._remove_last_episode_timesteps(
+            episode_lens_p1,
+            vf_preds,
+            advantages,
+            value_targets,
         )
         # Standardize advantages (used for more stable and better weighted
         # policy gradient computations).
@@ -177,7 +137,7 @@ class PPOLearner(Learner):
             (advantages - advantages.mean()) / max(1e-4, advantages.std())
         )
 
-        # Remove the extra (artificial) timesteps again at the end of the episodes.
+        # Remove the extra (artificial) timesteps again at the end of all episodes.
         self._remove_ts_from_episodes_and_restore_truncateds(episodes, orig_truncateds)
 
         return batch, episodes
@@ -228,7 +188,7 @@ class PPOLearner(Learner):
 
     @staticmethod
     def _add_ts_to_episodes_and_truncate(episodes):
-        """Adds an additional (artificial) timestep to an episode.
+        """Adds an artificial timestep to an episode at the end.
 
         Useful for value function bootstrapping, where it is required to compute
         a forward pass for the very last timestep within the episode,
@@ -291,7 +251,7 @@ class PPOLearner(Learner):
             episode.is_truncated = orig_truncated
 
     @staticmethod
-    def _remove_last_values_1d(episode_lens, *data):
+    def _remove_last_episode_timesteps(episode_lens, *data):
         slices = []
         sum = 0
         for len_ in episode_lens:
@@ -303,33 +263,64 @@ class PPOLearner(Learner):
         return tuple(ret)
 
     @staticmethod
-    def _remove_last_values_2d_and_unpad(episode_lens, *data_zero_padded):
-        ret = []
-        for data in data_zero_padded:
-            new_data = []
-            row_idx = 0
-            T = data.shape[1]
-            for len_ in episode_lens:
-                # Calculate how many full rows this array occupies and how many elements are
-                # in the last, potentially partial row.
-                num_rows, col_idx = divmod(len_, T)
-                if col_idx == 0:
-                    num_rows -= 1
-                col_idx -= 1
-    
-                # If the array spans multiple full rows, fully include these rows.
-                for i in range(num_rows):
-                    new_data.append(data[row_idx + i])
-                row_idx += num_rows
-    
-                # If there are elements in the last, potentially partial row, find the
-                # column index and replace the last element with 0.
-                #data[row_idx, col_idx] = 0.0
-                new_data.append(data[row_idx, :col_idx])
-    
-                # Move to the next row for the next array.
+    def _unpad_if_necessary(episode_lens, data):
+        new_data = []
+        row_idx = 0
+        # Assert we only have B and T dimensions.
+        assert len(data.shape) == 2
+
+        T = data.shape[1]
+        for len_ in episode_lens:
+            # Calculate how many full rows this array occupies and how many elements are
+            # in the last, potentially partial row.
+            num_rows, col_idx = divmod(len_, T)
+            #if col_idx == 0:
+            #    num_rows -= 1
+            #col_idx -= 1
+
+            # If the array spans multiple full rows, fully include these rows.
+            for i in range(num_rows):
+                new_data.append(data[row_idx])
                 row_idx += 1
 
-            ret.append(np.concatenate(new_data))
+            # If there are elements in the last, potentially partial row, add this
+            # partial row as well.
+            if col_idx > 0:
+                new_data.append(data[row_idx, :col_idx])
 
-        return tuple(ret)
+                # Move to the next row for the next array (skip the zero-padding zone).
+                row_idx += 1
+
+        return np.concatenate(new_data)
+
+    #@staticmethod
+    #def _remove_last_values_2d_and_unpad(episode_lens, *data_zero_padded):
+    #    ret = []
+    #    for data in data_zero_padded:
+    #        new_data = []
+    #        row_idx = 0
+    #        T = data.shape[1]
+    #        for len_ in episode_lens:
+    #            # Calculate how many full rows this array occupies and how many elements are
+    #            # in the last, potentially partial row.
+    #            num_rows, col_idx = divmod(len_, T)
+    #            if col_idx == 0:
+    #                num_rows -= 1
+    #            col_idx -= 1
+    
+    #            # If the array spans multiple full rows, fully include these rows.
+    #            for i in range(num_rows):
+    #                new_data.append(data[row_idx + i])
+    #            row_idx += num_rows
+    
+    #            # If there are elements in the last, potentially partial row, find the
+    #            # column index and replace the last element with 0.
+    #            #data[row_idx, col_idx] = 0.0
+    #            new_data.append(data[row_idx, :col_idx])
+    
+    #            # Move to the next row for the next array.
+    #            row_idx += 1
+
+    #        ret.append(np.concatenate(new_data))
+
+    #    return tuple(ret)

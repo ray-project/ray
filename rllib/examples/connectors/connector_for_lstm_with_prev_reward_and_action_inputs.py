@@ -89,17 +89,17 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         # Use new API stack.
-        #.experimental(_enable_new_api_stack=True)
+        .experimental(_enable_new_api_stack=True)
         .framework(args.framework)
         .environment(StatelessCartPole)#"CartPole-v1")
         # And new EnvRunner.
         .rollouts(
-            #env_runner_cls=SingleAgentEnvRunner,
-            #sampling_connectors=make_sampling_connectors,
+            env_runner_cls=SingleAgentEnvRunner,
+            sampling_connectors=make_sampling_connectors,
         )
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .training(
-            #learner_connector=make_learner_connector,
+            learner_connector=make_learner_connector,
             num_sgd_iter=5,
             vf_loss_coeff=0.0001,
             train_batch_size=512,
