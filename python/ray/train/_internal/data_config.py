@@ -4,6 +4,7 @@ from typing import Dict, List, Literal, Optional, Union
 import ray
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
+from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data.preprocessor import Preprocessor
 
 # TODO(justinvyu): Fix the circular import error
@@ -94,21 +95,14 @@ class DataConfig:
             ds = ds.copy(ds)
             ds.context.execution_options = copy.deepcopy(self._execution_options)
 
-            # If CPU or GPU resource limits are not set,
-            # exclude the resources used by training from the resource limits.
-            # TODO(hchen): We calculate the resource limits based on the current
-            # cluster resources here, which means that auto-scaling is not supported.
-            # This should be fixed when we want to support auto-scaling for Ray Train.
-            resource_limits = ds.context.execution_options.resource_limits
-            cluster_resources = ray.cluster_resources()
-            if resource_limits.cpu is None:
-                resource_limits.cpu = (
-                    cluster_resources.get("CPU", 0) - self._num_train_cpus
+            # Add training-reserved resources to Data's exclude_resources.
+            ds.context.execution_options.exclude_resources = (
+                ds.context.execution_options.exclude_resources.add(
+                    ExecutionResources(
+                        cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                    )
                 )
-            if resource_limits.gpu is None:
-                resource_limits.gpu = (
-                    cluster_resources.get("GPU", 0) - self._num_train_gpus
-                )
+            )
 
             if name in datasets_to_split:
                 for i, split in enumerate(

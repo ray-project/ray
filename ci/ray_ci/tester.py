@@ -12,6 +12,7 @@ from ci.ray_ci.builder_container import (
     DEFAULT_PYTHON_VERSION,
     DEFAULT_ARCHITECTURE,
 )
+from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 
@@ -207,7 +208,7 @@ def _get_container(
     shard_start = worker_id * parallelism_per_worker
     shard_end = (worker_id + 1) * parallelism_per_worker
 
-    return TesterContainer(
+    return LinuxTesterContainer(
         build_name or f"{team}build",
         test_envs=test_env,
         shard_count=shard_count,
