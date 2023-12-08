@@ -134,6 +134,7 @@ def block_until_http_ready(
         time.sleep(backoff_time_s)
 
 
+# Match the standard alphabet used for UUIDs.
 RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
 
 def get_random_string(length=8):
