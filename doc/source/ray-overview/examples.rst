@@ -281,7 +281,6 @@ Ray Examples
 
         Training One Million ML Models in Record Time with Ray
 
-
     .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item tuning
         :link: /tune/tutorials/tune-run

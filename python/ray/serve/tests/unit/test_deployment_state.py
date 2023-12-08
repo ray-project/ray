@@ -38,7 +38,7 @@ from ray.serve._private.deployment_state import (
 from ray.serve._private.test_utils import MockKVStore, MockTimer
 from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
-    get_random_letters,
+    get_random_string,
 )
 
 
@@ -312,7 +312,7 @@ def deployment_info(
     if version is not None:
         code_version = version
     else:
-        code_version = get_random_letters()
+        code_version = get_random_string()
 
     version = DeploymentVersion(
         code_version, info.deployment_config, info.replica_config.ray_actor_options
@@ -372,7 +372,7 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
     if version is None:
-        version = DeploymentVersion(get_random_letters(), DeploymentConfig(), {})
+        version = DeploymentVersion(get_random_string(), DeploymentConfig(), {})
 
     class MockVersionedReplica(VersionedReplica):
         def __init__(self, version: DeploymentVersion):
@@ -2154,7 +2154,7 @@ def test_scale_num_replicas(
     """
 
     # State
-    version = get_random_letters()
+    version = get_random_string()
     deployment_id = DeploymentID("test_deployment", "test_app")
 
     # Create deployment state manager
