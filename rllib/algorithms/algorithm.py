@@ -778,7 +778,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     modules_to_load=modules_to_load,
                     rl_module_ckpt_dirs=rl_module_ckpt_dirs,
                 )
-            # Setup proper policies-to-train/shoul-module-be-updated functions
+            # Setup proper policies-to-train/should-module-be-updated functions
             # on the LearnerGroup.
             self.learner_group.set_should_module_be_updated_fn(
                 self.config.policies_to_train
