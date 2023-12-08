@@ -78,7 +78,7 @@ cdef class EmptyFunctionDescriptor(FunctionDescriptor):
 
     @property
     def repr(self):
-        return "(empty)"
+        return "FunctionDescriptor(empty)"
 
 
 FunctionDescriptor_constructor_map[<int>JavaFunctionDescriptorType] = \
