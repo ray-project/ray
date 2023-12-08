@@ -370,12 +370,20 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             other_agent_batches: Optional[SampleBatch] = None,
             episode: Optional["Episode"] = None,
         ):
+            print(
+                f"start of postprocess_trajectory; lens: "
+                f"obs={sample_batch['obs'].shape[0]} "
+                f"actions={sample_batch['actions'].shape[0]} "
+                f"vf_preds={sample_batch[SampleBatch.VF_PREDS].shape[0]} "
+            )
+
             # Call super's postprocess_trajectory first.
             # sample_batch = super().postprocess_trajectory(
             #    sample_batch, other_agent_batches, episode
             # )
 
             if not self.config["vtrace"]:
+                assert False
                 sample_batch = compute_gae_for_sample_batch(
                     self, sample_batch, other_agent_batches, episode
                 )
@@ -383,6 +391,14 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 # Add the SampleBatch.VALUES_BOOTSTRAPPED column, which we'll need
                 # inside the loss for vtrace calculations.
                 sample_batch = compute_bootstrap_value(sample_batch, self)
+
+            print(
+                "after postprocessing trajectory: "
+                f"len obs={sample_batch['obs'].shape[0]} "
+                f"actions={sample_batch['actions'].shape[0]} "
+                f"vf_preds={sample_batch['vf_preds'].shape[0]} "
+                f"bootstrap={sample_batch[SampleBatch.VALUES_BOOTSTRAPPED].shape[0]} "
+            )
 
             return sample_batch
 

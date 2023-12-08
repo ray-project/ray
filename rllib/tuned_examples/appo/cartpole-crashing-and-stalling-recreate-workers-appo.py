@@ -38,6 +38,7 @@ config = (
         disable_env_checking=True,
     )
     .rollouts(
+        #enable_connectors=False,
         num_rollout_workers=1,
         num_envs_per_worker=1,
     )
@@ -68,7 +69,11 @@ config = (
     #)
 )
 
+#import ray
+
+#ray.init(local_mode=True)
+
 #TODO
-algo = config.framework("tf").build()
+algo = config.framework("tf2").build()
 for _ in range(1000):
-    algo.train()
+    print(algo.train())

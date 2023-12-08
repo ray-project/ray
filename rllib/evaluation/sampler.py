@@ -89,13 +89,13 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
     @override(InputReader)
     def next(self) -> SampleBatchType:
         batches = [self.get_data()]
-        print(f"In SyncSampler.next() after `get_data()` lengths={[len(b['default_policy']) for b in batches]}")
+        print(f"In SyncSampler.next() after `get_data()` lengths={[len(b) for b in batches]}")
         batches.extend(self.get_extra_batches())
-        print(f"In SyncSampler.next() after `get_extra_batches()` lengths={[len(b['default_policy']) for b in batches]}")
+        print(f"In SyncSampler.next() after `get_extra_batches()` lengths={[len(b) for b in batches]}")
         if len(batches) == 0:
             raise RuntimeError("No data available from sampler.")
         ret = concat_samples(batches)
-        print(f"In SyncSampler.next() ret length={len(ret['default_policy'])}")
+        print(f"In SyncSampler.next() ret length={len(ret)}")
         return ret
 
     @abstractmethod

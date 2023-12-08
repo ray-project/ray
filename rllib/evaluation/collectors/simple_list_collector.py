@@ -424,6 +424,7 @@ class SimpleListCollector(SampleCollector):
         build: bool = False,
     ) -> Union[None, SampleBatch, MultiAgentBatch]:
         assert False
+
         episode_id = episode.episode_id
         policy_collector_group = episode.batch_builder
 

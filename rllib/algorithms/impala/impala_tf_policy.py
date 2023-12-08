@@ -424,6 +424,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             other_agent_batches: Optional[SampleBatch] = None,
             episode: Optional["Episode"] = None,
         ):
+            assert False
             # Call super's postprocess_trajectory first.
             # sample_batch = super().postprocess_trajectory(
             #    sample_batch, other_agent_batches, episode

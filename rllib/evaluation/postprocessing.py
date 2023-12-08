@@ -258,8 +258,6 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
          The altered SampleBatch (with the extra SampleBatch.VALUES_BOOTSTRAPPED
          column).
     """
-    print(f"before postprocessing trajectory: len obs={sample_batch['obs'].shape[0]} actions={sample_batch['actions'].shape[0]} vf_preds={sample_batch[SampleBatch.VF_PREDS].shape[0]}")
-
     # Trajectory is actually complete -> last r=0.0.
     if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0
@@ -325,7 +323,6 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
         sample_batch[SampleBatch.VALUES_BOOTSTRAPPED] = np.expand_dims(
             sample_batch[SampleBatch.VALUES_BOOTSTRAPPED], axis=1
         )
-    print(f"after postprocessing trajectory: last_r={last_r} len obs={sample_batch['obs'].shape[0]} actions={sample_batch['actions'].shape[0]} vf_preds={vf_preds.shape[0]} bootstrap={sample_batch[SampleBatch.VALUES_BOOTSTRAPPED].shape[0]}")
 
     return sample_batch
 

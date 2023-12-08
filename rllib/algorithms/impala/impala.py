@@ -860,12 +860,11 @@ class Impala(Algorithm):
             strategy=cf.placement_strategy,
         )
 
-    def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]):
+    def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]) -> None:
         """Concatenate batches that are being returned from rollout workers
 
         Args:
-            batches: batches of experiences from rollout workers
-
+            batches: List of batches of experiences from EnvRunners.
         """
 
         def aggregate_into_larger_batch():
@@ -878,7 +877,25 @@ class Impala(Algorithm):
                 self.batch_being_built = []
 
         for batch in batches:
-            print(f"in concatenate_batches_and_pre_queue {batch['default_policy']['action_dist_inputs'].shape[0]}")
+            # TODO (sven): Strange bug in tf/tf2 after a RolloutWorker crash and proper
+            #  restart. The bug is related to (old, non-V2) connectors being used and
+            #  seems to happen inside the AgentCollector's `add_action_reward_next_obs`
+            #  method, at the end of which the number of vf_preds (and all other
+            #  extra action outs) in the batch is one smaller than the number of obs/
+            #  actions/rewards, which leads to a malformed train batch. IMPALA/APPO then
+            #  crash inside the loss function (during v-trace operations). The following
+            #  if block prevents this from happening and it can be removed once we are
+            #  on the new API stack for good (and use the new connectors and also no
+            #  longer AgentCollectors):
+            if (
+                self.config.batch_mode == "truncate_episodes"
+                and self.config.enable_connectors
+                and self.config.framework_str in ["tf", "tf2"]
+                and SampleBatch.VF_PREDS in batch
+                and batch[SampleBatch.VF_PREDS].shape[0] != batch[SampleBatch.REWARDS].shape[0]
+            ):
+                continue
+
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
 
@@ -919,8 +936,6 @@ class Impala(Algorithm):
                     timeout_seconds=self._timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
-                if len(sample_batches) > 0:
-                    print(f"in IMPALA.get_samples_from_workers: {[b[1]['default_policy']['action_dist_inputs'].shape[0] for b in sample_batches]}")
             elif (
                 self.workers.local_worker()
                 and self.workers.local_worker().async_env is not None
@@ -1068,7 +1083,6 @@ class Impala(Algorithm):
         processed_batches = []
 
         for batch in batches:
-            print(f"in process_experiences_directly {batch['default_policy']['action_dist_inputs'].shape[0]}")#TODO
             assert not isinstance(
                 batch, ObjectRef
             ), "process_experiences_directly can not handle ObjectRefs. "

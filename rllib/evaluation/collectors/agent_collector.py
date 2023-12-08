@@ -229,6 +229,9 @@ class AgentCollector:
         self.buffers[SampleBatch.EPS_ID][0].append(self.episode_id)
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
+        if 'vf_preds' in self.buffers:
+            assert len(self.buffers['vf_preds'][0]) == len(self.buffers['obs'][0])
+
     def add_action_reward_next_obs(self, input_values: Dict[str, TensorType]) -> None:
         """Adds the given dictionary (row) of values to the Agent's trajectory.
 
@@ -237,6 +240,13 @@ class AgentCollector:
                 Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS, and NEXT_OBS.
         """
+        if 'vf_preds' in self.buffers:
+            assert len(self.buffers['vf_preds'][0]) == len(self.buffers['obs'][0]), (
+                f"vf_preds={len(self.buffers['vf_preds'][0])} obs={len(self.buffers['obs'][0])}"
+            )
+        else:
+            print("vf_preds NOT in buffer")
+
         if self.unroll_id is None:
             self.unroll_id = AgentCollector._next_unroll_id
             AgentCollector._next_unroll_id += 1
@@ -266,7 +276,9 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
+            print(f"k={k}")
             if k not in self.buffers:
+                print(f"\tnot in buffer")
                 if self.training and k.startswith("state_out"):
                     vr = self.view_requirements[k]
                     data_col = vr.data_col or k
@@ -274,6 +286,7 @@ class AgentCollector:
                         data_col, vr, build_for_inference=False
                     )
                 else:
+                    print(f"\t\tnot state_out -> calling build_buffers")
                     self._build_buffers({k: v})
             # Do not flatten infos, state_out and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
@@ -310,6 +323,10 @@ class AgentCollector:
                     # Add back dummy value
                     if k in self.data_cols_with_dummy_values:
                         sub_list.append(dummy)
+
+        assert len(self.buffers['vf_preds'][0]) == len(self.buffers['obs'][0]), (
+            f"vf_preds={len(self.buffers['vf_preds'][0])} obs={len(self.buffers['obs'][0])}"
+        )
 
         # In inference mode, we don't need to keep all of trajectory in memory
         # we only need to keep the steps required. We can pop from the beginning to
@@ -386,6 +403,9 @@ class AgentCollector:
             batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
 
         batch = self._get_sample_batch(batch_data)
+
+        if 'vf_preds' in self.buffers:
+            assert len(self.buffers['vf_preds'][0]) == len(self.buffers['obs'][0])
         return batch
 
     # TODO: @kouorsh we don't really need view_requirements anymore since it's already
@@ -410,6 +430,10 @@ class AgentCollector:
             SampleBatch: The built SampleBatch for this agent, ready to go into
             postprocessing.
         """
+        print(
+            f"\t\tinside AgentCollector.build_for_training(): self.buffers "
+            f"vf_preds={len(self.buffers['vf_preds'][0])} obs={len(self.buffers['obs'][0])}"
+        )
         batch_data = {}
         np_data = {}
         for view_col, view_req in view_requirements.items():
@@ -531,6 +555,8 @@ class AgentCollector:
         # Reset our unroll_id.
         self.unroll_id = None
 
+        assert len(self.buffers['vf_preds'][0]) == len(self.buffers['obs'][0])
+
         return batch
 
     def _build_buffers(self, single_row: Dict[str, TensorType]) -> None:
@@ -585,6 +611,9 @@ class AgentCollector:
                 # Store an example data struct so we know, how to unflatten
                 # each data col.
                 self.buffer_structs[col] = data
+
+        if 'vf_preds' in self.buffers:
+            assert len(self.buffers['vf_preds'][0]) == len(self.buffers['obs'][0])
 
     def _get_sample_batch(self, batch_data: Dict[str, TensorType]) -> SampleBatch:
         """Returns a SampleBatch from the given data dictionary. Also updates the
@@ -679,6 +708,8 @@ class AgentCollector:
 
                 self._build_buffers({data_col: fill_value})
 
+        assert len(self.buffers['vf_preds'][0]) == len(self.buffers['obs'][0])
+
         return is_state
 
     def _prepare_for_data_cols_with_dummy_values(self, data_col):
@@ -687,3 +718,4 @@ class AgentCollector:
         # that view requirements viewing these is not shifted by 1
         for b in self.buffers[data_col]:
             b.append(b[-1])
+        assert len(self.buffers['vf_preds'][0]) == len(self.buffers['obs'][0])
