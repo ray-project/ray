@@ -89,6 +89,13 @@ class ExecutionOptions:
     Attributes:
         resource_limits: Set a soft limit on the resource usage during execution.
             This is not supported in bulk execution mode. Autodetected by default.
+        exclude_resources: Amount of resources to exclude from Ray Data.
+            Set this if you have other workloads running on the same cluster.
+            Note,
+            - If using Ray Data with Ray Train, training resources will be
+            automatically excluded.
+            - For each resource type, resource_limits and exclude_resources can
+            not be both set.
         locality_with_output: Set this to prefer running tasks on the same node as the
             output node (node driving the execution). It can also be set to a list of
             node ids to spread the outputs across those nodes. Off by default.
@@ -105,6 +112,10 @@ class ExecutionOptions:
 
     resource_limits: ExecutionResources = field(default_factory=ExecutionResources)
 
+    exclude_resources: ExecutionResources = field(
+        default_factory=lambda: ExecutionResources(cpu=0, gpu=0, object_store_memory=0)
+    )
+
     locality_with_output: Union[bool, List[NodeIdStr]] = False
 
     preserve_order: bool = False
@@ -112,3 +123,15 @@ class ExecutionOptions:
     actor_locality_enabled: bool = True
 
     verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "0")))
+
+    def validate(self) -> None:
+        """Validate the options."""
+        for attr in ["cpu", "gpu", "object_store_memory"]:
+            if (
+                getattr(self.resource_limits, attr) is not None
+                and getattr(self.exclude_resources, attr, 0) > 0
+            ):
+                raise ValueError(
+                    "resource_limits and exclude_resources cannot "
+                    f" both be set for {attr} resource."
+                )
