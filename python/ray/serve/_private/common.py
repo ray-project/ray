@@ -350,7 +350,7 @@ class ProxyStatus(str, Enum):
 
 
 class ServeComponentType(str, Enum):
-    DEPLOYMENT = "deployment"
+    REPLICA = "replica"
 
 
 @dataclass
