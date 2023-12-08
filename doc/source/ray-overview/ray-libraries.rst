@@ -12,7 +12,7 @@ more information.
 .. dropdown:: Adding Your Integration
 
     To add an integration add an entry to this file, using the same
-    ``grid-item-card`` directive that the other examples use. That's all!
+    ``grid-item-card`` directive that the other examples use.
 
 .. grid:: 1 2 2 3
     :gutter: 1
