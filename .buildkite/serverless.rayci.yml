@@ -29,7 +29,8 @@ steps:
         --test-env=RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
         --parallelism-per-worker 3
         --only-tags spark_plugin_tests
-        --except-tags kubernetes 
+        --except-tags kubernetes
+        --test_timeout 1500
 
   - label: ":serverless: serverless: flaky tests"
     tags:
