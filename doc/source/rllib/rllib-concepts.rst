@@ -378,8 +378,6 @@ However, eager can be slower than graph mode unless tracing is enabled.
 
 You can also selectively leverage eager operations within graph mode
 execution with `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__.
-Here's an example of using eager ops embedded
-`within a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
 
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

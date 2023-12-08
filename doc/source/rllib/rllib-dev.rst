@@ -150,5 +150,3 @@ It returns three values:
 *  ``tf1``: The ``tf.compat.v1`` module or the installed tf1.x package (if the version is < 2.0).
 *  ``tf``: The installed tensorflow module as-is.
 *  ``tfv``: A version integer, whose value is either 1 or 2.
-
-`See here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__ for a detailed example script.
