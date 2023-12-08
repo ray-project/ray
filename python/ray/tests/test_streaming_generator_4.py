@@ -180,8 +180,8 @@ def test_sync_async_mix_regression_test(shutdown_only):
         def stream(self, i):
             payload = PayloadPydantic(
                 text="Test output",
-                floats=[float(f) for f in range(1, 100)],
-                ints=[i for i in range(1, 100)],
+                floats=list(float(f) for f in range(1, 100)),
+                ints=list(i for i in range(1, 100)),
                 ts=time.time(),
                 reason="Success!",
             )
