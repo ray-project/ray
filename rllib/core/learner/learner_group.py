@@ -177,7 +177,8 @@ class LearnerGroup:
             a list of dictionaries of results from the updates from the Learner(s).
         """
 
-        # Construct a multi-agent batch with only the trainable modules.
+        # Construct a multi-agent batch with only those modules in it that should
+        # be updated.
         train_batch = {}
         for module_id in batch.policy_batches.keys():
             if self.should_module_be_updated_fn(module_id, batch):

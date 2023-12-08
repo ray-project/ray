@@ -733,8 +733,9 @@ class Impala(Algorithm):
         # all collected batches.
         if self.config._enable_new_api_stack:
             train_results = self.learn_on_processed_samples()
+            module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
             additional_results = self.learner_group.additional_update(
-                module_ids_to_update=set(train_results.keys()) - {ALL_MODULES},
+                module_ids_to_update=module_ids_to_update,
                 timestep=self._counters[
                     NUM_ENV_STEPS_TRAINED
                     if self.config.count_steps_by == "env_steps"

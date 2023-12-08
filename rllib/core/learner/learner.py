@@ -1169,7 +1169,10 @@ class Learner:
             A dictionary of results from the update
         """
         results_all_modules = {}
-        module_ids = module_ids_to_update or self.module.keys()
+        module_ids = (
+            module_ids_to_update if module_ids_to_update is not None
+            else self.module.keys()
+        )
         for module_id in module_ids:
             module_results = self.additional_update_for_module(
                 module_id=module_id,
