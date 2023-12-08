@@ -137,6 +137,7 @@ def block_until_http_ready(
 # Match the standard alphabet used for UUIDs.
 RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
 
+
 def get_random_string(length=8):
     return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
 
