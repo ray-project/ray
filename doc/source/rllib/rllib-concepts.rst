@@ -472,7 +472,7 @@ Now, building on the TF examples above, let's look at how the `A3C torch policy 
                 _, _, vf, _ = self.model({"obs": obs}, [])
                 return vf.detach().cpu().numpy().squeeze()
 
-You can find the full policy definition in `a3c_torch_policy.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c_torch_policy.py>`__.
+You can find the full policy definition in `a3c_torch_policy.py <https://github.com/ray-project/ray/blob/master/rllib_contrib/a3c/src/rllib_a3c/a3c/a3c_torch_policy.py>`__.
 
 In summary, the main differences between the PyTorch and TensorFlow policy builder functions is that the TF loss and stats functions are built symbolically when the policy is initialized, whereas for PyTorch (or TensorFlow Eager) these functions are called imperatively each time they are used.
 
