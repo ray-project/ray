@@ -163,6 +163,8 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                 << options_.gcs_port_ << ".";
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
+  RAY_LOG(INFO) << "finish creating channel";
+  RAY_LOG(INFO) << (channel_ != nullptr);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   RAY_LOG(INFO) << "checking cluster given cluster id";
   if (cluster_id.IsNil()) {
