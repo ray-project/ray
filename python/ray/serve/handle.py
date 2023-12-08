@@ -15,7 +15,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     get_current_actor_id,
-    get_random_letters,
+    get_random_string,
     is_running_in_asyncio_loop,
 )
 from ray.util import metrics
@@ -180,7 +180,7 @@ class _DeploymentHandleBase:
             # TODO(zcin): Separate deployment_id into deployment and application tags
             {
                 "handle": cls._gen_handle_tag(
-                    app_name, deployment_name, handle_id=get_random_letters()
+                    app_name, deployment_name, handle_id=get_random_string()
                 ),
                 "deployment": deployment_name,
                 "application": app_name,
