@@ -1,2 +1,2 @@
 flaky_tests:
-  - //python/ray/tests:test_autoscaler
+  - []
