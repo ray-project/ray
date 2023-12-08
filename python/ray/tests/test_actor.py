@@ -1191,7 +1191,7 @@ def test_actor_autocomplete(ray_start_regular_shared):
 
     if client_test_enabled():
         assert set(method_options) == {"options", "remote"}
-    elif:
+    else:
         assert set(method_options) == {"options", "remote", "bind"}
 
 def test_actor_mro(ray_start_regular_shared):
