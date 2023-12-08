@@ -43,14 +43,11 @@ class ProxyWrapper(ABC):
     def is_ready(self, timeout_s: float) -> Optional[bool]:
         """Return the payload from proxy ready check when ready.
 
-        TODO update
-
         Since actual readiness check is asynchronous, this method could return
         either of the following statuses:
-
-            - FINISHED_SUCCEED: Readiness check finished successfully
-            - FINISHED_FAILED: Readiness check finished with failure (either timing out or failing)
-            - PENDING: Readiness check is still pending
+            - None: Readiness check is pending
+            - True: Readiness check completed successfully (proxy is ready)
+            - False: Readiness check completed with failure (either timing out or failing)
         """
         raise NotImplementedError
 
@@ -58,14 +55,11 @@ class ProxyWrapper(ABC):
     def is_healthy(self, timeout_s: float) -> Optional[bool]:
         """Return whether the proxy actor is healthy
 
-        TODO update
-
         Since actual health-check is asynchronous, this method could return
         either of the following statuses:
-
-            - FINISHED_SUCCEED: Health-check finished successfully
-            - FINISHED_FAILED: Health-check finished with failure (either timing out or failing)
-            - PENDING: Health-check is still pending
+            - None: Health-check is pending
+            - True: Health-check completed successfully (proxy is healthy)
+            - False: Health-check completed with failure (either timing out or failing)
         """
         raise NotImplementedError
 
@@ -73,14 +67,11 @@ class ProxyWrapper(ABC):
     def is_drained(self) -> Optional[bool]:
         """Return whether the proxy actor is drained
 
-        TODO update
-
         Since actual check whether proxy is drained is asynchronous, this method could return
         either of the following statuses:
-
-            - FINISHED_SUCCEED: Drain-check finished successfully
-            - FINISHED_FAILED: Drain-check finished with failure
-            - PENDING: Drain-check is still pending
+            - None: Drain-check is pending
+            - True: Drain-check completed, node *is drained*
+            - False: Drain-check completed, node is *NOT* drained
         """
         raise NotImplementedError
 
