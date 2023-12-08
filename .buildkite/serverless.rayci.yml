@@ -30,7 +30,7 @@ steps:
         --parallelism-per-worker 3
         --only-tags spark_plugin_tests
         --except-tags kubernetes
-        --test_timeout 1500
+        --test-timeout 1500
 
   - label: ":serverless: serverless: flaky tests"
     tags:
