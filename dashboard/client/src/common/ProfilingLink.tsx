@@ -200,7 +200,7 @@ export const ProfilerButton = ({
                 onChange={(e) => setLeaks(e.target.checked)}
               />
             }
-            label="Leaks"
+            label="Leaks (show memory leaks)"
           />
         </DialogContent>
         <div

@@ -217,7 +217,7 @@ class MemoryProfilingManager:
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         profiler_filename = f"{pid}_memory_profiling_{timestamp}.bin"
         profile_file_path = self.profile_dir_path / profiler_filename
-        cmd = [memray, "attach", "-o", profile_file_path, "-f"]
+        cmd = [memray, "attach", "-o", profile_file_path]
 
         if native:
             cmd.append("--native")
@@ -240,8 +240,8 @@ class MemoryProfilingManager:
             return (
                 True,
                 (
-                    f"Success attaching memray to process {pid} ",
-                    f"with resulted report:\n{profiler_filename}",
+                    f"Success attaching memray to process {pid} "
+                    f"with resulted report:\n{profiler_filename}"
                 ),
             )
 

@@ -229,7 +229,7 @@ if setup_spec.type == SetupType.RAY:
     numpy_dep = "numpy >= 1.20"
     if sys.platform != "win32":
         pyarrow_dep = "pyarrow >= 6.0.1"
-        memray_dep = ("memray >= 1.10.0",)
+        memray_dep = "memray >= 1.10.0"
     else:
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
         # Memray is not supported in windows
