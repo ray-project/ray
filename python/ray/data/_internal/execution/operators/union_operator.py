@@ -37,7 +37,7 @@ class UnionOperator(NAryOperator):
         self._input_idx_to_output = 0
 
         self._output_buffer: List[RefBundle] = []
-        self._stats: StatsDict = {}
+        self._stats: StatsDict = {"Union": []}
         super().__init__(*input_ops)
 
     def start(self, options: ExecutionOptions):
