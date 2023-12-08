@@ -2100,7 +2100,7 @@ class DeploymentState:
                         "application": self.app_name,
                     },
                 )
-                self._stop_replica(replica, graceful_stop=False)
+                self._stop_replica(replica, graceful_stop=True)
                 # If this is a replica of the target version, the deployment
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
