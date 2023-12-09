@@ -442,9 +442,25 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   auto task_args = ToTaskArgs(env, args);
   RAY_CHECK(callOptions != nullptr);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
+
+  // NOTE: An actor method call from Java ActorHandle only recognizes the actor's
+  // max_task_retries. It does NOT recognize per-method max_retries. It also only retries
+  // on actor death, not on user exceptions. The max_task_retries is read from CoreWorker.
+  // TODO: support Java max_retries and retry_exceptions.
+  const auto native_actor_handle =
+      CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
+  int max_retries = native_actor_handle->MaxTaskRetries();
+
   std::vector<rpc::ObjectReference> return_refs;
   auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
-      actor_id, ray_function, task_args, task_options, return_refs);
+      actor_id,
+      ray_function,
+      task_args,
+      task_options,
+      max_retries,
+      /*retry_exceptions=*/false,
+      /*serialized_retry_exception_allowlist=*/"",
+      return_refs);
   if (!status.ok()) {
     std::stringstream ss;
     ss << "The task " << ray_function.GetFunctionDescriptor()->ToString()

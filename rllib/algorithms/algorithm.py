@@ -1564,6 +1564,9 @@ class Algorithm(Trainable, AlgorithmBase):
         restored = workers.probe_unhealthy_workers()
 
         if restored:
+            # Count the restored workers.
+            self._counters["total_num_restored_workers"] += len(restored)
+
             from_worker = workers.local_worker() or self.workers.local_worker()
             # Get the state of the correct (reference) worker. E.g. The local worker
             # of the main WorkerSet.

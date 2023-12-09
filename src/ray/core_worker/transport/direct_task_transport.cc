@@ -221,7 +221,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       ReturnWorker(addr, was_error, error_detail, worker_exiting, scheduling_key);
     }
   } else {
-    auto &client = *client_cache_->GetOrConnect(addr);
+    auto client = client_cache_->GetOrConnect(addr);
 
     while (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = current_queue.front();
@@ -599,7 +599,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
     const rpc::Address &addr,
-    rpc::CoreWorkerClientInterface &client,
+    shared_ptr<rpc::CoreWorkerClientInterface> client,
     const SchedulingKey &scheduling_key,
     const TaskSpecification &task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
@@ -620,7 +620,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   task_finisher_->MarkTaskWaitingForExecution(task_id,
                                               NodeID::FromBinary(addr.raylet_id()),
                                               WorkerID::FromBinary(addr.worker_id()));
-  client.PushNormalTask(
+  client->PushNormalTask(
       std::move(request),
       [this,
        task_spec,
@@ -801,14 +801,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return Status::OK();
     }
     // Looks for an RPC handle for the worker executing the task.
-    auto maybe_client =
-        client_cache_->GetByID(WorkerID::FromBinary(rpc_client->second.worker_id()));
-    if (!maybe_client.has_value()) {
-      // If we don't have a connection to that worker, we can't cancel it.
-      // This case is reached for tasks that have unresolved dependencies.
-      return Status::OK();
-    }
-    client = maybe_client.value();
+    client = client_cache_->GetOrConnect(rpc_client->second);
   }
 
   RAY_CHECK(client != nullptr);
@@ -866,13 +859,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
                                                        const rpc::Address &worker_addr,
                                                        bool force_kill,
                                                        bool recursive) {
-  auto maybe_client =
-      client_cache_->GetByID(WorkerID::FromBinary(worker_addr.worker_id()));
-
-  if (!maybe_client.has_value()) {
-    return Status::Invalid("No remote worker found");
-  }
-  auto client = maybe_client.value();
+  auto client = client_cache_->GetOrConnect(worker_addr);
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);

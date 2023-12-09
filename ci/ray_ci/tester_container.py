@@ -3,18 +3,17 @@ import subprocess
 from typing import List, Optional
 
 from ci.ray_ci.utils import shard_tests, chunk_into_n
-from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.utils import logger
+from ci.ray_ci.container import Container
 
 
-class TesterContainer(LinuxContainer):
+class TesterContainer(Container):
     """
     A wrapper for running tests in ray ci docker container
     """
 
     def __init__(
         self,
-        docker_tag: str,
         shard_count: int = 1,
         gpus: int = 0,
         test_envs: Optional[List[str]] = None,
@@ -23,20 +22,11 @@ class TesterContainer(LinuxContainer):
         build_type: Optional[str] = None,
     ) -> None:
         """
-        :param docker_tag: Name of the wanda build to be used as test container.
         :param gpu: Number of gpus to use in the container. If 0, used all gpus.
         :param shard_count: The number of shards to split the tests into. This can be
         used to run tests in a distributed fashion.
         :param shard_ids: The list of shard ids to run. If none, run no shards.
         """
-        super().__init__(
-            docker_tag,
-            envs=test_envs,
-            volumes=[
-                f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
-                "/var/run/docker.sock:/var/run/docker.sock",
-            ],
-        )
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
         self.test_envs = test_envs or []
