@@ -393,6 +393,7 @@ def main(results=None):
     with InputNode() as inp:
         dag = a.echo.bind(inp)
 
+    results += timeit("single-actor DAG calls", lambda: ray.get(dag.execute(b"x")))
     dag = dag.experimental_compile()
     results += timeit("compiled single-actor DAG calls", lambda: _exec(dag))
 
@@ -401,6 +402,7 @@ def main(results=None):
     actors = [Actor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
         dag = OutputNode([a.echo.bind(inp) for a in actors])
+    results += timeit("scatter-gather DAG calls", lambda: ray.get(dag.execute(b"x")))
     dag = dag.experimental_compile()
     results += timeit(
         f"compiled scatter-gather DAG calls, n={n_cpu} actors",
@@ -412,6 +414,9 @@ def main(results=None):
         dag = inp
         for a in actors:
             dag = a.echo.bind(dag)
+    results += timeit(
+        f"chain DAG calls, n={n_cpu} actors", lambda: ray.get(dag.execute(b"x"))
+    )
     dag = dag.experimental_compile()
     results += timeit(f"compiled chain DAG calls, n={n_cpu} actors", lambda: _exec(dag))
 
