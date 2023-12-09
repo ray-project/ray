@@ -84,6 +84,7 @@ class Channel:
 
         if not isinstance(num_readers, int):
             raise ValueError("num_readers must be an integer")
+
         self._num_readers = num_readers
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()

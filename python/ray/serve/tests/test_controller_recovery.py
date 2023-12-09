@@ -20,7 +20,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import get_random_string
 from ray.serve.schema import LoggingConfig
 from ray.serve.tests.test_failure import request_with_retries
 from ray.util.state import list_actors
@@ -130,7 +130,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    signal_name = f"signal#{get_random_letters()}"
+    signal_name = f"signal#{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
 
     @serve.deployment(name=name, version="1", num_replicas=2)
@@ -420,7 +420,7 @@ def test_controller_crashes_with_logging_config(serve_instance):
     client = serve_instance
 
     # Update the logging config
-    client.update_system_logging_config(
+    client.update_global_logging_config(
         LoggingConfig(encoding="JSON", log_level="DEBUG")
     )
 
