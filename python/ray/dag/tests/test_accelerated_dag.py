@@ -108,7 +108,7 @@ def test_dag_exception(ray_start_regular, capsys):
         dag = a.inc.bind(inp)
 
     compiled_dag = dag.experimental_compile()
-    output_channel = compiled_dag.execute("hello")
+    compiled_dag.execute("hello")
     wait_for_condition(
         lambda: "Compiled DAG task aborted with exception" in capsys.readouterr().err
     )
