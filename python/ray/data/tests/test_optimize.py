@@ -216,9 +216,10 @@ def test_spread_hint_inherit(ray_start_regular_shared):
         assert s.ray_remote_args == {}, s.ray_remote_args
     for s in ds._plan._stages_after_snapshot:
         assert s.ray_remote_args == {}, s.ray_remote_args
-    _, _, optimized_stages = ds._plan._optimize()
-    assert len(optimized_stages) == 1, optimized_stages
-    assert optimized_stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
+
+    shuffle_op = ds._plan._logical_plan.dag
+    read_op = shuffle_op.input_dependencies[0].input_dependencies[0]
+    assert read_op._ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
 def _assert_has_stages(stages, stage_names):

@@ -1,5 +1,4 @@
 import copy
-import functools
 import itertools
 from typing import (
     TYPE_CHECKING,
@@ -743,39 +742,6 @@ class ExecutionPlan:
             # execution plan, so we don't clear these.
             return False
 
-    def _get_source_blocks_and_stages(
-        self,
-    ) -> Tuple[BlockList, DatasetStats, List[Stage]]:
-        """Get the source blocks, corresponding stats, and the stages for plan
-        execution.
-
-        If a computed snapshot exists and has not been cleared, return the snapshot
-        blocks and stats; otherwise, return the input blocks and stats that the plan was
-        created with.
-        """
-        stages = self._stages_after_snapshot.copy()
-        if self._snapshot_blocks is not None:
-            if not self._snapshot_blocks.is_cleared():
-                # If snapshot exists, we only have to execute the plan from the
-                # snapshot.
-                blocks = self._snapshot_blocks
-                stats = self._snapshot_stats
-                # Unlink the snapshot blocks from the plan so we can eagerly reclaim the
-                # snapshot block memory after the first stage is done executing.
-                self._clear_snapshot()
-            else:
-                # Snapshot exists but has been cleared, so we need to recompute from the
-                # source (input blocks).
-                blocks = self._in_blocks
-                stats = self._in_stats
-                stages = self._stages_before_snapshot + self._stages_after_snapshot
-        else:
-            # If no snapshot exists, we have to execute the full plan from the
-            # beginning.
-            blocks = self._in_blocks
-            stats = self._in_stats
-        return blocks, stats, stages
-
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
         return _is_lazy(self._in_blocks)
@@ -790,28 +756,6 @@ class ExecutionPlan:
         (e.g. in the case of a :class:`~ray.data.MaterializedDataset`)."""
         root_op = self._logical_plan.dag
         return isinstance(root_op, InputData) and len(root_op.input_dependencies) == 0
-
-    def is_read_stage_equivalent(self) -> bool:
-        """Return whether this plan can be executed as only a read stage."""
-        from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-        context = self._context
-        remaining_stages = self._stages_after_snapshot
-        if (
-            context.optimize_fuse_stages
-            and remaining_stages
-            and isinstance(remaining_stages[0], RandomizeBlocksStage)
-        ):
-            remaining_stages = remaining_stages[1:]
-        return (
-            self.has_lazy_input()
-            and not self._stages_before_snapshot
-            and not remaining_stages
-            and (
-                not self._snapshot_blocks
-                or isinstance(self._snapshot_blocks, LazyBlockList)
-            )
-        )
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final stage, i.e. for the
@@ -1168,148 +1112,6 @@ class AllToAllStage(Stage):
         return blocks, stage_info
 
 
-def _rewrite_read_stages(
-    blocks: BlockList,
-    stats: DatasetStats,
-    stages: List[Stage],
-    dataset_uuid: str,
-) -> Tuple[BlockList, DatasetStats, List[Stage]]:
-    """Rewrites read stages into one-to-one stages, if needed."""
-    if _is_lazy(blocks) and stages:
-        blocks, stats, stages = _rewrite_read_stage(blocks, stages)
-        stats.dataset_uuid = dataset_uuid
-    return blocks, stats, stages
-
-
-def _rewrite_read_stage(
-    in_blocks: LazyBlockList, stages: List[Stage]
-) -> Tuple[BlockList, DatasetStats, List[Stage]]:
-    """Rewrite the read stage to a OneToOne stage over read tasks as input.
-
-    For example, suppose the plan was [Read -> MapBatches(Fn)]. These stages cannot
-    be fused, since read stages are handled specially.
-    After rewriting to [GetReadTasks -> MapBatches(DoRead) -> MapBatches(Fn)],
-    now we can fuse the latter two MapBatches stages into a single OneToOne stage:
-    [GetReadTasks -> MapBatches(DoRead -> Fn)].
-
-    Args:
-        blocks: Lazy block list representing read stage.
-        stages: List of current stages.
-
-    Returns:
-        Non-lazy block list containing read tasks for not-yet-read block partitions,
-        new stats for the block list, and the new list of stages.
-    """
-    from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-    # Generate the "GetReadTasks" stage blocks.
-    remote_args = in_blocks._remote_args
-    blocks, metadata = [], []
-    for read_task in in_blocks._tasks:
-        blocks.append(ray.put(read_task._read_fn))
-        metadata.append(read_task.get_metadata())
-    block_list = BlockList(
-        blocks, metadata, owned_by_consumer=in_blocks._owned_by_consumer
-    )
-
-    @_adapt_for_multiple_blocks
-    def block_fn(
-        read_fn: Callable[[], Iterator[Block]], ctx: TaskContext
-    ) -> Iterator[Block]:
-        for block in read_fn():
-            yield block
-
-    name = in_blocks._read_stage_name or "Read"
-    if isinstance(name, list):
-        name = "->".join(name)
-
-    # Fuse downstream randomize stage with the read stage if possible. This is needed
-    # when .window() is called right after read->randomize, since it forces execution.
-    has_randomize = stages and isinstance(stages[0], RandomizeBlocksStage)
-    if has_randomize:
-        if stages and isinstance(stages[0], RandomizeBlocksStage):
-            block_list, _ = stages[0].do_randomize(block_list)
-            stages = stages[1:]
-        name += "->RandomizeBlockOrder"
-
-    stage = OneToOneStage(
-        name,
-        block_fn,
-        TaskPoolStrategy(),
-        remote_args,
-    )
-    stats = DatasetStats(stages={}, parent=None)
-    stages.insert(0, stage)
-    return block_list, stats, stages
-
-
-def _reorder_stages(stages: List[Stage]) -> List[Stage]:
-    """Reorder randomize stages to the end to enable better stage fusion.
-
-    This applies to RandomizeBlockOrder stages specifically (issue #26057).
-
-    Args:
-        stages: Stages to try to reorder.
-
-    Returns:
-        Reordered stages.
-    """
-    from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-    output: List[Stage] = []
-    reorder_buf: List[RandomizeBlocksStage] = []
-
-    for s in stages:
-        if isinstance(s, RandomizeBlocksStage):
-            # Buffer it for later reordering.
-            reorder_buf.append(s)
-        else:
-            # Barrier: flush the reorder buffer.
-            if isinstance(s, AllToAllStage) or s.name == "Write":
-                output.extend(reorder_buf)
-                reorder_buf = []
-            output.append(s)
-
-    output.extend(reorder_buf)
-    return output
-
-
-def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
-    """Fuses compatible one-to-one stages.
-
-    Args:
-        stages: Stages to try to fuse.
-
-    Returns:
-        Fused stages.
-    """
-    fused_stages = []
-    prev_stage = None
-    for idx, stage in enumerate(stages):
-        if prev_stage is None:
-            prev_stage = stage
-        elif stage.can_fuse(prev_stage):
-            prev_stage = stage.fuse(prev_stage)
-        else:
-            fused_stages.append(prev_stage)
-            prev_stage = stage
-    if prev_stage:
-        fused_stages.append(prev_stage)
-        prev_stage = None
-    return fused_stages
-
-
 def _is_lazy(blocks: BlockList) -> bool:
     """Whether the provided block list is lazy."""
     return isinstance(blocks, LazyBlockList)
-
-
-def _adapt_for_multiple_blocks(
-    fn: Callable[..., Iterable[Block]],
-) -> Callable[..., Iterable[Block]]:
-    @functools.wraps(fn)
-    def wrapper(blocks: Iterable[Block], ctx: TaskContext, *args, **kwargs):
-        for block in blocks:
-            yield from fn(block, ctx, *args, **kwargs)
-
-    return wrapper
