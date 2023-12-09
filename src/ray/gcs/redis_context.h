@@ -42,14 +42,18 @@ namespace gcs {
 
 using rpc::TablePrefix;
 
-void FreeRedisContext(redisContext *context);
-void FreeRedisContext(redisAsyncContext *context);
-
 template <typename RedisContextType>
 struct RedisDeleter {
   RedisDeleter(){};
 
-  void operator()(RedisContextType *context) { FreeRedisContext(context); }
+  void operator()(RedisContextType *context) {}
+};
+
+template <>
+struct RedisDeleter<redisContext> {
+  RedisDeleter(){};
+
+  void operator()(redisContext *context) { redisFree(context); }
 };
 
 /// A simple reply wrapper for redis reply.
@@ -74,9 +78,6 @@ class CallbackReply {
   /// Note that this will return an empty string if
   /// the type of this reply is `nil` or `status`.
   const std::string &ReadAsString() const;
-
-  /// Read this reply data as pub-sub data.
-  const std::string &ReadAsPubsubData() const;
 
   /// Read this reply data as a string array.
   [[nodiscard]] const std::vector<std::optional<std::string>> &ReadAsStringArray() const;
@@ -153,13 +154,6 @@ class RedisContext {
 
   virtual ~RedisContext();
 
-  /// Test whether the address and port has a reachable Redis service.
-  ///
-  /// \param address IP address to test.
-  /// \param port port number to test.
-  /// \return The Status that we would get if we Connected.
-  Status PingPort(const std::string &address, int port);
-
   Status Connect(const std::string &address,
                  int port,
                  bool sharding,
@@ -195,8 +189,6 @@ class RedisContext {
   }
 
   instrumented_io_context &io_service() { return io_service_; }
-
-  std::pair<std::string, int> GetLeaderAddress();
 
  private:
   // These functions avoid problems with dependence on hiredis headers with clang-cl.

@@ -267,9 +267,6 @@ void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
                                   RedisAsyncContextDisconnectCallback);
 }
 
-void FreeRedisContext(redisContext *context) { redisFree(context); }
-void FreeRedisContext(redisAsyncContext *context) {}
-
 namespace {
 std::optional<std::vector<std::string>> ParseIffMovedError(const std::string &error_msg) {
   std::vector<std::string> parts = absl::StrSplit(error_msg, " ");
@@ -295,22 +292,6 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
                    << "]"
                    << " failed due to error " << error_msg << ". "
                    << request_cxt->pending_retries_ << " retries left.";
-    if (RayConfig::instance().enable_moved_redirect()) {
-      if (auto maybe_ip_port =
-              ParseIffMovedError(std::string(redis_reply->str, redis_reply->len));
-          maybe_ip_port.has_value()) {
-        auto &ip_port = maybe_ip_port.value();
-        auto resp = ConnectWithRetries<redisAsyncContext>(
-            ip_port[0].c_str(), std::stoi(ip_port[1]), redisAsyncConnect);
-        if (auto st = resp.first; !st.ok()) {
-          // We will ultimately return a MOVED error if we fail to reconnect.
-          RAY_LOG(ERROR) << "Failed to connect to the new leader " << ip_port[0] << ":"
-                         << ip_port[1];
-        } else {
-          request_cxt->redis_context_.reset(new RedisAsyncContext(resp.second.release()));
-        }
-      }
-    }
     auto delay = request_cxt->exp_back_off_.Current();
     request_cxt->exp_back_off_.Next();
     // Retry the request after a while.
@@ -349,11 +330,6 @@ void RedisRequestContext::Run() {
   if (!status.ok()) {
     RedisResponseFn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);
   }
-}
-
-Status RedisContext::PingPort(const std::string &address, int port) {
-  auto resp = ConnectWithoutRetries<redisContext>(address, port, redisConnect);
-  return resp.first;
 }
 
 void ValidateRedisDB(RedisContext &context) {
