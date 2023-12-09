@@ -202,13 +202,6 @@ Ray Examples
         Batching tutorial for Ray Serve
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning serving
-        :link: /serve/tutorials/rllib
-        :link-type: doc
-
-        Serving RLlib Models with Ray Serve
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item serving
         :link: /serve/tutorials/gradio-integration
         :link-type: doc
@@ -732,13 +725,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib serving
-        :link: serve-rllib-tutorial
-        :link-type: ref
-
-        Example of using Ray Serve to serve RLlib models with HTTP and JSON interface
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib serving
         :link: https://github.com/ray-project/ray/tree/master/rllib/examples/inference_and_serving/serve_and_rllib.py
 
         This script offers a simple workflow for 1) training a policy with RLlib first, 2) creating a new policy 3) restoring its weights from the trained one and serving the new policy via Ray Serve.
@@ -1089,13 +1075,6 @@ Ray Examples
         :link-type: doc
 
         Running a Simple MapReduce Example with Ray Core
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item tune
-        :link: /tune/examples/tune-sklearn
-        :link-type: doc
-
-        How To Use Tune's Scikit-Learn Adapters?
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tune
