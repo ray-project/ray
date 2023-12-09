@@ -56,6 +56,10 @@ schema = {
             "type": ["null", "array"],
             "items": {"type": "string"},
         },
+        "hardware_usages": {
+            "type": ["null", "array"],
+            "items": {"type": "string"},
+        },
         "total_success": {"type": "integer"},
         "total_failed": {"type": "integer"},
         "seq_number": {"type": "integer"},
@@ -842,7 +846,7 @@ def test_usage_lib_get_cluster_status_to_report(
     ray.init(
         num_cpus=3,
         num_gpus=1,
-        object_store_memory=2**30,
+        object_store_memory=2 ** 30,
         _system_config={"enable_autoscaler_v2": enable_v2},
     )
     # Wait for monitor.py to update cluster status

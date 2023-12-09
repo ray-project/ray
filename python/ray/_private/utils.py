@@ -2001,3 +2001,18 @@ def validate_actor_state_name(actor_state_name):
             'it must be one of the following: "DEPENDENCIES_UNREADY", '
             '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
         )
+
+
+def get_cpu_model_name() -> Optional[str]:
+    if not sys.platform.startswith("linux"):
+        return None
+
+    try:
+        with open("/proc/cpuinfo", "r") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    return line.split(":")[1].strip()
+        return None
+    except Exception:
+        logger.debug("Failed to get CPU model name", exc_info=True)
+        return None
