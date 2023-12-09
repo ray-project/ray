@@ -3295,9 +3295,26 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().Exit(c_exit_type, detail, null_ptr)
 
-    def get_current_task_id(self):
-        return TaskID(
-            CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
+    def get_current_task_id(self) -> TaskID:
+        """Return the current task ID.
+
+        If it is a normal task, it returns the TaskID from the main thread.
+        If it is a threaded actor, it returns the TaskID for the current thread.
+        If it is async actor, it returns the TaskID stored in contextVar for
+        the current asyncio task.
+        """
+        # We can only obtain the correct task ID within asyncio task
+        # via async_task_id contextvar. We try this first.
+        # It is needed because the core Worker's GetCurrentTaskId API
+        # doesn't have asyncio context, thus it cannot return the
+        # correct TaskID.
+        task_id = async_task_id.get()
+        if task_id is None:
+            # if it is not within asyncio context, fallback to TaskID
+            # obtainable from core worker.
+            task_id = TaskID(
+                CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
+        return task_id
 
     def get_current_task_attempt_number(self):
         return CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskAttemptNumber()
@@ -3749,9 +3766,6 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             c_string serialized_retry_exception_allowlist
             CTaskID current_c_task_id
-            TaskID task_id_in_async_context = async_task_id.get()
-            # This task id is incorrect if async task is used.
-            # In this case, we should use task_id_in_async_context
             TaskID current_task = self.get_current_task_id()
 
         self.python_scheduling_strategy_to_c(
@@ -3775,13 +3789,7 @@ cdef class CoreWorker:
                 generator_backpressure_num_objects,
                 serialized_runtime_env_info)
 
-            # We are in the async context. We have to obtain
-            # the task id from this context var. get_current_task_id()
-            # doesn't contain the correct id for asyncio tasks.
-            if task_id_in_async_context is not None:
-                current_c_task_id = task_id_in_async_context.native()
-            else:
-                current_c_task_id = current_task.native()
+            current_c_task_id = current_task.native()
 
             with nogil:
                 return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
@@ -3971,9 +3979,6 @@ cdef class CoreWorker:
             c_vector[CObjectReference] return_refs
             c_vector[CObjectID] incremented_put_arg_ids
             CTaskID current_c_task_id = CTaskID.Nil()
-            TaskID task_id_in_async_context = async_task_id.get()
-            # This task id is incorrect if async task is used.
-            # In this case, we should use task_id_in_async_context
             TaskID current_task = self.get_current_task_id()
             c_string serialized_retry_exception_allowlist
 
@@ -3990,13 +3995,7 @@ cdef class CoreWorker:
                 self, language, args, &args_vector, function_descriptor,
                 &incremented_put_arg_ids)
 
-            # We are in the async context. We have to obtain
-            # the task id from this context var. get_current_task_id()
-            # doesn't contain the correct id for asyncio tasks.
-            if task_id_in_async_context is not None:
-                current_c_task_id = task_id_in_async_context.native()
-            else:
-                current_c_task_id = current_task.native()
+            current_c_task_id = current_task.native()
 
             with nogil:
                 status = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
@@ -4814,7 +4813,7 @@ cdef class CoreWorker:
         else:
             return CCoreWorkerProcess.GetCoreWorker().AllocateDynamicReturnId(
                 owner_address,
-                CTaskID.Nil(),
+                task_id,
                 make_optional[ObjectIDIndexType](
                     <int>1 + <int>return_size + <int>generator_index))
 
