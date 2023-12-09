@@ -1,0 +1,31 @@
+name: forge-windows
+froms:
+  - mcr.microsoft.com/windows/servercore:ltsc2019
+dockerfile: ci/docker/forge.windows.Dockerfile
+srcs: 
+  - ci/ray_ci/windows/docker/install/scripts/Installers/Finalize-VM.ps1
+  - ci/ray_ci/windows/docker/install/scripts/Installers/Install-PowershellCore.ps1
+  - ci/ray_ci/windows/docker/install/scripts/Installers/Disable-JITDebugger.ps1
+  - ci/ray_ci/windows/docker/install/scripts/Installers/Install-VS.ps1
+  - ci/ray_ci/windows/docker/install/scripts/Installers/Initialize-VM.ps1
+  - ci/ray_ci/windows/docker/install/scripts/Installers/Update-DotnetTLS.ps1
+  - ci/ray_ci/windows/docker/install/scripts/Installers/Enable-DeveloperMode.ps1
+  - ci/ray_ci/windows/docker/install/scripts/Installers/Install-PowerShellModules.ps1
+  - ci/ray_ci/windows/docker/install/scripts/ImageHelpers/test/PathHelpers.Tests.ps1
+  - ci/ray_ci/windows/docker/install/scripts/ImageHelpers/test/ImageHelpers.Tests.ps1
+  - ci/ray_ci/windows/docker/install/scripts/ImageHelpers/VisualStudioHelpers.ps1
+  - ci/ray_ci/windows/docker/install/scripts/ImageHelpers/ImageHelpers.psm1
+  - ci/ray_ci/windows/docker/install/scripts/ImageHelpers/ChocoHelpers.ps1
+  - ci/ray_ci/windows/docker/install/scripts/ImageHelpers/TestsHelpers.ps1
+  - ci/ray_ci/windows/docker/install/scripts/ImageHelpers/PathHelpers.ps1
+  - ci/ray_ci/windows/docker/install/scripts/ImageHelpers/InstallHelpers.ps1
+  - ci/ray_ci/windows/docker/install/scripts/ImageHelpers/ImageHelpers.psd1
+  - ci/ray_ci/windows/docker/install/miniconda.ps1
+  - ci/ray_ci/windows/docker/install/base.ps1
+  - ci/ray_ci/windows/docker/install/bazel.ps1
+  - ci/ray_ci/windows/docker/install/git.ps1
+  - ci/ray_ci/windows/docker/install/msys.ps1
+  - ci/ray_ci/windows/docker/install/main.ps1
+  - ci/ray_ci/windows/docker/install/toolset/toolset-2019.json
+tags:
+  - cr.ray.io/rayproject/forge-windows
