@@ -270,60 +270,6 @@ void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
 void FreeRedisContext(redisContext *context) { redisFree(context); }
 void FreeRedisContext(redisAsyncContext *context) {}
 
-template <typename RedisContextType, typename RedisConnectFunctionType>
-std::pair<Status, std::unique_ptr<RedisContextType, RedisDeleter<RedisContextType>>>
-ConnectWithoutRetries(const std::string &address,
-                      int port,
-                      const RedisConnectFunctionType &connect_function) {
-  // This currently returns the errorMessage in two different ways,
-  // as an output parameter and in the Status::RedisError,
-  // because we're not sure whether we'll want to change what this returns.
-  RedisContextType *newContext = connect_function(address.c_str(), port);
-  if (newContext == nullptr || (newContext)->err) {
-    std::ostringstream oss;
-    if (newContext == nullptr) {
-      oss << "Could not allocate Redis context.";
-    } else if (newContext->err) {
-      oss << "Could not establish connection to Redis " << address << ":" << port
-          << " (context.err = " << newContext->err << ").";
-    }
-    return std::make_pair(Status::RedisError(oss.str()), nullptr);
-  }
-  return std::make_pair(Status::OK(),
-                        std::unique_ptr<RedisContextType, RedisDeleter<RedisContextType>>(
-                            newContext, RedisDeleter<RedisContextType>()));
-}
-
-template <typename RedisContextType, typename RedisConnectFunctionType>
-std::pair<Status, std::unique_ptr<RedisContextType, RedisDeleter<RedisContextType>>>
-ConnectWithRetries(const std::string &address,
-                   int port,
-                   const RedisConnectFunctionType &connect_function) {
-  RAY_LOG(INFO) << "Attempting to connect to address " << address << ":" << port << ".";
-  int connection_attempts = 0;
-  auto resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
-  for (auto status = resp.first; !status.ok();) {
-    if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
-      RAY_LOG(FATAL) << RayConfig::instance().redis_db_connect_retries() << " attempts "
-                     << "to connect have all failed. Please check whether the"
-                     << " redis storage is alive or not. The last error message was: "
-                     << status.ToString();
-      break;
-    }
-    RAY_LOG_EVERY_MS(ERROR, 1000)
-        << "Failed to connect to Redis due to: " << status.ToString()
-        << ". Will retry in "
-        << RayConfig::instance().redis_db_connect_wait_milliseconds() << "ms.";
-
-    // Sleep for a little.
-    std::this_thread::sleep_for(std::chrono::milliseconds(
-        RayConfig::instance().redis_db_connect_wait_milliseconds()));
-    resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
-    connection_attempts += 1;
-  }
-  return resp;
-}
-
 namespace {
 std::optional<std::vector<std::string>> ParseIffMovedError(const std::string &error_msg) {
   std::vector<std::string> parts = absl::StrSplit(error_msg, " ");
@@ -354,7 +300,6 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
               ParseIffMovedError(std::string(redis_reply->str, redis_reply->len));
           maybe_ip_port.has_value()) {
         auto &ip_port = maybe_ip_port.value();
-        // TODO(vitsai)
         auto resp = ConnectWithRetries<redisAsyncContext>(
             ip_port[0].c_str(), std::stoi(ip_port[1]), redisAsyncConnect);
         if (auto st = resp.first; !st.ok()) {

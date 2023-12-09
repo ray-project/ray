@@ -36,19 +36,6 @@ class RedisContextTest : public ::testing::Test {
   virtual ~RedisContextTest() {}
 };
 
-// We specialize on the mock object to mock this function.
-/*
-template <typename RedisConnectFunction>
-Status ConnectWithRetries<MockRedisContext>(const std::string &address,
-                             int port,
-                             const RedisConnectFunction &connect_function,
-                             std::shared_ptr<MockRedisContext>& context) {
-  EXPECT_EQ(address, context->address);
-  EXPECT_EQ(port, context->port);
-  return Status::OK();
-}
-*/
-
 class MockRedisContext : public RedisContext {
  public:
   MockRedisContext(instrumented_io_context &io_service, std::string address, int port)
@@ -64,6 +51,18 @@ class MockRedisContext : public RedisContext {
               (std::vector<std::string> args, RedisCallback redis_callback),
               (override));
 };
+
+void FreeRedisContext(MockRedisContext *context) {}
+
+// We specialize on the mock object to potentially mock this function.
+template <>
+std::pair<Status, std::unique_ptr<MockRedisContext, RedisDeleter<MockRedisContext>>>
+ConnectWithRetries<MockRedisContext, decltype(redisAsyncConnect)>(
+    const std::string &address,
+    int port,
+    const decltype(redisAsyncConnect) &connect_function) {
+  return std::make_pair(Status::OK(), nullptr);
+}
 
 TEST_F(RedisContextTest, TestRedisMoved) {
   // Start IO service in a different thread.
