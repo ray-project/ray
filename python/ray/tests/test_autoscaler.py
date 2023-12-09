@@ -1515,6 +1515,7 @@ class AutoscalingTest(unittest.TestCase):
             ), "BatchingNodeProvider requires foreground node launch."
         config = copy.deepcopy(SMALL_CLUSTER)
         config["available_node_types"]["worker"]["min_workers"] = 2
+        config["idle_timeout_minutes"] = 0.01
         if foreground_node_launcher:
             config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
         if batching_node_provider:
