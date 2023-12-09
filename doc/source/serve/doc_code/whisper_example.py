@@ -10,11 +10,13 @@ app = FastAPI()
 
 non_alpha_numeric = re.compile(r"[\W]+")
 
+
 def hard_normalize(word):
     """Lower case the word and remove all non-alpha-numeric characters
     from the entire word.
     """
     return non_alpha_numeric.sub("", word.lower())
+
 
 def clean_whisper_alignments(whisper_word_alignments: List[dict]) -> List[dict]:
     """change required to match gentle's tokenization with Whisper's word alignments"""
@@ -39,20 +41,23 @@ def clean_whisper_alignments(whisper_word_alignments: List[dict]) -> List[dict]:
 
 @serve.ingress(app)
 class WhisperModel:
-    def __init__(self, model_size = 'large-v2'):
+    def __init__(self, model_size="large-v2"):
         # Load model
         from faster_whisper import WhisperModel
+
         # Run on GPU with FP16
-        self.model = WhisperModel(model_size, device="cuda", compute_type="float16")                
+        self.model = WhisperModel(model_size, device="cuda", compute_type="float16")
 
     @app.post("/")
     async def transcribe(self):
         try:
-            file_path = "https://storage.googleapis.com/public-lyrebird-test/test_audio_22s.wav"
+            file_path = (
+                "https://storage.googleapis.com/public-lyrebird-test/test_audio_22s.wav"
+            )
             subprocess.run(
                 f'curl -o audio.mp3 -sSfLO "{file_path}"',
                 shell=True,
-                check=True  # This will raise a CalledProcessError if the command fails
+                check=True,  # This will raise a CalledProcessError if the command fails
             )
 
             segments, info = self.model.transcribe(
@@ -69,7 +74,9 @@ class WhisperModel:
             for seg in segments:
                 transcript_text += seg.text
                 whisper_alignments += clean_whisper_alignments(seg.words)
-            # transcript change required to match gentle's tokenization with Whisper's word alignments
+
+            # transcript change required to match gentle's tokenization
+            # with Whisper's word alignments
             transcript_text = transcript_text.replace("% ", " percent ")
             result = {
                 "language": info.language,
@@ -82,5 +89,6 @@ class WhisperModel:
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
             return False  # Return False if any exception occurs
-    
+
+
 entrypoint = WhisperModel.bind()
