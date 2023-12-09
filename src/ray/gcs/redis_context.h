@@ -28,6 +28,10 @@
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
+extern "C" {
+#include "hiredis/hiredis.h"
+}
+
 struct redisContext;
 struct redisAsyncContext;
 struct redisSSLContext;
@@ -37,6 +41,16 @@ namespace ray {
 namespace gcs {
 
 using rpc::TablePrefix;
+
+void FreeRedisContext(redisContext *context);
+void FreeRedisContext(redisAsyncContext *context);
+
+template <typename RedisContextType>
+struct RedisDeleter {
+  RedisDeleter(){};
+
+  void operator()(RedisContextType *context) { FreeRedisContext(context); }
+};
 
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
@@ -171,7 +185,7 @@ class RedisContext {
 
   redisContext *sync_context() {
     RAY_CHECK(context_);
-    return context_;
+    return context_.get();
   }
 
   std::shared_ptr<RedisAsyncContext> async_context() {
@@ -191,7 +205,7 @@ class RedisContext {
 
   instrumented_io_context &io_service_;
 
-  redisContext *context_;
+  std::unique_ptr<redisContext, RedisDeleter<redisContext>> context_;
   redisSSLContext *ssl_context_;
   absl::Mutex mu_;
   std::shared_ptr<RedisAsyncContext> redis_async_context_ ABSL_GUARDED_BY(mu_);

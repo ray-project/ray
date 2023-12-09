@@ -87,6 +87,8 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   redisReply reply;
   std::string error = "MOVED 1234 " + ip + ":" + std::to_string(port);
   reply.str = &error.front();
+  reply.len = error.length();
+  reply.type = REDIS_REPLY_ERROR;
   RedisRequestContext privdata(io_service,
                                [](std::shared_ptr<CallbackReply>) {},
                                async_context_wrapper,
