@@ -204,23 +204,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         return self._job_manager
 
     async def run(self, server):
-        while True:
-            try:
-                logger.info("Job Agent: monitoring process liveness")
-                curr_proc = psutil.Process()
-                if not curr_proc.is_running():
-                    logger.info(f"Process with PID {target_pid} has exited. ")
-                    stdout_output = curr_proc.stdout.readlines()
-                    logger.info(f"Last few lines of standard output: {stdout_output}")
-                    
-                    # Attempt to get the last few lines of standard error
-                    stderr_output = curr_proc.stderr.readlines()
-                    logger.info(f"Last few lines of standard error: {stderr_output}")
-                
-                await asyncio.sleep(0.5)
-            except Exception:
-                logger.warning("current process ded")
-                exit(1)
+        pass
 
     @staticmethod
     def is_minimal_module():

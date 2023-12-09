@@ -148,12 +148,9 @@ async def _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback):
                     )
                 else:
                     logger.info(msg)
-                logger.info("I'm exiting rn")
                 sys.exit(0)
             else:
-                logger.info("Parent not dead")
                 parent_death_cnt = 0
-            logger.info("Watching process")
             await asyncio.sleep(
                 dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
             )
