@@ -353,22 +353,17 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
       if (auto maybe_ip_port =
               ParseIffMovedError(std::string(redis_reply->str, redis_reply->len));
           maybe_ip_port.has_value()) {
-        /*
         auto &ip_port = maybe_ip_port.value();
         // TODO(vitsai)
-        auto resp = ConnectWithRetries<redisAsyncConnect>(ip_port[0].c_str(),
-                                     std::stoi(ip_port[1]),
-                                     redisAsyncConnect);
-        if (!st.ok()) {
+        auto resp = ConnectWithRetries<redisAsyncContext>(
+            ip_port[0].c_str(), std::stoi(ip_port[1]), redisAsyncConnect);
+        if (auto st = resp.first; !st.ok()) {
           // We will ultimately return a MOVED error if we fail to reconnect.
           RAY_LOG(ERROR) << "Failed to connect to the new leader " << ip_port[0] << ":"
                          << ip_port[1];
         } else {
-          // There is a way to leak memory on GCS FT.
-          request_context_.reset();
-
+          request_cxt->redis_context_.reset(new RedisAsyncContext(resp.second.release()));
         }
-        */
       }
     }
     auto delay = request_cxt->exp_back_off_.Current();
