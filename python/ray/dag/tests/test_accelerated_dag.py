@@ -9,6 +9,7 @@ import ray
 import ray.cluster_utils
 from ray.dag import InputNode, OutputNode
 from ray.tests.conftest import *  # noqa
+from ray._private.test_utils import wait_for_condition
 
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,10 @@ class Actor:
     def inc(self, x):
         self.i += x
         return self.i
+
+    def append_to(self, lst):
+        lst.append(self.i)
+        return lst
 
     def inc_two(self, x, y):
         self.i += x
@@ -79,6 +84,36 @@ def test_scatter_gather_dag(ray_start_regular, num_actors):
             chan.end_read()
 
 
+@pytest.mark.parametrize("num_actors", [1, 4])
+def test_chain_dag(ray_start_regular, num_actors):
+    actors = [Actor.remote(i) for i in range(num_actors)]
+    with InputNode() as inp:
+        dag = inp
+        for a in actors:
+            dag = a.append_to.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute([])
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == list(range(num_actors))
+        output_channel.end_read()
+
+
+def test_dag_exception(ray_start_regular, capsys):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    output_channel = compiled_dag.execute("hello")
+    wait_for_condition(
+        lambda: "Compiled DAG task aborted with exception" in capsys.readouterr().err
+    )
+
+
 def test_dag_errors(ray_start_regular):
     a = Actor.remote(0)
     dag = a.inc.bind(1)
@@ -105,6 +140,14 @@ def test_dag_errors(ray_start_regular):
         dag = f.bind(inp)
     with pytest.raises(
         ValueError, match="Compiled DAGs currently only support actor method nodes"
+    ):
+        dag.experimental_compile()
+
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag = a.inc.bind(dag)
+    with pytest.raises(
+        ValueError, match="Compiled DAGs can contain at most one task per actor handle."
     ):
         dag.experimental_compile()
 

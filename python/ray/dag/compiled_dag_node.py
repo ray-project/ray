@@ -1,4 +1,7 @@
+import logging
 from typing import Any, List, Tuple, Union
+
+from collections import defaultdict
 
 import ray
 import ray.experimental.channel as ray_channel
@@ -8,70 +11,93 @@ MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
 ChannelType = "ray.experimental.channel.Channel"
 
-
-def allocate_channel(buffer_size_bytes: int = MAX_BUFFER_SIZE, num_readers: int = 1):
-    if not isinstance(buffer_size_bytes, int):
-        raise ValueError("buffer_size_bytes must be an integer")
-    if not isinstance(num_readers, int):
-        raise ValueError("num_readers must be an integer")
-
-    return ray_channel.Channel(buffer_size_bytes, num_readers)
+logger = logging.getLogger(__name__)
 
 
 def do_allocate_channel(
     self, buffer_size_bytes: int = MAX_BUFFER_SIZE, num_readers: int = 1
-):
-    self._output_channel = allocate_channel(buffer_size_bytes)
+) -> ChannelType:
+    """Generic actor method to allocate an output channel.
+
+    Args:
+        buffer_size_bytes: The maximum size of messages in the channel.
+        num_readers: The number of readers per message.
+
+    Returns:
+        The allocated channel.
+    """
+    self._output_channel = ray_channel.Channel(buffer_size_bytes, num_readers)
     return self._output_channel
 
 
 def do_exec_compiled_task(
     self,
-    inputs: List[Union[Any, "ray_channel.Channel"]],
+    inputs: List[Union[Any, ChannelType]],
     actor_method_name: str,
-):
+) -> None:
+    """Generic actor method to begin executing a compiled DAG. This runs an
+    infinite loop to repeatedly read input channel(s), execute the given
+    method, and write output channel(s). It only exits if the actor dies or an
+    exception is thrown.
+
+    Args:
+        inputs: The arguments to the task. Arguments that are not Channels will
+            get passed through to the actor method. If the argument is a channel,
+            it will be replaced by the value read from the channel before the
+            method execute.
+        actor_method_name: The name of the actual actor method to execute in
+            the loop.
+    """
     try:
         method = getattr(self, actor_method_name)
 
         resolved_inputs = []
         input_channel_idxs = []
         # Add placeholders for input channels.
-        for inp in inputs:
+        for idx, inp in enumerate(inputs):
             if isinstance(inp, ray_channel.Channel):
-                input_channel_idxs.append((len(resolved_inputs), inp))
+                input_channel_idxs.append((idx, inp))
                 resolved_inputs.append(None)
             else:
                 resolved_inputs.append(inp)
 
         while True:
-            for idx, chan in input_channel_idxs:
-                resolved_inputs[idx] = chan.begin_read()
+            for idx, channel in input_channel_idxs:
+                resolved_inputs[idx] = channel.begin_read()
 
             output_val = method(*resolved_inputs)
 
             self._output_channel.write(output_val)
-            for _, chan in input_channel_idxs:
-                chan.end_read()
+            for _, channel in input_channel_idxs:
+                channel.end_read()
 
     except Exception as e:
-        print("Task aborted", e)
+        logging.warn(f"Compiled DAG task aborted with exception: {e}")
         raise
 
 
 class CompiledTask:
     """Wraps the normal Ray DAGNode with some metadata."""
 
-    def __init__(self, idx, dag_node: "ray.dag.DAGNode"):
+    def __init__(self, idx: int, dag_node: "ray.dag.DAGNode"):
+        """
+        Args:
+            idx: A unique index into the original DAG.
+            dag_node: The original DAG node created by the user.
+        """
         self.idx = idx
         self.dag_node = dag_node
 
-        self.args = []
-        self.dependent_node_idxs = set()
+        self.downstream_node_idxs = set()
         self.output_channel = None
 
     @property
+    def args(self):
+        return self.dag_node.get_args()
+
+    @property
     def num_readers(self):
-        return len(self.dependent_node_idxs)
+        return len(self.downstream_node_idxs)
 
     def __str__(self):
         return f"""
@@ -95,23 +121,27 @@ class CompiledDAG:
         self.input_task_idx = None
         self.output_task_idx = None
         self.has_single_output = False
+        self.actor_task_count = defaultdict(int)
 
         # Cached attributes that are set during compilation.
         self.dag_input_channel = None
         self.dag_output_channels = None
-        self.node_idx_to_output_channels = {}
+        # ObjectRef for each worker's task. The task is an infinite loop that
+        # repeatedly executes the method specified in the DAG.
         self.worker_task_refs = []
 
-    def _add_node(self, node):
+    def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    def _preprocess(self):
+    def _preprocess(self) -> None:
         """Before compiling, preprocess the DAG to build an index from task to
         upstream and downstream tasks, and to set the input and output node(s)
         of the DAG.
+
+        This function is idempotent.
         """
         from ray.dag import (
             DAGNode,
@@ -121,6 +151,9 @@ class CompiledDAG:
             InputNode,
             OutputNode,
         )
+
+        self.input_task_idx, self.output_task_idx = None, None
+        self.actor_task_count.clear()
 
         # For each task node, set its upstream and downstream task nodes.
         for idx, task in self.idx_to_task.items():
@@ -146,11 +179,26 @@ class CompiledDAG:
                         f"Found unsupported node of type {type(task.dag_node)}"
                     )
 
-            task.args = task.dag_node.get_args()
+            if isinstance(dag_node, ClassMethodNode):
+                actor_handle = dag_node._get_actor_handle()
+                if actor_handle is None:
+                    raise ValueError(
+                        "Compiled DAGs can only bind methods to an actor "
+                        "that is already created with Actor.remote()"
+                    )
+                self.actor_task_count[actor_handle._actor_id] += 1
+
             for arg in task.args:
                 if isinstance(arg, DAGNode):
                     arg_idx = self.dag_node_to_idx[arg]
-                    self.idx_to_task[arg_idx].dependent_node_idxs.add(idx)
+                    self.idx_to_task[arg_idx].downstream_node_idxs.add(idx)
+
+        for actor_id, task_count in self.actor_task_count.items():
+            if task_count > 1:
+                raise ValueError(
+                    "Compiled DAGs can contain at most one task per actor handle. "
+                    f"Actor with ID {actor_id} appears {task_count}x."
+                )
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -163,7 +211,7 @@ class CompiledDAG:
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
-            if len(task.dependent_node_idxs) == 0:
+            if len(task.downstream_node_idxs) == 0:
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
 
@@ -177,7 +225,6 @@ class CompiledDAG:
             self.output_task_idx = self.dag_node_to_idx[output_node]
             # Preprocess one more time so that we have the right output node
             # now.
-            self.input_task_idx, self.output_task_idx = None, None
             self._preprocess()
 
     def _compile(self) -> Tuple[ChannelType, Union[ChannelType, List[ChannelType]]]:
@@ -185,6 +232,9 @@ class CompiledDAG:
         tasks to send/receive values. An infinite task is submitted to each
         actor in the DAG that repeatedly receives from input channel(s) and
         sends to output channel(s).
+
+        This function is idempotent and will cache the previously allocated
+        channels.
 
         Returns:
             A tuple of (input channel, output channel(s)). The input channel
@@ -197,7 +247,8 @@ class CompiledDAG:
         if self.input_task_idx is None:
             self._preprocess()
 
-        if self.dag_input_channel is not None and self.dag_output_channels is not None:
+        if self.dag_input_channel is not None:
+            assert self.dag_output_channels is not None
             # Driver should ray.put on input, ray.get/release on output
             return (
                 self.dag_input_channel,
@@ -225,11 +276,13 @@ class CompiledDAG:
                     )
                 )
             elif isinstance(task.dag_node, InputNode):
-                task.output_channel = allocate_channel(num_readers=task.num_readers)
+                task.output_channel = ray_channel.Channel(
+                    buffer_size_bytes=MAX_BUFFER_SIZE, num_readers=task.num_readers
+                )
             else:
                 assert isinstance(task.dag_node, OutputNode)
 
-            for idx in task.dependent_node_idxs:
+            for idx in task.downstream_node_idxs:
                 queue.append(idx)
 
         for node_idx, task in self.idx_to_task.items():

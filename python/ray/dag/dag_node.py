@@ -234,7 +234,7 @@ class DAGNode(DAGNodeBase):
             new_args, new_kwargs, self.get_options(), new_other_args_to_resolve
         )
 
-    def apply_recursive(self, fn: "Callable[[DAGNode], T]", cache=None) -> T:
+    def apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
         """Apply callable on each node in this DAG in a bottom-up tree walk.
 
         Args:

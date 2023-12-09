@@ -7,7 +7,7 @@ from ray.dag.format_utils import get_dag_node_str
 from ray.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.util.annotations import DeveloperAPI
 
-from typing import Any, Dict, List, Union, Tuple
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 
 @DeveloperAPI
@@ -146,7 +146,7 @@ class ClassMethodNode(DAGNode):
         self._method_name: str = method_name
         # Parse other_args_to_resolve and assign to variables
         self._parent_class_node: Union[
-            ClassNode, ReferenceType["ray._private.actor.ActorHandle"]
+            ClassNode, ReferenceType["ray.actor.ActorHandle"]
         ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
@@ -197,3 +197,8 @@ class ClassMethodNode(DAGNode):
     def _get_remote_method(self, method_name):
         method_body = getattr(self._parent_class_node, method_name)
         return method_body
+
+    def _get_actor_handle(self) -> Optional[ReferenceType["ray.actor.ActorHandle"]]:
+        if not isinstance(self._parent_class_node, ray.actor.ActorHandle):
+            return None
+        return self._parent_class_node
