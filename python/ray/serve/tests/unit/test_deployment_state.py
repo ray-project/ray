@@ -360,7 +360,6 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
 
         deployment_state = DeploymentState(
             DeploymentID("name", "my_app"),
-            "name",
             mock_long_poll,
             MockDeploymentScheduler(cluster_node_info_cache),
             cluster_node_info_cache,
@@ -2986,7 +2985,6 @@ def mock_deployment_state_manager_full(
             )
 
             return DeploymentStateManager(
-                "name",
                 kv_store,
                 mock_long_poll,
                 actor_names,
@@ -3207,7 +3205,6 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         all_current_actor_names = []
         all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(
-            DeploymentID("name", "my_app"),
             kv_store,
             mock_long_poll,
             all_current_actor_names,
@@ -3285,7 +3282,7 @@ def test_resource_requirements_none():
         available_resources = {}
 
     # Make a DeploymentReplica just to accesss its resource_requirement function
-    replica = DeploymentReplica(None, "random_tag", None, None)
+    replica = DeploymentReplica("random_tag", None, None)
     replica._actor = FakeActor()
 
     # resource_requirements() should not error
