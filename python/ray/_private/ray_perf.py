@@ -9,6 +9,7 @@ import multiprocessing
 import ray
 
 import ray.experimental.channel as ray_channel
+from ray.dag import InputNode, OutputNode
 
 logger = logging.getLogger(__name__)
 
@@ -368,6 +369,51 @@ def main(results=None):
     )
     for reader in readers:
         ray.kill(reader)
+
+    # Tests for compiled DAGs.
+
+    def _exec(dag):
+        output_channel = dag.execute(b"x")
+        output_channel.begin_read()
+        output_channel.end_read()
+
+    def _exec_multi_output(dag):
+        output_channels = dag.execute(b"x")
+        for output_channel in output_channels:
+            output_channel.begin_read()
+        for output_channel in output_channels:
+            output_channel.end_read()
+
+    @ray.remote
+    class Actor:
+        def echo(self, x):
+            return x
+
+    a = Actor.remote()
+    with InputNode() as inp:
+        dag = a.echo.bind(inp)
+
+    dag = dag.experimental_compile()
+    results += timeit("compiled single-actor DAG calls", lambda: _exec(dag))
+
+    del a
+    n_cpu = multiprocessing.cpu_count() // 2
+    actors = [Actor.remote() for _ in range(n_cpu)]
+    with InputNode() as inp:
+        dag = OutputNode([a.echo.bind(inp) for a in actors])
+    dag = dag.experimental_compile()
+    results += timeit(
+        f"compiled scatter-gather DAG calls, n={n_cpu} actors",
+        lambda: _exec_multi_output(dag),
+    )
+
+    actors = [Actor.remote() for _ in range(n_cpu)]
+    with InputNode() as inp:
+        dag = inp
+        for a in actors:
+            dag = a.echo.bind(dag)
+    dag = dag.experimental_compile()
+    results += timeit(f"compiled chain DAG calls, n={n_cpu} actors", lambda: _exec(dag))
 
     ray.shutdown()
 
