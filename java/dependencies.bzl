@@ -36,7 +36,7 @@ def gen_java_deps():
                 version = "7.5.1",
                 exclusions = [
                     "com.google.guava:guava",
-                ]
+                ],
             ),
         ],
         repositories = [

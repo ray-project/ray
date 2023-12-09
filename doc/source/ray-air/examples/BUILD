@@ -1,11 +1,13 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
 
-
 filegroup(
     name = "air_examples",
-    srcs = glob(["*.ipynb", "*.py"]),
-    visibility = ["//doc:__subpackages__"]
+    srcs = glob([
+        "*.ipynb",
+        "*.py",
+    ]),
+    visibility = ["//doc:__subpackages__"],
 )
 
 # --------------------------------------------------------------------
@@ -19,7 +21,12 @@ py_test_run_all_notebooks(
     include = [
         "gptj_serving.ipynb",
     ],
-    exclude = [],
     data = ["//doc/source/ray-air/examples:air_examples"],
-    tags = ["exclusive", "team:ml", "gpu", "ray_air"],
+    exclude = [],
+    tags = [
+        "exclusive",
+        "gpu",
+        "ray_air",
+        "team:ml",
+    ],
 )

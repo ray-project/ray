@@ -2,11 +2,14 @@
 
 py_test(
     name = "example_td3_pendulum_v1",
-    main = "td3_pendulum_v1.py",
-    tags = ["team:rllib", "example"],
     size = "large",
     srcs = ["examples/td3_pendulum_v1.py"],
-    args = ["--run-as-test"]
+    args = ["--run-as-test"],
+    main = "td3_pendulum_v1.py",
+    tags = [
+        "example",
+        "team:rllib",
+    ],
 )
 
 # Learning Tests
@@ -25,7 +28,10 @@ py_test(
 
 py_test(
     name = "test_td3",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_td3.py"]
+    srcs = ["tests/test_td3.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )

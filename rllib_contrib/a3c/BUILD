@@ -2,30 +2,40 @@
 
 py_test(
     name = "example_a3c_cartpole_v1",
-    main = "a3c_cartpole_v1.py",
-    tags = ["team:rllib", "example"],
     size = "large",
     srcs = ["examples/a3c_cartpole_v1.py"],
-    args = ["--run-as-test"]
+    args = ["--run-as-test"],
+    main = "a3c_cartpole_v1.py",
+    tags = [
+        "example",
+        "team:rllib",
+    ],
 )
 
 # Learning Tests
 
 py_test(
     name = "learning_tests_cartpole_a3c",
-    main = "run_regression_tests.py",
-    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "large",
     srcs = ["run_regression_tests.py"],
+    args = ["--dir=a3c/tuned_examples/"],
     data = ["tuned_examples/cartpole-a3c.yaml"],
-    args = ["--dir=a3c/tuned_examples/"]
+    main = "run_regression_tests.py",
+    tags = [
+        "learning_tests",
+        "rllib_contrib",
+        "team:rllib",
+    ],
 )
 
 # Compilation Tests
 
 py_test(
     name = "test_a3c",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_a3c.py"]
+    srcs = ["tests/test_a3c.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )
