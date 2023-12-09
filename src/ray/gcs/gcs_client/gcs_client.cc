@@ -164,7 +164,6 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   RAY_LOG(INFO) << "finish creating channel";
-  RAY_LOG(INFO) << (channel_ != nullptr);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   RAY_LOG(INFO) << "checking cluster given cluster id";
   if (cluster_id.IsNil()) {
@@ -193,7 +192,6 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
       channel_ =
           rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
       node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
-      RAY_LOG(INFO) << "continue retrying in attempt: " << tries << " from " << num_retries;
     }
     RAY_RETURN_NOT_OK(connect_status);
   } else {
@@ -207,7 +205,6 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
   node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
   autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
-  RAY_LOG(INFO) << "finish connecting";
   return Status::OK();
 }
 
