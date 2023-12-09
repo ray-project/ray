@@ -192,25 +192,10 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
                                              /*enable_ssl=*/options_.enable_ssl_));
   }
 
-  Attach();
-
   is_connected_ = true;
   RAY_LOG(DEBUG) << "RedisClient connected.";
 
   return Status::OK();
-}
-
-void RedisClient::Attach() {
-  // Take care of sharding contexts.
-  RAY_CHECK(shard_asio_async_clients_.empty()) << "Attach shall be called only once";
-  for (std::shared_ptr<RedisContext> context : shard_contexts_) {
-    instrumented_io_context &io_service = context->io_service();
-    shard_asio_async_clients_.emplace_back(
-        new RedisAsioClient(io_service, context->async_context()));
-  }
-  instrumented_io_context &io_service = primary_context_->io_service();
-  asio_async_auxiliary_client_.reset(
-      new RedisAsioClient(io_service, primary_context_->async_context()));
 }
 
 void RedisClient::Disconnect() {
