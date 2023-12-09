@@ -35,13 +35,21 @@ class _MergeTaskSchedule:
             self.merge_partition_size = 1
             self._partitions_with_extra_task = 0
 
-    def get_num_reducers_per_merge_idx(self, merge_idx: int) -> int:
+    def __repr__(self):
+        return (
+            f"num merge tasks per round: {self.num_merge_tasks_per_round}\n"
+            f"merge partition size: {self.merge_partition_size}\n"
+            f"partitions with extra task: {self._partitions_with_extra_task}"
+        )
+
+    def get_num_reducers_per_merge_idx(self, merge_idx: int) -> Optional[int]:
         """
         Each intermediate merge task will produce outputs for a partition of P
         final reduce tasks. This helper function returns P based on the merge
         task index.
         """
-        assert merge_idx < self.num_merge_tasks_per_round
+        if merge_idx >= self.num_merge_tasks_per_round:
+            return None
         partition_size = self.merge_partition_size
         if merge_idx < self._partitions_with_extra_task:
             partition_size += 1
@@ -126,6 +134,14 @@ class _PushBasedShuffleStage:
 
     def get_merge_task_options(self, merge_idx):
         return self._merge_task_options[merge_idx]
+
+    def __repr__(self):
+        return (
+            "\n"
+            f"num map tasks per round: {self.num_map_tasks_per_round}\n"
+            "merge task placement: \n"
+            f"{self.merge_schedule}"
+        )
 
 
 class _PipelinedStageExecutor:
