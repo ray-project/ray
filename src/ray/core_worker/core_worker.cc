@@ -2991,10 +2991,11 @@ Status CoreWorker::ReportGeneratorItemReturns(
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index
-                       << ". Total object consumed: " << waiter->TotalObjectConsumed()
-                       << ". Total object generated: " << waiter->TotalObjectGenerated()
                        << ". total_consumed_reported: "
                        << reply.total_num_object_consumed();
+        RAY_CHECK(waiter != nullptr);
+        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
+                       << ". Total object generated: " << waiter->TotalObjectGenerated();
         if (status.ok()) {
           /// Since unary gRPC requests are not ordered, it is possible the stale
           /// total value can be replied. Since total object consumed only can
