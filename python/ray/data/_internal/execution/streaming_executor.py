@@ -35,6 +35,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
+from ray.data._internal.util import cluster_resources
 from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
@@ -335,7 +336,7 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         base = self._options.resource_limits
         exclude = self._options.exclude_resources
-        cluster = ray.cluster_resources()
+        cluster = cluster_resources()
 
         cpu = base.cpu
         if cpu is None:
