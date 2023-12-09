@@ -319,8 +319,10 @@ if __name__ == "__main__":
                 or changed_file.startswith("ci/ray_ci")
                 or changed_file == ".buildkite/_forge.rayci.yml"
                 or changed_file == ".buildkite/_forge.aarch64.rayci.yml"
+                or changed_file == ".buildkite/_forge.windows.rayci.yml"
                 or changed_file == "ci/docker/forge.wanda.yaml"
                 or changed_file == "ci/docker/forge.aarch64.wanda.yaml"
+                or changed_file == "ci/docker/forge.windows.wanda.yaml"
                 or changed_file == ".buildkite/pipeline.build.yml"
                 or changed_file == ".buildkite/pipeline.ml.yml"
                 or changed_file == ".buildkite/hooks/post-command"
@@ -331,6 +333,7 @@ if __name__ == "__main__":
                 changed_file.endswith("build-docker-images.py")
                 or changed_file == ".buildkite/build.rayci.yml"
                 or changed_file == ".buildkite/pipeline.arm64.yml"
+                or changed_file == "ci/docker/forge.windows.Dockerfile"
                 or changed_file == "ci/docker/manylinux.Dockerfile"
                 or changed_file == "ci/docker/manylinux.wanda.yaml"
                 or changed_file == "ci/docker/manylinux.aarch64.wanda.yaml"

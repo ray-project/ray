@@ -1,0 +1,13 @@
+name: forge-windows
+froms:
+  - mcr.microsoft.com/windows/servercore:ltsc2019
+dockerfile: ci/docker/forge.windows.Dockerfile
+srcs: 
+  - ci/ray_ci/windows/docker/install/miniconda.ps1
+  - ci/ray_ci/windows/docker/install/bazel.ps1
+  - ci/ray_ci/windows/docker/install/docker.ps1
+  - ci/ray_ci/windows/docker/install/forge.ps1
+  - ci/ray_ci/windows/docker/install/git.ps1
+  - ci/ray_ci/windows/docker/install/msys.ps1
+tags:
+  - cr.ray.io/rayproject/forge-windows
