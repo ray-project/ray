@@ -2,7 +2,7 @@ import itertools
 
 import numpy as np
 import pandas as pd
-from packaging.version import parse as parse_version
+from pkg_resources._vendor.packaging.version import parse as parse_version
 import pyarrow as pa
 import pytest
 

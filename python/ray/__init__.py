@@ -24,18 +24,18 @@ def _configure_system():
                 "Please uninstall the package."
             )
 
-        import importlib.metadata
+        import pkg_resources
 
         try:
-            version_str = importlib.metadata.version("pickle5")
-            version = tuple(int(n) for n in version_str.split("."))
+            version_info = pkg_resources.require("pickle5")
+            version = tuple(int(n) for n in version_info[0].version.split("."))
             if version < (0, 0, 10):
                 logger.warning(
                     "Although not used by Ray, a version of pickle5 that leaks memory "
                     "is found in the environment. Please run 'pip install pickle5 -U' "
                     "to upgrade."
                 )
-        except importlib.metadata.PackageNotFoundError:
+        except pkg_resources.DistributionNotFound:
             logger.warning(
                 "You are using the 'pickle5' module, but "
                 "the exact version is unknown (possibly carried as "

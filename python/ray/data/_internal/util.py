@@ -78,7 +78,7 @@ def _check_pyarrow_version():
 
         version = _get_pyarrow_version()
         if version is not None:
-            from packaging.version import parse as parse_version
+            from pkg_resources._vendor.packaging.version import parse as parse_version
 
             if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
