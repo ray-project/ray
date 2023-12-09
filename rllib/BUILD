@@ -2675,7 +2675,7 @@ py_test(
     name = "examples/self_play_with_open_spiel_connect_4_ppo_tf",
     main = "examples/self_play_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
     args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3"]
 )
