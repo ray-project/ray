@@ -107,18 +107,23 @@ class CallbackReply {
 /// operation.
 using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 
+class RedisContext;
 struct RedisRequestContext {
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
-                      RedisAsyncContext *context,
+                      std::shared_ptr<RedisAsyncContext> &context,
                       std::vector<std::string> args);
+
+  static void RedisResponseFn(struct redisAsyncContext *async_context,
+                              void *raw_reply,
+                              void *privdata);
 
   void Run();
 
  private:
   ExponentialBackOff exp_back_off_;
   instrumented_io_context &io_service_;
-  RedisAsyncContext *redis_context_;
+  std::shared_ptr<RedisAsyncContext> redis_context_;
   size_t pending_retries_;
   RedisCallback callback_;
   absl::Time start_time_;
@@ -132,7 +137,7 @@ class RedisContext {
  public:
   RedisContext(instrumented_io_context &io_service);
 
-  ~RedisContext();
+  virtual ~RedisContext();
 
   /// Test whether the address and port has a reachable Redis service.
   ///
@@ -161,17 +166,18 @@ class RedisContext {
   /// \param args The vector of command args to pass to Redis.
   /// \param redis_callback The Redis callback function.
   /// \return Status.
-  void RunArgvAsync(std::vector<std::string> args,
-                    RedisCallback redis_callback = nullptr);
+  virtual void RunArgvAsync(std::vector<std::string> args,
+                            RedisCallback redis_callback = nullptr);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);
     return context_;
   }
 
-  RedisAsyncContext &async_context() {
+  std::shared_ptr<RedisAsyncContext> async_context() {
+    absl::MutexLock l(&mu_);
     RAY_CHECK(redis_async_context_);
-    return *redis_async_context_;
+    return redis_async_context_;
   }
 
   instrumented_io_context &io_service() { return io_service_; }
@@ -184,9 +190,11 @@ class RedisContext {
   static void FreeRedisReply(void *reply);
 
   instrumented_io_context &io_service_;
+
   redisContext *context_;
   redisSSLContext *ssl_context_;
-  std::unique_ptr<RedisAsyncContext> redis_async_context_;
+  absl::Mutex mu_;
+  std::shared_ptr<RedisAsyncContext> redis_async_context_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace gcs

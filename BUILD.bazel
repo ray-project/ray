@@ -2285,6 +2285,22 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "redis_test",
+    size = "small",
+    srcs = ["src/ray/gcs/test/redis_test.cc"],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs",
+        "//src/ray/util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "asio_test",
     size = "small",
     srcs = ["src/ray/gcs/test/asio_test.cc"],
