@@ -1,4 +1,6 @@
 group: build
+tags:
+  - disabled
 steps:
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     tags:

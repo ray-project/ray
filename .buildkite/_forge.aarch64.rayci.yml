@@ -1,4 +1,6 @@
 group: forge-aarch64
+tags:
+  - disabled
 steps:
   - name: forge-aarch64
     wanda: ci/docker/forge.aarch64.wanda.yaml

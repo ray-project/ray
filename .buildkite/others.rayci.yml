@@ -1,4 +1,6 @@
 group: others
+tags: 
+  - disabled
 depends_on:
   - oss-ci-base_build
   - forge

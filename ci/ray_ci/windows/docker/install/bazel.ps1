@@ -1,4 +1,4 @@
-$Env:BAZEL_URL="https://releases.bazel.build/5.4.1/release/bazel-5.4.1-windows-x86_64.exe"
+$Env:BAZEL_URL="https://github.com/bazelbuild/bazel/releases/download/5.4.1/bazel-5.4.1-windows-x86_64.zip"
 Write-Host ('Downloading {0} ...' -f $env:BAZEL_URL);
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
 Invoke-WebRequest -Uri $env:BAZEL_URL -OutFile 'bazel.zip';

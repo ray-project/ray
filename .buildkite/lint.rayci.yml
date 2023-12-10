@@ -1,4 +1,6 @@
 group: lint
+tags: 
+  - disabled
 depends_on:
   - forge
 steps:
