@@ -1737,7 +1737,7 @@ class Node:
                 "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
             )
             record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
-        cpu_model_name = ray._private.utils.get_cpu_model_name()
+        cpu_model_name = ray._private.utils.get_current_node_cpu_model_name()
         if cpu_model_name:
             # CPU model name can be an arbitrary long string
             # so we truncate it to the first 50 characters

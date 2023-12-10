@@ -2003,7 +2003,7 @@ def validate_actor_state_name(actor_state_name):
         )
 
 
-def get_cpu_model_name() -> Optional[str]:
+def get_current_node_cpu_model_name() -> Optional[str]:
     if not sys.platform.startswith("linux"):
         return None
 
