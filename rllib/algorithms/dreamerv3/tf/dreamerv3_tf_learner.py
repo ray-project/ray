@@ -7,7 +7,7 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from typing import Any, Dict, Mapping, Tuple
+from typing import Any, Dict, Tuple
 
 import gymnasium as gym
 
@@ -15,14 +15,13 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
     DreamerV3Learner,
     DreamerV3LearnerHyperparameters,
 )
-from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.core.learner.learner import ParamDict
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.tf_utils import symlog, two_hot, clip_gradients
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
 tfp = try_import_tfp()
@@ -170,7 +169,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         module_id: ModuleID,
         hps: DreamerV3LearnerHyperparameters,
         batch: SampleBatch,
-        fwd_out: Mapping[str, TensorType],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         # World model losses.
         prediction_losses = self._compute_world_model_prediction_losses(
@@ -313,8 +312,8 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         hps: DreamerV3LearnerHyperparameters,
         rewards_B_T: TensorType,
         continues_B_T: TensorType,
-        fwd_out: Mapping[str, TensorType],
-    ) -> Mapping[str, TensorType]:
+        fwd_out: Dict[str, TensorType],
+    ) -> Dict[str, TensorType]:
         """Helper method computing all world-model related prediction losses.
 
         Prediction losses are used to train the predictors of the world model, which

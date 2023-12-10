@@ -49,7 +49,6 @@ class InstanceLauncherTest(unittest.TestCase):
             max_concurrent_requests=1,
             max_instances_per_request=1,
         )
-        self.instance_storage.add_status_change_subscriber(self.instance_launcher)
 
     def test_launch_new_instance_by_type(self):
         instance = create_instance("1")

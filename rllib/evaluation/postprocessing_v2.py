@@ -72,8 +72,8 @@ def compute_gae_for_episode(
     # them now in the training_step.
     episode = compute_bootstrap_value(episode, module)
 
-    vf_preds = episode.extra_model_outputs[SampleBatch.VF_PREDS]
-    rewards = episode.rewards
+    vf_preds = episode.get_extra_model_outputs(SampleBatch.VF_PREDS)
+    rewards = episode.get_rewards()
 
     # TODO (simon): In case of recurrent models sequeeze out time dimension.
 
@@ -99,6 +99,8 @@ def compute_bootstrap_value(
         last_r = 0.0
     else:
         # TODO (simon): This has to be made multi-agent ready.
+        # TODO (sven, simon): We have to change this as soon as the
+        # Connector API is ready. Episodes do not have states anymore.
         initial_states = module.get_initial_state()
         state = {
             k: initial_states[k] if episode.states is None else episode.states[k]
@@ -163,9 +165,9 @@ def compute_advantages(
     last_r = convert_to_numpy(last_r)
 
     if rewards is None:
-        rewards = episode.rewards
+        rewards = episode.get_rewards()
     if vf_preds is None:
-        vf_preds = episode.extra_model_outs[SampleBatch.VF_PREDS]
+        vf_preds = episode.get_extra_model_outs(SampleBatch.VF_PREDS)
 
     if use_gae:
         vpred_t = np.concatenate([vf_preds, np.array([last_r])])
@@ -197,6 +199,7 @@ def compute_advantages(
                 episode.extra_model_outputs[Postprocessing.ADVANTAGES]
             )
 
+    # TODO (sven, simon): Maybe change to `BufferWithInfiniteLookback`
     episode.extra_model_outputs[
         Postprocessing.ADVANTAGES
     ] = episode.extra_model_outputs[Postprocessing.ADVANTAGES].astype(np.float32)

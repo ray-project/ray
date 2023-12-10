@@ -53,7 +53,7 @@ from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
     format_actor_name,
     get_capacity_adjusted_num_replicas,
-    get_random_letters,
+    get_random_string,
     msgpack_deserialize,
     msgpack_serialize,
 )
@@ -686,6 +686,8 @@ class ActorReplicaWrapper:
         """
         try:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
+            if self._is_cross_language:
+                handle = JavaActorHandleProxy(handle)
             self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
             # ValueError thrown from ray.get_actor means actor has already been deleted.
@@ -1829,7 +1831,7 @@ class DeploymentState:
                 )
                 for _ in range(to_add):
                     replica_name = ReplicaName(
-                        self.app_name, self.deployment_name, get_random_letters()
+                        self.app_name, self.deployment_name, get_random_string()
                     )
                     new_deployment_replica = DeploymentReplica(
                         self._controller_name,

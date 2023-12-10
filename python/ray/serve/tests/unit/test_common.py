@@ -12,7 +12,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
     StatusOverview,
 )
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import get_random_string
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
 )
@@ -25,7 +25,7 @@ from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 def test_replica_tag_formatting():
     app_name = "my_app"
     deployment_tag = "DeploymentA"
-    replica_suffix = get_random_letters()
+    replica_suffix = get_random_string()
 
     replica_name = ReplicaName(app_name, deployment_tag, replica_suffix)
     assert replica_name.replica_tag == f"{app_name}#{deployment_tag}#{replica_suffix}"
@@ -33,7 +33,7 @@ def test_replica_tag_formatting():
 
 
 def test_replica_name_from_str():
-    replica_suffix = get_random_letters()
+    replica_suffix = get_random_string()
     actor_name = f"{ReplicaName.prefix}DeploymentA#{replica_suffix}"
 
     replica_name = ReplicaName.from_str(actor_name)
@@ -45,7 +45,7 @@ def test_replica_name_from_str():
 
 
 def test_invalid_name_from_str():
-    replica_suffix = get_random_letters()
+    replica_suffix = get_random_string()
 
     replica_tag = f"DeploymentA##{replica_suffix}"
     with pytest.raises(AssertionError):
@@ -58,7 +58,7 @@ def test_invalid_name_from_str():
 
 
 def test_is_replica_name():
-    replica_suffix = get_random_letters()
+    replica_suffix = get_random_string()
 
     assert not ReplicaName.is_replica_name(f"DeploymentA##{replica_suffix}")
     assert not ReplicaName.is_replica_name(f"DeploymentA#{replica_suffix}")
