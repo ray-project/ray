@@ -323,10 +323,7 @@ void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
 }
 
 void FreeRedisContext(redisContext *context) { redisFree(context); }
-
 void FreeRedisContext(redisAsyncContext *context) {}
-
-void FreeRedisContext(RedisAsyncContext *context) {}
 
 template <typename RedisContext, typename RedisConnectFunction>
 Status ConnectWithoutRetries(const std::string &address,
@@ -384,11 +381,6 @@ Status ConnectWithRetries(const std::string &address,
     connection_attempts += 1;
   }
   return Status::OK();
-}
-
-Status RedisContext::PingPort(const std::string &address, int port) {
-  return ConnectWithoutRetries(
-      address, port, redisConnect, static_cast<redisContext **>(nullptr));
 }
 
 void ValidateRedisDB(RedisContext &context) {
