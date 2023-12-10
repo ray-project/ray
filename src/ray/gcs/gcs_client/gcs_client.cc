@@ -164,7 +164,6 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   RAY_LOG(INFO) << "2";
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
-  RAY_LOG(INFO) << "3";
   if (cluster_id.IsNil()) {
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
