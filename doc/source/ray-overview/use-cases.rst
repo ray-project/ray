@@ -55,41 +55,6 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
 
     Explore batch inference examples
 
-.. _ref-use-cases-mmt:
-
-Many Model Training
--------------------
-
-Many model training is common in ML use cases such as time series forecasting, which require fitting of models on multiple data batches corresponding to locations, products, etc.
-The focus is on training many models on subsets of a dataset. This is in contrast to training a single model on the entire dataset.
-
-When any given model you want to train can fit on a single GPU, Ray can assign each training run to a separate Ray Task. In this way, all available workers are utilized to run independent remote training rather than one worker running jobs sequentially.
-
-.. figure:: /images/training_small_models.png
-
-  Data parallelism pattern for distributed training on large datasets.
-
-How do I do many model training on Ray?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To train multiple independent models, use the Ray Tune (:ref:`Tutorial <mmt-tune>`) library. This is the recommended library for most cases.
-
-You can use Tune with your current data preprocessing pipeline if your data source fits into the memory of a single machine (node).
-If you need to scale your data, or you want to plan for future scaling, use the :ref:`Ray Data <data>` library.
-Your data must be a :ref:`supported format <input-output>`, to use Ray Data.
-
-Alternative solutions exist for less common cases:
-
-#. If your data is not in a supported format, use Ray Core (:ref:`Tutorial <mmt-core>`) for custom applications. This is an advanced option and requires and understanding of :ref:`design patterns and anti-patterns <core-patterns>`.
-#. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models (:ref:`Tutorial <mmt-datasets>`).
-
-.. query-param-ref:: ray-overview/examples
-    :parameters: ?tags=training
-    :ref-type: doc
-    :classes: example-gallery-link
-
-    Explore model training examples
-
 .. _ref-use-cases-model-serving:
 
 Model Serving

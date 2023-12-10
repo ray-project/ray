@@ -590,6 +590,6 @@ class ServeControllerClient:
         self._controller.record_multiplexed_replica_info.remote(info)
 
     @_ensure_connected
-    def update_system_logging_config(self, logging_config: LoggingConfig):
+    def update_global_logging_config(self, logging_config: LoggingConfig):
         """Reconfigure the logging config for the controller & proxies."""
-        self._controller.reconfigure_system_logging_config.remote(logging_config)
+        self._controller.reconfigure_global_logging_config.remote(logging_config)

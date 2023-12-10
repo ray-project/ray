@@ -21,7 +21,7 @@ class TestRayDockerContainer(RayCITestBase):
         with mock.patch(
             "ci.ray_ci.ray_docker_container.docker_pull", return_value=None
         ), mock.patch(
-            "ci.ray_ci.docker_container.Container.run_script",
+            "ci.ray_ci.docker_container.LinuxContainer.run_script",
             side_effect=_mock_run_script,
         ):
             container = RayDockerContainer("3.8", "cu11.8.0", "ray")

@@ -3,7 +3,7 @@ import json
 import sys
 from typing import Iterable, Optional, Tuple, List, Sequence, Union
 
-from pkg_resources._vendor.packaging.version import parse as parse_version
+from packaging.version import parse as parse_version
 import numpy as np
 import pyarrow as pa
 

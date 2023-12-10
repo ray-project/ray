@@ -1,3 +1,4 @@
+import copy
 import logging
 import sys
 from typing import Dict, List, Optional, Union
@@ -133,7 +134,13 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+
+        original_runtime_env = copy.deepcopy(schema.runtime_env)
+        # Make sure "working_dir" is only added once.
+        for _ in range(5):
+            schema = RayActorOptionsSchema.parse_obj(schema)
+            assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_ray_actor_options_invalid_runtime_env(self, env):
@@ -395,7 +402,13 @@ class TestServeApplicationSchema:
 
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["runtime_env"] = env
-        ServeApplicationSchema.parse_obj(serve_application_schema)
+        schema = ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        original_runtime_env = copy.deepcopy(schema.runtime_env)
+        # Make sure "working_dir" is only added once.
+        for _ in range(5):
+            schema = ServeApplicationSchema.parse_obj(schema)
+            assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_serve_application_invalid_runtime_env(self, env):
