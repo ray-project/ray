@@ -164,6 +164,21 @@ def test_blocking_group_does_not_block_others(ray_start_regular_shared):
     assert "ok" == ray.get(async_actor.f2.remote())
 
 
+def test_system_concurrency_group(ray_start_regular_shared):
+    @ray.remote
+    class NormalActor:
+        def block_forever(self):
+            time.sleep(9999)
+            return "never"
+
+        def ping(self):
+            return "pong"
+
+    n = NormalActor.remote()
+    n.block_forever.options(concurrency_group="_ray_system").remote()
+    print(ray.get(n.ping.remote()))
+
+
 if __name__ == "__main__":
     import os
 
