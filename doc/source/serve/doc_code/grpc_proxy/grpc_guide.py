@@ -373,13 +373,15 @@ stub = UserDefinedServiceStub(channel)
 request = UserDefinedMessage(name="foo", num=30, origin="bar")
 metadata = (("application", "app1"),)
 
-# First call is going to page miss and return non-OK status code.
+# First call is going to page miss and return INVALID_ARGUMENT status code.
 try:
     response, call = stub.__call__.with_call(request=request, metadata=metadata)
 except grpc.RpcError as rpc_error:
     assert rpc_error.code() == grpc.StatusCode.INVALID_ARGUMENT
     assert rpc_error.details() == "foo not found, adding to nums."
-    assert any([key == "num" and value == "0" for key, value in rpc_error.trailing_metadata()])
+    assert any(
+        [key == "num" and value == "0" for key, value in rpc_error.trailing_metadata()]
+    )
     assert any([key == "request_id" for key, _ in rpc_error.trailing_metadata()])
 
 # Second call is going to page hit and return OK status code.
