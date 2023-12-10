@@ -341,6 +341,7 @@ Status ConnectWithoutRetries(const std::string &address,
     }
     return Status::RedisError(oss.str());
   }
+  RAY_CHECK(context) << "Unexpected null context pointer";
   *context = newContext;
   return Status::OK();
 }
