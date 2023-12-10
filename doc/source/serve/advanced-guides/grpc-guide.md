@@ -297,8 +297,9 @@ Serve uses the following gRPC error codes:
 Serve provides a gRPC context object to the deployment replica to get information
 about the request as well as setting response metadata such as code and details.
 Once the deployment is defined with a `grpc_context` argument, Serve will pass a
-`RayServegRPCContext` object to the replica. Let's define the deployment like the
-following to set custom code, details, and trailing metadata.
+[RayServegRPCContext](../api/doc/ray.serve.grpc_util.RayServegRPCContext.rst) object
+to the replica. Let's define the deployment like the following to set custom code,
+details, and trailing metadata.
 
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_grpc_context_define_app__
