@@ -98,6 +98,9 @@ def test_pasre_pg_formatted_resources():
     assert out == {"CPU": 1, "memory": 100}
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Doesn't support non-linux"
+)
 def test_get_current_node_cpu_model_name():
     with patch(
         "builtins.open", mock_open(read_data="processor: 0\nmodel name: Intel Xeon")
