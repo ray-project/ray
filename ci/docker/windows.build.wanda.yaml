@@ -1,0 +1,12 @@
+name: "windowsbuild"
+froms: ["cr.ray.io/rayproject/forge-windows"]
+dockerfile: ci/docker/windows.build.Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - ci/ray_ci/windows/build_base.sh
+tags:
+  - cr.ray.io/rayproject/windowsbuild
+build_args:
+  - BUILDKITE_BAZEL_CACHE_URL
