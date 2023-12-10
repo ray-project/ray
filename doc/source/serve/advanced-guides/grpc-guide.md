@@ -10,6 +10,7 @@ This section helps you understand how to:
 - Work with gRPC metadata 
 - Use streaming and model composition
 - Handle errors
+- Use gRPC context
 
 
 (custom-serve-grpc-service)=
@@ -290,3 +291,22 @@ Serve uses the following gRPC error codes:
   this node and you should no longer route to this node.
 - `DEADLINE_EXCEEDED`: The request took longer than the timeout setting and got cancelled.
 - `INTERNAL`: Other unhandled errors during the request.
+
+(serve-grpc-proxy-grpc-context)=
+## Use gRPC context
+Serve provides a gRPC context object to the deployment replica to get information
+about the request as well as setting response metadata such as code and details...etc.
+Once the deployment is defined with a `grpc_context` argument, Serve will pass a
+`RayServegRPCContext`
+
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
+:start-after: __begin_grpc_context_define_app__
+:end-before: __end_grpc_context_define_app__
+:language: python
+```
+
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
+:start-after: __begin_grpc_context_client__
+:end-before: __end_grpc_context_client__
+:language: python
+```
