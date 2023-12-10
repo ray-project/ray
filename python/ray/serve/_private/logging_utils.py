@@ -52,7 +52,7 @@ class ServeJSONFormatter(logging.Formatter):
             SERVE_LOG_LEVEL_NAME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_LEVEL_NAME],
             SERVE_LOG_TIME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_TIME],
         }
-        if component_type and component_type == ServeComponentType.DEPLOYMENT:
+        if component_type and component_type == ServeComponentType.REPLICA:
             self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
             self.component_log_fmt[SERVE_LOG_REPLICA] = component_id
         else:
@@ -136,8 +136,6 @@ class ServeFormatter(logging.Formatter):
             record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID])
         if SERVE_LOG_ROUTE in record.__dict__:
             record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE])
-        if SERVE_LOG_APPLICATION in record.__dict__:
-            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_APPLICATION])
         record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
         record_format += " ".join(record_formats_attrs)
 
@@ -395,7 +393,7 @@ def get_component_log_file_name(
     component_log_file_name = component_name
     if component_type is not None:
         component_log_file_name = f"{component_type}_{component_name}"
-        if component_type != ServeComponentType.DEPLOYMENT:
+        if component_type != ServeComponentType.REPLICA:
             component_name = f"{component_type}_{component_name}"
     log_file_name = LOG_FILE_FMT.format(
         component_name=component_log_file_name,

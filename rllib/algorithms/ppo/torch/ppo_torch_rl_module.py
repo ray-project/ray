@@ -1,4 +1,4 @@
-from typing import Mapping, Any
+from typing import Any, Dict
 
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 
@@ -17,7 +17,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
     framework: str = "torch"
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
         output = {}
 
         encoder_outs = self.encoder(batch)
@@ -31,7 +31,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
         """PPO forward pass during exploration.
         Besides the action distribution, this method also returns the parameters of the
         policy distribution to be used for computing KL divergence between the old
@@ -55,7 +55,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
         output = {}
 
         # Shared encoder

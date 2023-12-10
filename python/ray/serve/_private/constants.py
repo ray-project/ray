@@ -245,3 +245,6 @@ RAY_SERVE_ENABLE_CPU_PROFILING = (
 # precision up to 0.0001.
 # This limitation should be lifted in the long term.
 MAX_REPLICAS_PER_NODE_MAX_VALUE = 100
+
+# Argument name for passing in the gRPC context into a replica.
+GRPC_CONTEXT_ARG_NAME = "grpc_context"

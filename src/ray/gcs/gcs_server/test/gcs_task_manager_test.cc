@@ -630,6 +630,23 @@ TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
   }
 }
 
+TEST_F(GcsTaskManagerTest, TestJobFinishesWithoutTaskEvents) {
+  // Test that if a job is finished, but no task events have been reported.
+  // This should not crash.
+
+  task_manager->OnJobFinished(JobID::FromInt(1), 5);  // in ms
+
+  boost::asio::io_service io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
+  timer.wait();
+
+  auto reply = SyncGetTaskEvents({});
+  EXPECT_EQ(reply.events_by_task_size(), 0);
+}
+
 TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
   auto tasks_running_job1 = GenTaskIDs(10);
   auto tasks_finished_job1 = GenTaskIDs(10);
