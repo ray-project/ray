@@ -182,9 +182,9 @@ class RedisContext {
     return context_.get();
   }
 
-  RedisAsyncContext *async_context() {
+  RedisAsyncContext &async_context() {
     RAY_CHECK(redis_async_context_);
-    return redis_async_context_.get();
+    return *redis_async_context_.get();
   }
 
   instrumented_io_context &io_service() { return io_service_; }
