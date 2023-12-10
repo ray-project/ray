@@ -11,10 +11,9 @@ from typing import Any, DefaultDict, Dict
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 
 class DreamerV3Learner(Learner):

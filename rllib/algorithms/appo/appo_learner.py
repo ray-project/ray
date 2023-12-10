@@ -1,13 +1,13 @@
 import abc
-from typing import Any, Mapping
+from typing import Any, Dict
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
-from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 from ray.rllib.utils.schedules.scheduler import Scheduler
+from ray.rllib.utils.typing import ModuleID
 
 
 class AppoLearner(ImpalaLearner):
@@ -46,7 +46,7 @@ class AppoLearner(ImpalaLearner):
         last_update: int,
         mean_kl_loss_per_module: dict,
         **kwargs,
-    ) -> Mapping[str, Any]:
+    ) -> Dict[str, Any]:
         """Updates the target networks and KL loss coefficients (per module).
 
         Args:
@@ -100,7 +100,7 @@ class AppoLearner(ImpalaLearner):
     @abc.abstractmethod
     def _update_module_kl_coeff(
         self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
-    ) -> Mapping[str, Any]:
+    ) -> Dict[str, Any]:
         """Dynamically update the KL loss coefficients of each module with.
 
         The update is completed using the mean KL divergence between the action

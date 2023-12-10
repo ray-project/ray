@@ -10,7 +10,6 @@ from typing import (
     Callable,
     Container,
     Dict,
-    Mapping,
     Optional,
     Tuple,
     Type,
@@ -22,7 +21,7 @@ from packaging import version
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
@@ -62,6 +61,7 @@ from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
     LearningRateOrSchedule,
+    ModuleID,
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
@@ -702,7 +702,7 @@ class AlgorithmConfig(_Config):
     #  whether the dict used is actually code-free (already serialized) or not
     #  (i.e. a classic RLlib config dict with e.g. "callbacks" key still pointing to
     #  a class).
-    def serialize(self) -> Mapping[str, Any]:
+    def serialize(self) -> Dict[str, Any]:
         """Returns a mapping from str to JSON'able values representing this config.
 
         The resulting values will not have any code in them.
@@ -714,7 +714,7 @@ class AlgorithmConfig(_Config):
         Dataclass objects get converted to dicts.
 
         Returns:
-            A mapping from str to JSON'able values.
+            A dict mapping from str to JSON'able values.
         """
         config = self.to_dict()
         return self._serialize_dict(config)
@@ -964,10 +964,8 @@ class AlgorithmConfig(_Config):
             )
 
         # TODO (sven): Remove this hack. We should not have env-var dependent logic
-        #  in the codebase.
+        #  this deep in the codebase (should only be used in example/testing scripts).
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
-            # Enable RLModule API and connectors if env variable is set
-            # (to be used in unittesting)
             self.experimental(_enable_new_api_stack=True)
             self.enable_connectors = True
 

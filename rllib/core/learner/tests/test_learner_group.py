@@ -78,8 +78,8 @@ class RemoteTrainingHelper:
         local_learner = config.build_learner()
 
         # make the state of the learner and the local learner_group identical
-        local_learner.set_state(learner_group.get_state())
-        check(local_learner.get_state(), learner_group.get_state())
+        local_learner.set_state(learner_group.get_state()["learner_state"])
+        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
         batch = batch.as_multi_agent()
@@ -97,9 +97,8 @@ class RemoteTrainingHelper:
         )
 
         # make the state of the learner and the local learner_group identical
-        local_learner.set_state(learner_group.get_state())
-        # learner_group.set_state(learner_group.get_state())
-        check(local_learner.get_state(), learner_group.get_state())
+        local_learner.set_state(learner_group.get_state()["learner_state"])
+        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
 
         # do another update
         batch = reader.next()
@@ -112,13 +111,13 @@ class RemoteTrainingHelper:
         local_learner.update(ma_batch)
         learner_group.update(ma_batch)
 
-        check(local_learner.get_state(), learner_group.get_state())
+        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
         local_learner_results = local_learner.update(ma_batch)
         learner_group_results = learner_group.update(ma_batch)
 
         check(local_learner_results, learner_group_results)
 
-        check(local_learner.get_state(), learner_group.get_state())
+        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
 
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):

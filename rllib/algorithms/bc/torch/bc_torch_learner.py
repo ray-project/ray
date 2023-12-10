@@ -1,16 +1,15 @@
 import logging
-from typing import Mapping
+from typing import Dict
 
 from ray.rllib.algorithms.bc.bc import BCConfig
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import sequence_mask
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
 logger = logging.getLogger(__file__)
@@ -26,7 +25,7 @@ class BCTorchLearner(TorchLearner):
         module_id: ModuleID,
         config: BCConfig,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType]
+        fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # In the RNN case, we expect incoming tensors to be padded to the maximum
         # sequence length. We infer the max sequence length from the actions

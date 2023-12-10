@@ -5,10 +5,10 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.schedules.scheduler import Scheduler
+from ray.rllib.utils.typing import ModuleID
 
 
 class PPOLearner(Learner):

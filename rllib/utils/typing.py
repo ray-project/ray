@@ -48,7 +48,10 @@ TensorStructType = Union[TensorType, dict, tuple]
 TensorShape = Union[Tuple[int], List[int]]
 
 # A neural network
-NetworkType = Union["torch.nn.Module", "tf.keras.Module"]
+NetworkType = Union["torch.nn.Module", "tf.keras.Model"]
+
+# An RLModule spec (single-agent or multi-agent).
+RLModuleSpec = Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"]
 
 # An RLModule spec (single-agent or multi-agent).
 RLModuleSpec = Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"]
@@ -95,9 +98,15 @@ AgentID = Any
 
 # Represents a generic identifier for a policy (e.g., "pol1").
 PolicyID = str
+# Represents a generic identifier for a (single-agent) RLModule.
+ModuleID = str
 
 # Type of the config.policies dict for multi-agent training.
 MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
+
+# Is Policy to train callable.
+IsPolicyToTrain = Callable[[PolicyID, Optional["MultiAgentBatch"]], bool]
+ShouldModuleBeUpdatedFn = Callable[[ModuleID, Optional["MultiAgentBatch"]], bool]
 
 # State dict of a Policy, mapping strings (e.g. "weights") to some state
 # data (TensorStructType).
