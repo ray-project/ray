@@ -6,7 +6,6 @@ from typing import (
     Callable,
     Dict,
     Hashable,
-    Optional,
     Sequence,
     Tuple,
     TYPE_CHECKING,

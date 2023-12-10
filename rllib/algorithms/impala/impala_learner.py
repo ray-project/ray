@@ -8,7 +8,7 @@ from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ModuleID, ResultDict
+from ray.rllib.utils.typing import ModuleID
 
 
 class ImpalaLearner(Learner):
