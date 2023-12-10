@@ -433,6 +433,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             merge_factor,
             output_num_blocks,
         )
+        print(f"Stage:\n{stage}")
 
         map_fn = self._map_partition
         merge_fn = self._merge
@@ -577,20 +578,33 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         *map_args: List[Any],
     ) -> List[Union[BlockMetadata, Block]]:
         mapper_outputs = map_fn(idx, block, output_num_blocks, *map_args)
-        meta = mapper_outputs.pop(-1)
 
-        parts = []
+        # A merge task may produce results for multiple downstream reducer
+        # tasks. Therefore, each map task should give each merge task a
+        # partition of its outputs, where the length of the partition is equal
+        # to the number of reducers downstream to the merge task.
+        partition = []
         merge_idx = 0
-        while mapper_outputs:
-            partition_size = schedule.get_num_reducers_per_merge_idx(merge_idx)
-            parts.append(mapper_outputs[:partition_size])
-            mapper_outputs = mapper_outputs[partition_size:]
-            merge_idx += 1
-        assert len(parts) == schedule.num_merge_tasks_per_round, (
-            len(parts),
+        partition_size = schedule.get_num_reducers_per_merge_idx(merge_idx)
+        for output in mapper_outputs:
+            if len(partition) == partition_size:
+                yield partition
+
+                partition = []
+                merge_idx += 1
+                partition_size = schedule.get_num_reducers_per_merge_idx(merge_idx)
+
+            if partition_size is None:
+                assert not partition
+                # The last output should be the metadata.
+                yield output
+            else:
+                partition.append(output)
+
+        assert merge_idx == schedule.num_merge_tasks_per_round, (
+            merge_idx,
             schedule.num_merge_tasks_per_round,
         )
-        return parts + [meta]
 
     @staticmethod
     def _merge(
@@ -640,6 +654,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         task_parallelism = min(num_cpus_total, num_input_blocks)
 
         num_tasks_per_map_merge_group = merge_factor + 1
+        num_total_merge_tasks = math.ceil(num_input_blocks / merge_factor)
+
         num_merge_tasks_per_round = 0
         merge_task_placement = []
         leftover_cpus = 0
@@ -648,28 +664,41 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # pipelining. These groups should then be spread across nodes according
         # to CPU availability for load-balancing.
         for node, num_cpus in num_cpus_per_node_map.items():
-            node_parallelism = min(
-                num_cpus, num_input_blocks // len(num_cpus_per_node_map)
+            # First find how many merge tasks we should run on this node.
+            num_merge_tasks_on_cur_node = num_cpus // num_tasks_per_map_merge_group
+            # For small datasets, the number of tasks to run may be less than
+            # the total CPU slots available.
+            num_merge_tasks_on_cur_node = min(
+                num_merge_tasks_on_cur_node, num_total_merge_tasks
             )
-            num_merge_tasks = node_parallelism // num_tasks_per_map_merge_group
-            for i in range(num_merge_tasks):
+            for i in range(num_merge_tasks_on_cur_node):
                 merge_task_placement.append(node)
-            num_merge_tasks_per_round += num_merge_tasks
+            num_merge_tasks_per_round += num_merge_tasks_on_cur_node
 
             # Handle the case where a single node cannot fit a group of map and
             # merge tasks, but we can spread the group across multiple distinct
             # nodes.
-            leftover_cpus += node_parallelism % num_tasks_per_map_merge_group
-            if num_merge_tasks == 0 and leftover_cpus > num_tasks_per_map_merge_group:
+            leftover_cpus += num_cpus % num_tasks_per_map_merge_group
+            if leftover_cpus >= num_tasks_per_map_merge_group:
                 merge_task_placement.append(node)
                 num_merge_tasks_per_round += 1
                 leftover_cpus -= num_tasks_per_map_merge_group
+
         if num_merge_tasks_per_round == 0:
-            merge_task_placement.append(list(num_cpus_per_node_map)[0])
-            num_merge_tasks_per_round = 1
+            # For small datasets, make sure we have at least one merge task.
+            for node, num_cpus in num_cpus_per_node_map.items():
+                if num_cpus >= 1:
+                    merge_task_placement.append(node)
+                    num_merge_tasks_per_round = 1
+                    break
 
         assert num_merge_tasks_per_round == len(merge_task_placement)
-        num_map_tasks_per_round = max(task_parallelism - num_merge_tasks_per_round, 1)
+        assert num_merge_tasks_per_round > 0, num_merge_tasks_per_round
+        # Compute the total number of map tasks per round.
+        num_map_tasks_per_round = int(num_merge_tasks_per_round * merge_factor)
+        num_map_tasks_per_round = min(num_map_tasks_per_round, task_parallelism)
+        # Make sure there is at least one map task in each round.
+        num_map_tasks_per_round = max(num_map_tasks_per_round, 1)
 
         num_rounds = math.ceil(num_input_blocks / num_map_tasks_per_round)
         return _PushBasedShuffleStage(
@@ -714,6 +743,9 @@ def _get_num_cpus_per_node_map() -> Dict[str, int]:
     # Map from per-node resource name to number of CPUs available on that
     # node.
     num_cpus_per_node_map = {}
+    # for i in range(99):
+    #    num_cpus_per_node_map[str(i)] = 8
+    # return num_cpus_per_node_map
     for node in nodes:
         resources = node["Resources"]
         num_cpus = int(resources.get("CPU", 0))
