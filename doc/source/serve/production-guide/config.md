@@ -29,6 +29,12 @@ grpc_options:
   port: ...
   grpc_servicer_functions: ...
 
+logging_config:
+  log_level: ...
+  logs_dir: ...
+  encoding: ...
+  enable_access_log: ...
+
 applications:
 - name: ...
   route_prefix: ...
@@ -42,7 +48,7 @@ applications:
     ...
 ```
 
-The file contains `proxy_location`, `http_options`, `grpc_options`, and `applications`.
+The file contains `proxy_location`, `http_options`, `grpc_options`, `logging_config` and `applications`.
 
 The `proxy_location` field configures where to run proxies to handle traffic to the cluster. You can set `proxy_location` to the following values:
 - EveryNode (default): Run a proxy on every node in the cluster that has at least one replica actor.
@@ -130,6 +136,12 @@ http_options:
 grpc_options:
   port: 9000
   grpc_servicer_functions: []
+
+logging_config:
+  encoding: TEXT
+  log_level: INFO
+  logs_dir: null
+  enable_access_log: true
 
 applications:
 - name: default

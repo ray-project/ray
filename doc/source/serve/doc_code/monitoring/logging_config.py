@@ -88,5 +88,5 @@ resp = requests.get("http://localhost:8000/")
 # __application_and_deployment_end__
 
 # __configure_serve_component_start__
-serve.start(system_logging_config={"log_level": "DEBUG"})
+serve.start(logging_config={"log_level": "DEBUG"})
 # __configure_serve_component_end__
