@@ -9,7 +9,6 @@ import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.handle.DeploymentHandle;
-import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.Assert;
@@ -21,17 +20,18 @@ public class ServeControllerClientTest {
     BaseServeTest.initRay();
     try {
       String prefix = "ServeControllerClientTest";
-      String controllerName = CommonUtil.formatActorName(Constants.SERVE_CONTROLLER_NAME, prefix);
       String endpointName = prefix + "_endpoint";
       Map<String, String> config = new HashMap<>();
       config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       // Controller.
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "")
+              .setName(Constants.SERVE_CONTROLLER_NAME)
+              .remote();
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null, config, null);
+      Serve.setInternalReplicaContext(null, null, null, config, null);
 
       // Mock endpoints.
       EndpointSet endpointSet =
@@ -45,7 +45,7 @@ public class ServeControllerClientTest {
           .get();
 
       // Client.
-      ServeControllerClient client = new ServeControllerClient(controllerHandle, controllerName);
+      ServeControllerClient client = new ServeControllerClient(controllerHandle);
 
       // Get handle.
       DeploymentHandle handle = client.getDeploymentHandle(endpointName, "", false);

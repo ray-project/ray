@@ -13,7 +13,6 @@ import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.generated.LongPollResult;
 import io.ray.serve.generated.UpdatedObject;
 import io.ray.serve.replica.ReplicaContext;
-import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.Assert;
@@ -40,13 +39,13 @@ public class LongPollClientTest {
   public void normalTest() throws Throwable {
     BaseServeTest.initRay();
     try {
-      String prefix = "LongPollClientTest_normalTest";
       // Init controller.
-      String controllerName = CommonUtil.formatActorName(Constants.SERVE_CONTROLLER_NAME, prefix);
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "")
+              .setName(Constants.SERVE_CONTROLLER_NAME)
+              .remote();
 
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null, null);
+      Serve.setInternalReplicaContext(null, null, null, null, null);
 
       // Init route table.
       String endpointName1 = prefix + "_endpoint1";
