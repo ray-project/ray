@@ -20,6 +20,8 @@ from .platform_collector import PLATFORM_COLLECTOR, PlatformCollector
 from .process_collector import PROCESS_COLLECTOR, ProcessCollector
 from .registry import CollectorRegistry, REGISTRY
 
+__version__ = '0.19.0'
+
 __all__ = (
     'CollectorRegistry',
     'REGISTRY',
