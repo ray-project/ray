@@ -171,7 +171,7 @@ class TestGetDecisionNumReplicas:
 
         config = AutoscalingConfig(
             min_replicas=0,
-            max_replicas=2,
+            max_replicas=10,
             smoothing_factor=10,
         )
         policy_manager = AutoscalingPolicyManager(config)
