@@ -127,7 +127,7 @@ class FileExtensionFilter(PathPartitionFilter):
 class FileBasedDatasource(Datasource):
     """File-based datasource for reading files.
 
-    Don't use this class directly. Instead, subclass it and implement `_read_file()`.
+    Don't use this class directly. Instead, subclass it and implement `_read_stream()`.
     """
 
     # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
