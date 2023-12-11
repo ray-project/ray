@@ -93,6 +93,7 @@ class DashboardAgent:
         # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
         # gcs_aio_client and not gcs_client.
         self.gcs_client = GcsClient(address=self.gcs_address)
+        self.gcs_client.install_failure_signal_handler()
         _initialize_internal_kv(self.gcs_client)
         assert _internal_kv_initialized()
 

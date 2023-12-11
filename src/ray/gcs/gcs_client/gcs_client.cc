@@ -159,11 +159,22 @@ Status HandleGcsError(rpc::GcsStatus status) {
 Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 int64_t timeout_ms,
                                 size_t num_retries) {
-  RAY_LOG(INFO) << "1";
-  channel_ =
+  RAY_LOG(INFO) << "start connect";
+  try{
+    channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
-  RAY_LOG(INFO) << "2";
-  node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
+  } catch (const std::exception& e) {
+    RAY_LOG(ERROR) << "segfault on channel_: ";
+    throw e;
+  }
+
+  try {
+    node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
+  } catch (const std::exception& e) {
+    RAY_LOG(ERROR) << "segfault on node_info_stub: ";
+    throw e;
+  }
+  RAY_LOG(INFO) << "node_stub and channel done";
   if (cluster_id.IsNil()) {
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
