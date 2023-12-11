@@ -256,7 +256,6 @@ Datasource API
    read_datasource
    Datasource
    ReadTask
-   datasource.Reader
    datasource.FilenameProvider
 
 Datasink API
@@ -299,16 +298,4 @@ MetadataProvider API
    datasource.DefaultParquetMetadataProvider
    datasource.FastFileMetadataProvider
 
-
-.. _block_write_path_provider:
-
-BlockWritePathProvider API
---------------------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   datasource.BlockWritePathProvider
-   datasource.DefaultBlockWritePathProvider
    
