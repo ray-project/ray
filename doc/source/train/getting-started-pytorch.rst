@@ -129,6 +129,8 @@ Compare a PyTorch training script with and without Ray Train.
 
                 # Training
                 for epoch in range(10):
+                    if ray.train.get_context().get_world_size() > 1:
+                        train_loader.sampler.set_epoch(epoch)
                     for images, labels in train_loader:
                         # This is done by `prepare_data_loader`!
                         # images, labels = images.to("cuda"), labels.to("cuda")
@@ -246,9 +248,12 @@ See :ref:`data-ingest-torch`.
     -    data_loader = DataLoader(dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
     +    data_loader = ray.train.torch.prepare_data_loader(data_loader)
 
-         for X, y in data_loader:
-    -        X = X.to_device(device)
-    -        y = y.to_device(device)
+         for epoch in range(10):
+    +        if ray.train.get_context().get_world_size() > 1:
+    +            data_loader.sampler.set_epoch(epoch)
+             for X, y in data_loader:
+    -            X = X.to_device(device)
+    -            y = y.to_device(device)
 
          ...
 

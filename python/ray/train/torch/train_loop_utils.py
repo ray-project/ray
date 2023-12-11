@@ -119,10 +119,25 @@ def prepare_data_loader(
     move_to_device: bool = True,
     auto_transfer: bool = True,
 ) -> torch.utils.data.DataLoader:
-    """Prepares DataLoader for distributed execution.
+    """Prepares :class:`~torch.utils.data.DataLoader` for distributed execution.
 
     This allows you to use the same exact code regardless of number of
     workers or the device type being used (CPU, GPU).
+
+    .. note::
+
+        This method adds a `DistributedSampler` to the `DataLoader` if the
+        number of training workers is greater than 1. If shuffling is
+        enabled on the original `DataLoader`, then `shuffle=True` will also
+        be passed into the `DistributedSampler` constructor. `shuffle=False`
+        on the original `DataLoader` also means that shuffling is disabled
+        on the sampler.
+
+        With more than 1 worker, calling the `DistributedSampler.set_epoch` method
+        at the beginning of each epoch before creating the DataLoader iterator
+        is necessary to make shuffling work properly across multiple epochs.
+        Otherwise, the same ordering will be always used.
+        See: https://pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
 
     Args:
         data_loader (torch.utils.data.DataLoader): The DataLoader to
@@ -362,22 +377,6 @@ class _TorchAccelerator(Accelerator):
 
         This allows you to use the same exact code regardless of number of
         workers or the device type being used (CPU, GPU).
-
-        .. note::
-
-            This method adds a `DistributedSampler` to the `DataLoader` if the
-            number of training workers is greater than 1. If shuffling is
-            enabled on the original `DataLoader`, then `shuffle=True` will also
-            be passed into the `DistributedSampler` constructor. `shuffle=False`
-            on the original `DataLoader` also means that shuffling is disabled
-            on the sampler.
-
-            With more than 1 worker, calling the `DistributedSampler.set_epoch` method
-            at the beginning of each epoch before creating the DataLoader iterator
-            is necessary to make shuffling work properly across multiple epochs.
-            Otherwise, the same ordering will be always used.
-            See: https://pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
-
 
         Args:
             data_loader (torch.utils.data.DataLoader): The DataLoader to

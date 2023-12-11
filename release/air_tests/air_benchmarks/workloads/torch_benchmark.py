@@ -194,7 +194,10 @@ def train_func(use_ray: bool, config: Dict):
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-    for _ in range(epochs):
+    for epoch in range(epochs):
+        if world_size > 1:
+            train_dataloader.sampler.set_epoch(epoch)
+
         train_epoch(
             train_dataloader,
             model,
