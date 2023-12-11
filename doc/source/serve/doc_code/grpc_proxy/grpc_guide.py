@@ -344,7 +344,7 @@ class GrpcDeployment:
         greeting = f"Hello {user_message.name} from {user_message.origin}"
         num, code, message = self.num_lookup(user_message.name)
 
-        # Use custom code, details, and trailing metadata
+        # Set custom code, details, and trailing metadata.
         grpc_context.set_code(code)
         grpc_context.set_details(message)
         grpc_context.set_trailing_metadata([("num", str(num))])
