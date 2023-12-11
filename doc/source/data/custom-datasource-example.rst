@@ -3,6 +3,8 @@ Advanced: Read and Write Custom File Types
 
 .. vale off
 
+.. Ignoring Vale because of future tense.
+
 This guide shows you how to extend Ray Data to read and write file types that aren't 
 natively supported. This is an advanced guide, and you'll use unstable internal APIs.
 
@@ -69,6 +71,11 @@ read images into a :class:`~ray.data.Dataset`. Ray Data reads your files in para
 
 Write data to files
 -------------------
+
+.. note::
+    The write interface is under active development and might change in the future. If
+    you have feature requests,
+    `open a GitHub Issue <https://github.com/ray-project/ray/issues/new?assignees=&labels=enhancement%2Ctriage&projects=&template=feature-request.yml&title=%5B%3CRay+component%3A+Core%7CRLlib%7Cetc...%3E%5D+>`_.
 
 The core abstractions for writing data to files are :class:`~ray.data.datasource.RowBasedFileDatasink` and 
 :class:`~ray.data.datasource.BlockBasedFileDatasink`. They provide file-specific functionality on top of the
