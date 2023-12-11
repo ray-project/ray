@@ -4,6 +4,7 @@ import subprocess
 import os
 import sys
 from pathlib import Path
+from typing import Union
 from datetime import datetime
 
 import logging
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 DARWIN_SET_CHOWN_CMD = "sudo chown root: `which {profiler}`"
 LINUX_SET_CHOWN_CMD = "sudo chown root:root `which {profiler}`"
 
-PYSPY_PERMISSIONS_ERROR_MESSAGE = """
+PROFILER_PERMISSIONS_ERROR_MESSAGE = """
 Note that this command requires `{profiler}` to be installed with root permissions. You
 can install `{profiler}` and give it root permissions as follows:
   $ pip install {profiler}
@@ -25,7 +26,7 @@ Alternatively, you can start Ray with passwordless sudo / root permissions.
 """
 
 
-def decode(string):
+def decode(string: Union[str, bytes]):
     if isinstance(string, bytes):
         return string.decode("utf-8")
     return string
@@ -43,7 +44,7 @@ def _format_failed_profiler_command(cmd, profiler, stdout, stderr) -> str:
             if sys.platform == "darwin"
             else LINUX_SET_CHOWN_CMD.format(profiler=profiler)
         )
-        extra_message = PYSPY_PERMISSIONS_ERROR_MESSAGE.format(
+        extra_message = PROFILER_PERMISSIONS_ERROR_MESSAGE.format(
             profiler=profiler, set_chown_command=set_chown_command
         )
 
@@ -75,10 +76,21 @@ class CpuProfilingManager:
     def __init__(self, profile_dir_path: str):
         self.profile_dir_path = Path(profile_dir_path)
         self.profile_dir_path.mkdir(exist_ok=True)
-        self.profiler = "py-spy"
+        self.profiler_name = "py-spy"
 
     async def trace_dump(self, pid: int, native: bool = False) -> (bool, str):
-        pyspy = shutil.which(self.profiler)
+        """
+        Capture and dump a trace for a specified process.
+
+        Args:
+            pid (int): The process ID (PID) of the target process for trace capture.
+            native (bool, optional): If True, includes native (C/C++) stack frames. Default is False.
+
+        Returns:
+            Tuple[bool, str]: A tuple containing a boolean indicating the success of the trace capture
+            operation and a string with the trace data or an error message.
+        """
+        pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
             return False, "py-spy is not installed"
 
@@ -96,7 +108,7 @@ class CpuProfilingManager:
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             return False, _format_failed_profiler_command(
-                cmd, self.profiler, stdout, stderr
+                cmd, self.profiler_name, stdout, stderr
             )
         else:
             return True, decode(stdout)
@@ -104,7 +116,20 @@ class CpuProfilingManager:
     async def cpu_profile(
         self, pid: int, format="flamegraph", duration: float = 5, native: bool = False
     ) -> (bool, str):
-        pyspy = shutil.which(self.profiler)
+        """
+        Perform CPU profiling on a specified process.
+
+        Args:
+            pid (int): The process ID (PID) of the target process to be profiled.
+            format (str, optional): The format of the CPU profile output. Default is "flamegraph".
+            duration (float, optional): The duration of the profiling session in seconds. Default is 5 seconds.
+            native (bool, optional): If True, includes native (C/C++) stack frames. Default is False.
+
+        Returns:
+            Tuple[bool, str]: A tuple containing a boolean indicating the success of the profiling
+            operation and a string with the profile data or an error message.
+        """
+        pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
             return False, "py-spy is not installed"
 
@@ -145,7 +170,7 @@ class CpuProfilingManager:
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             return False, _format_failed_profiler_command(
-                cmd, self.profiler, stdout, stderr
+                cmd, self.profiler_name, stdout, stderr
             )
         else:
             return True, open(profile_file_path, "rb").read()
@@ -155,15 +180,25 @@ class MemoryProfilingManager:
     def __init__(self, profile_dir_path: str):
         self.profile_dir_path = Path(profile_dir_path) / "memray"
         self.profile_dir_path.mkdir(exist_ok=True)
-        self.profiler = "memray"
-
-        if not self.profile_dir_path.exists():
-            self.profile_dir_path.mkdir()
+        self.profiler_name = "memray"
 
     async def get_profile_result(
-        self, pid: int, profiler_filename: str, format="flamegraph", leaks=False
+        self, pid: int, profiler_filename: str, format: str ="flamegraph", leaks: bool = False
     ) -> (bool, str):
-        memray = shutil.which(self.profiler)
+        """
+        Convert memray profile result to specified format.
+
+        Args:
+            pid (int): The process ID (PID) associated with the profiling operation.
+            profiler_filename (str): The filename of the profiler output to be processed.
+            format (str, optional): The format of the profile result. Default is "flamegraph".
+            leaks (bool, optional): If True, include memory leak information in the profile result.
+
+        Returns:
+            Tuple[bool, str]: A tuple containing a boolean indicating the success of the operation
+            and a string with the processed profile result or an error message.
+        """
+        memray = shutil.which(self.profiler_name)
         if memray is None:
             return False, "memray is not installed"
 
@@ -204,13 +239,24 @@ class MemoryProfilingManager:
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             return False, _format_failed_profiler_command(
-                visualize_cmd, self.profiler, stdout, stderr
+                visualize_cmd, self.profiler_name, stdout, stderr
             )
 
         return True, open(profile_visualize_path, "rb").read()
 
     async def attach_profiler(self, pid: int, native: bool = False) -> (bool, str):
-        memray = shutil.which(self.profiler)
+        """
+        Attach a memray profiler to a specified process.
+
+        Args:
+            pid (int): The process ID (PID) of the target process to attach the profiler to.
+            native (bool, optional): If True, includes native (C/C++) stack frames. Default is False.
+
+        Returns:
+            Tuple[bool, str]: A tuple containing a boolean indicating the success of the operation
+            and a string of a sucess message or an error message.
+        """
+        memray = shutil.which(self.profiler_name)
         if memray is None:
             return False, "memray is not installed"
 
@@ -234,7 +280,7 @@ class MemoryProfilingManager:
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             return False, _format_failed_profiler_command(
-                cmd, self.profiler, stdout, stderr
+                cmd, self.profiler_name, stdout, stderr
             )
         else:
             return (
@@ -249,7 +295,17 @@ class MemoryProfilingManager:
         self,
         pid: int,
     ) -> (bool, str):
-        memray = shutil.which(self.profiler)
+        """
+        Detach a profiler from a specified process.
+
+        Args:
+            pid (int): The process ID (PID) of the target process to detach the profiler from.
+
+        Returns:
+            Tuple[bool, str]: A tuple containing a boolean indicating the success of the operation
+            and a string of a success message or an error message.
+        """
+        memray = shutil.which(self.profiler_name)
         if memray is None:
             return False, "memray is not installed"
 
@@ -262,7 +318,7 @@ class MemoryProfilingManager:
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             return False, _format_failed_profiler_command(
-                cmd, self.profiler, stdout, stderr
+                cmd, self.profiler_name, stdout, stderr
             )
         else:
             return True, f"Success detaching memray from process {pid}"

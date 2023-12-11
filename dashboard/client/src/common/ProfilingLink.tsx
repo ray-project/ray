@@ -14,11 +14,12 @@ import {
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import React, { PropsWithChildren, useState } from "react";
+import { HelpInfo } from "../components/Tooltip";
 import { ClassNameProps } from "./props";
+import rowStyles from "./RowStyles";
 
 const buttonLinkStyles = makeStyles((theme) => ({
   buttonLink: {
-    color: theme.palette.primary.main,
     textDecoration: "none",
     textTransform: "capitalize",
     padding: "0px",
@@ -26,6 +27,15 @@ const buttonLinkStyles = makeStyles((theme) => ({
       backgroundColor: "transparent",
       textDecoration: "underline",
     },
+  },
+  dialogContent: {
+    padding: "12px",
+    display: "flex",
+    justifyContent: "flex-end",
+  },
+  secondaryButton: { 
+    textTransform: "capitalize", 
+    color: "#5F6469", 
   },
 }));
 
@@ -59,7 +69,7 @@ type TaskMemoryProfilingProps = {
 
 type MemoryProfilingButtonProps = {
   profilerUrl: string;
-  type: string | null;
+  type?: string | null;
 };
 
 export const TaskCpuProfilingLink = ({
@@ -145,11 +155,11 @@ export const CpuProfilingLink = ({
 
 export const ProfilerButton = ({
   profilerUrl,
-  type = "",
+  type,
 }: MemoryProfilingButtonProps) => {
-  const [duration, setDuration] = useState<number | null>(5);
-  const [leaks, setLeaks] = useState<boolean>(true);
-  const [open, setOpen] = useState<boolean>(false);
+  const [duration, setDuration] = useState(5);
+  const [leaks, setLeaks] = useState(true);
+  const [open, setOpen] = useState(false);
   const [format, setFormat] = useState("flamegraph");
 
   const handleOpen = () => {
@@ -165,7 +175,7 @@ export const ProfilerButton = ({
   return (
     <div>
       <Button className={buttonLinkClasses.buttonLink} onClick={handleOpen}>
-        <Typography component={Link} style={{ fontSize: "14px" }}>
+        <Typography component={Link} variant="body2">
           Memory&nbsp;Profiling{type ? ` (${type})` : ""}
         </Typography>
       </Button>
@@ -180,11 +190,11 @@ export const ProfilerButton = ({
             value={format}
             onChange={(e) => setFormat(e.target.value as string)}
             fullWidth
+            style={{ marginBottom: "12px" }}
           >
             <MenuItem value="flamegraph">Flamegraph</MenuItem>
             <MenuItem value="table">Table</MenuItem>
           </Select>
-          <br />
           <TextField
             label="Duration (seconds)"
             type="number"
@@ -200,25 +210,28 @@ export const ProfilerButton = ({
                 onChange={(e) => setLeaks(e.target.checked)}
               />
             }
-            label="Leaks (show memory leaks)"
+            label={
+              <div>
+                <span style={{ marginRight: '4px' }}>Leaks</span>
+                <HelpInfo>
+                  <Typography>
+                    Enable memory leaks, instead of peak memory usage. Refer to Memray documentation for more details.
+                  </Typography>
+                </HelpInfo>
+              </div>
+            }
           />
         </DialogContent>
         <div
-          style={{
-            padding: "12px",
-            display: "flex",
-            justifyContent: "center",
-          }}
+          className={buttonLinkClasses.dialogContent}
         >
           <Button
             onClick={handleClose}
-            color="primary"
             variant="text"
-            style={{ textTransform: "capitalize" }}
+            className={buttonLinkClasses.secondaryButton}
           >
             Cancel
           </Button>
-          <br />
           <Button
             color="primary"
             variant="text"
@@ -232,7 +245,7 @@ export const ProfilerButton = ({
               rel="noreferrer"
               target="_blank"
             >
-              Generate&nbsp;Report{type ? ` (${type})` : ""}
+              Generate&nbsp;Report
             </Link>
           </Button>
         </div>
@@ -264,5 +277,5 @@ export const TaskMemoryProfilingButton = ({
   }
   const profilerUrl = `task/memory_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`;
 
-  return <ProfilerButton profilerUrl={profilerUrl} type="" />;
+  return <ProfilerButton profilerUrl={profilerUrl}/>;
 };
