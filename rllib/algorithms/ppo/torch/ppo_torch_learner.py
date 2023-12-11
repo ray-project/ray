@@ -177,7 +177,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             batch[SampleBatch.INFOS] = infos
 
         # TODO (sven): Make multi-agent capable.
-        module = self.module[DEFAULT_POLICY_ID]
+        module = self.module[DEFAULT_POLICY_ID].unwrapped()
+
         # Shared encoder.
         encoder_outs = module.encoder(batch)
         # Value head.
