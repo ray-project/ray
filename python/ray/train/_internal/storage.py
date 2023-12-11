@@ -120,7 +120,6 @@ def _pyarrow_fs_copy_files(
 
 
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
-
     is_dir = _is_directory(fs, fs_path)
 
     try:
@@ -507,7 +506,10 @@ class StorageContext:
             raise RuntimeError(
                 f"Unable to set up cluster storage with the following settings:\n{self}"
                 "\nCheck that all nodes in the cluster have read/write access "
-                "to the configured storage path."
+                "to the configured storage path. This should be cloud storage or "
+                "a shared filesystem accessible by all nodes in your cluster. "
+                "A local path on the head node is not accessible by worker nodes. "
+                "See: https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html"  # noqa: E501
             )
 
     def _update_checkpoint_index(self, metrics: Dict):
