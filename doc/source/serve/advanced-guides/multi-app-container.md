@@ -39,10 +39,20 @@ See [Podman Installation Instructions](https://podman.io/docs/installation).
 
 ## Run Serve application in a container
 
-Note that the Ray version and Python version in the container should match those of the host environment exactly.
 In this example, we are going to walk through deploying two applications in separate containers: a whisper model and a Resnet50 image classification model. 
 
-First, let's set up the docker images with the required dependencies. Save the following to files named `whisper.Dockerfile` and `resnet.Dockerfile`.
+First, let's set up the docker images with the required dependencies. 
+
+:::note
+The Ray version and Python version in the container should match those of the host environment exactly. Note that for Python, the versions must match down to the patch number.
+:::
+
+In `whisper.Dockerfile`:
+* We are running the Whisper model on GPU, so the base image for the Whisper Dockerfile is the latest Ray GPU image, `rayproject/ray:latest-py38-gpu`.
+* We install the package `faster_whisper`, which is a dependency for the whisper model.
+* We then download the source code for the whisper application into `whisper_example.py`.
+Similarly, `resnet.Dockerfile` uses the appropriate base image, installs necessary dependencies, and downloads the resnet model source code.
+Save the following to files named `whisper.Dockerfile` and `resnet.Dockerfile`.
 
 ::::{tab-set}
 :::{tab-item} whisper.Dockerfile
@@ -111,6 +121,37 @@ applications:
         worker_path: /home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py
 ```
 
+### Send queries
+
+
+
+```python
+>>> import requests
+>>> audio_file = "https://storage.googleapis.com/public-lyrebird-test/test_audio_22s.wav"
+>>> resp = requests.post("http://localhost:8000/whisper", json={"filepath": audio_file})
+>>> resp.json()
+{
+    "language": "en",
+    "language_probability": 1,
+    "duration": 21.775,
+    "transcript_text": " Well, think about the time of our ancestors. A ping, a ding, a rustling in the bushes is like, whoo, that means an immediate response. Oh my gosh, what's that thing? Oh my gosh, I have to do it right now. And dude, it's not a tiger, right? Like, but our, our body treats stress as if it's life-threatening because to quote Robert Sapolsky or butcher his quote, he's a Robert Sapolsky is like one of the most incredible stress physiologists of",
+    "whisper_alignments": [
+        [
+            0.0,
+            0.36,
+            " Well,",
+            0.3125
+        ],
+        ...
+    ]
+}
+
+>>> image_uri = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
+>>> resp = requests.post("http://localhost:8000/resnet", json={"uri": image_uri})
+>>> resp.text
+ox
+```
+
 ## Details
 
 ### Compatibility with other Runtime Environment Fields
@@ -126,10 +167,9 @@ All environment variables that start with the prefix `RAY_` (including the two s
 If raylet is running inside a container, then that container will need the necessary permissions to start a new container. In order to do that, you need to start the container that runs raylet with the flag `--privileged`.
 
 ### Troubleshooting
-<!-- Error: 'overlay' is not supported over overlayfs, a mount_program is required: backing file system is unsupported for this graph driver -->
-* **ERRO[0000] 'overlay' is not supported over overlayfs: backing file system is unsupported for this graph driver**
-  * If you see this error when starting the replica actor, try volume mounting `/var/lib/containers` in the container that runs raylet. (i.e, add `-v /var/lib/containers:/var/lib/containers` to the command that starts the docker container)
 * **Permission denied: '/tmp/ray/session_2023-11-28_15-27-22_167972_6026/ports_by_node.json.lock'**
   * If you're seeing this error, that likely means the user running inside the podman container is different from the host user that started the Ray cluster. The folder `/tmp/ray`, which is volume mounted into the podman container, is owned by the host user that started Ray, and the container is started with the `--userns=keep-id`, so there should only be permimssions issues if the user running inside the podman container is different. For instance, if the user on host is `root`, and you're using a container whose base image is a standard Ray image, then by default the container will be started with user `ray(1000)`, who won't be able to access the mounted `/tmp/ray` volume.
+* **ERRO[0000] 'overlay' is not supported over overlayfs: backing file system is unsupported for this graph driver**
+  * [This should only occur when you are running the Ray cluster inside a container] If you see this error when starting the replica actor, try volume mounting `/var/lib/containers` in the container that runs raylet. (i.e, add `-v /var/lib/containers:/var/lib/containers` to the command that starts the docker container)
 * **cannot clone: Operation not permitted; Error: cannot re-exec process**
-  * This usually implies that you don't have the permissions to use podman to start a container. You need to start the container (that runs raylet) with privileged permissions by adding `--privileged`.
+  * [This should only occur when you are running the Ray cluster inside a container] This implies that you don't have the permissions to use podman to start a container. You need to start the container (that runs raylet) with privileged permissions by adding `--privileged`.

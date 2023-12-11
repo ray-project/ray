@@ -1,25 +1,20 @@
 from ray import serve
-from fastapi import FastAPI
 import re
-import json
 import subprocess
-import sys
 from typing import List
-
-app = FastAPI()
-
-non_alpha_numeric = re.compile(r"[\W]+")
-
+import starlette.requests
 
 def hard_normalize(word):
     """Lower case the word and remove all non-alpha-numeric characters
     from the entire word.
     """
-    return non_alpha_numeric.sub("", word.lower())
 
+    non_alpha_numeric = re.compile(r"[\W]+")
+    return non_alpha_numeric.sub("", word.lower())
 
 def clean_whisper_alignments(whisper_word_alignments: List[dict]) -> List[dict]:
     """change required to match gentle's tokenization with Whisper's word alignments"""
+
     processed_words = []
     for word_alignment in whisper_word_alignments:
         if word_alignment.word == "%":
@@ -39,57 +34,44 @@ def clean_whisper_alignments(whisper_word_alignments: List[dict]) -> List[dict]:
     return processed_words
 
 
-@serve.deployment(ray_actor_options={"num_cpus": 1, "num_gpus": 1})
-@serve.ingress(app)
+@serve.deployment(ray_actor_options={"num_cpus": 1.0, "num_gpus": 1})
 class WhisperModel:
-    def __init__(self, model_size="large-v2"):
+    def __init__(self, model_size = 'large-v2'):
         # Load model
         from faster_whisper import WhisperModel
-
         # Run on GPU with FP16
-        self.model = WhisperModel(model_size, device="cuda", compute_type="float16")
+        self.model = WhisperModel(model_size, device="cuda", compute_type="float16")                
 
-    @app.post("/")
-    async def transcribe(self):
-        try:
-            file_path = (
-                "https://storage.googleapis.com/public-lyrebird-test/test_audio_22s.wav"
-            )
-            subprocess.run(
-                f'curl -o audio.mp3 -sSfLO "{file_path}"',
-                shell=True,
-                check=True,  # This will raise a CalledProcessError if the command fails
-            )
+    async def transcribe(self, file_path: str):
+        subprocess.check_call(["curl", "-o", "audio.mp3", "-sSfLO", file_path])
 
-            segments, info = self.model.transcribe(
-                "audio.mp3",
-                language="en",
-                initial_prompt="Here is the um, uh, Um, Uh, transcript.",
-                best_of=5,
-                beam_size=5,
-                word_timestamps=True,
-            )
+        segments, info = self.model.transcribe(
+            "audio.mp3",
+            language="en",
+            initial_prompt="Here is the um, uh, Um, Uh, transcript.",
+            best_of=5,
+            beam_size=5,
+            word_timestamps=True,
+        )
 
-            whisper_alignments = []
-            transcript_text = ""
-            for seg in segments:
-                transcript_text += seg.text
-                whisper_alignments += clean_whisper_alignments(seg.words)
+        whisper_alignments = []
+        transcript_text = ""
+        for seg in segments:
+            transcript_text += seg.text
+            whisper_alignments += clean_whisper_alignments(seg.words)
 
-            # transcript change required to match gentle's tokenization
-            # with Whisper's word alignments
-            transcript_text = transcript_text.replace("% ", " percent ")
-            result = {
-                "language": info.language,
-                "language_probability": info.language_probability,
-                "duration": info.duration,
-                "transcript_text": transcript_text,
-                "whisper_alignments": whisper_alignments,
-            }
-            return json.dumps(result)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return False  # Return False if any exception occurs
+        # transcript change required to match gentle's tokenization with Whisper's word alignments
+        transcript_text = transcript_text.replace("% ", " percent ")
+        return {
+            "language": info.language,
+            "language_probability": info.language_probability,
+            "duration": info.duration,
+            "transcript_text": transcript_text,
+            "whisper_alignments": whisper_alignments,
+        }
 
-
+    async def __call__(self, req: starlette.requests.Request):
+        request = await req.json()
+        return await self.transcribe(file_path=request["filepath"])
+    
 entrypoint = WhisperModel.bind()
