@@ -69,13 +69,18 @@ class SingleAgentEnvRunner(EnvRunner):
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
+        # Create the env-to-module connector pipeline.
+        self.env_to_module = self.config.env_to_module_connector(env=self.env)
+
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
         try:
             module_spec: SingleAgentRLModuleSpec = (
                 self.config.get_default_rl_module_spec()
             )
-            module_spec.observation_space = self.env.envs[0].observation_space
+            module_spec.observation_space = (
+                self.env_to_module.connector_observation_space
+            )
             # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
             #  actually hold the spaces for a single env, but for boxes the
             #  shape is (1, 1) which brings a problem with the action dists.
@@ -87,11 +92,9 @@ class SingleAgentEnvRunner(EnvRunner):
             self.module = None
 
         # Create the two connector pipelines: env-to-module and module-to-env.
-        (
-            self.env_to_module,
-            self.module_to_env,
-            self.connector_ctx,
-        ) = self.config.sampling_connectors(env=self.env, rl_module=self.module)
+        self.module_to_env = self.config.module_to_env_connector(
+            env=self.env, rl_module=self.module
+        )
 
         # This should be the default.
         self._needs_initial_reset: bool = True
