@@ -24,7 +24,7 @@ public class LongPollClientTest {
     Map<String, String> config = new HashMap<>();
     config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
-    ReplicaContext replicaContext = new ReplicaContext(null, null, null, null, config, null);
+    ReplicaContext replicaContext = new ReplicaContext(null, null, null, config, null);
     Serve.setInternalReplicaContext(replicaContext);
     try {
       LongPollClientFactory.init(null);
@@ -39,6 +39,8 @@ public class LongPollClientTest {
   public void normalTest() throws Throwable {
     BaseServeTest.initRay();
     try {
+      String prefix = "LongPollClientTest_normalTest";
+
       // Init controller.
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new, "")
