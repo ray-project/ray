@@ -153,13 +153,13 @@ const std::vector<std::optional<std::string>> &CallbackReply::ReadAsStringArray(
 
 RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                                          RedisCallback callback,
-                                         std::shared_ptr<RedisAsyncContext> &context,
+                                         std::shared_ptr<RedisAsyncContext> &&context,
                                          std::vector<std::string> args)
     : exp_back_off_(RayConfig::instance().redis_retry_base_ms(),
                     RayConfig::instance().redis_retry_multiplier(),
                     RayConfig::instance().redis_retry_max_ms()),
       io_service_(io_service),
-      redis_context_(context),
+      redis_context_(std::move(context)),
       pending_retries_(RayConfig::instance().num_redis_request_retries() + 1),
       callback_(std::move(callback)),
       start_time_(absl::Now()),
@@ -309,6 +309,7 @@ RedisContext::~RedisContext() {
 }
 
 void RedisContext::Disconnect() {
+  absl::MutexLock l(&mu_);
   context_.reset();
   redis_async_context_.reset();
 }
@@ -506,7 +507,7 @@ Status RedisContext::Connect(const std::string &address,
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
     const std::vector<std::string> &args) {
   RAY_CHECK(context_);
-  // Build the arguments
+  // Build the arguments.
   std::vector<const char *> argv;
   std::vector<size_t> argc;
   for (const auto &arg : args) {
@@ -526,9 +527,16 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
 
 void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                 RedisCallback redis_callback) {
-  RAY_CHECK(redis_async_context_);
-  auto request_context = new RedisRequestContext(
-      io_service_, std::move(redis_callback), redis_async_context_, std::move(args));
+  std::shared_ptr<RedisAsyncContext> redis_async_context;
+  {
+    absl::MutexLock l(&mu_);
+    RAY_CHECK(redis_async_context_);
+    redis_async_context = redis_async_context_;
+  }
+  auto request_context = new RedisRequestContext(io_service_,
+                                                 std::move(redis_callback),
+                                                 std::move(redis_async_context),
+                                                 std::move(args));
   request_context->Run();
 }
 

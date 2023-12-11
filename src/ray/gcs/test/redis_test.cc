@@ -93,7 +93,7 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   reply.type = REDIS_REPLY_ERROR;
   RedisRequestContext privdata(io_service,
                                [](std::shared_ptr<CallbackReply>) {},
-                               async_context_wrapper,
+                               std::move(async_context_wrapper),
                                {"HGET", "namespace", "key"});
 
   // TODO set expectations

@@ -112,7 +112,7 @@ class RedisContext;
 struct RedisRequestContext {
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
-                      std::shared_ptr<RedisAsyncContext> &context,
+                      std::shared_ptr<RedisAsyncContext> &&context,
                       std::vector<std::string> args);
 
   static void RedisResponseFn(struct redisAsyncContext *async_context,
