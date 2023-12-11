@@ -59,6 +59,7 @@ py_test_module_list(
     "test_memstat.py",
     "test_node_label_scheduling_strategy.py",
     "test_protobuf_compatibility.py"
+    "test_client2.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
