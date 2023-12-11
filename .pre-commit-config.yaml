@@ -116,7 +116,7 @@ repos:
     rev: v2.11.0
     hooks:
       - id: pretty-format-java
-        args: [--autofix, --aosp, --google-java-formatter-version=1.7]
+        args: [--autofix, --google-java-formatter-version=1.7]
         exclude: |
           (?x)^(
             java/api/src/main/java/io/ray/api/ActorCall.java|
@@ -136,7 +136,7 @@ repos:
   - repo: local
     hooks:
       - id: check-import-order
-        name: Check for Ray docstyle violations
+        name: Check for Ray import order violations
         entry: python ci/lint/check_import_order.py
         language: python
         types: [python]
