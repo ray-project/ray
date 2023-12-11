@@ -13,7 +13,6 @@ Ray Data Examples
     huggingface_vit_batch_prediction
     pytorch_resnet_batch_prediction
     batch_inference_object_detection
-    custom_datasource_example
 
 .. _data-recipes:
 
