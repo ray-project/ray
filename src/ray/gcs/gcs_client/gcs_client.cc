@@ -81,7 +81,10 @@ void GcsSubscriberClient::PubsubCommandBatch(
 }  // namespace
 
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
-    : options_(options), gcs_client_id_(gcs_client_id) {}
+    : options_(options), gcs_client_id_(gcs_client_id) {
+  RayLog::InstallFailureSignalHandler(nullptr, /*call_previous_handler=*/true);
+  RayLog::InstallTerminateHandler();
+}
 
 Status GcsClient::Connect(instrumented_io_context &io_service,
                           const ClusterID &cluster_id) {
@@ -161,7 +164,9 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 size_t num_retries) {
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
-  RAY_LOG(INFO) << "1";
+  if (channel_ == nullptr) {
+    RAY_LOG(INFO) << "1";
+  }
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   if (cluster_id.IsNil()) {
     size_t tries = num_retries + 1;
