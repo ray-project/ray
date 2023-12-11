@@ -126,8 +126,8 @@ applications:
 ```python
 >>> import requests
 >>> audio_file = "https://storage.googleapis.com/public-lyrebird-test/test_audio_22s.wav"
->>> resp = requests.post("http://localhost:8000/whisper", json={"filepath": audio_file})
->>> resp.json()
+>>> resp = requests.post("http://localhost:8000/whisper", json={"filepath": audio_file}) # doctest: +SKIP
+>>> resp.json() # doctest: +SKIP
 {
     "language": "en",
     "language_probability": 1,
@@ -145,8 +145,8 @@ applications:
 }
 
 >>> image_uri = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
->>> resp = requests.post("http://localhost:8000/resnet", json={"uri": image_uri})
->>> resp.text
+>>> resp = requests.post("http://localhost:8000/resnet", json={"uri": image_uri}) # doctest: +SKIP
+>>> resp.text # doctest: +SKIP
 ox
 ```
 
