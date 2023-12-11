@@ -63,8 +63,6 @@ class RedisAsyncContext {
       std::unique_ptr<redisAsyncContext, RedisDeleter<redisAsyncContext>>
           redis_async_context);
 
-  ~RedisAsyncContext(){};
-
   /// Get the raw 'redisAsyncContext' pointer.
   ///
   /// \return redisAsyncContext *
@@ -109,7 +107,7 @@ class RedisAsyncContext {
   /// should be minimum.
   std::mutex mutex_;
   std::unique_ptr<redisAsyncContext, RedisDeleter<redisAsyncContext>>
-      redis_async_context_{nullptr};
+      redis_async_context_;
 };
 
 }  // namespace gcs

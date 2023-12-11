@@ -350,7 +350,8 @@ ConnectWithRetries(const std::string &address,
   RAY_LOG(INFO) << "Attempting to connect to address " << address << ":" << port << ".";
   int connection_attempts = 0;
   auto resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
-  for (auto status = resp.first; !status.ok(); status = resp.first) {
+  auto status = resp.first;
+  while (!status.ok()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       RAY_LOG(FATAL) << RayConfig::instance().redis_db_connect_retries() << " attempts "
                      << "to connect have all failed. Please check whether the"
@@ -367,13 +368,14 @@ ConnectWithRetries(const std::string &address,
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));
     resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
+    status = resp.first;
     connection_attempts += 1;
   }
   return resp;
 }
 
 namespace {
-std::optional<std::pair<std::string, std::string>> ParseIffMovedError(
+std::optional<std::pair<std::string, int>> ParseIffMovedError(
     const std::string &error_msg) {
   std::vector<std::string> parts = absl::StrSplit(error_msg, " ");
   if (parts[0] != "MOVED") {
@@ -382,7 +384,7 @@ std::optional<std::pair<std::string, std::string>> ParseIffMovedError(
   RAY_CHECK_EQ(parts.size(), 2u);
   std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
   RAY_CHECK_EQ(ip_port.size(), 2u);
-  return std::make_pair(ip_port[0], ip_port[1]);
+  return std::make_pair(ip_port[0], std::stoi(ip_port[1]));
 }
 }  // namespace
 
@@ -473,9 +475,10 @@ Status RedisContext::Connect(const std::string &address,
   RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
 
   {
-    auto resp = ConnectWithRetries<redisContext>(ip_addresses[0], port, redisConnect);
-    RAY_CHECK_OK(resp.first);
-    context_ = std::move(resp.second);
+    auto [status, context] =
+        std::move(ConnectWithRetries<redisContext>(ip_addresses[0], port, redisConnect));
+    RAY_CHECK_OK(status);
+    context_ = std::move(context);
   }
 
   if (enable_ssl) {
@@ -495,8 +498,7 @@ Status RedisContext::Connect(const std::string &address,
   if (enable_ssl) {
     RAY_CHECK(ssl_context_ != nullptr);
     RAY_CHECK(redisInitiateSSLWithContext(&async_context->c, ssl_context_) == REDIS_OK)
-        // TODO vitsai why isn't this async context
-        << "Failed to setup encrypted redis: " << context_->errstr;
+        << "Failed to setup encrypted redis: " << async_context->errstr;
   }
   RAY_CHECK_OK(AuthenticateRedis(async_context.get(), password));
   redis_async_context_.reset(new RedisAsyncContext(std::move(async_context)));
@@ -526,12 +528,11 @@ Status RedisContext::Connect(const std::string &address,
     RAY_CHECK(maybe_ip_port.has_value())
         << "Setup Redis cluster failed in the dummy deletion: " << error_msg;
     Disconnect();
-    const auto &ip_port = maybe_ip_port.value();
+    const auto &[ip, port] = maybe_ip_port.value();
     // Connect to the true leader.
-    RAY_LOG(INFO) << "Redis cluster leader is " << ip_port.first << ":" << ip_port.second
+    RAY_LOG(INFO) << "Redis cluster leader is " << ip << ":" << port
                   << ". Reconnect to it.";
-    return Connect(
-        ip_port.first, std::stoi(ip_port.second), sharding, password, enable_ssl);
+    return Connect(ip, port, sharding, password, enable_ssl);
   } else {
     RAY_LOG(INFO) << "Redis cluster leader is " << ip_addresses[0] << ":" << port;
     freeReplyObject(redis_reply);
