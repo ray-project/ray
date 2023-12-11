@@ -87,7 +87,7 @@ def train_func(config):
 
     torch.cuda.synchronize()
     start.record()
-    for _ in range(epochs):
+    for epoch in range(epochs):
         train_epoch(epoch, train_loader, model, loss_fn, optimizer)
     end.record()
     torch.cuda.synchronize()
