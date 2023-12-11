@@ -19,6 +19,8 @@ class InputData(LogicalOperator):
         assert (input_data is None) != (
             input_data_factory is None
         ), "Only one of input_data and input_data_factory should be set."
-        super().__init__("InputData", [])
+        super().__init__(
+            "InputData", [], len(input_data) if input_data is not None else None
+        )
         self.input_data = input_data
         self.input_data_factory = input_data_factory

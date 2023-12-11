@@ -393,6 +393,7 @@ class OperatorFusionRule(Rule):
         if isinstance(down_logical_op, RandomShuffle):
             logical_op = RandomShuffle(
                 input_op,
+                num_outputs=down_logical_op.num_outputs,
                 name=name,
                 ray_remote_args=ray_remote_args,
             )

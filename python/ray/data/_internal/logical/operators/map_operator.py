@@ -21,6 +21,7 @@ class AbstractMap(AbstractOneToOne):
         name: str,
         input_op: Optional[LogicalOperator] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        num_outputs: Optional[int] = None,
     ):
         """
         Args:
@@ -30,7 +31,7 @@ class AbstractMap(AbstractOneToOne):
                 of `input_op` will be the inputs to this operator.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, input_op)
+        super().__init__(name, input_op, num_outputs)
         self._ray_remote_args = ray_remote_args or {}
 
 
