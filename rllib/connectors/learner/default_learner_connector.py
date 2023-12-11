@@ -1,14 +1,16 @@
 from functools import partial
-from typing import Any
+from typing import Any, List, Optional
 
 import numpy as np
 import tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.typing import EpisodeType
 
 
 class DefaultLearnerConnector(ConnectorV2):
@@ -35,7 +37,17 @@ class DefaultLearnerConnector(ConnectorV2):
     connector will not touch the data under these keys.
     """
 
-    def __call__(self, input_: Any, episodes, ctx: ConnectorContextV2, **kwargs):
+    @override(ConnectorV2)
+    def __call__(
+        self,
+        *,
+        rl_module: RLModule,
+        input_: Any,
+        episodes: List[EpisodeType],
+        explore: Optional[bool] = None,
+        persistent_data: Optional[dict] = None,
+        **kwargs,
+    ) -> Any:
         # If episodes are provided, extract the essential data from them, but only if
         # this data is not present yet in `input_`.
         if not episodes:
@@ -45,10 +57,10 @@ class DefaultLearnerConnector(ConnectorV2):
         data_dicts = [episode.get_data_dict() for episode in episodes]
 
         state_in = None
-        T = ctx.rl_module.config.model_config_dict.get("max_seq_len")
+        T = rl_module.config.model_config_dict.get("max_seq_len")
 
         # Special handling of STATE_OUT/STATE_IN keys:
-        if ctx.rl_module.is_stateful() and STATE_IN not in input_:
+        if rl_module.is_stateful() and STATE_IN not in input_:
             if T is None:
                 raise ValueError(
                     "You are using a stateful RLModule and are not providing custom "
@@ -58,7 +70,7 @@ class DefaultLearnerConnector(ConnectorV2):
                     "`config.training(model={'max_seq_len': x})`."
                 )
             # Get model init state.
-            init_state = convert_to_numpy(ctx.rl_module.get_initial_state())
+            init_state = convert_to_numpy(rl_module.get_initial_state())
             # Get STATE_OUTs for all episodes and only keep those (as STATE_INs) that
             # are located at the `max_seq_len` edges (state inputs to RNNs only have a
             # B-axis, no T-axis).
@@ -134,7 +146,7 @@ class DefaultLearnerConnector(ConnectorV2):
                 [],
             )
 
-        if ctx.rl_module.is_stateful():
+        if rl_module.is_stateful():
             # Now that all "normal" fields are time-dim'd and zero-padded, add
             # the STATE_IN column to `input_`.
             input_[STATE_IN] = state_in

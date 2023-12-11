@@ -22,9 +22,10 @@ from typing import (
     TYPE_CHECKING,
 )
 
+import gymnasium as gym
+
 import ray
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.connectors.learner.default_learner_connector import (
     DefaultLearnerConnector,
 )
@@ -197,9 +198,7 @@ class LearnerHyperparameters:
     grad_clip_by: str = None
     seed: int = None
 
-    learner_connector: Callable[
-        [RLModule], Tuple[ConnectorV2, ConnectorContextV2]
-    ] = None
+    learner_connector: Callable[[gym.Space, gym.Space], ConnectorV2] = None
 
     # Maps ModuleIDs to LearnerHyperparameters that are to be used for that particular
     # module.
@@ -441,19 +440,16 @@ class Learner:
             return
         self._is_built = True
 
-        # Build the module to be trained by this learner.
-        self._module = self._make_module()
         # Build learner connector and context.
         # TODO (sven): Support multi-agent; Also, what if user requires a different
         #  learner connector per single-agent RLModule?
-        (
-            self._learner_connector,
-            self._learner_connector_ctx,
-        ) = self.hps.learner_connector(rl_module=self.module["default_policy"])
-        # Append default learner connector piece at the end.
-        self._learner_connector.append(
-            DefaultLearnerConnector(ctx=self._learner_connector_ctx)
+        self._learner_connector = self.hps.learner_connector(
+            self._module_spec.module_specs["default_policy"].observation_space,
+            self._module_spec.module_specs["default_policy"].action_space,
         )
+
+        # Build the module to be trained by this learner.
+        self._module = self._make_module()
 
         # Configure, construct, and register all optimizers needed to train
         # `self.module`.
@@ -1308,9 +1304,10 @@ class Learner:
 
         # Call the learner connector.
         batch = self._learner_connector(
+            rl_module=self.module["default_policy"], # TODO: make multi-agent capable
             input_=batch,
             episodes=episodes,
-            ctx=self._learner_connector_ctx,
+            # persistent_data=None, #TODO
         )
 
         # TODO (sven): Thus far, processing from episodes and the learner connector are

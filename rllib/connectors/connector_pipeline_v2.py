@@ -2,11 +2,15 @@ from collections import defaultdict
 import logging
 from typing import Any, List, Optional, Union
 
+import gymnasium as gym
+
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.connectors.env_to_module.default_env_to_module import DefaultEnvToModule
 from ray.rllib.connectors.module_to_env.default_module_to_env import DefaultModuleToEnv
-from ray.rllib.utils.annotations import override
+from ray.rllib.connectors.learner.default_learner_connector import (
+    DefaultLearnerConnector
+)
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 from ray.util.timer import _Timer
@@ -21,11 +25,10 @@ class ConnectorPipelineV2(ConnectorV2):
     def __init__(
         self,
         *,
-        ctx: ConnectorContextV2,
         connectors: Optional[List[ConnectorV2]] = None,
         **kwargs,
     ):
-        super().__init__(ctx=ctx, **kwargs)
+        super().__init__(**kwargs)
 
         self.connectors = connectors or []
         self._fix_input_output_types()
@@ -124,15 +127,25 @@ class ConnectorPipelineV2(ConnectorV2):
 
     def __call__(
         self,
+        rl_module: RLModule,
         input_: Any,
         episodes: List[EpisodeType],
-        ctx: ConnectorContextV2,
+        explore: Optional[bool] = None,
+        persistent_data: Optional[dict] = None,
+        **kwargs,
     ) -> Any:
         ret = input_
         for connector in self.connectors:
             timer = self.timers[str(connector)]
             with timer:
-                ret = connector(input_=ret, episodes=episodes, ctx=ctx)
+                ret = connector(
+                    rl_module=rl_module,
+                    input_=ret,
+                    episodes=episodes,
+                    explore=explore,
+                    persistent_data=persistent_data,
+                    **kwargs,
+                )
         return ret
 
     # @override(ConnectorV2)
@@ -213,6 +226,8 @@ class ConnectorPipelineV2(ConnectorV2):
         if len(self.connectors) > 0:
             self.input_type = self.connectors[0].input_type
             self.output_type = self.connectors[-1].output_type
+            #self.observation_space = self.connectors[-1].observation_space
+            #self.action_space = self.connectors[-1].action_space
         else:
             self.input_type = None
             self.output_type = None
@@ -220,9 +235,23 @@ class ConnectorPipelineV2(ConnectorV2):
 
 class EnvToModulePipeline(ConnectorPipelineV2):
     def __init__(
-        self, *, ctx, connectors: Optional[List[ConnectorV2]] = None, **kwargs
+        self,
+        *,
+        connectors: Optional[List[ConnectorV2]] = None,
+        input_observation_space: Optional[gym.Space],
+        input_action_space: Optional[gym.Space],
+        env: Optional[gym.Env] = None,
+        rl_module: Optional["RLModule"] = None,
+        **kwargs,
     ):
-        super().__init__(ctx=ctx, connectors=connectors, **kwargs)
+        super().__init__(
+            connectors=connectors,
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            env=env,
+            rl_module=rl_module,
+            **kwargs,
+        )
         # Add the default final connector piece for env-to-module pipelines:
         # Extracting last obs from episodes and add them to input, iff this has not
         # happened in any connector piece in this pipeline before.
@@ -230,24 +259,53 @@ class EnvToModulePipeline(ConnectorPipelineV2):
             len(self.connectors) == 0
             or type(self.connectors[-1]) is not DefaultEnvToModule
         ):
-            self.append(DefaultEnvToModule(ctx=ctx))
+            self.append(DefaultEnvToModule(
+                input_observation_space=self.observation_space,
+                input_action_space=self.action_space,
+                env=env,
+            ))
 
-    def __call__(self, *, input_: Optional[Any] = None, episodes, ctx, **kwargs):
+    def __call__(
+        self,
+        *,
+        rl_module: RLModule,
+        input_: Optional[Any] = None,
+        episodes: List[EpisodeType],
+        explore: bool,
+        persistent_data: Optional[dict] = None,
+        **kwargs,
+    ):
         # Make sure user does not necessarily send initial input into this pipeline.
         # Might just be empty and to be populated from `episodes`.
         return super().__call__(
-            input_=input_ or {},
+            rl_module=rl_module,
+            input_=input_ if input_ is not None else {},
             episodes=episodes,
-            ctx=ctx,
+            explore=explore,
+            persistent_data=persistent_data,
             **kwargs,
         )
 
 
 class ModuleToEnvPipeline(ConnectorPipelineV2):
     def __init__(
-        self, *, ctx, connectors: Optional[List[ConnectorV2]] = None, **kwargs
+        self,
+        *,
+        connectors: Optional[List[ConnectorV2]] = None,
+        input_observation_space: Optional[gym.Space],
+        input_action_space: Optional[gym.Space],
+        env: Optional[gym.Env] = None,
+        rl_module: Optional["RLModule"] = None,
+        **kwargs,
     ):
-        super().__init__(ctx=ctx, connectors=connectors, **kwargs)
+        super().__init__(
+            connectors=connectors,
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            env=env,
+            rl_module=rl_module,
+            **kwargs,
+        )
 
         # Add the default final connector piece for env-to-module pipelines:
         # Sampling actions from action_dist_inputs and add them to input, iff this has
@@ -256,4 +314,42 @@ class ModuleToEnvPipeline(ConnectorPipelineV2):
             len(self.connectors) == 0
             or type(self.connectors[-1]) is not DefaultModuleToEnv
         ):
-            self.append(DefaultModuleToEnv(ctx=ctx))
+            self.append(DefaultModuleToEnv(
+                input_observation_space=self.observation_space,
+                input_action_space=self.action_space,
+                env=env,
+                rl_module=rl_module,
+            ))
+
+
+class LearnerPipeline(ConnectorPipelineV2):
+    def __init__(
+        self,
+        *,
+        connectors: Optional[List[ConnectorV2]] = None,
+        input_observation_space: Optional[gym.Space],
+        input_action_space: Optional[gym.Space],
+        env: Optional[gym.Env] = None,
+        rl_module: Optional["RLModule"] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            connectors=connectors,
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            env=env,
+            rl_module=rl_module,
+            **kwargs,
+        )
+
+        # Add the default final connector piece for learner pipelines:
+        # Making sure that we have - at the minimum - observations and that the data
+        # is time-ranked (if we have a stateful model) and properly zero-padded.
+        if (
+            len(self.connectors) == 0
+            or type(self.connectors[-1]) is not DefaultLearnerConnector
+        ):
+            self.append(DefaultLearnerConnector(
+                input_observation_space=self.observation_space,
+                input_action_space=self.action_space,
+            ))

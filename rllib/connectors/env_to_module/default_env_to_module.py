@@ -1,11 +1,11 @@
-from typing import Any, List
+from typing import Any, List, Optional
 
 import numpy as np
 
 import tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
@@ -27,11 +27,14 @@ class DefaultEnvToModule(ConnectorV2):
     @override(ConnectorV2)
     def __call__(
         self,
-        input_: Any,
+        *,
+        rl_module: RLModule,
+        input_: Optional[Any] = None,
         episodes: List[EpisodeType],
-        ctx: ConnectorContextV2,
+        explore: Optional[bool] = None,
+        persistent_data: Optional[dict] = None,
         **kwargs,
-    ):
+    ) -> Any:
         # If obs are not already part of the input, add the most recent ones (from all
         # single-agent episodes).
         if SampleBatch.OBS not in input_:
@@ -45,7 +48,7 @@ class DefaultEnvToModule(ConnectorV2):
         # If our module is recurrent:
         # - Add the most recent states to the inputs.
         # - Make all inputs have T=1.
-        if ctx.rl_module.is_stateful():
+        if rl_module.is_stateful():
             states = []
             for episode in episodes:
                 # Make sure, we have at least one observation in the episode.
@@ -54,7 +57,7 @@ class DefaultEnvToModule(ConnectorV2):
                 # TODO: Generalize to MultiAgentEpisodes.
                 # Episode just started, get initial state from our RLModule.
                 if len(episode) == 0:
-                    state = ctx.rl_module.get_initial_state()
+                    state = rl_module.get_initial_state()
                 else:
                     state = episode.extra_model_outputs[STATE_OUT][-1]
                 states.append(state)

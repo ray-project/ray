@@ -1,27 +1,36 @@
 from functools import partial
 import numpy as np
-import tree  # pip install dm_tree
+from typing import Any, List, Optional
+
+import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.spaces.space_utils import batch, get_dummy_batch_for_space
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.spaces.space_utils import batch
+from ray.rllib.utils.typing import EpisodeType
 
 
 class _PrevRewardPrevActionConnector(ConnectorV2):
     """A connector piece that adds previous rewards and actions to the input."""
 
     def __init__(
-        self,
-        *,
-        ctx,
-        n_prev_actions: int = 1,
-        n_prev_rewards: int = 1,
-        as_learner_connector=False,
+            self,
+            *,
+            # Base class constructor args.
+            input_observation_space: Optional[gym.Space],
+            input_action_space: Optional[gym.Space],
+            env: Optional[gym.Env] = None,
+            # Specific prev. r/a args.
+            n_prev_actions: int = 1,
+            n_prev_rewards: int = 1,
+            as_learner_connector: bool = False,
+            **kwargs,
     ):
         """Initializes a PrevRewardPrevActionConnector instance.
 
         Args:
-            ctx: The ConnectorContextV2 for this connector.
             n_prev_actions: The number of previous actions to include in the output
                 data. Discrete actions are ont-hot'd. If > 1, will concatenate the
                 individual action tensors.
@@ -30,13 +39,28 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
             as_learner_connector: Whether this connector is part of a Learner connector
                 pipeline, as opposed to a env-to-module pipeline.
         """
-        super().__init__(ctx=ctx)
+        super().__init__(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            env=env,
+            **kwargs,
+        )
 
         self.n_prev_actions = n_prev_actions
         self.n_prev_rewards = n_prev_rewards
         self.as_learner_connector = as_learner_connector
 
-    def __call__(self, *, input_, episodes, ctx, **kwargs):
+    @override(ConnectorV2)
+    def __call__(
+        self,
+        *,
+        rl_module: RLModule,
+        input_: Optional[Any],
+        episodes: List[EpisodeType],
+        explore: Optional[bool] = None,
+        persistent_data: Optional[dict] = None,
+        **kwargs,
+    ) -> Any:
         # This is a data-in-data-out connector, so we expect `input_` to be a dict
         # with: key=column name, e.g. "obs" and value=[data to be processed by RLModule].
         # We will just extract the most recent rewards and/or most recent actions from

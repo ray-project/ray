@@ -70,7 +70,7 @@ class SingleAgentEnvRunner(EnvRunner):
         assert self.num_envs == self.config.num_envs_per_worker
 
         # Create the env-to-module connector pipeline.
-        self.env_to_module = self.config.env_to_module_connector(env=self.env)
+        self.env_to_module = self.config.build_env_to_module_connector(self.env)
 
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
@@ -78,9 +78,7 @@ class SingleAgentEnvRunner(EnvRunner):
             module_spec: SingleAgentRLModuleSpec = (
                 self.config.get_default_rl_module_spec()
             )
-            module_spec.observation_space = (
-                self.env_to_module.connector_observation_space
-            )
+            module_spec.observation_space = self.env_to_module.observation_space
             # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
             #  actually hold the spaces for a single env, but for boxes the
             #  shape is (1, 1) which brings a problem with the action dists.
@@ -92,9 +90,7 @@ class SingleAgentEnvRunner(EnvRunner):
             self.module = None
 
         # Create the two connector pipelines: env-to-module and module-to-env.
-        self.module_to_env = self.config.module_to_env_connector(
-            env=self.env, rl_module=self.module
-        )
+        self.module_to_env = self.config.build_module_to_env_connector(self.env)
 
         # This should be the default.
         self._needs_initial_reset: bool = True
@@ -158,9 +154,6 @@ class SingleAgentEnvRunner(EnvRunner):
     ) -> List["SingleAgentEpisode"]:
         """Helper method to sample n timesteps."""
 
-        # Set the connector context's `explore` flag to the desired value.
-        self.connector_ctx.explore = explore
-
         done_episodes_to_return: List["SingleAgentEpisode"] = []
 
         # Have to reset the env (on all vector sub_envs).
@@ -198,8 +191,10 @@ class SingleAgentEnvRunner(EnvRunner):
             # Compute an action using the RLModule.
             else:
                 to_module = self.env_to_module(
+                    rl_module=self.module,
                     episodes=self._episodes,
-                    ctx=self.connector_ctx,
+                    explore=explore,
+                    # persistent_data=None, #TODO
                 )
                 # Explore or not.
                 if explore:
@@ -208,9 +203,11 @@ class SingleAgentEnvRunner(EnvRunner):
                     to_env = self.module.forward_inference(to_module)
 
                 to_env = self.module_to_env(
+                    rl_module=self.module,
                     input_=to_env,
                     episodes=self._episodes,
-                    ctx=self.connector_ctx,
+                    explore=explore,
+                    # persistent_data=None, #TODO
                 )
                 to_env = convert_to_numpy(to_env)
                 actions = to_env.pop(SampleBatch.ACTIONS)

@@ -1,13 +1,14 @@
-from typing import Any
+from typing import Any, List, Optional
 
 import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.models.base import STATE_OUT
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
 
@@ -33,7 +34,16 @@ class DefaultModuleToEnv(ConnectorV2):
     """
 
     @override(ConnectorV2)
-    def __call__(self, input_: Any, episodes, ctx: ConnectorContextV2) -> Any:
+    def __call__(
+        self,
+        *,
+        rl_module: RLModule,
+        input_: Any,
+        episodes: List[EpisodeType],
+        explore: Optional[bool] = None,
+        persistent_data: Optional[dict] = None,
+        **kwargs,
+    ) -> Any:
 
         # Loop through all modules that created some output.
         # for mid in input_.keys():
@@ -41,7 +51,7 @@ class DefaultModuleToEnv(ConnectorV2):
 
         # If our RLModule is stateful, remove the T=1 axis from all model outputs
         # (except the state outs, which never have this extra time axis).
-        if ctx.rl_module.is_stateful():
+        if rl_module.is_stateful():
             state = input_.pop(STATE_OUT, None)
             input_ = tree.map_structure(lambda s: np.squeeze(s, axis=1), input_)
             if state:
@@ -56,12 +66,12 @@ class DefaultModuleToEnv(ConnectorV2):
             and SampleBatch.ACTION_LOGP not in input_
         ):
             dist_inputs = input_[SampleBatch.ACTION_DIST_INPUTS]
-            if ctx.explore:
-                action_dist_class = ctx.rl_module.get_exploration_action_dist_cls()
+            if explore:
+                action_dist_class = rl_module.get_exploration_action_dist_cls()
             else:
-                action_dist_class = ctx.rl_module.get_inference_action_dist_cls()
+                action_dist_class = rl_module.get_inference_action_dist_cls()
             action_dist = action_dist_class.from_logits(dist_inputs)
-            if not ctx.explore:
+            if not explore:
                 action_dist = action_dist.to_deterministic()
 
         # If `forward_...()` returned actions, use them here as-is.

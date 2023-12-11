@@ -2,17 +2,11 @@ import argparse
 import os
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.connectors.env_to_module.prev_action_prev_reward import (
     PrevRewardPrevActionEnvToModule,
 )
 from ray.rllib.connectors.learner.prev_action_prev_reward import (
     PrevRewardPrevActionLearner,
-)
-from ray.rllib.connectors.connector_pipeline_v2 import (
-    ConnectorPipelineV2,
-    EnvToModulePipeline,
-    ModuleToEnvPipeline,
 )
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
@@ -53,35 +47,22 @@ if __name__ == "__main__":
     ray.init()
 
     # Define our custom connector pipelines.
-    def make_sampling_connectors(env, rl_module):
-        # Create the connector context to use.
-        ctx = ConnectorContextV2(rl_module=rl_module, env=env)
-        # Create the env-to-module connector.
-        env_to_module = EnvToModulePipeline(
-            ctx=ctx, connectors=[PrevRewardPrevActionEnvToModule(ctx=ctx)]
+    def _env_to_module(env):
+        # Create the env-to-module connector. We return an individual connector piece
+        # here, which RLlib will then automatically integrate into a pipeline (and
+        # add its default connector piece to the end of that pipeline).
+        return PrevRewardPrevActionEnvToModule(
+            input_observation_space=env.single_observation_space,
+            input_action_space=env.single_action_space,
+            env=env,
         )
-        # Leave module-to-env undefined as we don't need any special behavior
-        # here.
-        # TODO (sven): Allow returning None here. Also allow returning non-pipeline
-        #  individual connector. RLlib should always create pipeline automatically.
-        module_to_env = ModuleToEnvPipeline(ctx=ctx)
 
-        return env_to_module, module_to_env, ctx
-
-    def make_learner_connector(rl_module):
-        # Create the connector context to use.
-        ctx = ConnectorContextV2(rl_module=rl_module)
+    def _learner_connector(input_observation_space, input_action_space):
         # Create the learner connector.
-        learner_connector = ConnectorPipelineV2(
-            ctx=ctx,
-            connectors=[
-                PrevRewardPrevActionLearner(
-                    ctx=ctx,
-                    as_learner_connector=True,
-                ),
-            ],
+        return PrevRewardPrevActionLearner(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
         )
-        return learner_connector, ctx
 
     config = (
         PPOConfig()
@@ -92,11 +73,11 @@ if __name__ == "__main__":
         # And new EnvRunner.
         .rollouts(
             env_runner_cls=SingleAgentEnvRunner,
-            sampling_connectors=make_sampling_connectors,
+            env_to_module_connector=_env_to_module,
         )
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .training(
-            learner_connector=make_learner_connector,
+            learner_connector=_learner_connector,
             num_sgd_iter=5,
             vf_loss_coeff=0.0001,
             train_batch_size=512,
@@ -118,7 +99,7 @@ if __name__ == "__main__":
         config.algo_class,
         param_space=config.to_dict(),
         run_config=air.RunConfig(stop=stop),
-        tune_config=tune.TuneConfig(num_samples=5),
+        tune_config=tune.TuneConfig(num_samples=1),
     )
     results = tuner.fit()
 
