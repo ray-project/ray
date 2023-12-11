@@ -301,26 +301,26 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
     serve.delete(SERVE_DEFAULT_APP_NAME, _blocking=False)
     ray.kill(client._controller, no_restart=False)
 
-    def replicas_something():
-        current_actors = list_actors(
-            address=ray_context.address_info["address"],
-            filters=[("state", "=", "ALIVE")],
-        )
-        assert len(current_actors) < len(actors)
-        return True
-
-    def replicas_other():
-        current_actors = list_actors(
-            address=ray_context.address_info["address"],
-            filters=[("state", "=", "ALIVE")],
-        )
-        assert len(current_actors) == len(actors) - num_replicas
-        return True
-
     # All replicas should be removed already or after the controller revives
-    wait_for_condition(replicas_something)
+    wait_for_condition(
+        lambda: len(
+            list_actors(
+                address=ray_context.address_info["address"],
+                filters=[("state", "=", "ALIVE")],
+            )
+        )
+        < len(actors)
+    )
 
-    wait_for_condition(replicas_other)
+    wait_for_condition(
+        lambda: len(
+            list_actors(
+                address=ray_context.address_info["address"],
+                filters=[("state", "=", "ALIVE")],
+            )
+        )
+        == len(actors) - num_replicas
+    )
 
     # The application should be deleted.
     wait_for_condition(
