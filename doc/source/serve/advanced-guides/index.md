@@ -13,6 +13,7 @@ dev-workflow
 grpc-guide
 managing-java-deployments
 deploy-vm
+multi-app-container
 ```
 
 If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quickstart](serve-getting-started).

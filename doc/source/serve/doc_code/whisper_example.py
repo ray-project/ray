@@ -39,6 +39,7 @@ def clean_whisper_alignments(whisper_word_alignments: List[dict]) -> List[dict]:
     return processed_words
 
 
+@serve.deployment(ray_actor_options={"num_cpus": 1, "num_gpus": 1})
 @serve.ingress(app)
 class WhisperModel:
     def __init__(self, model_size="large-v2"):
