@@ -322,7 +322,7 @@ indicating every how many ``Algorithm.train()`` calls an "evaluation step" is ru
     }
 
 
-An evaluation step runs - using its own ``RolloutWorker``s - for ``evaluation_duration``
+An evaluation step runs - using its own ``RolloutWorker`` instances - for ``evaluation_duration``
 episodes or time-steps, depending on the ``evaluation_duration_unit`` setting, which can
 take values of either ``"episodes"`` (default) or ``"timesteps"``.
 
