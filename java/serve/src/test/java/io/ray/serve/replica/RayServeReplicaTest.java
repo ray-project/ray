@@ -57,8 +57,7 @@ public class RayServeReplicaTest {
           Ray.actor(
                   RayServeWrappedReplica::new,
                   deploymentWrapper,
-                  replicaTag,
-                  Constants.SERVE_CONTROLLER_NAME)
+                  replicaTag)
               .remote();
 
       // ready
