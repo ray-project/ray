@@ -1,4 +1,4 @@
-from typing import Mapping
+from typing import Dict
 
 from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearner,
@@ -8,7 +8,6 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -16,7 +15,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
 
@@ -31,7 +30,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         module_id: ModuleID,
         hps: ImpalaLearnerHyperparameters,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         action_dist_class_train = (
             self.module[module_id].unwrapped().get_train_action_dist_cls()

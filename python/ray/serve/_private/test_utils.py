@@ -236,16 +236,42 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
 
 class FakeGrpcContext:
     def __init__(self):
-        self.code = None
-        self.details = None
-        self._trailing_metadata = None
+        self._auth_context = {"key": "value"}
+        self._invocation_metadata = [("key", "value")]
+        self._peer = "peer"
+        self._peer_identities = b"peer_identities"
+        self._peer_identity_key = "peer_identity_key"
+        self._code = None
+        self._details = None
+        self._trailing_metadata = []
         self._invocation_metadata = []
 
+    def auth_context(self):
+        return self._auth_context
+
+    def code(self):
+        return self._code
+
+    def details(self):
+        return self._details
+
+    def peer(self):
+        return self._peer
+
+    def peer_identities(self):
+        return self._peer_identities
+
+    def peer_identity_key(self):
+        return self._peer_identity_key
+
+    def trailing_metadata(self):
+        return self._trailing_metadata
+
     def set_code(self, code):
-        self.code = code
+        self._code = code
 
     def set_details(self, details):
-        self.details = details
+        self._details = details
 
     def set_trailing_metadata(self, trailing_metadata):
         self._trailing_metadata = trailing_metadata
