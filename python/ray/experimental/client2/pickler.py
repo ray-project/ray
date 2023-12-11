@@ -40,6 +40,7 @@ class PickledActorHandle(
         [
             # the state as defined in ActorHandle._serialization_helper in local mode.
             ("state", Dict),
+            # TODO: what is this current_session_and_job anyway and can we just set it None?
             (
                 "current_session_and_job",
                 Tuple,
@@ -71,18 +72,7 @@ class ServerToClientPickler(cloudpickle.CloudPickler):
             if actor_id not in self.server.actor_refs:
                 self.server.actor_refs[actor_id] = obj
             return PickledActorHandle(
-                state={
-                    "actor_language": obj._ray_actor_language,
-                    "actor_id": obj._ray_actor_id,
-                    "method_decorators": obj._ray_method_decorators,
-                    "method_signatures": obj._ray_method_signatures,
-                    "method_num_returns": obj._ray_method_num_returns,
-                    "method_generator_backpressure_num_objects": (
-                        obj._ray_method_generator_backpressure_num_objects
-                    ),
-                    "actor_method_cpus": obj._ray_actor_method_cpus,
-                    "actor_creation_function_descriptor": obj._ray_actor_creation_function_descriptor,  # noqa: E501
-                },
+                state=obj._local_serialization_helper(),
                 current_session_and_job=ray._private.worker.global_worker.current_session_and_job,
             )
         return None
@@ -93,17 +83,8 @@ class ServerToClientUnpickler(pickle.Unpickler):
         if isinstance(pid, PickledObjectRef):
             return ray.ObjectRef(pid.ref_id)
         if isinstance(pid, PickledActorHandle):
-            state = pid.state
-            return ray.actor.ActorHandle(
-                state["actor_language"],
-                state["actor_id"],
-                state["method_decorators"],
-                state["method_signatures"],
-                state["method_num_returns"],
-                state["method_generator_backpressure_num_objects"],
-                state["actor_method_cpus"],
-                state["actor_creation_function_descriptor"],
-                pid.current_session_and_job,
+            return ray.actor.ActorHandle._local_deserialization_helper(
+                pid.state[0], pid.current_session_and_job
             )
         raise pickle.UnpicklingError("unknown type")
 

@@ -1,4 +1,6 @@
 import logging
+import random
+import string
 import threading
 import time
 from typing import Any, Callable, Optional
@@ -30,13 +32,27 @@ def poll_until(func: Callable[[], bool], times: int, delay_s: int):
     return False
 
 
+def generate_client_actor_id() -> str:
+    """Returns an actor_id of the form 'rayclient2_XYZ'.
+
+    Code copied from dashboard/modules/job/job_manager.py
+    """
+    rand = random.SystemRandom()
+    possible_characters = list(
+        set(string.ascii_letters + string.digits)
+        - {"I", "l", "o", "O", "0"}  # No confusing characters
+    )
+    id_part = "".join(rand.choices(possible_characters, k=16))
+    return f"rayclient2_{id_part}"
+
+
 class Client:
     """
     Client to connect to an existing Ray Cluster.
 
     # Overview
 
-    client = Client2("http://localhost:8265", "your_channel_name")
+    client = Client2("http://localhost:8265")
 
     Upon connnection, this Python instance can not initialize with Ray, or connect to
     another Client, unless this Client has been disconnected.
@@ -51,18 +67,22 @@ class Client:
 
     # Connection
 
-    Initing a Client instance connect-or-creates a "channel" in the exising Ray Cluster.
+    Initing a Client instance creates a Ray job in the existing Ray Cluster.
 
-    By default the time-to-live for a channel is 1 hour. This means if the connection
-    breaks and there's no client connected to the same channel, the remote channel stays
-    alive for 1 hour. During this period, a user can use client to re-connect the channel.
-    If no reconnections and the 1 hour expired, the remote job is destroyed along with
+    By default the time-to-live for the job is 1 hour. This means if the network
+    breaks and there's no client connected to the same job, the remote job stays
+    alive for 1 hour. During this period, if the client makes any communication to the
+    job, the job would live on. The client also sends periodical heartbeats to keep the job alive.
+
+    If the job did not recieve any communication or heartbeat and the TTL expired, the remote job terminates itself along with
     all the objects, tasks and actors. To set this number, use `ttl_secs=your_ttl_secs`
     in the Client constructor.
 
+    If the client manually called disconnect() or is `del`ed, it explicitly terminates the remote job.
+
     One can specify a runtime_env during client creation. For example,
 
-    client = Client2("http://localhost:8265", "your_channel_name", runtime_env={"pip":["torch", "transformers", "datasets"]})
+    client = Client2("http://localhost:8265", runtime_env={"pip":["torch", "transformers", "datasets"]})
 
     # Tips
 
@@ -76,20 +96,21 @@ class Client:
 
     Before we can call it "production-ready", there are a bunch of things to do:
 
+    - if you code involves custom type, you need to use runtime_env even if the custom type is defiend in your code.
     - client.get now limits to 200MB, needs a larger limit, maybe chunking and streaming.
     - tasks' prints are not forwarded to the client.
     - exceptions on client.get are not properly forwarded (can only see a HTTP 500)
     - on user interrupt in jupyter, client_head should cancel the task.
-    - Same `channel_name` can only be created once, even if the driver had died.
     - One still have to pip install and import a lib to easily use them, even though the usage is mostly wrapped in a remote function.
         - for example, if you define a `class NeuralNetwork(nn.Module)` you need to first `from torch import nn`, even though the invocations are in remote.
     - Not showing good exception info on driver init failure (e.g. invalid rt env)
+    - connect() polls are fixed 1s * 10. Can change to a proper backoff.
     """
 
     # static variables
     dumps = dumps_with_pickler_cls(ClientToServerPickler)
     loads = loads_with_unpickler_cls(ServerToClientUnpickler)
-    # Ray methods to be hijecked
+    # Ray methods to be hijacked
     ray_get = ray.get
     ray_put = ray.put
     ray_init = ray.init
@@ -103,77 +124,58 @@ class Client:
     def __init__(
         self,
         server_addr: str,
-        channel_name: str,
-        connect_only: bool = False,
         runtime_env: Optional[RuntimeEnv] = None,
         ttl_secs: int = 60 * 60,  # 1hr
     ) -> None:
         """
-        Connects to a Ray Client2 Channel, or create one if it does not exist.
+        Creates a remote Ray job and connects to it.
 
-        If connect_only == True, only try to connect and raises if channel does not
-        exist.
-
-        ttl_secs: Time-to-live for a driver to live since the last client channel
-        disconnected. After the TTL, the driver exits, killing any remaining objects,
-        tasks, actors. Must be >= 10.
+        ttl_secs: Time-to-live for a driver to live since the last client communication.
+        After the TTL, the driver exits, killing any remaining objects, tasks, actors.
+        Must be >= 10.
         """
 
         if ttl_secs < 10:
             raise ValueError("ttl_secs must be >= 10")
 
         self.server_addr = server_addr
-        self.channel_name = channel_name
-        self.actor_name = actor_name_for_channel_name(self.channel_name)
-        self.connect_only = connect_only
+        self.actor_name = generate_client_actor_id()
+        self.submission_id = None  # set in create()
         self.runtime_env = runtime_env
         self.ttl_secs = ttl_secs
 
         self.check_no_active_client_or_ray()
+        self.create_and_connect()
 
-        if self.connect_only:
-            self.connect()
-        else:
-            self.connect_or_create()
-
-    def connect_or_create(self):
-        if not self.ping_once():
-            self.create()
+    def create_and_connect(self):
+        self.create()
         self.connect()
 
     def connect(self):
+        """
+        Polls the agent until the actor in the job can receive calls. Then mocks out Ray APIs.
+        """
         # TODO: now it waits for 10s for the Job to spin up. If we have `pip` runtime envs
         # this may not be enough. Add probes on the client_head to return 503 Service Unavailable
         # and wait further here.
         if not poll_until(lambda: self.ping_once(), times=10, delay_s=1):
             raise ValueError("Can't connect after 10s of waiting")
-        logger.info(f"client2 channel {self.channel_name} connected!")
+        logger.info(f"client2 actor {self.actor_name} connected!")
         self.set_active()
 
-    def disconnect(self, kill_channel=False):
+    def disconnect(self):
         """
-        Disconnects this client.
-        If kill_channel is True, also kills the remote channel.
+        Disconnects this client. Also kills the job.
         """
-        ray.get = Client.ray_get
-        ray.put = Client.ray_put
-        ray.init = Client.ray_init
-        ray.remote_function.RemoteFunction._remote = Client.ray_remotefunction_remote
-        ray.actor.ActorClass._remote = Client.ray_actorclass_remote
-        ray.actor.ActorMethod._remote = Client.ray_actormethod_remote
-
-        Client.active_client = None
-        Client.watchdog_thread = None
-
-        if kill_channel:
-            self.kill_actor()
+        self.unset_active()
+        self.kill_actor()
 
     def get(self, object_refs, timeout=None):
         """
         Example:
 
-        obj = client.get(obj_ref)
-        obj1, obj2 = client.get([ref1, ref2])
+        obj = ray.get(obj_ref)
+        obj1, obj2 = ray.get([ref1, ref2])
         """
         self.check_self_is_active()
         resp = requests.post(
@@ -189,7 +191,7 @@ class Client:
         """
         Example:
 
-        obj_ref = client.put(obj_ref)
+        obj_ref = ray.put(obj_ref)
 
         TODO: size of an upload is limited to 100MB (see dashboard/http_server_head.py:181)
         """
@@ -208,8 +210,8 @@ class Client:
         """
         Example:
 
-        obj = client.task(my_task).remote(param1, param2)
-        obj = client.task(my_task).options(num_cpus=12).remote(param1, param2)
+        obj = my_task.remote(param1, param2)
+        obj = my_task.options(num_cpus=12).remote(param1, param2)
         """
         client_self = self
 
@@ -234,8 +236,8 @@ class Client:
         """
         Example:
 
-        actor = client.actor(Actor).remote(param1, param2)
-        actor = client.actor(Actor).options(num_cpus=12).remote(param1, param2)
+        actor = Actor.remote(param1, param2)
+        actor = Actor.options(num_cpus=12).remote(param1, param2)
         """
 
         client_self = self
@@ -261,7 +263,7 @@ class Client:
         """
         Examples:
 
-        obj_ref = client.method(actor.method).remote(param1, param2)
+        obj_ref = actor.method.remote(param1, param2)
         obj_ref = client.method(actor.method).options(num_cpus=12).remote(param1, param2)
         """
 
@@ -337,7 +339,6 @@ class Client:
             entrypoint=f"python -m ray.experimental.client2.driver {self.actor_name} {self.ttl_secs}",
             runtime_env=self.runtime_env,
             # TODO: now re-creating a job w/ same ID raises error.
-            submission_id=self.actor_name,
         )
         if poll_until(
             # TODO: if job failed, we will wait for 10s and report timeout.
@@ -361,7 +362,7 @@ class Client:
             return True
         if resp.status_code == 404:
             logger.info(
-                "client2 channel not connected, maybe the ClientSupervisor "
+                f"client2 actor {self.actor_name} not connected, maybe the ClientSupervisor "
                 "is still starting..."
             )
             return False
@@ -370,8 +371,8 @@ class Client:
     def check_no_active_client_or_ray(self):
         if Client.active_client is not None:
             raise ValueError(
-                f"Already have active client {Client.active_client.channel_name}, "
-                "consider client.disconnect()."
+                f"Already have active client {Client.active_client.actor_name}, "
+                "consider Client.active_client.disconnect()."
             )
         if ray.is_initialized():
             raise ValueError("Already connected to Ray, consider ray.shutdown().")
@@ -379,11 +380,11 @@ class Client:
     def check_self_is_active(self):
         if Client.active_client is None:
             raise ValueError(
-                f"This client {self.channel_name} is not active, consider client.create_or_connect()"
+                f"This client {self.actor_name} is not active, maybe it's already disconnected?"
             )
         if Client.active_client is not self:
             raise ValueError(
-                f"This client {self.channel_name} is not active, instead another client {Client.active_client.channel_name} is active. consider Client.active_client.disconnect() then client.create_or_connect()"
+                f"This client {self.actor_name} is not active, instead another client {Client.active_client.actor_name} is active. consider use the new client."
             )
 
     def set_active(self):
@@ -394,9 +395,7 @@ class Client:
 
         ray.get = self.get
         ray.put = self.put
-        ray.init = self.warning_dont_use(
-            "ray.init()", "client = Client(addr, channel_name)"
-        )
+        ray.init = self.warning_dont_use("ray.init()", "client = Client(addr)")
 
         def task_remote(self_func, args, kwargs, **task_options):
             return self.task_remote(self_func, args, kwargs, task_options)
@@ -412,6 +411,18 @@ class Client:
             return self.method_remote(self_method, args, kwargs, actor_options)
 
         ray.actor.ActorMethod._remote = method_remote
+
+    def unset_active(self):
+        Client.active_client = None
+        # No need to "stop" the thread; it stops itself since self is no longer Client.active_client.
+        Client.watchdog_thread = None
+
+        ray.get = Client.ray_get
+        ray.put = Client.ray_put
+        ray.init = Client.ray_init
+        ray.remote_function.RemoteFunction._remote = Client.ray_remotefunction_remote
+        ray.actor.ActorClass._remote = Client.ray_actorclass_remote
+        ray.actor.ActorMethod._remote = Client.ray_actormethod_remote
 
     def kill_actor(self):
         resp = requests.delete(f"{self.server_addr}/api/clients/{self.actor_name}")
@@ -432,7 +443,7 @@ class Client:
     def task_remote(self, remote_function, args, kwargs, task_options):
         """
         remote_function: ray.remote_function.RemoteFunction, verbatim, includes default options
-        task_options: the extra options from client.task(f).options(..here..)
+        task_options: the extra options from f.options(..here..).remote()
         """
         self.check_self_is_active()
 
@@ -475,20 +486,14 @@ class Client:
         while self is Client.active_client:
             try:
                 if not self.ping_once():
-                    logger.warning(
-                        f"Client {self.channel_name} ping failure: not found"
-                    )
+                    logger.warning(f"Client {self.actor_name} ping failure: not found")
             except Exception as e:
-                logger.exception(f"Client {self.channel_name} ping failure")
+                logger.exception(f"Client {self.actor_name} ping failure")
             time.sleep(WATCHDOG_PING_PERIOD_SECS)
-        logger.info(f"Client {self.channel_name} is no longer active, stop pinging...")
+        logger.info(f"Client {self.actor_name} is no longer active, stop pinging...")
 
     def start_watchdog_thread(self):
         thread = threading.Thread(target=lambda: self.ping_forever())
         thread.daemon = True
         thread.start()
         return thread
-
-
-def actor_name_for_channel_name(name: str):
-    return f"ray_client2_actor_{name}"

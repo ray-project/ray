@@ -1413,6 +1413,27 @@ class ActorHandle:
     def _actor_id(self):
         return self._ray_actor_id
 
+    def _local_serialization_helper(self):
+        return (
+            {
+                "actor_language": self._ray_actor_language,
+                "actor_id": self._ray_actor_id,
+                "max_task_retries": self._ray_max_task_retries,
+                "method_is_generator": self._ray_method_is_generator,
+                "method_decorators": self._ray_method_decorators,
+                "method_signatures": self._ray_method_signatures,
+                "method_num_returns": self._ray_method_num_returns,
+                "method_max_retries": self._ray_method_max_retries,
+                "method_retry_exceptions": self._ray_method_retry_exceptions,
+                "method_generator_backpressure_num_objects": (
+                    self._ray_method_generator_backpressure_num_objects
+                ),
+                "actor_method_cpus": self._ray_actor_method_cpus,
+                "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,  # noqa: E501
+            },
+            None,
+        )
+
     def _serialization_helper(self):
         """This is defined in order to make pickling work.
 
@@ -1427,27 +1448,29 @@ class ActorHandle:
             state = worker.core_worker.serialize_actor_handle(self._ray_actor_id)
         else:
             # Local mode
-            state = (
-                {
-                    "actor_language": self._ray_actor_language,
-                    "actor_id": self._ray_actor_id,
-                    "max_task_retries": self._ray_max_task_retries,
-                    "method_is_generator": self._ray_method_is_generator,
-                    "method_decorators": self._ray_method_decorators,
-                    "method_signatures": self._ray_method_signatures,
-                    "method_num_returns": self._ray_method_num_returns,
-                    "method_max_retries": self._ray_method_max_retries,
-                    "method_retry_exceptions": self._ray_method_retry_exceptions,
-                    "method_generator_backpressure_num_objects": (
-                        self._ray_method_generator_backpressure_num_objects
-                    ),
-                    "actor_method_cpus": self._ray_actor_method_cpus,
-                    "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,  # noqa: E501
-                },
-                None,
-            )
+            state = self._local_serialization_helper()
 
         return state
+
+    @classmethod
+    def _local_deserialization_helper(cls, state, current_session_and_job):
+        return cls(
+            # TODO(swang): Accessing the worker's current task ID is not
+            # thread-safe.
+            state["actor_language"],
+            state["actor_id"],
+            state["max_task_retries"],
+            state["method_is_generator"],
+            state["method_decorators"],
+            state["method_signatures"],
+            state["method_num_returns"],
+            state["method_max_retries"],
+            state["method_retry_exceptions"],
+            state["method_generator_backpressure_num_objects"],
+            state["actor_method_cpus"],
+            state["actor_creation_function_descriptor"],
+            current_session_and_job,
+        )
 
     @classmethod
     def _deserialization_helper(cls, state, outer_object_ref=None):
@@ -1470,22 +1493,8 @@ class ActorHandle:
             )
         else:
             # Local mode
-            return cls(
-                # TODO(swang): Accessing the worker's current task ID is not
-                # thread-safe.
-                state["actor_language"],
-                state["actor_id"],
-                state["max_task_retries"],
-                state["method_is_generator"],
-                state["method_decorators"],
-                state["method_signatures"],
-                state["method_num_returns"],
-                state["method_max_retries"],
-                state["method_retry_exceptions"],
-                state["method_generator_backpressure_num_objects"],
-                state["actor_method_cpus"],
-                state["actor_creation_function_descriptor"],
-                worker.current_session_and_job,
+            return ActorHandle._local_deserialization_helper(
+                cls, state, worker.current_session_and_job
             )
 
     def __reduce__(self):
