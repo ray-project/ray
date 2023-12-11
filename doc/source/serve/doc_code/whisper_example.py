@@ -4,6 +4,7 @@ import subprocess
 from typing import List
 import starlette.requests
 
+
 def hard_normalize(word):
     """Lower case the word and remove all non-alpha-numeric characters
     from the entire word.
@@ -11,6 +12,7 @@ def hard_normalize(word):
 
     non_alpha_numeric = re.compile(r"[\W]+")
     return non_alpha_numeric.sub("", word.lower())
+
 
 def clean_whisper_alignments(whisper_word_alignments: List[dict]) -> List[dict]:
     """change required to match gentle's tokenization with Whisper's word alignments"""
@@ -36,11 +38,12 @@ def clean_whisper_alignments(whisper_word_alignments: List[dict]) -> List[dict]:
 
 @serve.deployment(ray_actor_options={"num_cpus": 1.0, "num_gpus": 1})
 class WhisperModel:
-    def __init__(self, model_size = 'large-v2'):
+    def __init__(self, model_size="large-v2"):
         # Load model
         from faster_whisper import WhisperModel
+
         # Run on GPU with FP16
-        self.model = WhisperModel(model_size, device="cuda", compute_type="float16")                
+        self.model = WhisperModel(model_size, device="cuda", compute_type="float16")
 
     async def transcribe(self, file_path: str):
         subprocess.check_call(["curl", "-o", "audio.mp3", "-sSfLO", file_path])
@@ -60,7 +63,8 @@ class WhisperModel:
             transcript_text += seg.text
             whisper_alignments += clean_whisper_alignments(seg.words)
 
-        # transcript change required to match gentle's tokenization with Whisper's word alignments
+        # Transcript change required to match gentle's tokenization with
+        # Whisper's word alignments
         transcript_text = transcript_text.replace("% ", " percent ")
         return {
             "language": info.language,
@@ -73,5 +77,6 @@ class WhisperModel:
     async def __call__(self, req: starlette.requests.Request):
         request = await req.json()
         return await self.transcribe(file_path=request["filepath"])
-    
+
+
 entrypoint = WhisperModel.bind()
