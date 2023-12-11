@@ -1,5 +1,5 @@
 Advanced: Read and Write Custom File Types 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. vale off
 
