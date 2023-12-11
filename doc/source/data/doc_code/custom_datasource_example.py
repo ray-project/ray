@@ -11,11 +11,13 @@ from ray.data.block import Block
 from ray.data.datasource import FileBasedDatasource
 
 class ImageDatasource(FileBasedDatasource):
-    def __init__(self, paths: Union[str, List[str]]):
+    def __init__(self, paths: Union[str, List[str]], *, mode: str):
         super().__init__(
             paths,
             file_extensions=["png", "jpg", "jpeg", "bmp", "gif", "tiff"],
         )
+
+        self.mode = mode  # Specify read options in the constructor
 # __datasource_constructor_end__
 
 # __read_stream_start__
@@ -27,6 +29,7 @@ class ImageDatasource(FileBasedDatasource):
 
         data = f.readall()
         image = Image.open(io.BytesIO(data))
+        image = image.convert(self.mode)
 
         # Each block contains one row
         builder = DelegatingBlockBuilder()
@@ -36,16 +39,11 @@ class ImageDatasource(FileBasedDatasource):
         yield builder.build()
 # __read_stream_end__
 
-# __rows_per_file_start__
-    def _rows_per_file(self) -> int | None:
-        return 1
-# __rows_per_file_end__
-
 # __read_datasource_start__
 import ray
 
 ds = ray.data.read_datasource(
-    ImageDatasource("s3://anonymous@ray-example-data/batoidea")
+    ImageDatasource("s3://anonymous@ray-example-data/batoidea", mode="rgb")
 )
 # __read_datasource_end__
 
@@ -61,7 +59,7 @@ class ImageDatasink(RowBasedFileDatasink):
         super().__init__(path, file_format=file_format)
 
         self.column = column
-        self.file_format = file_format
+        self.file_format = file_format  # Specify write options in the constructor
 # __datasink_constructor_end__
 
 # __write_row_to_file_start__

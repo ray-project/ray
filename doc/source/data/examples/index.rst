@@ -49,16 +49,3 @@ Batch inference
         .. button-ref:: xgboost-example-ref
 
             Tabular Data Training and Batch Inference with XGBoost
-
-Extending Ray Data
-------------------
-
-.. grid:: 1 2 2 3
-    :gutter: 1
-    :class-container: container pb-4
-
-    .. grid-item-card::
-
-       .. button-ref:: custom_datasource_example
-
-            Read and Write Custom File Types
