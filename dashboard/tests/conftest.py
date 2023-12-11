@@ -9,7 +9,7 @@ def enable_test_module():
     os.environ["RAY_DASHBOARD_MODULE_TEST"] = "true"
     import ray.dashboard.tests
 
-    p = pathlib.Path(ray.dashboard.tests.__path__[0]) / "__init__.py"
+    p = pathlib.Path(ray.dashboard.modules.__path__[0]) / "tests" / "__init__.py"
     p.touch(exist_ok=False)
     yield
     os.environ.pop("RAY_DASHBOARD_MODULE_TEST", None)
