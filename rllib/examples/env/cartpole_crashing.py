@@ -139,7 +139,7 @@ class CartPoleCrashing(CartPoleEnv):
     def _should_crash(self, p):
         rnd = self._rng.rand()
         if rnd < p:
-            print(f"Should crash! ({rnd} < {p})")
+            print("Crashing due to p(crash)!")
             return True
         elif self.crash_after_n_steps is not None:
             if self._crash_after_n_steps is None:
@@ -151,7 +151,7 @@ class CartPoleCrashing(CartPoleEnv):
                     )
                 )
             if self._crash_after_n_steps == self.timesteps:
-                print(f"Should crash! (after {self.timesteps} steps)")
+                print("Crashing due to n timesteps reached!")
                 return True
 
         return False

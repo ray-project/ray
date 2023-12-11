@@ -152,7 +152,12 @@ class TestPPO(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner_group1.save_state(tmpdir)
                 learner_group2.load_state(tmpdir)
-                check(learner_group1.get_state(), learner_group2.get_state())
+                # Remove functions from state b/c they are not comparable via `check`.
+                s1 = learner_group1.get_state()
+                s1.pop("should_module_be_updated_fn")
+                s2 = learner_group2.get_state()
+                s2.pop("should_module_be_updated_fn")
+                check(s1, s2)
 
     def test_kl_coeff_changes(self):
         # Simple environment with 4 independent cartpole entities
