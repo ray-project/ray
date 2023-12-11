@@ -9,11 +9,12 @@ implement them for illustrative purposes.
 Read data from files
 --------------------
 
-The core abstraction for reading files is ``FileBasedDatasource``.
+The core abstraction for reading files is :class:`~ray.data.datasource.FileBasedDatasource`.
 It provides file-specific functionality on top of the 
 :class:`~ray.data.Datasource` interface.
 
-To subclass ``FileBasedDatasource``, implement the constructor and ``_read_stream``.
+To subclass :class:`~ray.data.datasource.FileBasedDatasource`, implement the constructor 
+and :meth:`~ray.data.datasource.FileBasedDatasource._read_stream`.
 
 Implement the constructor
 =========================
@@ -53,21 +54,21 @@ read images into a :class:`~ray.data.Dataset`. Ray Data reads your files in para
 Write data to files
 -------------------
 
-The core abstractions for writing data to files are :class:`~ray.data.RowBasedFileDatasink` and 
-:class:`~ray.data.BlockBasedFileDatasink`. They provide file-specific functionality on top of the
+The core abstractions for writing data to files are :class:`~ray.data.datasource.RowBasedFileDatasink` and 
+:class:`~ray.data.datasource.BlockBasedFileDatasink`. They provide file-specific functionality on top of the
 :class:`~ray.data.Datasink` interface.
 
-If you want to write one row per file, subclass :class:`~ray.data.RowBasedFileDatasink`. 
-Otherwise, subclass :class:`~ray.data.BlockBasedFileDatasink`.
+If you want to write one row per file, subclass :class:`~ray.data.datasource.RowBasedFileDatasink`. 
+Otherwise, subclass :class:`~ray.data.datasource.BlockBasedFileDatasink`.
 
 .. vale off
 
 .. Ignoring Vale because of future tense.
 
 In this example, you'll write one image per file, so you'll subclass 
-:class:`~ray.data.RowBasedFileDatasink`. To subclass 
-:class:`~ray.data.RowBasedFileDatasink`, implement the constructor and 
-:meth:`~ray.data.RowBasedFileDatasink.write_row_to_file`.
+:class:`~ray.data.datasource.RowBasedFileDatasink`. To subclass 
+:class:`~ray.data.datasource.RowBasedFileDatasink`, implement the constructor and 
+:meth:`~ray.data.datasource.RowBasedFileDatasink.write_row_to_file`.
 
 .. vale on
 
