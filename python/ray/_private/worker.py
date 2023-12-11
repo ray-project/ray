@@ -712,7 +712,13 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None):
+    def put_object(
+        self,
+        value: Any,
+        object_ref: Optional["ray.ObjectRef"] = None,
+        owner_address: Optional[str] = None,
+        _is_experimental_mutable_object: bool = False,
+    ):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -727,6 +733,10 @@ class Worker:
             object_ref: The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
+            _is_experimental_mutable_object: An experimental flag for mutable
+                objects. If True, then the returned object will not have a
+                valid value. The object must be written to using the
+                ray.experimental.channel API before readers can read.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -760,6 +770,11 @@ class Worker:
                 f"{sio.getvalue()}"
             )
             raise TypeError(msg) from e
+
+        # If the object is mutable, then the raylet should never read the
+        # object. Instead, clients will keep the object pinned.
+        pin_object = not _is_experimental_mutable_object
+
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
@@ -768,7 +783,11 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object_and_increment_local_ref(
-                serialized_value, object_ref=object_ref, owner_address=owner_address
+                serialized_value,
+                object_ref=object_ref,
+                pin_object=pin_object,
+                owner_address=owner_address,
+                _is_experimental_mutable_object=_is_experimental_mutable_object,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -790,7 +809,12 @@ class Worker:
             context = self.get_serialization_context()
             return context.deserialize_objects(data_metadata_pairs, object_refs)
 
-    def get_objects(self, object_refs: list, timeout: Optional[float] = None):
+    def get_objects(
+        self,
+        object_refs: list,
+        timeout: Optional[float] = None,
+        _is_experimental_mutable_object: bool = False,
+    ):
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_refs. This
@@ -806,6 +830,10 @@ class Worker:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop
                 into or b"" if there is no breakpoint.
+            _is_experimental_mutable_object: An experimental flag for mutable
+                objects. If True, then wait until there is a value available to
+                read. The object must also already be local, or else the get
+                call will hang.
         """
         # Make sure that the values are object refs.
         for object_ref in object_refs:
@@ -817,7 +845,10 @@ class Worker:
 
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_refs, self.current_task_id, timeout_ms
+            object_refs,
+            self.current_task_id,
+            timeout_ms,
+            _is_experimental_mutable_object,
         )
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
@@ -2648,7 +2679,9 @@ def get(
 @PublicAPI
 @client_mode_hook
 def put(
-    value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
+    value: Any,
+    *,
+    _owner: Optional["ray.actor.ActorHandle"] = None,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
