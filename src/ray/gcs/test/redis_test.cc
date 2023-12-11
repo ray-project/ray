@@ -80,9 +80,10 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   MockRedisContext mock_redis_context(io_service, ip, port);
 
   // Initialize the reply with MOVED error.
-  struct redisAsyncContext async_context;
+  struct redisAsyncContext base_context;
+  std::unique_ptr<redisAsyncContext, RedisDeleter<redisAsyncContext>> async_context(&base_context, RedisDeleter<redisAsyncContext>());
   std::shared_ptr<RedisAsyncContext> async_context_wrapper =
-      std::make_shared<RedisAsyncContext>(&async_context);
+      std::make_shared<RedisAsyncContext>(std::move(async_context));
   redisReply reply;
   std::string error = "MOVED 1234 " + ip + ":" + std::to_string(port);
   reply.str = &error.front();
@@ -98,8 +99,9 @@ TEST_F(RedisContextTest, TestRedisMoved) {
 
   // Call the function
   RedisRequestContext::RedisResponseFn(
-      &async_context, static_cast<void *>(&reply), static_cast<void *>(&privdata));
+      &base_context, static_cast<void *>(&reply), static_cast<void *>(&privdata));
 
+  async_context_wrapper->ResetRawRedisAsyncContext();
   io_service_thread_->join();
 }
 

@@ -138,7 +138,7 @@ class RedisContext {
  public:
   RedisContext(instrumented_io_context &io_service);
 
-  ~RedisContext();
+  virtual ~RedisContext();
 
   Status Connect(const std::string &address,
                  int port,
@@ -160,7 +160,7 @@ class RedisContext {
   /// \param args The vector of command args to pass to Redis.
   /// \param redis_callback The Redis callback function.
   /// \return Status.
-  void RunArgvAsync(std::vector<std::string> args,
+  virtual void RunArgvAsync(std::vector<std::string> args,
                     RedisCallback redis_callback = nullptr);
 
   redisContext *sync_context() {
