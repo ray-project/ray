@@ -316,7 +316,7 @@ trailing metadata.
 ```
 
 :::{note}
-If the deployment code errors out for any reason, Serve will continue to return
+If the deployment errors out for any reason, Serve will continue to return
 `INTERNAL` code with the stacktrace in the details, regardless of what code and details
 are set in the `RayServegRPCContext` object.
 :::
