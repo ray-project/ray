@@ -46,6 +46,19 @@ def generate_client_actor_id() -> str:
     return f"rayclient2_{id_part}"
 
 
+def raise_or_return(resp: requests.Response):
+    """
+    If `resp` is good and represents a return value, returns it.
+    If it represents an actor-raised Exception, raises it.
+    Otherwise (something wrong, not from actor), raises HTTPError.
+    """
+    resp.raise_for_status()
+    result_or_exc = Client.loads(resp.content)
+    if result_or_exc.exc is not None:
+        raise result_or_exc.exc
+    return result_or_exc.result
+
+
 class Client:
     """
     Client to connect to an existing Ray Cluster.
@@ -183,9 +196,7 @@ class Client:
             data=Client.dumps(object_refs),
             timeout=timeout,
         )
-        resp.raise_for_status()
-
-        return Client.loads(resp.content)
+        return raise_or_return(resp)
 
     def put(self, value: Any):
         """
@@ -202,9 +213,7 @@ class Client:
         resp = requests.post(
             f"{self.server_addr}/api/clients/{self.actor_name}/put", data=data
         )
-        resp.raise_for_status()
-        object_ref = Client.loads(resp.content)
-        return object_ref
+        return raise_or_return(resp)
 
     def task(self, remote_function: ray.remote_function.RemoteFunction):
         """
@@ -451,9 +460,7 @@ class Client:
         resp = requests.post(
             f"{self.server_addr}/api/clients/{self.actor_name}/task_remote", data=data
         )
-        resp.raise_for_status()
-        object_ref = Client.loads(resp.content)
-        return object_ref
+        return raise_or_return(resp)
 
     def actor_remote(
         self, actor_cls, args, kwargs, task_options
@@ -464,10 +471,7 @@ class Client:
         resp = requests.post(
             f"{self.server_addr}/api/clients/{self.actor_name}/actor_remote", data=data
         )
-        resp.raise_for_status()
-        # Our unpickler constructs an ActorHandle.
-        handle = Client.loads(resp.content)
-        return handle
+        return raise_or_return(resp)
 
     def method_remote(self, actor_method, args, kwargs, task_options):
         self.check_self_is_active()
@@ -478,9 +482,7 @@ class Client:
         resp = requests.post(
             f"{self.server_addr}/api/clients/{self.actor_name}/method_remote", data=data
         )
-        resp.raise_for_status()
-        object_ref = Client.loads(resp.content)
-        return object_ref
+        return raise_or_return(resp)
 
     def ping_forever(self):
         while self is Client.active_client:

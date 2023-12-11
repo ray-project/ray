@@ -4,10 +4,11 @@ import logging
 import sys
 import time
 from datetime import datetime
-from typing import Dict
+from typing import Coroutine, Dict
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray.experimental.client2.datatypes import ResultOrException
 from ray.experimental.client2.pickler import (
     ClientToServerUnpickler,
     ServerToClientPickler,
@@ -62,6 +63,18 @@ class ClientSupervisor:
     def reset_ttl_timer(self):
         self.last_activity_time = time.time()
 
+    async def serialize_result_or_exc(self, f: Coroutine) -> bytes:
+        """
+        Executes f, captures any result or exceptions into a ResultOrException and serializes it into bytes.
+        """
+        result_or_exc = ResultOrException()
+        try:
+            result = await f
+            result_or_exc.result = result
+        except BaseException as e:
+            result_or_exc.exc = e
+        return self.dumps(result_or_exc)
+
     async def ttl_watchdog(self):
         while True:
             current_time = time.time()
@@ -87,6 +100,11 @@ class ClientSupervisor:
         return self.actor_name
 
     async def ray_get(self, obj_ref_serialized):
+        return await self.serialize_result_or_exc(
+            self.ray_get_internal(obj_ref_serialized)
+        )
+
+    async def ray_get_internal(self, obj_ref_serialized):
         self.reset_ttl_timer()
         print(f"ray_get {obj_ref_serialized}")
         obj_refs = self.loads(obj_ref_serialized)
@@ -98,40 +116,49 @@ class ClientSupervisor:
                     f"Unknown object ref {obj_ref}. Maybe it's in another "
                     "client2 session, or the old session had died?"
                 )
-            obj = await obj_ref
-        else:
-            unknowns = [
-                obj_ref
-                for obj_ref in obj_refs
-                if obj_ref.binary() not in self.object_refs
-            ]
-            if len(unknowns) > 0:
-                raise ValueError(
-                    f"Unknown object refs {unknowns}. Maybe they're in another "
-                    "client2 session, or the old session had died?"
-                )
-            objs = await asyncio.gather(*obj_refs)
-            return self.dumps(objs)
-        return self.dumps(obj)
+            return await obj_ref
+        # List[ray.ObjectRef]
+        unknowns = [
+            obj_ref for obj_ref in obj_refs if obj_ref.binary() not in self.object_refs
+        ]
+        if len(unknowns) > 0:
+            raise ValueError(
+                f"Unknown object refs {unknowns}. Maybe they're in another "
+                "client2 session, or the old session had died?"
+            )
+        return await asyncio.gather(*obj_refs)
 
     async def ray_put(self, obj_serialized):
+        return await self.serialize_result_or_exc(self.ray_put_internal(obj_serialized))
+
+    async def ray_put_internal(self, obj_serialized):
         self.reset_ttl_timer()
         print(f"ray_put {obj_serialized}")
         obj = self.loads(obj_serialized)
         obj_ref = ray.put(obj)
         self.object_refs[obj_ref.binary()] = obj_ref  # keeping the ref...
-        return self.dumps(obj_ref)
+        return obj_ref
 
     async def task_remote(self, pickled_func_and_args):
+        return await self.serialize_result_or_exc(
+            self.task_remote_internal(pickled_func_and_args)
+        )
+
+    async def task_remote_internal(self, pickled_func_and_args):
         self.reset_ttl_timer()
         func, args, kwargs, task_options = self.loads(pickled_func_and_args)
         if task_options is not None:
             func = func.options(**task_options)
         obj_ref = func.remote(*args, **kwargs)
         self.object_refs[obj_ref.binary()] = obj_ref  # keeping the obj refs...
-        return self.dumps(obj_ref)
+        return obj_ref
 
     async def actor_remote(self, pickled_cls_and_args):
+        return await self.serialize_result_or_exc(
+            self.actor_remote_internal(pickled_cls_and_args)
+        )
+
+    async def actor_remote_internal(self, pickled_cls_and_args):
         """
         Returns (actor_id, actor_method_cpu, current_session_and_job)
         """
@@ -141,9 +168,14 @@ class ClientSupervisor:
             actor_cls = actor_cls.options(**task_options)
         actor_handle = actor_cls.remote(*args, **kwargs)
         self.actor_refs[actor_handle._actor_id.binary()] = actor_handle
-        return self.dumps(actor_handle)
+        return actor_handle
 
     async def method_remote(self, pickled_cls_and_args):
+        return await self.serialize_result_or_exc(
+            self.method_remote_intenral(pickled_cls_and_args)
+        )
+
+    async def method_remote_intenral(self, pickled_cls_and_args):
         """
         Returns ObjectRef.
         """
@@ -160,8 +192,7 @@ class ClientSupervisor:
         method = getattr(actor, method_name)
         if task_options is not None:
             method = method.options(**task_options)
-        obj_ref = method.remote(*args, **kwargs)
-        return self.dumps(obj_ref)
+        return method.remote(*args, **kwargs)
 
 
 if __name__ == "__main__":

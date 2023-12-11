@@ -38,6 +38,8 @@ class ClientHead(dashboard_utils.DashboardHeadModule):
         POST /api/clients/{name}/actor_remote
         POST /api/clients/{name}/method_remote
 
+        Returns 200 for return values or any Exceptions within the actor.
+
     Note: all these APIs are getting/putting in serialized form. This is because we don't want to deserialize it here in the http agent and serialize it again just to pass them to the actor; Further, it's not doable because they may share a same serialization context (e.g. some modules defined in runtime env) that this http server does not know.
     """
 
@@ -71,17 +73,14 @@ class ClientHead(dashboard_utils.DashboardHeadModule):
         Payload: binary of an Object Ref.
         Returns: pickled object.
         """
-        try:
-            client_actor_id = req.match_info["client_actor_id"]
-            actor = ray.get_actor(
-                client_actor_id, namespace=ray_constants.RAY_INTERNAL_CLIENT2_NAMESPACE
-            )
+        client_actor_id = req.match_info["client_actor_id"]
+        actor = ray.get_actor(
+            client_actor_id, namespace=ray_constants.RAY_INTERNAL_CLIENT2_NAMESPACE
+        )
 
-            obj_ref_binary = await req.read()
-            obj_serialized = await actor.ray_get.remote(obj_ref_binary)
-            return Response(body=obj_serialized)
-        except Exception as e:
-            return Response(status=500, body=str(e))
+        obj_ref_binary = await req.read()
+        obj_serialized = await actor.ray_get.remote(obj_ref_binary)
+        return Response(body=obj_serialized)
 
     @routes.post("/api/clients/{client_actor_id}/put")
     @optional_utils.init_ray_and_catch_exceptions()

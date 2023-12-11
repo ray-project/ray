@@ -24,8 +24,10 @@ def has_env(k: str, v: str):
 
 @ray.remote
 class Counter:
-    def __init__(self, initial: int) -> None:
+    def __init__(self, initial: int, raise_exc=False) -> None:
         self.count = initial
+        if raise_exc:
+            raise ValueError("mama told me to raise")
 
     def increment(self, dx):
         self.count += dx
@@ -36,6 +38,9 @@ class Counter:
 
     def iota(self, count):
         return list(range(count))
+
+    def raise_with_msg(self, msg):
+        raise ValueError(msg)
 
 
 def start_ray_cluster():
@@ -142,6 +147,23 @@ def test_task_remote_options(call_ray_start_with_webui_addr):
     assert got is True
 
 
+def test_task_exception(call_ray_start_with_webui_addr):  # noqa: F811
+    class MyError(Exception):
+        def __init__(self, message):
+            self.message = message
+            super().__init__(self.message)
+
+    @ray.remote
+    def bad():
+        raise MyError("bad!")
+
+    webui = call_ray_start_with_webui_addr
+    client = Client2(webui)
+    ref = bad.remote()
+    with pytest.raises(MyError, match="bad!"):
+        got = ray.get(ref)
+
+
 class FibResult:
     def __init__(self, input: int, obj_ref: "ray.ObjectRef[int]") -> None:
         self.obj_ref = obj_ref
@@ -226,6 +248,27 @@ def test_actor_remote_options(call_ray_start_with_webui_addr):
     actor = Counter.options(num_cpus=1).remote(5)
     got_ref = actor.iota.options(num_returns=3).remote(3)
     assert ray.get(got_ref) == [0, 1, 2]
+
+
+def test_actor_exception(call_ray_start_with_webui_addr):
+    webui = call_ray_start_with_webui_addr
+    client = Client2(webui)
+    actor = Counter.remote(5, raise_exc=True)
+    with pytest.raises(
+        ray.exceptions.RayActorError,
+        match="The actor died because of an error raised in its creation task",
+    ):
+        ray.get(actor.increment.remote(2))
+
+
+def test_method_exception(call_ray_start_with_webui_addr):
+    webui = call_ray_start_with_webui_addr
+    client = Client2(webui)
+    actor = Counter.remote(5)
+
+    got_ref = actor.raise_with_msg.remote("some exception")
+    with pytest.raises(ValueError, match="some exception"):
+        ray.get(got_ref)
 
 
 def test_actor_wrapped(call_ray_start_with_webui_addr):
