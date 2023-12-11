@@ -1,11 +1,12 @@
 import requests
 import logging
 from ray import serve
+from ray.serve.schema import LoggingConfig
 
 #  __json_start__
 
 
-@serve.deployment(logging_config={"encoding": "JSON"})
+@serve.deployment(logging_config=LoggingConfig(encoding="JSON"))
 class Model:
     def __call__(self) -> int:
         return "hello world"
@@ -21,11 +22,11 @@ resp = requests.get("http://localhost:8000/")
 #  __level_start__
 
 
-@serve.deployment(logging_config={"log_level": "DEBUG"})
+@serve.deployment(logging_config=LoggingConfig(log_level="DEBUG"))
 class Model:
     def __call__(self) -> int:
         logger = logging.getLogger("ray.serve")
-        logger.debug("this is debug message")
+        logger.debug("This debug message is from the router.")
         return "hello world"
 
 
@@ -37,7 +38,7 @@ resp = requests.get("http://localhost:8000/")
 
 
 # __logs_dir_start__
-@serve.deployment(logging_config={"logs_dir": "/my_dirs"})
+@serve.deployment(logging_config=LoggingConfig(logs_dir="/my_dirs"))
 class Model:
     def __call__(self) -> int:
         return "hello world"
@@ -70,7 +71,7 @@ class Router:
 
     async def __call__(self):
         logger = logging.getLogger("ray.serve")
-        logger.debug("this is debug message from router")
+        logger.debug("This debug message is from the router.")
         return await self.handle.remote()
 
 
@@ -78,7 +79,7 @@ class Router:
 class Model:
     def __call__(self) -> int:
         logger = logging.getLogger("ray.serve")
-        logger.debug("this is debug message from model")
+        logger.debug("This debug message is from the model.")
         return "hello world"
 
 

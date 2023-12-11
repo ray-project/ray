@@ -372,3 +372,12 @@ Content-Type: application/json
    metrics.Histogram
    metrics.Gauge
 ```
+
+# Logging Config API
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   schema.LoggingConfig
+```

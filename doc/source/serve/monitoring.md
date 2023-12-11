@@ -234,53 +234,30 @@ In addition to the standard Python logger, Serve supports custom logging. Custom
 For a detailed overview of logging in Ray, see [Ray Logging](configure-logging).
 
 ### Configure Serve logging 
-From ray 2.9, logging_config API is introduced to configure logging for Ray Serve. You can configure logging for Ray Serve by passing a dictionary to `logging_config` argument of `serve.run` or `@serve.deployment`.
+From ray 2.9, the logging_config API configures logging for Ray Serve. You can configure logging for Ray Serve. Pass a dictionary of [LOGGING_CONFIG](../serve/api/doc/ray.serve.schema.LoggingConfig.rst) or object of [LOGGING_CONFIG](../serve/api/doc/ray.serve.schema.LoggingConfig.rst) to the `logging_config` argument of `serve.run` or `@serve.deployment`.
 
 #### Configure logging format
-You can configure json logging format by passing `encoding=JSON` to `logging_config` argument `@serve.deployment`. For example
+You can configure the JSON logging format by passing `encoding=JSON` to `logging_config` argument of `@serve.deployment`. For example:
 
 ```{literalinclude} doc_code/monitoring/logging_config.py
 :start-after: __json_start__
 :end-before: __json_end__
 :language: python
 ```
-In the `Model` log file, you should see
+In the `Model` log file, you should see the following:
 
 ```
 {"levelname": "INFO", "asctime": "2023-12-07 12:59:45,271", "deployment": "Model", "replica": "default#Model#PUGBSJ", "request_id": "8d316c3b-4c9f-4769-8080-b6867ca46d1e", "route": "/", "application": "default", "message": "replica.py:719 - Started executing request 8d316c3b-4c9f-4769-8080-b6867ca46d1e"}
 {"levelname": "INFO", "asctime": "2023-12-07 12:59:45,271", "deployment": "Model", "replica": "default#Model#PUGBSJ", "request_id": "8d316c3b-4c9f-4769-8080-b6867ca46d1e", "route": "/", "application": "default", "message": "replica.py:745 - __CALL__ OK 0.1ms"}
 ```
 
-#### Configure logging to a new file
-You can configure to use different directory for logging by passing `log_dir` to `logging_config` argument `@serve.deployment`. For example
-
-```{literalinclude} doc_code/monitoring/logging_config.py
-:start-after: __logs_dir_start__
-:end-before:  __logs_dir_end__
-:language: python
-```
-
-The `Model` replica log file should be at `/my_dirs` directory.
-
-#### Configure logging level
-You can configure logging level by passing `log_level` to `logging_config` argument `@serve.deployment`. For example
-
-```{literalinclude} doc_code/monitoring/logging_config.py
-:start-after: __level_start__
-:end-before:  __level_end__
-:language: python
-```
-
-The `Model` replica log file should also print `DEBUG` level message.
-
-```
-INFO 2023-12-07 13:07:15,788 Model default#Model#LMqLpq f16c2ddb-9b4a-4a05-9b22-7d48f4ee51f1 / default replica.py:719 - Started executing request f16c2ddb-9b4a-4a05-9b22-7d48f4ee51f1
-DEBUG 2023-12-07 13:07:15,788 Model default#Model#LMqLpq f16c2ddb-9b4a-4a05-9b22-7d48f4ee51f1 / default logging_config.py:26 - this is debug message
-INFO 2023-12-07 13:07:15,788 Model default#Model#LMqLpq f16c2ddb-9b4a-4a05-9b22-7d48f4ee51f1 / default replica.py:745 - __CALL__ OK 0.1ms
-```
-
 #### Disable access log
-You can also disable access log by passing `disable_access_log=True` to `logging_config` argument `@serve.deployment`. For example
+
+:::{note}
+Access log is Ray Serve traffic log, it is printed to proxy log files and replica log files per request. Sometimes it is useful for debugging, but it can also be noisy.
+:::
+
+You can also disable the access log by passing `disable_access_log=True` to `logging_config` argument of `@serve.deployment`. For example:
 
 ```{literalinclude} doc_code/monitoring/logging_config.py
 :start-after: __enable_access_log_start__
@@ -288,14 +265,14 @@ You can also disable access log by passing `disable_access_log=True` to `logging
 :language: python
 ```
 
-The `Model` replica log file doesn't include serve traffic log, you should only see your application log in the log file.
+The `Model` replica log file doesn't include the Serve traffic log, you should only see the application log in the log file.
 
 ```
 INFO 2023-12-07 13:15:07,979 Model default#Model#LhNrRV 8c5fcdb2-87a0-46ed-b2f8-9336280c9c3d / default logging_config.py:50 - hello world
 ```
 
 #### Configure logging in different deployments and applications
-You can also configure logging at the application level by passing `logging_config` to `serve.run`. For example
+You can also configure logging at the application level by passing `logging_config` to `serve.run`. For example:
 
 ```{literalinclude} doc_code/monitoring/logging_config.py
 :start-after: __application_and_deployment_start__
@@ -303,25 +280,25 @@ You can also configure logging at the application level by passing `logging_conf
 :language: python
 ```
 
-In Router log file, you should see
+In the Router log file, you should see the following:
 
 ```
 INFO 2023-12-07 14:18:18,811 Router default#Router#iNdKWL 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default replica.py:719 - Started executing request 6fe398fa-17d6-4abe-8264-d69c12aa9884
-DEBUG 2023-12-07 14:18:18,811 Router default#Router#iNdKWL 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default logging_config.py:68 - this is debug message from router
+DEBUG 2023-12-07 14:18:18,811 Router default#Router#iNdKWL 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default logging_config.py:68 - This debug message is from the router.
 ```
 
-In the Model log file, you should see
+In the Model log file, you should see the following:
 
 ```
 INFO 2023-12-07 14:18:18,821 Model default#Model#AHYvjY 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default replica.py:719 - Started executing request 6fe398fa-17d6-4abe-8264-d69c12aa9884
-DEBUG 2023-12-07 14:18:18,821 Model default#Model#AHYvjY 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default logging_config.py:75 - this is debug message from model
+DEBUG 2023-12-07 14:18:18,821 Model default#Model#AHYvjY 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default logging_config.py:75 - This debug message is from the model.
 INFO 2023-12-07 14:18:18,821 Model default#Model#AHYvjY 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default replica.py:745 - __CALL__ OK 0.1ms
 ```
 
-When you set `logging_config` at the application level, it will be applied to all deployments in the application. When you set `logging_config` at the deployment level at the same time, the deployment level configuration will override the application level configuration.
+When you set `logging_config` at the application level, Ray Serve applies to all deployments in the application. When you set `logging_config` at the deployment level at the same time, the deployment level configuration will overrides the application level configuration.
 
 #### Configure logging for serve components
-You can also update logging configuration similar above to serve components by passing `system_logging_config` to `serve.start`.
+You can also update logging configuration similar above to the Serve controller and proxies by passing `logging_config` to `serve.start`.
 
 ```{literalinclude} doc_code/monitoring/logging_config.py
 :start-after: __configure_serve_component_start__
