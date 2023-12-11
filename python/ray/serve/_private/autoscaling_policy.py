@@ -1,5 +1,6 @@
 import logging
-from typing import List, Optional
+from threading import Thread
+from typing import Callable, List, Optional
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -87,6 +88,27 @@ class CustomScalingPolicy:
     #     return None
 
 
+class ThreadManager:
+    def __init__(self, func: Callable):
+        self.func = func
+        self.get_decision_num_replicas = None
+        self.thread = None
+
+    def __call__(self, context: AutoscalingContext):
+        self.get_decision_num_replicas = self.func(context)
+
+    def done(self):
+        return self.thread is not None and not self.thread.is_alive()
+
+    def get_decision_num_replicas(self, context: AutoscalingContext) -> Optional[int]:
+        if self.thread is None:
+            self.thread = Thread(target=self, kwargs={"context": context})
+            self.thread.start()
+
+        if self.done():
+            return self.get_decision_num_replicas
+
+
 class AutoscalingPolicyManager:
     """Managing autoscaling policies and the lifecycle of the scaling function calls."""
 
@@ -94,6 +116,7 @@ class AutoscalingPolicyManager:
         self.config = config
         self.context = AutoscalingContext(config=config)
         self.policy = None
+        self.thread_manager = None
         self._create_policy()
 
     def _create_policy(self):
@@ -132,6 +155,8 @@ class AutoscalingPolicyManager:
             override_min_replicas=override_min_replicas,
             target_capacity=target_capacity,
         )
+        # self.ThreadManager.get_decision_num_replicas()
+
         decision_num_replicas = self.policy(self.context)
 
         return decision_num_replicas
