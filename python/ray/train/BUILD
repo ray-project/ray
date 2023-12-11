@@ -666,6 +666,15 @@ py_test(
     deps = [":train_lib", ":conftest"],
 )
 
+### E2E Data + Train 
+py_test(
+    name = "test_datasets_train",
+    size = "medium",
+    srcs = ["tests/test_datasets_train.py"],
+    tags = ["exclusive", "team:ml", "datasets_train", "gpu"],
+    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
