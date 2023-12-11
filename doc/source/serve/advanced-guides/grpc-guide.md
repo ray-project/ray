@@ -316,7 +316,7 @@ trailing metadata.
 ```
 
 :::{note}
-If the deployment errors out for any reason, Serve will continue to return
-`INTERNAL` code with the stacktrace in the details, regardless of what code and details
+If the handler raises an unhandled exception, Serve will return an
+`INTERNAL` error code with the stacktrace in the details, regardless of what code and details
 are set in the `RayServegRPCContext` object.
 :::
