@@ -320,7 +320,7 @@ def _get_algorithm_class(alg: str) -> type:
         raise Exception("Unknown algorithm {}.".format(alg))
 
 
-# Mapping from policy name to where it is located, relative to rllib.algorithms.
+# Dict mapping policy names to where the class is located, relative to rllib.algorithms.
 # TODO(jungong) : Finish migrating all the policies to PolicyV2, so we can list
 # all the TF eager policies here.
 POLICIES = {
