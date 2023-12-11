@@ -42,20 +42,6 @@ namespace gcs {
 
 using rpc::TablePrefix;
 
-template <typename RedisContextType>
-struct RedisDeleter {
-  RedisDeleter(){};
-
-  void operator()(RedisContextType *context) {}
-};
-
-template <>
-struct RedisDeleter<redisContext> {
-  RedisDeleter(){};
-
-  void operator()(redisContext *context) { redisFree(context); }
-};
-
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
  public:

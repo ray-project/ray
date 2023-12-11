@@ -350,7 +350,7 @@ ConnectWithRetries(const std::string &address,
   RAY_LOG(INFO) << "Attempting to connect to address " << address << ":" << port << ".";
   int connection_attempts = 0;
   auto resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
-  for (auto status = resp.first; !status.ok();) {
+  for (auto status = resp.first; !status.ok(); status = resp.first) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       RAY_LOG(FATAL) << RayConfig::instance().redis_db_connect_retries() << " attempts "
                      << "to connect have all failed. Please check whether the"
@@ -373,15 +373,16 @@ ConnectWithRetries(const std::string &address,
 }
 
 namespace {
-std::optional<std::vector<std::string>> ParseIffMovedError(const std::string &error_msg) {
+std::optional<std::pair<std::string, std::string>> ParseIffMovedError(
+    const std::string &error_msg) {
   std::vector<std::string> parts = absl::StrSplit(error_msg, " ");
   if (parts[0] != "MOVED") {
     return std::nullopt;
   }
-  RAY_CHECK(parts.size() == 3);
+  RAY_CHECK_EQ(parts.size(), 2u);
   std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
-  RAY_CHECK(ip_port.size() == 2);
-  return ip_port;
+  RAY_CHECK_EQ(ip_port.size(), 2u);
+  return std::make_pair(ip_port[0], ip_port[1]);
 }
 }  // namespace
 
@@ -498,7 +499,7 @@ Status RedisContext::Connect(const std::string &address,
         << "Failed to setup encrypted redis: " << context_->errstr;
   }
   RAY_CHECK_OK(AuthenticateRedis(async_context.get(), password));
-  redis_async_context_.reset(new RedisAsyncContext(async_context.release()));
+  redis_async_context_.reset(new RedisAsyncContext(std::move(async_context)));
   SetDisconnectCallback(redis_async_context_.get());
 
   // Ray has some restrictions for RedisDB. Validate it here.
@@ -527,9 +528,10 @@ Status RedisContext::Connect(const std::string &address,
     Disconnect();
     const auto &ip_port = maybe_ip_port.value();
     // Connect to the true leader.
-    RAY_LOG(INFO) << "Redis cluster leader is " << ip_port[0] << ":" << ip_port[1]
+    RAY_LOG(INFO) << "Redis cluster leader is " << ip_port.first << ":" << ip_port.second
                   << ". Reconnect to it.";
-    return Connect(ip_port[0], std::stoi(ip_port[1]), sharding, password, enable_ssl);
+    return Connect(
+        ip_port.first, std::stoi(ip_port.second), sharding, password, enable_ssl);
   } else {
     RAY_LOG(INFO) << "Redis cluster leader is " << ip_addresses[0] << ":" << port;
     freeReplyObject(redis_reply);
