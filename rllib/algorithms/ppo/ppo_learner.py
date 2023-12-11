@@ -255,10 +255,16 @@ class PPOLearner(Learner):
 
     @staticmethod
     def _unpad_data_if_necessary(episode_lens, data):
+        # If data des NOT have time dimension, return right away.
+        if len(data.shape) == 1:
+            return data
+
+        # Assert we only have B and T dimensions (meaning this function only operates
+        # on single-float data, such as value function predictions).
+        assert len(data.shape) == 2
+
         new_data = []
         row_idx = 0
-        # Assert we only have B and T dimensions.
-        assert len(data.shape) == 2
 
         T = data.shape[1]
         for len_ in episode_lens:

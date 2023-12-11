@@ -172,7 +172,10 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
     @override(PPOLearner)
     def _compute_values(self, batch):
+        infos = batch.pop(SampleBatch.INFOS, None)
         batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
+        if infos is not None:
+            batch[SampleBatch.INFOS] = infos
 
         # TODO (sven): Make multi-agent capable.
         module = self.module[DEFAULT_POLICY_ID]
