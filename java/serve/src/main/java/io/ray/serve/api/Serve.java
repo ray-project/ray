@@ -112,8 +112,7 @@ public class Serve {
       }
     }
 
-    ServeControllerClient client =
-        new ServeControllerClient(controller);
+    ServeControllerClient client = new ServeControllerClient(controller);
     setGlobalClient(client);
     LOGGER.info("Started Serve in namespace {}", Constants.SERVE_NAMESPACE);
     return client;
