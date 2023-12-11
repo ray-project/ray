@@ -139,6 +139,29 @@ def prepare_data_loader(
         Otherwise, the same ordering will be always used.
         See: https://pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
 
+    Example:
+
+    .. codeblock:: python
+
+        import torch
+
+        import ray.train.torch
+
+        train_dataloader = torch.utils.data.DataLoader(
+            ..., batch_size=..., shuffle=True
+        )
+        train_dataloader = ray.train.torch.prepare_data_loader(train_loader)
+
+        for epoch in range(10):
+            if ray.train.get_context().get_world_size() > 1:
+                # Required for the distributed sampler to shuffle properly across epochs
+                train_dataloader.sampler.set_epoch(epoch)
+
+            for X, y in train_loader:
+                # No need to move data to GPU, this is done by `prepare_data_loader`!
+                # X, y = X.to("cuda"), y.to("cuda")
+                ...
+
     Args:
         data_loader (torch.utils.data.DataLoader): The DataLoader to
             prepare.
