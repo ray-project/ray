@@ -41,6 +41,8 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 
+dead_replicas_context = set()
+
 
 class FakeRemoteFunction:
     def remote(self):
@@ -208,6 +210,9 @@ class MockReplicaActorWrapper:
         return updating
 
     def recover(self):
+        if self.replica_tag in dead_replicas_context:
+            return False
+
         self.recovering = True
         self.started = False
         return True
@@ -3189,12 +3194,22 @@ def test_recover_during_rolling_update(mock_deployment_state_manager_full):
 
 
 def test_actor_died_before_recover(mock_deployment_state_manager_full):
-    """"""
+    """Test replica actor died before controller could recover it.
+
+    * Deploy app / 1 deployment / 1 replica
+    * (Simulated) Controller crashes.
+    * Controller recovers, and tries to recover replicas from actor names.
+    * (Simulated) The single replica from before has died before
+      controller could recover it.
+    * There should be 0 replicas in the deployment.
+    * In the following control loop update cycle, the controller adds a
+      new replica to match target state.
+    """
     deployment_id = DeploymentID("test_deployment", "test_app")
     create_deployment_state_manager, _, _ = mock_deployment_state_manager_full
     deployment_state_manager = create_deployment_state_manager()
 
-    # Step 1: Create some deployment info with actors in running state
+    # Create some deployment info with actors in running state
     info1, version1 = deployment_info(version="1")
     updating = deployment_state_manager.deploy(deployment_id, info1)
     deployment_state = deployment_state_manager._deployment_states[deployment_id]
@@ -3209,6 +3224,7 @@ def test_actor_died_before_recover(mock_deployment_state_manager_full):
         by_state=[(ReplicaState.STARTING, 1)],
     )
     mocked_replica = deployment_state._replicas.get()[0]
+    replica_tag = mocked_replica.replica_tag
 
     # The same replica should transition to RUNNING
     mocked_replica._actor.set_ready()
@@ -3220,77 +3236,30 @@ def test_actor_died_before_recover(mock_deployment_state_manager_full):
         by_state=[(ReplicaState.RUNNING, 1)],
     )
 
-    # Now execute a rollout: upgrade the version to "2".
-    info2, version2 = deployment_info(version="2")
-    updating = deployment_state_manager.deploy(deployment_id, info2)
-    assert updating
+    # Set dead replicas context. When the controller recovers and tries
+    # to recover replicas from actor names, the replica actor wrapper
+    # will fail to recover.
+    dead_replicas_context.add(replica_tag)
 
-    # Before the replica could be stopped and restarted, simulate
-    # controller crashed! A new deployment state manager should be
-    # created, and it should call _recover_from_checkpoint
+    # Simulate controller crashed! A new deployment state manager should
+    # be created, and it should call _recover_from_checkpoint
     new_deployment_state_manager = create_deployment_state_manager(
-        [ReplicaName.prefix + mocked_replica.replica_tag]
+        [ReplicaName.prefix + replica_tag]
     )
 
-    # New deployment state should be created and one replica should
-    # be RECOVERING with last-checkpointed target version "2"
+    # Replica should fail to recover (simulate failed to get handle to
+    # actor), meaning replica has died.
     new_deployment_state = new_deployment_state_manager._deployment_states[
         deployment_id
     ]
-    check_counts(
-        new_deployment_state,
-        total=1,
-        version=version2,
-        by_state=[(ReplicaState.RECOVERING, 1)],
-    )
+    check_counts(new_deployment_state, total=0)
 
-    for _ in range(3):
-        new_deployment_state_manager.update()
-        check_counts(
-            new_deployment_state,
-            total=1,
-            version=version2,
-            by_state=[(ReplicaState.RECOVERING, 1)],
-        )
-
-    # Get the new mocked replica. Note that this represents a newly
-    # instantiated class keeping track of the state of the replica,
-    # but pointing to the same replica actor
-    new_mocked_replica = new_deployment_state._replicas.get()[0]
-    # Recover real version "1" (simulate previous actor not yet stopped)
-    new_mocked_replica._actor.set_ready(version1)
-    # At this point the replica is running
+    # Since the previous replica is now marked dead (because controller
+    # failed to recover it), a new replica should be added to meet
+    # target state.
     new_deployment_state_manager.update()
-    # Then deployment state manager notices the replica has outdated version -> stops it
-    new_deployment_state_manager.update()
-    check_counts(
-        new_deployment_state,
-        total=1,
-        version=version1,
-        by_state=[(ReplicaState.STOPPING, 1)],
-    )
-    new_mocked_replica._actor.set_done_stopping()
-
-    # Now that the replica of version "1" has been stopped, a new
-    # replica of version "2" should be started
-    new_deployment_state_manager.update()
-    check_counts(
-        new_deployment_state,
-        total=1,
-        version=version2,
-        by_state=[(ReplicaState.STARTING, 1)],
-    )
-    new_mocked_replica_version2 = new_deployment_state._replicas.get()[0]
-    new_mocked_replica_version2._actor.set_ready()
-    new_deployment_state_manager.update()
-    check_counts(
-        new_deployment_state,
-        total=1,
-        version=version2,
-        by_state=[(ReplicaState.RUNNING, 1)],
-    )
-    # Make sure replica name is different, meaning a different "actor" was started
-    assert mocked_replica.replica_tag != new_mocked_replica_version2.replica_tag
+    check_counts(new_deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+    dead_replicas_context.remove(replica_tag)
 
 
 @pytest.fixture
