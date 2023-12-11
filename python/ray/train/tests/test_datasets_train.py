@@ -13,23 +13,22 @@ import collections
 import os
 import sys
 import time
-from typing import Tuple
 from tempfile import TemporaryDirectory
+from typing import Tuple
 
 import boto3
 import mlflow
 import pandas as pd
-from ray.train import DataConfig, ScalingConfig
-from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
 import ray
 from ray import train
-from ray.train import Checkpoint, RunConfig
-from ray.data.aggregate import Mean, Std
 from ray.air.integrations.mlflow import MLflowLoggerCallback
+from ray.data.aggregate import Mean, Std
+from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
+from ray.train.torch.torch_trainer import TorchTrainer
 
 
 def make_and_upload_dataset(dir_path):
