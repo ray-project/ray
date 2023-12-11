@@ -101,8 +101,8 @@ uint64_t OutofOrderActorSubmitQueue::GetSequenceNumber(
   return task_spec.ActorCounter();
 }
 
-void OutofOrderActorSubmitQueue::MarkTaskCompleted(uint64_t position,
-                                                   const TaskSpecification &task_spec) {}
+void OutofOrderActorSubmitQueue::MarkSeqnoCompleted(uint64_t position,
+                                                    const TaskSpecification &task_spec) {}
 
 }  // namespace core
 }  // namespace ray

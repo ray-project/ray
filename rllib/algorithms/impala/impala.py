@@ -733,8 +733,9 @@ class Impala(Algorithm):
         # all collected batches.
         if self.config._enable_new_api_stack:
             train_results = self.learn_on_processed_samples()
+            module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
             additional_results = self.learner_group.additional_update(
-                module_ids_to_update=set(train_results.keys()) - {ALL_MODULES},
+                module_ids_to_update=module_ids_to_update,
                 timestep=self._counters[
                     NUM_ENV_STEPS_TRAINED
                     if self.config.count_steps_by == "env_steps"
@@ -877,22 +878,21 @@ class Impala(Algorithm):
                 self.batch_being_built = []
 
         for batch in batches:
-            # TODO (sven): Strange bug in tf/tf2 after a RolloutWorker crash and proper
+            # TODO (sven): Strange bug after a RolloutWorker crash and proper
             #  restart. The bug is related to (old, non-V2) connectors being used and
             #  seems to happen inside the AgentCollector's `add_action_reward_next_obs`
             #  method, at the end of which the number of vf_preds (and all other
             #  extra action outs) in the batch is one smaller than the number of obs/
-            #  actions/rewards, which leads to a malformed train batch. IMPALA/APPO then
-            #  crash inside the loss function (during v-trace operations). The following
-            #  if-block prevents this from happening and it can be removed once we are
-            #  on the new API stack for good (and use the new connectors and also no
-            #  longer AgentCollectors, RolloutWorkers, Policies, TrajectoryView API,
-            #  etc..):
+            #  actions/rewards, which then leads to a malformed train batch.
+            #  IMPALA/APPO crash inside the loss function (during v-trace operations)
+            #  b/c of the resulting shape mismatch. The following if-block prevents
+            #  this from happening and it can be removed once we are on the new API
+            #  stack for good (and use the new connectors and also no longer
+            #  AgentCollectors, RolloutWorkers, Policies, TrajectoryView API, etc..):
             if (
                 self.config.batch_mode == "truncate_episodes"
                 and self.config.enable_connectors
                 and self.config.recreate_failed_workers
-                and self.config.framework_str in ["tf", "tf2"]
             ):
                 if any(
                     SampleBatch.VF_PREDS in pb

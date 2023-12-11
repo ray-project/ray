@@ -7,6 +7,7 @@ from unittest import mock
 import pytest
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
+from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester import (
     _add_default_except_tags,
     _get_container,
@@ -34,11 +35,32 @@ def test_get_container() -> None:
     with mock.patch(
         "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
         return_value=None,
+    ), mock.patch(
+        "ci.ray_ci.windows_tester_container.WindowsTesterContainer.install_ray",
+        return_value=None,
     ):
-        container = _get_container("core", 3, 1, 2, 0)
+        container = _get_container(
+            team="core",
+            operating_system="linux",
+            workers=3,
+            worker_id=1,
+            parallelism_per_worker=2,
+            gpus=0,
+        )
+        assert isinstance(container, LinuxTesterContainer)
         assert container.docker_tag == "corebuild"
         assert container.shard_count == 6
         assert container.shard_ids == [2, 3]
+
+        container = _get_container(
+            team="serve",
+            operating_system="windows",
+            workers=3,
+            worker_id=1,
+            parallelism_per_worker=2,
+            gpus=0,
+        )
+        assert isinstance(container, WindowsTesterContainer)
 
 
 def test_get_test_targets() -> None:
