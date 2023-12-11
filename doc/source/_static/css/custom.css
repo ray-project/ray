@@ -218,3 +218,15 @@ table.autosummary {
 table.autosummary .row-odd {
   background-color: var(--pst-color-surface);
 }
+
+/* Ensure that long function names get elided and show ellipses to not overflow their bounding boxes  */
+table.autosummary tr > td:first-child > p > a > code {
+  max-width: 100%;
+  width: fit-content;
+  display: block;
+}
+table.autosummary tr > td:first-child > p > a > code > span {
+  display: block;
+  overflow: clip;
+  text-overflow: ellipsis;
+}

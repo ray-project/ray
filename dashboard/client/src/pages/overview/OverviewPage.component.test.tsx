@@ -78,7 +78,6 @@ const Wrapper =
             },
             prometheusHealth: true,
             sessionName: "session-name",
-            ipLogMap: {},
             nodeMap: {},
             nodeMapByIp: {},
             namespaceMap: {},

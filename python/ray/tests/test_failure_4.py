@@ -719,6 +719,39 @@ def test_accessing_actor_after_cluster_crashed(shutdown_only):
     assert "It might be dead or it's from a different cluster" in exc_info.value.args[0]
 
 
+def test_internal_error_as_instance_of_cause_correct(shutdown_only):
+    """Verify as_instance_of_cause returns the correct exception
+    even when an exception is ray internal error.
+    """
+    ray.init()
+
+    @ray.remote
+    class A:
+        def kill(self):
+            import os
+
+            os._exit(1)
+
+        def get(self):
+            return 1
+
+    a = A.remote()
+
+    @ray.remote
+    class B:
+        def get_result(self, a):
+            return ray.get(a.get.remote())
+
+    b = B.remote()
+    a.kill.remote()
+    try:
+        ray.get(b.get_result.remote(a))
+    except Exception as e:
+        assert isinstance(e.as_instanceof_cause(), ray.exceptions.RayActorError)
+        assert isinstance(e.cause, ray.exceptions.RayActorError)
+        assert isinstance(e, ray.exceptions.RayActorError)
+
+
 if __name__ == "__main__":
     import os
 

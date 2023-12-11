@@ -24,18 +24,18 @@ def _configure_system():
                 "Please uninstall the package."
             )
 
-        import pkg_resources
+        import importlib.metadata
 
         try:
-            version_info = pkg_resources.require("pickle5")
-            version = tuple(int(n) for n in version_info[0].version.split("."))
+            version_str = importlib.metadata.version("pickle5")
+            version = tuple(int(n) for n in version_str.split("."))
             if version < (0, 0, 10):
                 logger.warning(
                     "Although not used by Ray, a version of pickle5 that leaks memory "
                     "is found in the environment. Please run 'pip install pickle5 -U' "
                     "to upgrade."
                 )
-        except pkg_resources.DistributionNotFound:
+        except importlib.metadata.PackageNotFoundError:
             logger.warning(
                 "You are using the 'pickle5' module, but "
                 "the exact version is unknown (possibly carried as "
@@ -94,6 +94,7 @@ from ray._raylet import (  # noqa: E402,F401
     ObjectID,
     ObjectRef,
     ObjectRefGenerator,
+    DynamicObjectRefGenerator,
     TaskID,
     UniqueID,
     Language,
@@ -267,6 +268,7 @@ __all__ += [
     "ObjectID",
     "ObjectRef",
     "ObjectRefGenerator",
+    "DynamicObjectRefGenerator",
     "TaskID",
     "UniqueID",
     "PlacementGroupID",

@@ -22,9 +22,7 @@ chatPopupDiv.innerHTML = `
   <div class="chatContentContainer">
     <div class="input-group">
       <textarea id="searchBar" class="input" rows="3" placeholder="Do not include any personal or confidential information."></textarea>
-      <div class="input-group-append">
-        <button id="searchBtn" class="btn btn-primary">Ask AI</button>
-      </div>
+      <button id="searchBtn" class="btn btn-primary">Ask AI</button>
     </div>
     <div id="result"></div>
   </div>
