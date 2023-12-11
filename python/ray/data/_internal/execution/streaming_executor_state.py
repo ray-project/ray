@@ -174,6 +174,8 @@ class OpState:
     operator queues to be shared across threads.
     """
 
+    NUM_BLOCKS_TO_DISPATCH_FOR_META_ONLY_OPS = 10
+
     def __init__(self, op: PhysicalOperator, inqueues: List[RefBundleDeque]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
@@ -265,11 +267,19 @@ class OpState:
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
+        # If the operator only handles metadata, dispatch more than one
+        # block at a time to compensate scheduling overheads.
+        max_blocks_to_dispatch = (
+            self.NUM_BLOCKS_TO_DISPATCH_FOR_META_ONLY_OPS
+            if self.op.throttling_disabled()
+            else 1
+        )
         for i, inqueue in enumerate(self.inqueues):
             if inqueue:
                 self.op.add_input(inqueue.popleft(), input_index=i)
-                return
-        assert False, "Nothing to dispatch"
+                max_blocks_to_dispatch -= 1
+                if max_blocks_to_dispatch == 0:
+                    break
 
     def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
         """Get an item from this node's output queue, blocking as needed.
