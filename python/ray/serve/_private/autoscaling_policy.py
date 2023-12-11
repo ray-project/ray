@@ -17,28 +17,38 @@ class ThreadManager:
         self.func = func
         self.decision_num_replicas = None
         self.thread = None
+        self.start_time = time.time()
+        self.exponential_backoff = 0
 
     def __call__(self, context: AutoscalingContext):
         self.start_time = time.time()
-        self.decision_num_replicas = self.func(context)
+        try:
+            self.decision_num_replicas = self.func(context)
+            self.exponential_backoff = 0
+        except Exception as e:
+            self.exponential_backoff = self.exponential_backoff * 2 + 1
+            logger.warning(
+                f"Autoscaling call throw exception: {e}. \n"
+                f"exponential_backoff {self.exponential_backoff}s before retry."
+            )
 
     def done(self):
         return self.thread is not None and not self.thread.is_alive()
 
+    def _should_start_thread(self):
+        return (
+            self.thread is None
+            and time.time() - self.start_time > self.exponential_backoff
+        )
+
     def get_decision_num_replicas(self, context: AutoscalingContext) -> Optional[int]:
-        try:
-            if self.thread is None:
-                self.thread = Thread(target=self, kwargs={"context": context})
-                self.thread.start()
+        if self._should_start_thread():
+            self.thread = Thread(target=self, kwargs={"context": context})
+            self.thread.start()
 
-            if self.done():
-                return self.decision_num_replicas
-
-        except Exception as e:
-            logger.warning(f"Autoscaling call throw exception: {e}")
-
-    def reset_thread(self):
-        self.thread = None
+        if self.done():
+            self.thread = None
+            return self.decision_num_replicas
 
 
 class AutoscalingPolicyManager:
@@ -95,8 +105,6 @@ class AutoscalingPolicyManager:
         decision_num_replicas = self.thread_manager.get_decision_num_replicas(
             context=self.context
         )
-        if self.thread_manager.done():
-            self.thread_manager.reset_thread()
 
         if decision_num_replicas is not None:
             return self.apply_bounds(
