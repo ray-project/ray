@@ -58,7 +58,7 @@ class SingleAgentEpisode:
 
         # Even with the initial obs/infos, the episode is still considered len=0.
         assert len(episode) == 0
-        for _ in range(10):
+        for _ in range(5):
             action = env.action_space.sample()
             obs, reward, term, trunc, infos = env.step(action)
             episode.add_env_step(
@@ -69,9 +69,9 @@ class SingleAgentEpisode:
                 truncated=trunc,
                 infos=infos,
             )
-        assert len(episode) == 10
+        assert len(episode) == 5
 
-        # We can now access information from the episode via the getters.
+        # We can now access information from the episode via the getter APIs.
 
         # Get the last 3 rewards (in a batch of size 3).
         episode.get_rewards(slice(-3, None))  # same as `episode.rewards[-3:]`
