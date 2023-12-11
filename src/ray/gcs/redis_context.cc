@@ -475,10 +475,9 @@ Status RedisContext::Connect(const std::string &address,
   RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
 
   {
-    auto [status, context] =
-        std::move(ConnectWithRetries<redisContext>(ip_addresses[0], port, redisConnect));
-    RAY_CHECK_OK(status);
-    context_ = std::move(context);
+    auto resp = ConnectWithRetries<redisContext>(ip_addresses[0], port, redisConnect);
+    RAY_CHECK_OK(resp.first /* status */);
+    context_ = std::move(resp.second /* redisContext */);
   }
 
   if (enable_ssl) {
