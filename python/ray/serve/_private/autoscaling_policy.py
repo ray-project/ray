@@ -73,16 +73,20 @@ class AutoscalingPolicyManager:
         If the autoscaling policy is not ready or returning the same number as the
         current replica number, return None to not execute autoscaling.
         """
-        override_min_replicas = self.get_current_lower_bound(
+        capacity_adjusted_min_replicas = self.get_current_lower_bound(
             target_capacity,
             target_capacity_direction,
+        )
+        capacity_adjusted_max_replicas = get_capacity_adjusted_num_replicas(
+            self.config.max_replicas,
+            target_capacity,
         )
         self.context.update(
             curr_target_num_replicas=curr_target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
-            override_min_replicas=override_min_replicas,
-            target_capacity=target_capacity,
+            capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
+            capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,
         )
         # Note: The thread manager will continuously return None until a decision is
         # made. We do not currently force kill and restart the scaling call due to

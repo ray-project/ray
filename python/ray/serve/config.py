@@ -67,11 +67,6 @@ class AutoscalingConfig(BaseModel):
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
-        # Ignore this validation if custom scaling is used.
-        policy = values.get("policy")
-        if policy is not None and policy != DEFAULT_AUTOSCALING_POLICY:
-            return max_replicas
-
         min_replicas = values.get("min_replicas")
         initial_replicas = values.get("initial_replicas")
         if min_replicas is not None and max_replicas < min_replicas:

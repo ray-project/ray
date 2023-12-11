@@ -1,12 +1,9 @@
 import math
 import os
-from typing import List, Optional
+from typing import List
 
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
-from ray.serve._private.utils import (
-    calculate_desired_num_replicas,
-    get_capacity_adjusted_num_replicas,
-)
+from ray.serve._private.utils import calculate_desired_num_replicas
 from ray.serve.config import AutoscalingConfig
 from ray.util.annotations import PublicAPI
 
@@ -29,8 +26,8 @@ class AutoscalingContext:
         self.curr_target_num_replicas = 0
         self.current_num_ongoing_requests = []
         self.current_handle_queued_queries = 0.0
-        self.override_min_replicas = 0
-        self.target_capacity = None
+        self.capacity_adjusted_min_replicas = None
+        self.capacity_adjusted_max_replicas = None
         self.decision_counter = 0
 
     def update(
@@ -38,8 +35,8 @@ class AutoscalingContext:
         curr_target_num_replicas: int,
         current_num_ongoing_requests: List[float],
         current_handle_queued_queries: float,
-        override_min_replicas: int,
-        target_capacity: Optional[float] = None,
+        capacity_adjusted_min_replicas: int,
+        capacity_adjusted_max_replicas: int,
     ):
         """
         Arguments:
@@ -50,14 +47,14 @@ class AutoscalingContext:
             current_handle_queued_queries: The number of handle queued queries,
                 if there are multiple handles, the max number of queries at
                 a single handle should be passed in
-            override_min_replicas: The minimum number of replicas.
-            target_capacity: The target capacity of the deployment.
+            capacity_adjusted_min_replicas: The minimum number of replicas.
+            capacity_adjusted_max_replicas: The maximum number of replicas.
         """
         self.curr_target_num_replicas = curr_target_num_replicas
         self.current_num_ongoing_requests = current_num_ongoing_requests
         self.current_handle_queued_queries = current_handle_queued_queries
-        self.override_min_replicas = override_min_replicas
-        self.target_capacity = target_capacity
+        self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas
+        self.capacity_adjusted_max_replicas = capacity_adjusted_max_replicas
 
 
 @PublicAPI(stability="stable")
@@ -86,11 +83,8 @@ def basic_autoscaling_policy(context: AutoscalingContext) -> int:
     desired_num_replicas = calculate_desired_num_replicas(
         context.config,
         context.current_num_ongoing_requests,
-        override_min_replicas=context.override_min_replicas,
-        override_max_replicas=get_capacity_adjusted_num_replicas(
-            context.config.max_replicas,
-            context.target_capacity,
-        ),
+        override_min_replicas=context.capacity_adjusted_min_replicas,
+        override_max_replicas=context.capacity_adjusted_max_replicas,
     )
     # Scale up.
     if desired_num_replicas > context.curr_target_num_replicas:
