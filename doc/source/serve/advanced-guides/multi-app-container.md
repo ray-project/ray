@@ -71,20 +71,24 @@ RUN curl -O https://raw.githubusercontent.com/ray-project/ray/master/doc/source/
 :::
 ::::
 
-Then, build the corresponding docker images and push it to your choice of docker registry. In this tutorial, we will use `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for the registry repo of your choice.
+Then, build the corresponding docker images and push it to your choice of docker registry. In this tutorial, we will use `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for a repo name of your choice.
 
 ::::{tab-set}
 :::{tab-item} Whisper
 ```bash
+# Build the docker image from the dockerfile
 export IMG1=alice/whisper_image:latest
 docker build -t $IMG1 -f whisper.Dockerfile .
+# Push to a docker registry. This is unnecessary if you are deploying Serve locally.
 docker push $IMG1
 ```
 :::
 :::{tab-item} Resnet
 ```bash
+# Build the docker image from the dockerfile
 export IMG2=alice/resnet_image:latest
 docker build -t $IMG2 -f resnet.Dockerfile .
+# Push to a docker registry. This is unnecessary if you are deploying Serve locally.
 docker push $IMG2
 ```
 :::
@@ -92,7 +96,7 @@ docker push $IMG2
 
 Finally, you can specify the docker image within which you want to run each application in the `container` field of an application's runtime environment specification. The `container` field has three fields:
 - `image`: (Required) The image to run your application in.
-- `worker_path`: The absolute path to `default_worker.py` inside the container. This is necessary if the Ray installation directory is different than that of the host (where raylet is running). For instance, if you are running on bare metal, and using a standard Ray docker image as the base image for your application image, then the Ray installation directory on host will likely differ from that of the container. Note that if you are using a standard Ray docker image as the base image, then `default_worker.py` will always be found at `/home/ray/anaconda3/lib/{python-version}/site-packages/ray/_private/workers/default_worker.py`
+- `worker_path`: The absolute path to `default_worker.py` inside the container.
 - `run_options`: Additional options to pass to the `podman run` command used to start a Serve deployment replica in a container. See [podman run documentation](https://docs.podman.io/en/latest/markdown/podman-run.1.html) for a list of all options. If you are familiar with `docker run`, most options will work the same way.
 
 The following Serve config will run the `whisper` app with the image `IMG1`, and the `resnet` app with the image `IMG2`. Concretely, this means that all deployment replicas in the applications will start and run in containers with the respective images.
@@ -146,7 +150,22 @@ applications:
 ox
 ```
 
-## Details
+## Advanced
+
+### `worker_path` field
+
+Specifying `worker_path` is necessary if the Ray installation directory is different than that of the host (where raylet is running). For instance, if you are running on bare metal, and using a standard Ray docker image as the base image for your application image, then the Ray installation directory on host will likely differ from that of the container.
+
+To find this path, do the following:
+1. Run the image using `docker run -it image_id`.
+2. Find the Ray installation directory by running `import ray; print(ray.__file__)` in a Python interpreter. This should print `{path-to-ray-directory}/__init__.py`. Note that if you are using a standard Ray docker image as the base image, then the Ray installation directory will always be at `/home/ray/anaconda3/lib/{python-version}/site-packages/ray/`, where `{python-version}` is something like `python3.8`.
+3. The worker path is at `{path-to-ray-directory}/_private/workers/default_worker.py`.
+
+If you set the `worker_path` to an incorrect file path, you will see an error from the raylet like the following:
+```
+(raylet) python: can't open file '/some/incorrect/path': [Errno 2] No such file or directory
+```
+This is because raylet is trying to execute `default_worker.py` inside the container, but can't find it.
 
 ### Compatibility with other Runtime Environment Fields
 
