@@ -141,7 +141,7 @@ def prepare_data_loader(
 
     Example:
 
-    .. codeblock:: python
+    .. code-block:: python
 
         import torch
 
