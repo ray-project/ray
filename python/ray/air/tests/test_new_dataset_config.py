@@ -8,6 +8,8 @@ from ray import train
 from ray.train import DataConfig, ScalingConfig
 from ray.data import DataIterator
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
+from ray.tests.conftest import *  # noqa
 
 
 @pytest.fixture
@@ -259,6 +261,57 @@ def test_materialized_preprocessing(ray_start_4_cpus):
         dataset_config=DataConfig(datasets_to_split=[]),
     )
     test.fit()
+
+
+def test_data_config_default_resource_limits(shutdown_only):
+    """Test that DataConfig should exclude training resources from Data."""
+    cluster_cpus, cluster_gpus = 20, 10
+    num_workers = 2
+    # Resources used by training workers.
+    cpus_per_worker, gpus_per_worker = 2, 1
+    # Resources used by the trainer actor.
+    default_trainer_cpus, default_trainer_gpus = 1, 0
+    num_train_cpus = num_workers * cpus_per_worker + default_trainer_cpus
+    num_train_gpus = num_workers * gpus_per_worker + default_trainer_gpus
+
+    init_exclude_cpus = 2
+    init_exclude_gpus = 1
+
+    ray.init(num_cpus=cluster_cpus, num_gpus=cluster_gpus)
+
+    class MyTrainer(DataParallelTrainer):
+        def __init__(self, **kwargs):
+            def train_loop_fn():
+                train_ds = train.get_dataset_shard("train")
+                exclude_resources = (
+                    train_ds._base_dataset.context.execution_options.exclude_resources
+                )
+                assert exclude_resources.cpu == num_train_cpus + init_exclude_cpus
+                assert exclude_resources.gpu == num_train_gpus + init_exclude_gpus
+
+            kwargs.pop("scaling_config", None)
+
+            execution_options = ExecutionOptions()
+            execution_options.exclude_resources.cpu = init_exclude_cpus
+            execution_options.exclude_resources.gpu = init_exclude_gpus
+
+            super().__init__(
+                train_loop_per_worker=train_loop_fn,
+                scaling_config=ScalingConfig(
+                    num_workers=num_workers,
+                    use_gpu=True,
+                    resources_per_worker={
+                        "CPU": cpus_per_worker,
+                        "GPU": gpus_per_worker,
+                    },
+                ),
+                datasets={"train": ray.data.range(10)},
+                dataset_config=DataConfig(execution_options=execution_options),
+                **kwargs,
+            )
+
+    trainer = MyTrainer()
+    trainer.fit()
 
 
 if __name__ == "__main__":

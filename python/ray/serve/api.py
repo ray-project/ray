@@ -31,7 +31,7 @@ from ray.serve._private.utils import (
     Default,
     ensure_serialization_context,
     extract_self_if_method_call,
-    get_random_letters,
+    get_random_string,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -65,7 +65,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
-    system_logging_config: Union[None, dict, LoggingConfig] = None,
+    logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -89,7 +89,7 @@ def start(
         grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
-        system_logging_config: logging config options for the serve component (
+        logging_config: logging config options for the serve component (
             controller & proxy).
     """
 
@@ -122,7 +122,7 @@ def start(
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
-        system_logging_config=system_logging_config,
+        global_logging_config=logging_config,
         **kwargs,
     )
 
@@ -244,7 +244,10 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
 
                 # Call user-defined destructor if defined.
                 if hasattr(cls, "__del__"):
-                    cls.__del__(self)
+                    if inspect.iscoroutinefunction(cls.__del__):
+                        await cls.__del__(self)
+                    else:
+                        cls.__del__(self)
 
         ASGIIngressWrapper.__name__ = cls.__name__
         if hasattr(frozen_app, "docs_url"):
@@ -530,7 +533,7 @@ def run(
             "name": deployment._name,
             "replica_config": deployment._replica_config,
             "deployment_config": deployment._deployment_config,
-            "version": deployment._version or get_random_letters(),
+            "version": deployment._version or get_random_string(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "docs_path": deployment._docs_path,

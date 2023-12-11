@@ -919,6 +919,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -930,6 +931,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1531,6 +1533,19 @@ ray_cc_test(
     deps = [
         ":grpc_common_lib",
         ":test_service_cc_grpc",
+    ],
+)
+
+ray_cc_test(
+    name = "core_worker_client_pool_test",
+    size = "small",
+    srcs = [
+        "src/ray/rpc/worker/test/core_worker_client_pool_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":worker_rpc",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

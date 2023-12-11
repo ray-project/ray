@@ -1,7 +1,7 @@
 .. _train-pytorch:
 
-Get Started with PyTorch
-========================
+Get Started with Distributed Training using PyTorch
+===================================================
 
 This tutorial walks through the process of converting an existing PyTorch script to use Ray Train.
 
@@ -26,7 +26,7 @@ For reference, the final code is as follows:
 
     def train_func(config):
         # Your PyTorch training code here.
-    
+
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
@@ -37,27 +37,32 @@ For reference, the final code is as follows:
 
 Compare a PyTorch training script with and without Ray Train.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: PyTorch
+    .. tab-item:: PyTorch
 
         .. This snippet isn't tested because it doesn't use any Ray code.
 
         .. testcode::
             :skipif: True
 
+            import os
             import tempfile
+
             import torch
+            from torch.nn import CrossEntropyLoss
+            from torch.optim import Adam
+            from torch.utils.data import DataLoader
             from torchvision.models import resnet18
             from torchvision.datasets import FashionMNIST
             from torchvision.transforms import ToTensor, Normalize, Compose
-            from torch.utils.data import DataLoader
-            from torch.optim import Adam
-            from torch.nn import CrossEntropyLoss
 
             # Model, Loss, Optimizer
             model = resnet18(num_classes=10)
-            model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+            model.conv1 = torch.nn.Conv2d(
+                1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+            )
+            model.to("cuda")
             criterion = CrossEntropyLoss()
             optimizer = Adam(model.parameters(), lr=0.001)
 
@@ -69,40 +74,46 @@ Compare a PyTorch training script with and without Ray Train.
             # Training
             for epoch in range(10):
                 for images, labels in train_loader:
+                    images, labels = images.to("cuda"), labels.to("cuda")
                     outputs = model(images)
                     loss = criterion(outputs, labels)
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                
-                checkpoint_dir = tempfile.gettempdir() 
-                checkpoint_path = checkpoint_dir + "/model.checkpoint"
+
+                metrics = {"loss": loss.item(), "epoch": epoch}
+                checkpoint_dir = tempfile.mkdtemp()
+                checkpoint_path = os.path.join(checkpoint_dir, "model.pt")
                 torch.save(model.state_dict(), checkpoint_path)
+                print(metrics)
 
-                
 
-    .. group-tab:: PyTorch + Ray Train
+
+    .. tab-item:: PyTorch + Ray Train
 
         .. code-block:: python
-            :emphasize-lines: 3, 10, 11, 13, 18, 19, 27, 28, 42, 43, 45-50
+            :emphasize-lines: 12, 15, 21, 23, 35, 50, 54-57, 58, 63, 66-73
 
+            import os
             import tempfile
+
             import torch
-            import ray
+            from torch.nn import CrossEntropyLoss
+            from torch.optim import Adam
+            from torch.utils.data import DataLoader
             from torchvision.models import resnet18
             from torchvision.datasets import FashionMNIST
             from torchvision.transforms import ToTensor, Normalize, Compose
-            from torch.utils.data import DataLoader
-            from torch.optim import Adam
-            from torch.nn import CrossEntropyLoss
-            from ray.train.torch import TorchTrainer
-            from ray.train import ScalingConfig, Checkpoint
+
+            import ray.train.torch
 
             def train_func(config):
-
                 # Model, Loss, Optimizer
                 model = resnet18(num_classes=10)
-                model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+                model.conv1 = torch.nn.Conv2d(
+                    1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+                )
+                # model.to("cuda")  # This is done by `prepare_model`
                 # [1] Prepare model.
                 model = ray.train.torch.prepare_model(model)
                 criterion = CrossEntropyLoss()
@@ -110,7 +121,8 @@ Compare a PyTorch training script with and without Ray Train.
 
                 # Data
                 transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
-                train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
+                data_dir = os.path.join(tempfile.gettempdir(), "data")
+                train_data = FashionMNIST(root=data_dir, train=True, download=True, transform=transform)
                 train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
                 # [2] Prepare dataloader.
                 train_loader = ray.train.torch.prepare_data_loader(train_loader)
@@ -118,29 +130,55 @@ Compare a PyTorch training script with and without Ray Train.
                 # Training
                 for epoch in range(10):
                     for images, labels in train_loader:
+                        # This is done by `prepare_data_loader`!
+                        # images, labels = images.to("cuda"), labels.to("cuda")
                         outputs = model(images)
                         loss = criterion(outputs, labels)
                         optimizer.zero_grad()
                         loss.backward()
                         optimizer.step()
-                    
-                    checkpoint_dir = tempfile.gettempdir() 
-                    checkpoint_path = checkpoint_dir + "/model.checkpoint"
-                    torch.save(model.state_dict(), checkpoint_path)
+
                     # [3] Report metrics and checkpoint.
-                    ray.train.report({"loss": loss.item()}, checkpoint=Checkpoint.from_directory(checkpoint_dir))
-            
+                    metrics = {"loss": loss.item(), "epoch": epoch}
+                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                        torch.save(
+                            model.module.state_dict(),
+                            os.path.join(temp_checkpoint_dir, "model.pt")
+                        )
+                        ray.train.report(
+                            metrics,
+                            checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
+                        )
+                    if ray.train.get_context().get_world_rank() == 0:
+                        print(metrics)
+
             # [4] Configure scaling and resource requirements.
-            scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+            scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 
             # [5] Launch distributed training job.
-            trainer = TorchTrainer(train_func, scaling_config=scaling_config)
+            trainer = ray.train.torch.TorchTrainer(
+                train_func,
+                scaling_config=scaling_config,
+                # [5a] If running in a multi-node cluster, this is where you
+                # should configure the run's persistent storage.
+                # run_config=ray.train.RunConfig(storage_path="s3://..."),
+            )
             result = trainer.fit()
+
+            # [6] Load the trained model.
+            with result.checkpoint.as_directory() as checkpoint_dir:
+                model_state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
+                model = resnet18(num_classes=10)
+                model.conv1 = torch.nn.Conv2d(
+                    1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+                )
+                model.load_state_dict(model_state_dict)
+
 
 Set up a training function
 --------------------------
 
-First, update your training code to support distributed training. 
+First, update your training code to support distributed training.
 Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
 .. testcode::
@@ -164,7 +202,7 @@ Use the :func:`ray.train.torch.prepare_model` utility function to:
     -from torch.nn.parallel import DistributedDataParallel
     +import ray.train.torch
 
-     def train_func(config): 
+     def train_func(config):
 
          ...
 
@@ -176,7 +214,7 @@ Use the :func:`ray.train.torch.prepare_model` utility function to:
     -    model = model.to(device_id or "cpu")
     -    model = DistributedDataParallel(model, device_ids=[device_id])
     +    model = ray.train.torch.prepare_model(model)
-         
+
          ...
 
 Set up a dataset
@@ -184,10 +222,10 @@ Set up a dataset
 
 .. TODO: Update this to use Ray Data.
 
-Use the :func:`ray.train.torch.prepare_data_loader` utility function, which: 
+Use the :func:`ray.train.torch.prepare_data_loader` utility function, which:
 
 1. Adds a ``DistributedSampler`` to your ``DataLoader``.
-2. Moves the batches to the right device. 
+2. Moves the batches to the right device.
 
 Note that this step isn't necessary if you're passing in Ray Data to your Trainer.
 See :ref:`data-ingest-torch`.
@@ -203,9 +241,9 @@ See :ref:`data-ingest-torch`.
          ...
 
          dataset = ...
-         
+
          data_loader = DataLoader(dataset, batch_size=worker_batch_size)
-    -    data_loader = DataLoader(dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset)) 
+    -    data_loader = DataLoader(dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
     +    data_loader = ray.train.torch.prepare_data_loader(data_loader)
 
          for X, y in data_loader:
@@ -220,7 +258,7 @@ See :ref:`data-ingest-torch`.
 
     .. testcode::
         :skipif: True
-        
+
         global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 
 
@@ -266,7 +304,7 @@ For more details, see :ref:`train_scaling_config`.
 Launch a training job
 ---------------------
 
-Tying this all together, you can now launch a distributed training job 
+Tying this all together, you can now launch a distributed training job
 with a :class:`~ray.train.torch.TorchTrainer`.
 
 .. testcode::

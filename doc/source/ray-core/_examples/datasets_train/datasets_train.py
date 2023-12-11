@@ -263,12 +263,18 @@ class DataPreprocessor:
 
 
 def inference(
-    dataset, model_cls: type, batch_size: int, result_path: str, use_gpu: bool
+    dataset,
+    load_model_func,
+    model_cls: type,
+    batch_size: int,
+    result_path: str,
+    use_gpu: bool,
 ):
     print("inferencing...")
     num_gpus = 1 if use_gpu else 0
     dataset.map_batches(
         model_cls,
+        fn_constructor_args=[load_model_func],
         compute=ray.data.ActorPoolStrategy(),
         batch_size=batch_size,
         batch_format="pandas",
@@ -699,7 +705,8 @@ if __name__ == "__main__":
     )
     inference(
         inference_dataset,
-        BatchInferModel(load_model_func),
+        load_model_func,
+        BatchInferModel,
         100,
         inference_output_path,
         use_gpu,

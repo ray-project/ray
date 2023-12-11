@@ -268,7 +268,6 @@ py_test(
     ],
 )
 
-
 py_test(
     name = "air_benchmark_gpu_batch_inference_parquet_smoke_test",
     size = "small",
@@ -487,11 +486,11 @@ py_test(
     name = "test_bisect",
     size = "small",
     srcs = ["ray_release/tests/test_bisect.py"],
-    exec_compatible_with = ["//:hermetic_python"],
     data = [
-        "ray_release/tests/test_collection_data.yaml",
         "cluster_tests/cpt_autoscaling_1-3_aws.yaml",
+        "ray_release/tests/test_collection_data.yaml",
     ],
+    exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",
         "team:ci",
@@ -561,9 +560,9 @@ py_test(
         ["**/*.yaml"],
         exclude = ["ray_release/**/*.yaml"],
     ) + [
+        "ray_release/tests/test_collection_data.yaml",
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
-        "ray_release/tests/test_collection_data.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
@@ -692,6 +691,24 @@ py_test(
     name = "test_test",
     size = "small",
     srcs = ["ray_release/tests/test_test.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_step",
+    size = "small",
+    srcs = ["ray_release/tests/test_step.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
     ],

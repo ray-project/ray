@@ -777,8 +777,6 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
-  stable: false
-
   frequency: nightly
 
   team: data
@@ -2191,6 +2189,7 @@
 - name: long_running_apex
   group: Long running tests
   working_dir: long_running_tests
+  stable: false
 
   frequency: weekly
   team: rllib
@@ -2579,7 +2578,7 @@
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_1_large.yaml
 
   run:
     timeout: 86400
@@ -3168,7 +3167,6 @@
     script: python workloads/serve_handle_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
 
   alert: default
-  stable: False
 
   variations:
     - __suffix__: aws
@@ -3195,7 +3193,6 @@
     script: python workloads/serve_handle_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
 
   alert: default
-  stable: False
 
   variations:
     - __suffix__: aws
@@ -3338,6 +3335,7 @@
 - name: rllib_learner_e2e_module_loading
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3371,6 +3369,7 @@
 - name: rllib_learning_tests_a2c_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3401,6 +3400,7 @@
 - name: rllib_learning_tests_a2c_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3431,6 +3431,7 @@
 - name: rllib_learning_tests_a3c_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3494,6 +3495,7 @@
 - name: rllib_learning_tests_apex_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3524,6 +3526,7 @@
 - name: rllib_learning_tests_appo_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3652,6 +3655,7 @@
 - name: rllib_learning_tests_bc_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3903,6 +3907,7 @@
 - name: rllib_learning_tests_es_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3933,6 +3938,7 @@
 - name: rllib_learning_tests_es_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4089,6 +4095,7 @@
 - name: rllib_learning_tests_ppo_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4277,6 +4284,7 @@
 - name: rllib_learning_tests_slateq_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4340,6 +4348,7 @@
 - name: rllib_learning_tests_td3_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4370,6 +4379,7 @@
 - name: rllib_learning_tests_td3_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4400,6 +4410,7 @@
 - name: rllib_multi_gpu_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4430,6 +4441,7 @@
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -5768,7 +5780,7 @@
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 21600
+    timeout: 18000
     script: python multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 3
 
   variations:
@@ -5779,7 +5791,7 @@
       cluster:
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
 
-- name: read_images_train_4_gpu_chaos
+- name: read_images_train_4_gpu_worker_chaos
   group: data-tests
   working_dir: nightly_tests
 
@@ -5792,9 +5804,34 @@
     cluster_compute: dataset/multi_node_train_4_workers.yaml
 
   run:
-    timeout: 3600
-    prepare: python setup_chaos.py --kill-workers --kill-interval 50 --max-to-kill 20 --task-names "ReadImage->Map(crop_and_flip_image)"
-    script: python dataset/multi_node_train_benchmark.py --num-workers 4 --file-type image
+    timeout: 18000
+    prepare: python setup_chaos.py --kill-workers --kill-interval 100 --max-to-kill 3 --task-names "ReadImage->Map(wnid_to_index)->Map(crop_and_flip_image)"
+    script: python dataset/multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 1
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+
+- name: read_images_train_4_gpu_node_chaos
+  group: data-tests
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: dataset/multi_node_train_4_workers.yaml
+
+  run:
+    timeout: 18000
+    prepare: python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names "_RayTrainWorker__execute.get_next"
+    script: python dataset/multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 1
 
   variations:
     - __suffix__: aws
@@ -5817,7 +5854,7 @@
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 21600
+    timeout: 18000
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --use-gpu
 
   variations:
@@ -5841,7 +5878,7 @@
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 21600
+    timeout: 18000
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order --use-gpu
 
   variations:

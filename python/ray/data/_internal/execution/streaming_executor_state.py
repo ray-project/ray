@@ -4,12 +4,14 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
 import math
+import threading
 import time
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import ray
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -32,13 +34,13 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
+from ray.data.context import DataContext
+
+logger = DatasetLogger(__name__)
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
-
-# A RefBundle or an exception / end of stream indicator.
-MaybeRefBundle = Union[RefBundle, Exception, None]
 
 # The fraction of the object store capacity that will be used as the default object
 # store memory limit for the streaming executor.
@@ -104,6 +106,47 @@ class DownstreamMemoryInfo:
     object_store_memory: float
 
 
+class RefBundleDeque(deque):
+    """Thread-safe wrapper around collections.deque that stores current stats."""
+
+    def __init__(self):
+        self.memory_usage = 0
+        self._lock = threading.Lock()
+        super().__init__()
+
+    def append(self, ref: RefBundle):
+        with self._lock:
+            self.memory_usage += ref.size_bytes()
+        super().append(ref)
+
+    def appendleft(self, ref: RefBundle):
+        with self._lock:
+            self.memory_usage += ref.size_bytes()
+        super().appendleft(ref)
+
+    def pop(self) -> RefBundle:
+        ref = super().pop()
+        with self._lock:
+            self.memory_usage -= ref.size_bytes()
+        return ref
+
+    def popleft(self) -> RefBundle:
+        ref = super().popleft()
+        with self._lock:
+            self.memory_usage -= ref.size_bytes()
+        return ref
+
+    def remove(self, ref: RefBundle):
+        super().remove(ref)
+        with self._lock:
+            self.memory_usage -= ref.size_bytes()
+
+    def clear(self):
+        super().clear()
+        with self._lock:
+            self.memory_usage = 0
+
+
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -114,17 +157,17 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[Deque[MaybeRefBundle]]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[RefBundleDeque]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
-        self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
+        self.inqueues: List[RefBundleDeque] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
         #
         # Note: this queue is also accessed concurrently from the consumer thread.
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
-        self.outqueue: Deque[MaybeRefBundle] = deque()
+        self.outqueue: RefBundleDeque = RefBundleDeque()
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
@@ -132,6 +175,12 @@ class OpState:
         # Tracks whether `input_done` is called for each input op.
         self.input_done_called = [False] * len(op.input_dependencies)
         self.dependents_completed_called = False
+        # Used for StreamingExecutor to signal exception or end of execution
+        self._finished: bool = False
+        self._exception: Optional[Exception] = None
+
+    def __repr__(self):
+        return f"OpState({self.op.name})"
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
@@ -205,13 +254,22 @@ class OpState:
                 return
         assert False, "Nothing to dispatch"
 
-    def get_output_blocking(self, output_split_idx: Optional[int]) -> MaybeRefBundle:
+    def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.
+
+        Raises:
+            StopIteration: If all outputs are already consumed.
+            Exception: If there was an exception raised during execution.
         """
         while True:
+            # Check if StreamingExecutor has caught an exception or is done execution.
+            if self._exception is not None:
+                raise self._exception
+            elif self._finished and len(self.outqueue) == 0:
+                raise StopIteration()
             try:
                 # Non-split output case.
                 if output_split_idx is None:
@@ -220,12 +278,7 @@ class OpState:
                 # Scan the queue and look for outputs tagged for the given index.
                 for i in range(len(self.outqueue)):
                     bundle = self.outqueue[i]
-                    if bundle is None or isinstance(bundle, Exception):
-                        # End of stream for this index! Note that we
-                        # do not remove the None, so that it can act
-                        # as the termination signal for all indices.
-                        return bundle
-                    elif bundle.output_split_idx == output_split_idx:
+                    if bundle.output_split_idx == output_split_idx:
                         self.outqueue.remove(bundle)
                         return bundle
 
@@ -241,29 +294,12 @@ class OpState:
         for op, inq in zip(self.op.input_dependencies, self.inqueues):
             # Exclude existing input data items from dynamic memory usage.
             if not isinstance(op, InputDataBuffer):
-                total += self._queue_memory_usage(inq)
+                total += inq.memory_usage
         return total
 
     def outqueue_memory_usage(self) -> int:
         """Return the object store memory of this operator's outqueue."""
-        return self._queue_memory_usage(self.outqueue)
-
-    def _queue_memory_usage(self, queue: Deque[RefBundle]) -> int:
-        """Sum the object store memory usage in this queue.
-
-        Note: Python's deque isn't truly thread-safe since it raises RuntimeError
-        if it detects concurrent iteration. Hence we don't use its iterator but
-        manually index into it.
-        """
-
-        object_store_memory = 0
-        for i in range(len(queue)):
-            try:
-                bundle = queue[i]
-                object_store_memory += bundle.size_bytes()
-            except IndexError:
-                break  # Concurrent pop from the outqueue by the consumer thread.
-        return object_store_memory
+        return self.outqueue.memory_usage
 
     def outqueue_num_blocks(self) -> int:
         """Return the number of blocks in this operator's outqueue."""
@@ -276,6 +312,13 @@ class OpState:
             except IndexError:
                 break
         return len(self.outqueue)
+
+    def mark_finished(self, exception: Optional[Exception] = None):
+        """Marks this operator as finished. Used for exiting get_output_blocking."""
+        if exception is None:
+            self._finished = True
+        else:
+            self._exception = exception
 
 
 def build_streaming_topology(
@@ -331,9 +374,19 @@ def build_streaming_topology(
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
-) -> None:
+    max_errored_blocks: int,
+) -> int:
     """Process any newly completed tasks. To update operator
-    states, call `update_operator_states()` afterwards."""
+    states, call `update_operator_states()` afterwards.
+
+    Args:
+        topology: The toplogy of operators.
+        backpressure_policies: The backpressure policies to use.
+        max_errored_blocks: Max number of errored blocks to allow,
+            unlimited if negative.
+    Returns:
+        The number of errored blocks.
+    """
 
     # All active tasks, keyed by their waitables.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
@@ -343,15 +396,18 @@ def process_completed_tasks(
 
     max_blocks_to_read_per_op: Dict[OpState, int] = {}
     for policy in backpressure_policies:
-        non_empty = len(max_blocks_to_read_per_op) > 0
-        max_blocks_to_read_per_op = policy.calculate_max_blocks_to_read_per_op(topology)
-        if non_empty and len(max_blocks_to_read_per_op) > 0:
-            raise ValueError(
-                "At most one backpressure policy that implements "
-                "calculate_max_blocks_to_read_per_op() can be used at a time."
-            )
+        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        if len(res) > 0:
+            if len(max_blocks_to_read_per_op) > 0:
+                raise ValueError(
+                    "At most one backpressure policy that implements "
+                    "calculate_max_blocks_to_read_per_op() can be used at a time."
+                )
+            else:
+                max_blocks_to_read_per_op = res
 
     # Process completed Ray tasks and notify operators.
+    num_errored_blocks = 0
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
@@ -359,22 +415,67 @@ def process_completed_tasks(
             fetch_local=False,
             timeout=0.1,
         )
+
+        # Organize tasks by the operator they belong to, and sort them by task index.
+        # So that we'll process them in a deterministic order.
+        # This is because some backpressure policies (e.g.,
+        # StreamingOutputBackpressurePolicy) may limit the number of blocks to read
+        # per operator. In this case, we want to have fewer tasks finish quickly and
+        # yield resources, instead of having all tasks output blocks together.
+        ready_tasks_by_op = defaultdict(list)
         for ref in ready:
-            state, task = active_tasks.pop(ref)
-            if isinstance(task, DataOpTask):
-                num_blocks_read = task.on_data_ready(
-                    max_blocks_to_read_per_op.get(state, None)
-                )
-                if state in max_blocks_to_read_per_op:
-                    max_blocks_to_read_per_op[state] -= num_blocks_read
-            else:
-                assert isinstance(task, MetadataOpTask)
-                task.on_task_finished()
+            state, task = active_tasks[ref]
+            ready_tasks_by_op[state].append(task)
+
+        for state, ready_tasks in ready_tasks_by_op.items():
+            ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
+            for task in ready_tasks:
+                if isinstance(task, DataOpTask):
+                    try:
+                        num_blocks_read = task.on_data_ready(
+                            max_blocks_to_read_per_op.get(state, None)
+                        )
+                        if state in max_blocks_to_read_per_op:
+                            max_blocks_to_read_per_op[state] -= num_blocks_read
+                    except Exception as e:
+                        num_errored_blocks += 1
+                        should_ignore = (
+                            max_errored_blocks < 0
+                            or max_errored_blocks >= num_errored_blocks
+                        )
+                        error_message = (
+                            "An exception was raised from a task of "
+                            f'operator "{state.op.name}".'
+                        )
+                        if should_ignore:
+                            remaining = (
+                                max_errored_blocks - num_errored_blocks
+                                if max_errored_blocks >= 0
+                                else "unlimited"
+                            )
+                            error_message += (
+                                " Ignoring this exception with remaining"
+                                f" max_errored_blocks={remaining}."
+                            )
+                            logger.get_logger().warning(error_message, exc_info=e)
+                        else:
+                            error_message += (
+                                " Dataset execution will now abort."
+                                " To ignore this exception and continue, set"
+                                " DataContext.max_errored_blocks."
+                            )
+                            logger.get_logger().error(error_message)
+                            raise e from None
+                else:
+                    assert isinstance(task, MetadataOpTask)
+                    task.on_task_finished()
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
         while op.has_next():
             op_state.add_output(op.get_next())
+
+    return num_errored_blocks
 
 
 def update_operator_states(topology: Topology) -> None:
@@ -579,14 +680,16 @@ def _execution_allowed(
             "Operator incremental resource usage cannot specify both CPU "
             "and GPU at the same time, since it may cause deadlock."
         )
-    elif inc.object_store_memory:
-        raise NotImplementedError(
-            "Operator incremental resource usage must not include memory."
-        )
+
+    # Ignore the scale of CPU and GPU requests, i.e., treating them as either 1 or 0.
+    # This ensures operators don't get starved due to the shape of their resource
+    # requests.
     inc_indicator = ExecutionResources(
         cpu=1 if inc.cpu else 0,
         gpu=1 if inc.gpu else 0,
-        object_store_memory=1 if inc.object_store_memory else 0,
+        object_store_memory=inc.object_store_memory
+        if DataContext.get_current().use_runtime_metrics_scheduling
+        else None,
     )
 
     # Under global limits; always allow.
@@ -607,5 +710,15 @@ def _execution_allowed(
     downstream_memory_ok = ExecutionResources(
         object_store_memory=downstream_usage.object_store_memory
     ).satisfies_limit(downstream_limit)
+
+    # If completing a task decreases the overall object store memory usage, allow it
+    # even if we're over the global limit.
+    if (
+        DataContext.get_current().use_runtime_metrics_scheduling
+        and global_ok_sans_memory
+        and op.metrics.average_bytes_change_per_task is not None
+        and op.metrics.average_bytes_change_per_task <= 0
+    ):
+        return True
 
     return global_ok_sans_memory and downstream_memory_ok

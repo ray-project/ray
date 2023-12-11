@@ -17,7 +17,7 @@ class Provider(Enum):
     LOCAL = 6
 
 
-class ConfigReader(ABC):
+class IConfigReader(ABC):
     """An interface for reading cluster config."""
 
     @abstractmethod

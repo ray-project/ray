@@ -9,7 +9,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
@@ -25,6 +24,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
@@ -590,6 +590,6 @@ class ServeControllerClient:
         self._controller.record_multiplexed_replica_info.remote(info)
 
     @_ensure_connected
-    def update_system_logging_config(self, logging_config: LoggingConfig):
+    def update_global_logging_config(self, logging_config: LoggingConfig):
         """Reconfigure the logging config for the controller & proxies."""
-        self._controller.reconfigure_system_logging_config.remote(logging_config)
+        self._controller.reconfigure_global_logging_config.remote(logging_config)

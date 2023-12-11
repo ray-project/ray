@@ -1,11 +1,12 @@
 import collections
+import math
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -18,10 +19,12 @@ from ray.data._internal.execution.operators.map_transformer import (
     create_map_transformer_from_block_fn,
 )
 from ray.data._internal.execution.streaming_executor import (
+    StreamingExecutor,
     _debug_dump_topology,
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
     AutoscalingState,
     DownstreamMemoryInfo,
     OpState,
@@ -51,6 +54,10 @@ def make_map_transformer(block_fn):
             yield block_fn(block)
 
     return create_map_transformer_from_block_fn(map_fn)
+
+
+def make_ref_bundle(x):
+    return make_ref_bundles([[x]])[0]
 
 
 @pytest.mark.parametrize(
@@ -106,18 +113,18 @@ def test_process_completed_tasks():
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
-    process_completed_tasks(topo, [])
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
     # Test processing completed work items.
-    sleep_task = MetadataOpTask(sleep.remote(), lambda: None)
+    sleep_task = MetadataOpTask(0, sleep.remote(), lambda: None)
     done_task_callback = MagicMock()
-    done_task = MetadataOpTask(ray.put("done"), done_task_callback)
+    done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
-    process_completed_tasks(topo, [])
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
@@ -125,13 +132,13 @@ def test_process_completed_tasks():
 
     # Test input finalization.
     done_task_callback = MagicMock()
-    done_task = MetadataOpTask(ray.put("done"), done_task_callback)
+    done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
-    process_completed_tasks(topo, [])
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -140,7 +147,7 @@ def test_process_completed_tasks():
     # Test dependents completed.
     o2.need_more_inputs = MagicMock(return_value=False)
     o1.all_dependents_complete = MagicMock()
-    process_completed_tasks(topo, [])
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     o1.all_dependents_complete.assert_called_once()
 
@@ -166,21 +173,21 @@ def test_select_operator_to_run():
     )
 
     # Test backpressure based on queue length between operators.
-    topo[o1].outqueue.append("dummy1")
+    topo[o1].outqueue.append(make_ref_bundle("dummy1"))
     assert (
         select_operator_to_run(
             topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
-    topo[o1].outqueue.append("dummy2")
+    topo[o1].outqueue.append(make_ref_bundle("dummy2"))
     assert (
         select_operator_to_run(
             topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
-    topo[o2].outqueue.append("dummy3")
+    topo[o2].outqueue.append(make_ref_bundle("dummy3"))
     assert (
         select_operator_to_run(
             topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
@@ -243,16 +250,18 @@ def test_dispatch_next_task():
     op_state = OpState(o2, [o1_state.outqueue])
 
     # TODO: test multiple inqueues with the union operator.
-    op_state.inqueues[0].append("dummy1")
-    op_state.inqueues[0].append("dummy2")
+    ref1 = make_ref_bundle("dummy1")
+    ref2 = make_ref_bundle("dummy2")
+    op_state.inqueues[0].append(ref1)
+    op_state.inqueues[0].append(ref1)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    assert o2.add_input.called_once_with("dummy1")
+    assert o2.add_input.called_once_with(ref1)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    assert o2.add_input.called_once_with("dummy2")
+    assert o2.add_input.called_once_with(ref2)
 
 
 def test_debug_dump_topology():
@@ -401,8 +410,8 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         )
         topo = build_streaming_topology(o4, opt)[0]
         # Make sure only two operator's inqueues has data.
-        topo[o2].inqueues[0].append("dummy")
-        topo[o4].inqueues[0].append("dummy")
+        topo[o2].inqueues[0].append(make_ref_bundle("dummy"))
+        topo[o4].inqueues[0].append(make_ref_bundle("dummy"))
         selected_op = select_operator_to_run(
             topo,
             TopologyResourceUsage(
@@ -513,7 +522,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
         o2,
     )
     topo, _ = build_streaming_topology(o3, opt)
-    topo[o2].outqueue.append("dummy1")
+    topo[o2].outqueue.append(make_ref_bundle("dummy1"))
     o1.num_active_tasks = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
@@ -690,6 +699,122 @@ def test_execution_allowed_nothrottle():
         ),
         ExecutionResources(object_store_memory=900),
     )
+
+
+def test_resource_limits():
+    cluster_resources = {"CPU": 10, "GPU": 5, "object_store_memory": 1000}
+    default_object_store_memory_limit = math.ceil(
+        cluster_resources["object_store_memory"]
+        * DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
+    )
+
+    with patch("ray.cluster_resources", return_value=cluster_resources):
+        # Test default resource limits.
+        # When no resource limits are set, the resource limits should default to
+        # the cluster resources for CPU/GPU, and
+        # DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION of cluster object store memory.
+        options = ExecutionOptions()
+        executor = StreamingExecutor(options, "")
+        expected = ExecutionResources(
+            cpu=cluster_resources["CPU"],
+            gpu=cluster_resources["GPU"],
+            object_store_memory=default_object_store_memory_limit,
+        )
+        assert executor._get_or_refresh_resource_limits() == expected
+
+        # Test setting resource_limits
+        options = ExecutionOptions()
+        options.resource_limits = ExecutionResources(
+            cpu=1, gpu=2, object_store_memory=100
+        )
+        executor = StreamingExecutor(options, "")
+        expected = ExecutionResources(
+            cpu=1,
+            gpu=2,
+            object_store_memory=100,
+        )
+        assert executor._get_or_refresh_resource_limits() == expected
+
+        # Test setting exclude_resources
+        # The actual limit should be the default limit minus the excluded resources.
+        options = ExecutionOptions()
+        options.exclude_resources = ExecutionResources(
+            cpu=1, gpu=2, object_store_memory=100
+        )
+        executor = StreamingExecutor(options, "")
+        expected = ExecutionResources(
+            cpu=cluster_resources["CPU"] - 1,
+            gpu=cluster_resources["GPU"] - 2,
+            object_store_memory=default_object_store_memory_limit - 100,
+        )
+        assert executor._get_or_refresh_resource_limits() == expected
+
+        # Test that we don't support setting both resource_limits and exclude_resources.
+        with pytest.raises(ValueError):
+            options = ExecutionOptions()
+            options.resource_limits = ExecutionResources(cpu=2)
+            options.exclude_resources = ExecutionResources(cpu=1)
+            options.validate()
+
+
+@pytest.mark.parametrize(
+    "max_errored_blocks, num_errored_blocks",
+    [
+        (0, 0),
+        (0, 1),
+        (2, 1),
+        (2, 2),
+        (2, 3),
+        (-1, 5),
+    ],
+)
+def test_max_errored_blocks(
+    restore_data_context,
+    max_errored_blocks,
+    num_errored_blocks,
+):
+    """Test DataContext.max_errored_blocks."""
+    num_tasks = 5
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_errored_blocks = max_errored_blocks
+
+    def map_func(row):
+        id = row["id"]
+        if id < num_errored_blocks:
+            # Fail the first num_errored_tasks tasks.
+            raise RuntimeError(f"Task failed: {id}")
+        return row
+
+    ds = ray.data.range(num_tasks, parallelism=num_tasks).map(map_func)
+    should_fail = 0 <= max_errored_blocks < num_errored_blocks
+    if should_fail:
+        with pytest.raises(Exception, match="Task failed"):
+            res = ds.take_all()
+    else:
+        res = sorted([row["id"] for row in ds.take_all()])
+        assert res == list(range(num_errored_blocks, num_tasks))
+        stats = ds._get_stats_summary()
+        assert stats.extra_metrics["num_tasks_failed"] == num_errored_blocks
+
+
+def test_exception_concise_stacktrace():
+    driver_script = """
+import ray
+
+def map(_):
+    raise ValueError("foo")
+
+ray.data.range(1).map(map).take_all()
+    """
+    proc = run_string_as_driver_nonblocking(driver_script)
+    out_str = proc.stdout.read().decode("utf-8") + proc.stderr.read().decode("utf-8")
+    # Test that the stack trace only contains the UDF exception, but not any other
+    # exceptions raised when the executor is handling the UDF exception.
+    assert (
+        "During handling of the above exception, another exception occurred"
+        not in out_str
+    ), out_str
 
 
 if __name__ == "__main__":

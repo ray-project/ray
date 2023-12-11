@@ -87,12 +87,19 @@ class InstanceUtil:
         instance.instance_type = instance_type
         instance.launch_request_id = request_id
         instance.total_resources.update(resources)
-        instance.status = Instance.UNKNOWN
-        InstanceUtil.set_status(instance, Instance.QUEUED)
+        instance.status = Instance.QUEUED
+        InstanceUtil._record_status_transition(
+            instance, Instance.QUEUED, "created from InstanceUtil"
+        )
         return instance
 
     @staticmethod
-    def is_allocated(instance: Instance) -> bool:
+    def is_cloud_instance_allocated(instance: Instance) -> bool:
+        """
+        Returns True if the instance is allocated by the cloud provider, i.e.
+        there's already a cloud node for the instance.
+        """
+        assert instance.status != Instance.UNKNOWN
         return instance.status in {
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
@@ -100,14 +107,24 @@ class InstanceUtil:
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
             Instance.STOPPING,
+            Instance.RAY_INSTALL_FAILED,
         }
 
     @staticmethod
-    def is_pending(instance: Instance) -> bool:
+    def is_ray_pending(instance: Instance) -> bool:
+        """
+        Returns True if the instance is pending ray installation or ray startup,
+        regardless of whether the instance is allocated by the cloud provider.
+        """
+        assert instance.status != Instance.UNKNOWN
         return instance.status in [
-            Instance.REQUESTED,
-            Instance.QUEUED,
             Instance.UNKNOWN,
+            Instance.QUEUED,
+            Instance.REQUESTED,
+            Instance.ALLOCATED,
+            Instance.RAY_INSTALLING,
+            Instance.ALLOCATION_FAILED,
+            Instance.RAY_INSTALL_FAILED,
         ]
 
     @staticmethod
@@ -128,28 +145,42 @@ class InstanceUtil:
         Raises:
             ValueError if the transition is not allowed.
         """
-        InstanceUtil.check_valid_next_instance_status(instance, new_instance_status)
+        InstanceUtil._check_valid_next_instance_status(instance, new_instance_status)
+        instance.status = new_instance_status
+        InstanceUtil._record_status_transition(instance, new_instance_status, details)
+
+    @staticmethod
+    def _record_status_transition(
+        instance: Instance, status: Instance.InstanceStatus, details: str
+    ):
+        """Records the status transition.
+
+        This should be called by the instance manager.
+
+        Args:
+            instance: The instance to update.
+            status: The new status to transition to.
+        """
         now_ms = time.time_ns() // 1000000
         if (
             len(instance.status_history) > 0
             and instance.status_history[-1].timestamp_ms > now_ms
         ):
             raise ValueError(
-                f"New timestamp {now_ms} is less than previous timestamp "
-                f"{instance.status_history[-1].timestamp_ms}"
+                f"Invalid timestamp: new timestamp({now_ms}) < previous timestamp("
+                f"({instance.status_history[-1].timestamp_ms})"
             )
 
-        instance.status = new_instance_status
         instance.status_history.append(
             Instance.StatusHistory(
-                instance_status=instance.status,
+                instance_status=status,
                 timestamp_ms=now_ms,
                 details=details,
             )
         )
 
     @staticmethod
-    def check_valid_next_instance_status(
+    def _check_valid_next_instance_status(
         instance: Instance, new_status: Instance.InstanceStatus
     ) -> None:
         """Checks if the transition is allowed.
@@ -162,10 +193,6 @@ class InstanceUtil:
             ValueError if the transition is not allowed.
         """
         valid_transitions = {
-            Instance.UNKNOWN: {
-                # Instance was just created.
-                Instance.QUEUED
-            },
             Instance.QUEUED: {
                 # Cloud provider requested to launch a node for the instance.
                 Instance.REQUESTED
@@ -237,7 +264,7 @@ class InstanceUtil:
             )
 
     @staticmethod
-    def get_status_time_s(
+    def get_status_time_ms(
         instance: Instance,
         instance_status: Instance.InstanceStatus,
         reverse: bool = False,
@@ -248,6 +275,6 @@ class InstanceUtil:
             if status_update.instance_status != instance_status:
                 continue
 
-            return status_update.timestamp_ms // 1000
+            return status_update.timestamp_ms
 
         return None

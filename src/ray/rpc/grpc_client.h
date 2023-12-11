@@ -38,6 +38,11 @@ namespace rpc {
       #SERVICE ".grpc_client." #METHOD,                                \
       method_timeout_ms))
 
+// Define a void RPC client method declaration
+#define VOID_RPC_CLIENT_VIRTUAL_METHOD_DECL(SERVICE, METHOD) \
+  virtual void METHOD(const METHOD##Request &request,        \
+                      const ClientCallback<METHOD##Reply> &callback) = 0;
+
 // Define a void RPC client method.
 #define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS)   \
   void METHOD(const METHOD##Request &request,                                           \
@@ -151,9 +156,19 @@ class GrpcClient {
         std::move(call_name),
         method_timeout_ms);
     RAY_CHECK(call != nullptr);
+    call_method_invoked_ = true;
   }
 
   std::shared_ptr<grpc::Channel> Channel() const { return channel_; }
+
+  /// A channel is IDLE when it's first created before making any RPCs
+  /// or after GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS of no activities since the last RPC.
+  /// This method detects IDLE in the second case.
+  /// Also see https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
+  /// for channel connectivity state machine.
+  bool IsChannelIdleAfterRPCs() const {
+    return (channel_->GetState(false) == GRPC_CHANNEL_IDLE) && call_method_invoked_;
+  }
 
  private:
   ClientCallManager &client_call_manager_;
@@ -163,6 +178,8 @@ class GrpcClient {
   bool use_tls_;
   /// The channel of the stub.
   std::shared_ptr<grpc::Channel> channel_;
+  /// Whether CallMethod is invoked.
+  bool call_method_invoked_ = false;
 };
 
 }  // namespace rpc

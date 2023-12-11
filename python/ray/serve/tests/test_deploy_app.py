@@ -6,7 +6,7 @@ import time
 from contextlib import contextmanager
 from copy import copy
 from functools import partial
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import pytest
 import requests
@@ -86,6 +86,12 @@ def check_running(_client: ServeControllerClient):
     return True
 
 
+def check_endpoint(endpoint: str, json: Union[List, Dict], expected: str):
+    resp = requests.post(f"http://localhost:8000/{endpoint}", json=json)
+    assert resp.text == expected
+    return True
+
+
 def check_deployments_dead(deployment_ids: List[DeploymentID]):
     prefixes = [f"{id.app}#{id.name}" for id in deployment_ids]
     actor_names = [
@@ -96,18 +102,6 @@ def check_deployments_dead(deployment_ids: List[DeploymentID]):
 
 def get_test_config() -> Dict:
     return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
-
-
-def check_single_app():
-    """Checks the application deployed through the config from get_test_config()"""
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
-        == "4 pizzas please!"
-    )
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).text
-        == "9 pizzas please!"
-    )
 
 
 def get_test_deploy_config() -> Dict:
@@ -148,21 +142,29 @@ def check_multi_app():
     """
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
-        == "4 pizzas please!"
+        check_endpoint,
+        endpoint="app1",
+        json=["ADD", 2],
+        expected="4 pizzas please!",
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["MUL", 3]).text
-        == "9 pizzas please!"
+        check_endpoint,
+        endpoint="app1",
+        json=["MUL", 3],
+        expected="9 pizzas please!",
     )
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
-        == "5 pizzas please!"
+        check_endpoint,
+        endpoint="app2",
+        json=["ADD", 2],
+        expected="5 pizzas please!",
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 3]).text
-        == "12 pizzas please!"
+        check_endpoint,
+        endpoint="app2",
+        json=["MUL", 3],
+        expected="12 pizzas please!",
     )
 
 
@@ -816,8 +818,11 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
     client.deploy_apps(ServeDeploySchema(**config_template))
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-        == "0 pizzas please!"
+        check_endpoint,
+        endpoint="app1",
+        json=["ADD", 2],
+        expected="0 pizzas please!",
+        timeout=90,
     )
 
     wait_for_condition(
@@ -1217,10 +1222,11 @@ class TestDeploywithLoggingConfig:
 
         resp = requests.post("http://localhost:8000/app1").json()
 
+        replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
-            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+            expected_log_regex = [f'"replica": "{replica_id}", ']
         else:
-            expected_log_regex = [f'.*{resp["replica"]}.*']
+            expected_log_regex = [f".*{replica_id}.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
@@ -1246,10 +1252,11 @@ class TestDeploywithLoggingConfig:
 
         resp = requests.post("http://localhost:8000/app1").json()
 
+        replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
-            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+            expected_log_regex = [f'"replica": "{replica_id}", ']
         else:
-            expected_log_regex = [f'.*{resp["replica"]}.*']
+            expected_log_regex = [f".*{replica_id}.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
     def test_deploy_app_with_deployment_logging_config_in_code(
