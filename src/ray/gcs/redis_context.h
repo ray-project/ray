@@ -168,10 +168,10 @@ class RedisContext {
     return context_.get();
   }
 
-  std::shared_ptr<RedisAsyncContext> async_context() {
+  RedisAsyncContext &async_context() {
     absl::MutexLock l(&mu_);
     RAY_CHECK(redis_async_context_);
-    return redis_async_context_;
+    return *redis_async_context_;
   }
 
   instrumented_io_context &io_service() { return io_service_; }
