@@ -115,6 +115,7 @@ class Learner:
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
+            from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
             env = gym.make("CartPole-v1")
 
@@ -130,7 +131,7 @@ class Learner:
             # (needed to construct the RLModule inside the Learner).
             learner = config.build_learner(env=env)
 
-            # Take one gradient update on the module and report the results
+            # Take one gradient update on the module and report the results.
             # results = learner.update(...)
 
             # Add a new module, perhaps for league based training.
@@ -148,22 +149,22 @@ class Learner:
             # Take another gradient update with both previous and new modules.
             # results = learner.update(...)
 
-            # Remove a module
+            # Remove a module.
             learner.remove_module("new_player")
 
             # Will train previous modules only.
             # results = learner.update(...)
 
-            # Get the state of the learner
+            # Get the state of the learner.
             state = learner.get_state()
 
-            # Set the state of the learner
+            # Set the state of the learner.
             learner.set_state(state)
 
-            # Get the weights of the underly multi-agent RLModule
+            # Get the weights of the underly multi-agent RLModule.
             weights = learner.get_module_state()
 
-            # Set the weights of the underly multi-agent RLModule
+            # Set the weights of the underly multi-agent RLModule.
             learner.set_module_state(weights)
 
 
@@ -926,7 +927,7 @@ class Learner:
 
             import gymnasium as gym
 
-            from ray.rllib.algorithms.ppo import (
+            from ray.rllib.algorithms.ppo.ppo import (
                 LEARNER_RESULTS_CURR_KL_COEFF_KEY,
                 PPOConfig,
             )

@@ -42,8 +42,8 @@ class PPOLearner(Learner):
     @override(Learner)
     def remove_module(self, module_id: str):
         super().remove_module(module_id)
-        self.curr_kl_coeffs_per_module.pop(module_id)
-        self.entropy_coeff_schedulers_per_module.pop(module_id)
+        self.entropy_coeff_schedulers_per_module.pop(module_id, None)
+        self.curr_kl_coeffs_per_module.pop(module_id, None)
 
     @override(Learner)
     def additional_update_for_module(
