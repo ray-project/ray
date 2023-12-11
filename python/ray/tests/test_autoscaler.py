@@ -22,6 +22,7 @@ from jsonschema.exceptions import ValidationError
 import ray
 from ray._private.test_utils import (
     RayTestTimeoutException,
+    wait_for_condition,
 )
 from ray.tests.autoscaler_test_utils import (
     MockNode,
@@ -402,17 +403,13 @@ class AutoscalingTest(unittest.TestCase):
     def waitForNodes(self, expected, comparison=None, tag_filters=None):
         if comparison is None:
             comparison = self.assertEqual
-        MAX_ITER = 50
-        for i in range(MAX_ITER):
+
+        def assert_num_nodes():
             n = self.num_nodes(tag_filters)
-            try:
-                comparison(n, expected, msg="Unexpected node quantity.")
-                return
-            except Exception:
-                if i == MAX_ITER - 1:
-                    print(self.provider.non_terminated_nodes(tag_filters))
-                    raise
-            time.sleep(0.1)
+            comparison(n, expected, msg="Unexpected node quantity.")
+            return True
+
+        wait_for_condition(assert_num_nodes, timeout=20)
 
     def create_provider(self, config, cluster_name):
         assert self.provider
