@@ -61,9 +61,6 @@ class CallbackReply {
   /// the type of this reply is `nil` or `status`.
   const std::string &ReadAsString() const;
 
-  /// Read this reply data as pub-sub data.
-  const std::string &ReadAsPubsubData() const;
-
   /// Read this reply data as a string array.
   [[nodiscard]] const std::vector<std::optional<std::string>> &ReadAsStringArray() const;
 
@@ -133,13 +130,6 @@ class RedisContext {
   RedisContext(instrumented_io_context &io_service);
 
   ~RedisContext();
-
-  /// Test whether the address and port has a reachable Redis service.
-  ///
-  /// \param address IP address to test.
-  /// \param port port number to test.
-  /// \return The Status that we would get if we Connected.
-  Status PingPort(const std::string &address, int port);
 
   Status Connect(const std::string &address,
                  int port,
