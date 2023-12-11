@@ -319,7 +319,8 @@ void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
 }
 
 template <typename RedisContextType, typename RedisConnectFunctionType>
-std::pair<Status, std::unique_ptr<RedisContextType, RedisDeleter<RedisContextType>>>
+std::pair<Status,
+          std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>>
 ConnectWithoutRetries(const std::string &address,
                       int port,
                       const RedisConnectFunctionType &connect_function) {
@@ -337,13 +338,15 @@ ConnectWithoutRetries(const std::string &address,
     }
     return std::make_pair(Status::RedisError(oss.str()), nullptr);
   }
-  return std::make_pair(Status::OK(),
-                        std::unique_ptr<RedisContextType, RedisDeleter<RedisContextType>>(
-                            newContext, RedisDeleter<RedisContextType>()));
+  return std::make_pair(
+      Status::OK(),
+      std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>(
+          newContext, RedisContextDeleter<RedisContextType>()));
 }
 
 template <typename RedisContextType, typename RedisConnectFunctionType>
-std::pair<Status, std::unique_ptr<RedisContextType, RedisDeleter<RedisContextType>>>
+std::pair<Status,
+          std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>>
 ConnectWithRetries(const std::string &address,
                    int port,
                    const RedisConnectFunctionType &connect_function) {
@@ -488,7 +491,8 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK_OK(AuthenticateRedis(context_.get(), password));
 
   // Connect to async context
-  std::unique_ptr<redisAsyncContext, RedisDeleter<redisAsyncContext>> async_context;
+  std::unique_ptr<redisAsyncContext, RedisContextDeleter<redisAsyncContext>>
+      async_context;
   {
     auto resp = ConnectWithRetries<redisAsyncContext>(address, port, redisAsyncConnect);
     RAY_CHECK_OK(resp.first);

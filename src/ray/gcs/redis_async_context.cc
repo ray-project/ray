@@ -24,7 +24,7 @@ namespace ray {
 namespace gcs {
 
 RedisAsyncContext::RedisAsyncContext(
-    std::unique_ptr<redisAsyncContext, RedisDeleter<redisAsyncContext>>
+    std::unique_ptr<redisAsyncContext, RedisContextDeleter<redisAsyncContext>>
         redis_async_context)
     : redis_async_context_(std::move(redis_async_context)) {
   RAY_CHECK(redis_async_context_ != nullptr);

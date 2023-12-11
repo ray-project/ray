@@ -182,7 +182,7 @@ class RedisContext {
 
   instrumented_io_context &io_service_;
 
-  std::unique_ptr<redisContext, RedisDeleter<redisContext>> context_;
+  std::unique_ptr<redisContext, RedisContextDeleter<redisContext>> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
 };
