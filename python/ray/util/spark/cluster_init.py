@@ -1250,9 +1250,9 @@ def setup_ray_cluster(
             To create a spark application that is intended to exclusively run a
             shared ray cluster in non-scaling, it is recommended to set this argument
             to `ray.util.spark.MAX_NUM_WORKER_NODES`.
-        min_worker_nodes: Minimal number of worker nodes in autoscaling mode.
+        min_worker_nodes: Minimal number of worker nodes (default `None`),
             if "max_worker_nodes" value is equal to "min_worker_nodes" argument,
-            or "min_worker_nodes" argument is not set, then autoscaling is disabled
+            or "min_worker_nodes" argument value is None, then autoscaling is disabled
             and Ray cluster is launched with fixed number "max_worker_nodes" of
             Ray worker nodes, otherwise autoscaling is enabled.
         num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
