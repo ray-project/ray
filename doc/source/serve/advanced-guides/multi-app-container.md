@@ -11,19 +11,10 @@ This is an experimental feature and the API is subject to change. If you have ad
 
 The `container` runtime environment feature uses [Podman](https://podman.io/) to start and run containers. Please follow these steps to install Podman in your environment. 
 
-Please follow these steps to install Podman in the environment for all head and worker nodes.
+Please follow the [Podman Installation Instructions](https://podman.io/docs/installation) to install Podman in the environment for all head and worker nodes.
 
-::::{tab-set}
-
-:::{tab-item} Ubuntu 20.10 and newer
-```bash
-sudo apt-get update
-sudo apt-get install podman -y
-```
-:::
-
-:::{tab-item} Ubuntu 20.04 and older
-The podman package is only available in the official repositories for Ubuntu 20.10 and newer. To install podman in Ubuntu 20.04, you need to first add the software repository as a debian source.
+:::{note}
+The podman package is only available in the official repositories for Ubuntu 20.10 and newer. To install podman in Ubuntu 20.04 or older, you need to first add the software repository as a debian source. Follow these instructions to install Podman on Ubuntu 20.04 or older:
 
 ```bash
 sudo sh -c "echo 'deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list"
@@ -32,12 +23,6 @@ sudo apt-get update
 sudo apt-get install podman -y
 ```
 :::
-
-:::{tab-item} Other
-See [Podman Installation Instructions](https://podman.io/docs/installation).
-:::
-
-::::
 
 ## Run a Serve application in a container
 
@@ -86,19 +71,19 @@ RUN curl -O https://raw.githubusercontent.com/ray-project/ray/master/doc/source/
 :::
 ::::
 
-Then, build the corresponding docker images and push it to your choice of docker registry.
+Then, build the corresponding docker images and push it to your choice of docker registry. In this tutorial, we will use `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for the registry repo of your choice.
 
 ::::{tab-set}
 :::{tab-item} Whisper
 ```bash
-export IMG1={your-image-repo-and-name-1}
+export IMG1=alice/whisper_image:latest
 docker build -t $IMG1 -f whisper.Dockerfile .
 docker push $IMG1
 ```
 :::
 :::{tab-item} Resnet
 ```bash
-export IMG2={your-image-repo-and-name-2}
+export IMG2=alice/resnet_image:latest
 docker build -t $IMG2 -f resnet.Dockerfile .
 docker push $IMG2
 ```
