@@ -177,7 +177,7 @@ To achieve this, it is simplest to use the same Ray image for the Ray head and a
 In any case, do make sure that all Ray images in your CR carry the same Ray version and
 Python version.
 To distribute custom code dependencies across your cluster, you can build a custom container image,
-using one of the [official Ray images](https://hub.docker.com/r/rayproject/ray>) as the base.
+using one of the [official Ray images](https://hub.docker.com/r/rayproject/ray) as the base.
 See {ref}`this guide <docker-images>` to learn more about the official Ray images.
 For dynamic dependency management geared towards iteration and developement,
 you can also use {ref}`Runtime Environments <runtime-environments>`.

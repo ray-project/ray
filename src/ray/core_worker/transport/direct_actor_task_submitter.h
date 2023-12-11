@@ -365,9 +365,14 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Resend all previously-received, out-of-order, received tasks for an actor.
   /// When sending these tasks, the tasks will have the flag skip_execution=true.
   ///
+  /// This is useful because we want the replies to be in-order. For the out of order
+  /// completed tasks we resend them to the new restarted actor with skip_execution=True
+  /// and expect those tasks replies to fill the seqno.
+  ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void ResendOutOfOrderTasks(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void ResendOutOfOrderCompletedTasks(const ActorID &actor_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);

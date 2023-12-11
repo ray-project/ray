@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.postprocessing_v2 import compute_value_targets
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -13,6 +12,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
+from ray.rllib.utils.typing import ModuleID
 
 
 LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY = "vf_loss_unclipped"
