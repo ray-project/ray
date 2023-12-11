@@ -38,6 +38,7 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import JavaActorHandleProxy, MetricsPusher
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
+from ray.serve.grpc_util import RayServegRPCContext
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -63,6 +64,9 @@ class RequestMetadata:
 
     # The protocol to serve this request
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
+
+    # Serve's gRPC context associated with this request for getting and setting metadata
+    grpc_context: Optional[RayServegRPCContext] = None
 
     @property
     def is_http_request(self) -> bool:

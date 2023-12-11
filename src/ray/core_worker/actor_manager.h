@@ -67,7 +67,7 @@ class ActorManager {
   /// \param[in] actor_id The actor handle to get.
   /// \return reference to the actor_handle's pointer.
   /// NOTE: Returned actorHandle should not be stored anywhere.
-  std::shared_ptr<ActorHandle> GetActorHandle(const ActorID &actor_id);
+  std::shared_ptr<ActorHandle> GetActorHandle(const ActorID &actor_id) const;
 
   /// Get actor handle by name.
   /// We cache <name, id> pair after getting the named actor from GCS, so that it can use
