@@ -56,7 +56,8 @@ void FreeRedisContext(MockRedisContext *context) {}
 
 // We specialize on the mock object to potentially mock this function.
 template <>
-std::pair<Status, std::unique_ptr<MockRedisContext, RedisContextDeleter<MockRedisContext>>>
+std::pair<Status,
+          std::unique_ptr<MockRedisContext, RedisContextDeleter<MockRedisContext>>>
 ConnectWithRetries<MockRedisContext, decltype(redisAsyncConnect)>(
     const std::string &address,
     int port,
@@ -81,7 +82,8 @@ TEST_F(RedisContextTest, TestRedisMoved) {
 
   // Initialize the reply with MOVED error.
   struct redisAsyncContext base_context;
-  std::unique_ptr<redisAsyncContext, RedisDeleter<redisAsyncContext>> async_context(&base_context, RedisDeleter<redisAsyncContext>());
+  std::unique_ptr<redisAsyncContext, RedisContextDeleter<redisAsyncContext>>
+      async_context(&base_context, RedisContextDeleter<redisAsyncContext>());
   std::shared_ptr<RedisAsyncContext> async_context_wrapper =
       std::make_shared<RedisAsyncContext>(std::move(async_context));
   redisReply reply;

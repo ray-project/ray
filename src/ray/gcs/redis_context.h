@@ -161,7 +161,7 @@ class RedisContext {
   /// \param redis_callback The Redis callback function.
   /// \return Status.
   virtual void RunArgvAsync(std::vector<std::string> args,
-                    RedisCallback redis_callback = nullptr);
+                            RedisCallback redis_callback = nullptr);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);
@@ -190,7 +190,8 @@ class RedisContext {
 };
 
 template <typename RedisContextType, typename RedisConnectFunctionType>
-std::pair<Status, std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>>
+std::pair<Status,
+          std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>>
 ConnectWithoutRetries(const std::string &address,
                       int port,
                       const RedisConnectFunctionType &connect_function) {
@@ -208,13 +209,15 @@ ConnectWithoutRetries(const std::string &address,
     }
     return std::make_pair(Status::RedisError(oss.str()), nullptr);
   }
-  return std::make_pair(Status::OK(),
-                        std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>(
-                            newContext, RedisContextDeleter<RedisContextType>()));
+  return std::make_pair(
+      Status::OK(),
+      std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>(
+          newContext, RedisContextDeleter<RedisContextType>()));
 }
 
 template <typename RedisContextType, typename RedisConnectFunctionType>
-std::pair<Status, std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>>
+std::pair<Status,
+          std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>>
 ConnectWithRetries(const std::string &address,
                    int port,
                    const RedisConnectFunctionType &connect_function) {
