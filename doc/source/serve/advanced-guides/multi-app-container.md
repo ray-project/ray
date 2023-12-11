@@ -1,7 +1,7 @@
 (serve-container-runtime-env-guide)=
 # Run Multiple Applications in Different Containers
 
-This section goes over how you can manage dependencies per application in a more isolated manner by running your Serve applications in separate containers with different images.
+This section explains how to run multiple Serve applications on the same cluster in separate containers with different images.
 
 :::note
 This is an experimental feature and the API is subject to change. If you have additional feature requests or run into issues, please submit them on [Github](https://github.com/ray-project/ray/issues).
@@ -9,7 +9,9 @@ This is an experimental feature and the API is subject to change. If you have ad
 
 ## Install podman
 
-The `container` runtime environment feature uses [Podman](https://podman.io/) to start and run containers. Please follow these steps to install Podman in your environment. For instance, if you are using Kuberay, you need to use an image that has podman installed for the head and worker group specs.
+The `container` runtime environment feature uses [Podman](https://podman.io/) to start and run containers. Please follow these steps to install Podman in your environment. 
+
+Please follow these steps to install Podman in the environment for all head and worker nodes.
 
 ::::{tab-set}
 
@@ -37,14 +39,14 @@ See [Podman Installation Instructions](https://podman.io/docs/installation).
 
 ::::
 
-## Run Serve application in a container
+## Run a Serve application in a container
 
-In this example, we are going to walk through deploying two applications in separate containers: a whisper model and a Resnet50 image classification model. 
+This example walks through deploying two applications in separate containers: a whisper model and a Resnet50 image classification model.
 
-First, let's set up the docker images with the required dependencies. 
+First, install the required dependencies in the images.
 
-:::note
-The Ray version and Python version in the container should match those of the host environment exactly. Note that for Python, the versions must match down to the patch number.
+:::warning
+The Ray version and Python version in the container *must* match those of the host environment exactly. Note that for Python, the versions must match down to the patch number.
 :::
 
 In `whisper.Dockerfile`:
@@ -58,21 +60,27 @@ Save the following to files named `whisper.Dockerfile` and `resnet.Dockerfile`.
 ::::{tab-set}
 :::{tab-item} whisper.Dockerfile
 ```dockerfile
+# Use the latest Ray GPU image, `rayproject/ray:latest-py38-gpu`, so the Whisper model can run on GPUs.
 FROM rayproject/ray:latest-py38-gpu
 
+# Install the package `faster_whisper`, which is a dependency for the whisper model.
 RUN pip install faster_whisper==0.10.0
 RUN sudo apt-get update && sudo apt-get install curl -y
 
+# Download the source code for the whisper application into `whisper_example.py`.
 RUN curl -O https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/doc_code/whisper_example.py
 ```
 :::
 :::{tab-item} resnet.Dockerfile
 ```dockerfile
+# Use the latest Ray CPU image, `rayproject/ray:latest-py38-cpu`.
 FROM rayproject/ray:latest-py38-cpu
 
+# Install the packages `torch` and `torchvision`, which are dependencies for the Resnet model.
 RUN torch==2.0.1 torchvision==0.15.2
 RUN sudo apt-get update && sudo apt-get install curl -y
 
+# Download the source code for the whisper application into `resnet50_example.py`.
 RUN curl -O https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/doc_code/resnet50_example.py
 ```
 :::
