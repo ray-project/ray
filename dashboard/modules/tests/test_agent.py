@@ -43,3 +43,7 @@ class TestAgent(dashboard_utils.DashboardAgentModule):
 
     async def run(self, server):
         pass
+
+
+if __name__ == "__main__":
+    pass

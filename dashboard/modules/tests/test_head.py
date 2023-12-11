@@ -111,3 +111,7 @@ class TestHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         pass
+
+
+if __name__ == "__main__":
+    pass
