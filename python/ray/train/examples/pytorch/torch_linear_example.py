@@ -27,7 +27,7 @@ class LinearDataset(torch.utils.data.Dataset):
 
 
 def train_epoch(epoch, dataloader, model, loss_fn, optimizer):
-    if ray.train.get_context().get_world_size() > 1:
+    if train.get_context().get_world_size() > 1:
         dataloader.sampler.set_epoch(epoch)
 
     for X, y in dataloader:

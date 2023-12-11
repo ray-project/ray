@@ -93,9 +93,6 @@ def train_loop_per_worker(train_loop_config):
     x, y = data.x.to(train.torch.get_device()), data.y.to(train.torch.get_device())
 
     for epoch in range(num_epochs):
-        if train.get_context().get_world_size() > 1:
-            train_loader.sampler.set_epoch(epoch)
-
         model.train()
 
         # ``batch_size`` is the number of samples in the current batch.
