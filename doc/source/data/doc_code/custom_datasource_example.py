@@ -1,6 +1,7 @@
+# flake8: noqa
 # fmt: off
 
-from typing import Iterator
+from typing import Iterator, Union, List
 
 import pyarrow
 
@@ -10,7 +11,7 @@ from ray.data.block import Block
 from ray.data.datasource import FileBasedDatasource
 
 class ImageDatasource(FileBasedDatasource):
-    def __init__(self, paths: str | list[str]):
+    def __init__(self, paths: Union[str, List[str]]):
         super().__init__(
             paths,
             file_extensions=["png", "jpg", "jpeg", "bmp", "gif", "tiff"],

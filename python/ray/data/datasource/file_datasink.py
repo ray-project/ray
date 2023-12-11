@@ -176,7 +176,7 @@ class RowBasedFileDatasink(_FileDatasink):
                     item = {"image": array}
                     builder.add(item)
                     yield builder.build()
-    """
+    """  # noqa: E501
 
     def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
         """Write a row to a file.
@@ -239,7 +239,7 @@ class BlockBasedFileDatasink(_FileDatasink):
                 def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
                     from pyarrow import csv
                     csv.write_csv(block.to_arrow(), file)
-    """
+    """  # noqa: E501
 
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
         """Write a block of data to a file.
