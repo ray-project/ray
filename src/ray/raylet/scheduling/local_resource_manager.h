@@ -44,6 +44,8 @@ enum WorkFootprint {
 // WorkFootprints are not, such as leased workers on a node.
 using WorkArtifact = std::variant<WorkFootprint, scheduling::ResourceID>;
 
+using rpc::autoscaler::DrainNodeReason;
+
 /// Class manages the resources of the local node.
 /// It is responsible for allocating/deallocating resources for (task) resource request;
 /// it also supports creating a new resource or delete an existing resource.
@@ -141,8 +143,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
-  /// Populate resource usage.
-  void PopulateResourceUsage(rpc::ResourcesData &resources_data) const;
+  void PopulateResourceViewSyncMessage(
+      syncer::ResourceViewSyncMessage &resource_view_sync_message) const;
 
   /// Record the metrics.
   void RecordMetrics() const;

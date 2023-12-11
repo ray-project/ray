@@ -220,7 +220,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             base_env: BaseEnv running the episode. The underlying
                 sub environment objects can be retrieved by calling
                 `base_env.get_sub_environments()`.
-            policies: Mapping of policy id to policy objects. In single
+            policies: Dict mapping policy IDs to policy objects. In single
                 agent mode there will only be a single "default" policy.
             env_index: The index of the sub-environment that is about to be reset
                 (within the vector of sub-environments of the BaseEnv).
@@ -257,7 +257,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             base_env: BaseEnv running the episode. The underlying
                 sub environment objects can be retrieved by calling
                 `base_env.get_sub_environments()`.
-            policies: Mapping of policy id to policy objects. In single
+            policies: Dict mapping policy IDs to policy objects. In single
                 agent mode there will only be a single "default" policy.
             episode: Episode object which contains the episode's
                 state. You can use the `episode.user_data` dict to store
@@ -287,7 +287,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             base_env: BaseEnv running the episode. The underlying
                 sub environment objects can be retrieved by calling
                 `base_env.get_sub_environments()`.
-            policies: Mapping of policy id to policy objects.
+            policies: Dict mapping policy IDs to policy objects.
                 In single agent mode there will only be a single
                 "default_policy".
             episode: Episode object which contains episode
@@ -318,7 +318,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             base_env: BaseEnv running the episode. The underlying
                 sub environment objects can be retrieved by calling
                 `base_env.get_sub_environments()`.
-            policies: Mapping of policy id to policy
+            policies: Dict mapping policy IDs to policy
                 objects. In single agent mode there will only be a single
                 "default_policy".
             episode: Episode object which contains episode
@@ -396,12 +396,12 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             episode: Episode object.
             agent_id: Id of the current agent.
             policy_id: Id of the current policy for the agent.
-            policies: Mapping of policy id to policy objects. In single
+            policies: Dict mapping policy IDs to policy objects. In single
                 agent mode there will only be a single "default_policy".
             postprocessed_batch: The postprocessed sample batch
                 for this agent. You can mutate this object to apply your own
                 trajectory postprocessing.
-            original_batches: Mapping of agents to their unpostprocessed
+            original_batches: Dict mapping agent IDs to their unpostprocessed
                 trajectory data. You should not mutate this object.
             kwargs: Forward compatibility placeholder.
         """

@@ -67,6 +67,7 @@ from ray.serve.config import gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 from ray.serve.handle import DeploymentHandle
+from ray.serve.schema import LoggingConfig
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -480,7 +481,7 @@ class GenericProxy(ABC):
                     status=str(status.code),
                     latency_ms=latency_ms,
                 ),
-                extra={"log_to_stderr": False},
+                extra={"log_to_stderr": False, "serve_access_log": True},
             )
 
         if response_handler_info.should_record_request_metrics:
@@ -615,6 +616,20 @@ class gRPCProxy(GenericProxy):
         )
 
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+        def set_grpc_code_and_details(
+            context: grpc._cython.cygrpc._ServicerContext, status: ResponseStatus
+        ):
+            # Only the latest code and details will take effect. If the user already
+            # set them to a truthy value in the context, skip setting them with Serve's
+            # default values. By default, if nothing is set, the code is 0 and the
+            # details is "", which both are falsy. So if the user did not set them or
+            # if they're explicitly set to falsy values, such as None, Serve will
+            # continue to set them with our default values.
+            if not context.code():
+                context.set_code(status.code)
+            if not context.details():
+                context.set_details(status.message)
+
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -639,8 +654,8 @@ class gRPCProxy(GenericProxy):
                 else:
                     response = message
 
-            context.set_code(status.code)
-            context.set_details(status.message)
+            set_grpc_code_and_details(context, status)
+
             return response
 
         async def unary_stream(
@@ -667,8 +682,7 @@ class gRPCProxy(GenericProxy):
                 else:
                     yield message
 
-            context.set_code(status.code)
-            context.set_details(status.message)
+            set_grpc_code_and_details(context, status)
 
         return unary_stream if stream else unary_unary
 
@@ -701,6 +715,7 @@ class gRPCProxy(GenericProxy):
             "request_id": request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
+            "grpc_context": proxy_request.ray_serve_grpc_context,
         }
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
@@ -722,7 +737,8 @@ class gRPCProxy(GenericProxy):
         )
 
         try:
-            async for result in response_generator:
+            async for context, result in response_generator:
+                context.set_on_grpc_context(proxy_request.context)
                 yield result
 
             yield ResponseStatus(code=grpc.StatusCode.OK)
@@ -1087,16 +1103,35 @@ class ProxyActor:
         controller_name: str,
         node_ip_address: str,
         node_id: NodeId,
+        logging_config: LoggingConfig,
         request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
         keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
         grpc_options: Optional[gRPCOptions] = None,
+        long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
-        configure_component_logger(component_name="proxy", component_id=node_ip_address)
+
+        self.long_poll_client = long_poll_client or LongPollClient(
+            ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
+            {
+                LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
+            },
+            call_in_event_loop=get_or_create_event_loop(),
+        )
+
+        configure_component_logger(
+            component_name="proxy",
+            component_id=node_ip_address,
+            logging_config=logging_config,
+        )
         logger.info(
             f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
             f"starting on node {node_id}."
+        )
+        logger.debug(
+            f"Congiure Porxy actor {ray.get_runtime_context().get_actor_id()} "
+            f"logger with logging config: {logging_config}"
         )
 
         configure_component_memory_profiler(
@@ -1132,6 +1167,7 @@ class ProxyActor:
             RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or keep_alive_timeout_s
         )
         self._uvicorn_server = None
+        self.node_ip_address = node_ip_address
 
         self.http_setup_complete = asyncio.Event()
         self.grpc_setup_complete = asyncio.Event()
@@ -1177,6 +1213,21 @@ class ProxyActor:
         self.running_task_grpc = get_or_create_event_loop().create_task(
             self.run_grpc_server()
         )
+
+    def _update_logging_config(self, logging_config: LoggingConfig):
+        configure_component_logger(
+            component_name="proxy",
+            component_id=self.node_ip_address,
+            logging_config=logging_config,
+        )
+
+    def _get_logging_config(self) -> Tuple:
+        """Get the logging configuration (for testing purposes)."""
+        log_file_path = None
+        for handler in logger.handlers:
+            if isinstance(handler, logging.handlers.RotatingFileHandler):
+                log_file_path = handler.baseFilename
+        return log_file_path
 
     def should_start_grpc_service(self) -> bool:
         """Determine whether gRPC service should be started.

@@ -282,7 +282,6 @@ Partitioning API
    datasource.PartitionStyle
    datasource.PathPartitionParser
    datasource.PathPartitionFilter
-   datasource.FileExtensionFilter
 
 .. _metadata_provider:
 

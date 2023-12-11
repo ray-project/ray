@@ -10,7 +10,10 @@ from ci.ray_ci.builder_container import (
     BuilderContainer,
     DEFAULT_BUILD_TYPE,
     DEFAULT_PYTHON_VERSION,
+    DEFAULT_ARCHITECTURE,
 )
+from ci.ray_ci.linux_tester_container import LinuxTesterContainer
+from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 
@@ -84,6 +87,13 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Skip ray installation."),
 )
 @click.option(
+    "--build-only",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Build ray only, skip running tests."),
+)
+@click.option(
     "--gpus",
     default=0,
     type=int,
@@ -108,9 +118,29 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 @click.option(
     "--build-type",
     type=click.Choice(
-        ["optimized", "debug", "asan", "clang", "asan-clang", "java", "wheel"]
+        [
+            # python build types
+            "optimized",
+            "debug",
+            "asan",
+            "wheel",
+            "wheel-aarch64",
+            # cpp build types
+            "clang",
+            "asan-clang",
+            "ubsan",
+            "tsan-clang",
+            # java build types
+            "java",
+        ]
     ),
     default="optimized",
+)
+@click.option(
+    "--operating-system",
+    default="linux",
+    type=click.Choice(["linux", "windows"]),
+    help=("Operating system to run tests on"),
 )
 def main(
     targets: List[str],
@@ -118,10 +148,12 @@ def main(
     workers: int,
     worker_id: int,
     parallelism_per_worker: int,
+    operating_system: str,
     except_tags: str,
     only_tags: str,
     run_flaky_tests: bool,
     skip_ray_installation: bool,
+    build_only: bool,
     gpus: int,
     test_env: Tuple[str],
     test_arg: Optional[str],
@@ -131,13 +163,18 @@ def main(
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
-    docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    # TODO(can): only linux uses intermediate dockers publised to ECR; remove this when
+    # we can build intermediate dockers for Windows
+    if operating_system == "linux":
+        docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
-    if build_type == "wheel":
+    if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
-        BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE).run()
+        architecture = DEFAULT_ARCHITECTURE if build_type == "wheel" else "aarch64"
+        BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, architecture).run()
     container = _get_container(
         team,
+        operating_system,
         workers,
         worker_id,
         parallelism_per_worker,
@@ -147,6 +184,8 @@ def main(
         build_type=build_type,
         skip_ray_installation=skip_ray_installation,
     )
+    if build_only:
+        sys.exit(0)
     test_targets = _get_test_targets(
         container,
         targets,
@@ -156,7 +195,7 @@ def main(
         get_flaky_tests=run_flaky_tests,
     )
     success = container.run_tests(test_targets, test_arg)
-    sys.exit(0 if success else 1)
+    sys.exit(0 if success else 42)
 
 
 def _add_default_except_tags(except_tags: str) -> str:
@@ -168,6 +207,7 @@ def _add_default_except_tags(except_tags: str) -> str:
 
 def _get_container(
     team: str,
+    operating_system: str,
     workers: int,
     worker_id: int,
     parallelism_per_worker: int,
@@ -181,15 +221,27 @@ def _get_container(
     shard_start = worker_id * parallelism_per_worker
     shard_end = (worker_id + 1) * parallelism_per_worker
 
-    return TesterContainer(
-        build_name or f"{team}build",
-        test_envs=test_env,
-        shard_count=shard_count,
-        shard_ids=list(range(shard_start, shard_end)),
-        gpus=gpus,
-        skip_ray_installation=skip_ray_installation,
-        build_type=build_type,
-    )
+    if operating_system == "linux":
+        return LinuxTesterContainer(
+            build_name or f"{team}build",
+            test_envs=test_env,
+            shard_count=shard_count,
+            shard_ids=list(range(shard_start, shard_end)),
+            gpus=gpus,
+            skip_ray_installation=skip_ray_installation,
+            build_type=build_type,
+        )
+
+    if operating_system == "windows":
+        return WindowsTesterContainer(
+            build_name or f"{team}build",
+            test_envs=test_env,
+            shard_count=shard_count,
+            shard_ids=list(range(shard_start, shard_end)),
+            skip_ray_installation=skip_ray_installation,
+        )
+
+    assert False, f"Unsupported operating system: {operating_system}"
 
 
 def _get_tag_matcher(tag: str) -> str:

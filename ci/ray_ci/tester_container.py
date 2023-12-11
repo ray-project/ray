@@ -3,8 +3,8 @@ import subprocess
 from typing import List, Optional
 
 from ci.ray_ci.utils import shard_tests, chunk_into_n
-from ci.ray_ci.container import Container
 from ci.ray_ci.utils import logger
+from ci.ray_ci.container import Container
 
 
 class TesterContainer(Container):
@@ -14,7 +14,6 @@ class TesterContainer(Container):
 
     def __init__(
         self,
-        docker_tag: str,
         shard_count: int = 1,
         gpus: int = 0,
         test_envs: Optional[List[str]] = None,
@@ -23,13 +22,11 @@ class TesterContainer(Container):
         build_type: Optional[str] = None,
     ) -> None:
         """
-        :param docker_tag: Name of the wanda build to be used as test container.
         :param gpu: Number of gpus to use in the container. If 0, used all gpus.
         :param shard_count: The number of shards to split the tests into. This can be
         used to run tests in a distributed fashion.
         :param shard_ids: The list of shard ids to run. If none, run no shards.
         """
-        super().__init__(docker_tag, envs=test_envs)
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
         self.test_envs = test_envs or []
@@ -89,6 +86,10 @@ class TesterContainer(Container):
                     "trap cleanup EXIT",
                 ]
             )
+        if self.build_type == "ubsan":
+            # clang currently runs into problems with ubsan builds, this will revert to
+            # using GCC instead.
+            commands.append("unset CC CXX")
         # note that we run tests serially within each docker, since we already use
         # multiple dockers to shard tests
         test_cmd = "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
@@ -100,10 +101,14 @@ class TesterContainer(Container):
             test_cmd += "--config=llvm "
         if self.build_type == "asan-clang":
             test_cmd += "--config=asan-clang "
+        if self.build_type == "ubsan":
+            test_cmd += "--config=ubsan "
+        if self.build_type == "tsan-clang":
+            test_cmd += "--config=tsan-clang "
         for env in test_envs:
             test_cmd += f"--test_env {env} "
         if test_arg:
             test_cmd += f"--test_arg {test_arg} "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
-        return subprocess.Popen(self._get_run_command(commands, gpu_ids))
+        return subprocess.Popen(self.get_run_command(commands, gpu_ids))

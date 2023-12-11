@@ -1,7 +1,14 @@
 .. _ray-core-examples-tutorial:
 
+
 Ray Tutorials and Examples
 ==========================
+
+.. toctree::
+    :hidden:
+    :glob:
+
+    *
 
 
 Machine Learning Examples
@@ -28,14 +35,6 @@ Machine Learning Examples
             Build Batch Prediction Using Ray
 
     .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: batch_training
-
-            Build Batch Training Using Ray
-
-    .. grid-item-card::
         :img-top: images/param_actor.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
@@ -50,14 +49,6 @@ Machine Learning Examples
         .. button-ref:: plot_hyperparameter
 
             Simple Parallel Model Selection
-
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_example-lm
-
-            Fault-Tolerant Fairseq Training
 
 
 Reinforcement Learning Examples

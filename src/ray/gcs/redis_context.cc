@@ -322,12 +322,6 @@ void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
                                   RedisAsyncContextDisconnectCallback);
 }
 
-void FreeRedisContext(redisContext *context) { redisFree(context); }
-
-void FreeRedisContext(redisAsyncContext *context) {}
-
-void FreeRedisContext(RedisAsyncContext *context) {}
-
 template <typename RedisContext, typename RedisConnectFunction>
 Status ConnectWithoutRetries(const std::string &address,
                              int port,
@@ -347,12 +341,8 @@ Status ConnectWithoutRetries(const std::string &address,
     }
     return Status::RedisError(oss.str());
   }
-  if (context != nullptr) {
-    // Don't crash if the RedisContext** is null.
-    *context = newContext;
-  } else {
-    FreeRedisContext(newContext);
-  }
+  RAY_CHECK(context) << "Unexpected null context pointer";
+  *context = newContext;
   return Status::OK();
 }
 
@@ -384,11 +374,6 @@ Status ConnectWithRetries(const std::string &address,
     connection_attempts += 1;
   }
   return Status::OK();
-}
-
-Status RedisContext::PingPort(const std::string &address, int port) {
-  return ConnectWithoutRetries(
-      address, port, redisConnect, static_cast<redisContext **>(nullptr));
 }
 
 void ValidateRedisDB(RedisContext &context) {

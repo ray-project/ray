@@ -2,7 +2,8 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
+from zlib import crc32
 
 from ray._private.pydantic_compat import (
     BaseModel,
@@ -14,8 +15,8 @@ from ray._private.pydantic_compat import (
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
-    DeploymentInfo,
     DeploymentStatus,
+    DeploymentStatusTrigger,
     ProxyStatus,
     ReplicaState,
     ServeDeployMode,
@@ -25,6 +26,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
@@ -34,8 +36,8 @@ TARGET_CAPACITY_FIELD = Field(
     default=None,
     description=(
         "[EXPERIMENTAL]: the target capacity percentage for all replicas across the "
-        "cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for each "
-        "deployment will be scaled by this percentage."
+        "cluster. The `num_replicas`, `min_replicas`, `max_replicas`, and "
+        "`initial_replicas` for each deployment will be scaled by this percentage."
     ),
     ge=0,
     le=100,
@@ -96,7 +98,7 @@ class LoggingConfig(BaseModel):
         ),
     )
     log_level: Union[int, str] = Field(
-        default=logging.INFO,
+        default="INFO",
         description=(
             "Log level for the serve logs. Defaults to INFO. You can set it to "
             "'DEBUG' to get more detailed debug logs."
@@ -119,7 +121,6 @@ class LoggingConfig(BaseModel):
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
-
         if v not in list(EncodingType):
             raise ValueError(
                 f"Got '{v}' for encoding. Encoding must be one "
@@ -131,14 +132,34 @@ class LoggingConfig(BaseModel):
     @validator("log_level")
     def valid_log_level(cls, v):
         if isinstance(v, int):
-            return v
+            if v not in logging._levelToName:
+                raise ValueError(
+                    f'Got "{v}" for log_level. log_level must be one of '
+                    f"{list(logging._levelToName.keys())}."
+                )
+            return logging._levelToName[v]
 
         if v not in logging._nameToLevel:
             raise ValueError(
                 f'Got "{v}" for log_level. log_level must be one of '
                 f"{list(logging._nameToLevel.keys())}."
             )
-        return logging._nameToLevel[v]
+        return v
+
+    def _compute_hash(self) -> int:
+        return crc32(
+            (
+                str(self.encoding)
+                + str(self.log_level)
+                + str(self.logs_dir)
+                + str(self.enable_access_log)
+            ).encode("utf-8")
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, LoggingConfig):
+            return False
+        return self._compute_hash() == other._compute_hash()
 
 
 @PublicAPI(stability="stable")
@@ -205,7 +226,7 @@ class RayActorOptionsSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v:
+        if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
 
         for uri in uris:
@@ -487,7 +508,7 @@ class ServeApplicationSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v:
+        if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
 
         for uri in uris:
@@ -734,6 +755,7 @@ class DeploymentStatusOverview:
     """
 
     status: DeploymentStatus
+    status_trigger: DeploymentStatusTrigger
     replica_states: Dict[ReplicaState, int]
     message: str
 
@@ -826,6 +848,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     name: str = Field(description="Deployment name.")
     status: DeploymentStatus = Field(
         description="The current status of the deployment."
+    )
+    status_trigger: DeploymentStatusTrigger = Field(
+        description="[EXPERIMENTAL] The trigger for the current status.",
     )
     message: str = Field(
         description=(
@@ -987,6 +1012,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     deployments={
                         deployment_name: DeploymentStatusOverview(
                             status=deployment.status,
+                            status_trigger=deployment.status_trigger,
                             replica_states=dict(
                                 Counter([r.state.value for r in deployment.replicas])
                             ),

@@ -31,7 +31,10 @@ from ray.data.datasource.file_meta_provider import (
     _handle_read_os_error,
 )
 from ray.data.datasource.partitioning import PathPartitionFilter
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.data.datasource.path_util import (
+    _has_file_extension,
+    _resolve_paths_and_filesystem,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -178,6 +181,8 @@ class ParquetDatasource(Datasource):
         meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
         shuffle: Union[Literal["files"], None] = None,
+        include_paths: bool = False,
+        file_extensions: Optional[List[str]] = None,
     ):
         _check_pyarrow_version()
 
@@ -204,20 +209,27 @@ class ParquetDatasource(Datasource):
 
         # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
         # files. To avoid this, we expand the input paths with the default metadata
-        # provider and then apply the partition filter.
-        if partition_filter is not None:
+        # provider and then apply the partition filter or file extensions.
+        if partition_filter is not None or file_extensions is not None:
             default_meta_provider = get_generic_metadata_provider(file_extensions=None)
             expanded_paths, _ = map(
                 list, zip(*default_meta_provider.expand_paths(paths, filesystem))
             )
-            paths = partition_filter(expanded_paths)
+
+            paths = list(expanded_paths)
+            if partition_filter is not None:
+                paths = partition_filter(paths)
+            if file_extensions is not None:
+                paths = [
+                    path for path in paths if _has_file_extension(path, file_extensions)
+                ]
 
             filtered_paths = set(expanded_paths) - set(paths)
             if filtered_paths:
-                logger.info(f"Filtered out the following paths: {filtered_paths}")
-
-        if len(paths) == 1:
-            paths = paths[0]
+                logger.info(f"Filtered out {len(filtered_paths)} paths")
+        else:
+            if len(paths) == 1:
+                paths = paths[0]
 
         if dataset_kwargs is None:
             dataset_kwargs = {}
@@ -283,6 +295,7 @@ class ParquetDatasource(Datasource):
         self._schema = schema
         self._encoding_ratio = self._estimate_files_encoding_ratio()
         self._file_metadata_shuffler = None
+        self._include_paths = include_paths
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 
@@ -362,11 +375,12 @@ class ParquetDatasource(Datasource):
                 )
             else:
                 default_read_batch_size_rows = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, to_batches_kwargs, columns, schema = (
+            block_udf, to_batches_kwargs, columns, schema, include_paths = (
                 self._block_udf,
                 self._to_batches_kwargs,
                 self._columns,
                 self._schema,
+                self._include_paths,
             )
             read_tasks.append(
                 ReadTask(
@@ -377,6 +391,7 @@ class ParquetDatasource(Datasource):
                         columns,
                         schema,
                         f,
+                        include_paths,
                     ),
                     meta,
                 )
@@ -454,6 +469,7 @@ def _read_fragments(
     columns,
     schema,
     serialized_fragments: List[_SerializedFragment],
+    include_paths: bool,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -485,11 +501,15 @@ def _read_fragments(
             table = pa.Table.from_batches([batch], schema=schema)
             if part:
                 for col, value in part.items():
+                    if columns and col not in columns:
+                        continue
                     table = table.set_column(
                         table.schema.get_field_index(col),
                         col,
                         pa.array([value] * len(table)),
                     )
+            if include_paths:
+                table = table.append_column("path", [[fragment.path]] * len(table))
             # If the table is empty, drop it.
             if table.num_rows > 0:
                 if block_udf is not None:

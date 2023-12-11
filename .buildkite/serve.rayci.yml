@@ -1,17 +1,17 @@
 group: serve tests
+depends_on:
+  - forge
+  - oss-ci-base_build
 steps:
   # builds
   - name: servebuild
     wanda: ci/docker/serve.build.wanda.yaml
-    depends_on: oss-ci-base_build
 
-  - name: servepydantic2build
-    wanda: ci/docker/servepydantic2.build.wanda.yaml
-    depends_on: oss-ci-base_build
+  - name: servepydantic1build
+    wanda: ci/docker/servepydantic1.build.wanda.yaml
 
   - name: servepython311build
     wanda: ci/docker/servepython311.build.wanda.yaml
-    depends_on: oss-ci-base_build
 
   # tests
   - label: ":ray-serve: serve: tests"
@@ -22,13 +22,12 @@ steps:
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
-        --except-tags post_wheel_build,gpu,worker-container,xcommit
+        --except-tags post_wheel_build,gpu,worker-container,ha_integration
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.8
-    depends_on: servebuild
-    job_env: forge
+    depends_on: "servebuild"
 
-  - label: ":ray-serve: serve: pydantic >= 2.0 tests"
+  - label: ":ray-serve: serve: pydantic < 2.0 tests"
     parallelism: 2
     tags: 
       - serve
@@ -37,11 +36,10 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
-        --except-tags post_wheel_build,gpu,worker-container,xcommit
+        --except-tags post_wheel_build,gpu,worker-container,ha_integration
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servepydantic2build --test-env=EXPECTED_PYTHON_VERSION=3.8 --test-env=EXPECTED_PYDANTIC_VERSION=2.4.2
-    depends_on: servepydantic2build
-    job_env: forge
+        --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.8 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
+    depends_on: servepydantic1build
 
   - label: ":ray-serve: serve: Python 3.11 tests"
     parallelism: 2
@@ -53,11 +51,10 @@ steps:
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
-        --except-tags post_wheel_build,gpu,worker-container,xcommit
+        --except-tags post_wheel_build,gpu,worker-container,ha_integration
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servepython311build --test-env=EXPECTED_PYTHON_VERSION=3.11
     depends_on: servepython311build
-    job_env: forge
 
   - label: ":ray-serve: serve: release tests"
     tags:
@@ -67,7 +64,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //release/... serve --parallelism-per-worker 3
     depends_on: servebuild
-    job_env: forge
 
   - label: ":ray-serve: serve: wheel tests"
     tags: linux_wheels
@@ -81,6 +77,23 @@ steps:
     depends_on: 
       - manylinux
       - servebuild
+      - forge
+
+  - label: ":ray-serve: serve: wheel-aarch64 tests"
+    tags: linux_wheels
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //doc/... serve 
+        --build-type wheel-aarch64
+        --build-name oss-ci-base_build-aarch64
+        --parallelism-per-worker 3
+        --only-tags post_wheel_build
+        --test-env=RAY_CI_POST_WHEEL_TESTS=True
+    depends_on: 
+      - manylinux-aarch64
+      - oss-ci-base_build-aarch64
+      - forge-aarch64
+    job_env: forge-aarch64
 
   - label: ":ray-serve: serve: doc tests"
     tags: 
@@ -98,7 +111,6 @@ steps:
         --parallelism-per-worker 3
         --skip-ray-installation
     depends_on: servebuild
-    job_env: forge
 
   - label: ":ray-serve: serve: default minimal"
     tags: python
@@ -110,7 +122,6 @@ steps:
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
     depends_on: minbuild-serve
-    job_env: forge
 
   - label: ":ray-serve: serve: serve minimal"
     tags:
@@ -124,7 +135,6 @@ steps:
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
     depends_on: minbuild-serve
-    job_env: forge
 
   - label: ":ray-serve: serve: dashboard tests"
     tags: 
@@ -136,7 +146,21 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... serve 
         --parallelism-per-worker 3
     depends_on: servebuild
-    job_env: forge
+
+  - label: ":ray-serve: serve: HA integration tests"
+    tags:
+      - serve
+      - python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu --canonical-tag ha_integration
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
+        --only-tags ha_integration
+    depends_on:
+      - manylinux
+      - forge
+      - raycpubase
+      - servebuild
 
   - label: ":ray-serve: serve: doc gpu tests"
     tags: 
@@ -149,26 +173,33 @@ steps:
         --build-name docgpubuild
         --only-tags gpu
     depends_on: docgpubuild
-    job_env: forge
   
   - label: ":ray-serve: serve: flaky tests"
     tags: 
       - serve
+      - skip-on-premerge
       - python
     instance_type: medium
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
     depends_on: servebuild
-    job_env: forge
 
   - name: minbuild-serve
     label: "wanda: minbuild-{{matrix}}-py38"
     wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_build
     matrix:
       - serve
       - default
     env:
       PYTHON_VERSION: "3.8"
       EXTRA_DEPENDENCY: "{{matrix}}"
+
+  - label: ":windows: serve tests"
+    tags:
+      - serve
+    job_env: WINDOWS
+    instance_type: windows
+    parallelism: 5
+    commands:
+      - bash /c/workdir/.buildkite/windows_ci.sh test_serve

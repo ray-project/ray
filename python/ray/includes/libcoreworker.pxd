@@ -98,6 +98,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
         c_string ExtensionData() const
         int MaxPendingCalls() const
+        int MaxTaskRetries() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()
@@ -130,6 +131,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options,
+            int max_retries,
+            c_bool retry_exceptions,
+            c_string serialized_retry_exception_allowlist,
             c_vector[CObjectReference] &task_returns,
             const CTaskID current_task_id)
         CRayStatus KillActor(
@@ -162,7 +166,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
-        CObjectReference PeekObjectRefStream(
+        c_bool IsFinished(const CObjectID &generator_id) const
+        pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
             const CAddress &owner_address,
@@ -171,6 +176,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
+        void UpdateTaskIsDebuggerPaused(
+            const CTaskID &task_id,
+            const c_bool is_debugger_paused)
         int64_t GetCurrentTaskAttemptNumber()
         CNodeID GetCurrentNodeId()
         int64_t GetTaskDepth()
@@ -292,13 +300,18 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         unordered_map[c_string, c_vector[int64_t]] GetActorCallStats() const
 
         void RecordTaskLogStart(
+            const CTaskID &task_id,
+            int attempt_number,
             const c_string& stdout_path,
             const c_string& stderr_path,
             int64_t stdout_start_offset,
             int64_t stderr_start_offset) const
 
-        void RecordTaskLogEnd(int64_t stdout_end_offset,
-                              int64_t stderr_end_offset) const
+        void RecordTaskLogEnd(
+            const CTaskID &task_id,
+            int attempt_number,
+            int64_t stdout_end_offset,
+            int64_t stderr_end_offset) const
 
         void Exit(const CWorkerExitType exit_type,
                   const c_string &detail,

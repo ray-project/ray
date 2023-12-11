@@ -1,7 +1,7 @@
 import os
 from typing import TypedDict
 
-from ci.ray_ci.container import Container
+from ci.ray_ci.linux_container import LinuxContainer
 
 
 class PythonVersionInfo(TypedDict):
@@ -13,6 +13,10 @@ BUILD_TYPES = [
     "optimized",
     "debug",
 ]
+ARCHITECTURE = [
+    "x86_64",
+    "aarch64",
+]
 PYTHON_VERSIONS = {
     "3.8": PythonVersionInfo(bin_path="cp38-cp38", numpy_version="1.19.3"),
     "3.9": PythonVersionInfo(bin_path="cp39-cp39", numpy_version="1.19.3"),
@@ -21,12 +25,13 @@ PYTHON_VERSIONS = {
 }
 DEFAULT_PYTHON_VERSION = "3.8"
 DEFAULT_BUILD_TYPE = "optimized"
+DEFAULT_ARCHITECTURE = "x86_64"
 
 
-class BuilderContainer(Container):
-    def __init__(self, python_version: str, build_type: str) -> None:
+class BuilderContainer(LinuxContainer):
+    def __init__(self, python_version: str, build_type: str, architecture: str) -> None:
         super().__init__(
-            "manylinux",
+            "manylinux" if architecture == "x86_64" else f"manylinux-{architecture}",
             volumes=[f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/rayci"],
         )
         python_version_info = PYTHON_VERSIONS.get(python_version)

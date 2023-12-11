@@ -1,3 +1,4 @@
+import copy
 import logging
 import sys
 from typing import Dict, List, Optional, Union
@@ -133,7 +134,13 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+
+        original_runtime_env = copy.deepcopy(schema.runtime_env)
+        # Make sure "working_dir" is only added once.
+        for _ in range(5):
+            schema = RayActorOptionsSchema.parse_obj(schema)
+            assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_ray_actor_options_invalid_runtime_env(self, env):
@@ -395,7 +402,13 @@ class TestServeApplicationSchema:
 
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["runtime_env"] = env
-        ServeApplicationSchema.parse_obj(serve_application_schema)
+        schema = ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        original_runtime_env = copy.deepcopy(schema.runtime_env)
+        # Make sure "working_dir" is only added once.
+        for _ in range(5):
+            schema = ServeApplicationSchema.parse_obj(schema)
+            assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_serve_application_invalid_runtime_env(self, env):
@@ -624,10 +637,10 @@ class TestLoggingConfig:
                 "enable_access_log": True,
             }
         )
-        assert schema.log_level == logging.DEBUG
+        assert schema.log_level == "DEBUG"
         assert schema.encoding == "JSON"
         assert schema.logs_dir == "/my_dir"
-        assert schema.enable_access_log is True
+        assert schema.enable_access_log
 
         # Test string values for log_level.
         schema = LoggingConfig.parse_obj(
@@ -635,7 +648,7 @@ class TestLoggingConfig:
                 "log_level": "DEBUG",
             }
         )
-        assert schema.log_level == logging.DEBUG
+        assert schema.log_level == "DEBUG"
 
     def test_wrong_encoding_type(self):
         with pytest.raises(ValidationError):
@@ -650,7 +663,7 @@ class TestLoggingConfig:
 
     def test_default_values(self):
         schema = LoggingConfig.parse_obj({})
-        assert schema.log_level == logging.INFO
+        assert schema.log_level == "INFO"
         assert schema.encoding == "TEXT"
         assert schema.logs_dir is None
         assert schema.enable_access_log

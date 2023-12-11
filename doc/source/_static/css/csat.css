@@ -1,0 +1,77 @@
+/* CSAT widgets */
+#csat-inputs {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.csat-hidden {
+  display: none !important;
+}
+
+#csat-feedback-label {
+  color: var(--pst-color-text-base);
+  font-weight: 500;
+}
+
+.csat-button {
+  margin-left: 16px;
+  padding: 8px 16px 8px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--pst-color-border);
+  background: var(--pst-color-background);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  width: 85px;
+}
+
+#csat-textarea-group {
+  display: flex;
+  flex-direction: column;
+}
+
+#csat-submit {
+  margin-left: auto;
+  font-weight: 700;
+  border: none;
+  margin-top: 12px;
+  cursor: pointer;
+}
+
+#csat-feedback-received {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.csat-button-active {
+  border: 1px solid var(--pst-color-border);
+}
+
+.csat-icon {
+  margin-right: 4px;
+}
+
+#csat {
+  padding: 1em;
+  min-width: 60%;
+}
+
+#csat-textarea {
+  resize: none;
+  background-color: var(--pst-color-on-background);
+  border: 1px solid var(--pst-color-border);
+  border-radius: 4px;
+}
+
+#csat-textarea::placeholder {
+  color: var(--pst-color-text-base);
+}
+
+.csat-icon > path {
+  fill: var(--pst-color-text-base);
+}

@@ -10,7 +10,7 @@ import logging
 import numpy as np
 import os
 from packaging import version
-import pkg_resources
+import importlib.metadata
 import re
 import tempfile
 import time
@@ -49,9 +49,6 @@ from ray.rllib.evaluation.metrics import (
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_THIS_ITER_COUNTER,  # TODO: Backward compatibility.
-)
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline import get_dataset_and_shards
@@ -99,6 +96,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
     SAMPLE_TIMER,
+    STEPS_TRAINED_THIS_ITER_COUNTER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
@@ -767,7 +765,7 @@ class Algorithm(Trainable, AlgorithmBase):
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 
-            # check if there are modules to load from the module_spec
+            # Check if there are modules to load from the `module_spec`.
             rl_module_ckpt_dirs = {}
             marl_module_ckpt_dir = module_spec.load_state_path
             modules_to_load = module_spec.modules_to_load
@@ -780,7 +778,27 @@ class Algorithm(Trainable, AlgorithmBase):
                     modules_to_load=modules_to_load,
                     rl_module_ckpt_dirs=rl_module_ckpt_dirs,
                 )
-            # sync the weights from the learner group to the rollout workers
+            # Setup proper policies-to-train/should-module-be-updated functions
+            # on the LearnerGroup.
+            self.learner_group.set_should_module_be_updated_fn(
+                self.config.policies_to_train
+            )
+
+            # Only when using RolloutWorkers: Update also the worker set's
+            # `should_module_be_updated_fn` (analogous to is_policy_to_train).
+            # Note that with the new EnvRunner API in combination with the new stack,
+            # this information only needs to be kept in the LearnerGroup and not on the
+            # EnvRunners anymore.
+            if self.config.env_runner_cls is None or issubclass(
+                self.config.env_runner_cls, RolloutWorker
+            ):
+                update_fn = self.learner_group.should_module_be_updated_fn
+                self.workers.foreach_worker(
+                    lambda w: w.set_is_policy_to_train(update_fn),
+                    healthy_only=True,
+                )
+
+            # Sync the weights from the learner group to the rollout workers.
             weights = self.learner_group.get_weights()
             local_worker.set_weights(weights)
             self.workers.sync_weights()
@@ -831,7 +849,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         # Do we have to run `self.evaluate()` this iteration?
         # `self.iteration` gets incremented after this function returns,
-        # meaning that e. g. the first time this function is called,
+        # meaning that e.g. the first time this function is called,
         # self.iteration will be 0.
         evaluate_this_iter = (
             self.config.evaluation_interval is not None
@@ -1566,6 +1584,9 @@ class Algorithm(Trainable, AlgorithmBase):
         restored = workers.probe_unhealthy_workers()
 
         if restored:
+            # Count the restored workers.
+            self._counters["total_num_restored_workers"] += len(restored)
+
             from_worker = workers.local_worker() or self.workers.local_worker()
             # Get the state of the correct (reference) worker. E.g. The local worker
             # of the main WorkerSet.
@@ -1592,7 +1613,6 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
     @OverrideToImplementCustomLogic
-    @DeveloperAPI
     def training_step(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
 
@@ -1634,8 +1654,6 @@ class Algorithm(Trainable, AlgorithmBase):
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
             if self.config._enable_new_api_stack:
-                is_module_trainable = self.workers.local_worker().is_policy_to_train
-                self.learner_group.set_is_module_trainable(is_module_trainable)
                 train_results = self.learner_group.update(train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
@@ -1932,7 +1950,10 @@ class Algorithm(Trainable, AlgorithmBase):
         filtered_obs, filtered_state = [], []
         for agent_id, ob in observations.items():
             worker = self.workers.local_worker()
-            preprocessed = worker.preprocessors[policy_id].transform(ob)
+            if worker.preprocessors.get(policy_id) is not None:
+                preprocessed = worker.preprocessors[policy_id].transform(ob)
+            else:
+                preprocessed = ob
             filtered = worker.filters[policy_id](preprocessed, update=False)
             filtered_obs.append(filtered)
             if state is None:
@@ -2112,6 +2133,11 @@ class Algorithm(Trainable, AlgorithmBase):
                 module_spec=SingleAgentRLModuleSpec.from_module(module),
             )
 
+            # Update the LearnerGroup's `should_module_be_updated_fn` function, but only
+            # if the arg is explicitly provided here.
+            if policies_to_train is not None:
+                self.learner_group.set_should_module_be_updated_fn(policies_to_train)
+
             weights = policy.get_weights()
             self.learner_group.set_weights({policy_id: weights})
 
@@ -2172,7 +2198,15 @@ class Algorithm(Trainable, AlgorithmBase):
                 policies_to_train=policies_to_train,
             )
 
+        # Update all EnvRunner workers.
         self.workers.foreach_worker(fn, local_worker=True, healthy_only=True)
+
+        # Update the LearnerGroup's `should_module_be_updated_fn` function, but only
+        # if the arg is explicitly provided here.
+        if self.config._enable_new_api_stack and policies_to_train is not None:
+            self.learner_group.set_should_module_be_updated_fn(policies_to_train)
+
+        # Update the evaluation worker set's workers, if required.
         if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(
                 fn,
@@ -2285,6 +2319,8 @@ class Algorithm(Trainable, AlgorithmBase):
             checkpoint_dir: The directory where the checkpoint files will be stored.
         """
         state = self.__getstate__()
+
+        # TODO (sven): Move LearnerGroup `get_state` call here as well.
 
         # Extract policy states from worker state (Policies get their own
         # checkpoint sub-dirs).
@@ -2507,7 +2543,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 # Check gym version (0.22 or higher?).
                 # If > 0.21, can't perform auto-wrapping of the given class as this
                 # would lead to a pickle error.
-                gym_version = pkg_resources.get_distribution("gym").version
+                gym_version = importlib.metadata.version("gym")
                 if version.parse(gym_version) >= version.parse("0.22"):
                     raise ValueError(
                         "Cannot specify a gym.Env class via `config.env` while setting "

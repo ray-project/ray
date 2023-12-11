@@ -1,10 +1,7 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
-from ray.data.block import Block, BlockAccessor
-from ray.data.datasource.file_based_datasource import (
-    FileBasedDatasource,
-    _resolve_kwargs,
-)
+from ray.data.block import Block
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -15,7 +12,7 @@ if TYPE_CHECKING:
 class CSVDatasource(FileBasedDatasource):
     """CSV datasource, for reading and writing CSV files."""
 
-    _FILE_EXTENSION = "csv"
+    _FILE_EXTENSIONS = ["csv"]
 
     def __init__(
         self,
@@ -70,16 +67,3 @@ class CSVDatasource(FileBasedDatasource):
                 "file with 'partition_filter' field. See read_csv() documentation for "
                 "more details."
             ) from e
-
-    def _write_block(
-        self,
-        f: "pyarrow.NativeFile",
-        block: BlockAccessor,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args,
-    ):
-        from pyarrow import csv
-
-        writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
-        write_options = writer_args.pop("write_options", None)
-        csv.write_csv(block.to_arrow(), f, write_options, **writer_args)

@@ -92,6 +92,18 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
+        id=11,
+        title="Rows Outputted",
+        description="Total rows outputted by dataset operators.",
+        unit="rows",
+        targets=[
+            Target(
+                expr="sum(ray_data_output_rows{{{global_filters}}}) by (dataset, operator)",
+                legend="Rows Outputted: {{dataset}}, {{operator}}",
+            )
+        ],
+    ),
+    Panel(
         id=8,
         title="Block Generation Time",
         description="Time spent generating blocks.",

@@ -21,7 +21,7 @@ class TestRayDockerContainer(RayCITestBase):
         with mock.patch(
             "ci.ray_ci.ray_docker_container.docker_pull", return_value=None
         ), mock.patch(
-            "ci.ray_ci.docker_container.Container.run_script",
+            "ci.ray_ci.docker_container.LinuxContainer.run_script",
             side_effect=_mock_run_script,
         ):
             container = RayDockerContainer("3.8", "cu11.8.0", "ray")
@@ -49,8 +49,14 @@ class TestRayDockerContainer(RayCITestBase):
             )
 
     def test_canonical_tag(self) -> None:
+        container = RayDockerContainer("3.8", "cpu", "ray", canonical_tag="abc")
+        assert container._get_canonical_tag() == "abc"
+
         container = RayDockerContainer("3.8", "cpu", "ray")
         assert container._get_canonical_tag() == "123456-py38-cpu"
+
+        container = RayDockerContainer("3.8", "cpu", "ray", "aarch64")
+        assert container._get_canonical_tag() == "123456-py38-cpu-aarch64"
 
         container = RayDockerContainer("3.8", "cu11.8.0", "ray-ml")
         assert container._get_canonical_tag() == "123456-py38-cu118"
