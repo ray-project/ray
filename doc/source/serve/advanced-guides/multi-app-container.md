@@ -51,6 +51,7 @@ In `whisper.Dockerfile`:
 * We are running the Whisper model on GPU, so the base image for the Whisper Dockerfile is the latest Ray GPU image, `rayproject/ray:latest-py38-gpu`.
 * We install the package `faster_whisper`, which is a dependency for the whisper model.
 * We then download the source code for the whisper application into `whisper_example.py`.
+
 Similarly, `resnet.Dockerfile` uses the appropriate base image, installs necessary dependencies, and downloads the resnet model source code.
 Save the following to files named `whisper.Dockerfile` and `resnet.Dockerfile`.
 
@@ -82,14 +83,14 @@ Then, build the corresponding docker images and push it to your choice of docker
 ::::{tab-set}
 :::{tab-item} Whisper
 ```bash
-export IMG1={your-image-repo-and-name}
+export IMG1={your-image-repo-and-name-1}
 docker build -t $IMG1 -f whisper.Dockerfile .
 docker push $IMG1
 ```
 :::
 :::{tab-item} Resnet
 ```bash
-export IMG2={your-image-repo-and-name}
+export IMG2={your-image-repo-and-name-2}
 docker build -t $IMG2 -f resnet.Dockerfile .
 docker push $IMG2
 ```
@@ -98,10 +99,10 @@ docker push $IMG2
 
 Finally, you can specify the docker image within which you want to run each application in the `container` field of an application's runtime environment specification. The `container` field has three fields:
 - `image`: (Required) The image to run your application in.
-- `worker_path`: The absolute path to `default_worker.py` inside the container. This is necessary if the Ray installation directory is different than that of the host (where raylet is running). For instance, if you are running on bare metal, and using a standard Ray docker image as the base image for your application's, then the Ray installation directory on host will likely differ from that of the container. Note that if you are using a standard Ray docker image as the base image, then `default_worker.py` will always be found at `/home/ray/anaconda3/lib/{python-version}/site-packages/ray/_private/workers/default_worker.py`.
-- `run_options`: Additional options to pass to the `podman run` command used to start a Serve deployment replica in a container. See [podman run documentation](https://docs.podman.io/en/latest/markdown/podman-run.1.html) for a list of all options.
+- `worker_path`: The absolute path to `default_worker.py` inside the container. This is necessary if the Ray installation directory is different than that of the host (where raylet is running). For instance, if you are running on bare metal, and using a standard Ray docker image as the base image for your application image, then the Ray installation directory on host will likely differ from that of the container. Note that if you are using a standard Ray docker image as the base image, then `default_worker.py` will always be found at `/home/ray/anaconda3/lib/{python-version}/site-packages/ray/_private/workers/default_worker.py`
+- `run_options`: Additional options to pass to the `podman run` command used to start a Serve deployment replica in a container. See [podman run documentation](https://docs.podman.io/en/latest/markdown/podman-run.1.html) for a list of all options. If you are familiar with `docker run`, most options will work the same way.
 
-The following Serve config will run the `whisper` app with the image `your-image-1`, and the `resnet` app with the image `your-image-2`. Concretely, this means that all deployment replicas in the applications will start and run in containers with the respective images.
+The following Serve config will run the `whisper` app with the image `IMG1`, and the `resnet` app with the image `IMG2`. Concretely, this means that all deployment replicas in the applications will start and run in containers with the respective images.
 
 ```yaml
 applications:
@@ -110,14 +111,14 @@ applications:
     route_prefix: /whisper
     runtime_env:
       container:
-        image: {your-image-1}
+        image: {IMG1}
         worker_path: /home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py
   - name: resnet
     import_path: resnet50_example:app
     route_prefix: /resnet
     runtime_env:
       container:
-        image: {your-image-2}
+        image: {IMG2}
         worker_path: /home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py
 ```
 
