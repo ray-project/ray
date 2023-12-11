@@ -5,6 +5,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.serve.BaseServeTest;
 import io.ray.serve.DummyServeController;
+import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
