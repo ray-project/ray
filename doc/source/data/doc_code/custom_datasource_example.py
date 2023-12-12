@@ -43,7 +43,7 @@ class ImageDatasource(FileBasedDatasource):
 import ray
 
 ds = ray.data.read_datasource(
-    ImageDatasource("s3://anonymous@ray-example-data/batoidea", mode="rgb")
+    ImageDatasource("s3://anonymous@ray-example-data/batoidea", mode="RGB")
 )
 # __read_datasource_end__
 
