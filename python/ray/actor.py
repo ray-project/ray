@@ -156,8 +156,6 @@ class ActorMethod:
         decorator=None,
         hardref=False,
     ):
-        # NOTE: Do not access it directly.
-        # Should be accessed via `self._handle` API.
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
         self._num_returns = num_returns
@@ -225,15 +223,6 @@ class ActorMethod:
 
         return FuncWrapper()
 
-    @property
-    def _handle(self):
-        actor = self._actor_ref()
-        if actor is None:
-            # Ref is GC'ed. It happens when the actor handle is GC'ed
-            # when bind is called.
-            raise RuntimeError("Lost reference to actor")
-        return actor
-
     @wrap_auto_init
     @_tracing_actor_method_invocation
     def _bind(
@@ -253,8 +242,14 @@ class ActorMethod:
             "_generator_backpressure_num_objects": _generator_backpressure_num_objects,
         }
 
+        actor = self._actor_ref()
+        if actor is None:
+            # Ref is GC'ed. It happens when the actor handle is GC'ed
+            # when bind is called.
+            raise RuntimeError("Lost reference to actor")
+
         other_args_to_resolve = {
-            PARENT_CLASS_NODE_KEY: self._handle,
+            PARENT_CLASS_NODE_KEY: actor,
             PREV_CLASS_METHOD_CALL_KEY: None,
         }
 
@@ -295,7 +290,7 @@ class ActorMethod:
             )
 
         def invocation(args, kwargs):
-            actor = self._actor_hard_ref or self._handle
+            actor = self._actor_hard_ref or self._actor_ref()
 
             if actor is None:
                 raise RuntimeError("Lost reference to actor")
@@ -322,7 +317,7 @@ class ActorMethod:
 
     def __getstate__(self):
         return {
-            "actor": self._handle,
+            "actor": self._actor_ref(),
             "method_name": self._method_name,
             "num_returns": self._num_returns,
             "max_retries": self._max_retries,
