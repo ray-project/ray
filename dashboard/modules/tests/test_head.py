@@ -3,8 +3,8 @@ import time
 
 import aiohttp.web
 
-import ray.dashboard.modules.test.test_consts as test_consts
-import ray.dashboard.modules.test.test_utils as test_utils
+import ray.dashboard.modules.tests.test_consts as test_consts
+import ray.dashboard.modules.tests.test_utils as test_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_bool
@@ -111,3 +111,7 @@ class TestHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         pass
+
+
+if __name__ == "__main__":
+    pass

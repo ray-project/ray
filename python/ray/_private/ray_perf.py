@@ -8,6 +8,8 @@ import numpy as np
 import multiprocessing
 import ray
 
+import ray.experimental.channel as ray_channel
+
 logger = logging.getLogger(__name__)
 
 
@@ -287,6 +289,91 @@ def main(results=None):
 
     results += timeit("n:n async-actor calls async", async_actor_multi, m * n)
     ray.shutdown()
+
+    #################################################
+    # Perf tests for channels, used in compiled DAGs.
+    #################################################
+
+    ray.init()
+
+    def put_channel_small(chans, do_get=False, do_release=False):
+        for chan in chans:
+            chan.write(b"0")
+            if do_get:
+                chan.begin_read()
+            if do_release:
+                chan.end_read()
+
+    @ray.remote
+    class ChannelReader:
+        def ready(self):
+            return
+
+        def read(self, chans):
+            while True:
+                for chan in chans:
+                    chan.begin_read()
+                    chan.end_read()
+
+    chans = [ray_channel.Channel(1000)]
+    results += timeit(
+        "local put, single channel calls",
+        lambda: put_channel_small(chans, do_release=True),
+    )
+    results += timeit(
+        "local put:local get, single channel calls",
+        lambda: put_channel_small(chans, do_get=True, do_release=True),
+    )
+
+    chans = [ray_channel.Channel(1000)]
+    reader = ChannelReader.remote()
+    ray.get(reader.ready.remote())
+    reader.read.remote(chans)
+    results += timeit(
+        "local put:1 remote get, single channel calls", lambda: put_channel_small(chans)
+    )
+    ray.kill(reader)
+
+    n_cpu = multiprocessing.cpu_count() // 2
+    print(f"Testing multiple readers/channels, n={n_cpu}")
+
+    chans = [ray_channel.Channel(1000, num_readers=n_cpu)]
+    readers = [ChannelReader.remote() for _ in range(n_cpu)]
+    ray.get([reader.ready.remote() for reader in readers])
+    for reader in readers:
+        reader.read.remote(chans)
+    results += timeit(
+        "local put:n remote get, single channel calls",
+        lambda: put_channel_small(chans),
+    )
+    for reader in readers:
+        ray.kill(reader)
+
+    chans = [ray_channel.Channel(1000) for _ in range(n_cpu)]
+    reader = ChannelReader.remote()
+    ray.get(reader.ready.remote())
+    reader.read.remote(chans)
+    results += timeit(
+        "local put:1 remote get, n channels calls", lambda: put_channel_small(chans)
+    )
+    ray.kill(reader)
+
+    chans = [ray_channel.Channel(1000) for _ in range(n_cpu)]
+    readers = [ChannelReader.remote() for _ in range(n_cpu)]
+    ray.get([reader.ready.remote() for reader in readers])
+    for chan, reader in zip(chans, readers):
+        reader.read.remote([chan])
+    results += timeit(
+        "local put:n remote get, n channels calls", lambda: put_channel_small(chans)
+    )
+    for reader in readers:
+        ray.kill(reader)
+
+    ray.shutdown()
+
+    ############################
+    # End of channel perf tests.
+    ############################
 
     NUM_PGS = 100
     NUM_BUNDLES = 1
