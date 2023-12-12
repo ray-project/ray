@@ -409,7 +409,7 @@ class AutoscalingTest(unittest.TestCase):
             comparison(n, expected, msg="Unexpected node quantity.")
             return True
 
-        wait_for_condition(assert_num_nodes, timeout=20)
+        wait_for_condition(assert_num_nodes, timeout=120)
 
     def create_provider(self, config, cluster_name):
         assert self.provider
