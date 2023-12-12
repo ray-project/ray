@@ -51,6 +51,8 @@ class RedisAsyncContext {
   explicit RedisAsyncContext(
       std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context);
 
+  virtual ~RedisAsyncContext() = default;
+
   /// Get the raw 'redisAsyncContext' pointer.
   ///
   /// \return redisAsyncContext *
@@ -82,11 +84,11 @@ class RedisAsyncContext {
   /// \param argv Array with arguments.
   /// \param argvlen Array with each argument's length.
   /// \return Status
-  Status RedisAsyncCommandArgv(redisCallbackFn *fn,
-                               void *privdata,
-                               int argc,
-                               const char **argv,
-                               const size_t *argvlen);
+  virtual Status RedisAsyncCommandArgv(redisCallbackFn *fn,
+                                       void *privdata,
+                                       int argc,
+                                       const char **argv,
+                                       const size_t *argvlen);
 
  private:
   /// This mutex is used to protect `redis_async_context`.

@@ -88,6 +88,11 @@ ConnectWithRetries(const std::string &address,
   return resp;
 }
 
+RedisAsyncContext *CreateAsyncContext(
+    std::unique_ptr<redisAsyncContext, RedisContextDeleter> context) {
+  return new RedisAsyncContext(std::move(context));
+}
+
 template <typename ConnectType = redisAsyncContext>
 void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_context,
                                           void *raw_reply,
@@ -111,8 +116,7 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
           // We will ultimately return a MOVED error if we fail to reconnect.
           RAY_LOG(ERROR) << "Failed to connect to the new leader " << ip << ":" << port;
         } else {
-          request_cxt->redis_context_.reset(
-              new RedisAsyncContext(std::move(resp.second)));
+          request_cxt->redis_context_.reset(CreateAsyncContext(std::move(resp.second)));
           // TODO(vitsai): do we need to Attach
         }
       }

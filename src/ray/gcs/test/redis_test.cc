@@ -18,6 +18,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/redis_async_context.h"
 #include "ray/gcs/redis_context-inl.h"
 #include "ray/util/logging.h"
 
@@ -29,6 +30,9 @@ extern "C" {
 namespace ray {
 namespace gcs {
 
+using ::testing::_;
+using ::testing::Return;
+
 class RedisContextTest : public ::testing::Test {
  public:
   RedisContextTest() {}
@@ -36,23 +40,27 @@ class RedisContextTest : public ::testing::Test {
   virtual ~RedisContextTest() {}
 };
 
-class MockRedisContext : public RedisContext {
+class MockRedisContext : public RedisAsyncContext {
  public:
-  MockRedisContext(instrumented_io_context &io_service, std::string address, int port)
-      : RedisContext(io_service), address_(address), port_(port) {}
+  MockRedisContext()
+      : RedisAsyncContext(std::unique_ptr<redisAsyncContext, RedisContextDeleter>(
+            new redisAsyncContext())) {}
 
-  // Mutable address and port to use as expectations for testing. Hacky.
-  // See ConnectWithRetries above.
-  std::string address_;
-  int port_;
-
-  MOCK_METHOD(void,
-              RunArgvAsync,
-              (std::vector<std::string> args, RedisCallback redis_callback),
+  MOCK_METHOD(Status,
+              RedisAsyncCommandArgv,
+              (redisCallbackFn * fn,
+               void *privdata,
+               int argc,
+               const char **argv,
+               const size_t *argvlen),
               (override));
 };
 
-void FreeRedisContext(MockRedisContext *context) {}
+// Hacky glue for testing.
+RedisAsyncContext *CreateAsyncContext(
+    std::unique_ptr<MockRedisContext, RedisContextDeleter> context) {
+  return static_cast<RedisAsyncContext *>(context.release());
+}
 
 // We specialize on the mock object to potentially mock this function.
 template <>
@@ -77,7 +85,7 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   // Create mock redis context.
   const std::string ip = "10.0.106.72";
   const int port = 6379;
-  MockRedisContext mock_redis_context(io_service, ip, port);
+  MockRedisContext mock_redis_context;
 
   // Initialize the reply with MOVED error.
   struct redisAsyncContext base_context;
@@ -95,11 +103,12 @@ TEST_F(RedisContextTest, TestRedisMoved) {
                                std::move(async_context_wrapper),
                                {"HGET", "namespace", "key"});
 
-  // TODO set expectations
-  // EXPECT_CALL(mock_redis_context, RunArgvAsync, );
+  // TODO add matcher for "correct" one
+  EXPECT_CALL(mock_redis_context, RedisAsyncCommandArgv(_, _, _, _, _))
+      .WillOnce(Return(Status::OK()));
 
   // Call the function
-  RedisRequestContext::RedisResponseFn(
+  RedisRequestContext::RedisResponseFn<MockRedisContext>(
       &base_context, static_cast<void *>(&reply), static_cast<void *>(&privdata));
 
   async_context_wrapper->ResetRawRedisAsyncContext();
