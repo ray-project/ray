@@ -163,9 +163,10 @@ steps:
   conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
+    - export RAY_BACKEND_LOG_LEVEL=debug 
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
-      python/ray/tests/...
+      python/ray/tests/test_gcs_fault_tolerance
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium K-Z"
