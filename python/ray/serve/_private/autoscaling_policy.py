@@ -38,13 +38,11 @@ class ThreadManager:
     def _should_start_thread(self):
         return (
             self.thread is None
-            and time.time() - self.start_time > self.exponential_backoff
+            and time.time() - self.start_time >= self.exponential_backoff
         )
 
-    def get_decision_num_replicas(
-        self, context: AutoscalingContext, start_new_call: bool = False
-    ) -> Optional[int]:
-        if start_new_call or self._should_start_thread():
+    def get_decision_num_replicas(self, context: AutoscalingContext) -> Optional[int]:
+        if self._should_start_thread():
             self.thread = Thread(target=self, kwargs={"context": context})
             self.thread.start()
 
@@ -93,7 +91,7 @@ class AutoscalingPolicyManager:
             self.config.max_replicas,
             target_capacity,
         )
-        context_updated = self.context.update(
+        self.context.update(
             curr_target_num_replicas=curr_target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
@@ -106,7 +104,6 @@ class AutoscalingPolicyManager:
         # here, and they can set timeout in their policies if needed.
         decision_num_replicas = self.thread_manager.get_decision_num_replicas(
             context=self.context,
-            start_new_call=context_updated,
         )
         if decision_num_replicas is not None:
             self.context.last_scale_time = time.time()
