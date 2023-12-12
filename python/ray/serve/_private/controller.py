@@ -27,6 +27,7 @@ from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
+    SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -112,10 +113,9 @@ class ServeController:
 
     async def __init__(
         self,
-        controller_name: str,
         *,
         http_config: HTTPOptions,
-        system_logging_config: LoggingConfig,
+        global_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -124,9 +124,8 @@ class ServeController:
         ), "Controller must be on the head node."
 
         self.ray_worker_namespace = ray.get_runtime_context().namespace
-        self.controller_name = controller_name
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
+        kv_store_namespace = f"ray-serve-{self.ray_worker_namespace}"
         self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
 
         self.long_poll_host = LongPollHost()
@@ -135,11 +134,11 @@ class ServeController:
         # Try to read config from checkpoint
         # logging config from checkpoint take precedence over the one passed in
         # the constructor.
-        self.system_logging_config = None
+        self.global_logging_config = None
         log_config_checkpoint = self.kv_store.get(LOGGING_CONFIG_CHECKPOINT_KEY)
         if log_config_checkpoint is not None:
-            system_logging_config = pickle.loads(log_config_checkpoint)
-        self.reconfigure_system_logging_config(system_logging_config)
+            global_logging_config = pickle.loads(log_config_checkpoint)
+        self.reconfigure_global_logging_config(global_logging_config)
 
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
@@ -159,11 +158,10 @@ class ServeController:
         self.cluster_node_info_cache.update()
 
         self.proxy_state_manager = ProxyStateManager(
-            controller_name,
             http_config,
             self._controller_node_id,
             self.cluster_node_info_cache,
-            self.system_logging_config,
+            self.global_logging_config,
             grpc_options,
         )
 
@@ -179,7 +177,6 @@ class ServeController:
         ]
 
         self.deployment_state_manager = DeploymentStateManager(
-            controller_name,
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
@@ -197,7 +194,7 @@ class ServeController:
             node_id=ray.get_runtime_context().get_node_id(),
             node_ip=ray.util.get_node_ip_address(),
             actor_id=ray.get_runtime_context().get_actor_id(),
-            actor_name=self.controller_name,
+            actor_name=SERVE_CONTROLLER_NAME,
             worker_id=ray.get_runtime_context().get_worker_id(),
             log_file_path=get_component_logger_file_path(),
         )
@@ -223,29 +220,29 @@ class ServeController:
             description="The number of times that controller has started.",
         ).inc()
 
-    def reconfigure_system_logging_config(self, system_logging_config: LoggingConfig):
+    def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
-            self.system_logging_config
-            and self.system_logging_config == system_logging_config
+            self.global_logging_config
+            and self.global_logging_config == global_logging_config
         ):
             return
         self.kv_store.put(
-            LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(system_logging_config)
+            LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(global_logging_config)
         )
-        self.system_logging_config = system_logging_config
+        self.global_logging_config = global_logging_config
 
         self.long_poll_host.notify_changed(
-            LongPollNamespace.SYSTEM_LOGGING_CONFIG,
-            system_logging_config,
+            LongPollNamespace.GLOBAL_LOGGING_CONFIG,
+            global_logging_config,
         )
         configure_component_logger(
             component_name="controller",
             component_id=str(os.getpid()),
-            logging_config=system_logging_config,
+            logging_config=global_logging_config,
         )
         logger.debug(
             "Configure the serve controller logger "
-            f"with logging config: {self.system_logging_config}"
+            f"with logging config: {self.global_logging_config}"
         )
 
     def check_alive(self) -> None:
@@ -513,7 +510,6 @@ class ServeController:
 
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-
             (
                 deployment_time,
                 target_capacity,
@@ -614,7 +610,7 @@ class ServeController:
             and proxy_state_is_shutdown
         ):
             logger.warning(
-                "All resources have shut down, shutting down controller!",
+                "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},
             )
             _controller_actor = ray.get_runtime_context().current_actor
@@ -1081,7 +1077,7 @@ class ServeController:
         for handler in logger.handlers:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
-        return self.system_logging_config, log_file_path
+        return self.global_logging_config, log_file_path
 
     def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:
         """Gets the controller's scale direction (for testing purposes)."""
@@ -1169,11 +1165,12 @@ class ServeControllerAvatar:
 
     def __init__(
         self,
-        controller_name: str,
         http_proxy_port: int = 8000,
     ):
         try:
-            self._controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
+            self._controller = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
         except ValueError:
             self._controller = None
         if self._controller is None:
@@ -1182,7 +1179,7 @@ class ServeControllerAvatar:
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
                 num_cpus=0,
-                name=controller_name,
+                name=SERVE_CONTROLLER_NAME,
                 lifetime="detached",
                 max_restarts=-1,
                 max_task_retries=-1,
@@ -1190,9 +1187,8 @@ class ServeControllerAvatar:
                 namespace=SERVE_NAMESPACE,
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
             ).remote(
-                controller_name,
                 http_config=http_config,
-                system_logging_config=logging_config,
+                global_logging_config=logging_config,
             )
 
     def check_alive(self) -> None:

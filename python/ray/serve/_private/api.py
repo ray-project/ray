@@ -1,7 +1,7 @@
 import inspect
 import logging
 from types import FunctionType
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Union
 
 import ray
 from ray._private.pydantic_compat import is_subclass_of_base_model
@@ -111,9 +111,9 @@ def _check_http_options(
 def _start_controller(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
-    system_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
-) -> Tuple[ActorHandle, str]:
+) -> ActorHandle:
     """Start Ray Serve controller.
 
     The function makes sure controller is ready to start deploying apps
@@ -121,7 +121,7 @@ def _start_controller(
 
     Parameters are same as ray.serve._private.api.serve_start().
 
-    Returns: A tuple with controller actor handle and controller name.
+    Returns: controller actor handle.
     """
 
     # Initialize ray if needed.
@@ -157,16 +157,15 @@ def _start_controller(
     if isinstance(grpc_options, dict):
         grpc_options = gRPCOptions(**grpc_options)
 
-    if system_logging_config is None:
-        system_logging_config = LoggingConfig()
-    elif isinstance(system_logging_config, dict):
-        system_logging_config = LoggingConfig(**system_logging_config)
+    if global_logging_config is None:
+        global_logging_config = LoggingConfig()
+    elif isinstance(global_logging_config, dict):
+        global_logging_config = LoggingConfig(**global_logging_config)
 
     controller = ServeController.options(**controller_actor_options).remote(
-        SERVE_CONTROLLER_NAME,
         http_config=http_options,
         grpc_options=grpc_options,
-        system_logging_config=system_logging_config,
+        global_logging_config=global_logging_config,
     )
 
     proxy_handles = ray.get(controller.get_proxies.remote())
@@ -180,13 +179,13 @@ def _start_controller(
             raise TimeoutError(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
-    return controller, SERVE_CONTROLLER_NAME
+    return controller
 
 
 async def serve_start_async(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
-    system_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -213,15 +212,14 @@ async def serve_start_async(
     except RayServeException:
         pass
 
-    controller, controller_name = (
+    controller = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(http_options, grpc_options, system_logging_config, **kwargs)
+        .remote(http_options, grpc_options, global_logging_config, **kwargs)
     )
 
     client = ServeControllerClient(
         controller,
-        controller_name,
     )
     _set_global_client(client)
     logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
@@ -231,7 +229,7 @@ async def serve_start_async(
 def serve_start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
-    system_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -288,13 +286,12 @@ def serve_start(
     except RayServeException:
         pass
 
-    controller, controller_name = _start_controller(
-        http_options, grpc_options, system_logging_config, **kwargs
+    controller = _start_controller(
+        http_options, grpc_options, global_logging_config, **kwargs
     )
 
     client = ServeControllerClient(
         controller,
-        controller_name,
     )
     _set_global_client(client)
     logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')

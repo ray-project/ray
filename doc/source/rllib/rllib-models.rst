@@ -32,7 +32,7 @@ observation space. Thereby, the following simple rules apply:
 - Discrete observations are one-hot encoded, e.g. ``Discrete(3) and value=1 -> [0, 1, 0]``.
 
 - MultiDiscrete observations are encoded by one-hot encoding each discrete element
-  and then concatenating the respective one-hot encoded vectors. 
+  and then concatenating the respective one-hot encoded vectors.
   e.g. ``MultiDiscrete([3, 4]) and value=[1, 3] -> [0 1 0 0 0 0 1]`` because
   the first ``1`` is encoded as ``[0 1 0]`` and the second ``3`` is encoded as
   ``[0 0 0 1]``; these two vectors are then concatenated to ``[0 1 0 0 0 0 1]``.
@@ -300,20 +300,6 @@ More examples and explanations on how to implement custom Tuple/Dict processing 
 custom RNNs, custom model APIs (on top of default models) follow further below.
 
 
-Wrapping a Custom Model (TF and PyTorch) with an LSTM- or Attention Net
-```````````````````````````````````````````````````````````````````````
-
-You can also use a custom (TF or PyTorch) model with our auto-wrappers for LSTMs (``use_lstm=True``) or Attention networks (``use_attention=True``).
-For example, if you would like to wrap some non-default model logic with an LSTM, simply do:
-
-.. literalinclude:: ../../../rllib/examples/lstm_auto_wrapping.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-
-.. _rnns:
-
 Implementing custom Recurrent Networks
 ``````````````````````````````````````
 
@@ -351,14 +337,13 @@ Check out RLlib's `GTrXL (Attention Net) <https://arxiv.org/abs/1910.06764>`__ i
 to get a better idea on how to write your own models of this type. These are the models we use
 as wrappers when ``use_attention=True``.
 
-You can run `this example script <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__ to run these nets within some of our algorithms.
-`There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/models/tests/test_attention_nets.py>`__, which confirms their learning capabilities in PPO and IMPALA.
+This `test case <https://github.com/ray-project/ray/blob/master/rllib/models/tests/test_attention_nets.py>`__ confirms their learning capabilities in PPO and IMPALA.
 
 Batch Normalization
 ```````````````````
 
 You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model
-(see a `code example here <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__).
+(see a `code example here <https://github.com/ray-project/ray/blob/master/rllib/examples/models/batch_norm_model.py>`__).
 RLlib will automatically run the update ops for the batch norm layers during optimization
 (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/rllib/policy/tf_policy.py>`__ and
 `multi_gpu_learner_thread.py <https://github.com/ray-project/ray/blob/master/rllib/execution/multi_gpu_learner_thread.py>`__ for the exact handling of these updates).
@@ -602,15 +587,15 @@ Custom models can be used to work with environments where (1) the set of valid a
             return action_logits + inf_mask, state
 
 
-Depending on your use case it may make sense to use |just the masking|_, |just action embeddings|_, or |both|_.  For a runnable example of "just action embeddings" in code, 
-check out `examples/parametric_actions_cartpole.py <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__. 
+Depending on your use case it may make sense to use |just the masking|_, |just action embeddings|_, or |both|_.  For a runnable example of "just action embeddings" in code,
+check out `examples/parametric_actions_cartpole.py <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__.
 
 .. |just the masking| replace:: just the **masking**
 .. _just the masking: https://github.com/ray-project/ray/blob/master/rllib/examples/models/action_mask_model.py
 .. |just action embeddings| replace:: just action **embeddings**
 .. _just action embeddings: https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py
 .. |both| replace:: **both**
-.. _both: https://github.com/ray-project/ray/blob/master/rllib/examples/models/parametric_actions_model.py 
+.. _both: https://github.com/ray-project/ray/blob/master/rllib/examples/models/parametric_actions_model.py
 
 Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``model.vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__.
 

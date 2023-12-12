@@ -484,7 +484,7 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
             actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
         }
         expected_actor_name_prefixes = {
-            "SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR",
+            "SERVE_PROXY_ACTOR",
             "SERVE_CONTROLLER_ACTOR",
         }.union({f"SERVE_REPLICA::app1#{deployment}" for deployment in deployments})
         for prefix in expected_actor_name_prefixes:
@@ -1222,10 +1222,11 @@ class TestDeploywithLoggingConfig:
 
         resp = requests.post("http://localhost:8000/app1").json()
 
+        replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
-            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+            expected_log_regex = [f'"replica": "{replica_id}", ']
         else:
-            expected_log_regex = [f'.*{resp["replica"]}.*']
+            expected_log_regex = [f".*{replica_id}.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
@@ -1251,10 +1252,11 @@ class TestDeploywithLoggingConfig:
 
         resp = requests.post("http://localhost:8000/app1").json()
 
+        replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
-            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+            expected_log_regex = [f'"replica": "{replica_id}", ']
         else:
-            expected_log_regex = [f'.*{resp["replica"]}.*']
+            expected_log_regex = [f".*{replica_id}.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
     def test_deploy_app_with_deployment_logging_config_in_code(

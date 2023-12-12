@@ -38,7 +38,7 @@ from ray.serve._private.deployment_state import (
 from ray.serve._private.test_utils import MockKVStore, MockTimer
 from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
-    get_random_letters,
+    get_random_string,
 )
 
 
@@ -69,7 +69,6 @@ class MockReplicaActorWrapper:
     def __init__(
         self,
         actor_name: str,
-        controller_name: str,
         replica_tag: ReplicaTag,
         deployment_id: DeploymentID,
         version: DeploymentVersion,
@@ -313,7 +312,7 @@ def deployment_info(
     if version is not None:
         code_version = version
     else:
-        code_version = get_random_letters()
+        code_version = get_random_string()
 
     version = DeploymentVersion(
         code_version, info.deployment_config, info.replica_config.ray_actor_options
@@ -361,7 +360,6 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
 
         deployment_state = DeploymentState(
             DeploymentID("name", "my_app"),
-            "name",
             mock_long_poll,
             MockDeploymentScheduler(cluster_node_info_cache),
             cluster_node_info_cache,
@@ -373,7 +371,7 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
     if version is None:
-        version = DeploymentVersion(get_random_letters(), DeploymentConfig(), {})
+        version = DeploymentVersion(get_random_string(), DeploymentConfig(), {})
 
     class MockVersionedReplica(VersionedReplica):
         def __init__(self, version: DeploymentVersion):
@@ -2155,7 +2153,7 @@ def test_scale_num_replicas(
     """
 
     # State
-    version = get_random_letters()
+    version = get_random_string()
     deployment_id = DeploymentID("test_deployment", "test_app")
 
     # Create deployment state manager
@@ -2987,7 +2985,6 @@ def mock_deployment_state_manager_full(
             )
 
             return DeploymentStateManager(
-                "name",
                 kv_store,
                 mock_long_poll,
                 actor_names,
@@ -3208,7 +3205,6 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         all_current_actor_names = []
         all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(
-            DeploymentID("name", "my_app"),
             kv_store,
             mock_long_poll,
             all_current_actor_names,
@@ -3286,7 +3282,7 @@ def test_resource_requirements_none():
         available_resources = {}
 
     # Make a DeploymentReplica just to accesss its resource_requirement function
-    replica = DeploymentReplica(None, "random_tag", None, None)
+    replica = DeploymentReplica("random_tag", None, None)
     replica._actor = FakeActor()
 
     # resource_requirements() should not error
@@ -3298,7 +3294,6 @@ class TestActorReplicaWrapper:
         actor_replica = ActorReplicaWrapper(
             version=deployment_version("1"),
             actor_name="test",
-            controller_name="test_controller",
             replica_tag="test_tag",
             deployment_id=DeploymentID("test_deployment", "test_app"),
         )

@@ -140,7 +140,12 @@ class MultiGPULearnerThread(LearnerThread):
 
     @override(LearnerThread)
     def step(self) -> None:
-        assert self.loader_thread.is_alive()
+        if not self.loader_thread.is_alive():
+            raise RuntimeError(
+                "The `_MultiGPULoaderThread` has died! Will therefore also terminate "
+                "the `MultiGPULearnerThread`."
+            )
+
         with self.load_wait_timer:
             buffer_idx, released = self.ready_tower_stacks_buffer.get()
 

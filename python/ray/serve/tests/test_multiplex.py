@@ -22,7 +22,6 @@ def start_serve_with_context():
         app_name="fake_app",
         deployment="fake_deployment",
         replica_tag="fake_replica_tag",
-        controller_name=None,
         servable_object=None,
     )
     yield

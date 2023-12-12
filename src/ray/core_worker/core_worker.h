@@ -265,6 +265,9 @@ struct TaskToRetry {
 
   /// The details of the task.
   TaskSpecification task_spec;
+
+  /// Updates the actor seqno if true.
+  bool update_seqno;
 };
 
 /// Sorts TaskToRetry in descending order of the execution time.
@@ -838,7 +841,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
-  /// \param[in] max_retires max number of retry when the task fails.
+  /// \param[in] max_retries max number of retry when the task fails.
+  /// \param[in] retry_exceptions whether a user exception/error is eligible to retry.
   /// \param[in] scheduling_strategy Strategy about how to schedule the task.
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
@@ -847,7 +851,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Default is an empty string, which will be treated as an allow-all in the
   /// language worker.
-  /// param[in] current_task_id The current task_id that submits the task.
+  /// \param[in] current_task_id The current task_id that submits the task.
   /// If Nil() is given, it will be automatically propagated from worker_context.
   /// This is used when worker_context cannot reliably obtain the curernt task_id
   /// i.e., Python async actors.
@@ -917,6 +921,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
+  /// \param[in] max_retries max number of retry when the task fails.
+  /// \param[in] serialized_retry_exception_allowlist A serialized exception list
+  /// that serves as an allowlist of frontend-language exceptions/errors that should be
+  /// retried. Empty string means an allow-all in the language worker.
   /// \param[out] task_returns The object returned by this task
   /// param[in] current_task_id The current task_id that submits the task.
   /// If Nil() is given, it will be automatically propagated from worker_context.
@@ -928,6 +936,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                          const RayFunction &function,
                          const std::vector<std::unique_ptr<TaskArg>> &args,
                          const TaskOptions &task_options,
+                         int max_retries,
+                         bool retry_exceptions,
+                         const std::string &serialized_retry_exception_allowlist,
                          std::vector<rpc::ObjectReference> &task_returns,
                          const TaskID current_task_id = TaskID::Nil());
 
@@ -1288,7 +1299,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param stderr_path Path to stderr log file.
   /// \param stdout_start_offset Start offset of the stdout for this task.
   /// \param stderr_start_offset Start offset of the stderr for this task.
-  void RecordTaskLogStart(const std::string &stdout_path,
+  void RecordTaskLogStart(const TaskID &task_id,
+                          int32_t attempt_number,
+                          const std::string &stdout_path,
                           const std::string &stderr_path,
                           int64_t stdout_start_offset,
                           int64_t stderr_start_offset) const;
@@ -1299,7 +1312,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param stdout_end_offset End offset of the stdout for this task.
   /// \param stderr_end_offset End offset of the stderr for this task.
-  void RecordTaskLogEnd(int64_t stdout_end_offset, int64_t stderr_end_offset) const;
+  void RecordTaskLogEnd(const TaskID &task_id,
+                        int32_t attempt_number,
+                        int64_t stdout_end_offset,
+                        int64_t stderr_end_offset) const;
 
   /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
   /// exit when it drains all tasks and cleans all owned objects.
