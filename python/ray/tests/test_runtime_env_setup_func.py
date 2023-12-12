@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray.job_submission import JobSubmissionClient, JobStatus
-from ray._private.test_utils import format_web_url
+from ray._private.test_utils import format_web_url, wait_for_condition
 
 
 def _hook():
@@ -236,7 +236,11 @@ ray.get(f.remote())
             },
         )
         print(client.get_job_logs(job))
-        assert client.get_job_status(job) == JobStatus.SUCCEEDED
+
+        def verify():
+            return client.get_job_status(job) == JobStatus.SUCCEEDED
+
+        wait_for_condition(verify)
 
     finally:
         if file_path:

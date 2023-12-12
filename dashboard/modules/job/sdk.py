@@ -222,7 +222,7 @@ class JobSubmissionClient(SubmissionClient):
                 "When a job submission API is used, `worker_process_setup_hook` "
                 "only allows a string type (module name). "
                 "Specify `worker_process_setup_hook` via "
-                "ray.init within a driver to use a function type. "
+                "ray.init within a driver to use a `Callable` type. "
             )
 
         # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
