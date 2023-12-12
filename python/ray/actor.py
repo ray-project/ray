@@ -234,6 +234,7 @@ class ActorMethod:
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
         )
+
         # TODO(sang): unify option passing
         options = {
             "name": name,

@@ -1,5 +1,6 @@
 import os
 import logging
+import jsonschema
 from typing import List
 import json
 from ray._private.runtime_env.constants import (
@@ -79,8 +80,6 @@ class RuntimeEnvPluginSchemaManager:
 
     @classmethod
     def validate(cls, name, instance):
-        # Import here because import this takes long time.
-        import jsonschema
         if not cls.loaded:
             # Load the schemas lazily.
             cls._load_default_schemas()
