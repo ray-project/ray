@@ -230,6 +230,12 @@ class ActorMethod:
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
     ):
+        from ray.dag.class_node import (
+            PARENT_CLASS_NODE_KEY,
+            PREV_CLASS_METHOD_CALL_KEY,
+            ClassMethodNode,
+        )
+
         # TODO(sang): unify option passing
         options = {
             "name": name,
@@ -237,8 +243,16 @@ class ActorMethod:
             "concurrency_group": concurrency_group,
             "_generator_backpressure_num_objects": _generator_backpressure_num_objects,
         }
+
+        actor = self._actor_ref()
+        if actor is None:
+            # Ref is GC'ed. It happens when the actor handle is GC'ed
+            # when bind is called.
+            raise RuntimeError("Lost reference to actor")
+
         other_args_to_resolve = {
-            PARENT_CLASS_NODE_KEY: self._actor_ref,
+            PARENT_CLASS_NODE_KEY: actor,
+            PREV_CLASS_METHOD_CALL_KEY: None,
         }
 
         node = ClassMethodNode(
@@ -278,9 +292,11 @@ class ActorMethod:
             )
 
         def invocation(args, kwargs):
-            actor = self._actor_hard_ref or self._actor_ref
+            actor = self._actor_hard_ref or self._actor_ref()
+
             if actor is None:
                 raise RuntimeError("Lost reference to actor")
+
             return actor._actor_method_call(
                 self._method_name,
                 args=args,

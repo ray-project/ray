@@ -416,7 +416,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
     int64_t metadata_size,
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
-#ifndef _WIN32
+#ifdef __linux__
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   auto object_entry = objects_in_use_.find(object_id);
   if (object_entry == objects_in_use_.end()) {
@@ -467,7 +467,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
 
 Status PlasmaClient::Impl::ExperimentalMutableObjectWriteRelease(
     const ObjectID &object_id) {
-#ifndef _WIN32
+#ifdef __linux__
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   auto object_entry = objects_in_use_.find(object_id);
   if (object_entry == objects_in_use_.end()) {
@@ -742,7 +742,7 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
 
 Status PlasmaClient::Impl::EnsureGetAcquired(
     std::unique_ptr<ObjectInUseEntry> &object_entry) {
-#ifndef _WIN32
+#ifdef __linux__
   PlasmaObject *object = &object_entry->object;
   RAY_CHECK(object->is_experimental_mutable_object);
   auto plasma_header = GetPlasmaObjectHeader(*object);
@@ -776,7 +776,7 @@ Status PlasmaClient::Impl::EnsureGetAcquired(
 
 Status PlasmaClient::Impl::ExperimentalMutableObjectReadRelease(
     const ObjectID &object_id) {
-#ifndef _WIN32
+#ifdef __linux__
   RAY_LOG(DEBUG) << "Try to release Get for object " << object_id;
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
 

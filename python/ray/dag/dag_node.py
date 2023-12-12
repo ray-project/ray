@@ -117,10 +117,14 @@ class DAGNode(DAGNodeBase):
         return self._compiled_dag
 
     def execute(
+<<<<<<< HEAD
         self,
         *args,
         _ray_cache_refs: bool = False,
         **kwargs,
+=======
+        self, *args, _ray_cache_refs: bool = False, **kwargs
+>>>>>>> 1a090a0f13492fbaa0561514488bf9b3638af6af
     ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this DAG using the Ray default executor _execute_impl().
 
