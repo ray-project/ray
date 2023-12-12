@@ -92,7 +92,7 @@ Compare a PyTorch training script with and without Ray Train.
     .. tab-item:: PyTorch + Ray Train
 
         .. code-block:: python
-            :emphasize-lines: 12, 15, 21, 23, 35, 50, 54-57, 58, 63, 66-73
+            :emphasize-lines: 12, 14, 21, 55-58, 59, 63, 66-68, 72-73, 76
 
             import os
             import tempfile
@@ -113,9 +113,9 @@ Compare a PyTorch training script with and without Ray Train.
                 model.conv1 = torch.nn.Conv2d(
                     1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
                 )
-                # model.to("cuda")  # This is done by `prepare_model`
                 # [1] Prepare model.
                 model = ray.train.torch.prepare_model(model)
+                # model.to("cuda")  # This is done by `prepare_model`
                 criterion = CrossEntropyLoss()
                 optimizer = Adam(model.parameters(), lr=0.001)
 
