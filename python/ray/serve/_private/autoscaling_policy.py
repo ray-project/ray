@@ -83,6 +83,7 @@ class AutoscalingPolicyManager:
         If the autoscaling policy is not ready or returning the same number as the
         current replica number, return None to not execute autoscaling.
         """
+        print("get_decision_num_replicas!!!", curr_target_num_replicas)
         capacity_adjusted_min_replicas = self.get_current_lower_bound(
             target_capacity,
             target_capacity_direction,
@@ -102,10 +103,11 @@ class AutoscalingPolicyManager:
         # made. We do not currently force kill and restart the scaling call due to
         # complexities. We will add docs to warn users not to make long-running calls
         # here, and they can set timeout in their policies if needed.
-        decision_num_replicas = self.thread_manager.get_decision_num_replicas(
-            context=self.context
-        )
-
+        # decision_num_replicas = self.thread_manager.get_decision_num_replicas(
+        #     context=self.context
+        # )
+        self.thread_manager(context=self.context)
+        decision_num_replicas = self.thread_manager.decision_num_replicas
         if decision_num_replicas is not None:
             self.context.last_scale_time = time.time()
             return self.apply_bounds(

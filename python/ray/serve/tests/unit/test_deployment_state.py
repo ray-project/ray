@@ -41,6 +41,8 @@ from ray.serve._private.utils import (
     get_random_letters,
 )
 
+# from ray._private.test_utils import wait_for_condition
+
 
 class FakeRemoteFunction:
     def remote(self):
@@ -2238,6 +2240,7 @@ def test_scale_num_replicas(
 
 
 @pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
+# @pytest.mark.parametrize("target_capacity_direction", ["down"])
 def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction):
     """Test autoscaling up and down.
 
@@ -2310,6 +2313,12 @@ def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction
         )
         assert depstate.curr_status_info.status == DeploymentStatus.UPSCALING
     else:
+        # wait_for_condition(
+        #     condition_predictor=check_counts,
+        #     deployment_state=depstate,
+        #     total=3,
+        #     by_state=[(ReplicaState.STOPPING, 3)],
+        # )
         check_counts(depstate, total=3, by_state=[(ReplicaState.STOPPING, 3)])
         assert depstate.curr_status_info.status == DeploymentStatus.DOWNSCALING
     assert (
