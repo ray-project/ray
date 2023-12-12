@@ -72,7 +72,7 @@ make doctest
 
 You can now add [executable notebooks](https://myst-nb.readthedocs.io/en/latest/use/markdown.html) to this project,
 which will get built into the documentation.
-An [example can be found here](./source/serve/tutorials/rllib.md).
+<!--An [example can be found here](./source/serve/tutorials/rllib.md).-->
 By default, building the docs with `make develop` will not run those notebooks.
 If you set the `RUN_NOTEBOOKS` environment variable to `"cache"`, each notebook cell will be run when you build the
 documentation, and outputs will be cached into `_build/.jupyter_cache`.

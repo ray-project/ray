@@ -216,13 +216,11 @@ class ActorReplicaWrapper:
     def __init__(
         self,
         actor_name: str,
-        controller_name: str,
         replica_tag: ReplicaTag,
         deployment_id: DeploymentID,
         version: DeploymentVersion,
     ):
         self._actor_name = actor_name
-        self._controller_name = controller_name
 
         self._replica_tag = replica_tag
         self._deployment_id = deployment_id
@@ -417,7 +415,6 @@ class ActorReplicaWrapper:
                 else cloudpickle.dumps({}),
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
-                self._controller_name,
                 self.app_name,
             )
         # TODO(simon): unify the constructor arguments across language
@@ -449,7 +446,6 @@ class ActorReplicaWrapper:
                 # byte[] deploymentVersionBytes,
                 self._version.to_proto().SerializeToString(),
                 # String controllerName
-                self._controller_name,
                 # String appName
                 self.app_name,
             )
@@ -876,19 +872,16 @@ class DeploymentReplica(VersionedReplica):
 
     def __init__(
         self,
-        controller_name: str,
         replica_tag: ReplicaTag,
         deployment_id: DeploymentID,
         version: DeploymentVersion,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
-            controller_name,
             replica_tag,
             deployment_id,
             version,
         )
-        self._controller_name = controller_name
         self._deployment_id = deployment_id
         self._replica_tag = replica_tag
         self._start_time = None
@@ -1220,14 +1213,12 @@ class DeploymentState:
     def __init__(
         self,
         id: DeploymentID,
-        controller_name: str,
         long_poll_host: LongPollHost,
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         _save_checkpoint_func: Callable,
     ):
         self._id = id
-        self._controller_name: str = controller_name
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
@@ -1312,7 +1303,6 @@ class DeploymentState:
         for replica_actor_name in replica_actor_names:
             replica_name: ReplicaName = ReplicaName.from_str(replica_actor_name)
             new_deployment_replica = DeploymentReplica(
-                self._controller_name,
                 replica_name.replica_tag,
                 replica_name.deployment_id,
                 self._target_state.version,
@@ -1865,7 +1855,6 @@ class DeploymentState:
                         self.app_name, self.deployment_name, get_random_string()
                     )
                     new_deployment_replica = DeploymentReplica(
-                        self._controller_name,
                         replica_name.replica_tag,
                         self._id,
                         self._target_state.version,
@@ -2185,7 +2174,6 @@ class DeploymentState:
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
                     self._curr_status_info = self._curr_status_info.update(
-                        status=DeploymentStatus.UPDATING,
                         message=message,
                     )
 
@@ -2203,7 +2191,6 @@ class DeploymentState:
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
                     self._curr_status_info = self._curr_status_info.update(
-                        status=DeploymentStatus.UPDATING,
                         message=message,
                     )
 
@@ -2322,14 +2309,12 @@ class DeploymentStateManager:
 
     def __init__(
         self,
-        controller_name: str,
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
     ):
-        self._controller_name = controller_name
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
@@ -2353,7 +2338,6 @@ class DeploymentStateManager:
 
         return DeploymentState(
             deployment_id,
-            self._controller_name,
             self._long_poll_host,
             self._deployment_scheduler,
             self._cluster_node_info_cache,
