@@ -142,6 +142,21 @@ Following are some examples of common use-cases:
         automatically.
 
 
+.. warning::
+
+    Specifying a *shared storage location* (such as cloud storage or NFS) is
+    *optional* for single-node clusters, but it is **required for multi-node clusters.**
+    Using a local path will :ref:`raise an error <multinode-local-storage-warning>`
+    during checkpointing for multi-node clusters.
+
+    .. testcode:: python
+        :skipif: True
+
+        trainer = XGBoostTrainer(
+            ..., run_config=ray.train.RunConfig(storage_path="s3://...")
+        )
+
+
 How many remote actors should you use?
 --------------------------------------
 

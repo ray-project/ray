@@ -160,7 +160,8 @@ Compare a PyTorch Lightning training script with and without Ray Train.
                 train_func,
                 scaling_config=scaling_config,
                 # [3a] If running in a multi-node cluster, this is where you
-                # should configure the run's persistent storage.
+                # should configure the run's persistent storage that is accessible
+                # across all worker nodes.
                 # run_config=ray.train.RunConfig(storage_path="s3://..."),
             )
             result: ray.train.Result = trainer.fit()
@@ -344,59 +345,8 @@ your configurations.
          ...
 
 
-Configure scale and GPUs
-------------------------
+.. include:: ./common/torch-configure-run.rst
 
-Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
-
-1. `num_workers` - The number of distributed training worker processes.
-2. `use_gpu` - Whether each worker should use a GPU (or CPU).
-
-.. testcode::
-
-    from ray.train import ScalingConfig
-    scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
-
-
-For more details, see :ref:`train_scaling_config`.
-
-Launch a training job
----------------------
-
-Tying this all together, you can now launch a distributed training job
-with a :class:`~ray.train.torch.TorchTrainer`.
-
-.. testcode::
-    :hide:
-
-    from ray.train import ScalingConfig
-
-    train_func = lambda: None
-    scaling_config = ScalingConfig(num_workers=1)
-
-.. testcode::
-
-    from ray.train.torch import TorchTrainer
-
-    trainer = TorchTrainer(train_func, scaling_config=scaling_config)
-    result = trainer.fit()
-
-See :ref:`train-run-config` for more configuration options for `TorchTrainer`.
-
-Access training results
------------------------
-
-After training completes, Ray Train returns a :class:`~ray.train.Result` object, which contains
-information about the training run, including the metrics and checkpoints reported during training.
-
-.. testcode::
-
-    result.metrics     # The metrics reported during training.
-    result.checkpoint  # The latest checkpoint reported during training.
-    result.path     # The path where logs are stored.
-    result.error       # The exception that was raised, if training failed.
-
-.. TODO: Add results guide
 
 Next steps
 ----------
