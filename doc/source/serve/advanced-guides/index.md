@@ -16,7 +16,7 @@ deploy-vm
 multi-app-container
 ```
 
-If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quickstart](serve-getting-started).
+If you’re new to Ray Serve, start with the [Ray Serve Quickstart](serve-getting-started).
 
 Use these advanced guides for more options and configurations:
 - [Pass Arguments to Applications](app-builder-guide)

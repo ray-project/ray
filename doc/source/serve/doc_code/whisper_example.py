@@ -15,7 +15,7 @@ def hard_normalize(word):
 
 
 def clean_whisper_alignments(whisper_word_alignments: List[dict]) -> List[dict]:
-    """change required to match gentle's tokenization with Whisper's word alignments"""
+    """Change required to match gentle's tokenization with Whisper's word alignments"""
 
     processed_words = []
     for word_alignment in whisper_word_alignments:
