@@ -187,7 +187,7 @@ std::optional<std::pair<std::string, int>> ParseIffMovedError(
 void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_context,
                                           void *raw_reply,
                                           void *privdata) {
-  auto *request_cxt = (RedisRequestContext *)privdata;
+  auto *request_cxt = static_cast<RedisRequestContext *>(privdata);
   auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
   // Error happened.
   if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
@@ -451,8 +451,7 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK_OK(AuthenticateRedis(context_.get(), password));
 
   // Connect to async context
-  std::unique_ptr<redisAsyncContext, RedisContextDeleter<redisAsyncContext>>
-      async_context;
+  std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
   {
     auto resp = ConnectWithRetries<redisAsyncContext>(address, port, redisAsyncConnect);
     RAY_CHECK_OK(resp.first);

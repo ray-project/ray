@@ -33,24 +33,10 @@ typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
 namespace ray {
 namespace gcs {
 
-template <typename RedisContextType>
 struct RedisContextDeleter {
   RedisContextDeleter(){};
 
-  void operator()(RedisContextType *context) {}
-};
-
-template <>
-struct RedisContextDeleter<redisContext> {
-  RedisContextDeleter(){};
-
   void operator()(redisContext *context) { redisFree(context); }
-};
-
-template <>
-struct RedisContextDeleter<redisAsyncContext> {
-  RedisContextDeleter(){};
-
   void operator()(redisAsyncContext *context) { redisAsyncFree(context); }
 };
 
@@ -60,8 +46,7 @@ struct RedisContextDeleter<redisAsyncContext> {
 class RedisAsyncContext {
  public:
   explicit RedisAsyncContext(
-      std::unique_ptr<redisAsyncContext, RedisContextDeleter<redisAsyncContext>>
-          redis_async_context);
+      std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context);
 
   /// Get the raw 'redisAsyncContext' pointer.
   ///
@@ -106,8 +91,7 @@ class RedisAsyncContext {
   /// data and don't actually do any IO operations. So the perf impact of adding the lock
   /// should be minimum.
   std::mutex mutex_;
-  std::unique_ptr<redisAsyncContext, RedisContextDeleter<redisAsyncContext>>
-      redis_async_context_;
+  std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context_;
 };
 
 }  // namespace gcs

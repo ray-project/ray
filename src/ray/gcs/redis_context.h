@@ -171,7 +171,7 @@ class RedisContext {
   RedisAsyncContext &async_context() {
     absl::MutexLock l(&mu_);
     RAY_CHECK(redis_async_context_);
-    return *redis_async_context_;
+    return *redis_async_context_.get();
   }
 
   instrumented_io_context &io_service() { return io_service_; }
@@ -183,15 +183,14 @@ class RedisContext {
 
   instrumented_io_context &io_service_;
 
-  std::unique_ptr<redisContext, RedisContextDeleter<redisContext>> context_;
+  std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   absl::Mutex mu_;
   std::shared_ptr<RedisAsyncContext> redis_async_context_ ABSL_GUARDED_BY(mu_);
 };
 
 template <typename RedisContextType, typename RedisConnectFunctionType>
-std::pair<Status,
-          std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>>
+std::pair<Status, std::unique_ptr<RedisContextType, RedisContextDeleter>>
 ConnectWithoutRetries(const std::string &address,
                       int port,
                       const RedisConnectFunctionType &connect_function) {
@@ -209,15 +208,13 @@ ConnectWithoutRetries(const std::string &address,
     }
     return std::make_pair(Status::RedisError(oss.str()), nullptr);
   }
-  return std::make_pair(
-      Status::OK(),
-      std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>(
-          newContext, RedisContextDeleter<RedisContextType>()));
+  return std::make_pair(Status::OK(),
+                        std::unique_ptr<RedisContextType, RedisContextDeleter>(
+                            newContext, RedisContextDeleter()));
 }
 
 template <typename RedisContextType, typename RedisConnectFunctionType>
-std::pair<Status,
-          std::unique_ptr<RedisContextType, RedisContextDeleter<RedisContextType>>>
+std::pair<Status, std::unique_ptr<RedisContextType, RedisContextDeleter>>
 ConnectWithRetries(const std::string &address,
                    int port,
                    const RedisConnectFunctionType &connect_function) {
