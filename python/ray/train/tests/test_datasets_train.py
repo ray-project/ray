@@ -542,9 +542,9 @@ if __name__ == "__main__":
 
     start_time = time.time()
 
-    ray.init(address=address)
-
     make_and_upload_dataset(dir_path)
+
+    ray.init(address=address)
 
     # Setup MLflow.
 
