@@ -27,6 +27,7 @@ from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
+    SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -112,7 +113,6 @@ class ServeController:
 
     async def __init__(
         self,
-        controller_name: str,
         *,
         http_config: HTTPOptions,
         global_logging_config: LoggingConfig,
@@ -124,9 +124,8 @@ class ServeController:
         ), "Controller must be on the head node."
 
         self.ray_worker_namespace = ray.get_runtime_context().namespace
-        self.controller_name = controller_name
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
+        kv_store_namespace = f"ray-serve-{self.ray_worker_namespace}"
         self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
 
         self.long_poll_host = LongPollHost()
@@ -159,7 +158,6 @@ class ServeController:
         self.cluster_node_info_cache.update()
 
         self.proxy_state_manager = ProxyStateManager(
-            controller_name,
             http_config,
             self._controller_node_id,
             self.cluster_node_info_cache,
@@ -179,7 +177,6 @@ class ServeController:
         ]
 
         self.deployment_state_manager = DeploymentStateManager(
-            controller_name,
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
@@ -197,7 +194,7 @@ class ServeController:
             node_id=ray.get_runtime_context().get_node_id(),
             node_ip=ray.util.get_node_ip_address(),
             actor_id=ray.get_runtime_context().get_actor_id(),
-            actor_name=self.controller_name,
+            actor_name=SERVE_CONTROLLER_NAME,
             worker_id=ray.get_runtime_context().get_worker_id(),
             log_file_path=get_component_logger_file_path(),
         )
@@ -1168,11 +1165,12 @@ class ServeControllerAvatar:
 
     def __init__(
         self,
-        controller_name: str,
         http_proxy_port: int = 8000,
     ):
         try:
-            self._controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
+            self._controller = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
         except ValueError:
             self._controller = None
         if self._controller is None:
@@ -1181,7 +1179,7 @@ class ServeControllerAvatar:
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
                 num_cpus=0,
-                name=controller_name,
+                name=SERVE_CONTROLLER_NAME,
                 lifetime="detached",
                 max_restarts=-1,
                 max_task_retries=-1,
@@ -1189,7 +1187,6 @@ class ServeControllerAvatar:
                 namespace=SERVE_NAMESPACE,
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
             ).remote(
-                controller_name,
                 http_config=http_config,
                 global_logging_config=logging_config,
             )
