@@ -170,6 +170,8 @@ table PlasmaCreateReply {
   // The size in bytes of the segment for the store file descriptor (needed to
   // call mmap).
   mmap_size: long;
+  // Whether the created mmap region may be unmapped later.
+  may_unmap: bool;
   // CUDA IPC Handle for objects on GPU.
   ipc_handle: CudaHandle;
 }
@@ -224,6 +226,8 @@ table PlasmaGetReply {
   // Size in bytes of the segment for each store file descriptor (needed to call
   // mmap). This list must have the same length as store_fds.
   mmap_sizes: [long];
+  // Whether each file descriptior may be unmapped later.
+  may_unmaps: [bool];
   // The number of elements in both object_ids and plasma_objects arrays must agree.
   handles: [CudaHandle];
 }
@@ -231,6 +235,9 @@ table PlasmaGetReply {
 table PlasmaReleaseRequest {
   // ID of the object to be released.
   object_id: string;
+  // Client concerns this request may unmap a mmap region, and will wait for a reply.
+  // If false, the server should not send a PlasmaReleaseReply.
+  may_unmap: bool;
 }
 
 table PlasmaReleaseReply {

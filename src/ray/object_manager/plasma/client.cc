@@ -178,7 +178,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   ///
   /// \param store_fd File descriptor to fetch from the store.
   /// \return The pointer corresponding to store_fd.
-  uint8_t *GetStoreFdAndMmap(MEMFD_TYPE store_fd, int64_t map_size);
+  uint8_t *GetStoreFdAndMmap(MEMFD_TYPE store_fd, int64_t map_size, bool may_unmap);
 
   /// This is a helper method for marking an object as unused by this client.
   ///
@@ -236,7 +236,8 @@ PlasmaClient::Impl::~Impl() {}
 // return the pointer that was returned by mmap, otherwise mmap it and store the
 // pointer in a hash table.
 uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
-                                               int64_t map_size) {
+                                               int64_t map_size,
+                                               bool may_unmap) {
   auto entry = mmap_table_.find(store_fd_val);
   if (entry != mmap_table_.end()) {
     return entry->second->pointer();
@@ -250,7 +251,8 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
       mmap_table_.erase(dedup_fd_table_[store_fd_val.first]);
     }
     dedup_fd_table_[store_fd_val.first] = store_fd_val;
-    mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
+    mmap_table_[store_fd_val] =
+        std::make_unique<ClientMmapTableEntry>(fd, map_size, may_unmap);
     return mmap_table_[store_fd_val]->pointer();
   }
 }
@@ -305,6 +307,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   PlasmaObject object;
   MEMFD_TYPE store_fd;
   int64_t mmap_size;
+  bool may_unmap;
 
   if (retry_with_request_id) {
     RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(),
@@ -313,15 +316,22 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
                                       retry_with_request_id,
                                       &object,
                                       &store_fd,
-                                      &mmap_size));
+                                      &mmap_size,
+                                      &may_unmap));
     if (*retry_with_request_id > 0) {
       // The client should retry the request.
       return Status::OK();
     }
   } else {
     uint64_t unused = 0;
-    RAY_RETURN_NOT_OK(ReadCreateReply(
-        buffer.data(), buffer.size(), &id, &unused, &object, &store_fd, &mmap_size));
+    RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(),
+                                      buffer.size(),
+                                      &id,
+                                      &unused,
+                                      &object,
+                                      &store_fd,
+                                      &mmap_size,
+                                      &may_unmap));
     RAY_CHECK(unused == 0);
   }
 
@@ -331,10 +341,11 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     // The metadata should come right after the data.
     RAY_CHECK(object.metadata_offset == object.data_offset + object.data_size);
     RAY_LOG(DEBUG) << "GetStoreFdAndMmap " << store_fd.first << ", " << store_fd.second
-                   << ", size " << mmap_size << " for object id " << id;
+                   << ", size " << mmap_size << " for object id " << id << ", may_unmap "
+                   << may_unmap;
     *data = std::make_shared<PlasmaMutableBuffer>(
         shared_from_this(),
-        GetStoreFdAndMmap(store_fd, mmap_size) + object.data_offset,
+        GetStoreFdAndMmap(store_fd, mmap_size, may_unmap) + object.data_offset,
         object.data_size);
     // If plasma_create is being called from a transfer, then we will not copy the
     // metadata here. The metadata will be written along with the data streamed
@@ -493,13 +504,15 @@ Status PlasmaClient::Impl::GetBuffers(
   PlasmaObject *object;
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
+  std::vector<bool> may_unmaps;
   RAY_RETURN_NOT_OK(ReadGetReply(buffer.data(),
                                  buffer.size(),
                                  received_object_ids.data(),
                                  object_data.data(),
                                  num_objects,
                                  store_fds,
-                                 mmap_sizes));
+                                 mmap_sizes,
+                                 may_unmaps));
 
   // We mmap all of the file descriptors here so that we can avoid look them up
   // in the subsequent loop based on just the store file descriptor and without
@@ -508,7 +521,7 @@ Status PlasmaClient::Impl::GetBuffers(
     RAY_LOG(DEBUG) << "GetStoreFdAndMmap " << store_fds[i].first << ", "
                    << store_fds[i].second << ", size " << mmap_sizes[i]
                    << " for object id " << received_object_ids[i];
-    GetStoreFdAndMmap(store_fds[i], mmap_sizes[i]);
+    GetStoreFdAndMmap(store_fds[i], mmap_sizes[i], may_unmaps[i]);
   }
 
   for (int64_t i = 0; i < num_objects; ++i) {
@@ -594,29 +607,41 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   // Check if the client is no longer using this object.
   if (object_entry->second->count == 0) {
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
-    MEMFD_TYPE fd = object_entry->second->object.store_fd;
-    // Tell the store that the client no longer needs the object.
-    RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
-    RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id));
-    std::vector<uint8_t> buffer;
-    RAY_RETURN_NOT_OK(
-        PlasmaReceive(store_conn_, MessageType::PlasmaReleaseReply, &buffer));
-    ObjectID released_object_id;
-
-    // `should_unmap` is set to true by the plasma server, when the mmap section is
-    // fallback-allocated and is no longer used. i.e. if the object ID is in the main
-    // memory, this boolean is always false.
-    bool should_unmap;
-    RAY_RETURN_NOT_OK(ReadReleaseReply(
-        buffer.data(), buffer.size(), &released_object_id, &should_unmap));
-    if (should_unmap) {
-      auto mmap_entry = mmap_table_.find(fd);
+    // If the fd may be unmapped, we wait for the plasma server to send a ReleaseReply.
+    // Otherwise, skip the reply to boost performance.
+    const MEMFD_TYPE fd = object_entry->second->object.store_fd;
+    bool may_unmap = false;
+    {
+      const auto mmap_entry = mmap_table_.find(fd);
       // Release call is idempotent: if we already released, it's ok.
       if (mmap_entry != mmap_table_.end()) {
-        mmap_table_.erase(mmap_entry);
+        may_unmap = mmap_entry->second->may_unmap();
       }
     }
+    // Tell the store that the client no longer needs the object.
+    RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
+    RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id, may_unmap));
+    if (may_unmap) {
+      // Now, since the object release may unmap the mmap, we wait for a reply.
+      std::vector<uint8_t> buffer;
+      RAY_RETURN_NOT_OK(
+          PlasmaReceive(store_conn_, MessageType::PlasmaReleaseReply, &buffer));
+      ObjectID released_object_id;
 
+      // `should_unmap` is set to true by the plasma server, when the mmap section is
+      // fallback-allocated and is no longer used. i.e. if the object ID is in the main
+      // memory, this boolean is always false.
+      bool should_unmap;
+      RAY_RETURN_NOT_OK(ReadReleaseReply(
+          buffer.data(), buffer.size(), &released_object_id, &should_unmap));
+      if (should_unmap) {
+        auto mmap_entry = mmap_table_.find(fd);
+        // Release call is idempotent: if we already released, it's ok.
+        if (mmap_entry != mmap_table_.end()) {
+          mmap_table_.erase(mmap_entry);
+        }
+      }
+    }
     auto iter = deletion_cache_.find(object_id);
     if (iter != deletion_cache_.end()) {
       deletion_cache_.erase(object_id);

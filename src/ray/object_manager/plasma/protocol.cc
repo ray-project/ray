@@ -274,6 +274,7 @@ Status SendCreateReply(const std::shared_ptr<Client> &client,
   crb.add_store_fd(FD2INT(object.store_fd.first));
   crb.add_unique_fd_id(object.store_fd.second);
   crb.add_mmap_size(object.mmap_size);
+  crb.add_may_unmap(object.fallback_allocated);
   if (object.device_num != 0) {
     RAY_LOG(FATAL) << "This should be unreachable.";
   }
@@ -287,7 +288,8 @@ Status ReadCreateReply(uint8_t *data,
                        uint64_t *retry_with_request_id,
                        PlasmaObject *object,
                        MEMFD_TYPE *store_fd,
-                       int64_t *mmap_size) {
+                       int64_t *mmap_size,
+                       bool *may_unmap) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
@@ -308,6 +310,7 @@ Status ReadCreateReply(uint8_t *data,
   store_fd->first = INT2FD(message->store_fd());
   store_fd->second = message->unique_fd_id();
   *mmap_size = message->mmap_size();
+  *may_unmap = message->may_unmap();
 
   object->device_num = message->plasma_object()->device_num();
   return PlasmaErrorStatus(message->error());
@@ -378,18 +381,23 @@ Status ReadSealReply(uint8_t *data, size_t size, ObjectID *object_id) {
 // Release messages.
 
 Status SendReleaseRequest(const std::shared_ptr<StoreConn> &store_conn,
-                          ObjectID object_id) {
+                          ObjectID object_id,
+                          bool may_unmap) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      fb::CreatePlasmaReleaseRequest(fbb, fbb.CreateString(object_id.Binary()));
+  auto message = fb::CreatePlasmaReleaseRequest(
+      fbb, fbb.CreateString(object_id.Binary()), may_unmap);
   return PlasmaSend(store_conn, MessageType::PlasmaReleaseRequest, &fbb, message);
 }
 
-Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id) {
+Status ReadReleaseRequest(uint8_t *data,
+                          size_t size,
+                          ObjectID *object_id,
+                          bool *may_unmap) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaReleaseRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
+  *may_unmap = message->may_unmap();
   return Status::OK();
 }
 
@@ -602,7 +610,8 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                     absl::flat_hash_map<ObjectID, PlasmaObject> &plasma_objects,
                     int64_t num_objects,
                     const std::vector<MEMFD_TYPE> &store_fds,
-                    const std::vector<int64_t> &mmap_sizes) {
+                    const std::vector<int64_t> &mmap_sizes,
+                    const std::vector<bool> &may_unmaps) {
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<PlasmaObjectSpec> objects;
 
@@ -633,6 +642,7 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
       fbb.CreateVector(MakeNonNull(store_fds_as_int.data()), store_fds_as_int.size()),
       fbb.CreateVector(MakeNonNull(unique_fd_ids.data()), unique_fd_ids.size()),
       fbb.CreateVector(MakeNonNull(mmap_sizes.data()), mmap_sizes.size()),
+      fbb.CreateVector(may_unmaps),
       fbb.CreateVector(MakeNonNull(handles.data()), handles.size()));
   return PlasmaSend(client, MessageType::PlasmaGetReply, &fbb, message);
 }
@@ -643,7 +653,8 @@ Status ReadGetReply(uint8_t *data,
                     PlasmaObject plasma_objects[],
                     int64_t num_objects,
                     std::vector<MEMFD_TYPE> &store_fds,
-                    std::vector<int64_t> &mmap_sizes) {
+                    std::vector<int64_t> &mmap_sizes,
+                    std::vector<bool> &may_unmaps) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
@@ -665,6 +676,7 @@ Status ReadGetReply(uint8_t *data,
     store_fds.push_back(
         {INT2FD(message->store_fds()->Get(i)), message->unique_fd_ids()->Get(i)});
     mmap_sizes.push_back(message->mmap_sizes()->Get(i));
+    may_unmaps.push_back(message->may_unmaps()->Get(i));
   }
   return Status::OK();
 }

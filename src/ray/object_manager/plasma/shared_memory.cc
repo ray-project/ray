@@ -13,8 +13,10 @@
 
 namespace plasma {
 
-ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd, int64_t map_size)
-    : fd_(fd), pointer_(nullptr), length_(0) {
+ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd,
+                                           int64_t map_size,
+                                           bool may_unmap)
+    : fd_(fd), pointer_(nullptr), length_(0), may_unmap_(may_unmap) {
   // We subtract kMmapRegionsGap from the length that was added
   // in fake_mmap in malloc.h, to make map_size page-aligned again.
   length_ = map_size - kMmapRegionsGap;

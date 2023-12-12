@@ -112,7 +112,8 @@ Status ReadCreateReply(uint8_t *data,
                        uint64_t *retry_with_request_id,
                        PlasmaObject *object,
                        MEMFD_TYPE *store_fd,
-                       int64_t *mmap_size);
+                       int64_t *mmap_size,
+                       bool *may_unmap);
 
 Status SendAbortRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);
 
@@ -153,7 +154,8 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                     absl::flat_hash_map<ObjectID, PlasmaObject> &plasma_objects,
                     int64_t num_objects,
                     const std::vector<MEMFD_TYPE> &store_fds,
-                    const std::vector<int64_t> &mmap_sizes);
+                    const std::vector<int64_t> &mmap_sizes,
+                    const std::vector<bool> &may_unmaps);
 
 Status ReadGetReply(uint8_t *data,
                     size_t size,
@@ -161,14 +163,19 @@ Status ReadGetReply(uint8_t *data,
                     PlasmaObject plasma_objects[],
                     int64_t num_objects,
                     std::vector<MEMFD_TYPE> &store_fds,
-                    std::vector<int64_t> &mmap_sizes);
+                    std::vector<int64_t> &mmap_sizes,
+                    std::vector<bool> &may_unmaps);
 
 /* Plasma Release message functions. */
 
 Status SendReleaseRequest(const std::shared_ptr<StoreConn> &store_conn,
-                          ObjectID object_id);
+                          ObjectID object_id,
+                          bool may_unmap);
 
-Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id);
+Status ReadReleaseRequest(uint8_t *data,
+                          size_t size,
+                          ObjectID *object_id,
+                          bool *may_unmap);
 
 Status SendReleaseReply(const std::shared_ptr<Client> &client,
                         ObjectID object_id,
