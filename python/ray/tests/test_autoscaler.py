@@ -408,6 +408,8 @@ class AutoscalingTest(unittest.TestCase):
             comparison: Function to compare expected and actual number of nodes.
             tag_filters: Filters to apply to the node list.
             wait_update_callback: Callback to call between retries.
+            TODO(rickyx): This is a temporary workaround to avoid flaky tests.
+            With autoscaler v2, we should hopefully no longer needing this.
         """
         if comparison is None:
             comparison = self.assertEqual
@@ -2245,8 +2247,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
-        autoscaler.update()
-        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        self.waitForNodes(
+            2,
+            tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE},
+            wait_update_callback=lambda: autoscaler.update(),
+        )
 
     def testReportsConfigFailures(self):
         config = copy.deepcopy(SMALL_CLUSTER)
