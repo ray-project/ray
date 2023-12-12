@@ -400,8 +400,15 @@ class AutoscalingTest(unittest.TestCase):
         return len(self.provider.non_terminated_nodes(tag_filters))
 
     def waitForNodes(
-        self, expected, comparison=None, tag_filters=None, refresh_callback=None
+        self, expected, comparison=None, tag_filters=None, wait_update_callback=None
     ):
+        """
+        Args:
+            expected: Expected number of nodes.
+            comparison: Function to compare expected and actual number of nodes.
+            tag_filters: Filters to apply to the node list.
+            wait_update_callback: Callback to call between retries.
+        """
         if comparison is None:
             comparison = self.assertEqual
         MAX_ITER = 300
@@ -415,8 +422,8 @@ class AutoscalingTest(unittest.TestCase):
                     print(self.provider.non_terminated_nodes(tag_filters))
                     raise
             time.sleep(0.1)
-            if refresh_callback:
-                refresh_callback()
+            if wait_update_callback:
+                wait_update_callback()
 
     def create_provider(self, config, cluster_name):
         assert self.provider
@@ -1631,7 +1638,7 @@ class AutoscalingTest(unittest.TestCase):
             self.waitForNodes(
                 10,
                 tag_filters=WORKER_FILTER,
-                refresh_callback=lambda: autoscaler.update(),
+                wait_update_callback=lambda: autoscaler.update(),
             )
 
         # Awkward and unecessary to repeat the following check for BatchingNodeProvider.
@@ -2321,12 +2328,13 @@ class AutoscalingTest(unittest.TestCase):
             process_runner=runner,
             update_interval_s=0,
         )
-        autoscaler.update()
-        autoscaler.update()
-        self.waitForNodes(2)
+        self.waitForNodes(2, wait_update_callback=lambda: autoscaler.update())
         self.provider.finish_starting_nodes()
-        autoscaler.update()
-        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        self.waitForNodes(
+            2,
+            tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE},
+            wait_update_callback=lambda: autoscaler.update(),
+        )
         runner.calls = []
         new_config = copy.deepcopy(SMALL_CLUSTER)
         new_config["worker_setup_commands"] = ["cmdX", "cmdY"]
