@@ -30,7 +30,7 @@ Assuming the python file name is 'ray-on-spark-example1.py'.
         # ray head node is launched in spark application driver side.
         # Resources (CPU / GPU / memory) allocated to each ray worker node is equal
         # to resources allocated to the corresponding spark task.
-        setup_ray_cluster(num_worker_nodes=MAX_NUM_WORKER_NODES)
+        setup_ray_cluster(max_worker_nodes=MAX_NUM_WORKER_NODES)
 
         # You can any ray application code here, the ray application will be executed
         # on the ray cluster setup above.
@@ -76,7 +76,7 @@ Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
             .getOrCreate()
 
         cluster_address = setup_ray_cluster(
-            num_worker_nodes=MAX_NUM_WORKER_NODES
+            max_worker_nodes=MAX_NUM_WORKER_NODES
         )
         print("Ray cluster is set up, you can connect to this ray cluster "
               f"via address ray://{cluster_address}")
