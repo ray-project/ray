@@ -86,8 +86,11 @@ class EncodingType(str, Enum):
 @PublicAPI(stability="alpha")
 class LoggingConfig(BaseModel):
     """Logging config schema for configuring serve components logs.
+
     Example:
+
         .. code-block:: python
+
             from ray import serve
             from ray.serve.schema import LoggingConfig
             # Set log level for the deployment.

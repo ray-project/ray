@@ -365,13 +365,10 @@ Content-Type: application/json
 ## Observability
 
 ```{eval-rst}
-.. currentmodule:: ray.serve
-```
-
-```{eval-rst}
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+
    metrics.Counter
    metrics.Histogram
    metrics.Gauge
