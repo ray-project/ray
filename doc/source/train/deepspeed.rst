@@ -74,7 +74,7 @@ Below is a simple example of ZeRO-3 training with DeepSpeed only.
 .. tip::
 
     To run DeepSpeed with pure PyTorch, you **don't need to** provide any additional Ray Train utilities
-    like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training funciton. Instead,
+    like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training function. Instead,
     keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything
     for distributed training.
 

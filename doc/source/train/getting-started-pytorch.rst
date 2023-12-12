@@ -301,6 +301,36 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 
 For more details, see :ref:`train_scaling_config`.
 
+Configure persistent storage
+----------------------------
+
+Create a :class:`~ray.train.RunConfig` object to specify the path where results
+(including checkpoints and artifacts) will be saved.
+
+.. testcode::
+
+    from ray.train import RunConfig
+
+    # Local path
+    run_config = RunConfig(storage_path="/some/local/path", name="unique_run_name")
+
+    # Shared cloud storage URI
+    run_config = RunConfig(storage_path="s3://bucket", name="unique_run_name")
+
+    # Shared NFS path
+    run_config = RunConfig(storage_path="/mnt/nfs", name="unique_run_name")
+
+
+.. warning::
+
+    Specifying a **shared** storage location (such as cloud storage or NFS) is
+    *optional* for single-node clusters, but it is **required for multi-node clusters.**
+    Using a local path will raise an error during checkpointing for multi-node clusters.
+
+
+For more details, see :ref:`train-persistent-storage`.
+
+
 Launch a training job
 ---------------------
 
