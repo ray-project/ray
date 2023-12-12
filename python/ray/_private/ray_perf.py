@@ -9,7 +9,7 @@ import multiprocessing
 import ray
 
 import ray.experimental.channel as ray_channel
-from ray.dag import InputNode, OutputNode
+from ray.dag import InputNode, MultiOutputNode
 
 logger = logging.getLogger(__name__)
 
@@ -401,7 +401,7 @@ def main(results=None):
     n_cpu = multiprocessing.cpu_count() // 2
     actors = [Actor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
-        dag = OutputNode([a.echo.bind(inp) for a in actors])
+        dag = MultiOutputNode([a.echo.bind(inp) for a in actors])
     results += timeit(
         "scatter-gather DAG calls, n={n_cpu} actors", lambda: ray.get(dag.execute(b"x"))
     )

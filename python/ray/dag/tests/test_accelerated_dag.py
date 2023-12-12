@@ -7,7 +7,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.dag import InputNode, OutputNode
+from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
 from ray._private.test_utils import wait_for_condition
 
@@ -35,7 +35,7 @@ class Actor:
         return self.i
 
 
-def test_single_output_dag(ray_start_regular):
+def test_basic(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.inc.bind(i)
@@ -71,7 +71,7 @@ def test_scatter_gather_dag(ray_start_regular, num_actors):
     actors = [Actor.remote(0) for _ in range(num_actors)]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
-        dag = OutputNode(out)
+        dag = MultiOutputNode(out)
 
     compiled_dag = dag.experimental_compile()
 
@@ -124,7 +124,7 @@ def test_dag_errors(ray_start_regular):
 
     a2 = Actor.remote(0)
     with InputNode() as inp:
-        dag = OutputNode([a.inc.bind(inp), a2.inc.bind(1)])
+        dag = MultiOutputNode([a.inc.bind(inp), a2.inc.bind(1)])
     with pytest.raises(
         ValueError,
         match="Compiled DAGs require each task to take a ray.dag.InputNode or "
