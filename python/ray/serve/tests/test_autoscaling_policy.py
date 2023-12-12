@@ -164,6 +164,7 @@ class TestCalculateDesiredNumReplicas:
 
 
 class TestGetDecisionNumReplicas:
+    @pytest.mark.skipif(sys.platform == "win32", reason="threading not working on win")
     def test_smoothing_factor_scale_up_from_0_replicas(self):
         """Test that the smoothing factor is respected when scaling up
         from 0 replicas.
@@ -195,6 +196,7 @@ class TestGetDecisionNumReplicas:
         # math.ceil(1 * 0.5)
         assert new_num_replicas == 1
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="threading not working on win")
     def test_smoothing_factor_scale_down_to_0_replicas(self):
         """Test that a deployment scales down to 0 for non-default smoothing factors."""
 
@@ -231,6 +233,7 @@ class TestGetDecisionNumReplicas:
 
         assert num_replicas == 0
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="threading not working on win")
     def test_upscale_downscale_delay(self):
         """Unit test for upscale_delay_s and downscale_delay_s."""
 
@@ -360,6 +363,7 @@ class TestGetDecisionNumReplicas:
         )
         assert new_num_replicas == 0
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="threading not working on win")
     def test_replicas_delayed_startup(self):
         """Unit test simulating replicas taking time to start up."""
         config = AutoscalingConfig(
@@ -393,6 +397,7 @@ class TestGetDecisionNumReplicas:
         )
         assert new_num_replicas == 123
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="threading not working on win")
     @pytest.mark.parametrize("delay_s", [30.0, 0.0])
     def test_fluctuating_ongoing_requests(self, delay_s):
         """
@@ -440,6 +445,7 @@ class TestGetDecisionNumReplicas:
                 else:
                     assert new_num_replicas == 1, trial
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="threading not working on win")
     @pytest.mark.parametrize(
         "ongoing_requests", [[7, 1, 8, 4], [8, 1, 8, 4], [6, 1, 8, 4], [0, 1, 8, 4]]
     )
@@ -495,6 +501,7 @@ class TestGetDecisionNumReplicas:
             )
             assert new_num_replicas == 5
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="threading not working on win")
     @pytest.mark.parametrize(
         "ongoing_requests", [[20, 0, 0, 0], [100, 0, 0, 0], [10, 0, 0, 0]]
     )

@@ -5,7 +5,7 @@ from typing import List
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve._private.utils import calculate_desired_num_replicas
 from ray.serve.config import AutoscalingConfig
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 PROMETHEUS_HOST = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
 
@@ -31,6 +31,7 @@ class AutoscalingContext:
         self.decision_counter = 0
         self.last_scale_time = None
 
+    @DeveloperAPI
     def update(
         self,
         curr_target_num_replicas: int,
@@ -38,7 +39,7 @@ class AutoscalingContext:
         current_handle_queued_queries: float,
         capacity_adjusted_min_replicas: int,
         capacity_adjusted_max_replicas: int,
-    ):
+    ) -> bool:
         """
         Arguments:
             curr_target_num_replicas: The number of replicas that the
@@ -50,12 +51,28 @@ class AutoscalingContext:
                 a single handle should be passed in
             capacity_adjusted_min_replicas: The minimum number of replicas.
             capacity_adjusted_max_replicas: The maximum number of replicas.
+
+        Returns:
+            True if the context was updated, False otherwise.
         """
-        self.curr_target_num_replicas = curr_target_num_replicas
-        self.current_num_ongoing_requests = current_num_ongoing_requests
-        self.current_handle_queued_queries = current_handle_queued_queries
-        self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas
-        self.capacity_adjusted_max_replicas = capacity_adjusted_max_replicas
+        context_updated = False
+        if self.curr_target_num_replicas != curr_target_num_replicas:
+            self.curr_target_num_replicas = curr_target_num_replicas
+            context_updated = True
+        if self.current_num_ongoing_requests != current_num_ongoing_requests:
+            self.current_num_ongoing_requests = current_num_ongoing_requests
+            context_updated = True
+        if self.current_handle_queued_queries != current_handle_queued_queries:
+            self.current_handle_queued_queries = current_handle_queued_queries
+            context_updated = True
+        if self.capacity_adjusted_min_replicas != capacity_adjusted_min_replicas:
+            self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas
+            context_updated = True
+        if self.capacity_adjusted_max_replicas != capacity_adjusted_max_replicas:
+            self.capacity_adjusted_max_replicas = capacity_adjusted_max_replicas
+            context_updated = True
+
+        return context_updated
 
 
 @PublicAPI(stability="stable")

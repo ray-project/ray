@@ -41,8 +41,10 @@ class ThreadManager:
             and time.time() - self.start_time > self.exponential_backoff
         )
 
-    def get_decision_num_replicas(self, context: AutoscalingContext) -> Optional[int]:
-        if self._should_start_thread():
+    def get_decision_num_replicas(
+        self, context: AutoscalingContext, start_new_call: bool = False
+    ) -> Optional[int]:
+        if start_new_call or self._should_start_thread():
             self.thread = Thread(target=self, kwargs={"context": context})
             self.thread.start()
 
@@ -83,7 +85,6 @@ class AutoscalingPolicyManager:
         If the autoscaling policy is not ready or returning the same number as the
         current replica number, return None to not execute autoscaling.
         """
-        print("get_decision_num_replicas!!!", curr_target_num_replicas)
         capacity_adjusted_min_replicas = self.get_current_lower_bound(
             target_capacity,
             target_capacity_direction,
@@ -92,7 +93,7 @@ class AutoscalingPolicyManager:
             self.config.max_replicas,
             target_capacity,
         )
-        self.context.update(
+        context_updated = self.context.update(
             curr_target_num_replicas=curr_target_num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
@@ -103,11 +104,10 @@ class AutoscalingPolicyManager:
         # made. We do not currently force kill and restart the scaling call due to
         # complexities. We will add docs to warn users not to make long-running calls
         # here, and they can set timeout in their policies if needed.
-        # decision_num_replicas = self.thread_manager.get_decision_num_replicas(
-        #     context=self.context
-        # )
-        self.thread_manager(context=self.context)
-        decision_num_replicas = self.thread_manager.decision_num_replicas
+        decision_num_replicas = self.thread_manager.get_decision_num_replicas(
+            context=self.context,
+            start_new_call=context_updated,
+        )
         if decision_num_replicas is not None:
             self.context.last_scale_time = time.time()
             return self.apply_bounds(
