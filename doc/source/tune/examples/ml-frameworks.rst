@@ -4,7 +4,6 @@ Examples using Ray Tune with ML Frameworks
 .. toctree::
     :hidden:
 
-    Scikit-Learn Example <tune-sklearn>
     Keras Example <tune_mnist_keras>
     PyTorch Example <tune-pytorch-cifar>
     PyTorch Lightning Example <tune-pytorch-lightning>
@@ -22,14 +21,6 @@ At the end of these guides you will often find links to even more examples.
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
-
-    .. grid-item-card::
-        :img-top: /images/tune-sklearn.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: tune-sklearn
-
-            How To Use Tune's Scikit-Learn Adapters?
 
     .. grid-item-card::
         :img-top: /images/keras.png
