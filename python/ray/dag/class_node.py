@@ -23,6 +23,7 @@ class ClassNode(DAGNode):
         other_args_to_resolve=None,
     ):
         self._body = cls
+        self._last_call: Optional["ClassMethodNode"] = None
         super().__init__(
             cls_args,
             cls_kwargs,
@@ -102,6 +103,7 @@ class _UnboundClassMethodNode(object):
     def bind(self, *args, **kwargs):
         other_args_to_resolve = {
             PARENT_CLASS_NODE_KEY: self._actor,
+            PREV_CLASS_METHOD_CALL_KEY: self._actor._last_call,
         }
 
         node = ClassMethodNode(
@@ -111,6 +113,7 @@ class _UnboundClassMethodNode(object):
             self._options,
             other_args_to_resolve=other_args_to_resolve,
         )
+        self._actor._last_call = node
         return node
 
     def __getattr__(self, attr: str):
@@ -199,12 +202,3 @@ class ClassMethodNode(DAGNode):
 
     def get_method_name(self) -> str:
         return self._method_name
-
-    def _get_remote_method(self, method_name):
-        method_body = getattr(self._parent_class_node, method_name)
-        return method_body
-
-    def _get_actor_handle(self) -> Optional[ReferenceType["ray.actor.ActorHandle"]]:
-        if not isinstance(self._parent_class_node, ray.actor.ActorHandle):
-            return None
-        return self._parent_class_node
