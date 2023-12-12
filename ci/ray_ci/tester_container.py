@@ -109,7 +109,7 @@ class TesterContainer(Container):
             test_cmd += f"--test_env {env} "
         if test_arg:
             test_cmd += f"--test_arg {test_arg} "
-        
+
         if "//python/ray/tests:test_autoscaler" in test_targets:
             test_targets = ["//python/ray/tests:test_autoscaler"]
             test_cmd += f"--runs_per_test=30 --flaky_test_attempts=1 "
