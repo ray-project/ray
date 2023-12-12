@@ -107,6 +107,7 @@ class AutoscalingPolicyManager:
         )
 
         if decision_num_replicas is not None:
+            self.context.last_scale_time = time.time()
             return self.apply_bounds(
                 curr_target_num_replicas=decision_num_replicas,
                 target_capacity=target_capacity,

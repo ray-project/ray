@@ -29,6 +29,7 @@ class AutoscalingContext:
         self.capacity_adjusted_min_replicas = None
         self.capacity_adjusted_max_replicas = None
         self.decision_counter = 0
+        self.last_scale_time = None
 
     def update(
         self,

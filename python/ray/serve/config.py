@@ -1,9 +1,11 @@
+import binascii
 import logging
-import pickle
 import warnings
+from base64 import b64decode, b64encode
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
+import ray.cloudpickle as pickle
 from ray._private.pydantic_compat import (
     BaseModel,
     NonNegativeFloat,
@@ -92,15 +94,20 @@ class AutoscalingConfig(BaseModel):
     @validator("policy", always=True)
     def serialize_policy(cls, policy, values):
         if isinstance(policy, Callable):
-            return pickle.dumps(policy, 0).decode()
+            imported_policy = policy
+        elif isinstance(policy, str):
+            try:
+                b64encode(b64decode(policy))
+                return policy
+            except binascii.Error:
+                imported_policy = import_attr(policy)
+        else:
+            return policy
 
-        return policy
+        return b64encode(pickle.dumps(imported_policy)).decode("utf-8")
 
     def get_policy(self) -> Callable:
-        try:
-            return import_attr(self.policy)
-        except ModuleNotFoundError:
-            return pickle.loads(self.policy.encode())
+        return pickle.loads(b64decode(self.policy))
 
     def get_upscale_smoothing_factor(self) -> PositiveFloat:
         return self.upscale_smoothing_factor or self.smoothing_factor
