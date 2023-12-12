@@ -1412,8 +1412,8 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> 
     RAY_LOG(INFO)
         << "[" << client->GetDebugLabel()
         << "]NodeManager::HandleWorkerAvailable: Received worker available message but "
-           "no associated worker found. This worker has either not been registered yet "
-           "or it may have already exited.";
+           "no associated worker found. This worker process may leak. The worker process "
+           "has either not been registered yet or the process has already exited.";
   }
 }
 
