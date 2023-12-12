@@ -19,7 +19,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.torch_utils import explained_variance
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor, explained_variance
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
@@ -172,7 +172,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
     @override(PPOLearner)
     def _compute_values(self, batch):
         infos = batch.pop(SampleBatch.INFOS, None)
-        batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
+        batch = convert_to_torch_tensor(batch, device=self._device)
+        #batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
         if infos is not None:
             batch[SampleBatch.INFOS] = infos
 
