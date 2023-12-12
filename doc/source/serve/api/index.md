@@ -363,6 +363,11 @@ Content-Type: application/json
 ```
 
 ## Observability
+
+```{eval-rst}
+.. currentmodule:: ray.serve
+```
+
 ```{eval-rst}
 .. autosummary::
    :nosignatures:
