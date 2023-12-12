@@ -33,11 +33,14 @@ typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
 namespace ray {
 namespace gcs {
 
+class MockRedisContext;
+
 struct RedisContextDeleter {
   RedisContextDeleter(){};
 
   void operator()(redisContext *context) { redisFree(context); }
   void operator()(redisAsyncContext *context) { redisAsyncFree(context); }
+  void operator()(MockRedisContext *context){};
 };
 
 /// \class RedisAsyncContext
