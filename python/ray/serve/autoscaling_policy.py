@@ -1,6 +1,9 @@
 import math
 import os
+import time
 from typing import List
+
+import requests
 
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve._private.utils import calculate_desired_num_replicas
@@ -126,3 +129,43 @@ def basic_autoscaling_policy(context: AutoscalingContext) -> int:
         context.decision_counter = 0
 
     return decision_num_replicas
+
+
+@PublicAPI(stability="beta")
+def cpu_utilization_autoscaling_policy(context: AutoscalingContext) -> int:
+    """Example autoscaling policy based on CPU utilization.
+
+    This policy aims to keep the CPU utilization of Ray to be ~80%. It will ping
+    prometheus to get the current CPU utilization of Ray and scale the replicas up or
+    down one at a time every 5 minutes.
+    """
+    # Last scaling was within 5 minutes, return the current number of replicas.
+    if (
+        context.last_scale_time is not None
+        and time.time() - context.last_scale_time < 60 * 5
+    ):
+        return context.curr_target_num_replicas
+
+    # Call prometheus to get the latest CPU utilization of Ray.
+    metrics_name = "ray_node_cpu_utilization"
+    resp = requests.get(
+        f"{PROMETHEUS_HOST}/api/v1/query",
+        params={"query": metrics_name},
+    )
+    if resp.status_code != 200:
+        return context.curr_target_num_replicas
+
+    metrics = resp.json()["data"]["result"]
+    if not metrics:
+        return context.curr_target_num_replicas
+
+    # Get the latest CPU utilization of Ray.
+    latest_cpu_utilization = float(max(metrics, key=lambda x: x["value"])["value"][1])
+
+    # Scaling up and down according to the CPU utilization.
+    if latest_cpu_utilization > 80:
+        return context.curr_target_num_replicas + 1
+    elif latest_cpu_utilization < 80:
+        return context.curr_target_num_replicas - 1
+    else:
+        return context.curr_target_num_replicas

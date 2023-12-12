@@ -29,7 +29,7 @@ class ThreadManager:
             self.exponential_backoff = self.exponential_backoff * 2 + 1
             logger.warning(
                 f"Autoscaling call throw exception: {e}. \n"
-                f"exponential_backoff {self.exponential_backoff}s before retry."
+                f"Exponentially backoff {self.exponential_backoff}s before retry."
             )
 
     def done(self):

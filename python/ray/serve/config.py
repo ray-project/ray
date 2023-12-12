@@ -103,9 +103,11 @@ class AutoscalingConfig(BaseModel):
             imported_policy = policy
         elif isinstance(policy, str):
             try:
-                b64encode(b64decode(policy))
+                assert b64encode(b64decode(policy)).decode("utf-8") == policy
                 return policy
             except binascii.Error:
+                imported_policy = import_attr(policy)
+            except AssertionError:
                 imported_policy = import_attr(policy)
         else:
             return policy
