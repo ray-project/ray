@@ -2120,6 +2120,7 @@ ray_cc_library(
         "src/ray/gcs/asio.h",
         "src/ray/gcs/redis_async_context.h",
         "src/ray/gcs/redis_client.h",
+        "src/ray/gcs/redis_context-inl.h",
         "src/ray/gcs/redis_context.h",
     ],
     deps = [

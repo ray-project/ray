@@ -18,7 +18,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/redis_context.h"
+#include "ray/gcs/redis_context-inl.h"
 #include "ray/util/logging.h"
 
 extern "C" {

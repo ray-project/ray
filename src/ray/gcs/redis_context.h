@@ -115,6 +115,7 @@ struct RedisRequestContext {
                       std::shared_ptr<RedisAsyncContext> &&context,
                       std::vector<std::string> args);
 
+  template <typename ConnectType = redisAsyncContext>
   static void RedisResponseFn(struct redisAsyncContext *async_context,
                               void *raw_reply,
                               void *privdata);
@@ -188,62 +189,6 @@ class RedisContext {
   absl::Mutex mu_;
   std::shared_ptr<RedisAsyncContext> redis_async_context_ ABSL_GUARDED_BY(mu_);
 };
-
-template <typename RedisContextType, typename RedisConnectFunctionType>
-std::pair<Status, std::unique_ptr<RedisContextType, RedisContextDeleter>>
-ConnectWithoutRetries(const std::string &address,
-                      int port,
-                      const RedisConnectFunctionType &connect_function) {
-  // This currently returns the errorMessage in two different ways,
-  // as an output parameter and in the Status::RedisError,
-  // because we're not sure whether we'll want to change what this returns.
-  RedisContextType *newContext = connect_function(address.c_str(), port);
-  if (newContext == nullptr || (newContext)->err) {
-    std::ostringstream oss;
-    if (newContext == nullptr) {
-      oss << "Could not allocate Redis context.";
-    } else if (newContext->err) {
-      oss << "Could not establish connection to Redis " << address << ":" << port
-          << " (context.err = " << newContext->err << ").";
-    }
-    return std::make_pair(Status::RedisError(oss.str()), nullptr);
-  }
-  return std::make_pair(Status::OK(),
-                        std::unique_ptr<RedisContextType, RedisContextDeleter>(
-                            newContext, RedisContextDeleter()));
-}
-
-template <typename RedisContextType, typename RedisConnectFunctionType>
-std::pair<Status, std::unique_ptr<RedisContextType, RedisContextDeleter>>
-ConnectWithRetries(const std::string &address,
-                   int port,
-                   const RedisConnectFunctionType &connect_function) {
-  RAY_LOG(INFO) << "Attempting to connect to address " << address << ":" << port << ".";
-  int connection_attempts = 0;
-  auto resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
-  auto status = resp.first;
-  while (!status.ok()) {
-    if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
-      RAY_LOG(FATAL) << RayConfig::instance().redis_db_connect_retries() << " attempts "
-                     << "to connect have all failed. Please check whether the"
-                     << " redis storage is alive or not. The last error message was: "
-                     << status.ToString();
-      break;
-    }
-    RAY_LOG_EVERY_MS(ERROR, 1000)
-        << "Failed to connect to Redis due to: " << status.ToString()
-        << ". Will retry in "
-        << RayConfig::instance().redis_db_connect_wait_milliseconds() << "ms.";
-
-    // Sleep for a little.
-    std::this_thread::sleep_for(std::chrono::milliseconds(
-        RayConfig::instance().redis_db_connect_wait_milliseconds()));
-    resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
-    status = resp.first;
-    connection_attempts += 1;
-  }
-  return resp;
-}
 
 }  // namespace gcs
 
