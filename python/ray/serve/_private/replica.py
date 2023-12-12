@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RECONFIGURE_METHOD,
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -89,7 +90,6 @@ def create_replica_wrapper(actor_class_name: str):
             serialized_init_kwargs: bytes,
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
-            controller_name: str,
             app_name: str = None,
         ):
             self._replica_tag = replica_tag
@@ -147,13 +147,10 @@ def create_replica_wrapper(actor_class_name: str):
                 deployment=deployment_name,
                 replica_tag=replica_tag,
                 servable_object=None,
-                controller_name=controller_name,
             )
 
-            assert controller_name, "Must provide a valid controller_name"
-
             controller_handle = ray.get_actor(
-                controller_name, namespace=SERVE_NAMESPACE
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
             )
 
             # Indicates whether the replica has finished initializing.
@@ -190,7 +187,6 @@ def create_replica_wrapper(actor_class_name: str):
                     deployment=deployment_name,
                     replica_tag=replica_tag,
                     servable_object=_callable,
-                    controller_name=controller_name,
                 )
 
                 self.replica = RayServeReplica(
