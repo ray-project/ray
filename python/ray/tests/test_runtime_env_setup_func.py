@@ -238,6 +238,11 @@ ray.get(f.remote())
         print(client.get_job_logs(job))
 
         def verify():
+            status = client.get_job_status(job)
+            if status == JobStatus.PENDING:
+                print("job status is ", status)
+            else:
+                print(client.get_job_logs(job))
             return client.get_job_status(job) == JobStatus.SUCCEEDED
 
         wait_for_condition(verify)
