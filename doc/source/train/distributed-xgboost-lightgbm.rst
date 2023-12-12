@@ -149,7 +149,8 @@ Following are some examples of common use-cases:
     Using a local path will :ref:`raise an error <multinode-local-storage-warning>`
     during checkpointing for multi-node clusters.
 
-    .. code-block:: python
+    .. testcode:: python
+        :skipif: True
 
         trainer = XGBoostTrainer(
             ..., run_config=ray.train.RunConfig(storage_path="s3://...")
