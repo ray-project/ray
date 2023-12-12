@@ -85,7 +85,10 @@ class DashboardAgent:
         self.gcs_client = GcsClient(address=self.gcs_address)
         _initialize_internal_kv(self.gcs_client)
         assert _internal_kv_initialized()
-        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
+        self.gcs_aio_client = GcsAioClient(
+            address=self.gcs_address,
+            nums_reconnect_retry=dashboard_consts.DASHBOARD_AGENT_NUM_GCS_RECONNECT_RETRY,  # noqa
+        )
 
         if not self.minimal:
             self._init_non_minimal()
