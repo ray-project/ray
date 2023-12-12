@@ -147,12 +147,34 @@ def test_actor_options_complicated(shared_ray_instance):
         .get("name")
         == "a2_v0"
     )
+    # refer to actor method a2.inc.options() call
+    assert (
+        test_a2.get_other_args_to_resolve()[PREV_CLASS_METHOD_CALL_KEY]
+        .get_options()
+        .get("name")
+        == "v3"
+    )
     # refer to a1 constructor .options() call
     assert (
         test_a1.get_other_args_to_resolve()[PARENT_CLASS_NODE_KEY]
         .get_options()
         .get("name")
         == "a1_v1"
+    )
+    # refer to latest actor method a1.inc.options() call
+    assert (
+        test_a1.get_other_args_to_resolve()[PREV_CLASS_METHOD_CALL_KEY]
+        .get_options()
+        .get("name")
+        == "v2"
+    )
+    # refer to first bound actor method a1.inc.options() call
+    assert (
+        test_a1.get_other_args_to_resolve()[PREV_CLASS_METHOD_CALL_KEY]
+        .get_other_args_to_resolve()[PREV_CLASS_METHOD_CALL_KEY]
+        .get_options()
+        .get("name")
+        == "v1"
     )
 
 
