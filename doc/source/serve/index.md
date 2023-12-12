@@ -280,7 +280,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         **Examples**
         ^^^
 
-        Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow <serve-ml-models-tutorial>`, :ref:`Scikit-Learn <serve-ml-models-tutorial>`, and :ref:`RLlib <serve-rllib-tutorial>`.
+        Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow <serve-ml-models-tutorial>`, and :ref:`Scikit-Learn <serve-ml-models-tutorial>`.
 
         +++
         .. button-ref:: serve-examples
