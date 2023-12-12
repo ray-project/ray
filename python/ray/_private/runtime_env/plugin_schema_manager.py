@@ -1,5 +1,4 @@
 import os
-import jsonschema
 import logging
 from typing import List
 import json
@@ -80,6 +79,8 @@ class RuntimeEnvPluginSchemaManager:
 
     @classmethod
     def validate(cls, name, instance):
+        # Import here because import this takes long time.
+        import jsonschema
         if not cls.loaded:
             # Load the schemas lazily.
             cls._load_default_schemas()
