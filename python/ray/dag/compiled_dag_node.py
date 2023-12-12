@@ -92,14 +92,14 @@ class CompiledTask:
         self.output_channel = None
 
     @property
-    def args(self):
+    def args(self) -> Tuple[Any]:
         return self.dag_node.get_args()
 
     @property
-    def num_readers(self):
+    def num_readers(self) -> int:
         return len(self.downstream_node_idxs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"""
 Node: {self.dag_node}
 Arguments: {self.args}
@@ -108,6 +108,11 @@ Output: {self.output_channel}
 
 
 class CompiledDAG:
+    """Experimental class for accelerated execution.
+
+    See REP https://github.com/ray-project/enhancements/pull/48 for more
+    information.
+    """
     def __init__(self):
         # idx -> CompiledTask.
         self.idx_to_task = {}
@@ -165,13 +170,13 @@ class CompiledDAG:
             ):
                 if isinstance(dag_node, InputAttributeNode):
                     # TODO(swang): Support multi args.
-                    raise ValueError(
+                    raise NotImplementedError(
                         "Compiled DAGs currently do not support kwargs or "
                         "multiple args for InputNode"
                     )
                 elif isinstance(dag_node, FunctionNode):
                     # TODO(swang): Support non-actor tasks.
-                    raise ValueError(
+                    raise NotImplementedError(
                         "Compiled DAGs currently only support actor method nodes"
                     )
                 else:
@@ -195,7 +200,7 @@ class CompiledDAG:
 
         for actor_id, task_count in self.actor_task_count.items():
             if task_count > 1:
-                raise ValueError(
+                raise NotImplementedError(
                     "Compiled DAGs can contain at most one task per actor handle. "
                     f"Actor with ID {actor_id} appears {task_count}x."
                 )
@@ -207,7 +212,7 @@ class CompiledDAG:
                 self.input_task_idx = idx
         # TODO: Support no-input DAGs (use an empty object to signal).
         if self.input_task_idx is None:
-            raise ValueError("Compiled DAGs currently require exactly one InputNode")
+            raise NotImplementedError("Compiled DAGs currently require exactly one InputNode")
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -227,7 +232,7 @@ class CompiledDAG:
             # now.
             self._preprocess()
 
-    def _compile(self) -> Tuple[ChannelType, Union[ChannelType, List[ChannelType]]]:
+    def _get_or_compile(self) -> Tuple[ChannelType, Union[ChannelType, List[ChannelType]]]:
         """Compile an execution path. This allocates channels for adjacent
         tasks to send/receive values. An infinite task is submitted to each
         actor in the DAG that repeatedly receives from input channel(s) and
@@ -363,16 +368,16 @@ class CompiledDAG:
         # These errors should already be caught during compilation, but just in
         # case.
         if len(args) != 1:
-            raise ValueError("Compiled DAGs support exactly one InputNode arg")
+            raise NotImplementedError("Compiled DAGs support exactly one InputNode arg")
         if len(kwargs) != 0:
-            raise ValueError("Compiled DAGs do not support kwargs")
+            raise NotImplementedError("Compiled DAGs do not support kwargs")
 
-        input_channel, output_channels = self._compile()
+        input_channel, output_channels = self._get_or_compile()
         input_channel.write(args[0])
         return output_channels
 
 
-def build_compiled_dag_from_ray_dag(dag: "ray.dag.DAGNode"):
+def build_compiled_dag_from_ray_dag(dag: "ray.dag.DAGNode") -> "CompiledDAG":
     compiled_dag = CompiledDAG()
 
     def _build_compiled_dag(node):
@@ -380,5 +385,5 @@ def build_compiled_dag_from_ray_dag(dag: "ray.dag.DAGNode"):
         return node
 
     dag.apply_recursive(_build_compiled_dag)
-    compiled_dag._compile()
+    compiled_dag._get_or_compile()
     return compiled_dag

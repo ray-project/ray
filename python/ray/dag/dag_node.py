@@ -61,8 +61,6 @@ class DAGNode(DAGNodeBase):
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
-        self._compiled_dag = None
-
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
 
@@ -111,10 +109,7 @@ class DAGNode(DAGNodeBase):
         """Compile an accelerated execution path for this DAG. The compiled DAG
         is cached.
         """
-        if self._compiled_dag is None:
-            self._compiled_dag = build_compiled_dag_from_ray_dag(self)
-
-        return self._compiled_dag
+        return build_compiled_dag_from_ray_dag(self)
 
     def execute(
         self, *args, _ray_cache_refs: bool = False, **kwargs

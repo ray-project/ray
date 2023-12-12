@@ -29,7 +29,6 @@ from ray._raylet import (
     PythonFunctionDescriptor,
     raise_sys_exit_with_custom_error_message,
 )
-from ray.dag.class_node import PARENT_CLASS_NODE_KEY, ClassMethodNode
 from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
@@ -152,7 +151,7 @@ class ActorMethod:
         decorator=None,
         hardref=False,
     ):
-        self._actor_ref = weakref.proxy(actor)
+        self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
         self._num_returns = num_returns
 
@@ -319,7 +318,7 @@ class ActorMethod:
 
     def __getstate__(self):
         return {
-            "actor": self._actor_ref,
+            "actor": self._actor_ref(),
             "method_name": self._method_name,
             "num_returns": self._num_returns,
             "max_retries": self._max_retries,

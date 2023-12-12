@@ -15,7 +15,7 @@ from ray._private.test_utils import wait_for_condition
 logger = logging.getLogger(__name__)
 
 
-@ray.remote(concurrency_groups={"_ray_system": 1})
+@ray.remote
 class Actor:
     def __init__(self, init_value):
         print("__init__ PID", os.getpid())
