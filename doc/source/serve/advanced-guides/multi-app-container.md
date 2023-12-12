@@ -3,18 +3,14 @@
 
 This section explains how to run multiple Serve applications on the same cluster in separate containers with different images.
 
-:::note
 This feature is experimental and the API is subject to change. If you have additional feature requests or run into issues, please submit them on [Github](https://github.com/ray-project/ray/issues).
-:::
 
 ## Install Podman
 
-The `container` runtime environment feature uses [Podman](https://podman.io/) to start and run containers. Please follow these steps to install Podman in your environment. 
-
-Follow the [Podman Installation Instructions](https://podman.io/docs/installation) to install Podman in the environment for all head and worker nodes.
+The `container` runtime environment feature uses [Podman](https://podman.io/) to start and run containers. Follow the [Podman Installation Instructions](https://podman.io/docs/installation) to install Podman in the environment for all head and worker nodes.
 
 :::{note}
-The Podman package is only available in the official repositories for Ubuntu 20.10 and newer. To install Podman in Ubuntu 20.04 or older, you need to first add the software repository as a debian source. Follow these instructions to install Podman on Ubuntu 20.04 or older:
+For Ubuntu, the Podman package is only available in the official repositories for Ubuntu 20.10 and newer. To install Podman in Ubuntu 20.04 or older, you need to first add the software repository as a debian source. Follow these instructions to install Podman on Ubuntu 20.04 or older:
 
 ```bash
 sudo sh -c "echo 'deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list"
@@ -26,11 +22,11 @@ sudo apt-get install podman -y
 
 ## Run a Serve application in a container
 
-This example deploys two applications in separate containers: a whisper model and a Resnet50 image classification model.
+This example deploys two applications in separate containers: a Whisper model and a Resnet50 image classification model.
 
 First, install the required dependencies in the images.
 
-:::warning
+:::{warning}
 The Ray version and Python version in the container *must* match those of the host environment exactly. Note that for Python, the versions must match down to the patch number.
 :::
 
