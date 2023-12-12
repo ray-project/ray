@@ -598,12 +598,6 @@ Ray Examples
         Example of how to setup an RLlib algorithm against a locally running Unity3D editor
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/env/tests/test_env_with_subprocess.py
-
-        Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py
 
@@ -611,21 +605,9 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py
+        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/models/batch_norm_model.py
 
         Example of adding batch norm layers to a custom model.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py
-
-        Example of how to leverage TensorFlow eager to simplify debugging and design of custom models and policies.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_fast_model.py
-
-        Example of a "fast" Model learning only one parameter for tf and torch.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
@@ -635,13 +617,13 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/trajectory_view_api.py
+        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/models/trajectory_view_utilizing_models.py
 
         An example on how a model can use the trajectory view API to specify its own input.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/mobilenet_v2_with_lstm.py
+        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/models/mobilenet_v2_with_lstm_models.py
 
         Implementations of `MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
 
@@ -674,24 +656,6 @@ Ray Examples
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py
 
         Example of how to output custom training metrics to TensorBoard.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib tensorflow
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py
-
-        How to setup a custom TFPolicy.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib pytorch
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py
-
-        How to setup a custom TorchPolicy.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py
-
-        Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
@@ -821,18 +785,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/iterated_prisoners_dilemma_env.py
-
-        Example of an iterated prisoner's dilemma environment solved by RLlib.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/partial_gpus.py
-
-        Example of how to setup fractional GPUs for learning (driver) and environment rollouts (remote workers).
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/nested_action_spaces.py
 
         Learning in arbitrarily nested action spaces.
@@ -842,12 +794,6 @@ Ray Examples
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py
 
         Example of how to handle variable-length or parametric action spaces
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_observation_filters.py
-
-        How to filter raw observations coming from the environment for further processing by the Agent's model(s).
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib

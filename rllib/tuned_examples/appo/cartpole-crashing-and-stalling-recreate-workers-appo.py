@@ -69,6 +69,7 @@ config = (
 )
 
 
-# algo = config.framework("tf2").build()
-# for _ in range(1000):
-#     print(algo.train())
+if __name__ == "__main__":
+    algo = config.framework("tf2").build()
+    for _ in range(1000):
+        print(algo.train())
