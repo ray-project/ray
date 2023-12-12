@@ -185,7 +185,8 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
                 train_func,
                 scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
                 # [4a] If running in a multi-node cluster, this is where you
-                # should configure the run's persistent storage.
+                # should configure the run's persistent storage that is accessible
+                # across all worker nodes.
                 # run_config=ray.train.RunConfig(storage_path="s3://..."),
             )
             result: ray.train.Result = ray_trainer.fit()

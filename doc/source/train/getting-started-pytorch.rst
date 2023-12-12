@@ -16,7 +16,7 @@ Learn how to:
 Quickstart
 ----------
 
-For reference, the final code is as follows:
+For reference, the final code will look something like the following:
 
 .. testcode::
     :skipif: True
@@ -26,6 +26,7 @@ For reference, the final code is as follows:
 
     def train_func(config):
         # Your PyTorch training code here.
+        ...
 
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
@@ -160,7 +161,8 @@ Compare a PyTorch training script with and without Ray Train.
                 train_func,
                 scaling_config=scaling_config,
                 # [5a] If running in a multi-node cluster, this is where you
-                # should configure the run's persistent storage.
+                # should configure the run's persistent storage that is accessible
+                # across all worker nodes.
                 # run_config=ray.train.RunConfig(storage_path="s3://..."),
             )
             result = trainer.fit()

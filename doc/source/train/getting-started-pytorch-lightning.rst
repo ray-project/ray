@@ -160,7 +160,8 @@ Compare a PyTorch Lightning training script with and without Ray Train.
                 train_func,
                 scaling_config=scaling_config,
                 # [3a] If running in a multi-node cluster, this is where you
-                # should configure the run's persistent storage.
+                # should configure the run's persistent storage that is accessible
+                # across all worker nodes.
                 # run_config=ray.train.RunConfig(storage_path="s3://..."),
             )
             result: ray.train.Result = trainer.fit()

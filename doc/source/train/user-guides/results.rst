@@ -90,7 +90,7 @@ You can retrieve a list of all available checkpoints and their metrics with
 
 .. seealso::
 
-    See :ref:`<train-checkpointing>` for more information on checkpointing.
+    See :ref:`train-checkpointing` for more information on checkpointing.
 
 Accessing storage location
 ---------------------------
