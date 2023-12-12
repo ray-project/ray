@@ -23,7 +23,10 @@ pip install -U --no-cache-dir --ignore-installed  \
   -c python/requirements_compiled.txt \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt
+pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 \
+  tensorflow==2.11.0 tensorflow-probability==0.19.0
 pip install --no-cache-dir -v -e python
+pip wheel -e python -w .whl
 
 # Clean up temp files to speed up docker build
 bazel clean --expunge

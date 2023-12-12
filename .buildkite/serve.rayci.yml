@@ -13,6 +13,16 @@ steps:
   - name: servepython311build
     wanda: ci/docker/servepython311.build.wanda.yaml
 
+  - name: minbuild-serve
+    label: "wanda: minbuild-{{matrix}}-py38"
+    wanda: ci/docker/min.build.wanda.yaml
+    matrix:
+      - serve
+      - default
+    env:
+      PYTHON_VERSION: "3.8"
+      EXTRA_DEPENDENCY: "{{matrix}}"
+
   # tests
   - label: ":ray-serve: serve: tests"
     parallelism: 2
@@ -173,6 +183,22 @@ steps:
         --build-name docgpubuild
         --only-tags gpu
     depends_on: docgpubuild
+
+  - label: ":ray-serve: serve: :windows: tests"
+    tags:
+      - serve
+    job_env: WINDOWS
+    instance_type: windows
+    parallelism: 3
+    commands:
+      - docker tag rayproject/buildenv:windows $${RAYCI_WORK_REPO}:$${RAYCI_BUILD_ID}-servebuild
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
+        --operating-system windows
+        --except-tags no_windows
+        --test-env=CI="1"
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
+        --test-env=USERPROFILE="$${USERPROFILE}"
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
   
   - label: ":ray-serve: serve: flaky tests"
     tags: 
@@ -184,22 +210,3 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
     depends_on: servebuild
-
-  - name: minbuild-serve
-    label: "wanda: minbuild-{{matrix}}-py38"
-    wanda: ci/docker/min.build.wanda.yaml
-    matrix:
-      - serve
-      - default
-    env:
-      PYTHON_VERSION: "3.8"
-      EXTRA_DEPENDENCY: "{{matrix}}"
-
-  - label: ":windows: serve tests"
-    tags:
-      - serve
-    job_env: WINDOWS
-    instance_type: windows
-    parallelism: 5
-    commands:
-      - bash /c/workdir/.buildkite/windows_ci.sh test_serve
