@@ -224,7 +224,7 @@ steps:
 
   - label: ":ray: core: cpp ubsan tests"
     tags: core_cpp
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type ubsan
         --except-tags no_ubsan
