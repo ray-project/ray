@@ -506,8 +506,9 @@ class StorageContext:
             raise RuntimeError(
                 f"Unable to set up cluster storage with the following settings:\n{self}"
                 "\nCheck that all nodes in the cluster have read/write access "
-                "to the configured storage path. This should be cloud storage or "
-                "a shared filesystem accessible by all nodes in your cluster. "
+                "to the configured storage path. `RunConfig(storage_path)` should be "
+                "set to a cloud storage URI or a shared filesystem path accessible "
+                "by all nodes in your cluster ('s3://bucket' or '/mnt/nfs'). "
                 "A local path on the head node is not accessible by worker nodes. "
                 "See: https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html"  # noqa: E501
             )
