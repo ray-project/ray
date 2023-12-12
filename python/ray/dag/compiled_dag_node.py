@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def do_allocate_channel(
-    self, buffer_size_bytes: int = MAX_BUFFER_SIZE, num_readers: int = 1
+    self, buffer_size_bytes: int, num_readers: int = 1
 ) -> ChannelType:
     """Generic actor method to allocate an output channel.
 
@@ -113,27 +113,33 @@ class CompiledDAG:
     See REP https://github.com/ray-project/enhancements/pull/48 for more
     information.
     """
-    def __init__(self):
+    def __init__(self, buffer_size_bytes: Optional[int]):
+        self._buffer_size_bytes : Optional[int] = buffer_size_bytes
+        if self._buffer_size_bytes is None:
+            self._buffer_size_bytes = MAX_BUFFER_SIZE
+        if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
+            raise ValueError(f"`buffer_size_bytes` must be a positive integer, found {self._buffer_size_bytes}")
+
         # idx -> CompiledTask.
-        self.idx_to_task = {}
+        self.idx_to_task : Dict[int, "CompiledTask"] = {}
         # DAGNode -> idx.
-        self.dag_node_to_idx = {}
+        self.dag_node_to_idx : Dict["ray.dag.DAGNode", int] = {}
         # idx counter.
-        self.counter = 0
+        self.counter : int = 0
 
         # Attributes that are set during preprocessing.
         # Preprocessing identifies the input node and output node.
-        self.input_task_idx = None
-        self.output_task_idx = None
-        self.has_single_output = False
-        self.actor_task_count = defaultdict(int)
+        self.input_task_idx : Optional[int] = None
+        self.output_task_idx : Optional[int] = None
+        self.has_single_output : bool = False
+        self.actor_task_count : Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
-        self.dag_input_channel = None
-        self.dag_output_channels = None
+        self.dag_input_channel : Optional[ChannelType] = None
+        self.dag_output_channels : Optional[ChannelType] = None
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
-        self.worker_task_refs = []
+        self.worker_task_refs : List["ray.ObjectRef"] = []
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -277,12 +283,13 @@ class CompiledDAG:
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
+                        buffer_size_bytes=self._buffer_size_bytes,
                         num_readers=task.num_readers,
                     )
                 )
             elif isinstance(task.dag_node, InputNode):
                 task.output_channel = ray_channel.Channel(
-                    buffer_size_bytes=MAX_BUFFER_SIZE, num_readers=task.num_readers
+                    buffer_size_bytes=self._buffer_size_bytes, num_readers=task.num_readers
                 )
             else:
                 assert isinstance(task.dag_node, OutputNode)
@@ -377,8 +384,8 @@ class CompiledDAG:
         return output_channels
 
 
-def build_compiled_dag_from_ray_dag(dag: "ray.dag.DAGNode") -> "CompiledDAG":
-    compiled_dag = CompiledDAG()
+def build_compiled_dag_from_ray_dag(dag: "ray.dag.DAGNode", buffer_size_bytes: Optional[int]) -> "CompiledDAG":
+    compiled_dag = CompiledDAG(buffer_size_bytes)
 
     def _build_compiled_dag(node):
         compiled_dag._add_node(node)
