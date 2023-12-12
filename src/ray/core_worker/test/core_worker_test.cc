@@ -582,7 +582,11 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
       builder.AddArg(*arg);
     }
 
-    actor_handle.SetActorTaskSpec(builder, ObjectID::FromRandom());
+    actor_handle.SetActorTaskSpec(builder,
+                                  ObjectID::FromRandom(),
+                                  /*max_retries=*/0,
+                                  /*retry_exceptions=*/false,
+                                  /*serialized_retry_exception_allowlist=*/"");
 
     auto task_spec = builder.Build();
 

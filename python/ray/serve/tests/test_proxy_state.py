@@ -640,7 +640,7 @@ def test_proxy_state_update_unhealthy_check_health_succeed():
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 0)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
 def test_unhealthy_retry_correct_number_of_times():
-    """Test the unhealthy retry logic retires the correct number of times.
+    """Test the unhealthy retry logic retries the correct number of times.
 
     When the health check fails 3 times (default retry threshold), the proxy state
     should change from HEALTHY to UNHEALTHY.
