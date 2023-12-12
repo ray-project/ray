@@ -399,7 +399,7 @@ class AutoscalingTest(unittest.TestCase):
             tag_filters = {}
         return len(self.provider.non_terminated_nodes(tag_filters))
 
-    def waitForNodes(self, expected, comparison=None, tag_filters=None):
+    def waitForNodes(self, expected, comparison=None, tag_filters=None, refresh_callback=None):
         if comparison is None:
             comparison = self.assertEqual
         MAX_ITER = 300
@@ -413,6 +413,8 @@ class AutoscalingTest(unittest.TestCase):
                     print(self.provider.non_terminated_nodes(tag_filters))
                     raise
             time.sleep(0.1)
+            if refresh_callback:
+                refresh_callback()
 
     def create_provider(self, config, cluster_name):
         assert self.provider
@@ -1624,7 +1626,7 @@ class AutoscalingTest(unittest.TestCase):
             # to be available. (Node creation should block.)
             assert self.num_nodes(tag_filters=WORKER_FILTER) == 10
         else:
-            self.waitForNodes(10, tag_filters=WORKER_FILTER)
+            self.waitForNodes(10, tag_filters=WORKER_FILTER, refresh_callback=lambda: autoscaler.update())
 
         # Awkward and unecessary to repeat the following check for BatchingNodeProvider.
         if not batching_node_provider:
