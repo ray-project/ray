@@ -5,7 +5,7 @@ from base64 import b64decode, b64encode
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
-import ray.cloudpickle as pickle
+from ray import cloudpickle
 from ray._private.pydantic_compat import (
     BaseModel,
     NonNegativeFloat,
@@ -93,6 +93,12 @@ class AutoscalingConfig(BaseModel):
 
     @validator("policy", always=True)
     def serialize_policy(cls, policy, values):
+        """Serialize policy to be cloudpickled and base64 encoded utf8 string
+
+        If policy is a string, it is possible to be already serialized when constructed
+        from protobuf. In this case, we just return the already serialized string. Else
+        we import the policy and serialize it before return.
+        """
         if isinstance(policy, Callable):
             imported_policy = policy
         elif isinstance(policy, str):
@@ -104,10 +110,11 @@ class AutoscalingConfig(BaseModel):
         else:
             return policy
 
-        return b64encode(pickle.dumps(imported_policy)).decode("utf-8")
+        return b64encode(cloudpickle.dumps(imported_policy)).decode("utf-8")
 
     def get_policy(self) -> Callable:
-        return pickle.loads(b64decode(self.policy))
+        """Deserialize policy from cloudpicked base64 encoded utf8 string."""
+        return cloudpickle.loads(b64decode(self.policy))
 
     def get_upscale_smoothing_factor(self) -> PositiveFloat:
         return self.upscale_smoothing_factor or self.smoothing_factor
