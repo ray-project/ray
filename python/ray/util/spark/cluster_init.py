@@ -1057,15 +1057,12 @@ def _setup_ray_cluster_internal(
         num_gpus_worker_node,
     )
 
-    if max_worker_nodes is None and "num_worker_nodes" in kwargs:
-        max_worker_nodes = kwargs["num_worker_nodes"]
-        _logger.warning(
-            "'num_worker_nodes' argument is deprecated, please set "
-            "'max_worker_nodes' argument instead."
+    if "num_worker_nodes" in kwargs:
+        raise ValueError(
+            "'num_worker_nodes' argument is removed, please set "
+            "'max_worker_nodes' and 'min_worker_nodes' argument instead."
         )
 
-    if max_worker_nodes is None:
-        raise ValueError("Please set a number for 'max_worker_nodes' argument.")
     if max_worker_nodes == MAX_NUM_WORKER_NODES:
         if min_worker_nodes is not None:
             raise ValueError(
@@ -1209,8 +1206,8 @@ def _setup_ray_cluster_internal(
 
 @PublicAPI(stability="alpha")
 def setup_ray_cluster(
-    max_worker_nodes: Optional[int] = None,
     *,
+    max_worker_nodes: int,
     min_worker_nodes: Optional[int] = None,
     num_cpus_worker_node: Optional[int] = None,
     num_cpus_head_node: Optional[int] = None,
@@ -1358,8 +1355,8 @@ def setup_ray_cluster(
 
 
 def setup_global_ray_cluster(
-    max_worker_nodes: int,
     *,
+    max_worker_nodes: int,
     is_blocking: bool = True,
     min_worker_nodes: Optional[int] = None,
     num_cpus_worker_node: Optional[int] = None,
@@ -1372,7 +1369,6 @@ def setup_global_ray_cluster(
     worker_node_options: Optional[Dict] = None,
     strict_mode: bool = False,
     collect_log_to_path: Optional[str] = None,
-    autoscale: bool = False,
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
 ):
