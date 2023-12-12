@@ -57,6 +57,7 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
   if (!arguments.has_value()) {
     arguments = grpc::ChannelArguments();
   }
+  RAY_LOG(INFO) << "building channel";
 
   arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
                     ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
@@ -65,6 +66,7 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
   arguments->SetInt(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE,
                     ::RayConfig::instance().grpc_stream_buffer_size());
   std::shared_ptr<grpc::Channel> channel;
+  RAY_LOG(INFO) << ::RayConfig::instance().USE_TLS();
   if (::RayConfig::instance().USE_TLS()) {
     std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());
     std::string server_key_file = std::string(::RayConfig::instance().TLS_SERVER_KEY());
