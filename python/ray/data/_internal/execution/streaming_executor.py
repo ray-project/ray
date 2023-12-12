@@ -4,7 +4,6 @@ import time
 import uuid
 from typing import Dict, Iterator, List, Optional
 
-import ray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
