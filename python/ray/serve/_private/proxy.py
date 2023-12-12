@@ -26,6 +26,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
@@ -135,7 +136,6 @@ class GenericProxy(ABC):
 
     def __init__(
         self,
-        controller_name: str,
         node_id: NodeId,
         node_ip_address: str,
         proxy_router_class: Type[ProxyRouter],
@@ -156,7 +156,6 @@ class GenericProxy(ABC):
             deployment=None,
             replica_tag=None,
             servable_object=None,
-            controller_name=controller_name,
         )
 
         # Used only for displaying the route table.
@@ -170,7 +169,7 @@ class GenericProxy(ABC):
         )
         self.long_poll_client = LongPollClient(
             controller_actor
-            or ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
+            or ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
@@ -616,6 +615,20 @@ class gRPCProxy(GenericProxy):
         )
 
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+        def set_grpc_code_and_details(
+            context: grpc._cython.cygrpc._ServicerContext, status: ResponseStatus
+        ):
+            # Only the latest code and details will take effect. If the user already
+            # set them to a truthy value in the context, skip setting them with Serve's
+            # default values. By default, if nothing is set, the code is 0 and the
+            # details is "", which both are falsy. So if the user did not set them or
+            # if they're explicitly set to falsy values, such as None, Serve will
+            # continue to set them with our default values.
+            if not context.code():
+                context.set_code(status.code)
+            if not context.details():
+                context.set_details(status.message)
+
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -640,8 +653,8 @@ class gRPCProxy(GenericProxy):
                 else:
                     response = message
 
-            context.set_code(status.code)
-            context.set_details(status.message)
+            set_grpc_code_and_details(context, status)
+
             return response
 
         async def unary_stream(
@@ -668,8 +681,7 @@ class gRPCProxy(GenericProxy):
                 else:
                     yield message
 
-            context.set_code(status.code)
-            context.set_details(status.message)
+            set_grpc_code_and_details(context, status)
 
         return unary_stream if stream else unary_unary
 
@@ -702,6 +714,7 @@ class gRPCProxy(GenericProxy):
             "request_id": request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
+            "grpc_context": proxy_request.ray_serve_grpc_context,
         }
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
@@ -723,7 +736,8 @@ class gRPCProxy(GenericProxy):
         )
 
         try:
-            async for result in response_generator:
+            async for context, result in response_generator:
+                context.set_on_grpc_context(proxy_request.context)
                 yield result
 
             yield ResponseStatus(code=grpc.StatusCode.OK)
@@ -753,12 +767,7 @@ class gRPCProxy(GenericProxy):
 
 
 class HTTPProxy(GenericProxy):
-    """This class is meant to be instantiated and run by an ASGI HTTP server.
-
-    >>> import uvicorn
-    >>> controller_name = ... # doctest: +SKIP
-    >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
-    """
+    """This class is meant to be instantiated and run by an ASGI HTTP server."""
 
     @property
     def protocol(self) -> RequestProtocol:
@@ -1085,7 +1094,6 @@ class ProxyActor:
         host: str,
         port: int,
         root_path: str,
-        controller_name: str,
         node_ip_address: str,
         node_id: NodeId,
         logging_config: LoggingConfig,
@@ -1098,9 +1106,9 @@ class ProxyActor:
         self.grpc_options = grpc_options or gRPCOptions()
 
         self.long_poll_client = long_poll_client or LongPollClient(
-            ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
+            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
             {
-                LongPollNamespace.SYSTEM_LOGGING_CONFIG: self._update_logging_config,
+                LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
             },
             call_in_event_loop=get_or_create_event_loop(),
         )
@@ -1158,7 +1166,6 @@ class ProxyActor:
         self.grpc_setup_complete = asyncio.Event()
 
         self.http_proxy = HTTPProxy(
-            controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=LongestPrefixRouter,
@@ -1168,7 +1175,6 @@ class ProxyActor:
         )
         self.grpc_proxy = (
             gRPCProxy(
-                controller_name=controller_name,
                 node_id=node_id,
                 node_ip_address=node_ip_address,
                 proxy_router_class=EndpointRouter,

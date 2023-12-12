@@ -4,8 +4,8 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Dict,
     Hashable,
-    Mapping,
     Optional,
     Sequence,
     Tuple,
@@ -19,7 +19,6 @@ from ray.rllib.core.learner.learner import (
 )
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    ModuleID,
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
@@ -33,7 +32,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
-from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
+from ray.rllib.utils.typing import ModuleID, Optimizer, Param, ParamDict, TensorType
 
 
 tf1, tf, tfv = try_import_tf()
@@ -104,7 +103,7 @@ class TfLearner(Learner):
     @override(Learner)
     def compute_gradients(
         self,
-        loss_per_module: Mapping[str, TensorType],
+        loss_per_module: Dict[str, TensorType],
         gradient_tape: "tf.GradientTape",
         **kwargs,
     ) -> ParamDict:
@@ -263,11 +262,11 @@ class TfLearner(Learner):
             self._load_optimizer_state(path, new_optim, name)
 
     @override(Learner)
-    def set_module_state(self, state: Mapping[str, Any]) -> None:
+    def set_module_state(self, state: Dict[str, Any]) -> None:
         self._module.set_state(state)
 
     @override(Learner)
-    def get_optimizer_state(self) -> Mapping[str, Any]:
+    def get_optimizer_state(self) -> Dict[str, Any]:
         optim_state = {}
         with tf.init_scope():
             for name, optim in self._named_optimizers.items():
@@ -275,7 +274,7 @@ class TfLearner(Learner):
         return optim_state
 
     @override(Learner)
-    def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
+    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         for name, state_array in state.items():
             if name not in self._named_optimizers:
                 raise ValueError(

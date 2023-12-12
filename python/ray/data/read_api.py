@@ -955,14 +955,16 @@ def read_parquet_bulk(
     """
     if meta_provider is None:
         meta_provider = get_parquet_bulk_metadata_provider()
-    arrow_parquet_args = _resolve_parquet_args(
+    read_table_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
     )
+    if columns is not None:
+        read_table_args["columns"] = columns
 
     datasource = ParquetBaseDatasource(
         paths,
-        read_table_args=arrow_parquet_args,
+        read_table_args=read_table_args,
         filesystem=filesystem,
         open_stream_args=arrow_open_file_args,
         meta_provider=meta_provider,

@@ -104,7 +104,6 @@ class ActorProxyWrapper(ProxyWrapper):
         actor_handle: Optional[ActorHandle] = None,
         config: Optional[HTTPOptions] = None,
         grpc_options: Optional[gRPCOptions] = None,
-        controller_name: Optional[str] = None,
         name: Optional[str] = None,
         node_id: Optional[str] = None,
         node_ip_address: Optional[str] = None,
@@ -115,7 +114,6 @@ class ActorProxyWrapper(ProxyWrapper):
         self._actor_handle = actor_handle or self._get_or_create_proxy_actor(
             config=config,
             grpc_options=grpc_options,
-            controller_name=controller_name,
             name=name,
             node_id=node_id,
             node_ip_address=node_ip_address,
@@ -134,7 +132,6 @@ class ActorProxyWrapper(ProxyWrapper):
     def _get_or_create_proxy_actor(
         config: HTTPOptions,
         grpc_options: gRPCOptions,
-        controller_name: str,
         name: str,
         node_id: str,
         node_ip_address: str,
@@ -169,7 +166,6 @@ class ActorProxyWrapper(ProxyWrapper):
             config.host,
             port,
             config.root_path,
-            controller_name=controller_name,
             node_ip_address=node_ip_address,
             node_id=node_id,
             http_middlewares=config.middlewares,
@@ -284,8 +280,15 @@ class ActorProxyWrapper(ProxyWrapper):
         finished, _ = ray.wait([self._is_drained_obj_ref], timeout=0)
         if finished:
             self._is_drained_obj_ref = None
-            ray.get(finished[0])
-            return ProxyWrapperCallStatus.FINISHED_SUCCEED
+            is_drained = ray.get(finished[0])
+            if is_drained:
+                return ProxyWrapperCallStatus.FINISHED_SUCCEED
+            else:
+                # NOTE: Even though call returned successfully, we have to
+                #       report it as FINISHED_FAILED to make sure that
+                #       draining process doesn't move forward until draining
+                #       completes
+                return ProxyWrapperCallStatus.FINISHED_FAILED
         else:
             return ProxyWrapperCallStatus.PENDING
 
@@ -590,7 +593,6 @@ class ProxyStateManager:
 
     def __init__(
         self,
-        controller_name: str,
         config: HTTPOptions,
         head_node_id: str,
         cluster_node_info_cache: ClusterNodeInfoCache,
@@ -601,7 +603,6 @@ class ProxyStateManager:
         timer: TimerBase = Timer(),
     ):
         self.logging_config = logging_config
-        self._controller_name = controller_name
         if config is not None:
             self._config = config
         else:
@@ -710,7 +711,7 @@ class ProxyStateManager:
         return target_nodes
 
     def _generate_actor_name(self, node_id: str) -> str:
-        return format_actor_name(SERVE_PROXY_NAME, self._controller_name, node_id)
+        return format_actor_name(SERVE_PROXY_NAME, node_id)
 
     def _start_proxy(
         self,
@@ -752,7 +753,6 @@ class ProxyStateManager:
             logging_config=self.logging_config,
             config=self._config,
             grpc_options=grpc_options,
-            controller_name=self._controller_name,
             name=name,
             node_id=node_id,
             node_ip_address=node_ip_address,
