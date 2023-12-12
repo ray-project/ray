@@ -141,7 +141,8 @@ def prepare_data_loader(
 
     Example:
 
-    .. code-block:: python
+    .. testcode:
+        :skipif: True
 
         import torch
 
