@@ -48,7 +48,7 @@ ds = ray.data.read_datasource(
 # __read_datasource_end__
 
 
-from typing import Any
+from typing import Any, Dict
 import pyarrow
 
 # __datasink_constructor_start__
@@ -63,7 +63,7 @@ class ImageDatasink(RowBasedFileDatasink):
 # __datasink_constructor_end__
 
 # __write_row_to_file_start__
-    def write_row_to_file(self, row: dict[str, Any], file: pyarrow.NativeFile):
+    def write_row_to_file(self, row: Dict[str, Any], file: pyarrow.NativeFile):
         import io
         from PIL import Image
 
