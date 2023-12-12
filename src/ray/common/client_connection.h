@@ -227,6 +227,8 @@ class ClientConnection : public ServerConnection {
   /// ProcessClientMessage handler will be called.
   void ProcessMessages();
 
+  const std::string GetDebugLabel() const { return debug_label_; }
+
  protected:
   /// A protected constructor for a node client connection.
   ClientConnection(MessageHandler &message_handler,

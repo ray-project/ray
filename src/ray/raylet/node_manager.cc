@@ -1406,7 +1406,15 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleWorkerAvailable(worker);
+  if (worker) {
+    HandleWorkerAvailable(worker);
+  } else {
+    RAY_LOG(INFO)
+        << "[" << client->GetDebugLabel()
+        << "]NodeManager::HandleWorkerAvailable: Received worker available message but "
+           "no associated worker found. This worker has either not been registered yet "
+           "or it may have already exited.";
+  }
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
