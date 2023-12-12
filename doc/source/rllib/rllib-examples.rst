@@ -93,8 +93,6 @@ Serving and Offline
 -------------------
 - `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl.py>`__:
    Example showing how to run an offline RL training job using a historic-data json file.
-- :ref:`Serving RLlib models with Ray Serve <serve-rllib-tutorial>`: Example of using Ray Serve to serve RLlib models
-   with HTTP and JSON interface. **This is the recommended way to expose RLlib for online serving use case**.
 - `Another example for using RLlib with Ray Serve <https://github.com/ray-project/ray/tree/master/rllib/examples/inference_and_serving/serve_and_rllib.py>`__
    This script offers a simple workflow for 1) training a policy with RLlib first, 2) creating a new policy 3) restoring its weights from the trained
    one and serving the new policy via Ray Serve.
