@@ -110,41 +110,58 @@ class RefBundleDeque(deque):
     """Thread-safe wrapper around collections.deque that stores current stats."""
 
     def __init__(self):
-        self.memory_usage = 0
+        self._memory_usage = 0
+        self._num_blocks = 0
         self._lock = threading.Lock()
         super().__init__()
 
+    @property
+    def memory_usage(self) -> int:
+        with self._lock:
+            return self._memory_usage
+
+    @property
+    def num_blocks(self) -> int:
+        with self._lock:
+            return self._num_blocks
+
     def append(self, ref: RefBundle):
         with self._lock:
-            self.memory_usage += ref.size_bytes()
+            self._memory_usage += ref.size_bytes()
+            self._num_blocks += len(ref.blocks)
         super().append(ref)
 
     def appendleft(self, ref: RefBundle):
         with self._lock:
-            self.memory_usage += ref.size_bytes()
+            self._memory_usage += ref.size_bytes()
+            self._num_blocks += len(ref.blocks)
         super().appendleft(ref)
 
     def pop(self) -> RefBundle:
         ref = super().pop()
         with self._lock:
-            self.memory_usage -= ref.size_bytes()
+            self._memory_usage -= ref.size_bytes()
+            self._num_blocks -= len(ref.blocks)
         return ref
 
     def popleft(self) -> RefBundle:
         ref = super().popleft()
         with self._lock:
-            self.memory_usage -= ref.size_bytes()
+            self._memory_usage -= ref.size_bytes()
+            self._num_blocks -= len(ref.blocks)
         return ref
 
     def remove(self, ref: RefBundle):
         super().remove(ref)
         with self._lock:
-            self.memory_usage -= ref.size_bytes()
+            self._memory_usage -= ref.size_bytes()
+            self._num_blocks -= len(ref.blocks)
 
     def clear(self):
         super().clear()
         with self._lock:
-            self.memory_usage = 0
+            self._memory_usage = 0
+            self._num_blocks = 0
 
 
 class OpState:
@@ -303,15 +320,7 @@ class OpState:
 
     def outqueue_num_blocks(self) -> int:
         """Return the number of blocks in this operator's outqueue."""
-        num_blocks = 0
-        for i in range(len(self.outqueue)):
-            try:
-                bundle = self.outqueue[i]
-                if isinstance(bundle, RefBundle):
-                    num_blocks += len(bundle.blocks)
-            except IndexError:
-                break
-        return len(self.outqueue)
+        return self.outqueue.num_blocks
 
     def mark_finished(self, exception: Optional[Exception] = None):
         """Marks this operator as finished. Used for exiting get_output_blocking."""
