@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import uuid
 from typing import Any, Dict, Iterable, Optional
 
@@ -60,12 +61,15 @@ class tqdm:
     Supports a limited subset of tqdm args.
     """
 
+    DEFAULT_FLUSH_INTERVAL_SECONDS = 1.0
+
     def __init__(
         self,
         iterable: Optional[Iterable] = None,
         desc: Optional[str] = None,
         total: Optional[int] = None,
         position: Optional[int] = None,
+        flush_interval_s: Optional[float] = None,
     ):
         import ray._private.services as services
 
@@ -84,6 +88,8 @@ class tqdm:
         self._uuid = uuid.uuid4().hex
         self._x = 0
         self._closed = False
+        self._flush_interval_s = flush_interval_s or self.DEFAULT_FLUSH_INTERVAL_SECONDS
+        self._last_flush_time = 0.0
 
     def set_description(self, desc):
         """Implements tqdm.tqdm.set_description."""
@@ -115,6 +121,10 @@ class tqdm:
         self._total = total
 
     def _dump_state(self) -> None:
+        now = time.time()
+        if now - self._last_flush_time < self._flush_interval_s:
+            return
+        self._last_flush_time = now
         if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
             # Include newline in payload to avoid split prints.
             # TODO(ekl) we should move this to events.json to avoid log corruption.
