@@ -242,6 +242,7 @@ ray.get(f.remote())
             if status == JobStatus.PENDING:
                 print("job status is ", status)
             else:
+                print("job status is ", status)
                 print(client.get_job_logs(job))
             return client.get_job_status(job) == JobStatus.SUCCEEDED
 
