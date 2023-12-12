@@ -19,15 +19,6 @@ class Datasource:
     """Interface for defining a custom :class:`~ray.data.Dataset` datasource.
 
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
-    To write to a writable datasource, use :meth:`~ray.data.Dataset.write_datasource`.
-
-    See ``RangeDatasource`` and ``DummyOutputDatasource`` for examples
-    of how to implement readable and writable datasources.
-
-    .. note::
-        Datasource instances must be serializable, since
-        :meth:`~ray.data.Datasource.write` is called in remote tasks.
-
     """  # noqa: E501
 
     @Deprecated

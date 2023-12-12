@@ -187,6 +187,10 @@ class ActorMethod:
             f"'object.{self._method_name}.remote()'."
         )
 
+    @DeveloperAPI
+    def bind(self, *args, **kwargs):
+        return self._bind(args, kwargs)
+
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
 
@@ -208,7 +212,56 @@ class ActorMethod:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(args=args, kwargs=kwargs, **options)
 
+            @DeveloperAPI
+            def bind(self, *args, **kwargs):
+                return func_cls._bind(args=args, kwargs=kwargs, **options)
+
         return FuncWrapper()
+
+    @wrap_auto_init
+    @_tracing_actor_method_invocation
+    def _bind(
+        self,
+        args=None,
+        kwargs=None,
+        name="",
+        num_returns=None,
+        concurrency_group=None,
+        _generator_backpressure_num_objects=None,
+    ):
+        from ray.dag.class_node import (
+            PARENT_CLASS_NODE_KEY,
+            PREV_CLASS_METHOD_CALL_KEY,
+            ClassMethodNode,
+        )
+
+        # TODO(sang): unify option passing
+        options = {
+            "name": name,
+            "num_returns": num_returns,
+            "concurrency_group": concurrency_group,
+            "_generator_backpressure_num_objects": _generator_backpressure_num_objects,
+        }
+
+        actor = self._actor_ref()
+        if actor is None:
+            # Ref is GC'ed. It happens when the actor handle is GC'ed
+            # when bind is called.
+            raise RuntimeError("Lost reference to actor")
+
+        other_args_to_resolve = {
+            PARENT_CLASS_NODE_KEY: actor,
+            PREV_CLASS_METHOD_CALL_KEY: None,
+        }
+
+        node = ClassMethodNode(
+            self._method_name,
+            args,
+            kwargs,
+            options,
+            other_args_to_resolve=other_args_to_resolve,
+        )
+        return node
 
     @wrap_auto_init
     @_tracing_actor_method_invocation
@@ -239,8 +292,10 @@ class ActorMethod:
 
         def invocation(args, kwargs):
             actor = self._actor_hard_ref or self._actor_ref()
+
             if actor is None:
                 raise RuntimeError("Lost reference to actor")
+
             return actor._actor_method_call(
                 self._method_name,
                 args=args,
