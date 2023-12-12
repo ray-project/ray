@@ -618,9 +618,9 @@ def test_named_actor_workloads(ray_start_regular_with_external_redis):
         cc = Counter.options(name="cc", lifetime="detached").remote()
 
     assert ray.get(c.r.remote(10)) == 10
-    # ray.worker._global_node.start_gcs_server()
-    # cc = Counter.options(name="cc", lifetime="detached").remote()
-    # assert ray.get(cc.r.remote(10)) == 10
+    ray.worker._global_node.start_gcs_server()
+    cc = Counter.options(name="cc", lifetime="detached").remote()
+    assert ray.get(cc.r.remote(10)) == 10
 
 
 # @pytest.mark.parametrize(
