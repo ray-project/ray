@@ -41,6 +41,13 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 
+# Global variable that is fetched during controller recovery that
+# marks (simulates) which replicas have died since controller first
+# recovered a list of live replica names.
+# NOTE(zcin): This is necessary because the replica's `recover()` method
+# is called in the controller's init function, instead of in the control
+# loop, so we can't "mark" a replica dead through a method. This global
+# state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
 
 
@@ -375,6 +382,8 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         )
 
         yield deployment_state, timer, cluster_node_info_cache
+
+        dead_replicas_context.clear()
 
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
@@ -3003,6 +3012,8 @@ def mock_deployment_state_manager_full(
 
         yield create_deployment_state_manager, timer, cluster_node_info_cache
 
+        dead_replicas_context.clear()
+
 
 def test_recover_state_from_replica_names(mock_deployment_state_manager_full):
     """Test recover deployment state."""
@@ -3292,6 +3303,8 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         )
 
         yield deployment_state_manager, timer, cluster_node_info_cache
+
+        dead_replicas_context.clear()
 
 
 def test_shutdown(mock_deployment_state_manager):
