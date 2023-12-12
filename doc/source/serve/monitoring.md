@@ -234,7 +234,7 @@ In addition to the standard Python logger, Serve supports custom logging. Custom
 For a detailed overview of logging in Ray, see [Ray Logging](configure-logging).
 
 ### Configure Serve logging
-From ray 2.9, the logging_config API configures logging for Ray Serve. You can configure logging for Ray Serve. Pass a dictionary of [LOGGING_CONFIG](../serve/api/doc/ray.serve.schema.LoggingConfig.rst) or object of [LOGGING_CONFIG](../serve/api/doc/ray.serve.schema.LoggingConfig.rst) to the `logging_config` argument of `serve.run` or `@serve.deployment`.
+From ray 2.9, the logging_config API configures logging for Ray Serve. You can configure logging for Ray Serve. Pass a dictionary of [LOGGING_CONFIG](../../serve/api/doc/ray.serve.schema.LoggingConfig.rst) or object of [LOGGING_CONFIG](../../serve/api/doc/ray.serve.schema.LoggingConfig.rst) to the `logging_config` argument of `serve.run` or `@serve.deployment`.
 
 #### Configure logging format
 You can configure the JSON logging format by passing `encoding=JSON` to `logging_config` argument of `@serve.deployment`. For example:

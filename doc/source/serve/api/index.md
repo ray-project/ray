@@ -372,7 +372,6 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
-
    metrics.Counter
    metrics.Histogram
    metrics.Gauge
