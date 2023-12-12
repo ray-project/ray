@@ -1123,34 +1123,6 @@ Ray Examples
 
         Speed up your web crawler by parallelizing it with Ray
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item huggingface computer-vision data inference
-        :link: /data/examples/huggingface_vit_batch_prediction
-        :link-type: doc
-
-        Image Classification Batch Inference with Huggingface Vision Transformer
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item pytorch computer-vision data inference
-        :link: /data/examples/pytorch_resnet_batch_prediction
-        :link-type: doc
-
-        Image Classification Batch Inference with PyTorch ResNet152
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item pytorch computer-vision data inference
-        :link: /data/examples/batch_inference_object_detection
-        :link-type: doc
-
-        Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing training
-        :link: /data/examples/batch_training
-        :link-type: doc
-
-        Many Model Training with Ray Data
-
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core inference
         :link: /ray-core/examples/batch_prediction
