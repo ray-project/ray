@@ -14,6 +14,7 @@ ChannelType = "ray.experimental.channel.Channel"
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 def do_allocate_channel(
     self, buffer_size_bytes: int, num_readers: int = 1
 ) -> ChannelType:
@@ -30,6 +31,7 @@ def do_allocate_channel(
     return self._output_channel
 
 
+@DeveloperAPI
 def do_exec_compiled_task(
     self,
     inputs: List[Union[Any, ChannelType]],
@@ -76,6 +78,7 @@ def do_exec_compiled_task(
         raise
 
 
+@DeveloperAPI
 class CompiledTask:
     """Wraps the normal Ray DAGNode with some metadata."""
 
@@ -107,8 +110,12 @@ Output: {self.output_channel}
 """
 
 
+@DeveloperAPI
 class CompiledDAG:
     """Experimental class for accelerated execution.
+
+    This class should not be called directly. Instead, create
+    a ray.dag and call experimental_compile().
 
     See REP https://github.com/ray-project/enhancements/pull/48 for more
     information.
@@ -393,6 +400,7 @@ class CompiledDAG:
         return output_channels
 
 
+@DeveloperAPI
 def build_compiled_dag_from_ray_dag(
     dag: "ray.dag.DAGNode", buffer_size_bytes: Optional[int]
 ) -> "CompiledDAG":
