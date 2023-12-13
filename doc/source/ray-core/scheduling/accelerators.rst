@@ -5,9 +5,9 @@ Accelerator Support
 ===================
 
 Accelerators (e.g. GPUs) are critical for many machine learning applications.
-Ray natively supports many accelerators as pre-defined :ref:`resource <core-resources>` types and allows tasks and actors to specify their accelerator :ref:`resource requirements <resource-requirements>`.
+Ray Core natively supports many accelerators as pre-defined :ref:`resource <core-resources>` types and allows tasks and actors to specify their accelerator :ref:`resource requirements <resource-requirements>`.
 
-The accelerators natively supported by Ray are:
+The accelerators natively supported by Ray Core are:
 
 .. list-table::
    :header-rows: 1
