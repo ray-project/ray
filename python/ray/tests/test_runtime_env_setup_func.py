@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 import tempfile
+import pathlib
 
 import pytest
 
@@ -235,15 +236,16 @@ ray.get(f.remote())
                 )
             },
         )
-        print(client.get_job_logs(job))
 
         def verify():
             status = client.get_job_status(job)
-            if status == JobStatus.PENDING:
+            if status == JobStatus.FAILED:
                 print("job status is ", status)
-            else:
-                print("job status is ", status)
-                print(client.get_job_logs(job))
+                path = pathlib.Path("/tmp/ray/session_latest/logs")
+                for dir in path.iterdir():
+                    if "job-driver" in dir.name:
+                        print(dir.read_text())
+
             return client.get_job_status(job) == JobStatus.SUCCEEDED
 
         wait_for_condition(verify)
