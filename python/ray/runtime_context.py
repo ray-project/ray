@@ -421,7 +421,7 @@ class RuntimeContext(object):
         Get the current worker's visible accelerator ids.
 
         Returns:
-            A dictionary keyed by the accelerator resource name. The values are list
+            A dictionary keyed by the accelerator resource name. The values are a list
             of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1'],
             'TPU': ['0', '1']}`.
         """
