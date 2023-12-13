@@ -309,3 +309,85 @@ except grpc.RpcError as rpc_error:
     print(f"status code: {rpc_error.code()}")  # StatusCode.NOT_FOUND
     print(f"details: {rpc_error.details()}")  # Application metadata not set...
 # __end_error_handle__
+
+
+# __begin_grpc_context_define_app__
+from user_defined_protos_pb2 import UserDefinedMessage, UserDefinedResponse
+
+from ray import serve
+from ray.serve.grpc_util import RayServegRPCContext
+
+import grpc
+from typing import Tuple
+
+
+@serve.deployment
+class GrpcDeployment:
+    def __init__(self):
+        self.nums = {}
+
+    def num_lookup(self, name: str) -> Tuple[int, grpc.StatusCode, str]:
+        if name not in self.nums:
+            self.nums[name] = len(self.nums)
+            code = grpc.StatusCode.INVALID_ARGUMENT
+            message = f"{name} not found, adding to nums."
+        else:
+            code = grpc.StatusCode.OK
+            message = f"{name} found."
+        return self.nums[name], code, message
+
+    def __call__(
+        self,
+        user_message: UserDefinedMessage,
+        grpc_context: RayServegRPCContext,  # to use grpc context, add this kwarg
+    ) -> UserDefinedResponse:
+        greeting = f"Hello {user_message.name} from {user_message.origin}"
+        num, code, message = self.num_lookup(user_message.name)
+
+        # Set custom code, details, and trailing metadata.
+        grpc_context.set_code(code)
+        grpc_context.set_details(message)
+        grpc_context.set_trailing_metadata([("num", str(num))])
+
+        user_response = UserDefinedResponse(
+            greeting=greeting,
+            num=num,
+        )
+        return user_response
+
+
+g = GrpcDeployment.bind()
+app1 = "app1"
+serve.run(target=g, name=app1, route_prefix=f"/{app1}")
+# __end_grpc_context_define_app__
+
+
+# __begin_grpc_context_client__
+import grpc
+from user_defined_protos_pb2_grpc import UserDefinedServiceStub
+from user_defined_protos_pb2 import UserDefinedMessage
+
+
+channel = grpc.insecure_channel("localhost:9000")
+stub = UserDefinedServiceStub(channel)
+request = UserDefinedMessage(name="foo", num=30, origin="bar")
+metadata = (("application", "app1"),)
+
+# First call is going to page miss and return INVALID_ARGUMENT status code.
+try:
+    response, call = stub.__call__.with_call(request=request, metadata=metadata)
+except grpc.RpcError as rpc_error:
+    assert rpc_error.code() == grpc.StatusCode.INVALID_ARGUMENT
+    assert rpc_error.details() == "foo not found, adding to nums."
+    assert any(
+        [key == "num" and value == "0" for key, value in rpc_error.trailing_metadata()]
+    )
+    assert any([key == "request_id" for key, _ in rpc_error.trailing_metadata()])
+
+# Second call is going to page hit and return OK status code.
+response, call = stub.__call__.with_call(request=request, metadata=metadata)
+assert call.code() == grpc.StatusCode.OK
+assert call.details() == "foo found."
+assert any([key == "num" and value == "0" for key, value in call.trailing_metadata()])
+assert any([key == "request_id" for key, _ in call.trailing_metadata()])
+# __end_grpc_context_client__
