@@ -156,7 +156,7 @@ class SingleAgentEpisode:
         extra_model_outputs: Optional[Dict[str, Any]] = None,
         render_images: Optional[List[np.ndarray]] = None,
         t_started: Optional[int] = None,
-        len_lookback_buffer: Optional[int] = 0,
+        len_lookback_buffer: Optional[int] = None,
     ) -> "SingleAgentEpisode":
         """Initializes a SingleAgentEpisode instance.
 
@@ -621,6 +621,7 @@ class SingleAgentEpisode:
             },
             # Continue with self's current timestep.
             t_started=self.t,
+            len_lookback_buffer=len_lookback_buffer,
         )
 
     def get_observations(

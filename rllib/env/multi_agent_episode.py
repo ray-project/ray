@@ -6,6 +6,7 @@ import uuid
 import numpy as np
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.env.timestep_mapping import TimestepMappingWithInfiniteLookback
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.typing import MultiAgentDict
 
@@ -38,6 +39,7 @@ class MultiAgentEpisode:
         render_images: Optional[List[np.ndarray]] = None,
         extra_model_outputs: Optional[List[MultiAgentDict]] = None,
         t_started: Optional[int] = None,
+        len_lookback_buffer: Optional[int] = 0,
     ) -> "MultiAgentEpisode":
         """Initializes a `MultiAgentEpisode`.
 
@@ -100,6 +102,14 @@ class MultiAgentEpisode:
             set() if agent_ids is None else set(agent_ids)
         )
 
+        # Lookback buffer length is provided.
+        if len_lookback_buffer is not None:
+            self._len_lookback_buffer = len_lookback_buffer
+        # Lookback buffer length is not provided. Interpret already given data as
+        # lookback buffer.
+        else:
+            self._len_lookback_buffer = len(rewards or [])
+
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
         self.t = self.t_started = (
@@ -116,9 +126,9 @@ class MultiAgentEpisode:
         # track of the global timesteps at which an agent stepped.
         # Note, global (env) timesteps are values, while local (agent) steps are the
         # indices at which these global steps are recorded.
-        self.global_t_to_local_t: Dict[str, List[int]] = self._generate_ts_mapping(
-            observations
-        )
+        self.global_t_to_local_t: Dict[
+            str, "TimestepMappingWithInfiniteLookback"
+        ] = self._generate_ts_mapping(observations)
 
         # In the `MultiAgentEpisode` we need these buffers to keep track of actions,
         # that happen when an agent got observations and acted, but did not receive
@@ -283,40 +293,97 @@ class MultiAgentEpisode:
         # TODO (simon): Write validate function.
         # self.validate()
 
-    # TODO (simon): Maybe adding agent axis. We might need only some agent observations.
-    # Then also add possibility to get all obs (or None)
-    # Write many test cases (numbered obs).
+    # TODO (simon): Refactor over all getters.
     def get_observations(
         self,
-        indices: Union[int, List[int]] = -1,
+        indices: Optional[Union[int, List[int], slice]] = None,
         global_ts: bool = True,
-        as_list: bool = False,
-    ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
-        """Gets observations for all agents that stepped in the last timesteps.
+        neg_indices_left_of_zero: bool = False,
+        fill: Optional[float] = None,
+    ) -> MultiAgentDict:
+        """Returns multi-agent observations for requested indices."""
+        if global_ts:
+            # Get the corresponding local timesteps from the timestep mappings.
+            indices = {
+                agent_id: agent_map.get_local_timesteps(
+                    indices,
+                    neg_timesteps_left_of_zero=neg_indices_left_of_zero,
+                    fill=fill,
+                    t=self.t,
+                )
+                for agent_id, agent_map in self.global_t_to_local_t.items()
+            }
 
-        Note that observations are only returned for agents that stepped
-        during the given index range.
+        return {
+            agent_id: agent_eps.get_observations(
+                indices[agent_id],
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                fill=fill,
+            )
+            for agent_id, agent_eps in self.agent_episodes.items()
+            if indices[agent_id]
+        }
 
-        Args:
-            indices: Either a single index or a list of indices. The indices
-                can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
-                This defines the time indices for which the observations
-                should be returned.
-            global_ts: Boolean that defines, if the indices should be considered
-                environment (`True`) or agent (`False`) steps.
+    def get_infos(
+        self,
+        indices: Optional[Union[int, List[int], slice]] = None,
+        global_ts: bool = True,
+        neg_indices_left_of_zero: bool = False,
+        fill: Optional[float] = None,
+    ) -> MultiAgentDict:
+        """Returns multi-agent infos for requested indices."""
+        if global_ts:
+            indices = {
+                agent_id: agent_map.get_local_timesteps(
+                    indices,
+                    neg_timesteps_left_of_zero=neg_indices_left_of_zero,
+                    fill=fill,
+                    t=self.t,
+                )
+                for agent_id, agent_map in self.global_t_to_local_t.items()
+            }
 
-        Returns: A dictionary mapping agent ids to observations (of different
-            timesteps). Only for agents that have stepped (were ready) at a
-            timestep, observations are returned (i.e. not all agent ids are
-            necessarily in the keys).
-        """
-        return self._getattr_by_index(
-            "observations",
-            indices,
-            has_initial_value=True,
-            global_ts=global_ts,
-            as_list=as_list,
-        )
+        return {
+            agent_id: agent_eps.get_infos(
+                indices[agent_id],
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                fill=fill,
+            )
+            for agent_id, agent_eps in self.agent_episodes.items()
+            if indices[agent_id]
+        }
+
+    # TODO (simon): Add buffered actions.
+    def get_actions(
+        self,
+        indices: Optional[Union[int, List[int], slice]] = None,
+        global_ts: bool = True,
+        neg_indices_left_of_zero: bool = False,
+        fill: Optional[float] = None,
+    ) -> MultiAgentDict:
+        """Returns multi-agent actions for requested indices."""
+
+        if global_ts:
+            indices = {
+                agent_id: agent_map.get_local_timesteps(
+                    indices,
+                    neg_timesteps_left_of_zero=neg_indices_left_of_zero,
+                    fill=fill,
+                    t=self.t,
+                    shift=-1,
+                )
+                for agent_id, agent_map in self.global_t_to_local_t.items()
+            }
+
+        return {
+            agent_id: agent_eps.get_actions(
+                indices[agent_id],
+                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                fill=fill,
+            )
+            for agent_id, agent_eps in self.agent_episodes.items()
+            if indices[agent_id]
+        }
 
     # TODO (simon): Make sure that users always give in sorted lists.
     # Because of the way we check the indices we cannot guarantee the order of
@@ -325,86 +392,86 @@ class MultiAgentEpisode:
     # corresponding 'next observation' (i.e. no buffered actions). Take care of this.
     # Also in the `extra_model_outputs`.
 
-    def get_actions(
-        self,
-        indices: Union[int, List[int]] = -1,
-        global_ts: bool = True,
-        as_list: bool = False,
-    ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
-        """Gets actions for all agents that stepped in the last timesteps.
+    # def get_actions(
+    #     self,
+    #     indices: Union[int, List[int]] = -1,
+    #     global_ts: bool = True,
+    #     as_list: bool = False,
+    # ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
+    #     """Gets actions for all agents that stepped in the last timesteps.
 
-        Note that actions are only returned for agents that stepped
-        during the given index range.
+    #     Note that actions are only returned for agents that stepped
+    #     during the given index range.
 
-        Args:
-            indices: Either a single index or a list of indices. The indices
-                can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
-                This defines the time indices for which the actions
-                should be returned.
-            global_ts: Boolean that defines, if the indices should be considered
-                environment (`True`) or agent (`False`) steps.
+    #     Args:
+    #         indices: Either a single index or a list of indices. The indices
+    #             can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
+    #             This defines the time indices for which the actions
+    #             should be returned.
+    #         global_ts: Boolean that defines, if the indices should be considered
+    #             environment (`True`) or agent (`False`) steps.
 
-        Returns: A dictionary mapping agent ids to actions (of different
-            timesteps). Only for agents that have stepped (were ready) at a
-            timestep, actions are returned (i.e. not all agent ids are
-            necessarily in the keys).
-        """
-        buffered_actions = {}
+    #     Returns: A dictionary mapping agent ids to actions (of different
+    #         timesteps). Only for agents that have stepped (were ready) at a
+    #         timestep, actions are returned (i.e. not all agent ids are
+    #         necessarily in the keys).
+    #     """
+    #     buffered_actions = {}
 
-        if global_ts:
-            # Check, if the indices are iterable.
-            if isinstance(indices, list):
-                indices = [
-                    (self.t + idx + 1 if idx < 0 else idx + self.ts_carriage_return)
-                    for idx in indices
-                ]
-            # If not make them iterable.
-            else:
-                indices = (
-                    [self.t + indices + 1]
-                    if indices < 0
-                    else [indices + self.ts_carriage_return]
-                )
-        else:
-            if not isinstance(indices, list):
-                indices = [indices]
-        # Check now, if one of these indices is the last in the global
-        # action timestep mapping.
-        for agent_id, agent_global_action_t in self.global_actions_t.items():
-            if agent_global_action_t:
-                last_action_index = (
-                    agent_global_action_t[-1]
-                    if global_ts
-                    else len(agent_global_action_t) - 1
-                )
-            # We consider only timesteps that are in the requested indices and
-            # check then, if for these the buffer is full.
-            if (
-                agent_global_action_t
-                and (last_action_index in indices or -1 in indices)
-                and self.agent_buffers[agent_id]["actions"].full()
-            ):
-                # Then the buffer must be full and needs to be accessed.
-                # Note, we do not want to empty the buffer, but only read it.
-                buffered_actions[agent_id] = [
-                    self.agent_buffers[agent_id]["actions"].queue[0]
-                ]
-            else:
-                buffered_actions[agent_id] = []
+    #     if global_ts:
+    #         # Check, if the indices are iterable.
+    #         if isinstance(indices, list):
+    #             indices = [
+    #                 (self.t + idx + 1 if idx < 0 else idx + self.ts_carriage_return)
+    #                 for idx in indices
+    #             ]
+    #         # If not make them iterable.
+    #         else:
+    #             indices = (
+    #                 [self.t + indices + 1]
+    #                 if indices < 0
+    #                 else [indices + self.ts_carriage_return]
+    #             )
+    #     else:
+    #         if not isinstance(indices, list):
+    #             indices = [indices]
+    #     # Check now, if one of these indices is the last in the global
+    #     # action timestep mapping.
+    #     for agent_id, agent_global_action_t in self.global_actions_t.items():
+    #         if agent_global_action_t:
+    #             last_action_index = (
+    #                 agent_global_action_t[-1]
+    #                 if global_ts
+    #                 else len(agent_global_action_t) - 1
+    #             )
+    #         # We consider only timesteps that are in the requested indices and
+    #         # check then, if for these the buffer is full.
+    #         if (
+    #             agent_global_action_t
+    #             and (last_action_index in indices or -1 in indices)
+    #             and self.agent_buffers[agent_id]["actions"].full()
+    #         ):
+    #             # Then the buffer must be full and needs to be accessed.
+    #             # Note, we do not want to empty the buffer, but only read it.
+    #             buffered_actions[agent_id] = [
+    #                 self.agent_buffers[agent_id]["actions"].queue[0]
+    #             ]
+    #         else:
+    #             buffered_actions[agent_id] = []
 
-        # Now, get the actions.
-        actions = self._getattr_by_index(
-            "actions",
-            indices=indices,
-            has_initial_value=True,
-            global_ts=global_ts,
-            global_ts_mapping=self.global_actions_t,
-            # shift=1,
-            as_list=as_list,
-            buffered_values=buffered_actions,
-        )
+    #     # Now, get the actions.
+    #     actions = self._getattr_by_index(
+    #         "actions",
+    #         indices=indices,
+    #         has_initial_value=True,
+    #         global_ts=global_ts,
+    #         global_ts_mapping=self.global_actions_t,
+    #         # shift=1,
+    #         as_list=as_list,
+    #         buffered_values=buffered_actions,
+    #     )
 
-        return actions
+    #     return actions
 
     def get_extra_model_outputs(
         self,
@@ -730,38 +797,6 @@ class MultiAgentEpisode:
                     idx, indices[indices.index(idx) + 1]
                 )
             ]
-
-    def get_infos(
-        self,
-        indices: Union[int, List[int]] = -1,
-        global_ts: bool = True,
-        as_list: bool = False,
-    ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
-        """Gets infos for all agents that stepped in the last timesteps.
-
-        Note that infos are only returned for agents that stepped
-        during the given index range.
-
-        Args:
-            indices: Either a single index or a list of indices. The indices
-                can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
-                This defines the time indices for which the infos
-                should be returned.
-            global_ts: Boolean that defines, if the indices should be considered
-                environment (`True`) or agent (`False`) steps.
-
-        Returns: A dictionary mapping agent ids to infos (of different
-            timesteps). Only for agents that have stepped (were ready) at a
-            timestep, infos are returned (i.e. not all agent ids are
-            necessarily in the keys).
-        """
-        return self._getattr_by_index(
-            "infos",
-            indices,
-            has_initial_value=True,
-            global_ts=global_ts,
-            as_list=as_list,
-        )
 
     def get_terminateds(self) -> MultiAgentDict:
         """Gets the terminateds at given indices."""
@@ -1440,39 +1475,53 @@ class MultiAgentEpisode:
             contain the global (environment) timesteps at which the agent
             stepped (was ready).
         """
-        # Only if agent ids have been provided we can build the timestep mapping.
-        if len(self._agent_ids) > 0:
-            global_t_to_local_t = {agent: _IndexMapping() for agent in self._agent_ids}
-
-            # We need the observations to create the timestep mapping.
+        # If agent ids are provided we can create the timestep mappings.
+        if self._agent_ids:
+            # If we have observations, we can generate the timestep mapping.
             if observations:
-                for t, agent_map in enumerate(observations):
-                    for agent_id in agent_map:
-                        # If agent stepped add the timestep to the timestep mapping.
-                        global_t_to_local_t[agent_id].append(
-                            t + self.ts_carriage_return
-                        )
-            # Otherwise, set to an empoty dict (when creating an empty episode).
+                agent_ts_maps = defaultdict(
+                    lambda: TimestepMappingWithInfiniteLookback(
+                        lookback=self._len_lookback_buffer, t_started=self.t_started
+                    )
+                )
+                for ts, obs in enumerate(observations):
+                    for agent_id in obs:
+                        agent_ts_maps[agent_id].append(ts)
+                # Return the agents' timestep mappings.
+                return agent_ts_maps
+            # Otherwise we return a dictionary that generates by default empty timestep
+            # mappings.
             else:
-                global_t_to_local_t = {}
-        # Otherwise, set to an empoty dict (when creating an empty episode).
+                return defaultdict(TimestepMappingWithInfiniteLookback)
+        # Otherwise, we return a dictionary that creates by default timestep mappings.
         else:
-            # TODO (sven, simon): Shall we return an empty dict or an agent dict with
-            # empty lists?
-            global_t_to_local_t = {}
-        # Return the index mapping.
-        return global_t_to_local_t
+            return defaultdict(TimestepMappingWithInfiniteLookback)
 
     def _generate_global_actions_t(self, actions):
-        global_actions_t = {agent_id: _IndexMapping() for agent_id in self._agent_ids}
-        if actions:
-            for t, action in enumerate(actions):
-                for agent_id in action:
-                    # Note, actions start at timestep 1, i.e. no initial actions.
-                    # TODO (simon): Check, if need here also the `ts_carriage_return`.
-                    global_actions_t[agent_id].append(t + self.ts_carriage_return + 1)
+        # Only, if we have agent ids we can provide the action timestep mappings.
+        if self._agent_ids:
+            # Only if we have actions provided we can build the action timestep
+            # mappings.
+            if actions:
+                agent_ts_maps = defaultdict(
+                    lambda: TimestepMappingWithInfiniteLookback(
+                        lookback=self._len_lookback_buffer, t_started=self.t_started
+                    )
+                )
+                for ts, action in enumerate(actions):
+                    for agent_id in action:
+                        if agent_id in action:
+                            # Note, actions start at timestep 1.
+                            agent_ts_maps[agent_id].append(
+                                ts + 1
+                            )  # + ts_carriage_return
+                # Return the agents' action timestep mappings.
+                return agent_ts_maps
 
-        return global_actions_t
+            else:
+                return defaultdict(TimestepMappingWithInfiniteLookback)
+        else:
+            return defaultdict(TimestepMappingWithInfiniteLookback)
 
     # TODO (sven, simon): This function can only deal with data if it does not contain
     # terminated or truncated agents (i.e. you have to provide ONLY alive agents in the
@@ -1554,9 +1603,10 @@ class MultiAgentEpisode:
             # Convert `extra_model_outputs` for this agent from list of dicts to dict
             # of lists.
             agent_extra_model_outputs = defaultdict(list)
-            for _model_out in _agent_extra_model_outputs:
-                for key, val in _model_out.items():
-                    agent_extra_model_outputs[key].append(val)
+            if _agent_extra_model_outputs:
+                for _model_out in _agent_extra_model_outputs:
+                    for key, val in _model_out.items():
+                        agent_extra_model_outputs[key].append(val)
 
             agent_is_terminated = terminateds.get(agent_id, False)
             agent_is_truncated = truncateds.get(agent_id, False)
@@ -1636,10 +1686,13 @@ class MultiAgentEpisode:
                 terminated=agent_is_terminated,
                 truncated=agent_is_truncated,
                 extra_model_outputs=agent_extra_model_outputs,
+                len_lookback_buffer=self._len_lookback_buffer,
             )
         # Otherwise return empty `SingleAgentEpisode`.
         else:
-            return SingleAgentEpisode(id_=episode_id)
+            return SingleAgentEpisode(
+                id_=episode_id, len_lookback_buffer=self._len_lookback_buffer
+            )
 
     def _getattr_by_index(
         self,
