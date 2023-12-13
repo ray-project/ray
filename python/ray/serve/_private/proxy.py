@@ -737,7 +737,7 @@ class gRPCProxy(GenericProxy):
 
         try:
             async for context, result in response_generator:
-                context.set_on_grpc_context(proxy_request.context)
+                context._set_on_grpc_context(proxy_request.context)
                 yield result
 
             yield ResponseStatus(code=grpc.StatusCode.OK)
