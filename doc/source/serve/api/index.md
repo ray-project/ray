@@ -99,6 +99,7 @@ You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs
    serve.get_multiplexed_model_id
    serve.get_app_handle
    serve.get_deployment_handle
+   serve.grpc_util.RayServegRPCContext
 ```
 
 (serve-cli)=
