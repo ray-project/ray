@@ -542,7 +542,7 @@ class ActorReplicaWrapper:
         self._version = version
         return updating
 
-    def recover(self):
+    def recover(self) -> bool:
         """Recover replica version from a live replica actor.
 
         When controller dies, the deployment state loses the info on the version that's
@@ -550,12 +550,27 @@ class ActorReplicaWrapper:
         need to recover the version that is running on the replica actor.
 
         Also confirm that actor is allocated and initialized before marking as running.
+
+        Returns: False if the replica actor is no longer alive; the
+            actor could have been killed in the time between when the
+            controller fetching all Serve actors in the cluster and when
+            the controller tries to recover it. Otherwise, return True.
         """
         logger.info(
             f"Recovering replica {self.replica_tag} for deployment "
             f"{self.deployment_name} in application '{self.app_name}'."
         )
-        self._actor_handle = self.actor_handle
+        try:
+            self._actor_handle = ray.get_actor(
+                self._actor_name, namespace=SERVE_NAMESPACE
+            )
+        except ValueError:
+            logger.warning(
+                f"Failed to get handle to replica {self._actor_name} "
+                "during controller recovery. Marking as dead."
+            )
+            return False
+
         try:
             self._placement_group = ray.util.get_placement_group(
                 self._actor_name,
@@ -575,6 +590,8 @@ class ActorReplicaWrapper:
             self._ready_obj_ref = (
                 self._actor_handle.initialize_and_get_metadata.remote()
             )
+
+        return True
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
@@ -945,14 +962,21 @@ class DeploymentReplica(VersionedReplica):
         """
         return self._actor.reconfigure(version)
 
-    def recover(self):
+    def recover(self) -> bool:
         """
         Recover states in DeploymentReplica instance by fetching running actor
         status
+
+        Returns: False if the replica is no longer alive at the time
+            when this method is called.
         """
-        self._actor.recover()
+        # If replica is no longer alive
+        if not self._actor.recover():
+            return False
+
         self._start_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
+        return True
 
     def check_started(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """Check if the replica has started. If so, transition to RUNNING.
@@ -1283,7 +1307,14 @@ class DeploymentState:
                 replica_name.deployment_id,
                 self._target_state.version,
             )
-            new_deployment_replica.recover()
+            # If replica is no longer alive, simply don't add it to the
+            # deployment state manager to track.
+            if not new_deployment_replica.recover():
+                logger.warning(
+                    f"Replica {replica_name} died before controller could recover it."
+                )
+                continue
+
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
             self._deployment_scheduler.on_replica_recovering(
                 replica_name.deployment_id, replica_name.replica_tag
