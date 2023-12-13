@@ -150,9 +150,11 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   reply.str = &error.front();
   reply.len = error.length();
   reply.type = REDIS_REPLY_ERROR;
+  RedisContext parent_context(io_service);
   RedisRequestContext privdata(io_service,
                                [](std::shared_ptr<CallbackReply>) {},
                                std::move(async_context_wrapper),
+                               parent_context,
                                {"HGET", "namespace", "key"});
 
   std::promise<bool> second_request;

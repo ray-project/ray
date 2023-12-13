@@ -106,6 +106,11 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
                    << "]"
                    << " failed due to error " << error_msg << ". "
                    << request_cxt->pending_retries_ << " retries left.";
+
+    // Retry the request after a while.
+    auto delay = request_cxt->exp_back_off_.Current();
+
+    // First check if we need to redirect on MOVED.
     if (RayConfig::instance().enable_moved_redirect()) {
       if (auto maybe_ip_port =
               ParseIffMovedError(std::string(redis_reply->str, redis_reply->len));
@@ -117,21 +122,22 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
           RAY_LOG(ERROR) << "Failed to connect to the new leader " << ip << ":" << port;
         } else {
           request_cxt->redis_context_.reset(CreateAsyncContext(std::move(resp.second)));
+          // Set the context in the longer-lived RedisContext object.
+          request_cxt->parent_context_.ResetAsyncContext(request_cxt->redis_context_);
           // TODO(vitsai): do we need to Attach
         }
+      } else {
+        request_cxt->exp_back_off_.Next();
       }
+    } else {
+      request_cxt->exp_back_off_.Next();
     }
-    auto delay = request_cxt->exp_back_off_.Current();
-    request_cxt->exp_back_off_.Next();
 
-    // Retry the request after a while.
     execute_after(
         request_cxt->io_service_,
         [request_cxt]() { request_cxt->Run(); },
         std::chrono::milliseconds(delay));
-    RAY_LOG(INFO) << "vct executed after";
   } else {
-    RAY_LOG(INFO) << "vct are we here";
     auto reply = std::make_shared<CallbackReply>(redis_reply);
     request_cxt->io_service_.post(
         [reply, callback = std::move(request_cxt->callback_)]() {

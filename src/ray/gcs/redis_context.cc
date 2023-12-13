@@ -152,12 +152,14 @@ const std::vector<std::optional<std::string>> &CallbackReply::ReadAsStringArray(
 RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                                          RedisCallback callback,
                                          std::shared_ptr<RedisAsyncContext> &&context,
+                                         RedisContext &parent_context,
                                          std::vector<std::string> args)
     : exp_back_off_(RayConfig::instance().redis_retry_base_ms(),
                     RayConfig::instance().redis_retry_multiplier(),
                     RayConfig::instance().redis_retry_max_ms()),
       io_service_(io_service),
       redis_context_(std::move(context)),
+      parent_context_(parent_context),
       pending_retries_(RayConfig::instance().num_redis_request_retries() + 1),
       callback_(std::move(callback)),
       start_time_(absl::Now()),
@@ -462,6 +464,11 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
   return callback_reply;
 }
 
+void RedisContext::ResetAsyncContext(std::shared_ptr<RedisAsyncContext> &redis_context) {
+  absl::MutexLock l(&mu_);
+  redis_async_context_.swap(redis_context);
+}
+
 void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                 RedisCallback redis_callback) {
   std::shared_ptr<RedisAsyncContext> redis_async_context;
@@ -473,6 +480,7 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
   auto request_context = new RedisRequestContext(io_service_,
                                                  std::move(redis_callback),
                                                  std::move(redis_async_context),
+                                                 *this,
                                                  std::move(args));
   request_context->Run();
 }

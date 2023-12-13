@@ -113,6 +113,7 @@ struct RedisRequestContext {
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
                       std::shared_ptr<RedisAsyncContext> &&context,
+                      RedisContext &parent_context,
                       std::vector<std::string> args);
 
   template <typename ConnectType = redisAsyncContext>
@@ -126,6 +127,7 @@ struct RedisRequestContext {
   ExponentialBackOff exp_back_off_;
   instrumented_io_context &io_service_;
   std::shared_ptr<RedisAsyncContext> redis_context_;
+  RedisContext &parent_context_;
   size_t pending_retries_;
   RedisCallback callback_;
   absl::Time start_time_;
@@ -163,6 +165,8 @@ class RedisContext {
   /// \return Status.
   virtual void RunArgvAsync(std::vector<std::string> args,
                             RedisCallback redis_callback = nullptr);
+
+  void ResetAsyncContext(std::shared_ptr<RedisAsyncContext> &redis_async_context);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);

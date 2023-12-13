@@ -184,7 +184,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0]));
-    // Only async context is used in sharding context, so wen disable the other two.
+    // Only async context is used in sharding context, so we disable the other two.
     RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_,
                                              options_.server_port_,
                                              /*sharding=*/true,
