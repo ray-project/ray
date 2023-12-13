@@ -59,6 +59,7 @@ steps:
   - label: ":ray-serve: serve: release tests"
     tags:
       - serve
+      - release_tests
       - python
     instance_type: medium
     commands:
