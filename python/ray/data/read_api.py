@@ -2338,13 +2338,14 @@ def from_arrow_refs(
 
 @PublicAPI
 def from_spark(
-    df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
+    df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
 
     Args:
-        df: A `Spark DataFrame`_, which must be created by RayDP (Spark-on-Ray).
+        df: Any `Spark DataFrame` if you run Ray application with Ray on spark,
+            or a `Spark DataFrame`_ which must be created by RayDP (Spark-on-Ray).
         parallelism: The amount of parallelism to use for the dataset. If
             not provided, the parallelism is equal to the number of partitions of
             the original Spark DataFrame.
@@ -2352,9 +2353,25 @@ def from_spark(
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
-    import raydp
 
-    return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
+    from pyspark.sql import SparkSession
+
+    if SparkSession.getActiveSession() is not None:
+        from ray.data.datasource.spark_datasource import SparkDatasource
+        # Ray on spark
+
+        datasource = SparkDatasource(df, -1)
+        dataset = read_datasource(
+            datasource=datasource,
+            parallelism=parallelism,
+        )
+        dataset.materialize()
+        datasource.dispose_spark_cache()
+        return dataset
+    else:
+        import raydp
+
+        return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
 
 
 @PublicAPI
