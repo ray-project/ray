@@ -99,7 +99,7 @@ def training_loop(config):
     criterion = nn.CrossEntropyLoss()
 
     for epoch_idx in range(2):
-        train_epoch(train_loader, model, criterion, optimizer)
+        train_epoch(epoch_idx, train_loader, model, criterion, optimizer)
         validation_loss = validate_epoch(validation_loader, model, criterion)
 
         with tempfile.TemporaryDirectory() as tmpdir:
