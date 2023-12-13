@@ -37,8 +37,27 @@ using ::testing::Return;
 class RedisContextTest : public ::testing::Test {
  public:
   RedisContextTest() {}
+  virtual ~RedisContextTest() = default;
 
-  virtual ~RedisContextTest() {}
+  static const std::string &GetTestAddress() {
+    static const std::string ip = "10.0.106.72";
+    return ip;
+  }
+
+  static const int &GetTestPort() {
+    static const int port = 6379;
+    return port;
+  }
+
+  static bool &GetMutableConnectTested() {
+    static bool connect_tested = false;
+    return connect_tested;
+  }
+
+  static MockRedisContext *GetGlobalMockRedisContext() {
+    static auto mock_redis_context = std::make_unique<MockRedisContext>();
+    return mock_redis_context.get();
+  }
 };
 
 class MockRedisContext : public RedisAsyncContext {
@@ -47,7 +66,7 @@ class MockRedisContext : public RedisAsyncContext {
       : RedisAsyncContext(std::unique_ptr<redisAsyncContext, RedisContextDeleter>(
             new redisAsyncContext())) {
     // Ultra hacky. Populate redis_async_context_->c
-    // such that redisContextFree is a noop.
+    // such that redisContextFree is a noop. Might leak, actually.
     redisContext *c = &(redis_async_context_->c);
     c->flags |= REDIS_IN_CALLBACK;
   }
@@ -68,32 +87,38 @@ RedisAsyncContext *CreateAsyncContext(
   return static_cast<RedisAsyncContext *>(context.release());
 }
 
-// We specialize on the mock object to potentially mock this function.
+// We specialize on the mock object to mock this function.
+// Checks that we reconnect to the correct port, which is the most
+// important part.
 template <>
 std::pair<Status, std::unique_ptr<MockRedisContext, RedisContextDeleter>>
 ConnectWithRetries<MockRedisContext, decltype(redisAsyncConnect)>(
     const std::string &address,
     int port,
     const decltype(redisAsyncConnect) &connect_function) {
-  return std::make_pair(
-      Status::OK(),
-      std::unique_ptr<MockRedisContext, RedisContextDeleter>(new MockRedisContext()));
+  RAY_CHECK_EQ(address, RedisContextTest::GetTestAddress());
+  RAY_CHECK_EQ(port, RedisContextTest::GetTestPort());
+
+  // So we can assert on this at the end.
+  auto &connect_tested = RedisContextTest::GetMutableConnectTested();
+  connect_tested = true;
+
+  return std::make_pair(Status::OK(),
+                        std::unique_ptr<MockRedisContext, RedisContextDeleter>(
+                            RedisContextTest::GetGlobalMockRedisContext()));
 }
 
 TEST_F(RedisContextTest, TestRedisMoved) {
+  EXPECT_FALSE(RedisContextTest::GetMutableConnectTested());
+
   // Start IO service in a different thread.
   instrumented_io_context io_service;
   std::unique_ptr<std::thread> io_service_thread_ =
       std::make_unique<std::thread>([&io_service] {
         std::unique_ptr<boost::asio::io_service::work> work(
             new boost::asio::io_service::work(io_service));
-        io_service.run();
+        io_service.run_for(std::chrono::milliseconds(10000));
       });
-
-  // Create mock redis context.
-  const std::string ip = "10.0.106.72";
-  const int port = 6379;
-  MockRedisContext mock_redis_context;
 
   // Initialize the reply with MOVED error.
   auto base_context = new redisAsyncContext();
@@ -118,7 +143,10 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   std::shared_ptr<RedisAsyncContext> async_context_wrapper =
       std::make_shared<RedisAsyncContext>(std::move(async_context));
   redisReply reply;
-  std::string error = "MOVED 1234 " + ip + ":" + std::to_string(port);
+
+  std::string error = "MOVED 1234 " + RedisContextTest::GetTestAddress() + ":" +
+                      std::to_string(RedisContextTest::GetTestPort());
+
   reply.str = &error.front();
   reply.len = error.length();
   reply.type = REDIS_REPLY_ERROR;
@@ -127,16 +155,16 @@ TEST_F(RedisContextTest, TestRedisMoved) {
                                std::move(async_context_wrapper),
                                {"HGET", "namespace", "key"});
 
-  std::promise<bool> second_connect;
-  auto fut = second_connect.get_future();
-  // TODO add matcher for "correct" one
-  EXPECT_CALL(mock_redis_context, RedisAsyncCommandArgv(_, _, _, _, _))
-      .WillOnce(Return(Status::OK()))
+  std::promise<bool> second_request;
+  auto fut = second_request.get_future();
+
+  // Checks that we retry.
+  EXPECT_CALL(*RedisContextTest::GetGlobalMockRedisContext(),
+              RedisAsyncCommandArgv(_, _, _, _, _))
       .WillOnce(
-          Invoke([&second_connect](
+          Invoke([&second_request](
                      redisCallbackFn *, void *, int, const char **, const size_t *) {
-            RAY_LOG(INFO) << "VCT GOT HERE";
-            second_connect.set_value(true);
+            second_request.set_value(true);
             return Status::OK();
           }));
 
@@ -147,7 +175,9 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   // Wait for the second callback to happen.
   fut.wait_for(std::chrono::milliseconds(3000));
 
-  async_context_wrapper->ResetRawRedisAsyncContext();
+  // The most important check in the test is this one.
+  EXPECT_TRUE(RedisContextTest::GetMutableConnectTested());
+
   io_service_thread_->join();
 }
 

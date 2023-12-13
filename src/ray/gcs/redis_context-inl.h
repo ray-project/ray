@@ -129,7 +129,9 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
         request_cxt->io_service_,
         [request_cxt]() { request_cxt->Run(); },
         std::chrono::milliseconds(delay));
+    RAY_LOG(INFO) << "vct executed after";
   } else {
+    RAY_LOG(INFO) << "vct are we here";
     auto reply = std::make_shared<CallbackReply>(redis_reply);
     request_cxt->io_service_.post(
         [reply, callback = std::move(request_cxt->callback_)]() {
