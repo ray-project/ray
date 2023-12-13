@@ -207,7 +207,7 @@ class ClassMethodNode(DAGNode):
         method_body = getattr(self._parent_class_node, method_name)
         return method_body
 
-    def _get_actor_handle(self) -> Optional[ReferenceType["ray.actor.ActorHandle"]]:
+    def _get_actor_handle(self) -> Optional["ray.actor.ActorHandle"]:
         if not isinstance(self._parent_class_node, ray.actor.ActorHandle):
             return None
         return self._parent_class_node
