@@ -88,7 +88,11 @@ class tqdm:
         self._uuid = uuid.uuid4().hex
         self._x = 0
         self._closed = False
-        self._flush_interval_s = flush_interval_s or self.DEFAULT_FLUSH_INTERVAL_SECONDS
+        self._flush_interval_s = (
+            flush_interval_s
+            if flush_interval_s is not None
+            else self.DEFAULT_FLUSH_INTERVAL_SECONDS
+        )
         self._last_flush_time = 0.0
 
     def set_description(self, desc):

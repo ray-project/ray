@@ -13,7 +13,9 @@ def test_distributed_tqdm_remote():
     class Actor:
         def __init__(self):
             try:
-                self.bar = tqdm_ray.tqdm(desc="foo", total=100, position=0)
+                self.bar = tqdm_ray.tqdm(
+                    desc="foo", total=100, position=0, flush_interval_s=0
+                )
                 self.bar.update(42)
             except Exception as e:
                 print(e)
@@ -45,7 +47,7 @@ def test_distributed_tqdm_local():
     mgr = tqdm_ray.instance()
     mgr.bar_groups.clear()
 
-    bar = tqdm_ray.tqdm(desc="bar", total=100, position=0)
+    bar = tqdm_ray.tqdm(desc="bar", total=100, position=0, flush_interval_s=0)
     bar.update(42)
     wait_for_condition(lambda: len(mgr.bar_groups) == 1)
     assert len(mgr.bar_groups) == 1
@@ -60,7 +62,9 @@ def test_distributed_tqdm_iterator():
     mgr = tqdm_ray.instance()
     mgr.bar_groups.clear()
 
-    assert sum(tqdm_ray.tqdm(range(100), desc="baz")) == sum(range(100))
+    assert sum(tqdm_ray.tqdm(range(100), desc="baz", flush_interval_s=0)) == sum(
+        range(100)
+    )
     wait_for_condition(lambda: len(mgr.bar_groups) == 1)
     assert len(mgr.bar_groups) == 1
     bar_group = list(mgr.bar_groups.values())[0]
