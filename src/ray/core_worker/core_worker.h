@@ -605,6 +605,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// ensure that they decrement the ref count once the returned ObjectRef has
   /// gone out of scope.
   ///
+  /// \param[in] is_experimental_mutable_object Whether this object is an
+  /// experimental mutable object. If true, then the returned object buffer
+  /// will not be available to read until the caller Seals and then writes
+  /// again.
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
   /// \param[in] contained_object_ids The IDs serialized in this object.
@@ -617,6 +621,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// small.
   /// \return Status.
   Status CreateOwnedAndIncrementLocalRef(
+      bool is_experimental_mutable_object,
       const std::shared_ptr<Buffer> &metadata,
       const size_t data_size,
       const std::vector<ObjectID> &contained_object_ids,
@@ -678,6 +683,39 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       const ObjectID &generator_id = ObjectID::Nil(),
                       const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
+  /// Experimental method for mutable objects. Acquires a write lock on the
+  /// object that prevents readers from reading until we are done writing. Does
+  /// not protect against concurrent writers.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] metadata The metadata of the object. This overwrites the
+  /// current metadata.
+  /// \param[in] data_size The size of the object to write. This overwrites the
+  /// current data size.
+  /// \param[in] num_readers The number of readers that must read and release
+  /// the object before the caller can write again.
+  /// \param[out] data The mutable object buffer in plasma that can be written to.
+  Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
+                                               const std::shared_ptr<Buffer> &metadata,
+                                               uint64_t data_size,
+                                               int64_t num_readers,
+                                               std::shared_ptr<Buffer> *data);
+
+  /// Experimental method for mutable objects. Releases a write lock on the
+  /// object, allowing readers to read. This is the equivalent of "Seal" for
+  /// normal objects.
+  ///
+  /// \param[in] object_id The ID of the object.
+  Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
+
+  /// Experimental method for mutable objects. Releases the objects, allowing them
+  /// to be written again. If the caller did not previously Get the objects,
+  /// then this first blocks until the latest value is available to read, then
+  /// releases the value.
+  ///
+  /// \param[in] object_ids The IDs of the objects.
+  Status ExperimentalMutableObjectReadRelease(const std::vector<ObjectID> &object_ids);
+
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
   ///
@@ -687,6 +725,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids,
              const int64_t timeout_ms,
+             bool is_experimental_mutable_object,
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Get objects directly from the local plasma store, without waiting for the
