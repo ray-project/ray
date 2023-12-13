@@ -33,6 +33,6 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=kuberay_operator
       --test_env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test
-      --test_env=PULL_POLICY=IfNotPresent
+      --test_env=PULL_POLICY=Never
       --test_env=KUBECONFIG=/root/.kube/config
       python/ray/tests/...
