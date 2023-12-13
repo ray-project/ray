@@ -14,6 +14,9 @@ from ray._private.test_utils import wait_for_condition
 
 logger = logging.getLogger(__name__)
 
+if sys.platform != "linux":
+    pytest.skip("Skipping, requires Linux.", allow_module_level=True)
+
 
 @ray.remote
 class Actor:
@@ -118,7 +121,8 @@ def test_dag_errors(ray_start_regular):
     a = Actor.remote(0)
     dag = a.inc.bind(1)
     with pytest.raises(
-        ValueError, match="Compiled DAGs currently require exactly one InputNode"
+        NotImplementedError,
+        match="Compiled DAGs currently require exactly one InputNode",
     ):
         dag.experimental_compile()
 
@@ -139,7 +143,8 @@ def test_dag_errors(ray_start_regular):
     with InputNode() as inp:
         dag = f.bind(inp)
     with pytest.raises(
-        ValueError, match="Compiled DAGs currently only support actor method nodes"
+        NotImplementedError,
+        match="Compiled DAGs currently only support actor method nodes",
     ):
         dag.experimental_compile()
 
@@ -147,14 +152,15 @@ def test_dag_errors(ray_start_regular):
         dag = a.inc.bind(inp)
         dag = a.inc.bind(dag)
     with pytest.raises(
-        ValueError, match="Compiled DAGs can contain at most one task per actor handle."
+        NotImplementedError,
+        match="Compiled DAGs can contain at most one task per actor handle.",
     ):
         dag.experimental_compile()
 
     with InputNode() as inp:
         dag = a.inc_two.bind(inp[0], inp[1])
     with pytest.raises(
-        ValueError,
+        NotImplementedError,
         match="Compiled DAGs currently do not support kwargs or multiple args "
         "for InputNode",
     ):
@@ -163,7 +169,7 @@ def test_dag_errors(ray_start_regular):
     with InputNode() as inp:
         dag = a.inc_two.bind(inp.x, inp.y)
     with pytest.raises(
-        ValueError,
+        NotImplementedError,
         match="Compiled DAGs currently do not support kwargs or multiple args "
         "for InputNode",
     ):
