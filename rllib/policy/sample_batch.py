@@ -735,7 +735,13 @@ class SampleBatch(dict):
             stop = len(self)
         assert start >= 0 and stop >= 0 and slice_.step in [1, None]
 
+        # Exclude INFOs from regular array slicing as the data under this column might
+        # be a list (not good for `tree.map_structure` call).
+        infos = self.get(SampleBatch.INFOS)
         data = tree.map_structure(lambda value: value[start:stop], self)
+        if infos is not None:
+            data[SampleBatch.INFOS] = infos[start:stop]
+
         return SampleBatch(
             data,
             _is_training=self.is_training,
@@ -1629,39 +1635,41 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     # Make sure these settings are consistent amongst all batches.
     zero_padded = max_seq_len = time_major = None
     for s in samples:
-        if s.count > 0:
-            if max_seq_len is None:
-                zero_padded = s.zero_padded
-                max_seq_len = s.max_seq_len
-                time_major = s.time_major
+        if s.count <= 0:
+            continue
 
-            # Make sure these settings are consistent amongst all batches.
-            if s.zero_padded != zero_padded or s.time_major != time_major:
-                raise ValueError(
-                    "All SampleBatches' `zero_padded` and `time_major` settings "
-                    "must be consistent!"
-                )
-            if (
-                s.max_seq_len is None or max_seq_len is None
-            ) and s.max_seq_len != max_seq_len:
-                raise ValueError(
-                    "Samples must consistently either provide or omit " "`max_seq_len`!"
-                )
-            elif zero_padded and s.max_seq_len != max_seq_len:
-                raise ValueError(
-                    "For `zero_padded` SampleBatches, the values of `max_seq_len` "
-                    "must be consistent!"
-                )
+        if max_seq_len is None:
+            zero_padded = s.zero_padded
+            max_seq_len = s.max_seq_len
+            time_major = s.time_major
 
-            if max_seq_len is not None:
-                max_seq_len = max(max_seq_len, s.max_seq_len)
-            if s.get(SampleBatch.SEQ_LENS) is not None:
-                concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
-            if s.num_grad_updates is not None:
-                concatd_num_grad_updates[0] += s.count
-                concatd_num_grad_updates[1] += s.num_grad_updates * s.count
+        # Make sure these settings are consistent amongst all batches.
+        if s.zero_padded != zero_padded or s.time_major != time_major:
+            raise ValueError(
+                "All SampleBatches' `zero_padded` and `time_major` settings "
+                "must be consistent!"
+            )
+        if (
+            s.max_seq_len is None or max_seq_len is None
+        ) and s.max_seq_len != max_seq_len:
+            raise ValueError(
+                "Samples must consistently either provide or omit " "`max_seq_len`!"
+            )
+        elif zero_padded and s.max_seq_len != max_seq_len:
+            raise ValueError(
+                "For `zero_padded` SampleBatches, the values of `max_seq_len` "
+                "must be consistent!"
+            )
 
-            concated_samples.append(s)
+        if max_seq_len is not None:
+            max_seq_len = max(max_seq_len, s.max_seq_len)
+        if s.get(SampleBatch.SEQ_LENS) is not None:
+            concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
+        if s.num_grad_updates is not None:
+            concatd_num_grad_updates[0] += s.count
+            concatd_num_grad_updates[1] += s.num_grad_updates * s.count
+
+        concated_samples.append(s)
 
     # If we don't have any samples (0 or only empty SampleBatches),
     # return an empty SampleBatch here.
@@ -1672,28 +1680,16 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     concatd_data = {}
 
     for k in concated_samples[0].keys():
-        try:
-            if k == "infos":
-                concatd_data[k] = _concat_values(
-                    *[s[k] for s in concated_samples],
-                    time_major=time_major,
-                )
-            else:
-                values_to_concat = [c[k] for c in concated_samples]
-                _concat_values_w_time = partial(_concat_values, time_major=time_major)
-                concatd_data[k] = tree.map_structure(
-                    _concat_values_w_time, *values_to_concat
-                )
-        except RuntimeError as e:
-            # This should catch torch errors that occur when concatenating
-            # tensors from different devices.
-            raise e
-        except Exception as e:
-            # Other errors are likely due to mismatching sub-structures.
-            raise ValueError(
-                f"Cannot concat data under key '{k}', b/c "
-                "sub-structures under that key don't match. "
-                f"`samples`={samples}\n Original error: \n {e}"
+        if k == SampleBatch.INFOS:
+            concatd_data[k] = _concat_values(
+                *[s[k] for s in concated_samples],
+                time_major=time_major,
+            )
+        else:
+            values_to_concat = [c[k] for c in concated_samples]
+            _concat_values_w_time = partial(_concat_values, time_major=time_major)
+            concatd_data[k] = tree.map_structure(
+                _concat_values_w_time, *values_to_concat
             )
 
     if concatd_seq_lens != [] and torch and torch.is_tensor(concatd_seq_lens[0]):

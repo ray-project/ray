@@ -17,6 +17,7 @@ from ray._private.test_utils import (
     check_local_files_gced,
     wait_for_condition,
     find_free_port,
+    skip_flaky_core_test_premerge,
 )
 
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -252,6 +253,7 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
+    @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]

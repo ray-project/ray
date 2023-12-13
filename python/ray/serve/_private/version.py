@@ -7,7 +7,7 @@ from zlib import crc32
 
 from ray._private.pydantic_compat import BaseModel
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_letters
+from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_string
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
 
 logger = logging.getLogger("ray.serve")
@@ -26,7 +26,7 @@ class DeploymentVersion:
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
         if code_version is None:
-            self.code_version = get_random_letters()
+            self.code_version = get_random_string()
         else:
             self.code_version = code_version
 

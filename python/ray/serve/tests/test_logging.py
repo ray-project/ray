@@ -359,7 +359,7 @@ def check_log_file(log_file: str, expected_regex: list):
 
 class TestLoggingAPI:
     def test_start_serve_with_logging_config(self, serve_and_ray_shutdown):
-        serve.start(system_logging_config={"log_level": "DEBUG", "encoding": "JSON"})
+        serve.start(logging_config={"log_level": "DEBUG", "encoding": "JSON"})
         serve_log_dir = get_serve_logs_dir()
         # Check controller log
         actors = state_api.list_actors()
@@ -434,7 +434,6 @@ class TestLoggingAPI:
         check_log_file(resp["log_file"], expected_log_regex)
 
     def test_logs_dir(self, serve_and_ray_shutdown):
-
         logger = logging.getLogger("ray.serve")
 
         @serve.deployment
