@@ -596,7 +596,6 @@ class Algorithm(Trainable, AlgorithmBase):
         ] = defaultdict(set)
 
         self.workers: Optional[WorkerSet] = None
-        self.train_exec_impl = None
 
         # Offline RL settings.
         input_evaluation = self.config.get("input_evaluation")
@@ -612,52 +611,19 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             self.config.off_policy_estimation_methods = ope_dict
 
-        # Deprecated way of implementing Algorithm sub-classes (or "templates"
-        # via the `build_trainer` utility function).
-        # Instead, sub-classes should override the Trainable's `setup()`
-        # method and call super().setup() from within that override at some
-        # point.
-        # Old design: Override `Algorithm._init`.
-        _init = False
-        try:
-            self._init(self.config, self.env_creator)
-            _init = True
-        # New design: Override `Algorithm.setup()` (as indented by tune.Trainable)
-        # and do or don't call `super().setup()` from within your override.
-        # By default, `super().setup()` will create both worker sets:
-        # "rollout workers" for collecting samples for training and - if
-        # applicable - "evaluation workers" for evaluation runs in between or
-        # parallel to training.
-        # TODO: Deprecate `_init()` and remove this try/except block.
-        except NotImplementedError:
-            pass
+        # Create a set of env runner actors via a WorkerSet.
+        self.workers = WorkerSet(
+            env_creator=self.env_creator,
+            validate_env=self.validate_env,
+            default_policy_class=self.get_default_policy_class(self.config),
+            config=self.config,
+            num_workers=self.config.num_rollout_workers,
+            local_worker=True,
+            logdir=self.logdir,
+        )
 
-        # Only if user did not override `_init()`:
-        if _init is False:
-            # Create a set of env runner actors via a WorkerSet.
-            self.workers = WorkerSet(
-                env_creator=self.env_creator,
-                validate_env=self.validate_env,
-                default_policy_class=self.get_default_policy_class(self.config),
-                config=self.config,
-                num_workers=self.config.num_rollout_workers,
-                local_worker=True,
-                logdir=self.logdir,
-            )
-
-            # TODO (avnishn): Remove the execution plan API by q1 2023
-            # Function defining one single training iteration's behavior.
-            if self.config._disable_execution_plan_api:
-                # Ensure remote workers are initially in sync with the local worker.
-                self.workers.sync_weights()
-            # LocalIterator-creating "execution plan".
-            # Only call this once here to create `self.train_exec_impl`,
-            # which is a ray.util.iter.LocalIterator that will be `next`'d
-            # on each training iteration.
-            else:
-                self.train_exec_impl = self.execution_plan(
-                    self.workers, self.config, **self._kwargs_for_execution_plan()
-                )
+        # Ensure remote workers are initially in sync with the local worker.
+        self.workers.sync_weights()
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -806,14 +772,6 @@ class Algorithm(Trainable, AlgorithmBase):
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
 
-    # TODO: Deprecated: In your sub-classes of Algorithm, override `setup()`
-    #  directly and call super().setup() from within it if you would like the
-    #  default setup behavior plus some own setup logic.
-    #  If you don't need the env/workers/config/etc.. setup for you by super,
-    #  simply do not call super().setup() from your overridden method.
-    def _init(self, config: AlgorithmConfigDict, env_creator: EnvCreator) -> None:
-        raise NotImplementedError
-
     @OverrideToImplementCustomLogic
     @classmethod
     def get_default_policy_class(
@@ -890,19 +848,16 @@ class Algorithm(Trainable, AlgorithmBase):
                 workers=self.workers,
                 config=self.config,
             )
-            # TODO (avnishn): Remove the execution plan API by q1 2023
-            # Collect worker metrics and add combine them with `results`.
-            if self.config._disable_execution_plan_api:
-                episodes_this_iter = collect_episodes(
-                    self.workers,
-                    self._remote_worker_ids_for_metrics(),
-                    timeout_seconds=self.config.metrics_episode_collection_timeout_s,
-                )
-                results = self._compile_iteration_results(
-                    episodes_this_iter=episodes_this_iter,
-                    step_ctx=train_iter_ctx,
-                    iteration_results=results,
-                )
+            episodes_this_iter = collect_episodes(
+                self.workers,
+                self._remote_worker_ids_for_metrics(),
+                timeout_seconds=self.config.metrics_episode_collection_timeout_s,
+            )
+            results = self._compile_iteration_results(
+                episodes_this_iter=episodes_this_iter,
+                step_ctx=train_iter_ctx,
+                iteration_results=results,
+            )
 
         # Check `env_task_fn` for possible update of the env's task.
         if self.config.env_task_fn is not None:
@@ -1682,15 +1637,6 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
         return train_results
-
-    @staticmethod
-    def execution_plan(workers, config, **kwargs):
-        raise NotImplementedError(
-            "It is no longer supported to use the `Algorithm.execution_plan()` API!"
-            " Set `_disable_execution_plan_api=True` in your config and override the "
-            "`Algorithm.training_step()` method with your algo's custom "
-            "execution logic instead."
-        )
 
     # TODO (sven): Deprecate this API in favor of extracting the correct RLModule
     #  and simply calling `forward_inference()` on it (see DreamerV3 for an example).
@@ -2805,10 +2751,7 @@ class Algorithm(Trainable, AlgorithmBase):
         ):
             state["local_replay_buffer"] = self.local_replay_buffer.get_state()
 
-        if self.train_exec_impl is not None:
-            state["train_exec_impl"] = self.train_exec_impl.shared_metrics.get().save()
-        else:
-            state["counters"] = self._counters
+        state["counters"] = self._counters
         state["training_iteration"] = self.training_iteration
 
         return state
@@ -2868,9 +2811,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     "data found in state!"
                 )
 
-        if self.train_exec_impl is not None:
-            self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
-        elif "counters" in state:
+        if "counters" in state:
             self._counters = state["counters"]
 
         if "training_iteration" in state:
@@ -3043,13 +2984,6 @@ class Algorithm(Trainable, AlgorithmBase):
 
         return from_config(ReplayBuffer, config["replay_buffer_config"])
 
-    @DeveloperAPI
-    def _kwargs_for_execution_plan(self):
-        kwargs = {}
-        if self.local_replay_buffer is not None:
-            kwargs["local_replay_buffer"] = self.local_replay_buffer
-        return kwargs
-
     def _run_one_training_iteration(self) -> Tuple[ResultDict, "TrainIterCtx"]:
         """Runs one training iteration (self.iteration will be +1 after this).
 
@@ -3072,12 +3006,8 @@ class Algorithm(Trainable, AlgorithmBase):
             # when we have reached `min_time_s_per_iteration`).
             while not train_iter_ctx.should_stop(results):
                 # Try to train one step.
-                # TODO (avnishn): Remove the execution plan API by q1 2023
                 with self._timers[TRAINING_ITERATION_TIMER]:
-                    if self.config._disable_execution_plan_api:
-                        results = self.training_step()
-                    else:
-                        results = next(self.train_exec_impl)
+                    results = self.training_step()
 
         # With training step done. Try to bring failed workers back.
         self.restore_workers(self.workers)
@@ -3417,41 +3347,34 @@ class TrainIterCtx:
             return False
 
         # Stopping criteria.
-        elif self.algo.config._disable_execution_plan_api:
-            if self.algo.config.count_steps_by == "agent_steps":
-                self.sampled = (
-                    self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
-                    - self.init_agent_steps_sampled
-                )
-                self.trained = (
-                    self.algo._counters[NUM_AGENT_STEPS_TRAINED]
-                    - self.init_agent_steps_trained
-                )
-            else:
-                self.sampled = (
-                    self.algo._counters[NUM_ENV_STEPS_SAMPLED]
-                    - self.init_env_steps_sampled
-                )
-                self.trained = (
-                    self.algo._counters[NUM_ENV_STEPS_TRAINED]
-                    - self.init_env_steps_trained
-                )
-
-            min_t = self.algo.config["min_time_s_per_iteration"]
-            min_sample_ts = self.algo.config["min_sample_timesteps_per_iteration"]
-            min_train_ts = self.algo.config["min_train_timesteps_per_iteration"]
-            # Repeat if not enough time has passed or if not enough
-            # env|train timesteps have been processed (or these min
-            # values are not provided by the user).
-            if (
-                (not min_t or time.time() - self.time_start >= min_t)
-                and (not min_sample_ts or self.sampled >= min_sample_ts)
-                and (not min_train_ts or self.trained >= min_train_ts)
-            ):
-                return True
-            else:
-                return False
-        # No errors (we got results != None) -> Return True
-        # (meaning: yes, should stop -> no further step attempts).
+        if self.algo.config.count_steps_by == "agent_steps":
+            self.sampled = (
+                self.algo._counters[NUM_AGENT_STEPS_SAMPLED]
+                - self.init_agent_steps_sampled
+            )
+            self.trained = (
+                self.algo._counters[NUM_AGENT_STEPS_TRAINED]
+                - self.init_agent_steps_trained
+            )
         else:
+            self.sampled = (
+                self.algo._counters[NUM_ENV_STEPS_SAMPLED] - self.init_env_steps_sampled
+            )
+            self.trained = (
+                self.algo._counters[NUM_ENV_STEPS_TRAINED] - self.init_env_steps_trained
+            )
+
+        min_t = self.algo.config["min_time_s_per_iteration"]
+        min_sample_ts = self.algo.config["min_sample_timesteps_per_iteration"]
+        min_train_ts = self.algo.config["min_train_timesteps_per_iteration"]
+        # Repeat if not enough time has passed or if not enough
+        # env|train timesteps have been processed (or these min
+        # values are not provided by the user).
+        if (
+            (not min_t or time.time() - self.time_start >= min_t)
+            and (not min_sample_ts or self.sampled >= min_sample_ts)
+            and (not min_train_ts or self.trained >= min_train_ts)
+        ):
             return True
+        else:
+            return False
