@@ -58,11 +58,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
     def __iter__(self):
         while min(self._num_covered_epochs.values()) < self._num_iters:
-
-            print(
-                f"min(self._num_covered_epochs.values()) < self._num_iters; min(num_covered_epochs)={min(self._num_covered_epochs.values())} num_iters={self._num_iters}"
-            )
-
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
 
@@ -101,8 +96,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     def get_len(b):
                         return len(b)
 
-                print(f"entering while loop n_steps={n_steps} get_len(module_batch)={get_len(module_batch)} s={s}")
-
                 # Cycle through the batch until we have enough samples.
                 while n_steps >= get_len(module_batch) - s:
                     sample = module_batch[s:]
@@ -114,9 +107,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     self._num_covered_epochs[module_id] += 1
 
                 e = s + n_steps  # end
-                print(f"e={e}")
                 if e > s:
-                    print("e>s")
                     samples_to_concat.append(module_batch[s:e])
 
                 # concatenate all the samples, we should have minibatch_size of sample
@@ -210,7 +201,6 @@ class ShardEpisodesIterator:
                 # Otherwise, slice the episode
                 remaining_length = self._target_lengths[min_index] - lengths[min_index]
                 if remaining_length > 0:
-                    #print("got to slice once")
                     slice_part, remaining_part = episode[:remaining_length], episode[
                                                                              remaining_length:]
                     sublists[min_index].append(slice_part)
