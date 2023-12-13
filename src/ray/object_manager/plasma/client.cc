@@ -213,7 +213,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   ///
   /// \param store_fd File descriptor to fetch from the store.
   /// \return The pointer corresponding to store_fd.
-  uint8_t *GetStoreFdAndMmap(MEMFD_TYPE store_fd, int64_t map_size, bool may_unmap);
+  uint8_t *GetStoreFdAndMmap(MEMFD_TYPE store_fd, int64_t map_size);
 
   /// This is a helper method for marking an object as unused by this client.
   ///
@@ -279,8 +279,7 @@ PlasmaClient::Impl::~Impl() {}
 // return the pointer that was returned by mmap, otherwise mmap it and store the
 // pointer in a hash table.
 uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
-                                               int64_t map_size,
-                                               bool may_unmap) {
+                                               int64_t map_size) {
   auto entry = mmap_table_.find(store_fd_val);
   if (entry != mmap_table_.end()) {
     return entry->second->pointer();
@@ -294,8 +293,7 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
       mmap_table_.erase(dedup_fd_table_[store_fd_val.first]);
     }
     dedup_fd_table_[store_fd_val.first] = store_fd_val;
-    mmap_table_[store_fd_val] =
-        std::make_unique<ClientMmapTableEntry>(fd, map_size, may_unmap);
+    mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
     return mmap_table_[store_fd_val]->pointer();
   }
 }
@@ -350,7 +348,6 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   auto object = std::make_unique<PlasmaObject>();
   MEMFD_TYPE store_fd;
   int64_t mmap_size;
-  bool may_unmap;
 
   if (retry_with_request_id) {
     RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(),
@@ -359,22 +356,15 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
                                       retry_with_request_id,
                                       object.get(),
                                       &store_fd,
-                                      &mmap_size,
-                                      &may_unmap));
+                                      &mmap_size));
     if (*retry_with_request_id > 0) {
       // The client should retry the request.
       return Status::OK();
     }
   } else {
     uint64_t unused = 0;
-    RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(),
-                                      buffer.size(),
-                                      &id,
-                                      &unused,
-                                      object.get(),
-                                      &store_fd,
-                                      &mmap_size,
-                                      &may_unmap));
+    RAY_RETURN_NOT_OK(ReadCreateReply(
+        buffer.data(), buffer.size(), &id, &unused, object.get(), &store_fd, &mmap_size));
     RAY_CHECK(unused == 0);
   }
 
@@ -384,11 +374,10 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     // The metadata should come right after the data.
     RAY_CHECK(object->metadata_offset == object->data_offset + object->data_size);
     RAY_LOG(DEBUG) << "GetStoreFdAndMmap " << store_fd.first << ", " << store_fd.second
-                   << ", size " << mmap_size << " for object id " << id << ", may_unmap "
-                   << may_unmap;
+                   << ", size " << mmap_size << " for object id " << id;
     *data = std::make_shared<PlasmaMutableBuffer>(
         shared_from_this(),
-        GetStoreFdAndMmap(store_fd, mmap_size, may_unmap) + object->data_offset,
+        GetStoreFdAndMmap(store_fd, mmap_size) + object->data_offset,
         object->data_size);
     // If plasma_create is being called from a transfer, then we will not copy the
     // metadata here. The metadata will be written along with the data streamed
@@ -658,15 +647,13 @@ Status PlasmaClient::Impl::GetBuffers(
   std::vector<PlasmaObject> object_data(num_objects);
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
-  std::vector<bool> may_unmaps;
   RAY_RETURN_NOT_OK(ReadGetReply(buffer.data(),
                                  buffer.size(),
                                  received_object_ids.data(),
                                  object_data.data(),
                                  num_objects,
                                  store_fds,
-                                 mmap_sizes,
-                                 may_unmaps));
+                                 mmap_sizes));
 
   // We mmap all of the file descriptors here so that we can avoid look them up
   // in the subsequent loop based on just the store file descriptor and without
@@ -675,7 +662,7 @@ Status PlasmaClient::Impl::GetBuffers(
     RAY_LOG(DEBUG) << "GetStoreFdAndMmap " << store_fds[i].first << ", "
                    << store_fds[i].second << ", size " << mmap_sizes[i]
                    << " for object id " << received_object_ids[i];
-    GetStoreFdAndMmap(store_fds[i], mmap_sizes[i], may_unmaps[i]);
+    GetStoreFdAndMmap(store_fds[i], mmap_sizes[i]);
   }
 
   std::unique_ptr<PlasmaObject> object;
@@ -850,15 +837,12 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
     // If the fd may be unmapped, we wait for the plasma server to send a ReleaseReply.
     // Otherwise, skip the reply to boost performance.
+    // Q: since both server and client knows this fd is fallback allocated, why do we
+    //    need to pass it in PlasmaReleaseRequest?
+    // A: becuase we wanna be idempotent, and in the 2nd call, the server does not know
+    //    about the object.
     const MEMFD_TYPE fd = object_entry->second->object.store_fd;
-    bool may_unmap = false;
-    {
-      const auto mmap_entry = mmap_table_.find(fd);
-      // Release call is idempotent: if we already released, it's ok.
-      if (mmap_entry != mmap_table_.end()) {
-        may_unmap = mmap_entry->second->may_unmap();
-      }
-    }
+    bool may_unmap = object_entry->second->object.fallback_allocated;
     // Tell the store that the client no longer needs the object.
     RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
     RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id, may_unmap));

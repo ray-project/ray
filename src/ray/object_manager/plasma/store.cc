@@ -207,7 +207,6 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
   absl::flat_hash_set<MEMFD_TYPE> fds_to_send;
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
-  std::vector<bool> may_unmaps;
   for (const auto &object_id : get_request->object_ids) {
     const PlasmaObject &object = get_request->objects[object_id];
     MEMFD_TYPE fd = object.store_fd;
@@ -215,7 +214,6 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
       fds_to_send.insert(fd);
       store_fds.push_back(fd);
       mmap_sizes.push_back(object.mmap_size);
-      may_unmaps.push_back(object.fallback_allocated);
       if (get_request->is_from_worker) {
         total_consumed_bytes_ += object.data_size + object.metadata_size;
       }
@@ -227,8 +225,7 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
                           get_request->objects,
                           get_request->object_ids.size(),
                           store_fds,
-                          mmap_sizes,
-                          may_unmaps);
+                          mmap_sizes);
   // If we successfully sent the get reply message to the client, then also send
   // the file descriptors.
   if (s.ok()) {
@@ -422,7 +419,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     ProcessGetRequest(client, object_ids_to_get, timeout_ms, is_from_worker);
   } break;
   case fb::MessageType::PlasmaReleaseRequest: {
-    // May unmap: client knows a unmappable fd is involved.
+    // May unmap: client knows a fallback-allocated fd is involved.
     // Should unmap: server finds refcnt == 0 -> need to be unmapped.
     bool may_unmap;
     RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id, &may_unmap));

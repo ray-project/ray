@@ -269,6 +269,7 @@ Status SendCreateReply(const std::shared_ptr<Client> &client,
                                  object.metadata_offset,
                                  object.metadata_size,
                                  object.allocated_size,
+                                 object.fallback_allocated,
                                  object.device_num,
                                  object.is_experimental_mutable_object);
   auto object_string = fbb.CreateString(object_id.Binary());
@@ -280,7 +281,6 @@ Status SendCreateReply(const std::shared_ptr<Client> &client,
   crb.add_store_fd(FD2INT(object.store_fd.first));
   crb.add_unique_fd_id(object.store_fd.second);
   crb.add_mmap_size(object.mmap_size);
-  crb.add_may_unmap(object.fallback_allocated);
   if (object.device_num != 0) {
     RAY_LOG(FATAL) << "This should be unreachable.";
   }
@@ -294,8 +294,7 @@ Status ReadCreateReply(uint8_t *data,
                        uint64_t *retry_with_request_id,
                        PlasmaObject *object,
                        MEMFD_TYPE *store_fd,
-                       int64_t *mmap_size,
-                       bool *may_unmap) {
+                       int64_t *mmap_size) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
@@ -314,13 +313,13 @@ Status ReadCreateReply(uint8_t *data,
   object->metadata_offset = message->plasma_object()->metadata_offset();
   object->metadata_size = message->plasma_object()->metadata_size();
   object->allocated_size = message->plasma_object()->allocated_size();
+  object->fallback_allocated = message->plasma_object()->fallback_allocated();
   object->is_experimental_mutable_object =
       message->plasma_object()->is_experimental_mutable_object();
 
   store_fd->first = INT2FD(message->store_fd());
   store_fd->second = message->unique_fd_id();
   *mmap_size = message->mmap_size();
-  *may_unmap = message->may_unmap();
 
   object->device_num = message->plasma_object()->device_num();
   return PlasmaErrorStatus(message->error());
@@ -620,8 +619,7 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                     absl::flat_hash_map<ObjectID, PlasmaObject> &plasma_objects,
                     int64_t num_objects,
                     const std::vector<MEMFD_TYPE> &store_fds,
-                    const std::vector<int64_t> &mmap_sizes,
-                    const std::vector<bool> &may_unmaps) {
+                    const std::vector<int64_t> &mmap_sizes) {
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<PlasmaObjectSpec> objects;
 
@@ -639,6 +637,7 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                                        object.metadata_offset,
                                        object.metadata_size,
                                        object.allocated_size,
+                                       object.fallback_allocated,
                                        object.device_num,
                                        object.is_experimental_mutable_object));
   }
@@ -655,7 +654,6 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
       fbb.CreateVector(MakeNonNull(store_fds_as_int.data()), store_fds_as_int.size()),
       fbb.CreateVector(MakeNonNull(unique_fd_ids.data()), unique_fd_ids.size()),
       fbb.CreateVector(MakeNonNull(mmap_sizes.data()), mmap_sizes.size()),
-      fbb.CreateVector(may_unmaps),
       fbb.CreateVector(MakeNonNull(handles.data()), handles.size()));
   return PlasmaSend(client, MessageType::PlasmaGetReply, &fbb, message);
 }
@@ -666,8 +664,7 @@ Status ReadGetReply(uint8_t *data,
                     PlasmaObject plasma_objects[],
                     int64_t num_objects,
                     std::vector<MEMFD_TYPE> &store_fds,
-                    std::vector<int64_t> &mmap_sizes,
-                    std::vector<bool> &may_unmaps) {
+                    std::vector<int64_t> &mmap_sizes) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
@@ -685,6 +682,7 @@ Status ReadGetReply(uint8_t *data,
     plasma_objects[i].metadata_size = object->metadata_size();
     plasma_objects[i].allocated_size = object->allocated_size();
     plasma_objects[i].device_num = object->device_num();
+    plasma_objects[i].fallback_allocated = object->fallback_allocated();
     plasma_objects[i].is_experimental_mutable_object =
         object->is_experimental_mutable_object();
   }
@@ -693,7 +691,6 @@ Status ReadGetReply(uint8_t *data,
     store_fds.push_back(
         {INT2FD(message->store_fds()->Get(i)), message->unique_fd_ids()->Get(i)});
     mmap_sizes.push_back(message->mmap_sizes()->Get(i));
-    may_unmaps.push_back(message->may_unmaps()->Get(i));
   }
   return Status::OK();
 }
