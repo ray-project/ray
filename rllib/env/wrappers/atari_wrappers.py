@@ -282,8 +282,8 @@ class FrameStack(gym.Wrapper):
         self.frames = deque([], maxlen=k)
         shp = env.observation_space.shape
         self.observation_space = spaces.Box(
-            low=0,
-            high=255,
+            low=np.repeat(env.observation_space.low, repeats=k, axis=-1),
+            high=np.repeat(env.observation_space.high, repeats=k, axis=-1),
             shape=(shp[0], shp[1], shp[2] * k),
             dtype=env.observation_space.dtype,
         )
