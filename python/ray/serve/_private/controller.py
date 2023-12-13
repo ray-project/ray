@@ -115,7 +115,7 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        system_logging_config: LoggingConfig,
+        global_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -135,11 +135,11 @@ class ServeController:
         # Try to read config from checkpoint
         # logging config from checkpoint take precedence over the one passed in
         # the constructor.
-        self.system_logging_config = None
+        self.global_logging_config = None
         log_config_checkpoint = self.kv_store.get(LOGGING_CONFIG_CHECKPOINT_KEY)
         if log_config_checkpoint is not None:
-            system_logging_config = pickle.loads(log_config_checkpoint)
-        self.reconfigure_system_logging_config(system_logging_config)
+            global_logging_config = pickle.loads(log_config_checkpoint)
+        self.reconfigure_global_logging_config(global_logging_config)
 
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
@@ -163,7 +163,7 @@ class ServeController:
             http_config,
             self._controller_node_id,
             self.cluster_node_info_cache,
-            self.system_logging_config,
+            self.global_logging_config,
             grpc_options,
         )
 
@@ -223,29 +223,29 @@ class ServeController:
             description="The number of times that controller has started.",
         ).inc()
 
-    def reconfigure_system_logging_config(self, system_logging_config: LoggingConfig):
+    def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
-            self.system_logging_config
-            and self.system_logging_config == system_logging_config
+            self.global_logging_config
+            and self.global_logging_config == global_logging_config
         ):
             return
         self.kv_store.put(
-            LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(system_logging_config)
+            LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(global_logging_config)
         )
-        self.system_logging_config = system_logging_config
+        self.global_logging_config = global_logging_config
 
         self.long_poll_host.notify_changed(
-            LongPollNamespace.SYSTEM_LOGGING_CONFIG,
-            system_logging_config,
+            LongPollNamespace.GLOBAL_LOGGING_CONFIG,
+            global_logging_config,
         )
         configure_component_logger(
             component_name="controller",
             component_id=str(os.getpid()),
-            logging_config=system_logging_config,
+            logging_config=global_logging_config,
         )
         logger.debug(
             "Configure the serve controller logger "
-            f"with logging config: {self.system_logging_config}"
+            f"with logging config: {self.global_logging_config}"
         )
 
     def check_alive(self) -> None:
@@ -513,7 +513,6 @@ class ServeController:
 
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-
             (
                 deployment_time,
                 target_capacity,
@@ -1081,7 +1080,7 @@ class ServeController:
         for handler in logger.handlers:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
-        return self.system_logging_config, log_file_path
+        return self.global_logging_config, log_file_path
 
     def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:
         """Gets the controller's scale direction (for testing purposes)."""
@@ -1105,10 +1104,9 @@ def calculate_target_capacity_direction(
 
         if curr_target_capacity == next_target_capacity:
             next_target_capacity_direction = curr_target_capacity_direction
-        elif curr_target_capacity is None:
-            # The current config has finished rolling out. The next config
-            # is now starting to roll out, so we set the scale direction to up.
-            next_target_capacity_direction = TargetCapacityDirection.UP
+        elif curr_target_capacity is None and next_target_capacity is not None:
+            # target_capacity is scaling down from None to a number.
+            next_target_capacity_direction = TargetCapacityDirection.DOWN
         elif next_target_capacity is None:
             next_target_capacity_direction = None
         elif curr_target_capacity < next_target_capacity:
@@ -1193,7 +1191,7 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
-                system_logging_config=logging_config,
+                global_logging_config=logging_config,
             )
 
     def check_alive(self) -> None:

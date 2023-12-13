@@ -420,7 +420,7 @@ def test_controller_crashes_with_logging_config(serve_instance):
     client = serve_instance
 
     # Update the logging config
-    client.update_system_logging_config(
+    client.update_global_logging_config(
         LoggingConfig(encoding="JSON", log_level="DEBUG")
     )
 

@@ -706,7 +706,11 @@ class ExecutionPlan:
             if self.is_read_only():
                 self._in_blocks = blocks
         if _is_lazy(self._snapshot_blocks) and force_read:
-            self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
+            executed_blocks = self._snapshot_blocks.compute_to_blocklist()
+            # After executing the snapshot blocks, get its updated stats.
+            # The snapshot blocks after execution will contain the execution stats.
+            self._snapshot_stats = self._snapshot_blocks.stats()
+            self._snapshot_blocks = executed_blocks
             # When force-read is enabled, we similarly update self._in_blocks.
             if self.is_read_only():
                 self._in_blocks = self._snapshot_blocks

@@ -65,7 +65,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
-    system_logging_config: Union[None, dict, LoggingConfig] = None,
+    logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -89,7 +89,7 @@ def start(
         grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
-        system_logging_config: logging config options for the serve component (
+        logging_config: logging config options for the serve component (
             controller & proxy).
     """
 
@@ -122,7 +122,7 @@ def start(
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
-        system_logging_config=system_logging_config,
+        global_logging_config=logging_config,
         **kwargs,
     )
 

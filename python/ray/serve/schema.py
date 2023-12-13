@@ -121,7 +121,6 @@ class LoggingConfig(BaseModel):
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
-
         if v not in list(EncodingType):
             raise ValueError(
                 f"Got '{v}' for encoding. Encoding must be one "
@@ -227,7 +226,7 @@ class RayActorOptionsSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v:
+        if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
 
         for uri in uris:
@@ -509,7 +508,7 @@ class ServeApplicationSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v:
+        if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
 
         for uri in uris:

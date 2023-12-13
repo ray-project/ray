@@ -176,7 +176,7 @@ def test_callback_fail(ray_instance):
     handle = actor_def.remote(
         "controller",
         http_config={},
-        system_logging_config=LoggingConfig(),
+        global_logging_config=LoggingConfig(),
     )
     with pytest.raises(RayActorError, match="cannot be imported"):
         ray.get(handle.check_alive.remote())

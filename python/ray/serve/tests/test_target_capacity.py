@@ -925,20 +925,15 @@ class TestInitialReplicasHandling:
         wait_for_condition(lambda: len(serve.status().applications) == 1)
         assert serve.status().target_capacity is None
 
-        # Set a target capacity
-        config.target_capacity = 100
-        client.deploy_apps(config)
-        wait_for_condition(lambda: serve.status().target_capacity == 100)
-        # Initial replicas should be respected since setting a target_capacity
-        # indicates that a new roll forward has started, and the cluster
-        # should start scaling up.
+        # No target_capacity was set, so the deployment should start with
+        # initial_replicas.
         wait_for_condition(
             check_expected_num_replicas,
             deployment_to_num_replicas={deployment_name: initial_replicas},
         )
 
         # Kick off downscaling pattern.
-        test_target_capacities = [90, 60, 20, 0]
+        test_target_capacities = [100, 90, 60, 20, 0]
         expected_num_replicas = [min_replicas] * len(test_target_capacities)
 
         for target_capacity, num_replicas in zip(
