@@ -296,7 +296,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
       absl::MutexLock lock(&mu_);
       *num_ready_keys += 1;
       RAY_CHECK(*num_ready_keys <= keys.size());
-      // There are still pending requets for these keys.
+      // There are still pending requests for these keys.
       if (*num_ready_keys != keys.size()) {
         return;
       }

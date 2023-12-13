@@ -1121,9 +1121,10 @@ def _setup_ray_cluster_internal(
             "calculated by "
             "(SPARK_WORKER_NODE_PHYSICAL_MEMORY / num_local_spark_task_slots * 0.8) - "
             "object_store_memory_worker_node. To increase the heap space available, "
-            "increase the memory in the spark cluster by changing instance types or "
-            "worker count, reduce the target `num_worker_nodes`, or apply a lower "
-            "`object_store_memory_worker_node`."
+            "increase the memory in the spark cluster by using instance types with "
+            "larger memory, or increase number of CPU/GPU per Ray worker node "
+            "(so it leads to less Ray worker node slots per spark worker node), "
+            "or apply a lower `object_store_memory_worker_node`."
         )
     if insufficient_resources:
         if strict_mode:

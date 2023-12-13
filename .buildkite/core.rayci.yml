@@ -27,19 +27,33 @@ steps:
     instance_type: large
     parallelism: 4
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,container,manual
 
   - label: ":ray: core: redis tests"
     tags: python
     instance_type: large
     parallelism: 4
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit,manual
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,xcommit,container,manual
+
+  - label: ":ray: core: memory pressure tests"
+    tags:
+      - python
+      - oss
+      - skip-on-premerge
+    instance_type: medium
+    commands:
+      - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+      - (cd dashboard/client && npm ci && npm run build)
+      - pip install -e python[client]
+      - bazel test --config=ci --jobs=1 $(./ci/run/bazel_export_options)
+        --test_tag_filters=mem_pressure -- //python/ray/tests/...
+    job_env: corebuild
 
   - label: ":ray: core: workflow tests"
     tags: 
@@ -48,11 +62,11 @@ steps:
     instance_type: medium
     parallelism: 2
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --except-tags use_all_core
         --parallelism-per-worker 2
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --skip-ray-installation
         --only-tags use_all_core
@@ -210,7 +224,7 @@ steps:
 
   - label: ":ray: core: cpp ubsan tests"
     tags: core_cpp
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type ubsan
         --except-tags no_ubsan
@@ -251,6 +265,37 @@ steps:
     depends_on: oss-ci-base_build
     job_env: oss-ci-base_build
 
+  - label: ":ray: core: HA integration tests"
+    tags:
+      - python
+      - docker
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu --canonical-tag ha_integration
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
+    depends_on:
+      - manylinux
+      - forge
+      - raycpubase
+      - corebuild
+
+  - label: ":ray: core: container tests"
+    tags:
+      - python
+      - docker
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu
+        --canonical-tag test_container
+      - docker build --build-arg BASE_IMAGE="rayproject/ray:test_container"
+        -t rayproject/ray:runtime_env_container -f docker/runtime_env_container/Dockerfile .
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags container
+    depends_on:
+      - manylinux
+      - forge
+      - raycpubase
+      - corebuild
+    
   - label: ":windows: python tests"
     tags:
       - python

@@ -24,8 +24,9 @@ from ray.serve._private.proxy import (
 )
 from ray.serve._private.proxy_request_response import ProxyRequest
 from ray.serve._private.proxy_router import ProxyRouter
+from ray.serve._private.test_utils import FakeGrpcContext
 from ray.serve.generated import serve_pb2
-from ray.serve.tests.common.utils import FakeGrpcContext
+from ray.serve.grpc_util import RayServegRPCContext
 
 
 class FakeRef:
@@ -73,9 +74,10 @@ class FakeActorHandler:
 
 
 class FakeGrpcHandle:
-    def __init__(self, streaming: bool):
+    def __init__(self, streaming: bool, grpc_context: RayServegRPCContext):
         self.deployment_id = DeploymentID("fak_deployment_name", "fake_app_name")
         self.streaming = streaming
+        self.grpc_context = grpc_context
 
     async def remote(self, *args, **kwargs):
         def unary_call():
@@ -85,7 +87,10 @@ class FakeGrpcHandle:
             for i in range(10):
                 yield f"hello world: {i}"
 
-        return unary_call() if not self.streaming else streaming_call()
+        return (
+            self.grpc_context,
+            unary_call() if not self.streaming else streaming_call(),
+        )
 
     def options(self, *args, **kwargs):
         return self
@@ -184,11 +189,9 @@ class TestgRPCProxy:
     """Test methods implemented on gRPCProxy"""
 
     def create_grpc_proxy(self):
-        controller_name = "fake-controller_name"
         node_id = "fake-node_id"
         node_ip_address = "fake-node_ip_address"
         return gRPCProxy(
-            controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=FakeProxyRouter,
@@ -304,13 +307,17 @@ class TestgRPCProxy:
         # Ensure the unary entry point returns the correct result and sets the
         # code and details on the grpc context object.
         grpc_proxy.proxy_router.route = "route"
-        grpc_proxy.proxy_router.handle = FakeGrpcHandle(streaming=False)
-        grpc_proxy.proxy_router.app_is_cross_language = False
         context = FakeGrpcContext()
+        serve_grpc_context = RayServegRPCContext(context)
+        grpc_proxy.proxy_router.handle = FakeGrpcHandle(
+            streaming=False,
+            grpc_context=serve_grpc_context,
+        )
+        grpc_proxy.proxy_router.app_is_cross_language = False
         result = await unary_entrypoint(request_proto=request_proto, context=context)
         assert result == "hello world"
-        assert context.code == grpc.StatusCode.OK
-        assert context.details == ""
+        assert context.code() == grpc.StatusCode.OK
+        assert context.details() == ""
 
         # Ensure gRPC streaming call uses the correct entry point.
         streaming_entrypoint = grpc_proxy.service_handler_factory(
@@ -321,24 +328,26 @@ class TestgRPCProxy:
         # Ensure the streaming entry point returns the correct result and sets the
         # code and details on the grpc context object.
         grpc_proxy.proxy_router.route = "route"
-        grpc_proxy.proxy_router.handle = FakeGrpcHandle(streaming=True)
-        grpc_proxy.proxy_router.app_is_cross_language = False
         context = FakeGrpcContext()
+        serve_grpc_context = RayServegRPCContext(context)
+        grpc_proxy.proxy_router.handle = FakeGrpcHandle(
+            streaming=True,
+            grpc_context=serve_grpc_context,
+        )
+        grpc_proxy.proxy_router.app_is_cross_language = False
         result = await unary_entrypoint(request_proto=request_proto, context=context)
         assert list(result) == [f"hello world: {i}" for i in range(10)]
-        assert context.code == grpc.StatusCode.OK
-        assert context.details == ""
+        assert context.code() == grpc.StatusCode.OK
+        assert context.details() == ""
 
 
 class TestHTTPProxy:
     """Test methods implemented on HTTPProxy"""
 
     def create_http_proxy(self):
-        controller_name = "fake-controller_name"
         node_id = "fake-node_id"
         node_ip_address = "fake-node_ip_address"
         return HTTPProxy(
-            controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=FakeProxyRouter,

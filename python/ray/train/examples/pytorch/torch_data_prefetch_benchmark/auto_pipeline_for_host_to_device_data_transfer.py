@@ -41,7 +41,10 @@ class BenchmarkDataset(torch.utils.data.Dataset):
         return self.size
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer):
+def train_epoch(epoch, dataloader, model, loss_fn, optimizer):
+    if train.get_context().get_world_size() > 1:
+        dataloader.sampler.set_epoch(epoch)
+
     for X, y in dataloader:
         # Compute prediction error
         pred = model(X)
@@ -62,7 +65,9 @@ def train_func(config):
     epochs = config.get("epochs", 10)
 
     train_dataset = BenchmarkDataset(4096, size=data_size)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True
+    )
 
     train_loader = train.torch.prepare_data_loader(
         data_loader=train_loader, move_to_device=True, auto_transfer=use_auto_transfer
@@ -82,8 +87,8 @@ def train_func(config):
 
     torch.cuda.synchronize()
     start.record()
-    for _ in range(epochs):
-        train_epoch(train_loader, model, loss_fn, optimizer)
+    for epoch in range(epochs):
+        train_epoch(epoch, train_loader, model, loss_fn, optimizer)
     end.record()
     torch.cuda.synchronize()
 
