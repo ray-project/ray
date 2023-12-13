@@ -7,7 +7,7 @@ LearnerGroup API
 Configuring a LearnerGroup and Learner Workers
 ----------------------------------------------
 
-.. currentmodule:: ray.rllib.algorithm.algorithm_config
+.. currentmodule:: ray.rllib.algorithms.algorithm_config
 
 .. autosummary::
     :nosignatures:
@@ -45,7 +45,7 @@ Learner API
 Constructing a Learner
 ----------------------
 
-.. currentmodule:: ray.rllib.algorithm.algorithm_config
+.. currentmodule:: ray.rllib.algorithms.algorithm_config
 
 .. autosummary::
     :nosignatures:
