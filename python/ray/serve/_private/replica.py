@@ -566,7 +566,7 @@ class RayServeReplica:
 
         self.num_processing_items = metrics.Gauge(
             "serve_replica_processing_queries",
-            description="The current number of queries being processed.",
+            description="The average number of queries being processed.",
         )
 
         self.num_pending_items = metrics.Gauge(
@@ -605,7 +605,12 @@ class RayServeReplica:
         self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
 
     def _set_replica_requests_metrics(self):
-        self.num_processing_items.set(self.get_num_running_requests())
+        look_back_period = self.deployment_config.autoscaling_config.look_back_period_s
+        self.num_processing_items.set(
+            self.autoscaling_metrics_store.window_average(
+                self.replica_tag, time.time() - look_back_period
+            )
+        )
         self.num_pending_items.set(self.get_num_pending_requests())
 
     async def check_health(self):
