@@ -1464,7 +1464,8 @@ class DeploymentState:
                     if autoscale
                     else DeploymentStatusTransition.MANUALLY_INCREASE_NUM_REPLICAS,
                     message=f"Upscaling from {curr_num} to {new_num} replicas.",
-                    is_within_autoscaling_bounds=self._is_within_autoscaling_bounds(),
+                    is_within_autoscaling_bounds=self.should_autoscale()
+                    and self._is_within_autoscaling_bounds(),
                 )
             elif new_num < curr_num:
                 self._curr_status_info = self._curr_status_info.transition(
@@ -1472,7 +1473,8 @@ class DeploymentState:
                     if autoscale
                     else DeploymentStatusTransition.MANUALLY_DECREASE_NUM_REPLICAS,
                     message=f"Downscaling from {curr_num} to {new_num} replicas.",
-                    is_within_autoscaling_bounds=self._is_within_autoscaling_bounds(),
+                    is_within_autoscaling_bounds=self.should_autoscale()
+                    and self._is_within_autoscaling_bounds(),
                 )
         else:
             # Otherwise, the deployment configuration has actually been updated.
