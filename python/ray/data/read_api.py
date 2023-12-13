@@ -381,8 +381,8 @@ def read_datasource(
         datasource_or_legacy_reader,
         parallelism,
         inmemory_size,
-        ray_remote_args,
         block_list._estimated_num_blocks,
+        ray_remote_args,
     )
 
     logical_plan = LogicalPlan(read_op)

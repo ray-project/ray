@@ -20,8 +20,8 @@ class AbstractMap(AbstractOneToOne):
         self,
         name: str,
         input_op: Optional[LogicalOperator] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
         num_outputs: Optional[int] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """
         Args:
@@ -91,7 +91,7 @@ class AbstractUDFMap(AbstractMap):
             ray_remote_args: Args to provide to ray.remote.
         """
         name = f"{name}({_get_udf_name(fn)})"
-        super().__init__(name, input_op, ray_remote_args)
+        super().__init__(name, input_op, ray_remote_args=ray_remote_args)
         self._fn = fn
         self._fn_args = fn_args
         self._fn_kwargs = fn_kwargs
