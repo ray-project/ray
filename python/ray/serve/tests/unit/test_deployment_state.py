@@ -2457,8 +2457,10 @@ def test_update_autoscaling_config(mock_deployment_state_manager_full):
     )
 
 
-def test_health_check(mock_deployment_state):
+@pytest.mark.parametrize("force_stop_unhealthy_replicas", [False, True])
+def test_health_check(mock_deployment_state, force_stop_unhealthy_replicas: bool):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    deployment_state.FORCE_STOP_UNHEALTHY_REPLICAS = force_stop_unhealthy_replicas
     cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
@@ -2495,7 +2497,7 @@ def test_health_check(mock_deployment_state):
         # Health check shouldn't be called until it's ready.
         assert replica._actor.health_check_called
 
-    # Mark one replica unhealthy. It should be stopped.
+    # Mark one replica unhealthy; it should be stopped.
     deployment_state._replicas.get()[0]._actor.set_unhealthy()
     deployment_state.update()
     check_counts(
@@ -2503,6 +2505,15 @@ def test_health_check(mock_deployment_state):
         total=2,
         by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)],
     )
+
+    stopping_replicas = deployment_state._replicas.get(states=[ReplicaState.STOPPING])
+    assert len(stopping_replicas) == 1
+    stopping_replica = stopping_replicas[0]
+    if force_stop_unhealthy_replicas:
+        assert stopping_replica._actor.force_stopped_counter == 1
+    else:
+        assert stopping_replica._actor.force_stopped_counter == 0
+
     assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
     # If state transitioned from healthy -> unhealthy, status driver should be none
     assert (
@@ -2510,8 +2521,7 @@ def test_health_check(mock_deployment_state):
         == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
     )
 
-    replica = deployment_state._replicas.get(states=[ReplicaState.STOPPING])[0]
-    replica._actor.set_done_stopping()
+    stopping_replica._actor.set_done_stopping()
 
     deployment_state_update_result = deployment_state.update()
     deployment_state._deployment_scheduler.schedule(
