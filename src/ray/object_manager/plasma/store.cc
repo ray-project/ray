@@ -424,10 +424,11 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     bool may_unmap;
     RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id, &may_unmap));
     bool should_unmap = ReleaseObject(object_id, client);
-    if ((!may_unmap) && should_unmap) {
-      RAY_LOG(WARNING)
-          << "Plasma client thinks a mmap should not be unmapped but server "
-             "thinks so. This leads to an mmap leak on client side. Object ID: "
+    if (!may_unmap) {
+      RAY_CHECK(!should_unmap)
+          << "Plasma client thinks a mmap should not be unmapped but server thinks so. "
+             "This should not happen because a client knows the object is "
+             "fallback-allocated in Get/Create time. Object ID: "
           << object_id;
     }
     if (may_unmap) {
