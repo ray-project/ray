@@ -47,60 +47,60 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
         .. tip::
 
-        You can set ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
-        to limit the Nvidia GPUs that are visible to Ray.
-        For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
-        will let Ray only see devices 1 and 3.
+            You can set ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
+            to limit the Nvidia GPUs that are visible to Ray.
+            For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
+            will let Ray only see devices 1 and 3.
 
     .. tab-item:: Intel GPU
         :sync: Intel GPU
 
         .. tip::
 
-        You can set ``ONEAPI_DEVICE_SELECTOR`` environment variable before starting a Ray node
-        to limit the Intel GPUs that are visible to Ray.
-        For example, ``ONEAPI_DEVICE_SELECTOR=1,3 ray start --head --num-gpus=2``
-        will let Ray only see devices 1 and 3.
+            You can set ``ONEAPI_DEVICE_SELECTOR`` environment variable before starting a Ray node
+            to limit the Intel GPUs that are visible to Ray.
+            For example, ``ONEAPI_DEVICE_SELECTOR=1,3 ray start --head --num-gpus=2``
+            will let Ray only see devices 1 and 3.
 
     .. tab-item:: AWS Neuron Core
         :sync: AWS Neuron Core
 
         .. tip::
 
-        You can set ``NEURON_RT_VISIBLE_CORES`` environment variable before starting a Ray node
-        to limit the AWS Neuro Cores that are visible to Ray.
-        For example, ``NEURON_RT_VISIBLE_CORES=1,3 ray start --head --resources='{"neuron_cores": 2}'``
-        will let Ray only see devices 1 and 3.
+            You can set ``NEURON_RT_VISIBLE_CORES`` environment variable before starting a Ray node
+            to limit the AWS Neuro Cores that are visible to Ray.
+            For example, ``NEURON_RT_VISIBLE_CORES=1,3 ray start --head --resources='{"neuron_cores": 2}'``
+            will let Ray only see devices 1 and 3.
 
     .. tab-item:: Google TPU
         :sync: Google TPU
 
         .. tip::
 
-        You can set ``TPU_VISIBLE_CHIPS`` environment variable before starting a Ray node
-        to limit the Google TPUs that are visible to Ray.
-        For example, ``TPU_VISIBLE_CHIPS=1,3 ray start --head --resources='{"TPU": 2}'``
-        will let Ray only see devices 1 and 3.
+            You can set ``TPU_VISIBLE_CHIPS`` environment variable before starting a Ray node
+            to limit the Google TPUs that are visible to Ray.
+            For example, ``TPU_VISIBLE_CHIPS=1,3 ray start --head --resources='{"TPU": 2}'``
+            will let Ray only see devices 1 and 3.
 
     .. tab-item:: Intel Gaudi
         :sync: Intel Gaudi
 
         .. tip::
 
-        You can set ``HABANA_VISIBLE_MODULES`` environment variable before starting a Ray node
-        to limit the Intel Gaudi HPUs that are visible to Ray.
-        For example, ``HABANA_VISIBLE_MODULES=1,3 ray start --head --resources='{"HPU": 2}'``
-        will let Ray only see devices 1 and 3.
+            You can set ``HABANA_VISIBLE_MODULES`` environment variable before starting a Ray node
+            to limit the Intel Gaudi HPUs that are visible to Ray.
+            For example, ``HABANA_VISIBLE_MODULES=1,3 ray start --head --resources='{"HPU": 2}'``
+            will let Ray only see devices 1 and 3.
 
     .. tab-item:: Huawei Ascend
         :sync: Huawei Ascend
 
         .. tip::
 
-        You can set ``ASCEND_VISIBLE_DEVICES`` environment variable before starting a Ray node
-        to limit the Huawei Ascend NPUs that are visible to Ray.
-        For example, ``ASCEND_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'``
-        will let Ray only see devices 1 and 3.
+            You can set ``ASCEND_VISIBLE_DEVICES`` environment variable before starting a Ray node
+            to limit the Huawei Ascend NPUs that are visible to Ray.
+            For example, ``ASCEND_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'``
+            will let Ray only see devices 1 and 3.
 
 .. note::
 
