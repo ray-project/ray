@@ -56,6 +56,9 @@ class SAGE(torch.nn.Module):
 
 
 def train_loop_per_worker(train_loop_config):
+    import os
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+
     dataset = train_loop_config["dataset_fn"]()
     batch_size = train_loop_config["batch_size"]
     num_epochs = train_loop_config["num_epochs"]
