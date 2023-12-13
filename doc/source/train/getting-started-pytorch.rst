@@ -16,7 +16,7 @@ Learn how to:
 Quickstart
 ----------
 
-For reference, the final code is as follows:
+For reference, the final code will look something like the following:
 
 .. testcode::
     :skipif: True
@@ -26,6 +26,7 @@ For reference, the final code is as follows:
 
     def train_func(config):
         # Your PyTorch training code here.
+        ...
 
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
@@ -92,7 +93,7 @@ Compare a PyTorch training script with and without Ray Train.
     .. tab-item:: PyTorch + Ray Train
 
         .. code-block:: python
-            :emphasize-lines: 12, 15, 21, 23, 35, 50, 54-57, 58, 63, 66-73
+            :emphasize-lines: 12, 14, 21, 55-58, 59, 63, 66-68, 72-73, 76
 
             import os
             import tempfile
@@ -113,9 +114,9 @@ Compare a PyTorch training script with and without Ray Train.
                 model.conv1 = torch.nn.Conv2d(
                     1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
                 )
-                # model.to("cuda")  # This is done by `prepare_model`
                 # [1] Prepare model.
                 model = ray.train.torch.prepare_model(model)
+                # model.to("cuda")  # This is done by `prepare_model`
                 criterion = CrossEntropyLoss()
                 optimizer = Adam(model.parameters(), lr=0.001)
 
@@ -129,6 +130,9 @@ Compare a PyTorch training script with and without Ray Train.
 
                 # Training
                 for epoch in range(10):
+                    if ray.train.get_context().get_world_size() > 1:
+                        train_loader.sampler.set_epoch(epoch)
+
                     for images, labels in train_loader:
                         # This is done by `prepare_data_loader`!
                         # images, labels = images.to("cuda"), labels.to("cuda")
@@ -160,7 +164,8 @@ Compare a PyTorch training script with and without Ray Train.
                 train_func,
                 scaling_config=scaling_config,
                 # [5a] If running in a multi-node cluster, this is where you
-                # should configure the run's persistent storage.
+                # should configure the run's persistent storage that is accessible
+                # across all worker nodes.
                 # run_config=ray.train.RunConfig(storage_path="s3://..."),
             )
             result = trainer.fit()
@@ -186,6 +191,7 @@ Begin by wrapping your code in a :ref:`training function <train-overview-trainin
 
     def train_func(config):
         # Your PyTorch training code here.
+        ...
 
 Each distributed training worker executes this function.
 
@@ -224,7 +230,7 @@ Set up a dataset
 
 Use the :func:`ray.train.torch.prepare_data_loader` utility function, which:
 
-1. Adds a ``DistributedSampler`` to your ``DataLoader``.
+1. Adds a :class:`~torch.utils.data.distributed.DistributedSampler` to your :class:`~torch.utils.data.DataLoader`.
 2. Moves the batches to the right device.
 
 Note that this step isn't necessary if you're passing in Ray Data to your Trainer.
@@ -233,7 +239,6 @@ See :ref:`data-ingest-torch`.
 .. code-block:: diff
 
      from torch.utils.data import DataLoader
-    -from torch.utils.data import DistributedSampler
     +import ray.train.torch
 
      def train_func(config):
@@ -242,13 +247,16 @@ See :ref:`data-ingest-torch`.
 
          dataset = ...
 
-         data_loader = DataLoader(dataset, batch_size=worker_batch_size)
-    -    data_loader = DataLoader(dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
+         data_loader = DataLoader(dataset, batch_size=worker_batch_size, shuffle=True)
     +    data_loader = ray.train.torch.prepare_data_loader(data_loader)
 
-         for X, y in data_loader:
-    -        X = X.to_device(device)
-    -        y = y.to_device(device)
+         for epoch in range(10):
+    +        if ray.train.get_context().get_world_size() > 1:
+    +            data_loader.sampler.set_epoch(epoch)
+
+             for X, y in data_loader:
+    -            X = X.to_device(device)
+    -            y = y.to_device(device)
 
          ...
 
@@ -261,6 +269,19 @@ See :ref:`data-ingest-torch`.
 
         global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 
+.. note::
+    If you already manually set up your ``DataLoader`` with a ``DistributedSampler``,
+    :meth:`~ray.train.torch.prepare_data_loader` will not add another one, and will
+    respect the configuration of the existing sampler.
+
+.. note::
+    :class:`~torch.utils.data.distributed.DistributedSampler` does not work with a
+    ``DataLoader`` that wraps :class:`~torch.utils.data.IterableDataset`.
+    If you want to work with an dataset iterator,
+    consider using :ref:`Ray Data <data>` instead of PyTorch DataLoader since it
+    provides performant streaming data ingestion for large scale datasets.
+
+    See :ref:`data-ingest-torch` for more details.
 
 Report checkpoints and metrics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -269,73 +290,36 @@ To monitor progress, you can report intermediate metrics and checkpoints using t
 
 .. code-block:: diff
 
+    +import os
+    +import tempfile
+
     +import ray.train
-    +from ray.train import Checkpoint
 
      def train_func(config):
 
          ...
-         torch.save(model.state_dict(), f"{checkpoint_dir}/model.pth"))
-    +    metrics = {"loss": loss.item()} # Training/validation metrics.
-    +    checkpoint = Checkpoint.from_directory(checkpoint_dir) # Build a Ray Train checkpoint from a directory
-    +    ray.train.report(metrics=metrics, checkpoint=checkpoint)
+
+         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            torch.save(
+                model.state_dict(), os.path.join(temp_checkpoint_dir, "model.pt")
+            )
+
+    +       metrics = {"loss": loss.item()}  # Training/validation metrics.
+
+            # Build a Ray Train checkpoint from a directory
+    +       checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
+
+            # Ray Train will automatically save the checkpoint to persistent storage,
+            # so the local `temp_checkpoint_dir` can be safely cleaned up after.
+    +       ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
          ...
 
 For more details, see :ref:`train-monitoring-and-logging` and :ref:`train-checkpointing`.
 
 
-Configure scale and GPUs
-------------------------
+.. include:: ./common/torch-configure-run.rst
 
-Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
-
-1. :class:`num_workers <ray.train.ScalingConfig>` - The number of distributed training worker processes.
-2. :class:`use_gpu <ray.train.ScalingConfig>` - Whether each worker should use a GPU (or CPU).
-
-.. testcode::
-
-    from ray.train import ScalingConfig
-    scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
-
-
-For more details, see :ref:`train_scaling_config`.
-
-Launch a training job
----------------------
-
-Tying this all together, you can now launch a distributed training job
-with a :class:`~ray.train.torch.TorchTrainer`.
-
-.. testcode::
-    :hide:
-
-    from ray.train import ScalingConfig
-
-    train_func = lambda: None
-    scaling_config = ScalingConfig(num_workers=1)
-
-.. testcode::
-
-    from ray.train.torch import TorchTrainer
-
-    trainer = TorchTrainer(train_func, scaling_config=scaling_config)
-    result = trainer.fit()
-
-Access training results
------------------------
-
-After training completes, a :class:`~ray.train.Result` object is returned which contains
-information about the training run, including the metrics and checkpoints reported during training.
-
-.. testcode::
-
-    result.metrics     # The metrics reported during training.
-    result.checkpoint  # The latest checkpoint reported during training.
-    result.path     # The path where logs are stored.
-    result.error       # The exception that was raised, if training failed.
-
-.. TODO: Add results guide
 
 Next steps
 ----------
