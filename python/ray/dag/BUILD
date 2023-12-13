@@ -71,7 +71,7 @@ py_test(
 
 py_test(
     name = "test_accelerated_dag",
-    size = "small",
+    size = "medium",
     srcs = dag_tests_srcs,
     tags = ["exclusive", "team:core", "ray_dag_tests"],
     deps = [":dag_lib"],
