@@ -2008,6 +2008,16 @@ def get_current_node_cpu_model_name() -> Optional[str]:
         return None
 
     try:
+        """
+        /proc/cpuinfo content example:
+
+        processor	: 0
+        vendor_id	: GenuineIntel
+        cpu family	: 6
+        model		: 85
+        model name	: Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz
+        stepping	: 7
+        """
         with open("/proc/cpuinfo", "r") as f:
             for line in f:
                 if line.startswith("model name"):

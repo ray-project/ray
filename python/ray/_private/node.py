@@ -1721,6 +1721,7 @@ class Node:
         external_storage.reset_external_storage()
 
     def _record_stats(self):
+        # This is only called when a new node is started.
         # Initialize the internal kv so that the metrics can be put
         from ray._private.usage.usage_lib import (
             TagKey,
