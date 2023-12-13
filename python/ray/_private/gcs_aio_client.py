@@ -52,7 +52,6 @@ class GcsAioClient:
         executor=None,
         address: Optional[str] = None,
         nums_reconnect_retry: int = 5,
-        reconnect_retry_interval_ms: int = 1000,
     ):
         if loop is None:
             loop = ray._private.utils.get_or_create_event_loop()
@@ -65,7 +64,6 @@ class GcsAioClient:
         self._gcs_client = GcsClient(
             address,
             nums_reconnect_retry,
-            reconnect_retry_interval_ms=reconnect_retry_interval_ms,
         )
         self._async_proxy = AsyncProxy(self._gcs_client, loop, executor)
         self._connect()

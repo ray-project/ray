@@ -2605,7 +2605,7 @@ def _auto_reconnect(f):
                         self._connect()
                     except Exception:
                         logger.error(f"Connecting to gcs failed. Error {e}")
-                    time.sleep(self._reconnect_retry_interval_ms / 1000)
+                    time.sleep(1)
                     remaining_retry -= 1
                     continue
                 raise
@@ -2620,18 +2620,15 @@ cdef class GcsClient:
         object address
         object _nums_reconnect_retry
         CClusterID cluster_id
-        object _reconnect_retry_interval_ms
 
     def __cinit__(self, address,
                   nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
                   ),
-                  cluster_id=None,
-                  reconnect_retry_interval_ms=1000):
+                  cluster_id=None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
-        self._reconnect_retry_interval_ms = reconnect_retry_interval_ms
         cdef c_string c_cluster_id
         if cluster_id is None:
             self.cluster_id = CClusterID.Nil()

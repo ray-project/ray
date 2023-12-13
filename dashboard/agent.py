@@ -85,13 +85,9 @@ class DashboardAgent:
         self.gcs_client = GcsClient(address=self.gcs_address)
         _initialize_internal_kv(self.gcs_client)
         assert _internal_kv_initialized()
-        reconnect_retry_interval_ms = 1000
         self.gcs_aio_client = GcsAioClient(
             address=self.gcs_address,
-            nums_reconnect_retry=ray._config.gcs_rpc_server_reconnect_timeout_s()
-            * 1000
-            // reconnect_retry_interval_ms,
-            reconnect_retry_interval_ms=reconnect_retry_interval_ms,
+            nums_reconnect_retry=ray._config.gcs_rpc_server_reconnect_timeout_s(),
         )
 
         if not self.minimal:
