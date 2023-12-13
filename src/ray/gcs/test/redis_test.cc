@@ -31,6 +31,7 @@ namespace ray {
 namespace gcs {
 
 using ::testing::_;
+using ::testing::Invoke;
 using ::testing::Return;
 
 class RedisContextTest : public ::testing::Test {
@@ -44,7 +45,12 @@ class MockRedisContext : public RedisAsyncContext {
  public:
   MockRedisContext()
       : RedisAsyncContext(std::unique_ptr<redisAsyncContext, RedisContextDeleter>(
-            new redisAsyncContext())) {}
+            new redisAsyncContext())) {
+    // Ultra hacky. Populate redis_async_context_->c
+    // such that redisContextFree is a noop.
+    redisContext *c = &(redis_async_context_->c);
+    c->flags |= REDIS_IN_CALLBACK;
+  }
 
   MOCK_METHOD(Status,
               RedisAsyncCommandArgv,
@@ -69,7 +75,9 @@ ConnectWithRetries<MockRedisContext, decltype(redisAsyncConnect)>(
     const std::string &address,
     int port,
     const decltype(redisAsyncConnect) &connect_function) {
-  return std::make_pair(Status::OK(), nullptr);
+  return std::make_pair(
+      Status::OK(),
+      std::unique_ptr<MockRedisContext, RedisContextDeleter>(new MockRedisContext()));
 }
 
 TEST_F(RedisContextTest, TestRedisMoved) {
@@ -88,9 +96,25 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   MockRedisContext mock_redis_context;
 
   // Initialize the reply with MOVED error.
-  struct redisAsyncContext base_context;
+  auto base_context = new redisAsyncContext();
+
+  // This will delete our created base context for us. We bypass redisAsyncFree
+  // because it expects very specific values in the struct.
+  struct ContextGuard {
+    redisAsyncContext *raw_context_;
+    ContextGuard(redisAsyncContext *raw_context) : raw_context_(raw_context) {
+      // Setting this flag skips the free in redisAsyncFree.
+      redisContext *c = &(raw_context_->c);
+      c->flags |= REDIS_IN_CALLBACK;
+    }
+    ~ContextGuard() {
+      // We manually delete it here.
+      delete raw_context_;
+    }
+  } context_guard(base_context);
+
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context(
-      &base_context, RedisContextDeleter());
+      base_context, RedisContextDeleter());
   std::shared_ptr<RedisAsyncContext> async_context_wrapper =
       std::make_shared<RedisAsyncContext>(std::move(async_context));
   redisReply reply;
@@ -103,13 +127,25 @@ TEST_F(RedisContextTest, TestRedisMoved) {
                                std::move(async_context_wrapper),
                                {"HGET", "namespace", "key"});
 
+  std::promise<bool> second_connect;
+  auto fut = second_connect.get_future();
   // TODO add matcher for "correct" one
   EXPECT_CALL(mock_redis_context, RedisAsyncCommandArgv(_, _, _, _, _))
-      .WillOnce(Return(Status::OK()));
+      .WillOnce(Return(Status::OK()))
+      .WillOnce(
+          Invoke([&second_connect](
+                     redisCallbackFn *, void *, int, const char **, const size_t *) {
+            RAY_LOG(INFO) << "VCT GOT HERE";
+            second_connect.set_value(true);
+            return Status::OK();
+          }));
 
   // Call the function
   RedisRequestContext::RedisResponseFn<MockRedisContext>(
-      &base_context, static_cast<void *>(&reply), static_cast<void *>(&privdata));
+      base_context, static_cast<void *>(&reply), static_cast<void *>(&privdata));
+
+  // Wait for the second callback to happen.
+  fut.wait_for(std::chrono::milliseconds(3000));
 
   async_context_wrapper->ResetRawRedisAsyncContext();
   io_service_thread_->join();

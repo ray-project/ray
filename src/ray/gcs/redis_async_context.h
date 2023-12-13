@@ -34,6 +34,7 @@ namespace ray {
 namespace gcs {
 
 class MockRedisContext;
+class RedisAsyncContext;
 
 struct RedisContextDeleter {
   RedisContextDeleter(){};
@@ -89,6 +90,8 @@ class RedisAsyncContext {
                                        int argc,
                                        const char **argv,
                                        const size_t *argvlen);
+
+  friend class MockRedisContext;
 
  private:
   /// This mutex is used to protect `redis_async_context`.

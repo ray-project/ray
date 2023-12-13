@@ -175,6 +175,8 @@ void RedisRequestContext::Run() {
                    << " times.";
   }
 
+  RAY_LOG(INFO) << "vct running";
+
   --pending_retries_;
 
   Status status =
@@ -183,6 +185,7 @@ void RedisRequestContext::Run() {
                                             argv_.size(),
                                             argv_.data(),
                                             argc_.data());
+  RAY_LOG(INFO) << "vct unts unts unts";
 
   if (!status.ok()) {
     RedisResponseFn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);
