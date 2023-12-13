@@ -87,14 +87,14 @@ def construct_metadata() -> WorkerMetadata:
     node_id = ray.get_runtime_context().get_node_id()
     node_ip = ray.util.get_node_ip_address()
     hostname = socket.gethostname()
-    resource_ids = ray.get_runtime_context().get_resource_ids()
+    accelerator_ids = ray.get_runtime_context().get_accelerator_ids()
     pid = os.getpid()
 
     return WorkerMetadata(
         node_id=node_id,
         node_ip=node_ip,
         hostname=hostname,
-        resource_ids=resource_ids,
+        resource_ids=accelerator_ids,
         pid=pid,
     )
 
