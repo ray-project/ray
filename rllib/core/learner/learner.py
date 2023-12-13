@@ -938,21 +938,23 @@ class Learner:
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
+            from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
             env = gym.make("CartPole-v1")
-            config = PPOConfig(
-                use_kl_loss=True,
-                kl_coeff=0.2,
-                kl_target=0.01,
-                use_critic=True,
-                clip_param=0.3,
-                vf_clip_param=10.0,
-                entropy_coeff=0.01,
-                entropy_coeff_schedule = [
-                    [0, 0.01],
-                    [20000000, 0.0],
-                ],
-                vf_loss_coeff=0.5,
+            config = (
+                PPOConfig()
+                .training(
+                    kl_coeff=0.2,
+                    kl_target=0.01,
+                    clip_param=0.3,
+                    vf_clip_param=10.0,
+                    # Taper down entropy coeff. from 0.01 to 0.0 over 20M ts.
+                    entropy_coeff=[
+                        [0, 0.01],
+                        [20000000, 0.0],
+                    ],
+                    vf_loss_coeff=0.5,
+                )
             )
 
             # Create a single agent RL module spec.
@@ -985,13 +987,12 @@ class Learner:
                         curr_var.data *= 0.4
                     results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
 
-
+            # Construct the Learner object.
             learner = CustomPPOLearner(
+                config=config,
                 module_spec=module_spec,
-                learner_hyperparameters=hps,
             )
-
-            # Note: the learner should be built before it can be used.
+            # Note: Learners need to be built before they can be used.
             learner.build()
 
             # Inside a training loop, we can now call the additional update as we like:
