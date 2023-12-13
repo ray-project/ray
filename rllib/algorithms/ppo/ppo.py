@@ -120,6 +120,8 @@ class PPOConfig(AlgorithmConfig):
         self.kl_coeff = 0.2
         self.kl_target = 0.01
         self.sgd_minibatch_size = 128
+        # Simple logic for now: If None, use `train_batch_size`.
+        self.mini_batch_size_per_learner = None
         self.num_sgd_iter = 30
         self.shuffle_sequences = True
         self.vf_loss_coeff = 1.0
@@ -217,6 +219,7 @@ class PPOConfig(AlgorithmConfig):
         use_kl_loss: Optional[bool] = NotProvided,
         kl_coeff: Optional[float] = NotProvided,
         kl_target: Optional[float] = NotProvided,
+        mini_batch_size_per_learner: Optional[int] = NotProvided,
         sgd_minibatch_size: Optional[int] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
         shuffle_sequences: Optional[bool] = NotProvided,
@@ -245,8 +248,20 @@ class PPOConfig(AlgorithmConfig):
             use_kl_loss: Whether to use the KL-term in the loss function.
             kl_coeff: Initial coefficient for KL divergence.
             kl_target: Target value for KL divergence.
+            mini_batch_size_per_learner: Only use if new API stack is enabled.
+                The mini batch size per Learner worker. This is the
+                batch size that each Learner worker's training batch (whose size is
+                `s`elf.train_batch_size_per_learner`) will be split into. For example,
+                if the train batch size per Learner worker is 4000 and the mini batch
+                size per Learner worker is 400, the train batch will be split into 10
+                equal sized chunks (or "mini batches"). Each such mini batch will be
+                used for one SGD update. Overall, the train batch on each Learner
+                worker will be traversed `self.num_sgd_iter` times. In the above
+                example, if `self.num_sgd_iter` is 5, we will altogether perform 50
+                (10x5) SGD updates per Learner update step.
             sgd_minibatch_size: Total SGD batch size across all devices for SGD.
-                This defines the minibatch size within each epoch.
+                This defines the minibatch size within each epoch. Deprecated on the
+                new API stack (use `mini_batch_size_per_learner` instead).
             num_sgd_iter: Number of SGD iterations in each outer loop (i.e., number of
                 epochs to execute per train batch).
             shuffle_sequences: Whether to shuffle sequences in the batch when training
@@ -284,6 +299,8 @@ class PPOConfig(AlgorithmConfig):
             self.kl_coeff = kl_coeff
         if kl_target is not NotProvided:
             self.kl_target = kl_target
+        if mini_batch_size_per_learner is not NotProvided:
+            self.mini_batch_size_per_learner = mini_batch_size_per_learner
         if sgd_minibatch_size is not NotProvided:
             self.sgd_minibatch_size = sgd_minibatch_size
         if num_sgd_iter is not NotProvided:
@@ -311,7 +328,8 @@ class PPOConfig(AlgorithmConfig):
         super().validate()
 
         # Synchronous sampling, on-policy/PPO algos -> Check mismatches between
-        # `rollout_fragment_length` and `train_batch_size` to avoid user confusion.
+        # `rollout_fragment_length` and `train_batch_size_per_learner` to avoid user
+        # confusion.
         # TODO (sven): Make rollout_fragment_length a property and create a private
         #  attribute to store (possibly) user provided value (or "auto") in. Deprecate
         #  `self.get_rollout_fragment_length()`.
@@ -320,16 +338,28 @@ class PPOConfig(AlgorithmConfig):
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
         # each `num_sgd_iter`).
-        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
-        # to -1 to auto-calculate the actual batch size later).
-        if self.sgd_minibatch_size > self.train_batch_size:
+        # Note: Only check this if `train_batch_size` > 0.
+        if (
+            not self._enable_new_api_stack
+            and self.sgd_minibatch_size > self.train_batch_size
+        ):
             raise ValueError(
                 f"`sgd_minibatch_size` ({self.sgd_minibatch_size}) must be <= "
                 f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
-                f" is be split into {self.sgd_minibatch_size} chunks, each of which is "
+                f" will be split into {self.sgd_minibatch_size} chunks, each of which is "
                 f"iterated over (used for updating the policy) {self.num_sgd_iter} "
                 "times."
             )
+        elif self._enable_new_api_stack:
+            mbs = self.mini_batch_size_per_learner or self.sgd_minibatch_size
+            tbs = self.train_batch_size_per_learner or self.train_batch_size
+            if mbs > tbs:
+                raise ValueError(
+                    f"`mini_batch_size_per_learner` ({mbs}) must be <= "
+                    f"`train_batch_size_per_learner` ({tbs}). In PPO, the train batch"
+                    f" will be split into {mbs} chunks, each of which is iterated over "
+                    f"(used for updating the policy) {self.num_sgd_iter} times."
+                )
 
         # Episodes may only be truncated (and passed into PPO's
         # `postprocessing_fn`), iff generalized advantage estimation is used
@@ -401,12 +431,12 @@ class PPO(Algorithm):
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
-                        max_agent_steps=self.config.train_batch_size,
+                        max_agent_steps=self.config.total_train_batch_size,
                     )
                 else:
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
-                        max_env_steps=self.config.train_batch_size,
+                        max_env_steps=self.config.total_train_batch_size,
                     )
                 train_batch = train_batch.as_multi_agent()
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
@@ -418,6 +448,8 @@ class PPO(Algorithm):
             else:
                 # TODO (sven): Make this also use `synchronous_parallel_sample`.
                 #  Which needs to be enhanced to be able to handle episodes as well.
+                #  Also, this would make this sampling with the EnvRunners fault
+                #  tolerant, which it is NOT right now.
                 if self.workers.num_remote_workers() == 0:
                     episodes: List[SingleAgentEpisode] = [
                         self.workers.local_worker().sample()
@@ -433,21 +465,23 @@ class PPO(Algorithm):
 
         # Train
         if self.config._enable_new_api_stack:
-            # TODO (Kourosh) Clearly define what train_batch_size
-            #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
+            mbs_per_learner = (
+                    self.config.mini_batch_size_per_learner
+                    or self.config.sgd_minibatch_size
+            )
             if (
                 self.config.env_runner_cls is None
                 or self.config.env_runner_cls.__name__ == "RolloutWorker"
             ):
                 train_results = self.learner_group.update(
                     batch=train_batch,
-                    minibatch_size=self.config.sgd_minibatch_size,
+                    minibatch_size=mbs_per_learner,
                     num_iters=self.config.num_sgd_iter,
                 )
             else:
                 train_results = self.learner_group.update(
                     episodes=episodes,
-                    minibatch_size=self.config.sgd_minibatch_size,
+                    minibatch_size=mbs_per_learner,
                     num_iters=self.config.num_sgd_iter,
                 )
 

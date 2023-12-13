@@ -362,6 +362,8 @@ class AlgorithmConfig(_Config):
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
+        # Simple logic for now: If None, use `train_batch_size`.
+        self.train_batch_size_per_learner = None
         # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
         #  the main AlgorithmConfig. We should not require the user to provide those
         #  settings in both, the AlgorithmConfig (as property) AND the model config
@@ -1829,6 +1831,7 @@ class AlgorithmConfig(_Config):
         grad_clip: Optional[float] = NotProvided,
         grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
+        train_batch_size_per_learner: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
@@ -1877,7 +1880,13 @@ class AlgorithmConfig(_Config):
                 the shapes of these tensors are).
             grad_clip_by: See `grad_clip` for the effect of this setting on gradient
                 clipping. Allowed values are `value`, `norm`, and `global_norm`.
-            train_batch_size: Training batch size, if applicable.
+            train_batch_size_per_learner: Train batch size per individual Learner
+                worker. This setting only applies to the new API stack. The number
+                of Learner workers can be set via
+                `config.resources(num_learner_workers=...)`.
+            train_batch_size: Training batch size, if applicable. When on the new API
+                stack, this setting should no longer be used and instead
+                `train_batch_size_per_worker` should be used.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
@@ -1912,6 +1921,8 @@ class AlgorithmConfig(_Config):
             self.grad_clip = grad_clip
         if grad_clip_by is not NotProvided:
             self.grad_clip_by = grad_clip_by
+        if train_batch_size_per_learner is not NotProvided:
+            self.train_batch_size_per_learner = train_batch_size_per_learner
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
         if model is not NotProvided:
@@ -2846,6 +2857,15 @@ class AlgorithmConfig(_Config):
 
         return self._is_atari
 
+    @property
+    def total_train_batch_size(self):
+        if self.train_batch_size_per_learner is not None:
+            return (
+                self.train_batch_size_per_learner * (self.num_learner_workers or 1)
+            )
+        else:
+            return self.train_batch_size
+
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
@@ -2870,11 +2890,11 @@ class AlgorithmConfig(_Config):
             # 4 workers, 3 envs per worker, 2500 train batch size:
             # -> 2500 / 12 -> 208.333 -> diff=4 (208 * 12 = 2496)
             # -> worker 1: 209, workers 2-4: 208
-            rollout_fragment_length = self.train_batch_size / (
+            rollout_fragment_length = self.total_train_batch_size / (
                 self.num_envs_per_worker * (self.num_rollout_workers or 1)
             )
             if int(rollout_fragment_length) != rollout_fragment_length:
-                diff = self.train_batch_size - int(
+                diff = self.total_train_batch_size - int(
                     rollout_fragment_length
                 ) * self.num_envs_per_worker * (self.num_rollout_workers or 1)
                 if (worker_index * self.num_envs_per_worker) <= diff:
@@ -3231,7 +3251,7 @@ class AlgorithmConfig(_Config):
         if (
             self.rollout_fragment_length != "auto"
             and not self.in_evaluation
-            and self.train_batch_size > 0
+            and self.total_train_batch_size > 0
         ):
             min_batch_size = (
                 max(self.num_rollout_workers, 1)
@@ -3239,23 +3259,23 @@ class AlgorithmConfig(_Config):
                 * self.rollout_fragment_length
             )
             batch_size = min_batch_size
-            while batch_size < self.train_batch_size:
+            while batch_size < self.total_train_batch_size:
                 batch_size += min_batch_size
             if (
-                batch_size - self.train_batch_size > 0.1 * self.train_batch_size
-                or batch_size - min_batch_size - self.train_batch_size
-                > (0.1 * self.train_batch_size)
+                batch_size - train_batch_size > 0.1 * self.total_train_batch_size
+                or batch_size - min_batch_size - self.total_train_batch_size
+                > (0.1 * train_batch_size)
             ):
-                suggested_rollout_fragment_length = self.train_batch_size // (
+                suggested_rollout_fragment_length = self.total_train_batch_size // (
                     self.num_envs_per_worker * (self.num_rollout_workers or 1)
                 )
                 raise ValueError(
-                    f"Your desired `train_batch_size` ({self.train_batch_size}) or a "
-                    "value 10% off of that cannot be achieved with your other "
+                    f"Your desired `train_batch_size` ({self.total_train_batch_size}) "
+                    "or a value 10% off of that cannot be achieved with your other "
                     f"settings (num_rollout_workers={self.num_rollout_workers}; "
                     f"num_envs_per_worker={self.num_envs_per_worker}; "
                     f"rollout_fragment_length={self.rollout_fragment_length})! "
-                    "Try setting `rollout_fragment_length` to 'auto' OR "
+                    "Try setting `rollout_fragment_length` to 'auto' OR to a value of "
                     f"{suggested_rollout_fragment_length}."
                 )
 

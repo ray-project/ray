@@ -186,6 +186,9 @@ class LearnerGroup:
             a list of dictionaries of results from the updates from the Learner(s).
         """
 
+        #if minibatch_size is not None:
+        #    minibatch_size //= len(self._workers)
+
         # Construct a multi-agent batch with only the trainable modules.
         # TODO (sven): Move this into individual Learners. It might be that
         #  batch/episodes postprocessing on each Learner requires the non-trainable
@@ -308,68 +311,65 @@ class LearnerGroup:
                 "Cannot call `async_update` when running in local mode with "
                 "num_workers=0."
             )
-        else:
-            if minibatch_size is not None:
-                minibatch_size //= len(self._workers)
 
-            def _learner_update(learner, minibatch):
-                return learner.update(
-                    minibatch,
-                    minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    reduce_fn=reduce_fn,
-                )
-
-            # Queue the new batches.
-            # If queue is full, kick out the oldest item (and thus add its
-            # length to the "dropped ts" counter).
-            if len(self._in_queue) == self._in_queue.maxlen:
-                self._in_queue_ts_dropped += len(self._in_queue[0])
-
-            self._in_queue.append(batch)
-
-            # Retrieve all ready results (kicked off by prior calls to this method).
-            results = self._worker_manager.fetch_ready_async_reqs(
-                tags=list(self._inflight_request_tags)
+        def _learner_update(learner, minibatch):
+            return learner.update(
+                minibatch,
+                minibatch_size=minibatch_size,
+                num_iters=num_iters,
+                reduce_fn=reduce_fn,
             )
-            # Only if there are no more requests in-flight on any of the learners,
-            # we can send in one new batch for sharding and parallel learning.
-            if self._worker_manager_ready():
-                count = 0
-                # TODO (sven): This probably works even without any restriction
-                #  (allowing for any arbitrary number of requests in-flight). Test with
-                #  3 first, then with unlimited, and if both show the same behavior on
-                #  an async algo, remove this restriction entirely.
-                while len(self._in_queue) > 0 and count < 3:
-                    # Pull a single batch from the queue (from the left side, meaning:
-                    # use the oldest one first).
-                    update_tag = str(uuid.uuid4())
-                    self._inflight_request_tags.add(update_tag)
-                    batch = self._in_queue.popleft()
-                    self._worker_manager.foreach_actor_async(
-                        [
-                            partial(_learner_update, minibatch=minibatch)
-                            for minibatch in ShardBatchIterator(
-                                batch, len(self._workers)
-                            )
-                        ],
-                        tag=update_tag,
-                    )
-                    count += 1
 
-            # NOTE: There is a strong assumption here that the requests launched to
-            # learner workers will return at the same time, since they are have a
-            # barrier inside of themselves for gradient aggregation. Therefore results
-            # should be a list of lists where each inner list should be the length of
-            # the number of learner workers, if results from an  non-blocking update are
-            # ready.
-            results = self._get_async_results(results)
+        # Queue the new batches.
+        # If queue is full, kick out the oldest item (and thus add its
+        # length to the "dropped ts" counter).
+        if len(self._in_queue) == self._in_queue.maxlen:
+            self._in_queue_ts_dropped += len(self._in_queue[0])
 
-            # TODO(sven): Move reduce_fn to the training_step
-            if reduce_fn is None:
-                return results
-            else:
-                return [reduce_fn(r) for r in results]
+        self._in_queue.append(batch)
+
+        # Retrieve all ready results (kicked off by prior calls to this method).
+        results = self._worker_manager.fetch_ready_async_reqs(
+            tags=list(self._inflight_request_tags)
+        )
+        # Only if there are no more requests in-flight on any of the learners,
+        # we can send in one new batch for sharding and parallel learning.
+        if self._worker_manager_ready():
+            count = 0
+            # TODO (sven): This probably works even without any restriction
+            #  (allowing for any arbitrary number of requests in-flight). Test with
+            #  3 first, then with unlimited, and if both show the same behavior on
+            #  an async algo, remove this restriction entirely.
+            while len(self._in_queue) > 0 and count < 3:
+                # Pull a single batch from the queue (from the left side, meaning:
+                # use the oldest one first).
+                update_tag = str(uuid.uuid4())
+                self._inflight_request_tags.add(update_tag)
+                batch = self._in_queue.popleft()
+                self._worker_manager.foreach_actor_async(
+                    [
+                        partial(_learner_update, minibatch=minibatch)
+                        for minibatch in ShardBatchIterator(
+                            batch, len(self._workers)
+                        )
+                    ],
+                    tag=update_tag,
+                )
+                count += 1
+
+        # NOTE: There is a strong assumption here that the requests launched to
+        # learner workers will return at the same time, since they are have a
+        # barrier inside of themselves for gradient aggregation. Therefore results
+        # should be a list of lists where each inner list should be the length of
+        # the number of learner workers, if results from an  non-blocking update are
+        # ready.
+        results = self._get_async_results(results)
+
+        # TODO(sven): Move reduce_fn to the training_step
+        if reduce_fn is None:
+            return results
+        else:
+            return [reduce_fn(r) for r in results]
 
     def _worker_manager_ready(self):
         # TODO (sven): This probably works even without any restriction (allowing for

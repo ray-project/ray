@@ -4,7 +4,7 @@ from typing import List
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.typing import EpisodeType
+#from ray.rllib.utils.typing import EpisodeType
 
 
 @DeveloperAPI
@@ -59,6 +59,10 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     def __iter__(self):
         while min(self._num_covered_epochs.values()) < self._num_iters:
 
+            print(
+                f"min(self._num_covered_epochs.values()) < self._num_iters; min(num_covered_epochs)={min(self._num_covered_epochs.values())} num_iters={self._num_iters}"
+            )
+
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
 
@@ -97,6 +101,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     def get_len(b):
                         return len(b)
 
+                print(f"entering while loop n_steps={n_steps} get_len(module_batch)={get_len(module_batch)} s={s}")
+
                 # Cycle through the batch until we have enough samples.
                 while n_steps >= get_len(module_batch) - s:
                     sample = module_batch[s:]
@@ -108,7 +114,9 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     self._num_covered_epochs[module_id] += 1
 
                 e = s + n_steps  # end
+                print(f"e={e}")
                 if e > s:
+                    print("e>s")
                     samples_to_concat.append(module_batch[s:e])
 
                 # concatenate all the samples, we should have minibatch_size of sample
@@ -171,23 +179,47 @@ class ShardEpisodesIterator:
         num_shards: The number of shards to split the episodes into.
 
     Yields:
-        A sub-list of Episodes of size roughly `len(episodes) / num_shards`.
+        A sub-list of Episodes with sums of lengths as equal as possible.
     """
-
-    def __init__(self, episodes: List[EpisodeType], num_shards: int):
+    def __init__(self, episodes, num_shards: int):
         self._episodes = sorted(episodes, key=len, reverse=True)
         self._num_shards = num_shards
+        self._total_length = sum(len(e) for e in episodes)
+        self._target_lengths = [0 for _ in range(self._num_shards)]
+        remaining_length = self._total_length
+        for s in range(self._num_shards):
+            len_ = remaining_length // (num_shards - s)
+            self._target_lengths[s] = len_
+            remaining_length -= len_
 
     def __iter__(self):
-        # Initialize sub-lists and their total lengths.
         sublists = [[] for _ in range(self._num_shards)]
         lengths = [0 for _ in range(self._num_shards)]
+        episode_index = 0
 
-        for episode in self._episodes:
-            # Find the sub-list with the minimum total length and add the item to it.
+        while episode_index < len(self._episodes):
+            episode = self._episodes[episode_index]
             min_index = lengths.index(min(lengths))
-            sublists[min_index].append(episode)
-            lengths[min_index] += len(episode)
+
+            if lengths[min_index] + len(episode) <= self._target_lengths[min_index]:
+                # Add the whole episode if it fits within the target length
+                sublists[min_index].append(episode)
+                lengths[min_index] += len(episode)
+                episode_index += 1
+            else:
+                # Otherwise, slice the episode
+                remaining_length = self._target_lengths[min_index] - lengths[min_index]
+                if remaining_length > 0:
+                    #print("got to slice once")
+                    slice_part, remaining_part = episode[:remaining_length], episode[
+                                                                             remaining_length:]
+                    sublists[min_index].append(slice_part)
+                    lengths[min_index] += len(slice_part)
+                    self._episodes[episode_index] = remaining_part
+                else:
+                    assert remaining_length == 0
+                    sublists[min_index].append(episode)
+                    episode_index += 1
 
         for sublist in sublists:
             yield sublist

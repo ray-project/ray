@@ -1305,7 +1305,7 @@ class Learner:
             rl_module=self.module["default_policy"], # TODO: make multi-agent capable
             input_=batch,
             episodes=episodes,
-            # persistent_data=None, #TODO
+            # persistent_data=None, # TODO
         )
 
         # TODO (sven): Thus far, processing from episodes and the learner connector are
@@ -1362,6 +1362,7 @@ class Learner:
         self._set_slicing_by_batch_id(batch, value=False)
 
         # Reduce results across all minibatches, if necessary.
+        print("len(results) = ", len(results))#TEST
 
         # If we only have one result anyways, then the user will not expect a list
         # to be reduced here (and might not provide a `reduce_fn` therefore) ->
