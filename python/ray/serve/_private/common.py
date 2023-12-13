@@ -363,32 +363,40 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
-        # UNHEALTHY -> HEALTHY, UPDATING, UNHEALTHY
         if self.status == DeploymentStatus.UNHEALTHY:
+            # The deployment recovered
             if transition == DeploymentStatusTransition.HEALTHY:
                 return self.update(
                     status=DeploymentStatus.HEALTHY,
                     status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
                     message=message,
                 )
-            if transition == DeploymentStatusTransition.CONFIG_UPDATE:
+
+            # A new configuration is being deployed.
+            elif transition == DeploymentStatusTransition.CONFIG_UPDATE:
                 return self.update(
                     status=DeploymentStatus.UPDATING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
                 )
-            if transition == DeploymentStatusTransition.HEALTH_CHECK_FAILED:
+
+            # Old failures keep getting triggered, or new failures occurred.
+            elif transition == DeploymentStatusTransition.HEALTH_CHECK_FAILED:
                 return self.update(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
                 )
-            if transition == DeploymentStatusTransition.REPLICA_STARTUP_FAILED:
+            elif transition == DeploymentStatusTransition.REPLICA_STARTUP_FAILED:
                 return self.update(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
+
+            # If it's any other transition, ignore it.
+            else:
+                return self
 
         # Invalid state transition, this counts as an internal error.
         return self.update(
