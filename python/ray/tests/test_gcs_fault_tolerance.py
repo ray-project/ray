@@ -17,6 +17,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
     run_string_as_driver,
+    skip_flaky_core_test_premerge,
 )
 from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._raylet import GcsClient
@@ -595,6 +596,7 @@ assert ray.get(a.r.remote(10)) == 10
     ],
     indirect=True,
 )
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41879")
 def test_named_actor_workloads(ray_start_regular_with_external_redis):
     """This test cover the case to create actor while gcs is down
     and also make sure existing actor continue to work even when
