@@ -201,7 +201,8 @@ def latency_based_autoscaling_policy(context: AutoscalingContext) -> int:
     resp = requests.get(
         f"{PROMETHEUS_HOST}/api/v1/query",
         params={
-            "query": f'histogram_quantile(0.95, sum(rate({metrics_name}{{deployment="{context.deployment_name}"}}[1m])) by (le))'
+            "query": f"histogram_quantile(0.95, sum(rate({metrics_name}"
+            f'{{deployment="{context.deployment_name}"}}[1m])) by (le))'
         },
     )
     if resp.status_code != 200:
