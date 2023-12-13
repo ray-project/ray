@@ -118,6 +118,19 @@ class DeploymentStatusTrigger(str, Enum):
     DELETING = "DELETING"
 
 
+# Internal Enum used to manage deployment state machine
+class DeploymentStatusTransition(str, Enum):
+    HEALTHY = "HEALTHY"
+    CONFIG_UPDATE = "CONFIG_UPDATE"
+    AUTOSCALE_UP = "AUTOSCALE_UP"
+    AUTOSCALE_DOWN = "AUTOSCALE_DOWN"
+    MANUALLY_INCREASE_NUM_REPLICAS = "MANUALLY_INCREASE_NUM_REPLICAS"
+    MANUALLY_DECREASE_NUM_REPLICAS = "MANUALLY_DECREASE_NUM_REPLICAS"
+    REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
+    HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
 @dataclass(eq=True)
 class DeploymentStatusInfo:
     name: str
@@ -166,11 +179,15 @@ class DeploymentStatusInfo:
             message=message,
         )
 
-    def transition(self, transition: str, message: str = ""):
+    def transition(
+        self,
+        transition: DeploymentStatusTransition,
+        message: str = "",
+        is_within_autoscaling_bounds: bool = False,
+    ):
         # If there was an unexpected internal error during reconciliation, set
         # status to unhealthy immediately and return
-        print("self.status", self.status, "transition", transition)
-        if transition == "internal_error":
+        if transition == DeploymentStatusTransition.INTERNAL_ERROR:
             return self.update(
                 status=DeploymentStatus.UNHEALTHY,
                 status_trigger=DeploymentStatusTrigger.INTERNAL_ERROR,
@@ -178,150 +195,168 @@ class DeploymentStatusInfo:
             )
 
         # Otherwise, go through normal state machine transitions
-        # UPDATING -> HEALTHY, UPDATING, UNHEALTHY
         if self.status == DeploymentStatus.UPDATING:
-            if transition == "healthy":
+            # Finished updating configuration and transition to healthy
+            if transition == DeploymentStatusTransition.HEALTHY:
                 return self.update(
                     status=DeploymentStatus.HEALTHY,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
                     message=message,
                 )
-            if transition == "config_update_started":
+
+            # A new configuration has been deployed before deployment
+            # has finished updating
+            if transition == DeploymentStatusTransition.CONFIG_UPDATE:
                 return self.update(
                     status=DeploymentStatus.UPDATING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
                 )
-            if transition == "automatically_increase_num_replicas":
+
+            # Autoscaling.
+            if transition == DeploymentStatusTransition.AUTOSCALE_UP:
+                # The deployment should only transition to UPSCALING if
+                # it's within the autoscaling bounds
+                if is_within_autoscaling_bounds:
+                    return self.update(
+                        status=DeploymentStatus.UPSCALING,
+                        status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+                        message=message,
+                    )
+                # Otherwise, the status doesn't change
+                else:
+                    return self
+            if transition == DeploymentStatusTransition.AUTOSCALE_DOWN:
+                # The deployment should only transition to DOWNSCALING if
+                # it's within the autoscaling bounds
+                if is_within_autoscaling_bounds:
+                    return self.update(
+                        status=DeploymentStatus.DOWNSCALING,
+                        status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+                        message=message,
+                    )
+                # Otherwise, the status doesn't change
+                else:
+                    return self
+
+            # Manually increasing or decreasing num replicas does not
+            # change the status while deployment is still updating.
+            if transition in [
+                DeploymentStatusTransition.MANUALLY_INCREASE_NUM_REPLICAS,
+                DeploymentStatusTransition.MANUALLY_DECREASE_NUM_REPLICAS,
+            ]:
                 return self
-            if transition == "automatically_decrease_num_replicas":
-                return self
-            if transition == "health_check_failed":
+
+            # Failures occurred
+            if transition == DeploymentStatusTransition.HEALTH_CHECK_FAILED:
                 return self.update(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
                 )
-            if transition == "replica_startup_failed":
+            if transition == DeploymentStatusTransition.REPLICA_STARTUP_FAILED:
                 return self.update(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
 
-        # UPSCALING -> HEALTHY, UPDATING, UPSCALING, DOWNSCALING, UNHEALTHY
-        if self.status == DeploymentStatus.UPSCALING:
-            if transition == "healthy":
+        if self.status in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]:
+            # Deployment transitions to healthy
+            if transition == DeploymentStatusTransition.HEALTHY:
                 return self.update(
                     status=DeploymentStatus.HEALTHY,
-                    status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED,
+                    status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED
+                    if self.status == DeploymentStatus.UPSCALING
+                    else DeploymentStatusTrigger.DOWNSCALE_COMPLETED,
                     message=message,
                 )
-            if transition == "config_update_started":
+
+            # Configuration is updated before scaling is finished
+            if transition == DeploymentStatusTransition.CONFIG_UPDATE:
                 return self.update(
                     status=DeploymentStatus.UPDATING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
                 )
-            if transition == "health_check_failed":
-                return self.update(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
-                    message=message,
-                )
-            if transition == "automatically_increase_num_replicas":
-                return self.update(
-                    status=DeploymentStatus.UPSCALING,
-                    status_trigger=DeploymentStatusTrigger.AUTOSCALING,
-                    message=message,
-                )
-            if transition == "automatically_decrease_num_replicas":
-                return self.update(
-                    status=DeploymentStatus.DOWNSCALING,
-                    status_trigger=DeploymentStatusTrigger.AUTOSCALING,
-                    message=message,
-                )
-            if transition == "replica_startup_failed":
+
+            # Upscale replicas before previous upscaling/downscaling has finished
+            if (
+                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+                and transition == DeploymentStatusTransition.AUTOSCALE_UP
+            ) or (
+                self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+                and transition
+                == DeploymentStatusTransition.MANUALLY_INCREASE_NUM_REPLICAS
+            ):
+                return self.update(status=DeploymentStatus.UPSCALING, message=message)
+
+            # Downscale replicas before previous upscaling/downscaling has finished
+            if (
+                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+                and transition == DeploymentStatusTransition.AUTOSCALE_DOWN
+            ) or (
+                self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+                and transition
+                == DeploymentStatusTransition.MANUALLY_DECREASE_NUM_REPLICAS
+            ):
+                return self.update(status=DeploymentStatus.DOWNSCALING, message=message)
+
+            # Failures occurred
+            if transition == DeploymentStatusTransition.REPLICA_STARTUP_FAILED:
                 return self.update(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
-
-        # DOWNSCALING -> HEALTHY, UPDATING, UPSCALING, DOWNSCALING, UNHEALTHY
-        if self.status == DeploymentStatus.DOWNSCALING:
-            if transition == "healthy":
-                return self.update(
-                    status=DeploymentStatus.HEALTHY,
-                    status_trigger=DeploymentStatusTrigger.DOWNSCALE_COMPLETED,
-                    message=message,
-                )
-            if transition == "config_update_started":
-                return self.update(
-                    status=DeploymentStatus.UPDATING,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                    message=message,
-                )
-            if transition == "automatically_increase_num_replicas":
-                return self.update(
-                    status=DeploymentStatus.UPSCALING,
-                    status_trigger=DeploymentStatusTrigger.AUTOSCALING,
-                    message=message,
-                )
-            if transition == "automatically_decrease_num_replicas":
-                return self.update(
-                    status=DeploymentStatus.DOWNSCALING,
-                    status_trigger=DeploymentStatusTrigger.AUTOSCALING,
-                    message=message,
-                )
-            if transition == "health_check_failed":
+            if transition == DeploymentStatusTransition.HEALTH_CHECK_FAILED:
                 return self.update(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
                 )
-            if transition == "replica_startup_failed":
-                return self.update(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
-                    message=message,
-                )
 
-        # HEALTHY -> HEALTHY, UPDATING, UPSCALING, DOWNSCALING, UNHEALTHY
         if self.status == DeploymentStatus.HEALTHY:
-            if transition == "healthy":
+            # Deployment remains healthy
+            if transition == DeploymentStatusTransition.HEALTHY:
                 return self
-            if transition == "config_update_started":
+
+            # New configuration is deployed
+            if transition == DeploymentStatusTransition.CONFIG_UPDATE:
                 return self.update(
                     status=DeploymentStatus.UPDATING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
                 )
-            if transition == "manually_increase_num_replicas":
+
+            # Manually scaling / autoscaling num replicas
+            if transition == DeploymentStatusTransition.MANUALLY_INCREASE_NUM_REPLICAS:
                 return self.update(
                     status=DeploymentStatus.UPSCALING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
                 )
-            if transition == "manually_decrease_num_replicas":
+            if transition == DeploymentStatusTransition.MANUALLY_DECREASE_NUM_REPLICAS:
                 return self.update(
                     status=DeploymentStatus.DOWNSCALING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
                 )
-            if transition == "automatically_increase_num_replicas":
+            if transition == DeploymentStatusTransition.AUTOSCALE_UP:
                 return self.update(
                     status=DeploymentStatus.UPSCALING,
                     status_trigger=DeploymentStatusTrigger.AUTOSCALING,
                     message=message,
                 )
-            if transition == "automatically_decrease_num_replicas":
+            if transition == DeploymentStatusTransition.AUTOSCALE_DOWN:
                 return self.update(
                     status=DeploymentStatus.DOWNSCALING,
                     status_trigger=DeploymentStatusTrigger.AUTOSCALING,
                     message=message,
                 )
-            if transition == "health_check_failed":
+
+            # Health check for one or more replicas has failed
+            if transition == DeploymentStatusTransition.HEALTH_CHECK_FAILED:
                 return self.update(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
@@ -330,25 +365,25 @@ class DeploymentStatusInfo:
 
         # UNHEALTHY -> HEALTHY, UPDATING, UNHEALTHY
         if self.status == DeploymentStatus.UNHEALTHY:
-            if transition == "healthy":
+            if transition == DeploymentStatusTransition.HEALTHY:
                 return self.update(
                     status=DeploymentStatus.HEALTHY,
                     status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
                     message=message,
                 )
-            if transition == "config_update_started":
+            if transition == DeploymentStatusTransition.CONFIG_UPDATE:
                 return self.update(
                     status=DeploymentStatus.UPDATING,
                     status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
                     message=message,
                 )
-            if transition == "health_check_failed":
+            if transition == DeploymentStatusTransition.HEALTH_CHECK_FAILED:
                 return self.update(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
                 )
-            if transition == "replica_startup_failed":
+            if transition == DeploymentStatusTransition.REPLICA_STARTUP_FAILED:
                 return self.update(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
