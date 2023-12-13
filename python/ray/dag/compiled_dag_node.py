@@ -1,5 +1,5 @@
 import logging
-from typing import Any, List, Tuple, Union
+from typing import Any, List, Tuple, Union, Optional
 
 from collections import defaultdict
 
