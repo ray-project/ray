@@ -23,7 +23,9 @@ steps:
 
   # tests
   - label: ":ray: core: python tests"
-    tags: python
+    tags: 
+      - python
+      - dashboard
     instance_type: large
     parallelism: 4
     commands:
