@@ -125,7 +125,7 @@ void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
 }
 
 void GcsNodeManager::DrainNode(const NodeID &node_id) {
-  RAY_LOG(INFO) << "Draining node info, node id = " << node_id;
+  RAY_LOG(INFO) << "Shutting down raylet, node id = " << node_id;
   auto node = RemoveNode(node_id, /* is_intended = */ true);
   if (!node) {
     RAY_LOG(INFO) << "Node " << node_id << " is already removed";

@@ -412,12 +412,16 @@ class RuntimeContext(object):
         worker.check_connected()
         return worker.core_worker.get_actor_call_stats()
 
+    @Deprecated(message="Use get_accelerator_ids() instead", warning=True)
     def get_resource_ids(self) -> Dict[str, List[str]]:
+        return self.get_accelerator_ids()
+
+    def get_accelerator_ids(self) -> Dict[str, List[str]]:
         """
         Get the current worker's visible accelerator ids.
 
         Returns:
-            A dictionary keyed by the resource name. The values are list
+            A dictionary keyed by the accelerator resource name. The values are a list
             of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1'],
             'TPU': ['0', '1']}`.
         """
