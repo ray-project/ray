@@ -87,7 +87,6 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
                                         grpc::InsecureChannelCredentials(),
                                         *arguments);
   }
-  RAY_LOG(INFO) << "insecure channel credentials";
   return channel;
 }
 
