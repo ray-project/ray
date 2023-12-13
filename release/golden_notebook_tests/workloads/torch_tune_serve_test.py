@@ -36,7 +36,10 @@ def load_mnist_data(train: bool, download: bool):
         )
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer):
+def train_epoch(epoch, dataloader, model, loss_fn, optimizer):
+    if ray.train.get_context().get_world_size() > 1:
+        dataloader.sampler.set_epoch(epoch)
+
     for X, y in dataloader:
         # Compute prediction error
         pred = model(X)
@@ -83,7 +86,7 @@ def training_loop(config):
         validation_dataset = Subset(validation_dataset, list(range(64)))
 
     train_loader = DataLoader(
-        train_dataset, batch_size=config["batch_size"], num_workers=2
+        train_dataset, batch_size=config["batch_size"], num_workers=2, shuffle=True
     )
     validation_loader = DataLoader(
         validation_dataset, batch_size=config["batch_size"], num_workers=2
