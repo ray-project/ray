@@ -170,6 +170,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   std::shared_ptr<grpc::Channel> channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
+  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count();
   if (cluster_id.IsNil()) {
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
@@ -197,6 +198,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
       channel_ =
           rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
       node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
+      RAY_LOG(INFO) << "channel_ count: " << channel_.use_count();
     }
     RAY_RETURN_NOT_OK(connect_status);
   } else {
@@ -210,6 +212,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
   node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
   autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
+  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count();
   return Status::OK();
 }
 
