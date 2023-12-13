@@ -159,11 +159,11 @@ Status HandleGcsError(rpc::GcsStatus status) {
 Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 int64_t timeout_ms,
                                 size_t num_retries) {
-  RAY_LOG(INFO) << "start connect to address: " << this;
+  RAY_LOG(INFO) << "start connect to address: " << this << " called from thread:" << std::this_thread::get_id() << std::endl;
   channel_ =
     rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
-  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count() << "addresss: " << this;
+  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count() << "addresss: " << this << " called from thread:" << std::this_thread::get_id() << std::endl;
   if (cluster_id.IsNil()) {
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
@@ -196,14 +196,14 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
     cluster_id_ = cluster_id;
     RAY_LOG(DEBUG) << "Client initialized with provided cluster ID: " << cluster_id_;
   }
-  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count() << "addresss: " << this;
+  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count() << "addresss: " << this << " called from thread:" << std::this_thread::get_id() << std::endl;
   RAY_CHECK(!cluster_id_.IsNil()) << "Unexpected nil cluster ID.";
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
   node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
   autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
-  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count() << "addresss: " << this;
+  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count() << "addresss: " << this << " called from thread:" << std::this_thread::get_id() << std::endl;
   return Status::OK();
 }
 
