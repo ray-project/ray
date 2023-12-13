@@ -33,6 +33,7 @@ tune.register_env(
 
 config = (
     PPOConfig()
+    .experimental(_enable_new_api_stack=True)
     .environment(
         "env",
         env_config={
@@ -43,7 +44,6 @@ config = (
         },
         clip_rewards=True,
     )
-    .experimental(_enable_new_api_stack=True)
     .rollouts(
         env_runner_cls=SingleAgentEnvRunner,
         num_rollout_workers=59,
@@ -58,7 +58,7 @@ config = (
         train_batch_size_per_learner=4000,
         mini_batch_size_per_learner=256,
         num_sgd_iter=10,
-        lr=0.0008,  # needs to be adjusted: `lr=0.0001*num_learner_workers`
+        lr=0.002,  # needs to be adjusted: `lr=0.00025*num_learner_workers`
         grad_clip=100.0,
         grad_clip_by="global_norm",
         model={
