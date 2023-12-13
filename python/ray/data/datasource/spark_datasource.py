@@ -13,7 +13,12 @@ logger = logging.getLogger(__name__)
 class SparkDatasource(Datasource):
 
     def __init__(self, spark_dataframe, rows_per_chunk):
-        from pyspark.sql.chunk_api import persist_dataframe_as_chunks
+        try:
+            from pyspark.sql.chunk_api import persist_dataframe_as_chunks
+        except ImportError:
+            raise RuntimeError(
+                "Current spark version does not support Ray SparkDatasource."
+            )
 
         self.chunk_meta_list = persist_dataframe_as_chunks(spark_dataframe, rows_per_chunk)
         self._estimate_inmemory_data_size = sum(
