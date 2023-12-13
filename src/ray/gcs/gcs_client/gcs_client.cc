@@ -252,7 +252,7 @@ Status PythonGcsClient::InternalKVGet(const std::string &ns,
   rpc::InternalKVGetRequest request;
   request.set_namespace_(ns);
   request.set_key(key);
-
+  RAY_LOG(INFO) << "kv get at addresss: " << this;
   rpc::InternalKVGetReply reply;
 
   grpc::Status status = kv_stub_->InternalKVGet(&context, request, &reply);
@@ -280,6 +280,7 @@ Status PythonGcsClient::InternalKVMultiGet(
   request.set_namespace_(ns);
   request.mutable_keys()->Add(keys.begin(), keys.end());
 
+  RAY_LOG(INFO) << "multi get at addresss: " << this;
   rpc::InternalKVMultiGetReply reply;
 
   grpc::Status status = kv_stub_->InternalKVMultiGet(&context, request, &reply);
