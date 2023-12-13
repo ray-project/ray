@@ -23,8 +23,8 @@ from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
-    CONTROL_PLANE_CONCURRENCY_GROUP,
     DeploymentID,
+    ReplicaName,
     ReplicaTag,
     ServeComponentType,
     StreamingHTTPRequest,
@@ -33,13 +33,16 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
+    GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RECONFIGURE_METHOD,
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.deployment_info import CONTROL_PLANE_CONCURRENCY_GROUP
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIMessageQueue,
@@ -63,6 +66,7 @@ from ray.serve._private.utils import (
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -86,7 +90,6 @@ def create_replica_wrapper(actor_class_name: str):
             serialized_init_kwargs: bytes,
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
-            controller_name: str,
             app_name: str = None,
         ):
             self._replica_tag = replica_tag
@@ -98,22 +101,7 @@ def create_replica_wrapper(actor_class_name: str):
             else:
                 logging_config = LoggingConfig(**deployment_config.logging_config)
 
-            configure_component_logger(
-                component_type=ServeComponentType.DEPLOYMENT,
-                component_name=deployment_name,
-                component_id=replica_tag,
-                logging_config=logging_config,
-            )
-            configure_component_memory_profiler(
-                component_type=ServeComponentType.DEPLOYMENT,
-                component_name=deployment_name,
-                component_id=replica_tag,
-            )
-            self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-                component_type=ServeComponentType.DEPLOYMENT,
-                component_name=deployment_name,
-                component_id=replica_tag,
-            )
+            self._configure_logger_and_profilers(replica_tag, logging_config)
 
             self._event_loop = get_or_create_event_loop()
 
@@ -159,13 +147,10 @@ def create_replica_wrapper(actor_class_name: str):
                 deployment=deployment_name,
                 replica_tag=replica_tag,
                 servable_object=None,
-                controller_name=controller_name,
             )
 
-            assert controller_name, "Must provide a valid controller_name"
-
             controller_handle = ray.get_actor(
-                controller_name, namespace=SERVE_NAMESPACE
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
             )
 
             # Indicates whether the replica has finished initializing.
@@ -180,6 +165,11 @@ def create_replica_wrapper(actor_class_name: str):
             # method. After that, it calls `reconfigure` to trigger
             # user code initialization.
             async def initialize_replica():
+                logger.info(
+                    "Started initializing replica.",
+                    extra={"log_to_stderr": False},
+                )
+
                 if is_function:
                     _callable = deployment_def
                 else:
@@ -197,7 +187,6 @@ def create_replica_wrapper(actor_class_name: str):
                     deployment=deployment_name,
                     replica_tag=replica_tag,
                     servable_object=_callable,
-                    controller_name=controller_name,
                 )
 
                 self.replica = RayServeReplica(
@@ -211,6 +200,10 @@ def create_replica_wrapper(actor_class_name: str):
                     app_name,
                 )
                 self._initialized = True
+                logger.info(
+                    "Finished initializing replica.",
+                    extra={"log_to_stderr": False},
+                )
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
@@ -220,6 +213,35 @@ def create_replica_wrapper(actor_class_name: str):
 
             # Used to guard `initialize_replica` so that it isn't called twice.
             self._replica_init_lock = asyncio.Lock()
+
+        def _configure_logger_and_profilers(
+            self, replica_tag: ReplicaTag, logging_config: LoggingConfig
+        ):
+            replica_name = ReplicaName.from_replica_tag(replica_tag)
+            if replica_name.app_name:
+                component_name = (
+                    f"{replica_name.app_name}_{replica_name.deployment_name}"
+                )
+            else:
+                component_name = f"{replica_name.deployment_name}"
+            component_id = replica_name.replica_suffix
+
+            configure_component_logger(
+                component_type=ServeComponentType.REPLICA,
+                component_name=component_name,
+                component_id=component_id,
+                logging_config=logging_config,
+            )
+            configure_component_memory_profiler(
+                component_type=ServeComponentType.REPLICA,
+                component_name=component_name,
+                component_id=component_id,
+            )
+            self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
+                component_type=ServeComponentType.REPLICA,
+                component_name=component_name,
+                component_id=component_id,
+            )
 
         @ray.method(concurrency_group=CONTROL_PLANE_CONCURRENCY_GROUP)
         def get_num_ongoing_requests(self) -> int:
@@ -668,7 +690,7 @@ class RayServeReplica:
         if deployment_config.logging_config:
             logging_config = LoggingConfig(**deployment_config.logging_config)
             configure_component_logger(
-                component_type=ServeComponentType.DEPLOYMENT,
+                component_type=ServeComponentType.REPLICA,
                 component_name=self.deployment_id.name,
                 component_id=self.replica_tag,
                 logging_config=logging_config,
@@ -713,6 +735,7 @@ class RayServeReplica:
                 request_metadata.request_id,
                 self.deployment_id.app,
                 request_metadata.multiplexed_model_id,
+                request_metadata.grpc_context,
             )
         )
 
@@ -758,7 +781,7 @@ class RayServeReplica:
 
     async def call_user_method_with_grpc_unary_stream(
         self, request_metadata: RequestMetadata, request: gRPCRequest
-    ) -> AsyncGenerator[bytes, None]:
+    ) -> AsyncGenerator[Tuple[RayServegRPCContext, bytes], None]:
         """Call a user method that is expected to be a generator.
 
         Deserializes gRPC request into protobuf object and pass into replica's runner
@@ -767,16 +790,22 @@ class RayServeReplica:
         async with self.wrap_user_method_call(request_metadata):
             user_method = self.get_runner_method(request_metadata)
             user_request = pickle.loads(request.grpc_user_request)
-            result_generator = user_method(user_request)
+            if GRPC_CONTEXT_ARG_NAME in inspect.signature(user_method).parameters:
+                result_generator = user_method(
+                    user_request,
+                    grpc_context=request_metadata.grpc_context,
+                )
+            else:
+                result_generator = user_method(user_request)
             if inspect.iscoroutine(result_generator):
                 result_generator = await result_generator
 
             if inspect.isgenerator(result_generator):
                 for result in result_generator:
-                    yield result.SerializeToString()
+                    yield request_metadata.grpc_context, result.SerializeToString()
             elif inspect.isasyncgen(result_generator):
                 async for result in result_generator:
-                    yield result.SerializeToString()
+                    yield request_metadata.grpc_context, result.SerializeToString()
             else:
                 raise TypeError(
                     "When using `stream=True`, the called method must be a generator "
@@ -785,7 +814,7 @@ class RayServeReplica:
 
     async def call_user_method_grpc_unary(
         self, request_metadata: RequestMetadata, request: gRPCRequest
-    ) -> bytes:
+    ) -> Tuple[RayServegRPCContext, bytes]:
         """Call a user method that is *not* expected to be a generator.
 
         Deserializes gRPC request into protobuf object and pass into replica's runner
@@ -806,8 +835,14 @@ class RayServeReplica:
 
             method_to_call = sync_to_async(runner_method)
 
-            result = await method_to_call(user_request)
-            return result.SerializeToString()
+            if GRPC_CONTEXT_ARG_NAME in inspect.signature(runner_method).parameters:
+                result = await method_to_call(
+                    user_request,
+                    grpc_context=request_metadata.grpc_context,
+                )
+            else:
+                result = await method_to_call(user_request)
+            return request_metadata.grpc_context, result.SerializeToString()
 
     async def call_user_method(
         self,

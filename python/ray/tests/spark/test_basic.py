@@ -2,15 +2,22 @@ import os
 import shutil
 import tempfile
 import socket
+import threading
+import re
 import pytest
 import sys
-
+from unittest import mock
 from abc import ABC
 
 import ray
 
 import ray.util.spark.cluster_init
-from ray.util.spark import setup_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
+from ray.util.spark import (
+    setup_ray_cluster,
+    shutdown_ray_cluster,
+    setup_global_ray_cluster,
+    MAX_NUM_WORKER_NODES,
+)
 from ray.util.spark.utils import (
     is_port_in_use,
     _calc_mem_per_ray_worker_node,
@@ -346,6 +353,76 @@ class TestSparkLocalCluster:
         assert head_resources.get("GPU", 0) == 2
 
         shutdown_ray_cluster()
+
+    @pytest.mark.parametrize("autoscale", [False, True])
+    def test_setup_global_ray_cluster(self, autoscale):
+        shutil.rmtree("/tmp/ray", ignore_errors=True)
+
+        assert ray.util.spark.cluster_init._global_ray_cluster_cancel_event is None
+
+        def start_serve_thread():
+            def serve():
+                try:
+                    with mock.patch(
+                        "ray.util.spark.cluster_init.get_spark_session",
+                        return_value=self.spark,
+                    ):
+                        setup_global_ray_cluster(
+                            num_worker_nodes=1,
+                            autoscale=autoscale,
+                        )
+                except BaseException:
+                    # For debugging testing failure.
+                    import traceback
+
+                    traceback.print_exc()
+                    raise
+
+            threading.Thread(target=serve, daemon=True).start()
+
+        start_serve_thread()
+
+        wait_for_condition(
+            (
+                lambda: ray.util.spark.cluster_init._global_ray_cluster_cancel_event
+                is not None
+            ),
+            timeout=120,
+            retry_interval_ms=10000,
+        )
+
+        # assert it uses default temp directory
+        assert os.path.exists("/tmp/ray")
+
+        # assert we can connect to it on client server port 10001
+        assert (
+            ray.util.spark.cluster_init._active_ray_cluster.ray_client_server_port
+            == 10001
+        )
+
+        with mock.patch("ray.util.spark.cluster_init._active_ray_cluster", None):
+            # assert we cannot create another global mode cluster at a time
+            with pytest.raises(
+                ValueError,
+                match=re.compile(
+                    "Acquiring global lock failed for setting up new global mode "
+                    "Ray on spark cluster"
+                ),
+            ):
+                setup_global_ray_cluster(
+                    num_worker_nodes=1,
+                    autoscale=autoscale,
+                )
+
+        # shut down the cluster
+        ray.util.spark.cluster_init._global_ray_cluster_cancel_event.set()
+
+        # assert temp directory is deleted
+        wait_for_condition(
+            lambda: not os.path.exists("/tmp/ray"),
+            timeout=60,
+            retry_interval_ms=10000,
+        )
 
     def test_autoscaling_config_generation(self):
         from ray.util.spark.cluster_init import AutoscalingCluster

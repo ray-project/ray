@@ -675,6 +675,7 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
   gcs_autoscaler_state_manager_ =
       std::make_unique<GcsAutoscalerStateManager>(config_.session_name,
                                                   *gcs_node_manager_,
+                                                  *gcs_actor_manager_,
                                                   *gcs_placement_group_manager_,
                                                   raylet_client_pool_);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
@@ -726,7 +727,7 @@ void GcsServer::InstallEventListeners() {
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
-        gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
+        gcs_actor_manager_->OnNodeDead(node, node_ip_address);
         gcs_job_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);

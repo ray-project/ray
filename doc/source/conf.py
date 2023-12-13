@@ -59,25 +59,33 @@ extensions = [
     "sphinx.ext.intersphinx",
 ]
 
+remove_from_toctrees = [
+    "cluster/running-applications/job-submission/doc/*",
+    "ray-observability/reference/doc/*",
+    "ray-core/api/doc/*",
+    "data/api/doc/*",
+    "train/api/doc/*",
+    "tune/api/doc/*",
+    "serve/api/doc/*",
+    "rllib/package_ref/algorithm/*",
+    "rllib/package_ref/policy/*",
+    "rllib/package_ref/models/*",
+    "rllib/package_ref/catalogs/*",
+    "rllib/package_ref/rl_modules/*",
+    "rllib/package_ref/learner/*",
+    "rllib/package_ref/evaluation/*",
+    "rllib/package_ref/replay-buffers/*",
+    "rllib/package_ref/utils/*",
+]
+
 # Prune deep toc-trees on demand for smaller html and faster builds.
 # This only effects the navigation bar, not the content.
 if os.getenv("FAST", False):
-    remove_from_toctrees = [
-        "data/api/doc/*",
-        "ray-air/api/doc/*",
-        "ray-core/api/doc/*",
+    remove_from_toctrees += [
         "ray-observability/api/state/doc/*",
-        "serve/api/doc/*",
-        "train/api/doc/*",
-        "tune/api/doc/*",
         "workflows/api/doc/*",
-        "cluster/running-applications/job-submission/doc/*",
         "serve/production-guide/*",
         "serve/tutorials/deployment-graph-patterns/*",
-        "rllib/package_ref/env/*",
-        "rllib/package_ref/policy/*",
-        "rllib/package_ref/evaluation/*",
-        "rllib/package_ref/utils/*",
         "workflows/api/*",
         "cluster/kubernetes/user-guides/*",
         "cluster/kubernetes/examples/*",
@@ -241,10 +249,14 @@ linkcheck_ignore = [
     "https://dev.mysql.com/doc/connector-python/en/",
     # Returning 522s intermittently.
     "https://lczero.org/",
-    # Returns 429 errors in Linkcheck due to too many requests
-    "https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12",
     # Returns 406 but remains accessible
     "https://www.uber.com/blog/elastic-xgboost-ray/",
+    # Aggressive anti-bot checks
+    "https://archive.vn/*",
+    "https://archive.is/*",
+    # 429: Rate limited
+    "https://medium.com/*",
+    "https://towardsdatascience.com/*",
 ]
 
 # -- Options for HTML output ----------------------------------------------

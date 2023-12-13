@@ -44,7 +44,7 @@ class TestDatabricksHook:
 
     def test_hook(self, monkeypatch):
         monkeypatch.setattr(
-            "ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_DIR", "/tmp"
+            "ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_ROOT_DIR", "/tmp"
         )
         monkeypatch.setenv("DATABRICKS_RUNTIME_VERSION", "12.2")
         monkeypatch.setenv("DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES", "0.5")

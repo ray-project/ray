@@ -263,7 +263,7 @@ def test_worker_killer():
         time.sleep(3)
 
     # Run WorkerKillerActor to kill 3 tasks, and run remote "worker_to_kill"
-    # task with max_retires=3. 4 tasks in total (1 initial + 3 retries).
+    # task with max_retries=3. 4 tasks in total (1 initial + 3 retries).
     # First 3 tasks will be killed, the last retry will succeed.
     worker_killer = get_and_run_resource_killer(
         WorkerKillerActor,

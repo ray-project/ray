@@ -1189,7 +1189,10 @@ def test_actor_autocomplete(ray_start_regular_shared):
 
     method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
 
-    assert set(method_options) == {"options", "remote"}
+    if client_test_enabled():
+        assert set(method_options) == {"options", "remote"}
+    else:
+        assert set(method_options) == {"options", "remote", "bind"}
 
 
 def test_actor_mro(ray_start_regular_shared):
@@ -1317,7 +1320,7 @@ def test_actor_parent_task_correct(shutdown_only, actor_type):
     # Verify a generator actor
     actor = GeneratorActor.remote()
     child_actor = ChildActor.remote()
-    gen = actor.parent.options(num_returns="streaming").remote(child_actor)
+    gen = actor.parent.remote(child_actor)
     for ref in gen:
         result = ray.get(ref)
     actual, expected = result

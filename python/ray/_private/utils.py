@@ -1753,7 +1753,7 @@ def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
         A URI with the added allow_bucket_creation=true query parameter, if the provided
         URI is an S3 URL; uri will be returned unchanged otherwise.
     """
-    from pkg_resources._vendor.packaging.version import parse as parse_version
+    from packaging.version import parse as parse_version
 
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:

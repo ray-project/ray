@@ -3,7 +3,7 @@ import time
 import unittest
 from collections import defaultdict
 from contextlib import contextmanager
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
@@ -217,10 +217,16 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         cls._num_blocks = 5
         cls._block_size = 100 * 1024 * 1024
         policy_cls = StreamingOutputBackpressurePolicy
+        cls._max_blocks_in_op_output_queue = 1
+        cls._max_blocks_in_generator_buffer = 1
         cls._configs = {
             ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY: [policy_cls],
-            policy_cls.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY: 1,
-            policy_cls.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY: 1,
+            policy_cls.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY: (
+                cls._max_blocks_in_op_output_queue
+            ),
+            policy_cls.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY: (
+                cls._max_blocks_in_generator_buffer
+            ),
         }
         for k, v in cls._configs.items():
             data_context.set_config(k, v)
@@ -233,6 +239,87 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             data_context.remove_config(k)
         data_context.execution_options.preserve_order = False
         ray.shutdown()
+
+    def _create_mock_op_and_op_state(
+        self,
+        name,
+        outqueue_num_blocks=0,
+        num_active_tasks=0,
+        num_outputs_generated=0,
+    ):
+        op = MagicMock()
+        op.__str__.return_value = f"Op({name})"
+        op.num_active_tasks.return_value = num_active_tasks
+        op.metrics.num_outputs_generated = num_outputs_generated
+
+        state = MagicMock()
+        state.__str__.return_value = f"OpState({name})"
+        state.outqueue_num_blocks.return_value = outqueue_num_blocks
+
+        state.op = op
+        return op, state
+
+    def test_policy_basic(self):
+        """Basic unit test for the policy without real execution."""
+        up_op, up_state = self._create_mock_op_and_op_state("up")
+        down_op, down_state = self._create_mock_op_and_op_state("down")
+        topology = {}
+        topology[up_op] = up_state
+        topology[down_op] = down_state
+
+        policy = StreamingOutputBackpressurePolicy(topology)
+        assert (
+            policy._max_num_blocks_in_op_output_queue
+            == self._max_blocks_in_op_output_queue
+        )
+        assert (
+            policy._max_num_blocks_in_streaming_gen_buffer
+            == self._max_blocks_in_generator_buffer
+        )
+
+        # Buffers are empty, both ops can read up to the max.
+        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        assert res == {
+            up_state: self._max_blocks_in_op_output_queue,
+            down_state: self._max_blocks_in_op_output_queue,
+        }
+
+        # up_op's buffer is full, but down_up has no active tasks.
+        # We'll still allow up_op to read 1 block.
+        up_state.outqueue_num_blocks.return_value = self._max_blocks_in_op_output_queue
+        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        assert res == {
+            up_state: 1,
+            down_state: self._max_blocks_in_op_output_queue,
+        }
+
+        # down_op now has 1 active task. So we won't allow up_op to read any more.
+        down_op.num_active_tasks.return_value = 1
+        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        assert res == {
+            up_state: 0,
+            down_state: self._max_blocks_in_op_output_queue,
+        }
+
+        # After `MAX_OUTPUT_IDLE_SECONDS` of no outputs from down_up,
+        # we'll allow up_op to read 1 block again.
+        with patch.object(
+            StreamingOutputBackpressurePolicy, "MAX_OUTPUT_IDLE_SECONDS", 0.1
+        ):
+            time.sleep(0.11)
+            res = policy.calculate_max_blocks_to_read_per_op(topology)
+            assert res == {
+                up_state: 1,
+                down_state: self._max_blocks_in_op_output_queue,
+            }
+
+            # down_up now has outputs, so we won't allow up_op to read any more.
+            down_op.metrics.num_outputs_generated = 1
+            res = policy.calculate_max_blocks_to_read_per_op(topology)
+            assert res == {
+                up_state: 0,
+                down_state: self._max_blocks_in_op_output_queue,
+            }
 
     def _run_dataset(self, producer_num_cpus, consumer_num_cpus):
         # Create a dataset with 2 operators:
@@ -272,7 +359,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             [row["consumer_timestamp"] for row in res],
         )
 
-    def test_basic_backpressure(self):
+    def test_e2e_backpressure(self):
         producer_timestamps, consumer_timestamps = self._run_dataset(
             producer_num_cpus=1, consumer_num_cpus=2
         )
@@ -291,6 +378,30 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         # until it finishes.
         producer_timestamps, consumer_timestamps = self._run_dataset(
             producer_num_cpus=5, consumer_num_cpus=1
+        )
+        assert producer_timestamps[-1] < consumer_timestamps[0], (
+            producer_timestamps,
+            consumer_timestamps,
+        )
+
+    def test_no_deadlock_for_resource_contention(self):
+        """Test no deadlock in case of resource contention from
+        non-Data code."""
+        # Create a non-Data actor that uses 4 CPUs, only 1 CPU
+        # is left for Data. Currently Data StreamExecutor still
+        # incorrectly assumes it has all the 5 CPUs.
+        # Check that we don't deadlock in this case.
+
+        @ray.remote(num_cpus=4)
+        class DummyActor:
+            def foo(self):
+                return None
+
+        dummy_actor = DummyActor.remote()
+        ray.get(dummy_actor.foo.remote())
+
+        producer_timestamps, consumer_timestamps = self._run_dataset(
+            producer_num_cpus=1, consumer_num_cpus=0.9
         )
         assert producer_timestamps[-1] < consumer_timestamps[0], (
             producer_timestamps,

@@ -1,10 +1,11 @@
+import asyncio
 import logging
 import os
 import sys
 import tempfile
 import time
 import zipfile
-from typing import Iterable, List
+from typing import Dict, Iterable, List
 from unittest import mock
 
 import numpy as np
@@ -20,12 +21,18 @@ from ray.serve._private.autoscaling_policy import (
     calculate_desired_num_replicas,
 )
 from ray.serve._private.common import (
+    ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusTrigger,
     ReplicaState,
 )
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    CONTROL_LOOP_PERIOD_S,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.controller import ServeController
 from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import (
@@ -1387,6 +1394,337 @@ app = g.bind()
     for _ in range(15):
         pids.add(ray.get(send_request.remote()))
     assert existing_pid in pids
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_autoscaling_status_changes(serve_instance):
+    """Test status changes when autoscaling deployments are deployed.
+
+    This test runs an autoscaling deployment and an actor called the
+    EventManager. During initialization, each replica creates an asyncio.Event
+    in the EventManager, and it waits on the event. Once the event is set, the
+    replica can finish initializing. The test uses this EventManager to control
+    the number of replicas that should be running at a given time.
+
+    The test does the following:
+
+    1.  Starts an EventManager.
+    2.  Deploys an autoscaling deployment with min_replicas 3.
+    3.  Releases 2 replicas via the EventManager.
+    4.  Checks that the deployment remains in the UPDATING status.
+    5.  Redeploys the deployment with min_replicas 4.
+    6.  Releases 1 more replica via the EventManager.
+    7.  Checks that the deployment remains in the UPDATING status.
+    8.  Releases 1 more replica.
+    9.  Checks that the deployment enters HEALTHY status.
+    10. Redeploys the deployment with min_replicas 5.
+    11. Checks that the deployment re-enters and remains in the UPDATING status.
+    12. Releases 1 more replica.
+    13  Checks that the deployment enters HEALTHY status.
+    """
+
+    @ray.remote
+    class EventManager:
+        """Manages events for each deployment replica.
+
+        This actor uses a goal-state architecture. The test sets a max number
+        of replicas to run. Whenever this manager creates or removes an event,
+        it checks how many replicas are running and attempts to match the goal
+        state.
+        """
+
+        def __init__(self):
+            self._max_replicas_to_run = 0
+
+            # This dictionary maps replica names -> asyncio.Event.
+            self._events: Dict[str, asyncio.Event] = dict()
+
+        def get_num_running_replicas(self):
+            running_replicas = [
+                actor_name
+                for actor_name, event in self._events.items()
+                if event.is_set()
+            ]
+            return len(running_replicas)
+
+        def release_replicas(self):
+            """Releases replicas until self._max_replicas_to_run are released."""
+
+            num_replicas_released = 0
+            for _, event in self._events.items():
+                if self.get_num_running_replicas() < self._max_replicas_to_run:
+                    if not event.is_set():
+                        event.set()
+                        num_replicas_released += 1
+                else:
+                    break
+
+            if num_replicas_released > 0:
+                print(
+                    f"Started running {num_replicas_released} replicas. "
+                    f"{self.get_waiter_statuses()}"
+                )
+
+        async def wait(self, actor_name):
+            print(f"Replica {actor_name} started waiting...")
+            event = asyncio.Event()
+            self._events[actor_name] = event
+            self.release_replicas()
+            await event.wait()
+            print(f"Replica {actor_name} finished waiting.")
+
+        async def set_max_replicas_to_run(self, max_num_replicas: int = 1):
+            print(f"Setting _max_replicas_to_run to {max_num_replicas}.")
+            self._max_replicas_to_run = max_num_replicas
+            self.release_replicas()
+
+        async def get_max_replicas_to_run(self) -> int:
+            return self._max_replicas_to_run
+
+        async def num_active_replicas(self) -> int:
+            """The number of replicas that are waiting or running."""
+
+            return len(self._events)
+
+        def get_waiter_statuses(self) -> Dict[str, bool]:
+            return {
+                actor_name: event.is_set() for actor_name, event in self._events.items()
+            }
+
+        async def clear_dead_replicas(self):
+            """Clears dead replicas from internal _events dictionary."""
+
+            actor_names = list(self._events.keys())
+            for name in actor_names:
+                try:
+                    ray.get_actor(name=name, namespace=SERVE_NAMESPACE)
+                except ValueError:
+                    print(f"Actor {name} has died. Removing event.")
+                    self._events.pop(name)
+
+            self.release_replicas()
+
+    print("Starting EventManager actor...")
+
+    event_manager_actor_name = "event_manager_actor"
+    event_manager = EventManager.options(
+        name=event_manager_actor_name, namespace=SERVE_NAMESPACE
+    ).remote()
+
+    print("Starting Serve app...")
+
+    deployment_name = "autoscaling_app"
+    min_replicas = 3
+    max_replicas = 15
+
+    @serve.deployment(
+        name=deployment_name,
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+        ),
+        ray_actor_options=dict(num_cpus=0),
+        graceful_shutdown_timeout_s=0,
+    )
+    class AutoscalingDeployment:
+        """Deployment that autoscales."""
+
+        async def __init__(self):
+            self.name = ray.get_runtime_context().get_actor_name()
+            print(f"Replica {self.name} initializing...")
+            event_manager = ray.get_actor(
+                name=event_manager_actor_name, namespace=SERVE_NAMESPACE
+            )
+            await event_manager.wait.remote(self.name)
+            print(f"Replica {self.name} has initialized.")
+
+    app_name = "autoscaling_app"
+    app = AutoscalingDeployment.bind()
+
+    # Start the AutoscalingDeployment.
+    serve.run(app, name=app_name, _blocking=False)
+
+    # Active replicas are replicas that are waiting or running.
+    expected_num_active_replicas: int = min_replicas
+
+    def check_num_active_replicas(expected: int) -> bool:
+        ray.get(event_manager.clear_dead_replicas.remote())
+        assert ray.get(event_manager.num_active_replicas.remote()) == expected
+        return True
+
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    print("Replicas have started waiting. Releasing some replicas...")
+
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas - 1))
+
+    # Wait for replicas to start.
+    print("Waiting for replicas to run.")
+
+    def replicas_running(expected_num_running_replicas: int) -> bool:
+        ray.get(event_manager.clear_dead_replicas.remote())
+        status = serve.status()
+        app_status = status.applications[app_name]
+        deployment_status = app_status.deployments[deployment_name]
+        num_running_replicas = deployment_status.replica_states.get(
+            ReplicaState.RUNNING, 0
+        )
+        assert num_running_replicas == expected_num_running_replicas, (
+            f"{app_status}, {ray.available_resources()}, "
+            f"{ray.get(event_manager.get_waiter_statuses.remote())}, "
+            f"{ray.get(event_manager.get_max_replicas_to_run.remote())}"
+        )
+        return True
+
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=(min_replicas - 1),
+        timeout=15,
+    )
+
+    def check_expected_statuses(
+        expected_app_status: ApplicationStatus,
+        expected_deployment_status: DeploymentStatus,
+        expected_deployment_status_trigger: DeploymentStatusTrigger,
+    ) -> bool:
+        status = serve.status()
+
+        app_status = status.applications[app_name]
+        assert app_status.status == expected_app_status, f"{app_status}"
+
+        deployment_status = app_status.deployments[deployment_name]
+        assert (
+            deployment_status.status == expected_deployment_status
+        ), f"{deployment_status}"
+        assert (
+            deployment_status.status_trigger == expected_deployment_status_trigger
+        ), f"{deployment_status}"
+
+        return True
+
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    # Check that these statuses don't change over time.
+    print("Statuses are as expected. Sleeping briefly and checking again...")
+    time.sleep(1.5)
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print("Statuses are still as expected. Redeploying...")
+
+    # Check the status after redeploying the deployment.
+    min_replicas += 1
+    app = AutoscalingDeployment.options(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+        )
+    ).bind()
+    serve.run(app, name=app_name, _blocking=False)
+    expected_num_active_replicas = min_replicas
+
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    print("Replicas have started waiting. Releasing some replicas...")
+
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas - 1))
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=(min_replicas - 1),
+        timeout=20,
+    )
+
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print("Statuses are as expected. Sleeping briefly and checking again...")
+    time.sleep(1.5)
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print(
+        "Statuses are still as expected. "
+        "Releasing some replicas and checking again..."
+    )
+
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+
+    # Release enough replicas for deployment to enter autoscaling bounds.
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas))
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=min_replicas,
+        timeout=20,
+    )
+
+    check_expected_statuses(
+        ApplicationStatus.RUNNING,
+        DeploymentStatus.HEALTHY,
+        DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
+    )
+
+    print("Statuses are as expected. Redeploying with higher min_replicas...")
+    min_replicas += 1
+    app = AutoscalingDeployment.options(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+        )
+    ).bind()
+    serve.run(app, name=app_name, _blocking=False)
+    expected_num_active_replicas = min_replicas
+
+    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    print("Replicas have started waiting. Checking statuses...")
+
+    # DeploymentStatus should return to UPDATING because the
+    # autoscaling_config changed.
+    wait_for_condition(
+        check_expected_statuses,
+        expected_app_status=ApplicationStatus.DEPLOYING,
+        expected_deployment_status=DeploymentStatus.UPDATING,
+        expected_deployment_status_trigger=(
+            DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        ),
+    )
+
+    print("Statuses are as expected. Sleeping briefly and checking again...")
+    time.sleep(1.5)
+    check_expected_statuses(
+        ApplicationStatus.DEPLOYING,
+        DeploymentStatus.UPDATING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    )
+
+    print(
+        "Statuses are still as expected. Releasing some replicas and checking again..."
+    )
+
+    ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas))
+    wait_for_condition(
+        replicas_running,
+        expected_num_running_replicas=min_replicas,
+        timeout=20,
+    )
+
+    check_expected_statuses(
+        ApplicationStatus.RUNNING,
+        DeploymentStatus.HEALTHY,
+        DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
+    )
+
+    print("Statuses are as expected.")
 
 
 if __name__ == "__main__":
