@@ -2510,7 +2510,7 @@ def test_health_check(mock_deployment_state, force_stop_unhealthy_replicas: bool
         # Health check shouldn't be called until it's ready.
         assert replica._actor.health_check_called
 
-    # Mark one replica unhealthy. It should be stopped gracefully.
+    # Mark one replica unhealthy; it should be stopped.
     deployment_state._replicas.get()[0]._actor.set_unhealthy()
     deployment_state.update()
     check_counts(
