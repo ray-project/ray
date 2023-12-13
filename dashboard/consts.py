@@ -9,10 +9,6 @@ DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S_ENV_NAME = (
 DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S = env_integer(
     DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S_ENV_NAME, 0.4
 )
-DASHBOARD_AGENT_NUM_GCS_RECONNECT_RETRY = env_integer(
-    "DASHBOARD_AGENT_NUM_GCS_RECONNECT_RETRY",
-    30,  # Default sleep for 1 sec, thus 30 secs.
-)
 # The maximum time that parent can be considered
 # as dead before agent kills itself.
 _PARENT_DEATH_THREASHOLD = 5
