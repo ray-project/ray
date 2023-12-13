@@ -85,6 +85,7 @@ class DashboardAgent:
         self.gcs_client = GcsClient(address=self.gcs_address)
         _initialize_internal_kv(self.gcs_client)
         assert _internal_kv_initialized()
+        self.gcs_client.install_failure_signal_handler()
         self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
 
         if not self.minimal:

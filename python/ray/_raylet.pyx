@@ -2644,6 +2644,11 @@ cdef class GcsClient:
         return result
 
     @_auto_reconnect
+    def install_failure_signal_handler(self):
+        check_status(self.inner.get().InstallFailureSignalHandler())
+        return None
+
+    @_auto_reconnect
     def internal_kv_get(self, c_string key, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
