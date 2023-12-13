@@ -1,5 +1,5 @@
 import logging
-from typing import Any, List, Tuple, Union, Optional
+from typing import Any, Dict, List, Tuple, Union, Optional
 
 from collections import defaultdict
 
@@ -113,33 +113,37 @@ class CompiledDAG:
     See REP https://github.com/ray-project/enhancements/pull/48 for more
     information.
     """
+
     def __init__(self, buffer_size_bytes: Optional[int]):
-        self._buffer_size_bytes : Optional[int] = buffer_size_bytes
+        self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = MAX_BUFFER_SIZE
         if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
-            raise ValueError(f"`buffer_size_bytes` must be a positive integer, found {self._buffer_size_bytes}")
+            raise ValueError(
+                "`buffer_size_bytes` must be a positive integer, found "
+                f"{self._buffer_size_bytes}"
+            )
 
         # idx -> CompiledTask.
-        self.idx_to_task : Dict[int, "CompiledTask"] = {}
+        self.idx_to_task: Dict[int, "CompiledTask"] = {}
         # DAGNode -> idx.
-        self.dag_node_to_idx : Dict["ray.dag.DAGNode", int] = {}
+        self.dag_node_to_idx: Dict["ray.dag.DAGNode", int] = {}
         # idx counter.
-        self.counter : int = 0
+        self.counter: int = 0
 
         # Attributes that are set during preprocessing.
         # Preprocessing identifies the input node and output node.
-        self.input_task_idx : Optional[int] = None
-        self.output_task_idx : Optional[int] = None
-        self.has_single_output : bool = False
-        self.actor_task_count : Dict["ray._raylet.ActorID", int] = defaultdict(int)
+        self.input_task_idx: Optional[int] = None
+        self.output_task_idx: Optional[int] = None
+        self.has_single_output: bool = False
+        self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
-        self.dag_input_channel : Optional[ChannelType] = None
-        self.dag_output_channels : Optional[ChannelType] = None
+        self.dag_input_channel: Optional[ChannelType] = None
+        self.dag_output_channels: Optional[ChannelType] = None
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
-        self.worker_task_refs : List["ray.ObjectRef"] = []
+        self.worker_task_refs: List["ray.ObjectRef"] = []
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -160,7 +164,7 @@ class CompiledDAG:
             FunctionNode,
             InputAttributeNode,
             InputNode,
-            OutputNode,
+            MultiOutputNode,
         )
 
         self.input_task_idx, self.output_task_idx = None, None
@@ -171,7 +175,7 @@ class CompiledDAG:
             dag_node = task.dag_node
             if not (
                 isinstance(dag_node, InputNode)
-                or isinstance(dag_node, OutputNode)
+                or isinstance(dag_node, MultiOutputNode)
                 or isinstance(dag_node, ClassMethodNode)
             ):
                 if isinstance(dag_node, InputAttributeNode):
@@ -218,7 +222,9 @@ class CompiledDAG:
                 self.input_task_idx = idx
         # TODO: Support no-input DAGs (use an empty object to signal).
         if self.input_task_idx is None:
-            raise NotImplementedError("Compiled DAGs currently require exactly one InputNode")
+            raise NotImplementedError(
+                "Compiled DAGs currently require exactly one InputNode"
+            )
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -228,17 +234,19 @@ class CompiledDAG:
 
         assert self.output_task_idx is not None
         output_node = self.idx_to_task[self.output_task_idx].dag_node
-        # Add an OutputNode to the end of the DAG if it's not already there.
-        if not isinstance(output_node, OutputNode):
+        # Add an MultiOutputNode to the end of the DAG if it's not already there.
+        if not isinstance(output_node, MultiOutputNode):
             self.has_single_output = True
-            output_node = OutputNode([output_node])
+            output_node = MultiOutputNode([output_node])
             self._add_node(output_node)
             self.output_task_idx = self.dag_node_to_idx[output_node]
             # Preprocess one more time so that we have the right output node
             # now.
             self._preprocess()
 
-    def _get_or_compile(self) -> Tuple[ChannelType, Union[ChannelType, List[ChannelType]]]:
+    def _get_or_compile(
+        self,
+    ) -> Tuple[ChannelType, Union[ChannelType, List[ChannelType]]]:
         """Compile an execution path. This allocates channels for adjacent
         tasks to send/receive values. An infinite task is submitted to each
         actor in the DAG that repeatedly receives from input channel(s) and
@@ -253,7 +261,7 @@ class CompiledDAG:
             output channel(s) should be read by the caller to get the DAG
             output.
         """
-        from ray.dag import DAGNode, InputNode, OutputNode, ClassMethodNode
+        from ray.dag import DAGNode, InputNode, MultiOutputNode, ClassMethodNode
 
         if self.input_task_idx is None:
             self._preprocess()
@@ -289,10 +297,11 @@ class CompiledDAG:
                 )
             elif isinstance(task.dag_node, InputNode):
                 task.output_channel = ray_channel.Channel(
-                    buffer_size_bytes=self._buffer_size_bytes, num_readers=task.num_readers
+                    buffer_size_bytes=self._buffer_size_bytes,
+                    num_readers=task.num_readers,
                 )
             else:
-                assert isinstance(task.dag_node, OutputNode)
+                assert isinstance(task.dag_node, MultiOutputNode)
 
             for idx in task.downstream_node_idxs:
                 queue.append(idx)
@@ -348,7 +357,7 @@ class CompiledDAG:
         assert [
             output_channel is not None for output_channel in self.dag_output_channels
         ]
-        # If no OutputNode was specified during the DAG creation, there is only
+        # If no MultiOutputNode was specified during the DAG creation, there is only
         # one output. Return a single output channel instead of a list of
         # channels.
         if self.has_single_output:
@@ -384,7 +393,9 @@ class CompiledDAG:
         return output_channels
 
 
-def build_compiled_dag_from_ray_dag(dag: "ray.dag.DAGNode", buffer_size_bytes: Optional[int]) -> "CompiledDAG":
+def build_compiled_dag_from_ray_dag(
+    dag: "ray.dag.DAGNode", buffer_size_bytes: Optional[int]
+) -> "CompiledDAG":
     compiled_dag = CompiledDAG(buffer_size_bytes)
 
     def _build_compiled_dag(node):

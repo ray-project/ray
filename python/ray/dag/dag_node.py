@@ -105,7 +105,9 @@ class DAGNode(DAGNodeBase):
     def clear_cache(self):
         self.cache_from_last_execute = {}
 
-    def experimental_compile(self, buffer_size_bytes: Optional[int] = None) -> "ray.dag.CompiledDAG":
+    def experimental_compile(
+        self, buffer_size_bytes: Optional[int] = None
+    ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
         Args:
