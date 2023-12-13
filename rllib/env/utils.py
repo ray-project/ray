@@ -5,8 +5,6 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
-from collections import OrderedDict
-
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.multi_agent_env_compatibility import (
