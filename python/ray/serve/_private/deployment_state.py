@@ -1378,10 +1378,8 @@ class DeploymentState:
         self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
         self._target_state = target_state
-        self._curr_status_info = DeploymentStatusInfo(
-            self.deployment_name,
-            DeploymentStatus.UPDATING,
-            status_trigger=DeploymentStatusTrigger.DELETING,
+        self._curr_status_info = self._curr_status_info.transition(
+            DeploymentStatusTransition.DELETE
         )
         app_msg = f" in application '{self.app_name}'" if self.app_name else ""
         logger.info(
@@ -2090,7 +2088,7 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = pending_allocation[0].resource_requirements()
-                message = (
+                msg = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' {len(pending_allocation)} replicas that have "
                     f"taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. This "
@@ -2099,33 +2097,29 @@ class DeploymentState:
                     f"replica: {required}, total resources available: {available}. Use "
                     "`ray status` for more details."
                 )
-                logger.warning(message)
+                logger.warning(msg)
                 if _SCALING_LOG_ENABLED:
                     print_verbose_scaling_log()
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info = self._curr_status_info.update(
-                        message=message,
-                    )
+                    self._curr_status_info = self._curr_status_info.update_message(msg)
 
             if len(pending_initialization) > 0:
-                message = (
+                msg = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_initialization)} replicas "
                     f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
                     "initialize. This may be caused by a slow __init__ or reconfigure "
                     "method."
                 )
-                logger.warning(message)
+                logger.warning(msg)
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info = self._curr_status_info.update(
-                        message=message,
-                    )
+                    self._curr_status_info = self._curr_status_info.update_message(msg)
 
             self._prev_startup_warning = time.time()
 
