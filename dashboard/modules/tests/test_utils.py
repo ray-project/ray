@@ -9,3 +9,7 @@ async def http_get(http_session, url, timeout_seconds=60):
     with async_timeout.timeout(timeout_seconds):
         async with http_session.get(url) as response:
             return await response.json()
+
+
+if __name__ == "__main__":
+    pass
