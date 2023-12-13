@@ -896,9 +896,12 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
     with FileLock(str(path) + ".lock"):
         path = path.with_suffix("")
         if path.exists():
+            print(path)
             if path.is_dir() and not path.is_symlink():
+                print("remove")
                 shutil.rmtree(str(path))
             else:
+                print("unlink")
                 path.unlink()
             deleted = True
 

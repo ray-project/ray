@@ -1667,6 +1667,7 @@ def check_local_files_gced(cluster, whitelist=None):
             all_files = os.listdir(
                 os.path.join(node.get_runtime_env_dir_path(), subdir)
             )
+            print(all_files)
             # Check that there are no files remaining except for .lock files
             # and generated requirements.txt files.
             # Note: On Windows the top folder is not deleted as it is in use.

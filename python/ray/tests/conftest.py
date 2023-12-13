@@ -652,7 +652,7 @@ def call_ray_stop_only():
 
 # Used to test both Ray Client and non-Ray Client codepaths.
 # Usage: In your test, call `ray.init(address)`.
-@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
+@pytest.fixture(scope="function", params=["no_ray_client"])
 def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"

@@ -130,11 +130,12 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
-        logger.info("Got request to delete working dir URI %s", uri)
+        logger.error("Got request to delete working dir URI %s", uri)
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         local_dir_size = get_directory_size_bytes(local_dir)
 
         deleted = delete_package(uri, self._resources_dir)
+        logger.error(f"deleted: {deleted} {uri}{self._resources_dir}")
         if not deleted:
             logger.warning(f"Tried to delete nonexistent URI: {uri}.")
             return 0
@@ -154,6 +155,7 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
+        logging.error("SANG-TODO")
         local_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )

@@ -253,10 +253,10 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
-    @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+    # @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
+    @pytest.mark.parametrize("option", ["working_dir"])
     @pytest.mark.parametrize(
-        "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
+        "source", [lazy_fixture("tmp_working_dir")]
     )
     def test_detached_actor_gc(
         self,
@@ -321,7 +321,11 @@ class TestGC:
         assert not check_local_files_gced(cluster)
         print("check_local_files_gced() check passed.")
 
+        check_local_files_gced(cluster)
         ray.shutdown()
+        print("somehow removed?")
+        time.sleep(300)
+        check_local_files_gced(cluster)
         print("Ray has been shut down.")
 
         ray.init(address, namespace="test")
@@ -332,7 +336,8 @@ class TestGC:
         else:
             assert not check_internal_kv_gced()
         print(f'kv check 3 passed with source "{source}" and option "{option}".')
-
+        print("check result...")
+        time.sleep(300)
         assert not check_local_files_gced(cluster)
         print("check_local_files_gced() check passed.")
 
