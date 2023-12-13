@@ -854,8 +854,7 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
       ObjectID released_object_id;
 
       // `should_unmap` is set to true by the plasma server, when the mmap section is
-      // fallback-allocated and is no longer used. i.e. if the object ID is in the main
-      // memory, this boolean is always false.
+      // fallback-allocated and is no longer used.
       bool should_unmap;
       RAY_RETURN_NOT_OK(ReadReleaseReply(
           buffer.data(), buffer.size(), &released_object_id, &should_unmap));
