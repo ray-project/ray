@@ -56,8 +56,10 @@ class AutoscalingContext:
             current_handle_queued_queries: The number of handle queued queries,
                 if there are multiple handles, the max number of queries at
                 a single handle should be passed in
-            capacity_adjusted_min_replicas: The minimum number of replicas.
-            capacity_adjusted_max_replicas: The maximum number of replicas.
+            capacity_adjusted_min_replicas: The `min_replica` of the deployment adjusted
+                by the target capacity.
+            capacity_adjusted_max_replicas: The `max_replica` of the deployment adjusted
+                by the target capacity.
             app_name: The name of the application.
             deployment_name: The name of the deployment.
         """
