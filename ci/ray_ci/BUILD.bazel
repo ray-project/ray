@@ -92,7 +92,6 @@ py_test(
     ],
 )
 
-
 py_test(
     name = "test_utils",
     size = "small",

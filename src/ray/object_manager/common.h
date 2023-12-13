@@ -14,7 +14,7 @@
 
 #pragma once
 
-#ifndef _WIN32
+#ifdef __linux__
 #include <semaphore.h>
 #endif
 
@@ -49,7 +49,7 @@ using RestoreSpilledObjectCallback =
 /// we use the header to synchronize between writer and readers.
 struct PlasmaObjectHeader {
 // TODO(swang): PlasmaObjectHeader uses pthreads, POSIX mutex and semaphore.
-#ifndef _WIN32
+#ifdef __linux__
   // Used to signal to the writer when all readers are done.
   sem_t rw_semaphore;
 

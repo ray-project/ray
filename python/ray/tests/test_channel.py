@@ -13,7 +13,7 @@ import ray.experimental.channel as ray_channel
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Requires POSIX.")
+@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 def test_put_local_get(ray_start_regular):
     chan = ray_channel.Channel(1000)
 
@@ -29,7 +29,7 @@ def test_put_local_get(ray_start_regular):
         chan.end_read()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Requires POSIX.")
+@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 def test_errors(ray_start_regular):
     @ray.remote
     class Actor:
@@ -74,7 +74,7 @@ def test_errors(ray_start_regular):
     assert "ray.exceptions.RaySystemError" in str(exc_info.value)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Requires POSIX.")
+@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 def test_put_different_meta(ray_start_regular):
     chan = ray_channel.Channel(1000)
 
@@ -100,7 +100,7 @@ def test_put_different_meta(ray_start_regular):
     _test(np.random.rand(1))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Requires POSIX.")
+@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 @pytest.mark.parametrize("num_readers", [1, 4])
 def test_put_remote_get(ray_start_regular, num_readers):
     chan = ray_channel.Channel(1000)
