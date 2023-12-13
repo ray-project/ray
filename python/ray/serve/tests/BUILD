@@ -153,17 +153,6 @@ py_test(
 )
 
 py_test(
-    name = "tutorial_rllib",
-    size = "medium",
-    srcs = ["test_myst_doc.py"],
-    main = "test_myst_doc.py",
-    args = ["--path", "doc/source/serve/tutorials/rllib.md"],
-    data = ["//doc/source/serve/tutorials:markdowns"],
-    tags = ["exclusive", "team:serve", "no_main"],
-    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
-)
-
-py_test(
     name = "test_serve_ha",
     srcs = ["test_serve_ha.py"],
     size = "medium",
