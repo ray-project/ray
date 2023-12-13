@@ -106,7 +106,7 @@ class tqdm:
         self._closed = True
         # Don't bother if ray is shutdown (in __del__ hook).
         if ray is not None:
-            self._dump_state()
+            self._dump_state(force_flush=True)
 
     def refresh(self):
         """Implements tqdm.tqdm.refresh."""
@@ -120,9 +120,9 @@ class tqdm:
     def total(self, total: int):
         self._total = total
 
-    def _dump_state(self) -> None:
+    def _dump_state(self, force_flush=False) -> None:
         now = time.time()
-        if now - self._last_flush_time < self._flush_interval_s:
+        if not force_flush and now - self._last_flush_time < self._flush_interval_s:
             return
         self._last_flush_time = now
         if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
