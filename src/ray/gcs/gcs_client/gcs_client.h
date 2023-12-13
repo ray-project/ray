@@ -277,7 +277,6 @@ class RAY_EXPORT PythonGcsClient {
   std::unique_ptr<rpc::NodeResourceInfoGcsService::Stub> node_resource_info_stub_;
   std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
   std::unique_ptr<rpc::autoscaler::AutoscalerStateService::Stub> autoscaler_stub_;
-  std::shared_ptr<grpc::Channel> channel_;
 };
 
 std::unordered_map<std::string, double> PythonGetResourcesTotal(

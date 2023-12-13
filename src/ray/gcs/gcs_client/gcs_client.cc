@@ -159,7 +159,7 @@ Status HandleGcsError(rpc::GcsStatus status) {
 Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 int64_t timeout_ms,
                                 size_t num_retries) {
-  channel_ =
+  std::shared_ptr<grpc::Channel> channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   if (cluster_id.IsNil()) {
