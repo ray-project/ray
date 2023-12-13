@@ -163,7 +163,6 @@ def test_callback_fail(ray_instance):
         host="http_proxy",
         port=123,
         root_path="/",
-        controller_name="controller",
         node_ip_address="127.0.0.1",
         node_id="123",
         logging_config=LoggingConfig(),
@@ -174,7 +173,6 @@ def test_callback_fail(ray_instance):
 
     actor_def = ray.serve._private.controller.ServeController
     handle = actor_def.remote(
-        "controller",
         http_config={},
         global_logging_config=LoggingConfig(),
     )
@@ -199,7 +197,6 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
         host="http_proxy",
         port=123,
         root_path="/",
-        controller_name="controller",
         node_ip_address="127.0.0.1",
         node_id="123",
         logging_config=LoggingConfig(),

@@ -97,9 +97,7 @@ public class LongPollClientFactory {
         return;
       }
       if (null == hostActor) {
-        hostActor =
-            Ray.getActor(replicaContext.getInternalControllerName(), Constants.SERVE_NAMESPACE)
-                .get();
+        hostActor = Ray.getActor(Constants.SERVE_CONTROLLER_NAME, Constants.SERVE_NAMESPACE).get();
       }
       intervalS =
           Optional.ofNullable(replicaContext.getConfig())
