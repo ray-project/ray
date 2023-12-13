@@ -2143,7 +2143,6 @@ class DeploymentState:
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
                     self._curr_status_info = self._curr_status_info.update(
-                        status=DeploymentStatus.UPDATING,
                         message=message,
                     )
 
@@ -2161,7 +2160,6 @@ class DeploymentState:
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
                     self._curr_status_info = self._curr_status_info.update(
-                        status=DeploymentStatus.UPDATING,
                         message=message,
                     )
 

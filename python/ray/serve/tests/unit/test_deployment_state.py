@@ -164,6 +164,10 @@ class MockReplicaActorWrapper:
     def log_file_path(self) -> Optional[str]:
         return None
 
+    @property
+    def placement_group_bundles(self) -> Optional[List[Dict[str, float]]]:
+        return None
+
     def set_ready(self, version: DeploymentVersion = None):
         self.ready = ReplicaStartupStatus.SUCCEEDED
         if version:
@@ -2251,7 +2255,7 @@ def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction
     deployment_id = DeploymentID("test_deployment", "test_app")
 
     # Create deployment state manager
-    create_deployment_state_manager, _, _ = mock_deployment_state_manager_full
+    create_deployment_state_manager, timer, _ = mock_deployment_state_manager_full
     deployment_state_manager: DeploymentStateManager = create_deployment_state_manager()
 
     # Deploy deployment with 3 replicas
@@ -2307,18 +2311,39 @@ def test_autoscale(mock_deployment_state_manager_full, target_capacity_direction
             by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
         )
         assert depstate.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert (
+            depstate.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.AUTOSCALING
+        )
+
+        # Advance timer by 60 seconds; this should exceed the slow startup
+        # warning threshold. The message should be updated, but the status
+        # should remain upscaling/autoscaling
+        timer.advance(60)
+        deployment_state_manager.update()
+        check_counts(
+            depstate,
+            total=6,
+            by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
+        )
+        assert depstate.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert (
+            depstate.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.AUTOSCALING
+        )
+        assert "have taken more than" in depstate.curr_status_info.message
+
+        # Set replicas ready
+        for replica in depstate._replicas.get():
+            replica._actor.set_ready()
     else:
         check_counts(depstate, total=3, by_state=[(ReplicaState.STOPPING, 3)])
         assert depstate.curr_status_info.status == DeploymentStatus.DOWNSCALING
-    assert (
-        depstate.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-    )
-
-    # Set replicas ready and check statuses
-    for replica in depstate._replicas.get():
-        if target_capacity_direction == "up":
-            replica._actor.set_ready()
-        else:
+        assert (
+            depstate.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.AUTOSCALING
+        )
+        for replica in depstate._replicas.get():
             replica._actor.set_done_stopping()
 
     # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
