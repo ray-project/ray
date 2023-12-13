@@ -1,7 +1,7 @@
 import math
 import os
 import time
-from typing import List
+from typing import List, Optional
 
 import requests
 
@@ -33,6 +33,8 @@ class AutoscalingContext:
         self.capacity_adjusted_max_replicas = None
         self.decision_counter = 0
         self.last_scale_time = None
+        self.app_name = None
+        self.deployment_name = None
 
     @DeveloperAPI
     def update(
@@ -42,6 +44,8 @@ class AutoscalingContext:
         current_handle_queued_queries: float,
         capacity_adjusted_min_replicas: int,
         capacity_adjusted_max_replicas: int,
+        app_name: Optional[str] = None,
+        deployment_name: Optional[str] = None,
     ):
         """
         Arguments:
@@ -54,12 +58,16 @@ class AutoscalingContext:
                 a single handle should be passed in
             capacity_adjusted_min_replicas: The minimum number of replicas.
             capacity_adjusted_max_replicas: The maximum number of replicas.
+            app_name: The name of the application.
+            deployment_name: The name of the deployment.
         """
         self.curr_target_num_replicas = curr_target_num_replicas
         self.current_num_ongoing_requests = current_num_ongoing_requests
         self.current_handle_queued_queries = current_handle_queued_queries
         self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas
         self.capacity_adjusted_max_replicas = capacity_adjusted_max_replicas
+        self.app_name = app_name
+        self.deployment_name = deployment_name
 
 
 @PublicAPI(stability="stable")
@@ -166,6 +174,50 @@ def cpu_utilization_autoscaling_policy(context: AutoscalingContext) -> int:
     if latest_cpu_utilization > 80:
         return context.curr_target_num_replicas + 1
     elif latest_cpu_utilization < 80:
+        return context.curr_target_num_replicas - 1
+    else:
+        return context.curr_target_num_replicas
+
+
+@PublicAPI(stability="beta")
+def latency_based_autoscaling_policy(context: AutoscalingContext) -> int:
+    """Example autoscaling policy based on latency.
+
+    This policy aims to keep the p95 latency of the current deployment to be between
+    0.1s to 0.5s. It will ping prometheus to calculate the p95 latency for the current
+    deployment in the last minute and scale the replicas up or down one at a time every
+    minute.
+    """
+    # Last scaling was within 1 minute, return the current number of replicas.
+    if (
+        context.last_scale_time is not None
+        and time.time() - context.last_scale_time < 60
+    ):
+        return context.curr_target_num_replicas
+
+    # Call prometheus to get the 95 percentile of the given deployment in the last
+    # minute.
+    metrics_name = "ray_serve_deployment_processing_latency_ms_bucket"
+    resp = requests.get(
+        f"{PROMETHEUS_HOST}/api/v1/query",
+        params={
+            "query": f'histogram_quantile(0.95, sum(rate({metrics_name}{{deployment="{context.deployment_name}"}}[1m])) by (le))'
+        },
+    )
+    if resp.status_code != 200:
+        return context.curr_target_num_replicas
+
+    metrics = resp.json()["data"]["result"]
+    if not metrics:
+        return context.curr_target_num_replicas
+
+    # Get the latest latency value.
+    p95_latency = float(max(metrics, key=lambda x: x["value"])["value"][1])
+
+    # Scaling up and down according to the p95 latency.
+    if p95_latency > 0.5:
+        return context.curr_target_num_replicas + 1
+    elif p95_latency < 0.1:
         return context.curr_target_num_replicas - 1
     else:
         return context.curr_target_num_replicas

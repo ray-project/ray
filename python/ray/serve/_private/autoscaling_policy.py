@@ -78,6 +78,8 @@ class AutoscalingPolicyManager:
         current_handle_queued_queries: float,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
+        app_name: Optional[str] = None,
+        deployment_name: Optional[str] = None,
     ) -> Optional[int]:
         """Interface with the autoscaling policy to get a decision to scale replicas.
         If the autoscaling policy is not ready or returning the same number as the
@@ -97,6 +99,8 @@ class AutoscalingPolicyManager:
             current_handle_queued_queries=current_handle_queued_queries,
             capacity_adjusted_min_replicas=capacity_adjusted_min_replicas,
             capacity_adjusted_max_replicas=capacity_adjusted_max_replicas,
+            app_name=app_name,
+            deployment_name=deployment_name,
         )
         # Note: The thread manager will continuously return None until a decision is
         # made. We do not currently force kill and restart the scaling call due to
