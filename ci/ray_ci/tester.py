@@ -163,10 +163,7 @@ def main(
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
-    # TODO(can): only linux uses intermediate dockers publised to ECR; remove this when
-    # we can build intermediate dockers for Windows
-    if operating_system == "linux":
-        docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
@@ -312,7 +309,7 @@ def _get_test_targets(
         # CUDA image comes with a license header that we need to remove
         .replace(CUDA_COPYRIGHT, "")
         .strip()
-        .split("\n")
+        .split(os.linesep)
     )
     flaky_tests = set(_get_flaky_test_targets(team, yaml_dir))
 
