@@ -3,7 +3,7 @@ import os
 import sys
 import logging
 import tempfile
-import pathlib
+import platform
 
 import pytest
 
@@ -182,6 +182,7 @@ def test_setup_hook_module_failure(shutdown_only):
     assert "Failed to execute the setup hook method" in str(e.value)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Doesn't support Windows.")
 def test_job_submission_not_allowed_for_callable(shutdown_only):
     temp_dir = None
     file_path = None
@@ -241,10 +242,7 @@ ray.get(f.remote())
             status = client.get_job_status(job)
             if status == JobStatus.FAILED:
                 print("job status is ", status)
-                path = pathlib.Path("/tmp/ray/session_latest/logs")
-                for dir in path.iterdir():
-                    if "job-driver" in dir.name:
-                        print(dir.read_text())
+                print("job logs are", client.get_job_logs(job))
 
             return client.get_job_status(job) == JobStatus.SUCCEEDED
 
