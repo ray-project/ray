@@ -189,11 +189,9 @@ class TestgRPCProxy:
     """Test methods implemented on gRPCProxy"""
 
     def create_grpc_proxy(self):
-        controller_name = "fake-controller_name"
         node_id = "fake-node_id"
         node_ip_address = "fake-node_ip_address"
         return gRPCProxy(
-            controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=FakeProxyRouter,
@@ -347,11 +345,9 @@ class TestHTTPProxy:
     """Test methods implemented on HTTPProxy"""
 
     def create_http_proxy(self):
-        controller_name = "fake-controller_name"
         node_id = "fake-node_id"
         node_ip_address = "fake-node_ip_address"
         return HTTPProxy(
-            controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=FakeProxyRouter,

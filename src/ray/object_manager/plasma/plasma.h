@@ -37,6 +37,9 @@ struct PlasmaObject {
   /// a unique identifier of the file in the client to look up the corresponding
   /// file descriptor on the client's side.
   MEMFD_TYPE store_fd;
+  /// The offset in bytes in the memory mapped file of the plasma object
+  /// header.
+  ptrdiff_t header_offset;
   /// The offset in bytes in the memory mapped file of the data.
   ptrdiff_t data_offset;
   /// The offset in bytes in the memory mapped file of the metadata.
@@ -45,10 +48,14 @@ struct PlasmaObject {
   int64_t data_size;
   /// The size in bytes of the metadata.
   int64_t metadata_size;
+  /// The size in bytes that was allocated. data_size + metadata_size must fit
+  /// within this.
+  int64_t allocated_size;
   /// Device number object is on.
   int device_num;
   /// Set if device_num is equal to 0.
   int64_t mmap_size;
+  bool is_experimental_mutable_object = false;
 
   bool operator==(const PlasmaObject &other) const {
     return ((store_fd == other.store_fd) && (data_offset == other.data_offset) &&
