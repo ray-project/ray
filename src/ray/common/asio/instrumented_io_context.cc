@@ -26,7 +26,6 @@
 void instrumented_io_context::post(std::function<void()> handler,
                                    const std::string name,
                                    int64_t delay_us) {
-  RAY_LOG(INFO) << "vct are we posting yet??????? " << name;
   if (RayConfig::instance().event_stats()) {
     // References are only invalidated upon deletion of the corresponding item from the
     // table, which we won't do until this io_context is deleted. Provided that

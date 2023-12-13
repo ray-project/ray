@@ -177,8 +177,6 @@ void RedisRequestContext::Run() {
                    << " times.";
   }
 
-  RAY_LOG(INFO) << "vct running " << redis_context_;
-
   --pending_retries_;
 
   Status status =
@@ -464,9 +462,26 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
   return callback_reply;
 }
 
+bool HasSameAddress(RedisAsyncContext &context1, RedisAsyncContext &context2) {
+  redisAsyncContext *raw1 = context1.GetRawRedisAsyncContext();
+  redisAsyncContext *raw2 = context2.GetRawRedisAsyncContext();
+
+  redisContext c1 = static_cast<redisContext>(raw1->c);
+  redisContext c2 = static_cast<redisContext>(raw2->c);
+
+  auto tcp1 = c1.tcp;
+  auto tcp2 = c2.tcp;
+
+  // Would like to use strncmp but couldn't find the len limits.
+  return (strcmp(tcp1.host, tcp2.host) == 0) &&
+         (strcmp(tcp1.source_addr, tcp2.source_addr) == 0) && (tcp1.port == tcp2.port);
+}
+
 void RedisContext::ResetAsyncContext(std::shared_ptr<RedisAsyncContext> &redis_context) {
   absl::MutexLock l(&mu_);
-  redis_async_context_.swap(redis_context);
+  if (!HasSameAddress(*redis_async_context_.get(), *redis_context.get())) {
+    redis_async_context_.swap(redis_context);
+  }
 }
 
 void RedisContext::RunArgvAsync(std::vector<std::string> args,
