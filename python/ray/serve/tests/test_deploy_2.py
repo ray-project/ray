@@ -1,4 +1,5 @@
 import functools
+import os
 import sys
 import threading
 import time
@@ -13,6 +14,11 @@ from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import ApplicationStatus
+from ray.serve._private.logging_utils import (
+    get_component_log_file_name,
+    get_serve_logs_dir,
+)
+from ray.util.state import list_actors
 
 
 @pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
@@ -209,6 +215,22 @@ def test_deploy_application_unhealthy(serve_instance):
     handle = serve.run(Model.bind(), name="app")
     assert handle.remote().result() == "hello world"
     assert serve.status().applications["app"].status == ApplicationStatus.RUNNING
+
+    # Check that the logs from application state manager notifying
+    # about unhealthy deployments doesn't spam, they should get printed
+    # only once.
+    controller_pid = [
+        actor["pid"]
+        for actor in list_actors()
+        if actor["name"] == "SERVE_CONTROLLER_ACTOR"
+    ][0]
+    controller_log_file_name = get_component_log_file_name(
+        "controller", controller_pid, component_type=None, suffix=".log"
+    )
+    controller_log_path = os.path.join(get_serve_logs_dir(), controller_log_file_name)
+    with open(controller_log_path, "r") as f:
+        s = f.read()
+        assert s.count("The deployments ['Model'] are UNHEALTHY.") <= 1
 
     # When a deployment becomes unhealthy, application should transition -> UNHEALTHY
     event.set.remote()
