@@ -41,6 +41,15 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 
+# Global variable that is fetched during controller recovery that
+# marks (simulates) which replicas have died since controller first
+# recovered a list of live replica names.
+# NOTE(zcin): This is necessary because the replica's `recover()` method
+# is called in the controller's init function, instead of in the control
+# loop, so we can't "mark" a replica dead through a method. This global
+# state is cleared after each test that uses the fixtures in this file.
+dead_replicas_context = set()
+
 
 class FakeRemoteFunction:
     def remote(self):
@@ -211,8 +220,12 @@ class MockReplicaActorWrapper:
         return updating
 
     def recover(self):
+        if self.replica_tag in dead_replicas_context:
+            return False
+
         self.recovering = True
         self.started = False
+        return True
 
     def check_ready(self) -> ReplicaStartupStatus:
         ready = self.ready
@@ -371,6 +384,8 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         )
 
         yield deployment_state, timer, cluster_node_info_cache
+
+        dead_replicas_context.clear()
 
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
@@ -2455,8 +2470,10 @@ def test_update_autoscaling_config(mock_deployment_state_manager_full):
     )
 
 
-def test_health_check(mock_deployment_state):
+@pytest.mark.parametrize("force_stop_unhealthy_replicas", [False, True])
+def test_health_check(mock_deployment_state, force_stop_unhealthy_replicas: bool):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    deployment_state.FORCE_STOP_UNHEALTHY_REPLICAS = force_stop_unhealthy_replicas
     cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
@@ -2493,7 +2510,7 @@ def test_health_check(mock_deployment_state):
         # Health check shouldn't be called until it's ready.
         assert replica._actor.health_check_called
 
-    # Mark one replica unhealthy. It should be stopped.
+    # Mark one replica unhealthy; it should be stopped.
     deployment_state._replicas.get()[0]._actor.set_unhealthy()
     deployment_state.update()
     check_counts(
@@ -2501,6 +2518,15 @@ def test_health_check(mock_deployment_state):
         total=2,
         by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)],
     )
+
+    stopping_replicas = deployment_state._replicas.get(states=[ReplicaState.STOPPING])
+    assert len(stopping_replicas) == 1
+    stopping_replica = stopping_replicas[0]
+    if force_stop_unhealthy_replicas:
+        assert stopping_replica._actor.force_stopped_counter == 1
+    else:
+        assert stopping_replica._actor.force_stopped_counter == 0
+
     assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
     # If state transitioned from healthy -> unhealthy, status driver should be none
     assert (
@@ -2508,8 +2534,7 @@ def test_health_check(mock_deployment_state):
         == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
     )
 
-    replica = deployment_state._replicas.get(states=[ReplicaState.STOPPING])[0]
-    replica._actor.set_done_stopping()
+    stopping_replica._actor.set_done_stopping()
 
     deployment_state_update_result = deployment_state.update()
     deployment_state._deployment_scheduler.schedule(
@@ -3019,6 +3044,8 @@ def mock_deployment_state_manager_full(
 
         yield create_deployment_state_manager, timer, cluster_node_info_cache
 
+        dead_replicas_context.clear()
+
 
 def test_recover_state_from_replica_names(mock_deployment_state_manager_full):
     """Test recover deployment state."""
@@ -3209,6 +3236,75 @@ def test_recover_during_rolling_update(mock_deployment_state_manager_full):
     assert mocked_replica.replica_tag != new_mocked_replica_version2.replica_tag
 
 
+def test_actor_died_before_recover(mock_deployment_state_manager_full):
+    """Test replica actor died before controller could recover it.
+
+    * Deploy app / 1 deployment / 1 replica
+    * (Simulated) Controller crashes.
+    * Controller recovers, and tries to recover replicas from actor names.
+    * (Simulated) The single replica from before has died before
+      controller could recover it.
+    * There should be 0 replicas in the deployment.
+    * In the following control loop update cycle, the controller adds a
+      new replica to match target state.
+    """
+    deployment_id = DeploymentID("test_deployment", "test_app")
+    create_deployment_state_manager, _, _ = mock_deployment_state_manager_full
+    deployment_state_manager = create_deployment_state_manager()
+
+    # Create some deployment info with actors in running state
+    info1, version1 = deployment_info(version="1")
+    updating = deployment_state_manager.deploy(deployment_id, info1)
+    deployment_state = deployment_state_manager._deployment_states[deployment_id]
+    assert updating
+
+    # Single replica of version `version1` should be created and in STARTING state
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.STARTING, 1)],
+    )
+    mocked_replica = deployment_state._replicas.get()[0]
+    replica_tag = mocked_replica.replica_tag
+
+    # The same replica should transition to RUNNING
+    mocked_replica._actor.set_ready()
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+
+    # Set dead replicas context. When the controller recovers and tries
+    # to recover replicas from actor names, the replica actor wrapper
+    # will fail to recover.
+    dead_replicas_context.add(replica_tag)
+
+    # Simulate controller crashed! A new deployment state manager should
+    # be created, and it should call _recover_from_checkpoint
+    new_deployment_state_manager = create_deployment_state_manager(
+        [ReplicaName.prefix + replica_tag]
+    )
+
+    # Replica should fail to recover (simulate failed to get handle to
+    # actor), meaning replica has died.
+    new_deployment_state = new_deployment_state_manager._deployment_states[
+        deployment_id
+    ]
+    check_counts(new_deployment_state, total=0)
+
+    # Since the previous replica is now marked dead (because controller
+    # failed to recover it), a new replica should be added to meet
+    # target state.
+    new_deployment_state_manager.update()
+    check_counts(new_deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+    dead_replicas_context.remove(replica_tag)
+
+
 @pytest.fixture
 def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock, Mock]:
     timer = MockTimer()
@@ -3238,6 +3334,8 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         )
 
         yield deployment_state_manager, timer, cluster_node_info_cache
+
+        dead_replicas_context.clear()
 
 
 def test_shutdown(mock_deployment_state_manager):
