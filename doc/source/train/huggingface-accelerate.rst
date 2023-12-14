@@ -1,7 +1,7 @@
 .. _train-hf-accelerate:
 
-Get Started with Hugging Face Accelerate
-========================================
+Get Started with Distributed Training using Hugging Face Accelerate
+===================================================================
 
 The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `Accelerate <https://huggingface.co/docs/accelerate>`_  training across a distributed Ray cluster.
 

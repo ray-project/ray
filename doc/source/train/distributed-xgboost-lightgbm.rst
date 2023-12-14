@@ -1,7 +1,7 @@
 .. _train-gbdt-guide:
 
-Get Started with XGBoost and LightGBM
-=====================================
+Get Started with Distributed Training using XGBoost and LightGBM
+================================================================
 
 Ray Train has built-in support for XGBoost and LightGBM.
 
