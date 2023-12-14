@@ -40,10 +40,6 @@ class TritonDeployment:
         self._triton_server = TritonServer(server_options)
         self._triton_server.start()
 
-        self._models = self._triton_server.model_index()
-        for model in self._models:
-            print(model)
-
     @app.get("/classify")
     def classify(self) -> float:
         model = self._triton_server.model("resnet50_libtorch")
