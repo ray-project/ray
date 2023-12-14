@@ -190,6 +190,7 @@ def main(
         container,
         targets,
         team,
+        operating_system,
         except_tags=_add_default_except_tags(except_tags),
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
@@ -293,6 +294,7 @@ def _get_test_targets(
     container: TesterContainer,
     targets: str,
     team: str,
+    operating_system: str,
     except_tags: Optional[str] = "",
     only_tags: Optional[str] = "",
     yaml_dir: Optional[str] = None,
@@ -314,14 +316,16 @@ def _get_test_targets(
         .strip()
         .split("\n")
     )
-    flaky_tests = set(_get_flaky_test_targets(team, yaml_dir))
+    flaky_tests = set(_get_flaky_test_targets(team, operating_system, yaml_dir))
 
     if get_flaky_tests:
         return list(flaky_tests.intersection(test_targets))
     return list(test_targets.difference(flaky_tests))
 
 
-def _get_flaky_test_targets(team: str, yaml_dir: Optional[str] = None) -> List[str]:
+def _get_flaky_test_targets(
+    team: str, operating_system: str, yaml_dir: Optional[str] = None
+) -> List[str]:
     """
     Get all test targets that are flaky
     """
@@ -329,6 +333,16 @@ def _get_flaky_test_targets(team: str, yaml_dir: Optional[str] = None) -> List[s
         yaml_dir = os.path.join(bazel_workspace_dir, "ci/ray_ci")
 
     with open(f"{yaml_dir}/{team}.tests.yml", "rb") as f:
-        flaky_tests = yaml.safe_load(f)["flaky_tests"]
+        all_flaky_tests = yaml.safe_load(f)["flaky_tests"]
 
-    return flaky_tests
+        # linux tests are prefixed with "//"
+        if operating_system == "linux":
+            return [test for test in all_flaky_tests if test.startswith("//")]
+
+        # and other os tests are prefixed with "os:"
+        os_prefix = f"{operating_system}:"
+        return [
+            test.lstrip(os_prefix)
+            for test in all_flaky_tests
+            if test.startswith(os_prefix)
+        ]

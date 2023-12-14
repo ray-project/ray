@@ -35,7 +35,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
     num_gpus_per_spark_task = None
 
     def test_gpu_allocation(self):
-        for num_worker_nodes, num_cpus_worker_node, num_gpus_worker_node in [
+        for max_worker_nodes, num_cpus_worker_node, num_gpus_worker_node in [
             (
                 self.max_spark_tasks // 2,
                 self.num_cpus_per_spark_task,
@@ -58,14 +58,14 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
             ),
         ]:
             with _setup_ray_cluster(
-                num_worker_nodes=num_worker_nodes,
+                max_worker_nodes=max_worker_nodes,
                 num_cpus_worker_node=num_cpus_worker_node,
                 num_gpus_worker_node=num_gpus_worker_node,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
-                assert len(worker_res_list) == num_worker_nodes
+                assert len(worker_res_list) == max_worker_nodes
 
                 num_ray_task_slots = self.max_spark_tasks // (
                     num_gpus_worker_node // self.num_gpus_per_spark_task
@@ -103,16 +103,16 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                         for gpu_id in os.environ["CUDA_VISIBLE_DEVICES"].split(",")
                     ]
 
-                futures = [f.remote(i) for i in range(num_worker_nodes)]
+                futures = [f.remote(i) for i in range(max_worker_nodes)]
                 results = ray.get(futures)
                 merged_results = functools.reduce(lambda x, y: x + y, results)
                 # Test all ray tasks are assigned with different GPUs.
                 assert sorted(merged_results) == list(
-                    range(num_gpus_worker_node * num_worker_nodes)
+                    range(num_gpus_worker_node * max_worker_nodes)
                 )
 
     def test_gpu_autoscaling(self):
-        for num_worker_nodes, num_cpus_worker_node, num_gpus_worker_node in [
+        for max_worker_nodes, num_cpus_worker_node, num_gpus_worker_node in [
             (
                 self.max_spark_tasks,
                 self.num_cpus_per_spark_task,
@@ -139,11 +139,11 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
             )
 
             with _setup_ray_cluster(
-                num_worker_nodes=num_worker_nodes,
+                max_worker_nodes=max_worker_nodes,
                 num_cpus_worker_node=num_cpus_worker_node,
                 num_gpus_worker_node=num_gpus_worker_node,
                 head_node_options={"include_dashboard": False},
-                autoscale=True,
+                min_worker_nodes=0,
                 autoscale_idle_timeout_minutes=0.1,
             ):
                 ray.init()
@@ -165,13 +165,13 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 assert results == [i * i for i in range(8)]
 
                 worker_res_list = self.get_ray_worker_resources_list()
-                assert len(worker_res_list) == num_worker_nodes and all(
+                assert len(worker_res_list) == max_worker_nodes and all(
                     worker_res_list[i]["CPU"] == num_cpus_worker_node
                     and worker_res_list[i]["GPU"] == num_gpus_worker_node
                     and worker_res_list[i]["memory"] == mem_worker_node
                     and worker_res_list[i]["object_store_memory"]
                     == object_store_mem_worker_node
-                    for i in range(num_worker_nodes)
+                    for i in range(max_worker_nodes)
                 )
 
                 # Test scale down
