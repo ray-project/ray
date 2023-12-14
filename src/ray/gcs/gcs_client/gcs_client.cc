@@ -159,7 +159,7 @@ Status HandleGcsError(rpc::GcsStatus status) {
 Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 int64_t timeout_ms,
                                 size_t num_retries) {
-  absl::MutexLock lock(&connect_mutex_);
+  absl::WriterMutexLock lock(&connect_mutex_);
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
@@ -220,6 +220,7 @@ Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addres
     request.add_raylet_address(address);
   }
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::CheckAliveReply reply;
   grpc::Status status = node_info_stub_->CheckAlive(&context, request, &reply);
 
@@ -245,6 +246,7 @@ Status PythonGcsClient::InternalKVGet(const std::string &ns,
   request.set_namespace_(ns);
   request.set_key(key);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::InternalKVGetReply reply;
 
   grpc::Status status = kv_stub_->InternalKVGet(&context, request, &reply);
@@ -272,6 +274,7 @@ Status PythonGcsClient::InternalKVMultiGet(
   request.set_namespace_(ns);
   request.mutable_keys()->Add(keys.begin(), keys.end());
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::InternalKVMultiGetReply reply;
 
   grpc::Status status = kv_stub_->InternalKVMultiGet(&context, request, &reply);
@@ -306,6 +309,7 @@ Status PythonGcsClient::InternalKVPut(const std::string &ns,
   request.set_value(value);
   request.set_overwrite(overwrite);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::InternalKVPutReply reply;
 
   grpc::Status status = kv_stub_->InternalKVPut(&context, request, &reply);
@@ -332,6 +336,7 @@ Status PythonGcsClient::InternalKVDel(const std::string &ns,
   request.set_key(key);
   request.set_del_by_prefix(del_by_prefix);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::InternalKVDelReply reply;
 
   grpc::Status status = kv_stub_->InternalKVDel(&context, request, &reply);
@@ -356,6 +361,7 @@ Status PythonGcsClient::InternalKVKeys(const std::string &ns,
   request.set_namespace_(ns);
   request.set_prefix(prefix);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::InternalKVKeysReply reply;
 
   grpc::Status status = kv_stub_->InternalKVKeys(&context, request, &reply);
@@ -380,6 +386,7 @@ Status PythonGcsClient::InternalKVExists(const std::string &ns,
   request.set_namespace_(ns);
   request.set_key(key);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::InternalKVExistsReply reply;
 
   grpc::Status status = kv_stub_->InternalKVExists(&context, request, &reply);
@@ -403,6 +410,7 @@ Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
   request.set_uri(uri);
   request.set_expiration_s(expiration_s);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::PinRuntimeEnvURIReply reply;
 
   grpc::Status status = runtime_env_stub_->PinRuntimeEnvURI(&context, request, &reply);
@@ -427,6 +435,7 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::GetAllNodeInfoRequest request;
   rpc::GetAllNodeInfoReply reply;
 
@@ -447,6 +456,7 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::GetAllJobInfoRequest request;
   rpc::GetAllJobInfoReply reply;
 
@@ -467,6 +477,7 @@ Status PythonGcsClient::GetAllResourceUsage(int64_t timeout_ms,
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::GetAllResourceUsageRequest request;
   rpc::GetAllResourceUsageReply reply;
 
@@ -489,6 +500,7 @@ Status PythonGcsClient::RequestClusterResourceConstraint(
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::autoscaler::RequestClusterResourceConstraintRequest request;
   rpc::autoscaler::RequestClusterResourceConstraintReply reply;
   RAY_CHECK(bundles.size() == count_array.size());
@@ -520,6 +532,7 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   grpc::Status status = autoscaler_stub_->GetClusterStatus(&context, request, &reply);
 
   if (status.ok()) {
@@ -546,6 +559,7 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   grpc::Status status = autoscaler_stub_->DrainNode(&context, request, &reply);
 
   if (status.ok()) {
@@ -566,6 +580,7 @@ Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
     request.add_drain_node_data()->set_node_id(node_id);
   }
 
+  absl::ReaderMutexLock lock(&connect_mutex_);
   rpc::DrainNodeReply reply;
 
   grpc::Status status = node_info_stub_->DrainNode(&context, request, &reply);
