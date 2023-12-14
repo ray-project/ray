@@ -424,6 +424,29 @@ def add_custom_assets(
         app.add_css_file("css/ray-libraries.css")
 
 
+def set_examples_redirects(
+    app: sphinx.application.Sphinx,
+    pagename: str,
+    templatename: str,
+    context: Dict[str, Any],
+    doctree: nodes.Node,
+):
+    """Insert JS which redirects users to the example gallery for certain pages."""
+    tags = {
+        "ray-core/examples/overview": "?tags=core",
+        "data/examples/index": "?tags=data",
+        "train/examples": "?tags=training",
+        "tune/examples/index": "?tags=tuning",
+        "rllib/rllib-examples": "?tags=reinforcement-learning",
+    }
+    if pagename in tags:
+        query_param = tags[pagename]
+        examples_url = context["pathto"]("ray-overview/examples")
+        app.add_js_file(
+            None, body=(f"window.location.replace('{examples_url}{query_param}');")
+        )
+
+
 def setup(app):
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
     # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
@@ -437,6 +460,7 @@ def setup(app):
     app.connect("config-inited", parse_navbar_config)
     app.connect("html-page-context", setup_context)
     app.connect("html-page-context", add_custom_assets)
+    app.connect("html-page-context", set_examples_redirects)
 
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")

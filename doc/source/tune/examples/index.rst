@@ -13,6 +13,3 @@ Ray Tune Examples
     hpo-frameworks
     Other Examples <other-examples>
     Exercises <exercises>
-
-
-.. tip:: Check out :ref:`the Tune User Guides <tune-guides>` To learn more about Tune's features in depth.
