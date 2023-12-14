@@ -150,6 +150,7 @@ class LocalObject {
     object->allocated_size = object->data_size + object->metadata_size;
     object->device_num = GetAllocation().device_num;
     object->mmap_size = GetAllocation().mmap_size;
+    object->fallback_allocated = GetAllocation().fallback_allocated;
     object->is_experimental_mutable_object = object_info.is_mutable;
   }
 
