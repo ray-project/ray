@@ -14,6 +14,7 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
+from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__file__)
@@ -166,6 +167,7 @@ class _RequestContext:
     request_id: str = ""
     app_name: str = ""
     multiplexed_model_id: str = ""
+    grpc_context: Optional[RayServegRPCContext] = None
 
 
 _serve_request_context = contextvars.ContextVar(

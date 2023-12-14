@@ -12,7 +12,8 @@ trap clean_up EXIT
 
 echo "Installing cypress"
 if [ -n "$BUILDKITE" ]; then
-  apt install -y libgtk2.0-0 libgtk-3-0 libgbm-dev libnotify-dev libgconf-2-4 libnss3 libxss1 libasound2 libxtst6 xauth xvfb
+  apt-get update -qq
+  apt-get install -y libgtk2.0-0 libgtk-3-0 libgbm-dev libnotify-dev libgconf-2-4 libnss3 libxss1 libasound2 libxtst6 xauth xvfb
   sudo npm install cypress
 else
   which cypress || npm install cypress -g

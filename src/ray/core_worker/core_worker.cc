@@ -146,7 +146,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_8);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
-          return local_raylet_client_->TaskDone();
+          return local_raylet_client_->ActorCreationTaskDone();
         });
   }
 
@@ -374,7 +374,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
       },
       /* retry_task_callback= */
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec,
+             bool object_recovery,
+             bool update_seqno,
+             uint32_t delay_ms) {
         spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
         if (!object_recovery) {
           // Retry after a delay to emulate the existing Raylet reconstruction
@@ -382,12 +385,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                         << "ms delay: " << spec.DebugString();
           absl::MutexLock lock(&mutex_);
-          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
+          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec, update_seqno};
           to_resubmit_.push(std::move(task_to_retry));
         } else {
           if (spec.IsActorTask()) {
-            auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-            actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            if (update_seqno) {
+              auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+              actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            }
             RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
           } else {
             RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
@@ -981,18 +986,23 @@ void CoreWorker::ExitIfParentRayletDies() {
 
 void CoreWorker::InternalHeartbeat() {
   // Retry tasks.
-  std::vector<TaskSpecification> tasks_to_resubmit;
+  std::vector<TaskToRetry> tasks_to_resubmit;
   {
     absl::MutexLock lock(&mutex_);
     while (!to_resubmit_.empty() &&
            current_time_ms() > to_resubmit_.top().execution_time_ms) {
-      tasks_to_resubmit.push_back(std::move(to_resubmit_.top().task_spec));
+      tasks_to_resubmit.push_back(std::move(to_resubmit_.top()));
       to_resubmit_.pop();
     }
   }
 
-  for (auto &spec : tasks_to_resubmit) {
+  for (auto &task_to_retry : tasks_to_resubmit) {
+    auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
+      if (task_to_retry.update_seqno) {
+        auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+        actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+      }
       RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
     } else {
       RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
@@ -2200,12 +2210,16 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   }
 }
 
-Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
-                                   const RayFunction &function,
-                                   const std::vector<std::unique_ptr<TaskArg>> &args,
-                                   const TaskOptions &task_options,
-                                   std::vector<rpc::ObjectReference> &task_returns,
-                                   const TaskID current_task_id) {
+Status CoreWorker::SubmitActorTask(
+    const ActorID &actor_id,
+    const RayFunction &function,
+    const std::vector<std::unique_ptr<TaskArg>> &args,
+    const TaskOptions &task_options,
+    int max_retries,
+    bool retry_exceptions,
+    const std::string &serialized_retry_exception_allowlist,
+    std::vector<rpc::ObjectReference> &task_returns,
+    const TaskID current_task_id) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
   task_returns.clear();
   if (!direct_actor_submitter_->CheckActorExists(actor_id)) {
@@ -2271,7 +2285,11 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
-  actor_handle->SetActorTaskSpec(builder, ObjectID::Nil());
+  actor_handle->SetActorTaskSpec(builder,
+                                 ObjectID::Nil(),
+                                 max_retries,
+                                 retry_exceptions,
+                                 serialized_retry_exception_allowlist);
   // Submit task.
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
@@ -2285,7 +2303,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
     returned_refs = task_manager_->AddPendingTask(
-        rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
+        rpc_address_, task_spec, CurrentCallSite(), max_retries);
 
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }

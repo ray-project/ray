@@ -284,8 +284,15 @@ class ActorProxyWrapper(ProxyWrapper):
         finished, _ = ray.wait([self._is_drained_obj_ref], timeout=0)
         if finished:
             self._is_drained_obj_ref = None
-            ray.get(finished[0])
-            return ProxyWrapperCallStatus.FINISHED_SUCCEED
+            is_drained = ray.get(finished[0])
+            if is_drained:
+                return ProxyWrapperCallStatus.FINISHED_SUCCEED
+            else:
+                # NOTE: Even though call returned successfully, we have to
+                #       report it as FINISHED_FAILED to make sure that
+                #       draining process doesn't move forward until draining
+                #       completes
+                return ProxyWrapperCallStatus.FINISHED_FAILED
         else:
             return ProxyWrapperCallStatus.PENDING
 

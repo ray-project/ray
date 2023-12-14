@@ -406,6 +406,10 @@ class ApplicationState:
             # will be set once the new app has finished building.
             self._clear_target_state_and_store_config(config)
 
+            # Record telemetry for container runtime env feature
+            if self._target_state.config.runtime_env.get("container"):
+                ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
+
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
@@ -1087,6 +1091,12 @@ def override_deployment_info(
         override_max_replicas_per_node = options.pop(
             "max_replicas_per_node", replica_config.max_replicas_per_node
         )
+
+        # Record telemetry for container runtime env feature at deployment level
+        if override_actor_options.get("runtime_env") and override_actor_options[
+            "runtime_env"
+        ].get("container"):
+            ServeUsageTag.DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED.record("1")
 
         merged_env = override_runtime_envs_except_env_vars(
             app_runtime_env, override_actor_options.get("runtime_env", {})

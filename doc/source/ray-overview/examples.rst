@@ -1034,13 +1034,6 @@ Ray Examples
 
         Speed up your web crawler by parallelizing it with Ray
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item huggingface computer-vision data inference
-        :link: /data/examples/huggingface_vit_batch_prediction
-        :link-type: doc
-
-        Image Classification Batch Inference with Huggingface Vision Transformer
-
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core inference
         :link: /ray-core/examples/batch_prediction
