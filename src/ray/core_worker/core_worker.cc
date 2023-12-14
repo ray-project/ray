@@ -146,7 +146,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_8);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
-          return local_raylet_client_->TaskDone();
+          return local_raylet_client_->ActorCreationTaskDone();
         });
   }
 

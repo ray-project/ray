@@ -200,8 +200,8 @@ Status raylet::RayletClient::AnnounceWorkerPort(int port) {
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
-Status raylet::RayletClient::TaskDone() {
-  return conn_->WriteMessage(MessageType::TaskDone);
+Status raylet::RayletClient::ActorCreationTaskDone() {
+  return conn_->WriteMessage(MessageType::ActorCreationTaskDone);
 }
 
 Status raylet::RayletClient::FetchOrReconstruct(
