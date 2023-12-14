@@ -8,7 +8,6 @@ from ci.ray_ci.builder_container import (
     ARCHITECTURE,
     BuilderContainer,
 )
-from ci.ray_ci.doc_builder_container import DocBuilderContainer
 from ci.ray_ci.forge_container import ForgeContainer
 from ci.ray_ci.docker_container import PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
@@ -21,7 +20,7 @@ from ci.ray_ci.utils import logger, docker_login
 @click.argument(
     "artifact_type",
     required=True,
-    type=click.Choice(["wheel", "doc", "docker", "anyscale"]),
+    type=click.Choice(["wheel", "docker", "anyscale"]),
 )
 @click.option(
     "--image-type",
@@ -111,11 +110,6 @@ def main(
         )
         return
 
-    if artifact_type == "doc":
-        logger.info("Building ray docs")
-        build_doc()
-        return
-
     raise ValueError(f"Invalid artifact type {artifact_type}")
 
 
@@ -166,10 +160,3 @@ def build_anyscale(
         AnyscaleDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload
         ).run()
-
-
-def build_doc() -> None:
-    """
-    Build a doc artifact.
-    """
-    DocBuilderContainer().run()

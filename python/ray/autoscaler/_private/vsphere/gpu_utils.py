@@ -251,7 +251,7 @@ def get_gpu_cards_from_vm(vm, desired_gpu_number, is_dynamic_pci_passthrough):
     return gpu_idle_cards
 
 
-def add_gpus_to_vm(
+def plug_gpu_cards_to_vm(
     pyvmomi_sdk_provider, vm_name: str, gpu_cards: list, is_dynamic_pci_passthrough
 ):
     """
@@ -260,13 +260,10 @@ def add_gpus_to_vm(
     2. Construct a reconfigure spec and reconfigure the VM.
     3. Power on the VM.
     """
-    vm_obj = pyvmomi_sdk_provider.get_pyvmomi_obj([vim.VirtualMachine], vm_name)
+
     # The VM is supposed to be at powered on status after instant clone.
     # We need to power it off.
-    if vm_obj.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
-        logger.debug(f"Power off VM {vm_name}...")
-        WaitForTask(vm_obj.PowerOffVM_Task())
-        logger.debug(f"VM {vm_name} is power off. Done.")
+    pyvmomi_sdk_provider.power_off_vm(vm_name)
 
     config_spec = vim.vm.ConfigSpec()
 
@@ -287,6 +284,7 @@ def add_gpus_to_vm(
     config_spec.deviceChange = []
 
     # get the VM's plugable PCI devices
+    vm_obj = pyvmomi_sdk_provider.get_pyvmomi_obj([vim.VirtualMachine], vm_name)
     pci_passthroughs = vm_obj.environmentBrowser.QueryConfigTarget(
         host=None
     ).pciPassthrough
@@ -305,7 +303,6 @@ def add_gpus_to_vm(
     for gpu_card in gpu_cards:
         pci_id = gpu_card.pciId
         custom_label = gpu_card.customLabel
-
         pci_passthru_info = id_to_pci_passthru_info[pci_id]
         device_id = pci_passthru_info.pciDevice.deviceId
         vendor_id = pci_passthru_info.pciDevice.vendorId
@@ -342,16 +339,12 @@ def add_gpus_to_vm(
             )
 
         gpu = vim.VirtualPCIPassthrough(key=key, backing=backing)
-
         device_change = vim.vm.device.VirtualDeviceSpec(operation="add", device=gpu)
-
         config_spec.deviceChange.append(device_change)
         key += 1
 
     WaitForTask(vm_obj.ReconfigVM_Task(spec=config_spec))
-    logger.debug(f"Power on VM {vm_name}...")
-    WaitForTask(vm_obj.PowerOnVM_Task())
-    logger.debug(f"VM {vm_name} is power on. Done.")
+    pyvmomi_sdk_provider.power_on_vm(vm_name)
 
 
 def set_gpu_placeholder(array_obj, place_holder_number):

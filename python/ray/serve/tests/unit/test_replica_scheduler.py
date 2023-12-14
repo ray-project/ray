@@ -92,7 +92,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
 
     def send_query(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
         raise NotImplementedError()
 
 

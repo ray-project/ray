@@ -40,9 +40,6 @@ public class ServeControllerClient {
 
   private BaseActorHandle controller; // TODO change to PyActorHandle
 
-  @SuppressWarnings("unused")
-  private String controllerName;
-
   private boolean shutdown;
 
   private Map<String, DeploymentHandle> handleCache = new ConcurrentHashMap<>();
@@ -50,9 +47,8 @@ public class ServeControllerClient {
   private String rootUrl;
 
   @SuppressWarnings("unchecked")
-  public ServeControllerClient(BaseActorHandle controller, String controllerName) {
+  public ServeControllerClient(BaseActorHandle controller) {
     this.controller = controller;
-    this.controllerName = controllerName;
     this.rootUrl =
         controller instanceof PyActorHandle
             ? (String)

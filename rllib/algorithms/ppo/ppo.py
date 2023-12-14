@@ -437,21 +437,6 @@ class PPO(Algorithm):
         if self.config._enable_new_api_stack:
             # TODO (Kourosh) Clearly define what train_batch_size
             #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
-            # TODO (Kourosh) Do this inside the Learner so that we don't have to do
-            #  this back and forth communication between driver and the remote
-            #  learner actors.
-            # TODO (sven): What's the plan for multi-agent setups when the
-            #  policy is gone?
-            # TODO (simon): The default method has already this functionality,
-            #  but this serves simply as a placeholder until it is decided on
-            #  how to replace the functionalities of the policy.
-
-            if (
-                self.config.env_runner_cls is None
-                or self.config.env_runner_cls.__name__ == "RolloutWorker"
-            ):
-                is_module_trainable = self.workers.local_worker().is_policy_to_train
-                self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(
                 batch=train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,

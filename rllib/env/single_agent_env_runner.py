@@ -436,7 +436,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         extra_model_outputs=extra_model_output,
                     )
 
-                    done_episodes_to_return.append(episodes[i])
+                    done_episodes_to_return.append(episodes[i].finalize())
 
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.

@@ -14,6 +14,7 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
+* :ref:`Stateful Transforms <stateful_transforms>`
 * :ref:`Groupby and transform groups <transforming_groupby>`
 * :ref:`Shuffle rows <shuffling_rows>`
 * :ref:`Repartition data <repartitioning_data>`
@@ -84,22 +85,6 @@ Transforming batches
 If your transformation is vectorized like most NumPy or pandas operations, transforming
 batches is more performant than transforming rows.
 
-Choosing between tasks and actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ray Data transforms batches with either tasks or actors. Actors perform setup exactly
-once. In contrast, tasks require setup every batch. So, if your transformation involves
-expensive setup like downloading model weights, use actors. Otherwise, use tasks.
-
-To learn more about tasks and actors, read the
-:ref:`Ray Core Key Concepts <core-key-concepts>`.
-
-Transforming batches with tasks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To transform batches with tasks, call :meth:`~ray.data.Dataset.map_batches`. Ray Data
-uses tasks by default.
-
 .. testcode::
 
     from typing import Dict
@@ -114,91 +99,6 @@ uses tasks by default.
         ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
         .map_batches(increase_brightness)
     )
-
-.. _transforming_data_actors:
-
-Transforming batches with actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To transform batches with actors, complete these steps:
-
-1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
-
-2. Create an :class:`~ray.data.ActorPoolStrategy` and configure the number of concurrent
-   workers. Each worker transforms a partition of data.
-
-3. Call :meth:`~ray.data.Dataset.map_batches` and pass your ``ActorPoolStrategy`` to ``compute``.
-
-.. tab-set::
-
-    .. tab-item:: CPU
-
-        .. testcode::
-
-            from typing import Dict
-            import numpy as np
-            import torch
-            import ray
-
-            class TorchPredictor:
-
-                def __init__(self):
-                    self.model = torch.nn.Identity()
-                    self.model.eval()
-
-                def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                    inputs = torch.as_tensor(batch["data"], dtype=torch.float32)
-                    with torch.inference_mode():
-                        batch["output"] = self.model(inputs).detach().numpy()
-                    return batch
-
-            ds = (
-                ray.data.from_numpy(np.ones((32, 100)))
-                .map_batches(TorchPredictor, compute=ray.data.ActorPoolStrategy(size=2))
-            )
-
-        .. testcode::
-            :hide:
-
-            ds.materialize()
-
-    .. tab-item:: GPU
-
-        .. testcode::
-
-            from typing import Dict
-            import numpy as np
-            import torch
-            import ray
-
-            class TorchPredictor:
-
-                def __init__(self):
-                    self.model = torch.nn.Identity().cuda()
-                    self.model.eval()
-
-                def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                    inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
-                    with torch.inference_mode():
-                        batch["output"] = self.model(inputs).detach().cpu().numpy()
-                    return batch
-
-            ds = (
-                ray.data.from_numpy(np.ones((32, 100)))
-                .map_batches(
-                    TorchPredictor,
-                    # Two workers with one GPU each
-                    compute=ray.data.ActorPoolStrategy(size=2),
-                    # Batch size is required if you're using GPUs.
-                    batch_size=4,
-                    num_gpus=1
-                )
-            )
-
-        .. testcode::
-            :hide:
-
-            ds.materialize()
 
 .. _configure_batch_format:
 
@@ -258,6 +158,100 @@ program might run out of memory. If you encounter an out-of-memory error, decrea
     The default batch size depends on your resource type. If you're using CPUs,
     the default batch size is 4096. If you're using GPUs, you must specify an explicit
     batch size.
+
+.. _stateful_transforms:
+
+Stateful Transforms
+==============================
+
+If your transform requires expensive setup such as downloading
+model weights, use a callable Python class instead of a function to make the transform stateful. When a Python class
+is used, the ``__init__`` method is called to perform setup exactly once on each worker.
+In contrast, functions are stateless, so any setup must be performed for each data item.
+
+Internally, Ray Data uses tasks to execute functions, and uses actors to execute classes.
+To learn more about tasks and actors, read the
+:ref:`Ray Core Key Concepts <core-key-concepts>`.
+
+To transform data with a Python class, complete these steps:
+
+1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
+
+2. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
+   :meth:`~ray.data.Dataset.flat_map`. Pass the number of concurrent workers to use with the ``concurrency`` argument. Each worker transforms a partition of data in parallel.
+   Fixing the number of concurrent workers gives the most predictable performance, but you can also pass a tuple of ``(min, max)`` to allow Ray Data to automatically
+   scale the number of concurrent workers.
+
+.. tab-set::
+
+    .. tab-item:: CPU
+
+        .. testcode::
+
+            from typing import Dict
+            import numpy as np
+            import torch
+            import ray
+
+            class TorchPredictor:
+
+                def __init__(self):
+                    self.model = torch.nn.Identity()
+                    self.model.eval()
+
+                def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+                    inputs = torch.as_tensor(batch["data"], dtype=torch.float32)
+                    with torch.inference_mode():
+                        batch["output"] = self.model(inputs).detach().numpy()
+                    return batch
+
+            ds = (
+                ray.data.from_numpy(np.ones((32, 100)))
+                .map_batches(TorchPredictor, concurrency=2)
+            )
+
+        .. testcode::
+            :hide:
+
+            ds.materialize()
+
+    .. tab-item:: GPU
+
+        .. testcode::
+
+            from typing import Dict
+            import numpy as np
+            import torch
+            import ray
+
+            class TorchPredictor:
+
+                def __init__(self):
+                    self.model = torch.nn.Identity().cuda()
+                    self.model.eval()
+
+                def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+                    inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
+                    with torch.inference_mode():
+                        batch["output"] = self.model(inputs).detach().cpu().numpy()
+                    return batch
+
+            ds = (
+                ray.data.from_numpy(np.ones((32, 100)))
+                .map_batches(
+                    TorchPredictor,
+                    # Two workers with one GPU each
+                    concurrency=2,
+                    # Batch size is required if you're using GPUs.
+                    batch_size=4,
+                    num_gpus=1
+                )
+            )
+
+        .. testcode::
+            :hide:
+
+            ds.materialize()
 
 .. _transforming_groupby:
 

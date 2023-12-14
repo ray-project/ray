@@ -82,6 +82,10 @@ TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 # or Train worker to the trial directory. Defaults to 1.
 RAY_CHDIR_TO_TRIAL_DIR = "RAY_CHDIR_TO_TRIAL_DIR"
 
+# Set this to 1 to count preemption errors toward `FailureConfig(max_failures)`.
+# Defaults to 0, which always retries on node preemption failures.
+RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
+
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
@@ -90,6 +94,7 @@ TRAIN_ENV_VARS = {
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     RAY_CHDIR_TO_TRIAL_DIR,
+    RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
 }
 
 # Blacklist virtualized networking.

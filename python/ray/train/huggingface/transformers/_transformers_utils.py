@@ -62,6 +62,8 @@ class RayTrainReportCallback(TrainerCallback):
 
     """
 
+    CHECKPOINT_NAME = "checkpoint"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         record_extra_usage_tag(TagKey.TRAIN_TRANSFORMERS_RAYTRAINREPORTCALLBACK, "1")
@@ -76,7 +78,7 @@ class RayTrainReportCallback(TrainerCallback):
 
             # Copy ckpt files and construct a Ray Train Checkpoint
             source_ckpt_path = transformers.trainer.get_last_checkpoint(args.output_dir)
-            target_ckpt_path = os.path.join(tmpdir, "checkpoint")
+            target_ckpt_path = os.path.join(tmpdir, self.CHECKPOINT_NAME)
             shutil.copytree(source_ckpt_path, target_ckpt_path)
             checkpoint = Checkpoint.from_directory(tmpdir)
 

@@ -127,6 +127,7 @@ def run_xgboost_prediction(model_path: str, data_path: str):
         batch_size=8192,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=None),
         fn_constructor_kwargs={"model": model},
+        batch_format="pandas",
     )
 
     for _ in result.iter_batches():

@@ -300,6 +300,33 @@ class BufferWithInfiniteLookback:
 
         return data
 
+    def __add__(self, other):
+        """Adds another buffer or list to the end of this one.
+
+        Args:
+            other: Either `BufferWithInfiniteLookback` or `list`.
+                If a `BufferWithInfiniteLookback` the data gets
+                concatenated. If a `list` the list is concatenated to the
+                `self.data`.
+
+        Returns:
+            A new `BufferWithInfiniteLookback` instance `self.data` cotnaining
+            concatenated data from `self.` and `other`.
+        """
+
+        if self.finalized:
+            raise RuntimeError(f"Cannot `add` to a finalized {type(self).__name__}.")
+        else:
+            if isinstance(other, BufferWithInfiniteLookback):
+                data = self.data + other.data
+            else:
+                data = self.data + other
+            return BufferWithInfiniteLookback(
+                data=data,
+                lookback=self.lookback,
+                space=self.space,
+            )
+
     def __getitem__(self, item):
         """Support squared bracket syntax, e.g. buffer[:5]."""
         return self.get(item)

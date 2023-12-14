@@ -743,6 +743,11 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
 RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU")
 
+/// The name of the system-created concurrency group for actors. This group is
+/// created with 1 thread, and is created lazily. The intended usage is for
+/// Ray-internal auxiliary tasks (e.g., accelerated dag workers).
+RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
+
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
 
@@ -780,6 +785,8 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
 /// grpc keepalive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
+
+RAY_CONFIG(int64_t, grpc_client_idle_timeout_ms, 1800000)
 
 /// grpc streaming buffer size
 /// Set it to 512kb
@@ -887,6 +894,10 @@ RAY_CONFIG(bool, enable_autoscaler_v2, false)
 RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
 RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 
+// Whether to reap actor death reason from GCS.
+// Costs an extra RPC.
+// TODO(vitsai): Remove this flag
+RAY_CONFIG(bool, enable_reap_actor_death, true)
 // The number of sockets between object manager.
 // The higher the number the higher throughput of the data
 // trasfer it'll be, but it'll also user more sockets and

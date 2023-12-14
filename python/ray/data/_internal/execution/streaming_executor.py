@@ -73,6 +73,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
+        self._execution_started = False
         self._shutdown = False
 
         # Internal execution state shared across thread boundaries. We run the control
@@ -133,6 +134,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._get_operator_tags(),
         )
         self.start()
+        self._execution_started = True
 
         class StreamIterator(OutputIterator):
             def __init__(self, outer: Executor):
@@ -165,7 +167,7 @@ class StreamingExecutor(Executor, threading.Thread):
         global _num_shutdown
 
         with self._shutdown_lock:
-            if self._shutdown:
+            if not self._execution_started or self._shutdown:
                 return
             logger.get_logger().debug(f"Shutting down {self}.")
             _num_shutdown += 1
@@ -332,16 +334,26 @@ class StreamingExecutor(Executor, threading.Thread):
         autoscaling.
         """
         base = self._options.resource_limits
+        exclude = self._options.exclude_resources
         cluster = ray.cluster_resources()
-        return ExecutionResources(
-            cpu=base.cpu if base.cpu is not None else cluster.get("CPU", 0.0),
-            gpu=base.gpu if base.gpu is not None else cluster.get("GPU", 0.0),
-            object_store_memory=base.object_store_memory
-            if base.object_store_memory is not None
-            else round(
+
+        cpu = base.cpu
+        if cpu is None:
+            cpu = cluster.get("CPU", 0.0) - (exclude.cpu or 0.0)
+        gpu = base.gpu
+        if gpu is None:
+            gpu = cluster.get("GPU", 0.0) - (exclude.gpu or 0.0)
+        object_store_memory = base.object_store_memory
+        if object_store_memory is None:
+            object_store_memory = round(
                 DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
                 * cluster.get("object_store_memory", 0.0)
-            ),
+            ) - (exclude.object_store_memory or 0)
+
+        return ExecutionResources(
+            cpu=cpu,
+            gpu=gpu,
+            object_store_memory=object_store_memory,
         )
 
     def _report_current_usage(

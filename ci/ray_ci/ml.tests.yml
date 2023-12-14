@@ -4,3 +4,4 @@ flaky_tests:
   # doc tests
   # gpu tests
   - //doc/source/ray-air/examples:gptj_serving
+  - //doc:datasets_train
