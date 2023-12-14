@@ -117,7 +117,6 @@ class LearnerGroup:
 
         # scaling_config = learner_spec.learner_group_scaling_config
         self.config = config
-        self._is_remote = self.config.num_learner_workers > 0
 
         learner_class = self.config.learner_class
         module_spec = module_spec or self.config.get_marl_module_spec()
@@ -130,6 +129,8 @@ class LearnerGroup:
         # ray train.
         self._is_shut_down = False
 
+        # The callable to use to figure out whether a (single-agent) sub-module is
+        # trainable (via its ModuleID and the train batch) or not.
         self._should_module_be_updated_fn = _default_should_module_be_updated_fn
 
         # How many timesteps had to be dropped due to a full input queue?
@@ -147,7 +148,15 @@ class LearnerGroup:
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
                 num_workers=self.config.num_learner_workers,
-                num_cpus_per_worker=self.config.num_cpus_per_learner_worker,
+                # TODO (sven): Cannot set both `num_cpus_per_learner_worker`>1 and
+                #  `num_gpus_per_learner_worker`>0! Users must set one or the other due
+                #  to issues with placement group fragmentation. See
+                #  https://github.com/ray-project/ray/issues/35409 for more details.
+                num_cpus_per_worker=(
+                    self.config.num_cpus_per_learner_worker
+                    if not self.config.num_gpus_per_learner_worker
+                    else 0
+                ),
                 num_gpus_per_worker=self.config.num_gpus_per_learner_worker,
                 max_retries=0,
             )
@@ -187,12 +196,12 @@ class LearnerGroup:
         }
 
     @property
-    def is_local(self) -> bool:
-        return not self._is_remote
+    def is_remote(self) -> bool:
+        return self.config.num_learner_workers > 0
 
     @property
-    def is_remote(self) -> bool:
-        return self._is_remote
+    def is_local(self) -> bool:
+        return not self.is_remote
 
     def update(
         self,
