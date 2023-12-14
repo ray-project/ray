@@ -15,7 +15,7 @@ INTERNAL_PROCESSES = [
 # https://github.com/python/cpython/issues/73435
 TEST_PROCESS_PATTERNS = [
     re.compile(pattern)
-    for pattern in (".*/ray/dashboard/tests/.*", ".*/ray/release/.*")
+    for pattern in (".*/ray/tests/.*", ".*/ray/.*/tests/.*", ".*/ray/release/.*")
 ]
 
 
