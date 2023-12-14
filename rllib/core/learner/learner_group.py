@@ -9,7 +9,6 @@ from typing import (
     Optional,
     Set,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 import uuid
@@ -20,23 +19,24 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
     RLMODULE_STATE_DIR_NAME,
 )
-from ray.rllib.core.learner.learner import LearnerSpec
+from ray.rllib.core.learner.learner import Learner, LearnerSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator, ShardEpisodesIterator
-from ray.rllib.utils.typing import EpisodeType, ModuleID, ResultDict, ShouldModuleBeUpdatedFn
+from ray.rllib.utils.typing import (
+    EpisodeType,
+    ModuleID,
+    ResultDict,
+    ShouldModuleBeUpdatedFn,
+)
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI
 
 
-if TYPE_CHECKING:
-    from ray.rllib.core.learner.learner import Learner
-
-
-def _get_backend_config(learner_class: Type["Learner"]) -> str:
+def _get_backend_config(learner_class: Type[Learner]) -> str:
     if learner_class.framework == "torch":
         from ray.train.torch import TorchConfig
 

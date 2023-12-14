@@ -170,6 +170,7 @@ class ShardEpisodesIterator:
         sublists might have slightly different total sums of episode lengths, in order
         to not have to drop even a single timestep.
     """
+
     def __init__(self, episodes: List[EpisodeType], num_shards: int):
         self.episodes = episodes
         self.num_shards = num_shards
@@ -191,7 +192,10 @@ class ShardEpisodesIterator:
             ):
                 current_episode = self.episodes[current_index]
 
-                if current_shard_length + len(current_episode) > self.target_length_per_shard:
+                if (
+                    current_shard_length + len(current_episode)
+                    > self.target_length_per_shard
+                ):
                     # Split the episode.
                     split_length = self.target_length_per_shard - current_shard_length
                     remaining_episode = current_episode.split_at(split_length)
