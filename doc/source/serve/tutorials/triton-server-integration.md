@@ -31,7 +31,7 @@ from tritonserver_api import TritonServer
 app = FastAPI()
 
 
-@serve.deployment(route_prefix="/", ray_actor_options={"num_gpus": 1})
+@serve.deployment(route_prefix="/", ray_actor_options={"num_gpus": 1}, autoscaling_config={"min_replicas": 0, "max_replicas": 2})
 @serve.ingress(app)
 class TritonDeployment:
     def __init__(self):
