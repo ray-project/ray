@@ -17,7 +17,7 @@
 namespace ray {
 
 void PlasmaObjectHeader::Init() {
-#ifndef _WIN32
+#ifdef __linux__
   // wr_mut is shared between writer and readers.
   pthread_mutexattr_t mutex_attr;
   pthread_mutexattr_init(&mutex_attr);
@@ -36,14 +36,14 @@ void PlasmaObjectHeader::Init() {
 }
 
 void PlasmaObjectHeader::Destroy() {
-#ifndef _WIN32
+#ifdef __linux__
   RAY_CHECK(pthread_mutex_destroy(&wr_mut) == 0);
   RAY_CHECK(pthread_cond_destroy(&cond) == 0);
   RAY_CHECK(sem_destroy(&rw_semaphore) == 0);
 #endif
 }
 
-#ifndef _WIN32
+#ifdef __linux__
 
 void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
   RAY_LOG(DEBUG) << "PlasmaObjectHeader: \n"

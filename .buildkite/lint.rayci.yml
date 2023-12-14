@@ -91,3 +91,6 @@ steps:
     command: make -C doc/ linkcheck
     depends_on: docbuild
     job_env: docbuild
+    tags:
+      - oss
+      - skip-on-premerge

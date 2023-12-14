@@ -54,7 +54,7 @@ class TestDatabricksHook:
         )
         try:
             setup_ray_cluster(
-                num_worker_nodes=2,
+                max_worker_nodes=2,
                 head_node_options={"include_dashboard": False},
             )
             cluster = ray.util.spark.cluster_init._active_ray_cluster
