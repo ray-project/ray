@@ -61,7 +61,10 @@ class GcsAioClient:
                 thread_name_prefix="gcs_aio_client",
             )
 
-        self._gcs_client = GcsClient(address, nums_reconnect_retry)
+        self._gcs_client = GcsClient(
+            address,
+            nums_reconnect_retry,
+        )
         self._async_proxy = AsyncProxy(self._gcs_client, loop, executor)
         self._nums_reconnect_retry = nums_reconnect_retry
 

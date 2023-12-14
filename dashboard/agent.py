@@ -75,7 +75,10 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
-        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
+        self.gcs_aio_client = GcsAioClient(
+            address=self.gcs_address,
+            nums_reconnect_retry=ray._config.gcs_rpc_server_reconnect_timeout_s(),
+        )
 
         if not self.minimal:
             self._init_non_minimal()
