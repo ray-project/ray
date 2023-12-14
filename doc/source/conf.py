@@ -317,11 +317,7 @@ html_context = {
 }
 
 html_sidebars = {
-    "**": [
-        "release-header",
-        "search-button-field",
-        "main-sidebar",
-    ],
+    "**": ["main-sidebar"],
     "ray-overview/examples": ["examples-sidebar"],
 }
 

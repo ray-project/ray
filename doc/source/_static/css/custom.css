@@ -195,11 +195,20 @@ button#pst-back-to-top {
 
 /* Nav sidebar styles */
 /* Sidebar checkboxes are toggled by clicking on the label; hide actual checkboxes */
-.sidebar-checkbox {
-  display: none;
+.toctree-checkbox[type="checkbox"]:checked ~ ul > li.current-page:before {
+  background-color: var(--ray-blue);
+  border-radius: 0.5px;
 }
-.sidebar-checkbox[type="checkbox"]:checked ~ dd {
-  display: none;
+.toctree-checkbox[type="checkbox"]:checked ~ ul > li:before {
+  content: "";
+  width: 1px;
+  height: 100%;
+  position: absolute;
+  background-color: var(--pst-color-border);
+}
+/* Bold the top level primary sidebar links */
+#main-sidebar > .navbar-nav > .nav.bd-sidenav > li > a {
+  font-weight: 600;
 }
 
 /* Fix some spacing issues associated with competition with PST styles */
