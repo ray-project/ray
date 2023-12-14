@@ -2,12 +2,14 @@ import re
 import threading
 
 from subprocess import CalledProcessError
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from ray.autoscaler.node_provider import NodeProvider
 
 
 class MockNode:
-    def __init__(self, node_id, tags, node_config, node_type, unique_ips=False):
+    def __init__(
+        self, node_id, tags, node_config, node_type, resources, labels, unique_ips=False
+    ):
         self.node_id = str(node_id)
         self.state = "pending"
         self.tags = tags
@@ -21,6 +23,8 @@ class MockNode:
         self.created_in_main_thread = (
             threading.current_thread() is threading.main_thread()
         )
+        self.resources = resources
+        self.labels = labels
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -152,6 +156,7 @@ class MockProvider(NodeProvider):
         self.next_id = 0
         self.throw = False
         self.error_creates = None
+        self.error_terminates = None
         self.fail_creates = False
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
@@ -166,6 +171,9 @@ class MockProvider(NodeProvider):
         self.lock = threading.Lock()
         self.num_non_terminated_nodes_calls = 0
         super().__init__(None, None)
+
+    def is_sync(self):
+        return True
 
     def non_terminated_nodes(self, tag_filters):
         self.num_non_terminated_nodes_calls += 1
@@ -223,7 +231,16 @@ class MockProvider(NodeProvider):
         with self.lock:
             return self.mock_nodes[node_id].external_ip
 
-    def create_node(self, node_config, tags, count, _skip_wait=False):
+    def create_node(
+        self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
+    ) -> Dict[str, Any]:
+        return self.create_node_with_resources_and_labels(
+            node_config, tags, count, {}, {}
+        )
+
+    def create_node_with_resources_and_labels(
+        self, node_config, tags, count, resources, labels, _skip_wait=False
+    ):
         from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 
         if self.error_creates is not None:
@@ -250,6 +267,8 @@ class MockProvider(NodeProvider):
                     tags.copy(),
                     node_config,
                     tags.get(TAG_RAY_USER_NODE_TYPE),
+                    resources=resources,
+                    labels=labels,
                     unique_ips=self.unique_ips,
                 )
                 self.mock_nodes[new_node.node_id] = new_node
@@ -263,6 +282,9 @@ class MockProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         with self.lock:
+            if self.error_terminates is not None:
+                raise self.error_terminates
+
             if self.cache_stopped:
                 self.mock_nodes[node_id].state = "stopped"
             else:
@@ -276,3 +298,37 @@ class MockProvider(NodeProvider):
 
     def safe_to_scale(self):
         return self.safe_to_scale_flag
+
+
+class MockBatchingProvider(MockProvider):
+    def __init__(self, batch_size=1):
+        super().__init__()
+        self.batch_size = batch_size
+        self.to_create = []
+        self.to_terminate = []
+
+    def is_sync(self):
+        return False
+
+    def post_process(self) -> None:
+        for node_config, tags, count, resources, labels in self.to_create:
+            super().create_node_with_resources_and_labels(
+                node_config, tags, count, resources, labels
+            )
+
+        for node_id in self.to_terminate:
+            super().terminate_node(node_id)
+
+        self.to_create = []
+        self.to_terminate = []
+
+    def create_node(self, node_config, tags, count):
+        self.to_create.append((node_config, tags, count, {}, {}))
+
+    def create_node_with_resources_and_labels(
+        self, node_config, tags, count, resources, labels, _skip_wait=False
+    ):
+        self.to_create.append((node_config, tags, count, resources, labels))
+
+    def terminate_node(self, node_id):
+        self.to_terminate.append(node_id)
