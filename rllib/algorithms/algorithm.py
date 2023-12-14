@@ -551,7 +551,6 @@ class Algorithm(Trainable, AlgorithmBase):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
     def setup(self, config: AlgorithmConfig) -> None:
-
         # Setup our config: Merge the user-supplied config dict (which could
         # be a partial config dict) with the class' default.
         if not isinstance(config, AlgorithmConfig):
@@ -867,10 +866,19 @@ class Algorithm(Trainable, AlgorithmBase):
                     "[train_results, env, env_ctx] as args!"
                 )
 
-            curriculum_metrics = ("episode_len_mean",
-                                  "episode_reward_mean",
-                                  "custom_metrics")
-            results_ref = ray.put({key: value for key, value in results.items() if key in curriculum_metrics})
+            curriculum_metrics = (
+                "episode_len_mean",
+                "episode_reward_mean",
+                "custom_metrics",
+            )
+            results_ref = ray.put(
+                {
+                    key: value
+                    for key, value in results.items()
+                    if key in curriculum_metrics
+                }
+            )
+
             def fn(env, env_context, task_fn):
                 new_task = task_fn(ray.get(results_ref), env, env_context)
                 cur_task = env.get_task()
@@ -2357,7 +2365,6 @@ class Algorithm(Trainable, AlgorithmBase):
     def default_resource_request(
         cls, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
     ) -> Union[Resources, PlacementGroupFactory]:
-
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
         # Use `num_cpus_for_local_worker` and `num_gpus` for the local worker and
@@ -3335,7 +3342,6 @@ class TrainIterCtx:
         return self.time_stop - self.time_start
 
     def should_stop(self, results):
-
         # Before first call to `step()`.
         if results is None:
             # Fail after n retries.
