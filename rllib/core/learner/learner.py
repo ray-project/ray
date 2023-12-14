@@ -1,8 +1,9 @@
 import abc
+from collections import defaultdict
+from dataclasses import dataclass, field
 import json
 import logging
 import pathlib
-from collections import defaultdict
 from typing import (
     Any,
     Callable,
@@ -73,6 +74,21 @@ ENTROPY_KEY = "entropy"
 
 # Additional update keys
 LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
+
+
+@dataclass
+class LearnerHyperparameters:
+    def __init_subclass__(cls, **kwargs):
+        raise ValueError(
+            "All `LearnerHyperparameters` classes have been deprecated! Instead, "
+            "the AlgorithmConfig object of your experiment is passed into the `Learner`"
+            " constructor as the `config` arg. Make sure that your custom `Learner` "
+            "class(es) can read information from this config object (e.g. instead of "
+            "using `LearnerHyperparameters.entropy_coeff`, now read the value from "
+            "`config.entropy_coeff`). All `Learner` methods that used to accept a "
+            "(module specific) `hps` argument, now take a (module specific) `config` "
+            "argument instead."
+        )
 
 
 @PublicAPI(stability="alpha")

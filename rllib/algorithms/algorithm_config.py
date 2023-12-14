@@ -1171,9 +1171,13 @@ class AlgorithmConfig(_Config):
                 cannot infer any space information either from this `spces` arg,
                 from the optional `env` arg or from `self`, the LearnerGroup cannot
                 be created.
+            rl_module_spec: An optional (single-agent or multi-agent) RLModuleSpec to
+                use for the constructed LearnerGroup. If None, RLlib will try to infer
+                the RLModuleSpec using the other information given and stored in this
+                `AlgorithmConfig` object.
 
         Returns:
-            The newly created LearnerGroup object.
+            The newly created `LearnerGroup` object.
         """
         from ray.rllib.core.learner.learner_group import LearnerGroup
 
