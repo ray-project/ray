@@ -1,21 +1,19 @@
 import os
+import re
 import sqlite3
 import tempfile
-from typing import Generator
+import uuid
 from collections import namedtuple
+from contextlib import contextmanager
+from typing import Generator
 from unittest import mock
 
 import pandas as pd
-import requests
-from contextlib import contextmanager
-import uuid
 import pyarrow as pa
-import re
-import ray.cloudpickle as pickle
-
 import pytest
 
 import ray
+import ray.cloudpickle as pickle
 
 
 @pytest.fixture(name="temp_database")
@@ -84,8 +82,7 @@ def test_write_sql_nonexistant_table(temp_database: str):
 
 
 def test_databricks_uc_datasource():
-
-    MockResponse = namedtuple('Response', 'raise_for_status json content')
+    MockResponse = namedtuple("Response", "raise_for_status json content")
 
     MockChunk = namedtuple("Chunk", "index, row_count byte_count data")
 
@@ -94,11 +91,13 @@ def test_databricks_uc_datasource():
     catalog = "catalog1"
     schema = "db1"
     query = "select * from table1"
-    expected_result_df = pd.DataFrame({
-        "c1": range(100),
-        "c2": map(lambda x: "str" + str(x), range(100)),
-    })
-    rows_per_chunk = 7
+    expected_result_df = pd.DataFrame(
+        {
+            "c1": range(10000),
+            "c2": map(lambda x: "str" + str(x), range(10000)),
+        }
+    )
+    rows_per_chunk = 700
 
     @contextmanager
     def setup_mock():
@@ -114,7 +113,7 @@ def test_databricks_uc_datasource():
             else:
                 chunk_rows = num_rows - cur_pos
 
-            chunk_df = expected_result_df[cur_pos: (cur_pos + chunk_rows)]
+            chunk_df = expected_result_df[cur_pos : (cur_pos + chunk_rows)]
             chunk_pa_table = pa.Table.from_pandas(chunk_df)
             sink = pa.BufferOutputStream()
             with pa.ipc.new_stream(sink, chunk_pa_table.schema) as writer:
@@ -122,12 +121,14 @@ def test_databricks_uc_datasource():
 
             chunk_data = sink.getvalue()
 
-            mock_chunks.append(MockChunk(
-                index=index,
-                row_count=chunk_rows,
-                byte_count=len(chunk_data),
-                data=chunk_data,
-            ))
+            mock_chunks.append(
+                MockChunk(
+                    index=index,
+                    row_count=chunk_rows,
+                    byte_count=len(chunk_data),
+                    data=chunk_data,
+                )
+            )
             index += 1
             cur_pos += rows_per_chunk
 
@@ -144,6 +145,7 @@ def test_databricks_uc_datasource():
 
         def request_post_mock(url, data=None, json=None, **kwargs):
             import json as jsonlib
+
             auth = kwargs["auth"]
             headers = kwargs["headers"]
 
@@ -178,7 +180,9 @@ def test_databricks_uc_datasource():
             auth = kwargs["auth"]
             headers = kwargs["headers"]
 
-            if match := re.match(r"^https://test_shard/api/2\.0/sql/statements/([^/]*)/$", url):
+            if match := re.match(
+                r"^https://test_shard/api/2\.0/sql/statements/([^/]*)/$", url
+            ):
                 statement_id = match.group(1)
                 assert auth == ("token", token)
                 assert headers == {"Content-Type": "application/json"}
@@ -192,23 +196,30 @@ def test_databricks_uc_datasource():
                         "manifest": {
                             "truncated": False,
                             "chunks": chunk_meta_json,
-                        }
+                        },
                     },
                     content=None,
                 )
 
-            if match := re.match(r"^https://test_shard/api/2\.0/sql/statements/([^/]*)/result/chunks/([^/]*)$", url):
+            if match := re.match(
+                r"^https://test_shard/api/2\.0/sql/"
+                r"statements/([^/]*)/result/chunks/([^/]*)$",
+                url,
+            ):
                 assert auth == ("token", token)
                 assert headers == {"Content-Type": "application/json"}
 
                 chunk_index = match.group(2)
 
+                external_link = f"https://test_external_link/{chunk_index}"
                 return MockResponse(
                     raise_for_status=lambda: None,
                     json=lambda: {
-                        "external_links": [{
-                            "external_link": f"https://test_external_link/{chunk_index}",
-                        }]
+                        "external_links": [
+                            {
+                                "external_link": external_link,
+                            }
+                        ]
                     },
                     content=None,
                 )
@@ -227,23 +238,23 @@ def test_databricks_uc_datasource():
 
             assert False, "Invalid request."
 
-        with mock.patch("requests.get", request_get_mock), \
-                mock.patch("requests.post", request_post_mock), \
-                mock.patch.dict(os.environ, {
-                    'DATABRICKS_HOST': 'test_shard',
-                    'DATABRICKS_TOKEN': token,
-                }):
+        with mock.patch("requests.get", request_get_mock), mock.patch(
+            "requests.post", request_post_mock
+        ), mock.patch.dict(
+            os.environ,
+            {
+                "DATABRICKS_HOST": "test_shard",
+                "DATABRICKS_TOKEN": token,
+            },
+        ):
             yield
 
     setup_mock_fn_path = os.path.join(tempfile.mkdtemp(), "setup_mock_fn.pkl")
     with open(setup_mock_fn_path, "wb") as fp:
         pickle.dump(setup_mock, fp)
 
-    with setup_mock(), \
-            mock.patch.dict(os.environ, {
-                "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH":
-                setup_mock_fn_path
-            }):
+    MOCK_ENV = "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
+    with setup_mock(), mock.patch.dict(os.environ, {MOCK_ENV: setup_mock_fn_path}):
         # test query with a table name
         result = ray.data.read_databricks_tables(
             warehouse_id=warehouse_id,

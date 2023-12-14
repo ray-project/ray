@@ -3,9 +3,9 @@ import logging
 import os
 import time
 from typing import List, Optional
-from urllib.parse import urlencode, urljoin
-import numpy as np
+from urllib.parse import urljoin
 
+import numpy as np
 import pyarrow
 import requests
 
@@ -135,8 +135,7 @@ class DatabricksUCDatasource(Datasource):
             def _read_fn():
                 for chunk_index in chunk_index_list:
                     resolve_external_link_url = urljoin(
-                        url_base,
-                        f"{statement_id}/result/chunks/{chunk_index}"
+                        url_base, f"{statement_id}/result/chunks/{chunk_index}"
                     )
 
                     resolve_response = requests.get(
@@ -160,6 +159,7 @@ class DatabricksUCDatasource(Datasource):
                     "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
                 ):
                     import ray.cloudpickle as pickle
+
                     # This is for testing.
                     with open(mock_setup_fn_path, "rb") as f:
                         mock_setup = pickle.load(f)
