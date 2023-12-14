@@ -280,9 +280,9 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           Log
         </Link>
         <br />
-        <CpuStackTraceLink pid={pid} ip={ip} type="" />
-        <br />
         <CpuProfilingLink pid={pid} ip={ip} type="" />
+        <br />
+        <CpuStackTraceLink pid={pid} ip={ip} type="" />
         <br />
       </TableCell>
       <TableCell>

@@ -9,7 +9,6 @@ from typing import (
     Callable,
     Container,
     Dict,
-    Mapping,
     Optional,
     Tuple,
     Type,
@@ -23,7 +22,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.learner_group_config import LearnerGroupConfig, ModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.learner.learner import TorchCompileWhatToCompile
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -64,6 +63,7 @@ from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
     LearningRateOrSchedule,
+    ModuleID,
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
@@ -478,7 +478,6 @@ class AlgorithmConfig(_Config):
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
-        self._disable_execution_plan_api = True
         self._disable_initialize_loss_from_dummy_batch = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
@@ -517,6 +516,7 @@ class AlgorithmConfig(_Config):
         self.min_time_s_per_reporting = DEPRECATED_VALUE
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
+        self._disable_execution_plan_api = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -698,7 +698,7 @@ class AlgorithmConfig(_Config):
     #  whether the dict used is actually code-free (already serialized) or not
     #  (i.e. a classic RLlib config dict with e.g. "callbacks" key still pointing to
     #  a class).
-    def serialize(self) -> Mapping[str, Any]:
+    def serialize(self) -> Dict[str, Any]:
         """Returns a mapping from str to JSON'able values representing this config.
 
         The resulting values will not have any code in them.
@@ -710,7 +710,7 @@ class AlgorithmConfig(_Config):
         Dataclass objects get converted to dicts.
 
         Returns:
-            A mapping from str to JSON'able values.
+            A dict mapping from str to JSON'able values.
         """
         config = self.to_dict()
         return self._serialize_dict(config)
@@ -951,10 +951,8 @@ class AlgorithmConfig(_Config):
             )
 
         # TODO (sven): Remove this hack. We should not have env-var dependent logic
-        #  in the codebase.
+        #  this deep in the codebase (should only be used in example/testing scripts).
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
-            # Enable RLModule API and connectors if env variable is set
-            # (to be used in unittesting)
             self.experimental(_enable_new_api_stack=True)
             self.enable_connectors = True
 
@@ -2597,8 +2595,9 @@ class AlgorithmConfig(_Config):
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
-        _disable_execution_plan_api: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
+        # Deprecated args.
+        _disable_execution_plan_api=None,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
@@ -2623,14 +2622,19 @@ class AlgorithmConfig(_Config):
                 - SampleCollectors: Have to store possibly nested action structs.
                 - Models that have the previous action(s) as part of their input.
                 - Algorithms reading from offline files (incl. action information).
-            _disable_execution_plan_api: Experimental flag.
-                If True, the execution plan API will not be used. Instead,
-                a Algorithm's `training_iteration` method will be called as-is each
-                training iteration.
 
         Returns:
             This updated AlgorithmConfig object.
         """
+        if _disable_execution_plan_api is not None:
+            deprecation_warning(
+                old="config.experimental(_disable_execution_plan_api=...)",
+                help="The execution plan API is no longer supported! Use subclassing "
+                "of the `Algorithm` class and override the "
+                "`Algorithm.training_step()` method instead.",
+                error=True,
+            )
+
         if _enable_new_api_stack is not NotProvided:
             self._enable_new_api_stack = _enable_new_api_stack
 
@@ -2656,8 +2660,6 @@ class AlgorithmConfig(_Config):
             self._disable_preprocessor_api = _disable_preprocessor_api
         if _disable_action_flattening is not NotProvided:
             self._disable_action_flattening = _disable_action_flattening
-        if _disable_execution_plan_api is not NotProvided:
-            self._disable_execution_plan_api = _disable_execution_plan_api
         if _disable_initialize_loss_from_dummy_batch is not NotProvided:
             self._disable_initialize_loss_from_dummy_batch = (
                 _disable_initialize_loss_from_dummy_batch

@@ -63,6 +63,8 @@ swap:
   k8s: Kubernetes
   "[Kk]ube[Rr]ay": KubeRay
   long press: touch & hold
+  MacOS: macOS
+  HomeBrew: Homebrew
   network IP address: internal IP address
   omnibox: address bar
   open-source: open source

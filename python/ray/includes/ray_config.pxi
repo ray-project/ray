@@ -168,3 +168,7 @@ cdef class Config:
     @staticmethod
     def py_gcs_connect_timeout_s():
         return RayConfig.instance().py_gcs_connect_timeout_s()
+
+    @staticmethod
+    def gcs_rpc_server_reconnect_timeout_s():
+        return RayConfig.instance().gcs_rpc_server_reconnect_timeout_s()

@@ -703,12 +703,15 @@ def enable_pickle_debug():
 
 
 @pytest.fixture
-def set_enable_auto_connect(enable_auto_connect: str = "0"):
+def set_enable_auto_connect(enable_auto_connect: bool = False):
+    from ray._private import auto_init_hook
+
     try:
-        os.environ["RAY_ENABLE_AUTO_CONNECT"] = enable_auto_connect
+        old_value = auto_init_hook.enable_auto_connect
+        auto_init_hook.enable_auto_connect = enable_auto_connect
         yield enable_auto_connect
     finally:
-        del os.environ["RAY_ENABLE_AUTO_CONNECT"]
+        auto_init_hook.enable_auto_connect = old_value
 
 
 @pytest.fixture
