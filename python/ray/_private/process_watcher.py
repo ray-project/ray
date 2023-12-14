@@ -67,16 +67,19 @@ def create_check_raylet_task(log_dir, gcs_address, parent_dead_callback, loop):
 
 async def check_parent_new_impl(loop, parent_dead_callback):
     while True:
+
         def read_pipe():
             # stdin is the pipe from the parents
             data = sys.stdin.readline()
             return data
 
         # Read input asynchronously
+        print("readpipe")
         input_data = await loop.run_in_executor(None, read_pipe)
+        print("readpipe result, ", input_data)
         if len(input_data) == 0:
             # cannot read bytes from parent == parent is dead.
-            parent_dead_callback()
+            parent_dead_callback("readpipe done.")
             sys.exit(0)
 
 
