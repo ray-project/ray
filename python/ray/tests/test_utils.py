@@ -11,8 +11,9 @@ from ray._private.utils import (
     get_or_create_event_loop,
     pasre_pg_formatted_resources_to_original,
     try_import_each_module,
+    get_current_node_cpu_model_name,
 )
-from unittest.mock import patch
+from unittest.mock import patch, mock_open
 import sys
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,16 @@ def test_pasre_pg_formatted_resources():
         }
     )
     assert out == {"CPU": 1, "memory": 100}
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Doesn't support non-linux"
+)
+def test_get_current_node_cpu_model_name():
+    with patch(
+        "builtins.open", mock_open(read_data="processor: 0\nmodel name: Intel Xeon")
+    ):
+        assert get_current_node_cpu_model_name() == "Intel Xeon"
 
 
 if __name__ == "__main__":
