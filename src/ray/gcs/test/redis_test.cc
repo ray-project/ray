@@ -93,9 +93,7 @@ RedisAsyncContext *CreateAsyncContext(
 template <>
 std::pair<Status, std::unique_ptr<MockRedisContext, RedisContextDeleter>>
 ConnectWithRetries<MockRedisContext, decltype(redisAsyncConnect)>(
-    const std::string &address,
-    int port,
-    const decltype(redisAsyncConnect) &connect_function) {
+    const std::string &address, int port, decltype(redisAsyncConnect) &connect_function) {
   RAY_CHECK_EQ(address, RedisContextTest::GetTestAddress());
   RAY_CHECK_EQ(port, RedisContextTest::GetTestPort());
 
