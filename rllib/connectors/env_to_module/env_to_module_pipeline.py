@@ -45,5 +45,3 @@ class EnvToModulePipeline(ConnectorPipelineV2):
             ctx=ctx,
             **kwargs,
         )
-
-

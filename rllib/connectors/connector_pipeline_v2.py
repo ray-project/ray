@@ -90,12 +90,8 @@ class ConnectorPipelineV2(ConnectorV2):
         idx = -1
         for idx, c in enumerate(self.connectors):
             if (
-                (
-                    isinstance(name_or_class, str)
-                    and c.__class__.__name__ == name_or_class
-                )
-                or (isinstance(name_or_class, type) and c.__class__ is name_or_class)
-            ):
+                isinstance(name_or_class, str) and c.__class__.__name__ == name_or_class
+            ) or (isinstance(name_or_class, type) and c.__class__ is name_or_class):
                 break
         if idx < 0:
             raise ValueError(
@@ -130,12 +126,8 @@ class ConnectorPipelineV2(ConnectorV2):
         idx = -1
         for idx, c in enumerate(self.connectors):
             if (
-                (
-                    isinstance(name_or_class, str)
-                    and c.__class__.__name__ == name_or_class
-                )
-                or (isinstance(name_or_class, type) and c.__class__ is name_or_class)
-            ):
+                isinstance(name_or_class, str) and c.__class__.__name__ == name_or_class
+            ) or (isinstance(name_or_class, type) and c.__class__ is name_or_class):
                 break
         if idx < 0:
             raise ValueError(

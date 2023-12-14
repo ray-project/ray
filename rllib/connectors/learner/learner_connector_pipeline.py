@@ -4,12 +4,13 @@ from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.connectors.learner.default_learner_connector import (
-    DefaultLearnerConnector
+    DefaultLearnerConnector,
 )
 
 
 class LearnerConnectorPipeline(ConnectorPipelineV2):
     """The superclass for any module-to-env pipelines."""
+
     def __init__(
         self,
         *,
@@ -29,4 +30,3 @@ class LearnerConnectorPipeline(ConnectorPipelineV2):
         ):
             # Append default learner connector piece at the end.
             self.append(DefaultLearnerConnector(ctx=ctx))
-

@@ -8,6 +8,7 @@ from ray.rllib.connectors.module_to_env.default_module_to_env import DefaultModu
 
 class ModuleToEnvPipeline(ConnectorPipelineV2):
     """The superclass for any module-to-env pipelines."""
+
     def __init__(
         self,
         *,
