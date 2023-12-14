@@ -47,12 +47,10 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 
 .. testcode::
 	:hide:
-    :skipif: True
 
     from ray.rllib.algorithms.ppo.ppo import PPOConfig
 
 .. testcode::
-    :skipif: True
 
     config = (
         PPOConfig()
@@ -60,16 +58,15 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
         .resources(
             num_gpus_per_learner_worker=0,  # Set this to 1 to enable GPU training.
             num_cpus_per_learner_worker=1,
-            num_learner_workers=0  # Set this to greater than 0 to allow for DDP style 
+            num_learner_workers=0  # Set this to greater than 1 to allow for DDP style
                                # updates.
         )
     )
 
 .. testcode::
 	:hide:
-    :skipif: True
 
-	config = config.environment(env="CartPole-v1")
+	config = config.environment("CartPole-v1")
 	config.build()  # test that the algorithm can be built with the given resources
 
 
@@ -108,21 +105,15 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
 
 .. testcode::
     :hide:
-    :skipif: True
 
     # imports for the examples
-
-    import numpy as np
     import gymnasium as gym
+    import numpy as np
+
     import ray
-    from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-    from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
-    from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-    from ray.rllib.algorithms.ppo.ppo_learner import PPOLearnerHyperparameters
+    from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-    from ray.rllib.core.learner.learner import FrameworkHyperparameters, LearnerSpec
     from ray.rllib.core.learner.learner_group import LearnerGroup
-    from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 
 .. tab-set::
@@ -131,77 +122,62 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
 
 
         .. testcode::
-            :skipif: True
 
             env = gym.make("CartPole-v1")
 
-            module_spec = SingleAgentRLModuleSpec(
-                            module_class=PPOTorchRLModule,
-                            observation_space=env.observation_space,
-                            action_space=env.action_space,
-                            model_config_dict={},
-                            catalog_class=PPOCatalog
-                        )
-
-            hparams = PPOLearnerHyperparameters(
-                use_kl_loss=True, 
-                kl_coeff=0.01,
-                kl_target=0.05, 
-                clip_param=0.2, 
-                vf_clip_param=0.2, 
-                entropy_coeff=0.05,
-                vf_loss_coeff=0.5
+            # Create an AlgorithmConfig object from which we can build the
+            # LearnerGroup.
+            config = (
+                PPOConfig()
+                # Number of Learner workers (ray actors).
+                # Use 0 for no actors, only create a local Learner.
+                # Use >=1 to create n DDP-style Learner workers (ray actors).
+                .resources(num_learner_workers=1)
+                # Specify the learner's hyperparameters.
+                .training(
+                    use_kl_loss=True,
+                    kl_coeff=0.01,
+                    kl_target=0.05,
+                    clip_param=0.2,
+                    vf_clip_param=0.2,
+                    entropy_coeff=0.05,
+                    vf_loss_coeff=0.5
+                )
             )
 
-            scaling_config = LearnerGroupScalingConfig(num_workers=1)
-
-            learner_spec = LearnerSpec(
-                                learner_class=PPOTorchLearner,
-                                module_spec=module_spec,
-                                learner_group_scaling_config=scaling_config,
-                                learner_hyperparameters=hparams,
-                                framework_hyperparameters=FrameworkHyperparameters(),
-                            )
-
-            learner_group = LearnerGroup(learner_spec)
+            # Construct a new LearnerGroup using our config object.
+            learner_group = config.build_learner_group(env=env)
 
     .. tab-item:: Constructing a Learner
 
         .. testcode::
-            :skipif: True
 
             env = gym.make("CartPole-v1")
 
-            module_spec = SingleAgentRLModuleSpec(
-                            module_class=PPOTorchRLModule,
-                            observation_space=env.observation_space,
-                            action_space=env.action_space,
-                            model_config_dict={},
-                            catalog_class=PPOCatalog
-                        )
-
-            hparams = PPOLearnerHyperparameters(
-                use_kl_loss=True, 
-                kl_coeff=0.01,
-                kl_target=0.05, 
-                clip_param=0.2, 
-                vf_clip_param=0.2, 
-                entropy_coeff=0.05,
-                vf_loss_coeff=0.5
+            # Create an AlgorithmConfig object from which we can build the
+            # Learner.
+            config = (
+                PPOConfig()
+                # Specify the Learner's hyperparameters.
+                .training(
+                    use_kl_loss=True,
+                    kl_coeff=0.01,
+                    kl_target=0.05,
+                    clip_param=0.2,
+                    vf_clip_param=0.2,
+                    entropy_coeff=0.05,
+                    vf_loss_coeff=0.5
+                )
             )
+            # Construct a new LearnerGroup using our config object.
+            learner = config.build_learner(env=env)
 
-            learner = PPOTorchLearner(
-                module_spec=module_spec, 
-                learner_hyperparameters=hparams,
-                framework_hyperparameters=FrameworkHyperparameters()
-            )
 
 Updates
 -------
 
 .. testcode::
     :hide:
-    :skipif: True
 
     from ray.rllib.policy.sample_batch import (DEFAULT_POLICY_ID, SampleBatch, 
         MultiAgentBatch)
@@ -234,7 +210,10 @@ Updates
     }
     default_batch = SampleBatch(DUMMY_BATCH)
     DUMMY_BATCH = default_batch.as_multi_agent()
-    ADDITIONAL_UPDATE_KWARGS = {"timestep": 0, "sampled_kl_values": {DEFAULT_POLICY_ID: 1e-4}}
+    ADDITIONAL_UPDATE_KWARGS = {
+        "timestep": 0,
+        "sampled_kl_values": {DEFAULT_POLICY_ID: 1e-4},
+    }
 
     learner.build() # needs to be called on the learner before calling any functions
 
@@ -244,7 +223,6 @@ Updates
     .. tab-item:: Updating a LearnerGroup
 
         .. testcode::
-            :skipif: True
 
             # This is a blocking update
             results = learner_group.update(DUMMY_BATCH)
@@ -262,7 +240,6 @@ Updates
     .. tab-item:: Updating a Learner
 
         .. testcode::
-            :skipif: True
 
             # This is a blocking update.
             result = learner.update(DUMMY_BATCH)
@@ -282,13 +259,12 @@ Getting and setting state
     .. tab-item:: Getting and Setting State for a LearnerGroup
 
         .. testcode::
-            :skipif: True
 
-            # module weights and optimizer states
+            # Get the LearnerGroup's RLModule weights and optimizer states.
             state = learner_group.get_state()
             learner_group.set_state(state)
 
-            # just module weights
+            # Only get the RLModule weights.
             weights = learner_group.get_weights()
             learner_group.set_weights(weights)
 
@@ -305,13 +281,12 @@ Getting and setting state
     .. tab-item:: Getting and Setting State for a Learner
 
         .. testcode::
-            :skipif: True
 
-            # module weights and optimizer states
+            # Get the Learner's RLModule weights and optimizer states.
             state = learner.get_state()
             learner.set_state(state)
 
-            # just module state
+            # Only get the RLModule weights.
             module_state = learner.get_module_state()
             learner.module.set_module_state(module_state)
 
