@@ -110,12 +110,6 @@ class TesterContainer(Container):
         if test_arg:
             test_cmd += f"--test_arg {test_arg} "
 
-        if "//python/ray/tests:test_gcs_fault_tolerance" in test_targets:
-            test_targets = [
-                "//python/ray/tests:test_gcs_fault_tolerance",
-            ]
-            test_cmd += f"--runs_per_test=30 --flaky_test_attempts=1 "
-
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
         return subprocess.Popen(self.get_run_command(commands, gpu_ids))
