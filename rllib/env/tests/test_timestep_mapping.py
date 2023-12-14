@@ -88,7 +88,7 @@ class Test_TimestepMapping(unittest.TestCase):
         obs = episode.get_observations(0)
 
         # This errors out. Check "agent_6" with index 65.
-        # The latter comes from 
+        # The latter comes from
         # `episode.global_t_to_local_t["agent_6"].
         # get_local_timesteps(-1, t=episode.t, shift=-1)`
         # Get actions.
