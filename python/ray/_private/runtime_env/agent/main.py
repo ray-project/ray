@@ -11,8 +11,6 @@ from ray._private.ray_logging import configure_log_file
 from ray._private.utils import get_or_create_event_loop
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.runtime_env.agent.runtime_env_agent import RuntimeEnvAgent
-from ray._private.internal_third_party import aiohttp  # noqa F401
-from aiohttp import web
 
 
 def open_capture_files(log_dir):
@@ -121,6 +119,9 @@ if __name__ == "__main__":
     # Setup stdout/stderr redirect files
     out_file, err_file = open_capture_files(args.log_dir)
     configure_log_file(out_file, err_file)
+
+    from ray._private.internal_third_party import aiohttp  # noqa F401
+    from aiohttp import web
 
     agent = RuntimeEnvAgent(
         runtime_env_dir=args.runtime_env_dir,

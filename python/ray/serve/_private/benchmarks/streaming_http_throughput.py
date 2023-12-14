@@ -2,11 +2,11 @@ import asyncio
 import logging
 from typing import Tuple
 
+import aiohttp
 import click
 from starlette.responses import StreamingResponse
 
 from ray import serve
-from ray._private.internal_third_party import aiohttp  # noqa: F401
 from ray.serve._private.benchmarks.common import run_throughput_benchmark
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 

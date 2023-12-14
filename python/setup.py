@@ -266,6 +266,8 @@ if setup_spec.type == SetupType.RAY:
             else "grpcio",
         ],
         "serve": [
+            "aiohttp >= 3.7",
+            "aiohttp_cors",
             "uvicorn[standard]",
             "requests",
             "starlette",

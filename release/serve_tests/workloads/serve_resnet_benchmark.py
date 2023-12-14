@@ -19,7 +19,7 @@ from typing import List, Optional
 import asyncio
 import time
 
-from ray._private.internal_third_party import aiohttp  # noqa: F401
+import aiohttp
 import click
 import numpy as np
 import starlette.requests

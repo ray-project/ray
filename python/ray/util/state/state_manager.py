@@ -5,7 +5,7 @@ from collections import defaultdict
 from functools import wraps
 from typing import List, Optional, Tuple
 
-from ray._private.internal_third_party import aiohttp  # noqa: F401
+import aiohttp
 import grpc
 from grpc.aio._call import UnaryStreamCall
 

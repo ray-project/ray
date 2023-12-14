@@ -12,12 +12,12 @@ logger = logging.getLogger(__name__)
 def test_no_accidental_dependenies(ray_start_regular):
     # Internal dependencies are not present in worker or in driver.
 
-    def has_module(name):
+    def get_module(name):
         try:
-            importlib.import_module(name)
-            return True
+            module = importlib.import_module(name)
+            return module
         except ImportError:
-            return False
+            return None
 
     def expect_no_internal_deps():
         """
@@ -25,9 +25,11 @@ def test_no_accidental_dependenies(ray_start_regular):
         If any, raises error with the import result.
         """
         deps = ["aiohttp", "aiohttp_cors", "aiosignal"]
-        has_deps = {name: has_module(name) for name in deps}
-        if any(has_deps.values()):
-            raise ValueError(f"unexpectedly imported some internal deps: {has_deps}")
+        imported_deps = {name: get_module(name) for name in deps}
+        if any(imported_deps.values()):
+            raise ValueError(
+                f"unexpectedly imported some internal deps: {imported_deps}"
+            )
         return True
 
     assert expect_no_internal_deps()
@@ -45,6 +47,14 @@ def test_no_accidental_dependenies(ray_start_regular):
 
     a = A.remote()
     assert ray.get(a.m.remote())
+
+
+def test_cant_import_internal_dependencies():
+    with pytest.raises(
+        ImportError,
+        match="ray._private.internal_third_party is only for Ray internal use.",
+    ):
+        from ray._private.internal_third_party import aiohttp  # noqa: F401
 
 
 if __name__ == "__main__":
