@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from typing import List, Optional
 from urllib.parse import urlencode, urljoin
@@ -131,7 +132,7 @@ class DatabricksUCDatasource(Datasource):
                 exec_stats=None,
             )
 
-            def read_fn():
+            def _read_fn():
                 for chunk_index in chunk_index_list:
                     resolve_external_link_url = urljoin(
                         url_base,
@@ -153,6 +154,19 @@ class DatabricksUCDatasource(Datasource):
                         arrow_table = reader.read_all()
 
                     yield arrow_table
+
+            def read_fn():
+                if mock_setup_fn_path := os.environ.get(
+                    "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
+                ):
+                    import ray.cloudpickle as pickle
+                    # This is for testing.
+                    with open(mock_setup_fn_path, "rb") as f:
+                        mock_setup = pickle.load(f)
+                    with mock_setup():
+                        yield from _read_fn()
+                else:
+                    yield from _read_fn()
 
             return ReadTask(read_fn=read_fn, metadata=metadata)
 
