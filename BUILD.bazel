@@ -321,6 +321,7 @@ PLASMA_LINKOPTS = [] + select({
 ray_cc_library(
     name = "plasma_client",
     srcs = [
+        "src/ray/object_manager/common.cc",
         "src/ray/object_manager/plasma/client.cc",
         "src/ray/object_manager/plasma/connection.cc",
         "src/ray/object_manager/plasma/malloc.cc",

@@ -417,12 +417,15 @@ from pathlib import Path
 
 from ray.train import Checkpoint
 
-# Create a sample locally available checkpoint
+# For demonstration, create a locally available directory with a `model.pt` file.
 example_checkpoint_dir = Path("/tmp/test-checkpoint")
 example_checkpoint_dir.mkdir()
 example_checkpoint_dir.joinpath("model.pt").touch()
+
+# Create the checkpoint, which is a reference to the directory.
 checkpoint = Checkpoint.from_directory(example_checkpoint_dir)
 
+# Inspect the checkpoint's contents with either `as_directory` or `to_directory`:
 with checkpoint.as_directory() as checkpoint_dir:
     assert Path(checkpoint_dir).joinpath("model.pt").exists()
 
