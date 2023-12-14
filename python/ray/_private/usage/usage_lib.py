@@ -52,7 +52,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import requests
 import yaml
@@ -146,6 +146,8 @@ class UsageStatsToReport:
     total_num_running_jobs: Optional[int]
     #: The libc version in the OS.
     libc_version: Optional[str]
+    #: The hardwares that are used (e.g. Intel Xeon).
+    hardware_usages: Optional[List[str]]
 
 
 @dataclass(init=True)
@@ -175,16 +177,41 @@ _recorded_extra_usage_tags = dict()
 _recorded_extra_usage_tags_lock = threading.Lock()
 
 
-def _put_library_usage(library_usage: str):
+def _add_to_usage_set(set_name: str, value: str):
     assert _internal_kv_initialized()
     try:
         _internal_kv_put(
-            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}".encode(),
+            f"{set_name}{value}".encode(),
             b"",
             namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
     except Exception as e:
-        logger.debug(f"Failed to put library usage, {e}")
+        logger.debug(f"Failed to add {value} to usage set {set_name}, {e}")
+
+
+def _get_usage_set(gcs_client, set_name: str) -> Set[str]:
+    try:
+        result = set()
+        usages = gcs_client.internal_kv_keys(
+            set_name.encode(),
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
+        )
+        for usage in usages:
+            usage = usage.decode("utf-8")
+            result.add(usage[len(set_name) :])
+
+        return result
+    except Exception as e:
+        logger.debug(f"Failed to get usage set {set_name}, {e}")
+        return set()
+
+
+def _put_library_usage(library_usage: str):
+    _add_to_usage_set(usage_constant.LIBRARY_USAGE_SET_NAME, library_usage)
+
+
+def _put_hardware_usage(hardware_usage: str):
+    _add_to_usage_set(usage_constant.HARDWARE_USAGE_SET_NAME, hardware_usage)
 
 
 def record_extra_usage_tag(key: TagKey, value: str):
@@ -219,6 +246,12 @@ def _put_extra_usage_tag(key: str, value: str):
         )
     except Exception as e:
         logger.debug(f"Failed to put extra usage tag, {e}")
+
+
+def record_hardware_usage(hardware_usage: str):
+    """Record hardware usage (e.g. which CPU model is used)"""
+    assert _internal_kv_initialized()
+    _put_hardware_usage(hardware_usage)
 
 
 def record_library_usage(library_usage: str):
@@ -513,20 +546,11 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
 
 
 def get_library_usages_to_report(gcs_client) -> List[str]:
-    try:
-        result = []
-        library_usages = gcs_client.internal_kv_keys(
-            usage_constant.LIBRARY_USAGE_PREFIX.encode(),
-            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
-        )
-        for library_usage in library_usages:
-            library_usage = library_usage.decode("utf-8")
-            result.append(library_usage[len(usage_constant.LIBRARY_USAGE_PREFIX) :])
+    return list(_get_usage_set(gcs_client, usage_constant.LIBRARY_USAGE_SET_NAME))
 
-        return result
-    except Exception as e:
-        logger.info(f"Failed to get library usages to report {e}")
-        return []
+
+def get_hardware_usages_to_report(gcs_client) -> List[str]:
+    return list(_get_usage_set(gcs_client, usage_constant.HARDWARE_USAGE_SET_NAME))
 
 
 def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
@@ -818,6 +842,7 @@ def generate_report_data(
         total_num_nodes=get_total_num_nodes_to_report(gcs_client),
         total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
         libc_version=cluster_metadata.get("libc_version"),
+        hardware_usages=get_hardware_usages_to_report(gcs_client),
     )
     return data
 

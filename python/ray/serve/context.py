@@ -14,6 +14,7 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
+from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__file__)
@@ -38,7 +39,6 @@ class ReplicaContext:
     deployment: str
     replica_tag: ReplicaTag
     servable_object: Callable
-    _internal_controller_name: str
 
 
 def _get_global_client(
@@ -90,7 +90,6 @@ def _set_internal_replica_context(
     deployment: str,
     replica_tag: ReplicaTag,
     servable_object: Callable,
-    controller_name: str,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
@@ -98,7 +97,6 @@ def _set_internal_replica_context(
         deployment=deployment,
         replica_tag=replica_tag,
         servable_object=servable_object,
-        _internal_controller_name=controller_name,
     )
 
 
@@ -123,16 +121,9 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
-    # When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to
-    # ensure that the correct instance is connected to.
-    if _INTERNAL_REPLICA_CONTEXT is None:
-        controller_name = SERVE_CONTROLLER_NAME
-    else:
-        controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
-
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
+        controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
     except ValueError:
         if raise_if_no_controller_running:
             raise RayServeException(
@@ -142,7 +133,6 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
 
     client = ServeControllerClient(
         controller,
-        controller_name,
     )
     _set_global_client(client)
     return client
@@ -166,6 +156,7 @@ class _RequestContext:
     request_id: str = ""
     app_name: str = ""
     multiplexed_model_id: str = ""
+    grpc_context: Optional[RayServegRPCContext] = None
 
 
 _serve_request_context = contextvars.ContextVar(
