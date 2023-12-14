@@ -250,6 +250,7 @@ py_test_module_list(
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
+    "test_channel.py",
     "test_concurrency_group.py",
     "test_component_failures.py",
     "test_cross_language.py",
@@ -374,6 +375,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_actor_retry.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_failure.py",

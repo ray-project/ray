@@ -59,13 +59,14 @@ class Model:
 app = Model.bind()
 # __serve_example_end__
 
-import requests  # noqa
+if __name__ == "__main__":
+    import requests  # noqa
 
-serve.run(app)
-resp = requests.post(
-    "http://localhost:8000/",
-    json={
-        "uri": "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"  # noqa
-    },
-)  # noqa
-assert resp.text == "ox"
+    serve.run(app)
+    resp = requests.post(
+        "http://localhost:8000/",
+        json={
+            "uri": "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"  # noqa
+        },
+    )  # noqa
+    assert resp.text == "ox"

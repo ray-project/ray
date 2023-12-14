@@ -484,7 +484,7 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
             actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
         }
         expected_actor_name_prefixes = {
-            "SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR",
+            "SERVE_PROXY_ACTOR",
             "SERVE_CONTROLLER_ACTOR",
         }.union({f"SERVE_REPLICA::app1#{deployment}" for deployment in deployments})
         for prefix in expected_actor_name_prefixes:
