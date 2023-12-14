@@ -41,6 +41,21 @@ class _FileDatasink(Datasink):
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
     ):
+        """Initialize this datasink.
+
+        Args:
+            path: The folder to write files to.
+            filesystem: The filesystem to write files to. If not provided, the
+                filesystem is inferred from the path.
+            try_create_dir: Whether to create the directory to write files to.
+            open_stream_args: Arguments to pass to ``filesystem.open_output_stream``.
+            filename_provider: A :class:`ray.data.datasource.FilenameProvider` that
+                generates filenames for each row or block.
+            dataset_uuid: The UUID of the dataset being written. If specified, it's
+                included in the filename.
+            file_format: The file extension. If specified, files are written with this
+                extension.
+        """
         if open_stream_args is None:
             open_stream_args = {}
 
@@ -132,7 +147,44 @@ class _FileDatasink(Datasink):
 
 @DeveloperAPI
 class RowBasedFileDatasink(_FileDatasink):
+    """A datasink that writes one row to each file.
+
+    Subclasses must implement ``write_row_to_file`` and call the superclass constructor.
+
+    Examples:
+        .. testcode::
+
+            import io
+            import numpy as np
+            from PIL import Image
+            from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+            from ray.data.datasource import FileBasedDatasource
+
+            class ImageDatasource(FileBasedDatasource):
+                def __init__(self, paths):
+                    super().__init__(
+                        paths,
+                        file_extensions=["png", "jpg", "jpeg", "bmp", "gif", "tiff"],
+                    )
+
+                def _read_stream(self, f, path):
+                    data = f.readall()
+                    image = Image.open(io.BytesIO(data))
+
+                    builder = DelegatingBlockBuilder()
+                    array = np.array(image)
+                    item = {"image": array}
+                    builder.add(item)
+                    yield builder.build()
+    """  # noqa: E501
+
     def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
+        """Write a row to a file.
+
+        Args:
+            row: The row to write.
+            file: The file to write the row to.
+        """
         raise NotImplementedError
 
     def _write_row_to_file_with_retry(
@@ -172,7 +224,30 @@ class RowBasedFileDatasink(_FileDatasink):
 
 @DeveloperAPI
 class BlockBasedFileDatasink(_FileDatasink):
+    """A datasink that writes multiple rows to each file.
+
+    Subclasses must implement ``write_block_to_file`` and call the superclass
+    constructor.
+
+    Examples:
+        .. testcode::
+
+            class CSVDatasink(BlockBasedFileDatasink):
+                def __init__(self, path: str):
+                    super().__init__(path, file_format="csv")
+
+                def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+                    from pyarrow import csv
+                    csv.write_csv(block.to_arrow(), file)
+    """  # noqa: E501
+
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+        """Write a block of data to a file.
+
+        Args:
+            block: The block to write.
+            file: The file to write the block to.
+        """
         raise NotImplementedError
 
     def _write_block_to_file_with_retry(
