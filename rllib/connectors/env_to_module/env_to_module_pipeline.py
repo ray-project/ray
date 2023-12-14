@@ -1,8 +1,10 @@
 from typing import Any, List, Optional
 
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
+import gymnasium as gym
+
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.connectors.env_to_module.default_env_to_module import DefaultEnvToModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
@@ -12,11 +14,21 @@ class EnvToModulePipeline(ConnectorPipelineV2):
     def __init__(
         self,
         *,
-        ctx: ConnectorContextV2,
         connectors: Optional[List[ConnectorV2]] = None,
+        input_observation_space: Optional[gym.Space],
+        input_action_space: Optional[gym.Space],
+        env: Optional[gym.Env] = None,
+        rl_module: Optional["RLModule"] = None,
         **kwargs,
     ):
-        super().__init__(ctx=ctx, connectors=connectors, **kwargs)
+        super().__init__(
+            connectors=connectors,
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            env=env,
+            rl_module=rl_module,
+            **kwargs,
+        )
         # Add the default final connector piece for env-to-module pipelines:
         # Extracting last obs from episodes and add them to input, iff this has not
         # happened in any connector piece in this pipeline before.
@@ -24,24 +36,30 @@ class EnvToModulePipeline(ConnectorPipelineV2):
             len(self.connectors) == 0
             or type(self.connectors[-1]) is not DefaultEnvToModule
         ):
-            self.append(DefaultEnvToModule(ctx=ctx))
+            self.append(DefaultEnvToModule(
+                input_observation_space=self.observation_space,
+                input_action_space=self.action_space,
+                env=env,
+            ))
 
     @override(ConnectorPipelineV2)
     def __call__(
         self,
         *,
+        rl_module: RLModule,
         input_: Optional[Any] = None,
         episodes: List[EpisodeType],
-        ctx: ConnectorContextV2,
+        explore: bool,
+        persistent_data: Optional[dict] = None,
         **kwargs,
-    ) -> Any:
-
+    ):
+        # Make sure user does not necessarily send initial input into this pipeline.
+        # Might just be empty and to be populated from `episodes`.
         return super().__call__(
-            # Make sure user does not have to send initial `input_` into this env-to-module
-            # pipeline. This would be the expected behavior b/c after calling the env,
-            # we don't have any data dict yet, only a list of Episode objects.
-            input_=input_ or {},
+            rl_module=rl_module,
+            input_=input_ if input_ is not None else {},
             episodes=episodes,
-            ctx=ctx,
+            explore=explore,
+            persistent_data=persistent_data,
             **kwargs,
         )

@@ -11,6 +11,7 @@ from ray.rllib.connectors.learner.default_learner_connector import (
     DefaultLearnerConnector
 )
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 from ray.util.timer import _Timer
@@ -25,11 +26,10 @@ class ConnectorPipelineV2(ConnectorV2):
     def __init__(
         self,
         *,
-        ctx: ConnectorContextV2,
         connectors: Optional[List[ConnectorV2]] = None,
         **kwargs,
     ):
-        super().__init__(ctx=ctx, **kwargs)
+        super().__init__(**kwargs)
 
         self.connectors = connectors or []
         self._fix_input_output_types()
@@ -39,9 +39,11 @@ class ConnectorPipelineV2(ConnectorV2):
     @override(ConnectorV2)
     def __call__(
         self,
+        rl_module: RLModule,
         input_: Any,
         episodes: List[EpisodeType],
-        ctx: ConnectorContextV2,
+        explore: Optional[bool] = None,
+        persistent_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         """In a pipeline, we simply call each of our connector pieces after each other.
@@ -55,7 +57,14 @@ class ConnectorPipelineV2(ConnectorV2):
         for connector in self.connectors:
             timer = self.timers[str(connector)]
             with timer:
-                ret = connector(input_=ret, episodes=episodes, ctx=ctx)
+                ret = connector(
+                    rl_module=rl_module,
+                    input_=ret,
+                    episodes=episodes,
+                    explore=explore,
+                    persistent_data=persistent_data,
+                    **kwargs,
+                )
         return ret
 
     def remove(self, name_or_class: Union[str, Type]):
@@ -66,19 +75,21 @@ class ConnectorPipelineV2(ConnectorV2):
         """
         idx = -1
         for i, c in enumerate(self.connectors):
-            if c.__class__.__name__ == name:
+            if c.__class__.__name__ == name_or_class:
                 idx = i
                 break
         if idx >= 0:
             del self.connectors[idx]
             self._fix_input_output_types()
-            logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
+            logger.info(f"Removed connector {name_or_class} from {self.__class__.__name__}.")
         else:
-            logger.warning(f"Trying to remove a non-existent connector {name}.")
+            logger.warning(
+                f"Trying to remove a non-existent connector {name_or_class}."
+            )
 
     def insert_before(
         self,
-        name_or_class: Union[str, Type],
+        name_or_class: Union[str, type],
         connector: ConnectorV2,
     ) -> ConnectorV2:
         """Insert a new connector piece before an existing piece (by name or class).
@@ -257,6 +268,8 @@ class ConnectorPipelineV2(ConnectorV2):
         if len(self.connectors) > 0:
             self.input_type = self.connectors[0].input_type
             self.output_type = self.connectors[-1].output_type
+            #self.observation_space = self.connectors[-1].observation_space
+            #self.action_space = self.connectors[-1].action_space
         else:
             self.input_type = None
             self.output_type = None
