@@ -63,11 +63,7 @@ class GcsAioClient:
 
         self._gcs_client = GcsClient(address, nums_reconnect_retry)
         self._async_proxy = AsyncProxy(self._gcs_client, loop, executor)
-        self._connect()
         self._nums_reconnect_retry = nums_reconnect_retry
-
-    def _connect(self):
-        self._gcs_client._connect()
 
     @property
     def address(self):

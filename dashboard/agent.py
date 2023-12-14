@@ -14,16 +14,11 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._raylet import GcsClient
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import (
     setup_component_logger,
     configure_log_file,
-)
-from ray.experimental.internal_kv import (
-    _initialize_internal_kv,
-    _internal_kv_initialized,
 )
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 
@@ -80,11 +75,6 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
-        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
-        # gcs_aio_client and not gcs_client.
-        self.gcs_client = GcsClient(address=self.gcs_address)
-        _initialize_internal_kv(self.gcs_client)
-        assert _internal_kv_initialized()
         self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
 
         if not self.minimal:
