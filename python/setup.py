@@ -540,9 +540,9 @@ def build(build_python, build_java, build_cpp):
 
     # internal dependenceis
     internal_pip_packages = [
-        "aiohttp >= 3.7",  # for runtime env agent and the dashboard http server
-        "aiohttp_cors",  # for dashboard
-        "aiosignal",  # for dashboard
+        "aiohttp==3.8.6",  # for runtime env agent and the dashboard http server
+        "aiohttp_cors==0.7.0",  # for dashboard
+        "aiosignal==1.3.1",  # for dashboard
     ]
     subprocess.check_call(
         [
