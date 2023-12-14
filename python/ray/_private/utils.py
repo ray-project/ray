@@ -339,7 +339,7 @@ def set_visible_accelerator_ids() -> None:
     on the accelerator runtime.
     """
     for resource_name, accelerator_ids in (
-        ray.get_runtime_context().get_resource_ids().items()
+        ray.get_runtime_context().get_accelerator_ids().items()
     ):
         ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
@@ -2001,3 +2001,28 @@ def validate_actor_state_name(actor_state_name):
             'it must be one of the following: "DEPENDENCIES_UNREADY", '
             '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
         )
+
+
+def get_current_node_cpu_model_name() -> Optional[str]:
+    if not sys.platform.startswith("linux"):
+        return None
+
+    try:
+        """
+        /proc/cpuinfo content example:
+
+        processor	: 0
+        vendor_id	: GenuineIntel
+        cpu family	: 6
+        model		: 85
+        model name	: Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz
+        stepping	: 7
+        """
+        with open("/proc/cpuinfo", "r") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    return line.split(":")[1].strip()
+        return None
+    except Exception:
+        logger.debug("Failed to get CPU model name", exc_info=True)
+        return None
