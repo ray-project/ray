@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 import pytest
 
@@ -73,6 +74,40 @@ def test_distributed_tqdm_iterator():
     assert bar.bar.n == 100, bar.bar.n
     assert "baz" in bar.bar.desc, bar.bar.desc
 
+
+def test_flush_interval():
+    mgr = tqdm_ray.instance()
+    mgr.bar_groups.clear()
+
+    FLUSH_INTERVAL_S = 0.1
+
+    def check_value(expected_value):
+        bar_group = list(mgr.bar_groups.values())[0]
+        assert len(bar_group.bars_by_uuid) == 1
+        bar = list(bar_group.bars_by_uuid.values())[0]
+        assert bar.bar.n == expected_value
+
+
+    bar = tqdm_ray.tqdm(
+        desc="bar",
+        total=100,
+        position=0,
+        flush_interval_s=FLUSH_INTERVAL_S,
+    )
+    # The first update should trigger flush.
+    bar.update(1)
+    check_value(1)
+    # Quickly calling update multiple times
+    # should not trigger flush.
+    for _ in range(10):
+        bar.update(1)
+    check_value(1)
+    # Wait for flush interval and call update again.
+    # This should trigger flush.
+    time.sleep(FLUSH_INTERVAL_S)
+    bar.update(1)
+    check_value(12)
+    bar.close()
 
 if __name__ == "__main__":
     # Test suite is timing out. Disable on windows for now.
