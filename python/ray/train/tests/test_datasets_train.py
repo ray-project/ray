@@ -274,11 +274,10 @@ def inference(
     dataset.map_batches(
         model_cls,
         fn_constructor_args=[load_model_func],
-        compute=ray.data.ActorPoolStrategy(),
+        concurrency=(1, 1000),
         batch_size=batch_size,
         batch_format="pandas",
         num_gpus=num_gpus,
-        num_cpus=0,
     ).write_parquet(result_path)
 
 
@@ -542,9 +541,9 @@ if __name__ == "__main__":
 
     start_time = time.time()
 
-    make_and_upload_dataset(dir_path)
-
     ray.init(address=address)
+
+    make_and_upload_dataset(dir_path)
 
     # Setup MLflow.
 
