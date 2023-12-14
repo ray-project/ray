@@ -1664,12 +1664,9 @@ def test_get_directory_size_bytes():
 def check_local_files_gced(cluster, whitelist=None):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
-            # all_files = os.listdir(
-            #     os.path.join(node.get_runtime_env_dir_path(), subdir)
-            # )
-            path = pathlib.Path(node.get_runtime_env_dir_path()) / subdir
-            all_files = [f.name for f in list(path.iterdir())]
-            print(all_files)
+            all_files = os.listdir(
+                os.path.join(node.get_runtime_env_dir_path(), subdir)
+            )
             # Check that there are no files remaining except for .lock files
             # and generated requirements.txt files.
             # Note: On Windows the top folder is not deleted as it is in use.

@@ -130,12 +130,12 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
-        logger.error("Got request to delete working dir URI %s", uri)
+        logger.info("Got request to delete working dir URI %s", uri)
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         local_dir_size = get_directory_size_bytes(local_dir)
 
         deleted = delete_package(uri, self._resources_dir)
-        logger.error(f"deleted: {deleted} {uri}{self._resources_dir}")
+        logger.info(f"Runtime env {uri}{self._resources_dir} is deleted? {deleted}")
         if not deleted:
             logger.warning(f"Tried to delete nonexistent URI: {uri}.")
             return 0
@@ -155,10 +155,11 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
-        logging.error(f"create a new dir {uri}")
+        logging.info(f"create a new working dir {uri}.")
         local_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
+        logging.info(f"Local directory {local_dir} is created.")
         return get_directory_size_bytes(local_dir)
 
     def modify_context(

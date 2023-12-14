@@ -87,7 +87,6 @@ class Session : public std::enable_shared_from_this<Session> {
   void run(FinishedCallback finished_callback) {
     finished_callback_ = finished_callback;
     // Starts the state machine by looking up the domain name.
-    RAY_LOG(DEBUG) << "SANG-TODO session run called";
     resolver_.async_resolve(
         host_,
         port_,
@@ -225,7 +224,6 @@ class SessionPool {
     if (running_sessions_.size() < max_concurrency_ && should_send) {
       running_sessions_.insert(session);
       session->run(/*finished_callback=*/[this](std::shared_ptr<Session> session) {
-        RAY_LOG(DEBUG) << "SANG-TODO session finished.";
         this->remove_session_from_running(session);
       });
     } else {
@@ -384,7 +382,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                                          int64_t deadline_ms,
                                          int64_t retry_interval_ms_) {
     try_invoke_once(succ_callback, [=](ray::Status status) {
-      RAY_LOG(DEBUG) << "SANG-TODO callback replied, status; " << status;
       if (!status.IsNotFound()) {
         // Non retryable errors, invoke fail_callback
         fail_callback(status);
@@ -401,7 +398,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                       << retry_interval_ms_ << "ms...";
         this->delay_executor_(
             [=]() {
-              RAY_LOG(DEBUG) << "SANG-TODO retried... for the previous run " << status;
               RetryInvokeOnNotFoundWithDeadline(try_invoke_once,
                                                 succ_callback,
                                                 fail_callback,
@@ -435,7 +431,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         [=](rpc::GetOrCreateRuntimeEnvReply reply) {
           // HTTP request & protobuf parsing succeeded, but we got a non-OK from the
           // remote server.
-          RAY_LOG(DEBUG) << "SANG-TODO success callback.";
           if (reply.status() != rpc::AGENT_RPC_STATUS_OK) {
             RAY_LOG(INFO) << "Failed to create runtime env for job " << job_id
                           << ", error message: " << reply.error_message();
@@ -453,7 +448,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         },
         /*fail_callback=*/
         [=](ray::Status status) {
-          RAY_LOG(DEBUG) << "SANG-TODO failure callback";
           std::string error_message = absl::StrCat(
               "Failed to create runtime env for job ",
               job_id.Hex(),
@@ -479,7 +473,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       const std::string &serialized_allocated_resource_instances,
       std::function<void(rpc::GetOrCreateRuntimeEnvReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback) {
-    RAY_LOG(DEBUG) << "SANG-TODO TryGetOrCreateRuntimeEnv for " << serialized_runtime_env;
     rpc::GetOrCreateRuntimeEnvRequest request;
     request.set_job_id(job_id.Hex());
     request.set_serialized_runtime_env(serialized_runtime_env);
@@ -550,8 +543,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       const std::string &serialized_runtime_env,
       std::function<void(rpc::DeleteRuntimeEnvIfPossibleReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback) {
-    RAY_LOG(DEBUG) << "SANG-TODO TryDeleteRuntimeEnvIfPossible for "
-                   << serialized_runtime_env;
     rpc::DeleteRuntimeEnvIfPossibleRequest request;
     request.set_serialized_runtime_env(serialized_runtime_env);
     request.set_source_process("raylet");

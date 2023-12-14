@@ -252,9 +252,10 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    # @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
-    @pytest.mark.parametrize("option", ["working_dir"])
-    @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
+    @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+    @pytest.mark.parametrize(
+        "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
+    )
     def test_detached_actor_gc(
         self,
         start_cluster,

@@ -92,12 +92,12 @@ class ReferenceTable:
         }
 
     def _increase_reference_for_uris(self, uris):
-        default_logger.info(f"Increase reference for uris {uris}.")
+        default_logger.debug(f"Increase reference for uris {uris}.")
         for uri, _ in uris:
             self._uri_reference[uri] += 1
 
     def _decrease_reference_for_uris(self, uris):
-        default_logger.info(f"Decrease reference for uris {uris}.")
+        default_logger.debug(f"Decrease reference for uris {uris}.")
         unused_uris = list()
         for uri, uri_type in uris:
             if self._uri_reference[uri] > 0:
@@ -113,11 +113,11 @@ class ReferenceTable:
         return unused_uris
 
     def _increase_reference_for_runtime_env(self, serialized_env: str):
-        default_logger.info(f"Increase reference for runtime env {serialized_env}.")
+        default_logger.debug(f"Increase reference for runtime env {serialized_env}.")
         self._runtime_env_reference[serialized_env] += 1
 
     def _decrease_reference_for_runtime_env(self, serialized_env: str):
-        default_logger.info(f"Decrease reference for runtime env {serialized_env}.")
+        default_logger.debug(f"Decrease reference for runtime env {serialized_env}.")
         unused = False
         if self._runtime_env_reference[serialized_env] > 0:
             self._runtime_env_reference[serialized_env] -= 1
@@ -289,8 +289,8 @@ class RuntimeEnvAgent:
         return self._per_job_logger_cache[job_id]
 
     async def GetOrCreateRuntimeEnv(self, request):
-        self._logger.info(
-            f"SANG-TODO Got request from {request.source_process} to increase "
+        self._logger.debug(
+            f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
             f"{request.serialized_runtime_env}."
         )
@@ -307,7 +307,7 @@ class RuntimeEnvAgent:
             per_job_logger = self.get_or_create_logger(request.job_id)
             # TODO(chenk008): Add log about allocated_resource to
             # avoid lint error. That will be moved to cgroup plugin.
-            per_job_logger.info(f"Worker has resource :" f"{allocated_resource}")
+            per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
             await self._container_manager.setup(
                 runtime_env, context, logger=per_job_logger
@@ -509,7 +509,7 @@ class RuntimeEnvAgent:
 
     async def DeleteRuntimeEnvIfPossible(self, request):
         self._logger.info(
-            f"SANG-TODO Got request from {request.source_process} to decrease "
+            f"Got request from {request.source_process} to decrease "
             "reference for runtime env: "
             f"{request.serialized_runtime_env}."
         )

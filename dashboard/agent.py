@@ -28,7 +28,6 @@ from ray.experimental.internal_kv import (
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 
 logger = logging.getLogger(__name__)
-logging.getLogger("ray").setLevel(logging.DEBUG)
 
 
 class DashboardAgent:
