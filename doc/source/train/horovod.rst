@@ -1,8 +1,8 @@
 
 .. _train-horovod:
 
-Get Started with Horovod
-========================
+Get Started with Distributed Training using Horovod
+===================================================
 
 Ray Train configures the Horovod environment and Rendezvous
 server for you, allowing you to run your ``DistributedOptimizer`` training

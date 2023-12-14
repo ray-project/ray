@@ -22,6 +22,7 @@ You can also refer to the [API reference](../serve/api/doc/ray.serve.deployment_
 - `health_check_timeout_s` - Duration in seconds, that replicas wait for a health check method to return before considering it as failed. Defaults to 30s.
 - `graceful_shutdown_wait_loop_s` - Duration that replicas wait until there is no more work to be done before shutting down. Defaults to 2s.
 - `graceful_shutdown_timeout_s` - Duration to wait for a replica to gracefully shut down before being forcefully killed. Defaults to 20s.
+- `logging_config` - Logging Config for the deployment (e.g. log level, log directory, JSON log format and so on). See [LoggingConfig](../serve/api/doc/ray.serve.schema.LoggingConfig.rst) for details.
 
 ## How to specify parameters
 

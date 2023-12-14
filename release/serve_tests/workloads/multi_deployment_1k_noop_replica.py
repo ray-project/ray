@@ -29,6 +29,9 @@ import click
 import logging
 import math
 import random
+from typing import List, Optional
+
+from starlette.requests import Request
 
 from ray import serve
 from serve_test_utils import (
@@ -43,7 +46,6 @@ from serve_test_cluster_utils import (
     NUM_CPU_PER_NODE,
     NUM_CONNECTIONS,
 )
-from typing import List, Optional
 
 logger = logging.getLogger(__file__)
 
@@ -86,18 +88,18 @@ def setup_multi_deployment_replicas(num_replicas, num_deployments) -> List[str]:
 
             return random.choice(self.all_app_async_handles)
 
-        async def handle_request(self, request, depth: int):
+        async def handle_request(self, body: bytes, depth: int):
             # Max recursive call depth reached
             if depth > 4:
                 return "hi"
 
             next_async_handle = await self.get_random_async_handle()
-            fut = next_async_handle.handle_request.remote(request, depth + 1)
+            fut = next_async_handle.handle_request.remote(body, depth + 1)
 
             return await fut
 
-        async def __call__(self, request):
-            return await self.handle_request(request, 0)
+        async def __call__(self, request: Request):
+            return await self.handle_request(await request.body(), 0)
 
     for name in all_deployment_names:
         serve.run(Echo.bind(), name=name, route_prefix=f"/{name}")

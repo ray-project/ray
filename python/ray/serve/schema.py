@@ -15,7 +15,6 @@ from ray._private.pydantic_compat import (
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ProxyStatus,
@@ -27,6 +26,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
@@ -85,7 +85,25 @@ class EncodingType(str, Enum):
 
 @PublicAPI(stability="alpha")
 class LoggingConfig(BaseModel):
-    """Logging config schema for configuring serve components logs."""
+    """Logging config schema for configuring serve components logs.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.schema import LoggingConfig
+            # Set log level for the deployment.
+            @serve.deployment(LoggingConfig(log_level="DEBUG")
+            class MyDeployment:
+                def __call__(self) -> str:
+                    return "Hello world!"
+            # Set log directory for the deployment.
+            @serve.deployment(LoggingConfig(logs_dir="/my_dir")
+            class MyDeployment:
+                def __call__(self) -> str:
+                    return "Hello world!"
+    """
 
     class Config:
         extra = Extra.forbid
@@ -121,7 +139,6 @@ class LoggingConfig(BaseModel):
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
-
         if v not in list(EncodingType):
             raise ValueError(
                 f"Got '{v}' for encoding. Encoding must be one "
@@ -227,7 +244,7 @@ class RayActorOptionsSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v:
+        if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
 
         for uri in uris:
@@ -509,7 +526,7 @@ class ServeApplicationSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v:
+        if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
 
         for uri in uris:

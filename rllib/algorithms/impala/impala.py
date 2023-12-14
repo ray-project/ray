@@ -733,8 +733,9 @@ class Impala(Algorithm):
         # all collected batches.
         if self.config._enable_new_api_stack:
             train_results = self.learn_on_processed_samples()
+            module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
             additional_results = self.learner_group.additional_update(
-                module_ids_to_update=set(train_results.keys()) - {ALL_MODULES},
+                module_ids_to_update=module_ids_to_update,
                 timestep=self._counters[
                     NUM_ENV_STEPS_TRAINED
                     if self.config.count_steps_by == "env_steps"
@@ -860,12 +861,11 @@ class Impala(Algorithm):
             strategy=cf.placement_strategy,
         )
 
-    def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]):
+    def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]) -> None:
         """Concatenate batches that are being returned from rollout workers
 
         Args:
-            batches: batches of experiences from rollout workers
-
+            batches: List of batches of experiences from EnvRunners.
         """
 
         def aggregate_into_larger_batch():
@@ -878,6 +878,32 @@ class Impala(Algorithm):
                 self.batch_being_built = []
 
         for batch in batches:
+            # TODO (sven): Strange bug after a RolloutWorker crash and proper
+            #  restart. The bug is related to (old, non-V2) connectors being used and
+            #  seems to happen inside the AgentCollector's `add_action_reward_next_obs`
+            #  method, at the end of which the number of vf_preds (and all other
+            #  extra action outs) in the batch is one smaller than the number of obs/
+            #  actions/rewards, which then leads to a malformed train batch.
+            #  IMPALA/APPO crash inside the loss function (during v-trace operations)
+            #  b/c of the resulting shape mismatch. The following if-block prevents
+            #  this from happening and it can be removed once we are on the new API
+            #  stack for good (and use the new connectors and also no longer
+            #  AgentCollectors, RolloutWorkers, Policies, TrajectoryView API, etc..):
+            if (
+                self.config.batch_mode == "truncate_episodes"
+                and self.config.enable_connectors
+                and self.config.recreate_failed_workers
+            ):
+                if any(
+                    SampleBatch.VF_PREDS in pb
+                    and (
+                        pb[SampleBatch.VF_PREDS].shape[0]
+                        != pb[SampleBatch.REWARDS].shape[0]
+                    )
+                    for pb in batch.policy_batches.values()
+                ):
+                    continue
+
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
 
@@ -929,7 +955,7 @@ class Impala(Algorithm):
                 sample_batches = [(0, sample_batch)]
             else:
                 # Not much we can do. Return empty list and wait.
-                return []
+                sample_batches = []
 
         return sample_batches
 

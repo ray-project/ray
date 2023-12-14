@@ -19,6 +19,9 @@ class BenchmarkMetric(Enum):
     THROUGHPUT = "tput"
     ACCURACY = "accuracy"
 
+    # Extra metrics not matching the above categories/keys, stored as a Dict[str, Any].
+    EXTRA_METRICS = "extra_metrics"
+
 
 class Benchmark:
     """Utility class used for Ray Data release tests and benchmarks, which works
@@ -40,7 +43,7 @@ class Benchmark:
 
     # Writes a JSON with metrics of the form:
     # {"case-1": {...}, "case-2": {...}, "case-3": {...}}
-    benchmark.write_result("output.json")
+    benchmark.write_result()
 
     See example usage in ``aggregate_benchmark.py``.
     """
@@ -150,12 +153,13 @@ class Benchmark:
             BenchmarkMetric.RUNTIME.value: duration,
         }
         if isinstance(fn_output, dict):
-            # Filter out metrics which are not in BenchmarkMetric,
-            # to ensure proper format of outputs.
-            for m in BenchmarkMetric:
-                metric_value = fn_output.get(m.value)
-                if metric_value:
-                    curr_case_metrics[m.value] = metric_value
+            extra_metrics = {}
+            for metric_key, metric_val in fn_output.items():
+                if isinstance(metric_key, BenchmarkMetric):
+                    curr_case_metrics[metric_key.value] = metric_val
+                else:
+                    extra_metrics[metric_key] = metric_val
+            curr_case_metrics[BenchmarkMetric.EXTRA_METRICS.value] = extra_metrics
 
         self.result[name] = curr_case_metrics
         print(f"Result of case {name}: {curr_case_metrics}")

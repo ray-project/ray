@@ -615,9 +615,12 @@ def benchmark_code(
     data_benchmark_metrics = {}
 
     # Report the average of per-epoch throughput, excluding the first epoch.
+    # Unless there is only one epoch, in which case we report the epoch
+    # throughput directly.
+    start_epoch_tput = 0 if args.num_epochs == 1 else 1
     epoch_tputs = []
     num_rows_per_epoch = sum(result.metrics["num_rows"])
-    for i in range(1, args.num_epochs):
+    for i in range(start_epoch_tput, args.num_epochs):
         time_start_epoch_i, time_end_epoch_i = zip(*result.metrics[f"epoch_{i}_times"])
         runtime_epoch_i = max(time_end_epoch_i) - min(time_start_epoch_i)
         tput_epoch_i = num_rows_per_epoch / runtime_epoch_i
@@ -627,7 +630,7 @@ def benchmark_code(
     print("Averaged per-epoch throughput:", avg_per_epoch_tput, "img/s")
     data_benchmark_metrics.update(
         {
-            BenchmarkMetric.THROUGHPUT.value: avg_per_epoch_tput,
+            BenchmarkMetric.THROUGHPUT: avg_per_epoch_tput,
         }
     )
 
@@ -639,7 +642,7 @@ def benchmark_code(
         print(f"Final epoch accuracy: {final_epoch_acc * 100:.3f}%")
         data_benchmark_metrics.update(
             {
-                BenchmarkMetric.ACCURACY.value: final_epoch_acc,
+                BenchmarkMetric.ACCURACY: final_epoch_acc,
             }
         )
     return data_benchmark_metrics

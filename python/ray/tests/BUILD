@@ -251,6 +251,7 @@ py_test_module_list(
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
+    "test_channel.py",
     "test_concurrency_group.py",
     "test_component_failures.py",
     "test_cross_language.py",
@@ -291,10 +292,16 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
     "test_gcs_ha_e2e_2.py",
-    "test_memory_pressure.py",
   ],
   size = "medium",
-  tags = ["exclusive", "team:core", "xcommit"],
+  tags = ["exclusive", "ha_integration", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = ["test_memory_pressure.py"],
+  size = "medium",
+  tags = ["exclusive", "mem_pressure", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -303,18 +310,26 @@ py_test_module_list(
     "test_autoscaler_e2e.py",
   ],
   size = "medium",
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test_module_list(
   files = [
     "test_autoscaler.py",
-    "test_batch_node_provider_unit.py",
-    "test_batch_node_provider_integration.py",
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_util.py",
     "test_autoscaler_gcp.py",
+  ],
+  size = "small",
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_batch_node_provider_unit.py",
+    "test_batch_node_provider_integration.py",
     "test_cli_logger.py",
     "test_client_metadata.py",
     "test_client_terminate.py",
@@ -335,7 +350,7 @@ py_test(
   name = "test_autoscaler_yaml",
   size = "small",
   srcs = ["test_autoscaler_yaml.py"],
-  tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = [
     "additional_property.yaml",
@@ -361,6 +376,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_actor_retry.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_failure.py",
@@ -478,13 +494,21 @@ py_test(
     deps = ["//:ray_lib", ":conftest"]
 )
 
+py_test(
+    name = "test_runtime_env_container",
+    size = "large",
+    srcs = ["test_runtime_env_container.py"],
+    tags = ["exclusive", "team:core", "container"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 # TODO(barakmich): aws/ might want its own buildfile, or
 #    py_test_module_list should support subdirectories.
 py_test(
     name = "test_autoscaler_aws",
     size = "small",
     srcs = ["aws/test_autoscaler_aws.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "small_size_python_tests", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -642,7 +666,7 @@ py_test_module_list(
     "spark/test_utils.py",
     "spark/test_databricks_hook.py",
   ],
-  size = "large",
+  size = "enormous",
   tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
   data = [

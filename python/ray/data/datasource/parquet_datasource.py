@@ -375,11 +375,12 @@ class ParquetDatasource(Datasource):
                 )
             else:
                 default_read_batch_size_rows = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, to_batches_kwargs, columns, schema = (
+            block_udf, to_batches_kwargs, columns, schema, include_paths = (
                 self._block_udf,
                 self._to_batches_kwargs,
                 self._columns,
                 self._schema,
+                self._include_paths,
             )
             read_tasks.append(
                 ReadTask(
@@ -390,7 +391,7 @@ class ParquetDatasource(Datasource):
                         columns,
                         schema,
                         f,
-                        self._include_paths,
+                        include_paths,
                     ),
                     meta,
                 )
