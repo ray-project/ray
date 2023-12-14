@@ -13,6 +13,7 @@ from ray._private.ray_constants import (
 
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._private.ray_logging import setup_component_logger
+from ray._private.ray_constants import LOGGER_FORMAT
 from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -230,6 +231,7 @@ class RuntimeEnvAgent:
 
         self._logger = default_logger
         self._logging_params.update(filename=self.LOG_FILENAME)
+        self._logging_params.update(logging_format=LOGGER_FORMAT)
         self._logger = setup_component_logger(
             logger_name=default_logger.name, **self._logging_params
         )
@@ -288,7 +290,7 @@ class RuntimeEnvAgent:
 
     async def GetOrCreateRuntimeEnv(self, request):
         self._logger.info(
-            f"Got request from {request.source_process} to increase "
+            f"SANG-TODO Got request from {request.source_process} to increase "
             "reference for runtime env: "
             f"{request.serialized_runtime_env}."
         )
@@ -507,7 +509,7 @@ class RuntimeEnvAgent:
 
     async def DeleteRuntimeEnvIfPossible(self, request):
         self._logger.info(
-            f"Got request from {request.source_process} to decrease "
+            f"SANG-TODO Got request from {request.source_process} to decrease "
             "reference for runtime env: "
             f"{request.serialized_runtime_env}."
         )

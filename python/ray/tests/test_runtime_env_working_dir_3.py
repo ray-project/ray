@@ -17,7 +17,6 @@ from ray._private.test_utils import (
     check_local_files_gced,
     wait_for_condition,
     find_free_port,
-    skip_flaky_core_test_premerge,
 )
 
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -255,9 +254,7 @@ class TestGC:
 
     # @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
     @pytest.mark.parametrize("option", ["working_dir"])
-    @pytest.mark.parametrize(
-        "source", [lazy_fixture("tmp_working_dir")]
-    )
+    @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
     def test_detached_actor_gc(
         self,
         start_cluster,
@@ -268,6 +265,7 @@ class TestGC:
     ):
         """Tests that URIs for detached actors are GC'd only when they exit."""
         cluster, address = start_cluster
+        time.sleep(1)
 
         if option == "working_dir":
             ray.init(address, namespace="test", runtime_env={"working_dir": source})
@@ -321,11 +319,7 @@ class TestGC:
         assert not check_local_files_gced(cluster)
         print("check_local_files_gced() check passed.")
 
-        check_local_files_gced(cluster)
         ray.shutdown()
-        print("somehow removed?")
-        time.sleep(300)
-        check_local_files_gced(cluster)
         print("Ray has been shut down.")
 
         ray.init(address, namespace="test")
@@ -336,8 +330,7 @@ class TestGC:
         else:
             assert not check_internal_kv_gced()
         print(f'kv check 3 passed with source "{source}" and option "{option}".')
-        print("check result...")
-        time.sleep(300)
+        # time.sleep(300)
         assert not check_local_files_gced(cluster)
         print("check_local_files_gced() check passed.")
 

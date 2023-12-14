@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import hashlib
 import logging
@@ -646,8 +647,12 @@ async def download_and_unpack_package(
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
         assert local_dir != pkg_file, "Invalid pkg_file!"
         if local_dir.exists():
+            print("SANG-TODO already exits", file=sys.stderr)
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
         else:
+            print("SANG-TODO not exits", file=sys.stderr)
+            # import time
+            # time.sleep(10)
             protocol, pkg_name = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 if gcs_aio_client is None:
@@ -659,6 +664,7 @@ async def download_and_unpack_package(
                 code = await gcs_aio_client.internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
                 )
+                print("SANG-TODO got code", file=sys.stderr)
                 if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
                     code = None
                 if code is None:
@@ -677,6 +683,7 @@ async def download_and_unpack_package(
                     )
                 code = code or b""
                 pkg_file.write_bytes(code)
+                print("SANG-TODO writing pkg_file", file=sys.stderr)
 
                 if is_zip_uri(pkg_uri):
                     unzip_package(
