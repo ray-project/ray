@@ -8,7 +8,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.env_to_module.default_env_to_module import DefaultEnvToModule
 from ray.rllib.connectors.module_to_env.default_module_to_env import DefaultModuleToEnv
 from ray.rllib.connectors.learner.default_learner_connector import (
-    DefaultLearnerConnector
+    DefaultLearnerConnector,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
@@ -81,7 +81,9 @@ class ConnectorPipelineV2(ConnectorV2):
         if idx >= 0:
             del self.connectors[idx]
             self._fix_input_output_types()
-            logger.info(f"Removed connector {name_or_class} from {self.__class__.__name__}.")
+            logger.info(
+                f"Removed connector {name_or_class} from {self.__class__.__name__}."
+            )
         else:
             logger.warning(
                 f"Trying to remove a non-existent connector {name_or_class}."
@@ -268,8 +270,8 @@ class ConnectorPipelineV2(ConnectorV2):
         if len(self.connectors) > 0:
             self.input_type = self.connectors[0].input_type
             self.output_type = self.connectors[-1].output_type
-            #self.observation_space = self.connectors[-1].observation_space
-            #self.action_space = self.connectors[-1].action_space
+            # self.observation_space = self.connectors[-1].observation_space
+            # self.action_space = self.connectors[-1].action_space
         else:
             self.input_type = None
             self.output_type = None

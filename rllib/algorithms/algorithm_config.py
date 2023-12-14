@@ -1152,16 +1152,15 @@ class AlgorithmConfig(_Config):
             from ray.rllib.connectors.connector_v2 import ConnectorV2
             from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
-            if (
-                isinstance(val_, ConnectorV2)
-                and not isinstance(val_, ConnectorPipelineV2)
+            if isinstance(val_, ConnectorV2) and not isinstance(
+                val_, ConnectorPipelineV2
             ):
                 custom_connectors = [val_]
             else:
                 return val_
 
         from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
-            EnvToModulePipeline
+            EnvToModulePipeline,
         )
 
         return EnvToModulePipeline(
@@ -1182,16 +1181,15 @@ class AlgorithmConfig(_Config):
             from ray.rllib.connectors.connector_v2 import ConnectorV2
             from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
-            if (
-                    isinstance(val_, ConnectorV2)
-                    and not isinstance(val_, ConnectorPipelineV2)
+            if isinstance(val_, ConnectorV2) and not isinstance(
+                val_, ConnectorPipelineV2
             ):
                 custom_connectors = [val_]
             else:
                 return val_
 
         from ray.rllib.connectors.module_to_env.module_to_env_pipeline import (
-            ModuleToEnvPipeline
+            ModuleToEnvPipeline,
         )
 
         return ModuleToEnvPipeline(
@@ -1212,16 +1210,15 @@ class AlgorithmConfig(_Config):
             from ray.rllib.connectors.connector_v2 import ConnectorV2
             from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
-            if (
-                    isinstance(val_, ConnectorV2)
-                    and not isinstance(val_, ConnectorPipelineV2)
+            if isinstance(val_, ConnectorV2) and not isinstance(
+                val_, ConnectorPipelineV2
             ):
                 custom_connectors = [val_]
             else:
                 return val_
 
         from ray.rllib.connectors.learner.learner_connector_pipeline import (
-            LearnerConnectorPipeline
+            LearnerConnectorPipeline,
         )
 
         return LearnerConnectorPipeline(

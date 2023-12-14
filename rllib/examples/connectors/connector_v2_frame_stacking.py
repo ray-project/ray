@@ -17,7 +17,6 @@ from ray.rllib.env.wrappers.atari_wrappers import (
     WarpFrame,  # gray + resize
 )
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
 
 
 parser = argparse.ArgumentParser()
@@ -86,17 +85,24 @@ if __name__ == "__main__":
         (
             lambda cfg: (
                 EpisodicLifeEnv(  # each life is one episode
-                MaxAndSkipEnv(  # frameskip=4 and take max over these 4 frames
-                NoopResetEnv(  # perform n noops after a reset
-                # partial(FrameStack, k=4)(  # <- no env-based framestacking!
-                NormalizedImageEnv(
-                partial(WarpFrame, dim=64)(  # grayscale + resize
-                partial(gym.wrappers.TimeLimit, max_episode_steps=108000)(
-                    gym.make("ALE/Pong-v5", **dict(
-                        cfg, **{"render_mode": "rgb_array"}
-                    ))
+                    MaxAndSkipEnv(  # frameskip=4 and take max over these 4 frames
+                        NoopResetEnv(  # perform n noops after a reset
+                            # partial(FrameStack, k=4)(  # <- no env-based framestacking!
+                            NormalizedImageEnv(
+                                partial(WarpFrame, dim=64)(  # grayscale + resize
+                                    partial(
+                                        gym.wrappers.TimeLimit, max_episode_steps=108000
+                                    )(
+                                        gym.make(
+                                            "ALE/Pong-v5",
+                                            **dict(cfg, **{"render_mode": "rgb_array"})
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
                 )
-                )))))
             )
         ),
     )
@@ -125,7 +131,6 @@ if __name__ == "__main__":
         .training(
             # Use our frame stacking learner connector.
             learner_connector=_make_learner_connector,
-
             lambda_=0.95,
             kl_coeff=0.5,
             clip_param=0.1,

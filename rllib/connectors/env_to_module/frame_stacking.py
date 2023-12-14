@@ -17,16 +17,16 @@ class _FrameStackingConnector(ConnectorV2):
     """A connector piece that stacks the previous n observations into one."""
 
     def __init__(
-            self,
-            *,
-            # Base class constructor args.
-            input_observation_space: gym.Space,
-            input_action_space: gym.Space,
-            env: Optional[gym.Env] = None,
-            # Specific framestacking args.
-            num_frames: int = 1,
-            as_learner_connector: bool = False,
-            **kwargs,
+        self,
+        *,
+        # Base class constructor args.
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+        env: Optional[gym.Env] = None,
+        # Specific framestacking args.
+        num_frames: int = 1,
+        as_learner_connector: bool = False,
+        **kwargs,
     ):
         """Initializes a _FrameStackingConnector instance.
 
@@ -52,9 +52,7 @@ class _FrameStackingConnector(ConnectorV2):
 
         # Change our observation space according to the given stacking settings.
         self.observation_space = gym.spaces.Box(
-            low=np.repeat(
-                self.observation_space.low, repeats=self.num_frames, axis=-1
-            ),
+            low=np.repeat(self.observation_space.low, repeats=self.num_frames, axis=-1),
             high=np.repeat(
                 self.observation_space.high, repeats=self.num_frames, axis=-1
             ),
@@ -115,6 +113,4 @@ class _FrameStackingConnector(ConnectorV2):
         return input_
 
 
-FrameStackingEnvToModule = partial(
-    _FrameStackingConnector, as_learner_connector=False
-)
+FrameStackingEnvToModule = partial(_FrameStackingConnector, as_learner_connector=False)

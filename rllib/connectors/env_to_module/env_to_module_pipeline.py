@@ -36,11 +36,13 @@ class EnvToModulePipeline(ConnectorPipelineV2):
             len(self.connectors) == 0
             or type(self.connectors[-1]) is not DefaultEnvToModule
         ):
-            self.append(DefaultEnvToModule(
-                input_observation_space=self.observation_space,
-                input_action_space=self.action_space,
-                env=env,
-            ))
+            self.append(
+                DefaultEnvToModule(
+                    input_observation_space=self.observation_space,
+                    input_action_space=self.action_space,
+                    env=env,
+                )
+            )
 
     @override(ConnectorPipelineV2)
     def __call__(

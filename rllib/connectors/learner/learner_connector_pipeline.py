@@ -36,7 +36,9 @@ class LearnerConnectorPipeline(ConnectorPipelineV2):
             len(self.connectors) == 0
             or type(self.connectors[-1]) is not DefaultLearnerConnector
         ):
-            self.append(DefaultLearnerConnector(
-                input_observation_space=self.observation_space,
-                input_action_space=self.action_space,
-            ))
+            self.append(
+                DefaultLearnerConnector(
+                    input_observation_space=self.observation_space,
+                    input_action_space=self.action_space,
+                )
+            )
