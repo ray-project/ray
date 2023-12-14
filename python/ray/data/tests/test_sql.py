@@ -1,6 +1,15 @@
 import sqlite3
 import tempfile
 from typing import Generator
+from collections import namedtuple
+from unittest import mock
+
+import pandas as pd
+import requests
+from contextlib import contextmanager
+import uuid
+import pyarrow as pa
+import re
 
 import pytest
 
@@ -70,6 +79,192 @@ def test_write_sql_nonexistant_table(temp_database: str):
         dataset.write_sql(
             "INSERT INTO test VALUES(?)", lambda: sqlite3.connect(temp_database)
         )
+
+
+
+def test_databricks_uc_datasource():
+
+    MockResponse = namedtuple('Response', 'raise_for_status json content')
+
+    MockChunk = namedtuple("Chunk", "index, row_count byte_count data")
+
+    token = "test_token"
+    warehouse_id = "test_warehouse_id"
+
+    @contextmanager
+    def setup_mock(catalog, schema, query, expected_result_df, rows_per_chunk):
+
+        mock_chunks = []
+
+        num_rows = len(expected_result_df)
+        cur_pos = 0
+        index = 0
+
+        while cur_pos < rows_per_chunk:
+            if cur_pos + rows_per_chunk <= num_rows:
+                chunk_rows = rows_per_chunk
+            else:
+                chunk_rows = num_rows - cur_pos
+
+            chunk_df = expected_result_df[cur_pos: (cur_pos + chunk_rows)]
+            chunk_pa_table = pa.Table.from_pandas(chunk_df)
+            sink = pa.BufferOutputStream()
+            with pa.ipc.new_stream(sink, chunk_pa_table.schema) as writer:
+                writer.write_table(chunk_pa_table)
+
+            chunk_data = sink.getvalue()
+
+            mock_chunks.append(MockChunk(
+                index=index,
+                row_count=chunk_rows,
+                byte_count=len(chunk_data),
+                data=chunk_data,
+            ))
+            index += 1
+            cur_pos += rows_per_chunk
+
+        chunk_meta_json = [
+            {
+                "chunk_index": index,
+                "row_count": mock_chunk.row_count,
+                "byte_count": mock_chunk.byte_count,
+            }
+            for index, mock_chunk in enumerate(mock_chunks)
+        ]
+
+        valid_statement_ids = set()
+
+        def request_post_mock(url, data=None, json=None, **kwargs):
+            auth = kwargs["auth"]
+            headers = kwargs["headers"]
+
+            if url == "https://test_shard/api/2.0/sql/statements/":
+                assert auth == ("token", token)
+                assert headers == {"Content-Type": "application/json"}
+                assert data == {
+                    "statement": query,
+                    "warehouse_id": warehouse_id,
+                    "wait_timeout": "0s",
+                    "disposition": "EXTERNAL_LINKS",
+                    "format": "ARROW_STREAM",
+                    "catalog": catalog,
+                    "schema": schema,
+                }
+
+                statement_id = uuid.uuid4()
+                valid_statement_ids.add(statement_id)
+
+                return MockResponse(
+                    raise_for_status=lambda: None,
+                    json={
+                        "statement_id": statement_id,
+                        "status": {"state": "PENDING"},
+                    },
+                    content=b"",
+                )
+
+            assert False, "Invalid request."
+
+        def request_get_mock(url, params=None, **kwargs):
+            auth = kwargs["auth"]
+            headers = kwargs["headers"]
+
+            if match := re.match(r"https://test_shard/api/2\.0/sql/statements/(.*)/", url):
+                statement_id = match.group(1)
+                assert auth == ("token", token)
+                assert headers == {"Content-Type": "application/json"}
+
+                assert statement_id in valid_statement_ids
+
+                return MockResponse(
+                    raise_for_status=lambda: None,
+                    json={
+                        "status": {"state": "SUCCEEDED"},
+                        "manifest": {
+                            "truncated": False,
+                            "chunks": chunk_meta_json.reverse(),
+                        }
+                    },
+                    content=None,
+                )
+
+            if match := re.match(r"https://test_shard/api/2\.0/sql/statements/(.*)/result/chunks/(.*)", url):
+                assert auth == ("token", token)
+                assert headers == {"Content-Type": "application/json"}
+
+                statement_id = match.group(1)
+                chunk_index = match.group(2)
+
+                assert statement_id in valid_statement_ids
+
+                return MockResponse(
+                    raise_for_status=lambda: None,
+                    json={
+                        "external_links": [{
+                            "external_link": f"https://test_external_link/{chunk_index}",
+                        }]
+                    },
+                    content=None,
+                )
+
+            if match := re.match(r"https://test_external_link/(.*)", url):
+                assert auth is None
+                assert headers is None
+
+                chunk_index = match.group(1)
+
+                return MockResponse(
+                    raise_for_status=lambda: None,
+                    json=None,
+                    content=mock_chunks[chunk_index].data,
+                )
+
+            assert False, "Invalid request."
+
+        with mock.patch(requests.get, request_get_mock), mock.patch(requests.post, request_post_mock):
+            yield
+
+    expected_result_df = pd.DataFrame({
+        "c1": range(100),
+        "c2": map(lambda x: "str" + str(x), range(100)),
+    })
+    with setup_mock(
+        catalog="catalog1", schema="db1", query="select * from table1",
+        expected_result_df=expected_result_df,
+        rows_per_chunk=7,
+    ):
+        # test query with a table name
+        result = ray.data.read_databricks_tables(
+            warehouse_id=warehouse_id,
+            table="table1",
+            catalog="catalog1",
+            schema="db1",
+            parallelism=5,
+        ).to_pandas()
+
+        pd.testing.assert_frame_equal(result, expected_result_df)
+
+        # test query with SQL
+        result = ray.data.read_databricks_tables(
+            warehouse_id=warehouse_id,
+            query="select * from table1",
+            catalog="catalog1",
+            schema="db1",
+            parallelism=5,
+        ).to_pandas()
+
+        pd.testing.assert_frame_equal(result, expected_result_df)
+
+        # test larger parallelism
+        result = ray.data.read_databricks_tables(
+            warehouse_id=warehouse_id,
+            query="select * from table1",
+            catalog="catalog1",
+            schema="db1",
+            parallelism=100,
+        ).to_pandas()
+
+        pd.testing.assert_frame_equal(result, expected_result_df)
 
 
 if __name__ == "__main__":

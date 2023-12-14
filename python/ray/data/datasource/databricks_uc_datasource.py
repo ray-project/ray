@@ -3,6 +3,7 @@ import logging
 import time
 from typing import List, Optional
 from urllib.parse import urlencode, urljoin
+import numpy as np
 
 import pyarrow
 import requests
@@ -110,8 +111,10 @@ class DatabricksUCDatasource(Datasource):
         self._estimate_inmemory_data_size = sum(chunk["byte_count"] for chunk in chunks)
 
         def get_read_task(task_index, parallelism):
-            # 0 <= task_index < parallelism
-            chunk_index_list = list(range(task_index, parallelism, num_chunks))
+            # get chunk list to be read in this task and preserve original chunk order
+            chunk_index_list = list(
+                np.array_split(range(num_chunks), parallelism)[task_index]
+            )
 
             num_rows = sum(
                 chunks[chunk_index]["row_count"] for chunk_index in chunk_index_list
@@ -130,14 +133,9 @@ class DatabricksUCDatasource(Datasource):
 
             def read_fn():
                 for chunk_index in chunk_index_list:
-                    chunk_info = chunks[chunk_index]
-                    row_offset_param = urlencode(
-                        {"row_offset": chunk_info["row_offset"]}
-                    )
                     resolve_external_link_url = urljoin(
                         url_base,
-                        f"{statement_id}/result/chunks/{chunk_index}?"
-                        f"{row_offset_param}",
+                        f"{statement_id}/result/chunks/{chunk_index}"
                     )
 
                     resolve_response = requests.get(
@@ -151,9 +149,9 @@ class DatabricksUCDatasource(Datasource):
                     raw_response = requests.get(external_url, auth=None, headers=None)
                     raw_response.raise_for_status()
 
-                    arrow_table = pyarrow.ipc.open_stream(
-                        raw_response.content
-                    ).read_all()
+                    with pyarrow.ipc.open_stream(raw_response.content) as reader:
+                        arrow_table = reader.read_all()
+
                     yield arrow_table
 
             return ReadTask(read_fn=read_fn, metadata=metadata)
