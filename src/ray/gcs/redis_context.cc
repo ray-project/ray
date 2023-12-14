@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/redis_context.h"
+
 #include <sstream>
 
 #include "ray/common/asio/asio_util.h"
