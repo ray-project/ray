@@ -109,6 +109,12 @@ class CallbackReply {
 using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 
 class RedisContext;
+class MockRedisContext;
+
+template <typename ConnectType = redisAsyncContext>
+void RedisResponseFn(struct redisAsyncContext *async_context,
+                     void *raw_reply,
+                     void *privdata);
 struct RedisRequestContext {
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
@@ -116,12 +122,14 @@ struct RedisRequestContext {
                       RedisContext &parent_context,
                       std::vector<std::string> args);
 
-  template <typename ConnectType = redisAsyncContext>
-  static void RedisResponseFn(struct redisAsyncContext *async_context,
-                              void *raw_reply,
-                              void *privdata);
-
   void Run();
+
+  friend void RedisResponseFn<redisAsyncContext>(struct redisAsyncContext *async_context,
+                                                 void *raw_reply,
+                                                 void *privdata);
+  friend void RedisResponseFn<MockRedisContext>(struct redisAsyncContext *async_context,
+                                                void *raw_reply,
+                                                void *privdata);
 
  private:
   ExponentialBackOff exp_back_off_;

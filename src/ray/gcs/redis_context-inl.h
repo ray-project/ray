@@ -93,10 +93,10 @@ RedisAsyncContext *CreateAsyncContext(
   return new RedisAsyncContext(std::move(context));
 }
 
-template <typename ConnectType>
-void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_context,
-                                          void *raw_reply,
-                                          void *privdata) {
+template <typename ConnectType = redisAsyncContext>
+void RedisResponseFn(struct redisAsyncContext *async_context,
+                     void *raw_reply,
+                     void *privdata) {
   auto *request_cxt = static_cast<RedisRequestContext *>(privdata);
   auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
   // Error happened.

@@ -171,7 +171,7 @@ TEST_F(RedisContextTest, TestRedisMoved) {
           }));
 
   // Call the function
-  RedisRequestContext::RedisResponseFn<MockRedisContext>(
+  RedisResponseFn<MockRedisContext>(
       base_context, static_cast<void *>(&reply), static_cast<void *>(&privdata));
 
   // Wait for the second callback to happen.
