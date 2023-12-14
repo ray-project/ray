@@ -1,5 +1,5 @@
 import abc
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 

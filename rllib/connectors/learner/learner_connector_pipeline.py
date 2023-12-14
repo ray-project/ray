@@ -7,6 +7,7 @@ from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.connectors.learner.default_learner_connector import (
     DefaultLearnerConnector,
 )
+from ray.rllib.core.rl_module.rl_module import RLModule
 
 
 class LearnerConnectorPipeline(ConnectorPipelineV2):
@@ -17,7 +18,7 @@ class LearnerConnectorPipeline(ConnectorPipelineV2):
         input_observation_space: Optional[gym.Space],
         input_action_space: Optional[gym.Space],
         env: Optional[gym.Env] = None,
-        rl_module: Optional["RLModule"] = None,
+        rl_module: Optional[RLModule] = None,
         **kwargs,
     ):
         super().__init__(

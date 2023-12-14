@@ -87,7 +87,7 @@ if __name__ == "__main__":
                 EpisodicLifeEnv(  # each life is one episode
                     MaxAndSkipEnv(  # frameskip=4 and take max over these 4 frames
                         NoopResetEnv(  # perform n noops after a reset
-                            # partial(FrameStack, k=4)(  # <- no env-based framestacking!
+                            # partial(FrameStack, k=4)(  # <- no env-based framestacking
                             NormalizedImageEnv(
                                 partial(WarpFrame, dim=64)(  # grayscale + resize
                                     partial(

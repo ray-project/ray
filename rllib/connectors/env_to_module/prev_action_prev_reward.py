@@ -62,9 +62,9 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         **kwargs,
     ) -> Any:
         # This is a data-in-data-out connector, so we expect `input_` to be a dict
-        # with: key=column name, e.g. "obs" and value=[data to be processed by RLModule].
-        # We will just extract the most recent rewards and/or most recent actions from
-        # all episodes and store them inside the `input_` data dict.
+        # with: key=column name, e.g. "obs" and value=[data to be processed by
+        # RLModule]. We will just extract the most recent rewards and/or most recent
+        # actions from all episodes and store them inside the `input_` data dict.
 
         prev_a = []
         prev_r = []
@@ -82,9 +82,10 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                         episode.get_actions(
                             # Extract n actions from `ts - n` to `ts` (excluding `ts`).
                             indices=slice(ts - self.n_prev_actions, ts),
-                            # Make sure negative indices are NOT interpreted as "counting
-                            # from the end", but as absolute indices meaning they refer
-                            # to timesteps before 0 (which is the lookback buffer).
+                            # Make sure negative indices are NOT interpreted as
+                            # "counting from the end", but as absolute indices meaning
+                            # they refer to timesteps before 0 (which is the lookback
+                            # buffer).
                             neg_indices_left_of_zero=True,
                             # In case we are at the very beginning of the episode, e.g.
                             # ts==0, fill the left side with zero-actions.

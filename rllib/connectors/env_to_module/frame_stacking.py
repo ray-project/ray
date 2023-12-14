@@ -3,13 +3,12 @@ import numpy as np
 from typing import Any, List, Optional
 
 import gymnasium as gym
-import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import batch, get_base_struct_from_space
+from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 
 
@@ -72,8 +71,8 @@ class _FrameStackingConnector(ConnectorV2):
         **kwargs,
     ) -> Any:
         # This is a data-in-data-out connector, so we expect `input_` to be a dict
-        # with: key=column name, e.g. "obs" and value=[data to be processed by RLModule].
-        # We will add to `input_` the last n observations.
+        # with: key=column name, e.g. "obs" and value=[data to be processed by
+        # RLModule]. We will add to `input_` the last n observations.
 
         obs = []
         for episode in episodes:
@@ -88,9 +87,10 @@ class _FrameStackingConnector(ConnectorV2):
                             # Extract n observations from `ts` to `ts - n`
                             # (excluding `ts - n`).
                             indices=slice(ts - self.num_frames + 1, ts + 1),
-                            # Make sure negative indices are NOT interpreted as "counting
-                            # from the end", but as absolute indices meaning they refer
-                            # to timesteps before 0 (which is the lookback buffer).
+                            # Make sure negative indices are NOT interpreted as
+                            # "counting from the end", but as absolute indices meaning
+                            # they refer to timesteps before 0 (which is the lookback
+                            # buffer).
                             neg_indices_left_of_zero=True,
                             # In case we are at the very beginning of the episode, e.g.
                             # ts==0, fill the left side with zero-observations.

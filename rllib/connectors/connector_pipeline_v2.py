@@ -1,15 +1,8 @@
 from collections import defaultdict
 import logging
-from typing import Any, List, Optional, Union
-
-import gymnasium as gym
+from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.env_to_module.default_env_to_module import DefaultEnvToModule
-from ray.rllib.connectors.module_to_env.default_module_to_env import DefaultModuleToEnv
-from ray.rllib.connectors.learner.default_learner_connector import (
-    DefaultLearnerConnector,
-)
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
@@ -215,7 +208,7 @@ class ConnectorPipelineV2(ConnectorV2):
                 raise e
         return ConnectorPipelineV2(ctx, connectors)
 
-    def __str__(self, indentation: int = 0):
+    def __repr__(self, indentation: int = 0):
         return "\n".join(
             [" " * indentation + self.__class__.__name__]
             + [c.__str__(indentation + 4) for c in self.connectors]
@@ -270,6 +263,10 @@ class ConnectorPipelineV2(ConnectorV2):
         if len(self.connectors) > 0:
             self.input_type = self.connectors[0].input_type
             self.output_type = self.connectors[-1].output_type
+            # TODO (sven): Create some examples for pipelines, in which the spaces
+            #  are changed several times by the individual pieces.
+            # self.input_observation_space = self.connectors[0].input_observation_space
+            # self.input_action_space = self.connectors[0].input_action_space
             # self.observation_space = self.connectors[-1].observation_space
             # self.action_space = self.connectors[-1].action_space
         else:
