@@ -835,29 +835,37 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
 
   if (object_entry->second->count == 0) {
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
-    MEMFD_TYPE fd = object_entry->second->object.store_fd;
+    // If the fd may be unmapped, we wait for the plasma server to send a ReleaseReply.
+    // Otherwise, skip the reply to boost performance.
+    // Q: since both server and client knows this fd is fallback allocated, why do we
+    //    need to pass it in PlasmaReleaseRequest?
+    // A: becuase we wanna be idempotent, and in the 2nd call, the server does not know
+    //    about the object.
+    const MEMFD_TYPE fd = object_entry->second->object.store_fd;
+    bool may_unmap = object_entry->second->object.fallback_allocated;
     // Tell the store that the client no longer needs the object.
     RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
-    RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id));
-    std::vector<uint8_t> buffer;
-    RAY_RETURN_NOT_OK(
-        PlasmaReceive(store_conn_, MessageType::PlasmaReleaseReply, &buffer));
-    ObjectID released_object_id;
+    RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id, may_unmap));
+    if (may_unmap) {
+      // Now, since the object release may unmap the mmap, we wait for a reply.
+      std::vector<uint8_t> buffer;
+      RAY_RETURN_NOT_OK(
+          PlasmaReceive(store_conn_, MessageType::PlasmaReleaseReply, &buffer));
+      ObjectID released_object_id;
 
-    // `should_unmap` is set to true by the plasma server, when the mmap section is
-    // fallback-allocated and is no longer used. i.e. if the object ID is in the main
-    // memory, this boolean is always false.
-    bool should_unmap;
-    RAY_RETURN_NOT_OK(ReadReleaseReply(
-        buffer.data(), buffer.size(), &released_object_id, &should_unmap));
-    if (should_unmap) {
-      auto mmap_entry = mmap_table_.find(fd);
-      // Release call is idempotent: if we already released, it's ok.
-      if (mmap_entry != mmap_table_.end()) {
-        mmap_table_.erase(mmap_entry);
+      // `should_unmap` is set to true by the plasma server, when the mmap section is
+      // fallback-allocated and is no longer used.
+      bool should_unmap;
+      RAY_RETURN_NOT_OK(ReadReleaseReply(
+          buffer.data(), buffer.size(), &released_object_id, &should_unmap));
+      if (should_unmap) {
+        auto mmap_entry = mmap_table_.find(fd);
+        // Release call is idempotent: if we already released, it's ok.
+        if (mmap_entry != mmap_table_.end()) {
+          mmap_table_.erase(mmap_entry);
+        }
       }
     }
-
     auto iter = deletion_cache_.find(object_id);
     if (iter != deletion_cache_.end()) {
       deletion_cache_.erase(object_id);

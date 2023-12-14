@@ -464,7 +464,7 @@ void GcsActorManager::HandleGetNamedActorInfo(
     // The named actor was not found or the actor is already removed.
     std::stringstream stream;
     stream << "Actor with name '" << name << "' was not found.";
-    RAY_LOG(WARNING) << stream.str();
+    RAY_LOG(DEBUG) << stream.str();
     status = Status::NotFound(stream.str());
   } else {
     *reply->mutable_actor_table_data() = iter->second->GetActorTableData();
