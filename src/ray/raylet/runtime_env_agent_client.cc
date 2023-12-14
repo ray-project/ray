@@ -282,7 +282,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                                 std::function<void()>, uint32_t delay_ms)> delay_executor,
                             uint32_t agent_register_timeout_ms,
                             uint32_t agent_manager_retry_interval_ms,
-                            uint32_t session_pool_size = 1)
+                            uint32_t session_pool_size = 10)
       : io_context_(io_context),
         session_pool_(session_pool_size),
         address_(address),
