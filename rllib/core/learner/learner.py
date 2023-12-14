@@ -1,6 +1,6 @@
 import abc
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import json
 import logging
 import pathlib
