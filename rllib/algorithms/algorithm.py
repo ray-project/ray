@@ -867,8 +867,12 @@ class Algorithm(Trainable, AlgorithmBase):
                     "[train_results, env, env_ctx] as args!"
                 )
 
+            curriculum_metrics = ("episode_len_mean",
+                                  "episode_reward_mean",
+                                  "custom_metrics")
+            results_ref = ray.put({key: value for key, value in results.items() if key in curriculum_metrics})
             def fn(env, env_context, task_fn):
-                new_task = task_fn(results, env, env_context)
+                new_task = task_fn(ray.get(results_ref), env, env_context)
                 cur_task = env.get_task()
                 if cur_task != new_task:
                     env.set_task(new_task)
