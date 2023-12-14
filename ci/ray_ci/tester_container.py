@@ -109,7 +109,6 @@ class TesterContainer(Container):
             test_cmd += f"--test_env {env} "
         if test_arg:
             test_cmd += f"--test_arg {test_arg} "
-
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
         return subprocess.Popen(self.get_run_command(commands, gpu_ids))
