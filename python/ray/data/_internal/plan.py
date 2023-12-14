@@ -720,28 +720,6 @@ class ExecutionPlan:
     def stats_summary(self) -> DatasetStatsSummary:
         return self.stats().to_summary()
 
-    def _should_clear_input_blocks(
-        self,
-        blocks: BlockList,
-        stage_idx: int,
-    ):
-        """Whether the provided blocks should be cleared when passed into the stage.
-
-        Args:
-            blocks: The blocks that we may want to clear.
-            stage_idx: The position of the stage in the optimized after-snapshot chain.
-        """
-        if stage_idx != 0 or self._stages_before_snapshot:
-            # Not the first stage, always clear stage input blocks.
-            return True
-        elif isinstance(blocks, LazyBlockList):
-            # Always clear lazy input blocks since they can be recomputed.
-            return True
-        else:
-            # Otherwise, we have non-lazy input blocks that's the source of this
-            # execution plan, so we don't clear these.
-            return False
-
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
         return _is_lazy(self._in_blocks)
