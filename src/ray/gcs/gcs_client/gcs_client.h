@@ -278,6 +278,8 @@ class RAY_EXPORT PythonGcsClient {
   std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
   std::unique_ptr<rpc::autoscaler::AutoscalerStateService::Stub> autoscaler_stub_;
   std::shared_ptr<grpc::Channel> channel_;
+  // Connect is not thread safe, so add a mutex to protect it.
+  absl::Mutex connect_mutex_;
 };
 
 std::unordered_map<std::string, double> PythonGetResourcesTotal(

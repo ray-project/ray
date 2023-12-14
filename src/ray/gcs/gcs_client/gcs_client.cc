@@ -81,10 +81,7 @@ void GcsSubscriberClient::PubsubCommandBatch(
 }  // namespace
 
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
-    : options_(options), gcs_client_id_(gcs_client_id) {
-  RayLog::InstallFailureSignalHandler(nullptr, /*call_previous_handler=*/true);
-  RayLog::InstallTerminateHandler();
-}
+    : options_(options), gcs_client_id_(gcs_client_id) {}
 
 Status GcsClient::Connect(instrumented_io_context &io_service,
                           const ClusterID &cluster_id) {
@@ -162,12 +159,11 @@ Status HandleGcsError(rpc::GcsStatus status) {
 Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 int64_t timeout_ms,
                                 size_t num_retries) {
+  absl::MutexLock lock(&connect_mutex_);
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
-  if (channel_ == nullptr) {
-    RAY_LOG(INFO) << "1";
-  }
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
+  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count() << "addresss: " << this;
   if (cluster_id.IsNil()) {
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
@@ -203,11 +199,13 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   }
 
   RAY_CHECK(!cluster_id_.IsNil()) << "Unexpected nil cluster ID.";
+  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count() << "addresss: " << this;
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
   node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
   autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
+  RAY_LOG(INFO) << "channel_ count: " << channel_.use_count() << "addresss: " << this;
   return Status::OK();
 }
 
