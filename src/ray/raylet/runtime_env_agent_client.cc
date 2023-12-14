@@ -235,6 +235,7 @@ class SessionPool {
     connected_ = true;
     std::queue<std::shared_ptr<Session>> pending_req_for_connection;
     // Take out all pending req and enqueue again.
+    RAY_LOG(INFO) << "Runtime env agent is ready to accept requests. Pending sessions: " << pending_sessions_.size();
     while (!pending_sessions_.empty()) {
       auto pending = pending_sessions_.front();
       pending_sessions_.pop();
@@ -310,6 +311,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     RetryInvokeOnNotFoundWithDeadline<rpc::GetRuntimeEnvsInfoReply>(
         [this](SuccCallback<rpc::GetRuntimeEnvsInfoReply> succ_callback,
                FailCallback fail_callback) {
+          RAY_LOG(DEBUG) << "Check runtime env agent health...";
           rpc::GetRuntimeEnvsInfoRequest request;
           request.set_limit(1);
           std::string payload = request.SerializeAsString();
@@ -338,7 +340,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         },
         /*fail_callback=*/
         [=](ray::Status status) {
-          RAY_LOG(FATAL) << "Runtime environment is not ready to accept the requests.";
+          RAY_LOG(FATAL) << "Runtime env agent is cannot accept the requests. Check dashboard_agent.log for more details. Status: " << status;
         },
         current_time_ms() + agent_register_timeout_ms_,
         /*retry_interval*/ 10);
