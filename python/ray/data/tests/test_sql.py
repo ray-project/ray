@@ -255,6 +255,9 @@ def test_databricks_uc_datasource():
 
     MOCK_ENV = "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
     with setup_mock(), mock.patch.dict(os.environ, {MOCK_ENV: setup_mock_fn_path}):
+        ray.shutdown()
+        ray.init(num_cpus=4)
+
         # test query with a table name
         result = ray.data.read_databricks_tables(
             warehouse_id=warehouse_id,
