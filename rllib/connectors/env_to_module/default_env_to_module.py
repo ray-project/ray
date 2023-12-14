@@ -1,11 +1,11 @@
-from typing import Any, List
+from typing import Any, List, Optional
 
 import numpy as np
 
 import tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
@@ -32,9 +32,12 @@ class DefaultEnvToModule(ConnectorV2):
     @override(ConnectorV2)
     def __call__(
         self,
-        input_: Any,
+        *,
+        rl_module: RLModule,
+        input_: Optional[Any] = None,
         episodes: List[EpisodeType],
-        ctx: ConnectorContextV2,
+        explore: Optional[bool] = None,
+        persistent_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         # If observations cannot be found in `input`, add the most recent ones (from all
@@ -50,10 +53,7 @@ class DefaultEnvToModule(ConnectorV2):
         # If our module is stateful:
         # - Add the most recent STATE_OUTs to `input_`.
         # - Make all data in `input_` have a time rank (T=1).
-        if ctx.rl_module.is_stateful():
-            # Make all other inputs have an additional T=1 axis.
-            input_ = tree.map_structure(lambda s: np.expand_dims(s, axis=1), input_)
-
+        if rl_module.is_stateful():
             # Collect all most recently computed STATE_OUT (or use initial states from
             # RLModule if at beginning of episode).
             states = []
@@ -64,11 +64,14 @@ class DefaultEnvToModule(ConnectorV2):
                 # TODO (sven): Generalize to MultiAgentEpisodes.
                 # Episode just started -> Get initial state from our RLModule.
                 if len(episode) == 0:
-                    state = ctx.rl_module.get_initial_state()
+                    state = rl_module.get_initial_state()
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:
                     state = episode.extra_model_outputs[STATE_OUT][-1]
                 states.append(state)
+
+            # Make all other inputs have an additional T=1 axis.
+            input_ = tree.map_structure(lambda s: np.expand_dims(s, axis=1), input_)
 
             # Batch states (from list of individual vector sub-env states).
             # Note that state ins should NOT have the extra time dimension.

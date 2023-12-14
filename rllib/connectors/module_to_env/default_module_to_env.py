@@ -1,11 +1,11 @@
-from typing import Any, List
+from typing import Any, List, Optional
 
 import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.models.base import STATE_OUT
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
@@ -40,17 +40,22 @@ class DefaultModuleToEnv(ConnectorV2):
     @override(ConnectorV2)
     def __call__(
         self,
+        *,
+        rl_module: RLModule,
         input_: Any,
         episodes: List[EpisodeType],
-        ctx: ConnectorContextV2,
+        explore: Optional[bool] = None,
+        persistent_data: Optional[dict] = None,
+        **kwargs,
     ) -> Any:
+
         # Loop through all modules that created some output.
         # for mid in input_.keys():
         #    sa_module = ctx.rl_module.get_module(module_id=mid)
 
         # If our RLModule is stateful, remove the T=1 axis from all model outputs
         # (except the state outs, which never have this extra time axis).
-        if ctx.rl_module.is_stateful():
+        if rl_module.is_stateful():
             state = input_.pop(STATE_OUT, None)
             input_ = tree.map_structure(lambda s: np.squeeze(s, axis=1), input_)
             if state:
@@ -60,17 +65,17 @@ class DefaultModuleToEnv(ConnectorV2):
         # Create a new action distribution object.
         action_dist = None
         if SampleBatch.ACTION_DIST_INPUTS in input_:
-            if ctx.explore:
-                action_dist_class = ctx.rl_module.get_exploration_action_dist_cls()
+            if explore:
+                action_dist_class = rl_module.get_exploration_action_dist_cls()
             else:
-                action_dist_class = ctx.rl_module.get_inference_action_dist_cls()
+                action_dist_class = rl_module.get_inference_action_dist_cls()
             action_dist = action_dist_class.from_logits(
                 input_[SampleBatch.ACTION_DIST_INPUTS]
             )
 
             # TODO (sven): Should this not already be taken care of by RLModule's
             #  `get_...action_dist_cls()` methods?
-            if not ctx.explore:
+            if not explore:
                 action_dist = action_dist.to_deterministic()
 
         # If `forward_...()` returned actions, use them here as-is.
@@ -93,3 +98,12 @@ class DefaultModuleToEnv(ConnectorV2):
             input_[SampleBatch.ACTION_LOGP] = action_dist.logp(actions)
 
         return input_
+
+    # @override(Connector)
+    # def serialize(self):
+    #    return ClipActions.__name__, None
+
+    # @staticmethod
+    # TODO
+    # def from_state(ctx: ConnectorContext, params: Any):
+    #    return ClipActions(ctx)

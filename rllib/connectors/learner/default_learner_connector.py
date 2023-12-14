@@ -1,18 +1,14 @@
 from functools import partial
-from typing import Any, List
+from typing import Any, List, Optional
 
 import numpy as np
 import tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
-from ray.rllib.connectors.utils.zero_padding import (
-    create_mask_and_seq_lens,
-    split_and_pad,
-    split_and_pad_single_record,
-)
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import EpisodeType
 
@@ -42,11 +38,15 @@ class DefaultLearnerConnector(ConnectorV2):
     pass-through.
     """
 
+    @override(ConnectorV2)
     def __call__(
         self,
+        *,
+        rl_module: RLModule,
         input_: Any,
         episodes: List[EpisodeType],
-        ctx: ConnectorContextV2,
+        explore: Optional[bool] = None,
+        persistent_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         # If episodes are provided, extract the essential data from them, but only if
@@ -58,12 +58,12 @@ class DefaultLearnerConnector(ConnectorV2):
         data_dicts = [episode.get_data_dict() for episode in episodes]
 
         state_in = None
-        T = ctx.rl_module.config.model_config_dict.get("max_seq_len")
+        T = rl_module.config.model_config_dict.get("max_seq_len")
 
         # RLModule is stateful and STATE_IN is not found in `input_` (user's custom
         # connectors have not provided this information yet) -> Perform separate
         # handling of STATE_OUT/STATE_IN keys:
-        if ctx.rl_module.is_stateful() and STATE_IN not in input_:
+        if rl_module.is_stateful() and STATE_IN not in input_:
             if T is None:
                 raise ValueError(
                     "You are using a stateful RLModule and are not providing custom "
@@ -72,17 +72,11 @@ class DefaultLearnerConnector(ConnectorV2):
                     "You can set this dict and/or override keys in it via "
                     "`config.training(model={'max_seq_len': x})`."
                 )
-
-            # Before adding anything to `input_`, add the time axis to existing data.
-            input_ = tree.map_structure(
-                lambda s: split_and_pad_single_record(s, episodes, T=T),
-                input_,
-            )
-
+            # Get model init state.
+            init_state = convert_to_numpy(rl_module.get_initial_state())
             # Get STATE_OUTs for all episodes and only keep those (as STATE_INs) that
             # are located at the `max_seq_len` edges (state inputs to RNNs only have a
             # B-axis, no T-axis).
-            init_state = convert_to_numpy(ctx.rl_module.get_initial_state())
             state_ins = []
             for episode, data_dict in zip(episodes, data_dicts):
                 # Remove state outs (should not be part of the T-axis rearrangements).
@@ -101,7 +95,7 @@ class DefaultLearnerConnector(ConnectorV2):
                             # continuation chunk) -> Use previous chunk's last STATE_OUT
                             # as initial state.
                             else episode.get_extra_model_outputs(
-                                key=STATE_OUT, indices=-len(episode) - 1
+                                key=STATE_OUT, indices=-1, neg_indices_left_of_zero=True
                             )
                         ),
                         state_outs,
@@ -109,6 +103,13 @@ class DefaultLearnerConnector(ConnectorV2):
                 )
             # Concatenate the individual episodes' STATE_INs.
             state_in = tree.map_structure(lambda *s: np.concatenate(s), *state_ins)
+
+            # Before adding anything else to the `input_`, add the time axis to existing
+            # data.
+            input_ = tree.map_structure(
+                lambda s: split_and_pad_single_record(s, episodes, T=T),
+                input_,
+            )
 
             # Set the reduce function for all the data we might still have to extract
             # from our list of episodes. This function takes a list of data (e.g. obs)
@@ -151,7 +152,7 @@ class DefaultLearnerConnector(ConnectorV2):
 
         # Now that all "normal" fields are time-dim'd and zero-padded, add
         # the STATE_IN column to `input_`.
-        if ctx.rl_module.is_stateful():
+        if rl_module.is_stateful():
             input_[STATE_IN] = state_in
             # Also, create the loss mask (b/c of our now possibly zero-padded data) as
             # well as the seq_lens array and add these to `input_` as well.
@@ -164,3 +165,67 @@ class DefaultLearnerConnector(ConnectorV2):
             )
 
         return input_
+
+
+def split_and_pad(episodes_data, T):
+    all_chunks = []
+
+    for data in episodes_data:
+        num_chunks = int(np.ceil(data.shape[0] / T))
+
+        for i in range(num_chunks):
+            start_index = i * T
+            end_index = start_index + T
+
+            # Extract the chunk
+            chunk = data[start_index:end_index]
+
+            # Pad the chunk if it's shorter than T
+            if chunk.shape[0] < T:
+                padding_shape = [(0, T - chunk.shape[0])] + [
+                    (0, 0) for _ in range(chunk.ndim - 1)
+                ]
+                chunk = np.pad(chunk, pad_width=padding_shape, mode="constant")
+
+            all_chunks.append(chunk)
+
+    # Combine all chunks into a single array
+    result = np.concatenate(all_chunks, axis=0)
+
+    # Reshape the array to include the time dimension T.
+    # The new shape should be (-1, T) + original dimensions (excluding the batch
+    # dimension)
+    result = result.reshape((-1, T) + result.shape[1:])
+
+    return result
+
+
+def split_and_pad_single_record(data, episodes, T):
+    episodes_data = []
+    idx = 0
+    for episode in episodes:
+        len_ = len(episode)
+        episodes_data.append(data[idx : idx + len_])
+        idx += len_
+    return split_and_pad(episodes_data, T)
+
+
+def create_mask_and_seq_lens(episode_lens, T):
+    mask = []
+    seq_lens = []
+    for episode_len in episode_lens:
+        len_ = min(episode_len, T)
+        seq_lens.append(len_)
+        row = [1] * len_ + [0] * (T - len_)
+        mask.append(row)
+
+        # Handle sequence lengths greater than T.
+        overflow = episode_len - T
+        while overflow > 0:
+            len_ = min(overflow, T)
+            seq_lens.append(len_)
+            extra_row = [1] * len_ + [0] * (T - len_)
+            mask.append(extra_row)
+            overflow -= T
+
+    return np.array(mask, dtype=np.bool_), np.array(seq_lens, dtype=np.int32)

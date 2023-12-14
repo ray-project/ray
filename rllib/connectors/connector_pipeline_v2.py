@@ -1,12 +1,16 @@
 from collections import defaultdict
 import logging
-from typing import Any, List, Optional, Type, Union
+from typing import Any, List, Optional, Union
+
+import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.connectors.env_to_module.default_env_to_module import DefaultEnvToModule
 from ray.rllib.connectors.module_to_env.default_module_to_env import DefaultModuleToEnv
-from ray.rllib.utils.annotations import override
+from ray.rllib.connectors.learner.default_learner_connector import (
+    DefaultLearnerConnector
+)
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 from ray.util.timer import _Timer
