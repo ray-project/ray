@@ -288,7 +288,7 @@ Getting and setting state
 
             # Only get the RLModule weights.
             module_state = learner.get_module_state()
-            learner.module.set_module_state(module_state)
+            learner.module.set_state(module_state)
 
         You can set and get the weights of a :py:class:`~ray.rllib.core.learner.learner.Learner` 
         using :py:meth:`~ray.rllib.core.learner.learner.Learner.set_state` 
@@ -300,7 +300,6 @@ Getting and setting state
 
 .. testcode::
 	:hide:
-    :skipif: True
 
 	import shutil
 	import tempfile
@@ -317,7 +316,6 @@ Checkpointing
     .. tab-item:: Checkpointing a LearnerGroup
 
         .. testcode::
-            :skipif: True
 
             learner_group.save_state(LEARNER_GROUP_CKPT_DIR)
             learner_group.load_state(LEARNER_GROUP_CKPT_DIR)
@@ -330,7 +328,6 @@ Checkpointing
     .. tab-item:: Checkpointing a Learner
 
         .. testcode::
-            :skipif: True
 
             learner.save_state(LEARNER_CKPT_DIR)
             learner.load_state(LEARNER_CKPT_DIR)
@@ -367,11 +364,11 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
 
 .. testcode::
     :hide:
-    :skipif: True
 
-    from typing import Any, Dict, DefaultDict, Mapping
+    from typing import Any, Dict, DefaultDict
 
-    from ray.rllib.core.learner.learner import LearnerHyperparameters, Learner
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.core.learner.learner import Learner
     from ray.rllib.core.learner.torch.torch_learner import TorchLearner
     from ray.rllib.core.rl_module.rl_module import ModuleID
     from ray.rllib.policy.sample_batch import SampleBatch
@@ -380,7 +377,6 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
     from ray.rllib.utils.typing import TensorType
 
 .. testcode::
-    :skipif: True
 
     class BCTorchLearner(TorchLearner):
 
@@ -389,10 +385,10 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
             self,
             *,
             module_id: ModuleID,
-            hps: LearnerHyperparameters,
+            config: AlgorithmConfig = None,
             batch: NestedDict,
-            fwd_out: Mapping[str, TensorType],
-        ) -> Mapping[str, Any]:
+            fwd_out: Dict[str, TensorType],
+        ) -> TensorType:
 
             # standard behavior cloning loss 
             action_dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
@@ -402,16 +398,15 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
 
             return loss
 
-
         @override(Learner)
         def compile_results(
             self,
             *,
-            batch: NestedDict,
-            fwd_out: Mapping[str, Any],
-            loss_per_module: Mapping[str, TensorType],
+            batch: MultiAgentBatch,
+            fwd_out: Dict[str, Any],
+            loss_per_module: Dict[str, TensorType],
             metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
-        ) -> Mapping[str, Any]:
+        ) -> Dict[str, Any]:
 
             results = super().compile_results(
                 batch=batch,
