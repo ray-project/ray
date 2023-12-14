@@ -1,13 +1,9 @@
-torch==2.0.0
-torchvision==0.15.1
-torchaudio==2.0.1
 deepspeed
 fairscale
 transformers>=4.31.0
 dataset
 accelerate
 evaluate
-bitsandbytes
 wandb
 pytorch-lightning
 protobuf<3.21.0
@@ -15,4 +11,4 @@ torchmetrics
 lm_eval==0.3.0
 tiktoken==0.1.2
 sentencepiece
-peft @ git+https://github.com/huggingface/peft.git@08368a1fba16de09756f067637ff326c71598fb3
+peft==0.7.0
