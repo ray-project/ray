@@ -1223,8 +1223,11 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::AnnounceWorkerPort: {
     ProcessAnnounceWorkerPortMessage(client, message_data);
   } break;
-  case protocol::MessageType::TaskDone: {
-    HandleWorkerAvailable(client);
+  case protocol::MessageType::ActorCreationTaskDone: {
+    if (registered_worker) {
+      // Worker may send this message after it was disconnected.
+      HandleWorkerAvailable(registered_worker);
+    }
   } break;
   case protocol::MessageType::DisconnectClient: {
     ProcessDisconnectClientMessage(client, message_data);
@@ -1400,13 +1403,8 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
   worker->Connect(port);
   if (is_worker) {
     worker_pool_.OnWorkerStarted(worker);
-    HandleWorkerAvailable(worker->Connection());
+    HandleWorkerAvailable(worker);
   }
-}
-
-void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleWorkerAvailable(worker);
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
