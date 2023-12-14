@@ -71,7 +71,8 @@ class DashboardTester:
                 options_dict = {"node_id": node_id, "glob": glob_filter}
                 url = (
                     f"{self.dashboard_url}{endpoint}?"
-                    f"{urllib.parse.urlencode(options_dict)}")
+                    f"{urllib.parse.urlencode(options_dict)}"
+                )
             else:
                 url = f"{self.dashboard_url}{endpoint}"
 
