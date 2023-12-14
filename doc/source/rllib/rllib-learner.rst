@@ -169,7 +169,7 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
                     vf_loss_coeff=0.5
                 )
             )
-            # Construct a new LearnerGroup using our config object.
+            # Construct a new Learner using our config object.
             learner = config.build_learner(env=env)
 
 
@@ -179,9 +179,14 @@ Updates
 .. testcode::
     :hide:
 
-    from ray.rllib.policy.sample_batch import (DEFAULT_POLICY_ID, SampleBatch, 
-        MultiAgentBatch)
+    import time
+
     from ray.rllib.evaluation.postprocessing import Postprocessing
+    from ray.rllib.policy.sample_batch import (
+        DEFAULT_POLICY_ID,
+        SampleBatch,
+        MultiAgentBatch,
+    )
 
     DUMMY_BATCH = {
         SampleBatch.OBS: np.array(
@@ -229,7 +234,17 @@ Updates
 
             # This is a non-blocking update. The results are returned in a future
             # call to `async_update`
+            _ = learner_group.async_update(DUMMY_BATCH)
+
+            # Artificially wait for async request to be done to get the results
+            # in the next call to `LearnerGroup.async_update()`.
+            time.sleep(5)
             results = learner_group.async_update(DUMMY_BATCH)
+            # `results` is a list of results dict. The items in the list represent the different
+            # remote results from the different calls to `async_update()`.
+            assert len(results) > 0
+            # Each item is a results dict, already reduced over the n Learner workers.
+            assert isinstance(results[0], dict), results[0]
 
             # This is an additional non-gradient based update.
             learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)
@@ -286,7 +301,7 @@ Getting and setting state
             state = learner.get_state()
             learner.set_state(state)
 
-            # Only get the RLModule weights.
+            # Only get the RLModule weights (as numpy arrays).
             module_state = learner.get_module_state()
             learner.module.set_state(module_state)
 
@@ -301,7 +316,6 @@ Getting and setting state
 .. testcode::
 	:hide:
 
-	import shutil
 	import tempfile
 
 	LEARNER_CKPT_DIR = str(tempfile.TemporaryDirectory())
@@ -370,11 +384,11 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.core.learner.learner import Learner
     from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-    from ray.rllib.core.rl_module.rl_module import ModuleID
     from ray.rllib.policy.sample_batch import SampleBatch
     from ray.rllib.utils.annotations import override
     from ray.rllib.utils.nested_dict import NestedDict
-    from ray.rllib.utils.typing import TensorType
+    from ray.rllib.utils.numpy import convert_to_numpy
+    from ray.rllib.utils.typing import ModuleID, TensorType
 
 .. testcode::
 

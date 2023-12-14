@@ -1185,7 +1185,7 @@ class Learner:
             #  step here.
             results.append(convert_to_numpy(result))
 
-        batch = self._set_slicing_by_batch_id(batch, value=False)
+        self._set_slicing_by_batch_id(batch, value=False)
 
         # Reduce results across all minibatches, if necessary.
 
