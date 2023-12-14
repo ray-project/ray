@@ -11,7 +11,7 @@ from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
 )
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
@@ -33,7 +33,7 @@ class InstanceLauncherTest(unittest.TestCase):
             EventSummarizer(),
             self.availability_tracker,
         )
-        self.instance_config_provider = NodeProviderConfig(
+        self.instance_config_provider = AutoscalingConfig(
             load_test_config("test_ray_complex.yaml")
         )
         self.node_provider = NodeProviderAdapter(

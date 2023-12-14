@@ -17,18 +17,11 @@ class Provider(Enum):
     LOCAL = 6
 
 
-class IConfigReader(ABC):
-    """An interface for reading cluster config."""
-
-    @abstractmethod
-    def get_cluster_config(self) -> ClusterConfig:
-        """Returns the cluster config."""
-        pass
 
 
-class NodeProviderConfig(object):
+class AutoscalingConfig(object):
     """
-    NodeProviderConfig is the helper class to provide instance
+    AutoscalingConfig is the helper class to provide autoscaling
     related configs.
     """
 
@@ -185,3 +178,17 @@ class NodeProviderConfig(object):
             return Provider.KUBERAY
         else:
             return Provider.UNKNOWN
+
+
+class IConfigReader(ABC):
+    """An interface for reading cluster config."""
+
+    @abstractmethod
+    def get_cluster_config(self) -> ClusterConfig:
+        """Returns the cluster config."""
+        pass
+
+    @abstractmethod
+    def get_autoscaling_config(self) -> AutoscalingConfig:
+        """Returns the autoscaling config."""
+        pass

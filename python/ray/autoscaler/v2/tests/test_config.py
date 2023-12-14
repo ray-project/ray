@@ -7,12 +7,12 @@ import yaml
 
 from ray._private.test_utils import load_test_config
 from ray.autoscaler import AUTOSCALER_DIR_PATH
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 
 
 def test_simple():
     raw_config = load_test_config("test_multi_node.yaml")
-    config = NodeProviderConfig(raw_config)
+    config = AutoscalingConfig(raw_config)
     assert config.get_node_config("head_node") == {"InstanceType": "m5.large"}
     assert config.get_docker_config("head_node") == {
         "image": "anyscale/ray-ml:latest",
@@ -24,7 +24,7 @@ def test_simple():
 
 def test_complex():
     raw_config = load_test_config("test_ray_complex.yaml")
-    config = NodeProviderConfig(raw_config)
+    config = AutoscalingConfig(raw_config)
     assert config.get_head_setup_commands() == [
         "echo a",
         "echo b",
@@ -83,7 +83,7 @@ def test_complex():
 def test_multi_provider_instance_type():
     def load_config(file):
         path = os.path.join(AUTOSCALER_DIR_PATH, file)
-        return NodeProviderConfig(
+        return AutoscalingConfig(
             yaml.safe_load(open(path).read()), skip_content_hash=True
         )
 
