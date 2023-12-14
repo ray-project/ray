@@ -34,10 +34,10 @@ from ray.dashboard.modules.job.pydantic_models import (
     JobType,
 )
 from ray.dashboard.modules.job.utils import (
-    parse_and_validate_request,
     get_driver_jobs,
     find_job_by_ids,
 )
+from ray.dashboard.modules.job.internal_utils import parse_and_validate_request
 from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
