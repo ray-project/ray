@@ -172,9 +172,16 @@ class ProcessFD {
     // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
     // file descriptors into the child process, as that can be problematic.
     int pipefds[2];  // Create pipe to get PID & track lifetime
+    // Create pipe to get PID & track lifetime from child -> parent.
+    int parent_lifetime_pipe[2];
+
     if (pipe(pipefds) == -1) {
       pipefds[0] = pipefds[1] = -1;
     }
+    if (pipe(parent_lifetime_pipe) == -1) {
+      parent_lifetime_pipe[0] = parent_lifetime_pipe[1] = -1;
+    }
+
     pid = pipefds[1] != -1 ? fork() : -1;
     if (pid <= 0 && pipefds[0] != -1) {
       close(pipefds[0]);  // not the parent, so close the read end of the pipe
@@ -184,6 +191,18 @@ class ProcessFD {
       close(pipefds[1]);  // not the child, so close the write end of the pipe
       pipefds[1] = -1;
     }
+
+    if (pid <= 0 && parent_lifetime_pipe[1] != -1) {
+      // Child. Close sthe write end of the pipe from child.
+      close(parent_lifetime_pipe[1]);  
+      parent_lifetime_pipe[1] = -1;
+    }
+    if (pid != 0 && parent_lifetime_pipe[0] != -1) {
+      // Parent. Close the read end of the pipe.
+      close(parent_lifetime_pipe[0]);
+      parent_lifetime_pipe[0] = -1;
+    }
+
     if (pid == 0) {
       // Child process case. Reset the SIGCHLD handler.
       signal(SIGCHLD, SIG_DFL);
@@ -191,6 +210,10 @@ class ProcessFD {
       if (pid_t pid2 = decouple ? fork() : 0) {
         _exit(pid2 == -1 ? errno : 0);  // Parent of grandchild; must exit
       }
+      // Redirect the read pipe to stdin so that child can track the
+      // parent lifetime.
+      dup2(parent_lifetime_pipe[0], STDIN_FILENO);
+
       // This is the spawned process. Any intermediate parent is now dead.
       pid_t my_pid = getpid();
       if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {

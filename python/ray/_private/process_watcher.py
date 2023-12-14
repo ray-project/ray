@@ -60,8 +60,24 @@ def create_check_raylet_task(log_dir, gcs_address, parent_dead_callback, loop):
         raise RuntimeError("can't check raylet process in Windows.")
     raylet_pid = get_raylet_pid()
     return run_background_task(
-        _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback)
+        # _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback)
+        check_parent_new_impl(loop, parent_dead_callback)
     )
+
+
+async def check_parent_new_impl(loop, parent_dead_callback):
+    while True:
+        def read_pipe():
+            # stdin is the pipe from the parents
+            data = sys.stdin.readline()
+            return data
+
+        # Read input asynchronously
+        input_data = await loop.run_in_executor(None, read_pipe)
+        if len(input_data) == 0:
+            # cannot read bytes from parent == parent is dead.
+            parent_dead_callback()
+            sys.exit(0)
 
 
 async def _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback):
