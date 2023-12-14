@@ -396,7 +396,10 @@ def kill_process_by_name(name, SIGKILL=False):
 
 
 def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "utf-8"):
-    """Run a driver as a separate process.
+    """Run a driver as a separate process. The script is saved in a temp dir as
+    "**/ray/tests/**.py" so that it can import internal third party libraries.
+
+    See python/ray/_private/internal_third_party.py
 
     Args:
         driver_script: A string to run as a Python script.
@@ -405,26 +408,40 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     Returns:
         The script's output.
     """
-    proc = subprocess.Popen(
-        [sys.executable, "-"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    with proc:
-        output = proc.communicate(driver_script.encode(encoding=encode))[0]
-        if proc.returncode:
-            print(ray._private.utils.decode(output, encode_type=encode))
-            raise subprocess.CalledProcessError(
-                proc.returncode, proc.args, output, proc.stderr
-            )
-        out = ray._private.utils.decode(output, encode_type=encode)
-    return out
+    with tempfile.TemporaryDirectory() as temp_dir:
+        script_dir = os.path.join(temp_dir, "ray", "tests")
+        os.makedirs(script_dir)
+
+        # Write the script to a temporary file in the subdirectory
+        script_path = os.path.join(script_dir, "run_string_as_driver_script.py")
+        with open(script_path, "w") as script_file:
+            script_file.write(driver_script)
+
+        # Execute the script
+        proc = subprocess.Popen(
+            [sys.executable, script_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+        with proc:
+            output = proc.communicate()[0]
+            if proc.returncode:
+                print(ray._private.utils.decode(output, encode_type=encode))
+                raise subprocess.CalledProcessError(
+                    proc.returncode, proc.args, output, proc.stderr
+                )
+            out = ray._private.utils.decode(output, encode_type=encode)
+        return out
 
 
 def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
-    """Start a driver as a separate process and return immediately.
+    """Start a driver as a separate process and return immediately. The script is saved
+    in a temp dir as "**/ray/tests/**.py" so that it can import internal third party
+    libraries.
+
+    See python/ray/_private/internal_third_party.py
+
 
     Args:
         driver_script: A string to run as a Python script.
@@ -432,25 +449,24 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
     Returns:
         A handle to the driver process.
     """
-    script = "; ".join(
-        [
-            "import sys",
-            "script = sys.stdin.read()",
-            "sys.stdin.close()",
-            "del sys",
-            'exec("del script\\n" + script)',
-        ]
-    )
-    proc = subprocess.Popen(
-        [sys.executable, "-c", script],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    proc.stdin.write(driver_script.encode("ascii"))
-    proc.stdin.close()
-    return proc
+    with tempfile.TemporaryDirectory() as temp_dir:
+        script_dir = os.path.join(temp_dir, "ray", "tests")
+        os.makedirs(script_dir)
+
+        script_path = os.path.join(
+            script_dir, "run_string_as_driver_nonblocking_script.py"
+        )
+        with open(script_path, "w") as script_file:
+            script_file.write(driver_script)
+
+        # Start the script execution in non-blocking mode
+        proc = subprocess.Popen(
+            [sys.executable, script_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        return proc
 
 
 def convert_actor_state(state):
