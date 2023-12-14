@@ -612,7 +612,7 @@ def test_named_actor_workloads(ray_start_regular_with_external_redis):
 
     print("GCS is killed")
     ray.worker._global_node.kill_gcs_server()
-    
+
     # detached actor should keep working
     assert ray.get(c.r.remote(10)) == 10
 
