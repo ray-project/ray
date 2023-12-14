@@ -223,41 +223,49 @@ todo_include_todos = False
 # and is slow (it needs to download the linked website).
 linkcheck_anchors = False
 
-# Only check external links, i.e. the ones starting with http:// or https://.
-linkcheck_ignore = [
-    r"^((?!http).)*$",  # exclude links not starting with http
-    "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf",  # broken
-    "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
-    # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
-    "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
-    # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
-    "https://scikit-optimize.github.io/stable/modules/",
-    "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
-    "https://speakerdeck.com/*",  # forbidden for bots
-    r"https://huggingface.co/*",  # seems to be flaky
-    r"https://www.meetup.com/*",  # seems to be flaky
-    r"https://www.pettingzoo.ml/*",  # seems to be flaky
-    r"http://localhost[:/].*",  # Ignore localhost links
-    r"^http:/$",  # Ignore incomplete links
-    # 403 Client Error: Forbidden for url.
-    # They ratelimit bots.
-    "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
-    # 403 Client Error: Forbidden for url.
-    # They ratelimit bots.
-    "https://www.researchgate.net/publication/222573328_Stochastic_Gradient_Boosting",
-    "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
-    "https://dev.mysql.com/doc/connector-python/en/",
-    # Returning 522s intermittently.
-    "https://lczero.org/",
-    # Returns 406 but remains accessible
-    "https://www.uber.com/blog/elastic-xgboost-ray/",
-    # Aggressive anti-bot checks
-    "https://archive.vn/*",
-    "https://archive.is/*",
-    # 429: Rate limited
-    "https://medium.com/*",
-    "https://towardsdatascience.com/*",
-]
+if os.environ.get("LINKCHECK_ALL"):
+    # Only check external links, i.e. the ones starting with http:// or https://.
+    linkcheck_ignore = [
+        r"^((?!http).)*$",  # exclude links not starting with http
+        "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf",  # broken
+        "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
+        # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
+        "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
+        # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
+        "https://scikit-optimize.github.io/stable/modules/",
+        "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
+        "https://speakerdeck.com/*",  # forbidden for bots
+        r"https://huggingface.co/*",  # seems to be flaky
+        r"https://www.meetup.com/*",  # seems to be flaky
+        r"https://www.pettingzoo.ml/*",  # seems to be flaky
+        r"http://localhost[:/].*",  # Ignore localhost links
+        r"^http:/$",  # Ignore incomplete links
+        # 403 Client Error: Forbidden for url.
+        # They ratelimit bots.
+        "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
+        # 403 Client Error: Forbidden for url.
+        # They ratelimit bots.
+        "https://www.researchgate.net/publication/222573328_Stochastic_Gradient_Boosting",
+        "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
+        "https://dev.mysql.com/doc/connector-python/en/",
+        # Returning 522s intermittently.
+        "https://lczero.org/",
+        # Returns 406 but remains accessible
+        "https://www.uber.com/blog/elastic-xgboost-ray/",
+        # Aggressive anti-bot checks
+        "https://archive.vn/*",
+        "https://archive.is/*",
+        # 429: Rate limited
+        "https://medium.com/*",
+        "https://towardsdatascience.com/*",
+    ]
+else:
+    # Only check links that point to the ray-project org on github, since those
+    # links are under our control and therefore much more likely to be real
+    # issues that we need to fix if they are broken.
+    linkcheck_ignore = [
+        r"^(?!https://(raw\.githubusercontent|github)\.com/ray-project/).*$"
+    ]
 
 # -- Options for HTML output ----------------------------------------------
 def render_svg_logo(path):
