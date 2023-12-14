@@ -216,9 +216,20 @@ def test_deploy_application_unhealthy(serve_instance):
     assert handle.remote().result() == "hello world"
     assert serve.status().applications["app"].status == ApplicationStatus.RUNNING
 
-    # Check that the logs from application state manager notifying
-    # about unhealthy deployments doesn't spam, they should get printed
-    # only once.
+    # When a deployment becomes unhealthy, application should transition -> UNHEALTHY
+    event.set.remote()
+    wait_for_condition(
+        lambda: serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
+    )
+
+    # Check that application stays unhealthy
+    for _ in range(10):
+        assert serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
+        time.sleep(0.1)
+
+    # At least 10 control loop iterations should have passed. Check that
+    # the logs from application state manager notifying about unhealthy
+    # deployments doesn't spam, they should get printed only once.
     controller_pid = [
         actor["pid"]
         for actor in list_actors()
@@ -231,17 +242,6 @@ def test_deploy_application_unhealthy(serve_instance):
     with open(controller_log_path, "r") as f:
         s = f.read()
         assert s.count("The deployments ['Model'] are UNHEALTHY.") <= 1
-
-    # When a deployment becomes unhealthy, application should transition -> UNHEALTHY
-    event.set.remote()
-    wait_for_condition(
-        lambda: serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
-    )
-
-    # Check that application stays unhealthy
-    for _ in range(10):
-        assert serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
-        time.sleep(0.1)
 
 
 @pytest.mark.skipif(
