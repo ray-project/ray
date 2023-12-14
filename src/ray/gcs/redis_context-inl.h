@@ -93,7 +93,7 @@ RedisAsyncContext *CreateAsyncContext(
   return new RedisAsyncContext(std::move(context));
 }
 
-template <typename ConnectType = redisAsyncContext>
+template <typename ConnectType>
 void RedisResponseFn(struct redisAsyncContext *async_context,
                      void *raw_reply,
                      void *privdata) {
