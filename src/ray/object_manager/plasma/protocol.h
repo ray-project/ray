@@ -166,9 +166,13 @@ Status ReadGetReply(uint8_t *data,
 /* Plasma Release message functions. */
 
 Status SendReleaseRequest(const std::shared_ptr<StoreConn> &store_conn,
-                          ObjectID object_id);
+                          ObjectID object_id,
+                          bool may_unmap);
 
-Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id);
+Status ReadReleaseRequest(uint8_t *data,
+                          size_t size,
+                          ObjectID *object_id,
+                          bool *may_unmap);
 
 Status SendReleaseReply(const std::shared_ptr<Client> &client,
                         ObjectID object_id,

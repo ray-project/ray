@@ -49,12 +49,15 @@ struct PlasmaObject {
   int device_num;
   /// Set if device_num is equal to 0.
   int64_t mmap_size;
+  /// If the object is fallback_allocated. False means it's on main memory.
+  bool fallback_allocated;
 
   bool operator==(const PlasmaObject &other) const {
     return ((store_fd == other.store_fd) && (data_offset == other.data_offset) &&
             (metadata_offset == other.metadata_offset) &&
             (data_size == other.data_size) && (metadata_size == other.metadata_size) &&
-            (device_num == other.device_num));
+            (device_num == other.device_num) &&
+            (fallback_allocated == other.fallback_allocated));
   }
 };
 

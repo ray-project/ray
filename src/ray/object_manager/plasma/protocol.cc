@@ -264,6 +264,7 @@ Status SendCreateReply(const std::shared_ptr<Client> &client,
                                  object.data_size,
                                  object.metadata_offset,
                                  object.metadata_size,
+                                 object.fallback_allocated,
                                  object.device_num);
   auto object_string = fbb.CreateString(object_id.Binary());
   fb::PlasmaCreateReplyBuilder crb(fbb);
@@ -304,6 +305,7 @@ Status ReadCreateReply(uint8_t *data,
   object->data_size = message->plasma_object()->data_size();
   object->metadata_offset = message->plasma_object()->metadata_offset();
   object->metadata_size = message->plasma_object()->metadata_size();
+  object->fallback_allocated = message->plasma_object()->fallback_allocated();
 
   store_fd->first = INT2FD(message->store_fd());
   store_fd->second = message->unique_fd_id();
@@ -378,18 +380,23 @@ Status ReadSealReply(uint8_t *data, size_t size, ObjectID *object_id) {
 // Release messages.
 
 Status SendReleaseRequest(const std::shared_ptr<StoreConn> &store_conn,
-                          ObjectID object_id) {
+                          ObjectID object_id,
+                          bool may_unmap) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      fb::CreatePlasmaReleaseRequest(fbb, fbb.CreateString(object_id.Binary()));
+  auto message = fb::CreatePlasmaReleaseRequest(
+      fbb, fbb.CreateString(object_id.Binary()), may_unmap);
   return PlasmaSend(store_conn, MessageType::PlasmaReleaseRequest, &fbb, message);
 }
 
-Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id) {
+Status ReadReleaseRequest(uint8_t *data,
+                          size_t size,
+                          ObjectID *object_id,
+                          bool *may_unmap) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaReleaseRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
+  *may_unmap = message->may_unmap();
   return Status::OK();
 }
 
@@ -618,6 +625,7 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                                        object.data_size,
                                        object.metadata_offset,
                                        object.metadata_size,
+                                       object.fallback_allocated,
                                        object.device_num));
   }
   std::vector<int> store_fds_as_int;
@@ -658,6 +666,7 @@ Status ReadGetReply(uint8_t *data,
     plasma_objects[i].data_size = object->data_size();
     plasma_objects[i].metadata_offset = object->metadata_offset();
     plasma_objects[i].metadata_size = object->metadata_size();
+    plasma_objects[i].fallback_allocated = object->fallback_allocated();
     plasma_objects[i].device_num = object->device_num();
   }
   RAY_CHECK(message->store_fds()->size() == message->mmap_sizes()->size());
