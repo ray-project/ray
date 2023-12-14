@@ -79,19 +79,14 @@ class ConnectorV2(abc.ABC):
     def __init__(
         self,
         *,
-        input_observation_space: Optional[gym.Space],
-        input_action_space: Optional[gym.Space],
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
         env: Optional[gym.Env] = None,
-        #rl_module: Optional["RLModule"] = None,
         **kwargs,
     ):
         """Initializes a ConnectorV2 instance.
 
         Args:
-            env: An optional env object that the connector might need to know about.
-                Note that normally, env-to-module and module-to-env connectors get this
-                information at construction time, but learner connectors won't (b/c
-                Learner objects don't carry an environment object).
             input_observation_space: The (mandatory) input observation space. This
                 is the space coming from a previous connector piece in the
                 (env-to-module or learner) pipeline or it is directly defined within
@@ -100,16 +95,15 @@ class ConnectorV2(abc.ABC):
                 is the space coming from a previous connector piece in the
                 (module-to-env) pipeline or it is directly defined within the used
                 gym.Env.
-            #rl_module: An optional RLModule object that the connector might need to know
-            #    about. Note that normally, only module-to-env connectors get this
-            #    information at construction time, but env-to-module and learner
-            #    connectors won't (b/c they get constructed before the RLModule).
+            env: An optional env object that the connector might need to know about.
+                Note that normally, env-to-module and module-to-env connectors get this
+                information at construction time, but learner connectors won't (b/c
+                Learner objects don't carry an environment object).
             **kwargs: Forward API-compatibility kwargs.
         """
         self.input_observation_space = input_observation_space
         self.input_action_space = input_action_space
         self.env = env
-        #self.rl_module = rl_module
 
     @abc.abstractmethod
     def __call__(

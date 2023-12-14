@@ -9,7 +9,7 @@ from ray.rllib.connectors.learner.default_learner_connector import (
 )
 
 
-class LearnerPipeline(ConnectorPipelineV2):
+class LearnerConnectorPipeline(ConnectorPipelineV2):
     def __init__(
         self,
         *,

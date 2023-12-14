@@ -100,6 +100,7 @@ path: /tmp/
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
+    from ray.rllib.connectors.connector_v2 import ConnectorV2
     from ray.rllib.core.learner import Learner
     from ray.rllib.evaluation.episode import Episode as OldEpisode
 
@@ -327,6 +328,8 @@ class AlgorithmConfig(_Config):
         self.num_envs_per_worker = 1
         self.create_env_on_local_worker = False
         self.enable_connectors = True
+        self._env_to_module_connector = None
+        self._module_to_env_connector = None
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
         #  in the evaluation config).
@@ -374,6 +377,7 @@ class AlgorithmConfig(_Config):
         except AttributeError:
             pass
 
+        self._learner_connector = None
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -1137,6 +1141,95 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
+    def build_env_to_module_connector(self, env):
+        custom_connectors = []
+
+        # Create an env-to-module connector pipeline (including RLlib's default
+        # env->module connector piece) and return it.
+        if self._env_to_module_connector is not None:
+            val_ = self._env_to_module_connector(env)
+
+            from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
+
+            if (
+                isinstance(val_, ConnectorV2)
+                and not isinstance(val_, ConnectorPipelineV2)
+            ):
+                custom_connectors = [val_]
+            else:
+                return val_
+
+        from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
+            EnvToModulePipeline
+        )
+
+        return EnvToModulePipeline(
+            connectors=custom_connectors,
+            input_observation_space=env.single_observation_space,
+            input_action_space=env.single_action_space,
+            env=env,
+        )
+
+    def build_module_to_env_connector(self, env):
+        custom_connectors = []
+
+        # Create a module-to-env connector pipeline (including RLlib's default
+        # module->env connector piece) and return it.
+        if self._module_to_env_connector is not None:
+            val_ = self._module_to_env_connector(env)
+
+            from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
+
+            if (
+                    isinstance(val_, ConnectorV2)
+                    and not isinstance(val_, ConnectorPipelineV2)
+            ):
+                custom_connectors = [val_]
+            else:
+                return val_
+
+        from ray.rllib.connectors.module_to_env.module_to_env_pipeline import (
+            ModuleToEnvPipeline
+        )
+
+        return ModuleToEnvPipeline(
+            connectors=custom_connectors,
+            input_observation_space=env.single_observation_space,
+            input_action_space=env.single_action_space,
+            env=env,
+        )
+
+    def build_learner_connector(self, input_observation_space, input_action_space):
+        custom_connectors = []
+
+        # Create a learner connector pipeline (including RLlib's default
+        # learner connector piece) and return it.
+        if self._learner_connector is not None:
+            val_ = self._learner_connector(input_observation_space, input_action_space)
+
+            from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
+
+            if (
+                    isinstance(val_, ConnectorV2)
+                    and not isinstance(val_, ConnectorPipelineV2)
+            ):
+                custom_connectors = [val_]
+            else:
+                return val_
+
+        from ray.rllib.connectors.learner.learner_connector_pipeline import (
+            LearnerConnectorPipeline
+        )
+
+        return LearnerConnectorPipeline(
+            connectors=custom_connectors,
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+        )
+
     def python_environment(
         self,
         *,
@@ -1477,6 +1570,12 @@ class AlgorithmConfig(_Config):
         create_env_on_local_worker: Optional[bool] = NotProvided,
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
+        env_to_module_connector: Optional[
+            Callable[[EnvType], "ConnectorV2"]
+        ] = NotProvided,
+        module_to_env_connector: Optional[
+            Callable[[EnvType, "RLModule"], "ConnectorV2"]
+        ] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
@@ -1522,6 +1621,11 @@ class AlgorithmConfig(_Config):
             enable_connectors: Use connector based environment runner, so that all
                 preprocessing of obs and postprocessing of actions are done in agent
                 and action connectors.
+            env_to_module_connector: A callable taking an Env as input arg and returning
+                an env-to-module ConnectorV2 (might be a pipeline) object.
+            module_to_env_connector: A callable taking an Env and an RLModule as input
+                args and returning a module-to-env ConnectorV2 (might be a pipeline)
+                object.
             use_worker_filter_stats: Whether to use the workers in the WorkerSet to
                 update the central filters (held by the local worker). If False, stats
                 from the workers will not be used and discarded.
@@ -1609,6 +1713,10 @@ class AlgorithmConfig(_Config):
             self.create_env_on_local_worker = create_env_on_local_worker
         if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
+        if env_to_module_connector is not NotProvided:
+            self._env_to_module_connector = env_to_module_connector
+        if module_to_env_connector is not NotProvided:
+            self._module_to_env_connector = module_to_env_connector
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:
@@ -1719,6 +1827,9 @@ class AlgorithmConfig(_Config):
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
+        learner_connector: Optional[
+            Callable[["RLModule"], "ConnectorV2"]
+        ] = NotProvided,
         # Deprecated arg.
         _enable_learner_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -1780,6 +1891,9 @@ class AlgorithmConfig(_Config):
                 in your experiment of timesteps.
             learner_class: The `Learner` class to use for (distributed) updating of the
                 RLModule. Only used when `_enable_new_api_stack=True`.
+            learner_connector: A callable taking an env observation space and an env
+                action space as inputs and returning a learner ConnectorV2 (might be
+                a pipeline) object.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1824,6 +1938,8 @@ class AlgorithmConfig(_Config):
             )
         if learner_class is not NotProvided:
             self._learner_class = learner_class
+        if learner_connector is not NotProvided:
+            self._learner_connector = learner_connector
 
         return self
 
