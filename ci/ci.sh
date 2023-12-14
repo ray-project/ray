@@ -129,8 +129,7 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
-    "${WORKSPACE_DIR}/doc/requirements-doc.txt"
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
@@ -176,35 +175,6 @@ test_core() {
   esac
   # shellcheck disable=SC2046
   bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
-}
-
-prepare_docker() {
-    rm "${WORKSPACE_DIR}"/python/dist/* ||:
-    pushd "${WORKSPACE_DIR}/python"
-    pip install -e . --verbose
-    python setup.py bdist_wheel
-    tmp_dir="/tmp/prepare_docker_$RANDOM"
-    mkdir -p $tmp_dir
-    cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
-    wheel=$(ls "${WORKSPACE_DIR}"/python/dist/)
-    base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
-    echo "
-    FROM $base_image
-
-    ENV LC_ALL=C.UTF-8
-    ENV LANG=C.UTF-8
-    COPY ./*.whl /
-    EXPOSE 8000
-    EXPOSE 10001
-    RUN pip install /${wheel}[serve]
-    RUN (sudo apt update || true) && sudo apt install curl -y
-    " > $tmp_dir/Dockerfile
-
-    pushd $tmp_dir
-    docker build . -t ray_ci:v1
-    popd
-
-    popd
 }
 
 # For running Serve tests on Windows.

@@ -20,7 +20,10 @@ from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer):
+def train_epoch(epoch, dataloader, model, loss_fn, optimizer):
+    if ray.train.get_context().get_world_size() > 1:
+        dataloader.sampler.set_epoch(epoch)
+
     size = len(dataloader.dataset) // train.get_context().get_world_size()
     model.train()
     for batch, (X, y) in enumerate(dataloader):
@@ -136,7 +139,7 @@ def train_func(config):
 
     worker_batch_size = config["batch_size"] // train.get_context().get_world_size()
 
-    train_loader = DataLoader(train_dataset, batch_size=worker_batch_size)
+    train_loader = DataLoader(train_dataset, batch_size=worker_batch_size, shuffle=True)
     validation_loader = DataLoader(validation_dataset, batch_size=worker_batch_size)
 
     train_loader = train.torch.prepare_data_loader(train_loader)
@@ -146,7 +149,7 @@ def train_func(config):
     criterion = nn.CrossEntropyLoss()
 
     for epoch in range(starting_epoch, epochs):
-        train_epoch(train_loader, model, criterion, optimizer)
+        train_epoch(epoch, train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
 
         with tempfile.TemporaryDirectory() as checkpoint_dir:

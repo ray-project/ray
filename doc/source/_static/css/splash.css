@@ -1,0 +1,130 @@
+.image-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 16px;
+    padding-right:16px;
+    gap: 16px;
+}
+
+.info-box {
+    background-color: var(--pst-color-surface);
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.info-box:hover{
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.no-underline{
+    text-decoration: none;
+}
+.no-underline:hover{
+    text-decoration: none;
+}
+
+.icon-hover:hover{
+    height: 30px ;
+    width: 30px;
+}
+
+.info-box-2 {
+    background-color: var(--pst-color-surface);
+    border-radius: 8px;
+    padding-right: 16px;
+    padding-left: 16px;
+    padding-bottom: 24px;
+    padding-top: 4px;
+}
+
+
+.bold-link {
+    color: var(--pst-color-link) !important;
+    font-weight: 600;
+}
+
+.community-box {
+    border: 1px solid var(--pst-color-border);
+    border-radius: 8px;
+    display: flex;
+    margin-bottom: 16px;
+}
+
+.community-box:hover {
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+    text-decoration: none;
+}
+
+.community-box p {
+    margin-top: 1rem !important;
+}
+
+.tab-pane pre {
+    margin: 0;
+    padding: 0;
+    max-height: 252px;
+    overflow-y: auto;
+    animation: fadeEffect 1s; /* Fading effect takes 1 second */
+}
+
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-gap: 16px;
+}
+
+.grid-item {
+padding: 20px;
+}
+
+.nav-pills {
+    background-color: var(--pst-color-surface);
+    padding: 8px;
+    border-bottom:none;
+    border-radius: 8px;
+}
+
+.nav-pills .nav-link.active {
+    background-color: var(--pst-color-background) !important;
+    box-shadow: 0px 3px 14px 2px var(--pst-color-shadow);
+    border-radius: 8px;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    color: var(--pst-color-text-base);
+    font-weight: 500;
+}
+
+#v-pills-tab > .nav-link:hover {
+  text-decoration: none;
+}
+
+#v-pills-tab > a {
+  cursor: pointer;
+}
+
+#v-pills-tab > .nav-link {
+  color: var(--pst-color-text-base);
+}
+
+#v-pills-tabContent {
+  box-shadow: 0px 6px 30px 5px var(--pst-color-shadow);
+  border-radius:8px;
+}
+
+#v-pills-data {
+  user-select: none;
+}
+
+/* Go from zero to full opacity */
+@keyframes fadeEffect {
+  from {opacity: 0;}
+  to {opacity: 1;}
+}
+
+#ray-intro-video {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+}

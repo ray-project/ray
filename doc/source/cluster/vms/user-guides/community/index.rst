@@ -3,6 +3,13 @@
 Community Supported Cluster Managers
 ====================================
 
+.. toctree::
+    :hidden:
+
+    yarn
+    slurm
+    lsf
+
 .. note::
 
     If you're using AWS, Azure, GCP or vSphere you can use the :ref:`Ray cluster launcher <cluster-index>` to simplify the cluster setup process.

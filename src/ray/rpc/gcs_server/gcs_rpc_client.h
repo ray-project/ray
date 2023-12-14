@@ -409,6 +409,12 @@ class GcsRpcClient {
                              worker_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Update the worker number of paused threads delta
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
+                             UpdateWorkerNumPausedThreads,
+                             worker_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   /// Create placement group via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService,
                              CreatePlacementGroup,

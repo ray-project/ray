@@ -85,7 +85,10 @@ class DashboardAgent:
         self.gcs_client = GcsClient(address=self.gcs_address)
         _initialize_internal_kv(self.gcs_client)
         assert _internal_kv_initialized()
-        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
+        self.gcs_aio_client = GcsAioClient(
+            address=self.gcs_address,
+            nums_reconnect_retry=ray._config.gcs_rpc_server_reconnect_timeout_s(),
+        )
 
         if not self.minimal:
             self._init_non_minimal()
@@ -179,6 +182,9 @@ class DashboardAgent:
             self.aio_publisher
         ), "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
         return self.aio_publisher
+
+    def get_node_id(self) -> str:
+        return self.node_id
 
     async def run(self):
         # Start a grpc asyncio server.

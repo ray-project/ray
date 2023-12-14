@@ -20,3 +20,17 @@ class Read(AbstractMap):
         self._datasource_or_legacy_reader = datasource_or_legacy_reader
         self._parallelism = parallelism
         self._mem_size = mem_size
+        self._detected_parallelism = None
+
+    def set_detected_parallelism(self, parallelism: int):
+        """
+        Set the true parallelism that should be used during execution. This
+        should be specified by the user or detected by the optimizer.
+        """
+        self._detected_parallelism = parallelism
+
+    def get_detected_parallelism(self) -> int:
+        """
+        Get the true parallelism that should be used during execution.
+        """
+        return self._detected_parallelism

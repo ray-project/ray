@@ -73,6 +73,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
+        self._execution_started = False
         self._shutdown = False
 
         # Internal execution state shared across thread boundaries. We run the control
@@ -86,6 +87,8 @@ class StreamingExecutor(Executor, threading.Thread):
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
+        self._max_errored_blocks = DataContext.get_current().max_errored_blocks
+        self._num_errored_blocks = 0
 
         self._last_debug_log_time = 0
 
@@ -131,6 +134,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._get_operator_tags(),
         )
         self.start()
+        self._execution_started = True
 
         class StreamIterator(OutputIterator):
             def __init__(self, outer: Executor):
@@ -163,7 +167,7 @@ class StreamingExecutor(Executor, threading.Thread):
         global _num_shutdown
 
         with self._shutdown_lock:
-            if self._shutdown:
+            if not self._execution_started or self._shutdown:
                 return
             logger.get_logger().debug(f"Shutting down {self}.")
             _num_shutdown += 1
@@ -253,7 +257,12 @@ class StreamingExecutor(Executor, threading.Thread):
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
-        process_completed_tasks(topology, self._backpressure_policies)
+        num_errored_blocks = process_completed_tasks(
+            topology, self._backpressure_policies, self._max_errored_blocks
+        )
+        if self._max_errored_blocks > 0:
+            self._max_errored_blocks -= num_errored_blocks
+        self._num_errored_blocks += num_errored_blocks
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
@@ -325,16 +334,26 @@ class StreamingExecutor(Executor, threading.Thread):
         autoscaling.
         """
         base = self._options.resource_limits
+        exclude = self._options.exclude_resources
         cluster = ray.cluster_resources()
-        return ExecutionResources(
-            cpu=base.cpu if base.cpu is not None else cluster.get("CPU", 0.0),
-            gpu=base.gpu if base.gpu is not None else cluster.get("GPU", 0.0),
-            object_store_memory=base.object_store_memory
-            if base.object_store_memory is not None
-            else round(
+
+        cpu = base.cpu
+        if cpu is None:
+            cpu = cluster.get("CPU", 0.0) - (exclude.cpu or 0.0)
+        gpu = base.gpu
+        if gpu is None:
+            gpu = cluster.get("GPU", 0.0) - (exclude.gpu or 0.0)
+        object_store_memory = base.object_store_memory
+        if object_store_memory is None:
+            object_store_memory = round(
                 DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
                 * cluster.get("object_store_memory", 0.0)
-            ),
+            ) - (exclude.object_store_memory or 0)
+
+        return ExecutionResources(
+            cpu=cpu,
+            gpu=gpu,
+            object_store_memory=object_store_memory,
         )
 
     def _report_current_usage(

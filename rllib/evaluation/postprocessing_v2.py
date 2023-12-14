@@ -6,13 +6,13 @@ import tree  # pip install dm_tree
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 
@@ -43,10 +43,10 @@ def postprocess_episodes_to_sample_batch(
         # a list.
         if isinstance(episode_or_list, list):
             for episode in episode_or_list:
-                batches.append(episode.to_sample_batch())
+                batches.append(episode.get_sample_batch())
         # During exploration we have an episode.
         else:
-            batches.append(episode_or_list.to_sample_batch())
+            batches.append(episode_or_list.get_sample_batch())
 
     batch = concat_samples(batches)
     # TODO (sven): During evalaution we do not have infos at all.
@@ -72,8 +72,8 @@ def compute_gae_for_episode(
     # them now in the training_step.
     episode = compute_bootstrap_value(episode, module)
 
-    vf_preds = episode.extra_model_outputs[SampleBatch.VF_PREDS]
-    rewards = episode.rewards
+    vf_preds = episode.get_extra_model_outputs(SampleBatch.VF_PREDS)
+    rewards = episode.get_rewards()
 
     # TODO (simon): In case of recurrent models sequeeze out time dimension.
 
@@ -99,6 +99,8 @@ def compute_bootstrap_value(
         last_r = 0.0
     else:
         # TODO (simon): This has to be made multi-agent ready.
+        # TODO (sven, simon): We have to change this as soon as the
+        # Connector API is ready. Episodes do not have states anymore.
         initial_states = module.get_initial_state()
         state = {
             k: initial_states[k] if episode.states is None else episode.states[k]
@@ -163,9 +165,9 @@ def compute_advantages(
     last_r = convert_to_numpy(last_r)
 
     if rewards is None:
-        rewards = episode.rewards
+        rewards = episode.get_rewards()
     if vf_preds is None:
-        vf_preds = episode.extra_model_outs[SampleBatch.VF_PREDS]
+        vf_preds = episode.get_extra_model_outs(SampleBatch.VF_PREDS)
 
     if use_gae:
         vpred_t = np.concatenate([vf_preds, np.array([last_r])])
@@ -197,6 +199,7 @@ def compute_advantages(
                 episode.extra_model_outputs[Postprocessing.ADVANTAGES]
             )
 
+    # TODO (sven, simon): Maybe change to `BufferWithInfiniteLookback`
     episode.extra_model_outputs[
         Postprocessing.ADVANTAGES
     ] = episode.extra_model_outputs[Postprocessing.ADVANTAGES].astype(np.float32)

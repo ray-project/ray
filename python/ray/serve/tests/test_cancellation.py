@@ -14,7 +14,7 @@ from ray._private.test_utils import (
     async_wait_for_condition,
     wait_for_condition,
 )
-from ray.serve.tests.common.utils import send_signal_on_cancellation
+from ray.serve._private.test_utils import send_signal_on_cancellation
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])

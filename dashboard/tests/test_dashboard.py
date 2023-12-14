@@ -19,7 +19,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 from click.testing import CliRunner
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -362,6 +362,54 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
                 logger.info("failed response: %s", response.text)
                 raise ex
             assert dump_info["result"] is True
+            break
+        except (AssertionError, requests.exceptions.ConnectionError) as e:
+            logger.info("Retry because of %s", e)
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                raise Exception("Timed out while testing.")
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 30
+    start_time = time.time()
+    while True:
+        time.sleep(3)
+        try:
+            # Starting and getting jobs should be fine from API clients
+            response = requests.post(
+                webui_url + "/api/jobs/", json={"entrypoint": "ls"}
+            )
+            response.raise_for_status()
+            response = requests.get(webui_url + "/api/jobs/")
+            response.raise_for_status()
+
+            # Starting job should be blocked for browsers
+            response = requests.post(
+                webui_url + "/api/jobs/",
+                json={"entrypoint": "ls"},
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/119.0.0.0 Safari/537.36"
+                    )
+                },
+            )
+            with pytest.raises(HTTPError):
+                response.raise_for_status()
+
+            # Getting jobs should be fine for browsers
+            response = requests.get(webui_url + "/api/jobs/")
+            response.raise_for_status()
             break
         except (AssertionError, requests.exceptions.ConnectionError) as e:
             logger.info("Retry because of %s", e)

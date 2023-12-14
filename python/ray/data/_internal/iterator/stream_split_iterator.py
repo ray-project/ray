@@ -140,6 +140,9 @@ class SplitCoordinator:
             dataset.context.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
 
+        # Set current DataContext.
+        ray.data.DataContext._set_current(dataset.context)
+
         self._base_dataset = dataset
         self._n = n
         self._equal = equal
@@ -155,7 +158,10 @@ class SplitCoordinator:
         def gen_epochs():
             while True:
                 executor = StreamingExecutor(
-                    copy.deepcopy(dataset.context.execution_options)
+                    copy.deepcopy(dataset.context.execution_options),
+                    create_dataset_tag(
+                        self._base_dataset._name, self._base_dataset._uuid
+                    ),
                 )
                 self._executor = executor
 

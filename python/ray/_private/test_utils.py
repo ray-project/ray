@@ -1401,7 +1401,7 @@ class ResourceKillerActor:
         head_node_id,
         kill_interval_s: float = 60,
         max_to_kill: int = 2,
-        task_filter: Optional[Callable] = None,
+        kill_filter_fn: Optional[Callable] = None,
     ):
         self.kill_interval_s = kill_interval_s
         self.is_running = False
@@ -1409,7 +1409,7 @@ class ResourceKillerActor:
         self.killed = set()
         self.done = ray._private.utils.get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
-        self.task_filter = task_filter
+        self.kill_filter_fn = kill_filter_fn
         self.kill_immediately_after_found = False
         # -- logger. --
         logging.basicConfig(level=logging.INFO)
@@ -1464,6 +1464,8 @@ class NodeKillerActor(ResourceKillerActor):
         while node_to_kill_port is None and self.is_running:
             nodes = ray.nodes()
             alive_nodes = self._get_alive_nodes(nodes)
+            if self.kill_filter_fn is not None:
+                nodes = list(filter(self.kill_filter_fn(), nodes))
             for node in nodes:
                 node_id = node["NodeID"]
                 # make sure at least 1 worker node is alive.
@@ -1523,9 +1525,9 @@ class WorkerKillerActor(ResourceKillerActor):
         head_node_id,
         kill_interval_s: float = 60,
         max_to_kill: int = 2,
-        task_filter: Optional[Callable] = None,
+        kill_filter_fn: Optional[Callable] = None,
     ):
-        super().__init__(head_node_id, kill_interval_s, max_to_kill, task_filter)
+        super().__init__(head_node_id, kill_interval_s, max_to_kill, kill_filter_fn)
 
         # Kill worker immediately so that the task does
         # not finish successfully on its own.
@@ -1554,8 +1556,8 @@ class WorkerKillerActor(ResourceKillerActor):
                 options=self.task_options,
                 raise_on_missing_output=False,
             )
-            if self.task_filter is not None:
-                tasks = list(filter(self.task_filter, tasks))
+            if self.kill_filter_fn is not None:
+                tasks = list(filter(self.kill_filter_fn(), tasks))
 
             for task in tasks:
                 if task.worker_id is not None and task.node_id is not None:
@@ -1605,7 +1607,7 @@ def get_and_run_resource_killer(
     no_start=False,
     max_to_kill=2,
     kill_delay_s=0,
-    task_filter=None,
+    kill_filter_fn=None,
 ):
     assert ray.is_initialized(), "The API is only available when Ray is initialized."
     name = resource_killer_cls.__ray_actor_class__.__name__
@@ -1623,7 +1625,7 @@ def get_and_run_resource_killer(
         head_node_id,
         kill_interval_s=kill_interval_s,
         max_to_kill=max_to_kill,
-        task_filter=task_filter,
+        kill_filter_fn=kill_filter_fn,
     )
     print(f"Waiting for {name} to be ready...")
     ray.get(resource_killer.ready.remote())
@@ -2095,15 +2097,18 @@ def reset_autoscaler_v2_enabled_cache():
     u.cached_is_autoscaler_v2 = None
 
 
-def skip_flaky_test() -> bool:
+def skip_flaky_core_test_premerge(reason: str):
     """
-    Skip a test if it is flaky (e.g. in premerge)
+    Decorator to skip a test if it is flaky (e.g. in premerge)
 
     Default we will skip the flaky test if not specified otherwise in
     CI with CI_SKIP_FLAKY_TEST="0"
-
-
-    Returns:
-        bool: True if the test should be skipped
     """
-    return os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1"
+    import pytest
+
+    def wrapper(func):
+        return pytest.mark.skipif(
+            os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1", reason=reason
+        )(func)
+
+    return wrapper

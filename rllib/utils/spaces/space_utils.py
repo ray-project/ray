@@ -100,11 +100,13 @@ def get_dummy_batch_for_space(
     fill_value: Union[float, int, str] = 0.0,
     time_size: Optional[int] = None,
     time_major: bool = False,
+    one_hot_discrete: bool = False,
 ) -> np.ndarray:
     """Returns batched dummy data (using `batch_size`) for the given `space`.
 
     Note: The returned batch will not pass a `space.contains(batch)` test
-    as an additional batch dimension has to be added as dim=0.
+    as an additional batch dimension has to be added at axis 0, unless `batch_size` is
+    set to 0.
 
     Args:
         space: The space to get a dummy batch for.
@@ -114,23 +116,45 @@ def get_dummy_batch_for_space(
         fill_value: The value to fill the batch with
             or "random" for random values.
         time_size: If not None, add an optional time axis
-            of `time_size` size to the returned batch.
+            of `time_size` size to the returned batch. This time axis might either
+            be inserted at axis=1 (default) or axis=0, if `time_major` is True.
         time_major: If True AND `time_size` is not None, return batch
             as shape [T x B x ...], otherwise as [B x T x ...]. If `time_size`
             if None, ignore this setting and return [B x ...].
+        one_hot_discrete: If True, will return one-hot vectors (instead of
+            int-values) for those sub-components of a (possibly complex) `space`
+            that are Discrete or MultiDiscrete. Note that in case `fill_value` is 0.0,
+            this will result in zero-hot vectors (where all slots have a value of 0.0).
 
     Returns:
         The dummy batch of size `bqtch_size` matching the given space.
     """
     # Complex spaces. Perform recursive calls of this function.
-    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
+    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, dict, tuple)):
+        base_struct = space
+        if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
+            base_struct = get_base_struct_from_space(space)
         return tree.map_structure(
-            lambda s: get_dummy_batch_for_space(s, batch_size, fill_value),
-            get_base_struct_from_space(space),
+            lambda s: get_dummy_batch_for_space(
+                space=s,
+                batch_size=batch_size,
+                fill_value=fill_value,
+                time_size=time_size,
+                time_major=time_major,
+                one_hot_discrete=one_hot_discrete,
+            ),
+            base_struct,
         )
+
+    if one_hot_discrete:
+        if isinstance(space, gym.spaces.Discrete):
+            space = gym.spaces.Box(0.0, 1.0, (space.n,), np.float32)
+        elif isinstance(space, gym.spaces.MultiDiscrete):
+            space = gym.spaces.Box(0.0, 1.0, (np.sum(space.nvec),), np.float32)
+
     # Primivite spaces: Box, Discrete, MultiDiscrete.
     # Random values: Use gym's sample() method.
-    elif fill_value == "random":
+    if fill_value == "random":
         if time_size is not None:
             assert batch_size > 0 and time_size > 0
             if time_major:

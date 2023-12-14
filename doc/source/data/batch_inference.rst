@@ -34,9 +34,10 @@ Using Ray Data for offline inference involves four basic steps:
 For more in-depth examples for your use case, see :ref:`the batch inference examples<batch_inference_examples>`.
 For how to configure batch inference, see :ref:`the configuration guide<batch_inference_configuration>`.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: HuggingFace
+    .. tab-item:: HuggingFace
+        :sync: HuggingFace
 
         .. testcode::
 
@@ -84,7 +85,8 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             {'data': 'Complete this', 'output': 'Complete this information or purchase any item from this site.\n\nAll purchases are final and non-'}
 
 
-    .. group-tab:: PyTorch
+    .. tab-item:: PyTorch
+        :sync: PyTorch
 
         .. testcode::
 
@@ -133,7 +135,8 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
 
             {'output': array([0.5590901], dtype=float32)}
 
-    .. group-tab:: TensorFlow
+    .. tab-item:: TensorFlow
+        :sync: TensorFlow
 
         .. testcode::
 
@@ -204,9 +207,10 @@ To use GPUs for inference, make the following changes to your code:
 
 The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: HuggingFace
+    .. tab-item:: HuggingFace
+        :sync: HuggingFace
 
         .. testcode::
 
@@ -246,7 +250,8 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             {'data': 'Complete this', 'output': 'Complete this poll. Which one do you think holds the most promise for you?\n\nThank you'}
 
 
-    .. group-tab:: PyTorch
+    .. tab-item:: PyTorch
+        :sync: PyTorch
 
         .. testcode::
 
@@ -292,7 +297,8 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             {'output': array([0.5590901], dtype=float32)}
 
-    .. group-tab:: TensorFlow
+    .. tab-item:: TensorFlow
+        :sync: TensorFlow
 
         .. testcode::
 
@@ -471,7 +477,7 @@ In this case, use :meth:`XGBoostTrainer.get_model() <ray.train.xgboost.XGBoostTr
 The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
 
 .. testcode::
-    
+
     from typing import Dict
     import pandas as pd
     import numpy as np
@@ -485,18 +491,18 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
     class XGBoostPredictor:
         def __init__(self, checkpoint: Checkpoint):
             self.model = XGBoostTrainer.get_model(checkpoint)
-        
+
         def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
             dmatrix = xgboost.DMatrix(data)
             return {"predictions": self.model.predict(dmatrix)}
-    
-    
+
+
     # Use 2 parallel actors for inference. Each actor predicts on a
     # different partition of data.
     scale = ray.data.ActorPoolStrategy(size=2)
     # Map the Predictor over the Dataset to get predictions.
     predictions = test_dataset.map_batches(
-        XGBoostPredictor, 
+        XGBoostPredictor,
         compute=scale,
         batch_format="pandas",
         # Pass in the Checkpoint to the XGBoostPredictor constructor.

@@ -7,7 +7,6 @@ from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
-from ray.serve.dag import InputNode
 
 
 @serve.deployment
@@ -39,13 +38,8 @@ class Driver:
 
 
 def test_http_user_bring_own_driver_route_prefix(serve_instance):
-    with InputNode() as dag_input:
-        m1 = Model.bind(1)
-        m2 = Model.bind(2)
-        m1_output = m1.forward.bind(dag_input[0])
-        m2_output = m2.forward.bind(dag_input[0])
-        combine_output = combine.bind(m1_output, m2_output)
-        serve_dag = Driver.options(route_prefix="/hello").bind(combine_output)
+    m1 = Model.bind(1)
+    serve_dag = Driver.options(route_prefix="/hello").bind(m1)
 
     deployments = pipeline_build(serve_dag)
     ingress_deployment = get_and_validate_ingress_deployment(deployments)
@@ -54,14 +48,9 @@ def test_http_user_bring_own_driver_route_prefix(serve_instance):
         assert deployment.route_prefix is None
 
 
-def test_http_no_non_ingress_deployment_rout_prefix(serve_instance):
-    with InputNode() as dag_input:
-        m1 = Model.options(route_prefix="/should-fail").bind(1)
-        m2 = Model.bind(1)
-        m1_output = m1.forward.bind(dag_input[0])
-        m2_output = m2.forward.bind(dag_input[0])
-        combine_output = combine.bind(m1_output, m2_output)
-        serve_dag = Driver.bind(combine_output)
+def test_http_no_non_ingress_deployment_route_prefix(serve_instance):
+    m1 = Model.options(route_prefix="/should-fail").bind(1)
+    serve_dag = Driver.bind(m1)
 
     with pytest.raises(
         ValueError,
@@ -74,13 +63,9 @@ def test_http_we_provide_default_route_prefix_cls(serve_instance):
     """Ensure the default ingress deployment route is '/' instead of driver
     class name
     """
-    with InputNode() as dag_input:
-        m1 = Model.bind(1)
-        m2 = Model.bind(1)
-        m1_output = m1.forward.bind(dag_input[0])
-        m2_output = m2.forward.bind(dag_input[0])
-        combine_output = combine.bind(m1_output, m2_output)
-        serve_dag = Driver.bind(combine_output)
+
+    m1 = Model.bind(1)
+    serve_dag = Driver.bind(m1)
 
     deployments = pipeline_build(serve_dag)
     ingress_deployment = get_and_validate_ingress_deployment(deployments)
@@ -99,14 +84,9 @@ def test_http_we_provide_default_route_prefix_func(serve_instance):
     assert ingress_deployment.route_prefix == "/"
 
 
-def test_http_only_one_ingress_deployment(serve_instance):
-    with InputNode() as dag_input:
-        m1 = Model.bind(1)
-        m2 = Model.bind(1)
-        m1_output = m1.forward.bind(dag_input[0])
-        m2_output = m2.forward.bind(dag_input[0])
-        combine_output = combine.bind(m1_output, m2_output)
-        serve_dag = Driver.bind(combine_output)
+def test_http_non_default_route_prefix_on_non_root_node(serve_instance):
+    m1 = Model.bind(1)
+    serve_dag = Driver.bind(m1)
 
     deployments = pipeline_build(serve_dag)
     non_root_deployment = deployments[0].options(route_prefix="/")
@@ -122,37 +102,9 @@ def test_http_only_one_ingress_deployment(serve_instance):
         _ = get_and_validate_ingress_deployment(deployments)
 
 
-def test_http_non_default_route_prefix_on_non_root_node(serve_instance):
-    with InputNode() as dag_input:
-        m1 = Model.bind(1)
-        m2 = Model.bind(1)
-        m1_output = m1.forward.bind(dag_input[0])
-        m2_output = m2.forward.bind(dag_input[0])
-        combine_output = combine.bind(m1_output, m2_output)
-        serve_dag = Driver.bind(combine_output)
-
-    deployments = pipeline_build(serve_dag)
-    non_root_deployment = deployments[0].options(route_prefix="/yoo")
-    deployments[0] = non_root_deployment
-
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Only one deployment in an Serve Application or DAG can have "
-            "non-None route prefix"
-        ),
-    ):
-        _ = get_and_validate_ingress_deployment(deployments)
-
-
 def test_http_reconfigure_non_default_route_prefix_on_root(serve_instance):
-    with InputNode() as dag_input:
-        m1 = Model.bind(1)
-        m2 = Model.bind(2)
-        m1_output = m1.forward.bind(dag_input[0])
-        m2_output = m2.forward.bind(dag_input[1])
-        combine_output = combine.bind(m1_output, m2_output)
-        serve_dag = Driver.bind(combine_output)
+    m1 = Model.bind(1)
+    serve_dag = Driver.bind(m1)
 
     deployments = pipeline_build(serve_dag)
     non_root_deployment = deployments[-1].options(route_prefix="/yoo")

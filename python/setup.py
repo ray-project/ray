@@ -253,7 +253,7 @@ if setup_spec.type == SetupType.RAY:
             "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
             "prometheus_client >= 0.7.1",
             "smart_open",
-            "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
+            "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:

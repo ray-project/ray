@@ -40,6 +40,9 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_bool AddWorkerInfo(const c_string &serialized_string)
         c_bool UpdateWorkerDebuggerPort(const CWorkerID &worker_id,
                                         const c_uint32_t debuger_port)
+        c_bool UpdateWorkerNumPausedThreads(const CWorkerID &worker_id,
+                                            const c_int32_t num_paused_threads_delta)
+        c_uint32_t GetWorkerDebuggerPort(const CWorkerID &worker_id)
         unique_ptr[c_string] GetPlacementGroupInfo(
             const CPlacementGroupID &placement_group_id)
         unique_ptr[c_string] GetPlacementGroupByName(

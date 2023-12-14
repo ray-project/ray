@@ -160,6 +160,8 @@ message ActorTableData {
   // might depend on actor fields to be initialized in __init__.
   // Default to empty string if no customized repr is defined.
   string repr_name = 31;
+  // Whether the actor was on a preempted node
+  bool preempted = 32;
 }
 
 message ErrorTableData {
@@ -316,6 +318,18 @@ message NodeSnapshot {
   repeated string node_activity = 3;
 }
 
+message NodeDeathInfo {
+  // TODO(sang): Update drain reason
+  enum Reason {
+    UNSPECIFIED = 0;
+    EXPECTED_TERMINATION = 1;
+    UNEXPECTED_TERMINATION = 2;
+    AUTOSCALER_DRAIN_PREEMPTED = 3;
+    AUTOSCALER_DRAIN_IDLE = 4;
+  }
+  Reason reason = 1;
+}
+
 message GcsNodeInfo {
   // State of a node.
   enum GcsNodeState {
@@ -381,6 +395,9 @@ message GcsNodeInfo {
 
   // A snapshot of node state.
   NodeSnapshot state_snapshot = 28;
+
+  // The death info of this node.
+  NodeDeathInfo death_info = 29;
 }
 
 // Please keep this in sync with the definition of JobInfo in
@@ -465,6 +482,8 @@ message WorkerTableData {
   uint64 worker_launched_time_ms = 26;
   // The debugger port on the worker process.
   optional uint32 debugger_port = 27;
+  // The number of paused threads in this worker process
+  optional uint32 num_paused_threads = 28;
 }
 
 // Fields to publish when worker fails.
