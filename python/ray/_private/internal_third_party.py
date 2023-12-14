@@ -15,7 +15,7 @@ INTERNAL_PROCESSES = [
 # https://github.com/python/cpython/issues/73435
 TEST_PROCESS_PATTERNS = [
     re.compile(pattern)
-    for pattern in (".*/ray/dashboard/tests/.*", ".*/ray/release/.*")
+    for pattern in (".*/ray/tests/.*", ".*/ray/.*/tests/.*", ".*/ray/release/.*")
 ]
 
 
@@ -27,7 +27,6 @@ def check_is_internal_process():
 
     last_frame = inspect.stack()[-1]
     path = Path(last_frame.filename)
-    print(path, INTERNAL_PROCESSES)
     if any(path.match(expected) for expected in INTERNAL_PROCESSES):
         # internal process
         return
