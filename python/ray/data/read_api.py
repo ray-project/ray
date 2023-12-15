@@ -2359,8 +2359,9 @@ def from_spark(
     if SparkSession.getActiveSession() is not None:
         from ray.data.datasource.spark_datasource import SparkDatasource
         # Ray on spark
-
         datasource = SparkDatasource(df, -1)
+        if parallelism is None:
+            parallelism = -1
         dataset = read_datasource(
             datasource=datasource,
             parallelism=parallelism,

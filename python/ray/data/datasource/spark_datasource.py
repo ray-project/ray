@@ -21,6 +21,8 @@ class SparkDatasource(Datasource):
             )
 
         self.chunk_meta_list = persist_dataframe_as_chunks(spark_dataframe, rows_per_chunk)
+        self.num_chunks = len(self.chunk_meta_list)
+
         self._estimate_inmemory_data_size = sum(
             chunk_meta.byte_count for chunk_meta in self.chunk_meta_list
         )
@@ -29,12 +31,8 @@ class SparkDatasource(Datasource):
         return self._estimate_inmemory_data_size
 
     def _get_read_task(self, index, parallelism):
-        from pyspark.sql.chunk_api import read_chunk
-
-        num_chunks = len(self.chunk_meta_list)
-
         # get chunk list to be read in this task
-        chunk_index_list = list(np.array_split(range(num_chunks), parallelism)[index])
+        chunk_index_list = list(np.array_split(range(self.num_chunks), parallelism)[index])
 
         num_rows = sum(
             self.chunk_meta_list[chunk_index].row_count
@@ -54,6 +52,7 @@ class SparkDatasource(Datasource):
         )
 
         def read_fn():
+            from pyspark.sql.chunk_api import read_chunk
             for chunk_index in chunk_index_list:
                 chunk_id = self.chunk_meta_list[chunk_index].id
                 yield read_chunk(chunk_id)
