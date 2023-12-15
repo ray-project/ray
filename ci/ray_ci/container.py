@@ -14,6 +14,7 @@ _DOCKER_GCP_REGISTRY = os.environ.get(
     "us-west1-docker.pkg.dev/anyscale-oss-ci",
 )
 _DOCKER_ENV = [
+    "BUILDKITE",
     "BUILDKITE_BUILD_URL",
     "BUILDKITE_BRANCH",
     "BUILDKITE_COMMIT",
