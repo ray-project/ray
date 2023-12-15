@@ -125,7 +125,7 @@ def run_xgboost_prediction(model_path: str, data_path: str):
         # Improve prediction throughput for xgboost with larger
         # batch size than default 4096
         batch_size=8192,
-        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=None),
+        concurrency=50,
         fn_constructor_kwargs={"model": model},
         batch_format="pandas",
     )
