@@ -483,7 +483,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   base_name=None,\n"
         "   number=N,\n"
         "   extra_metrics={},\n"
-        "   operator_stats=[\n"
+        "   operators_stats=[\n"
         "      OperatorStatsSummary(\n"
         "         operator_name='Read',\n"
         "         is_suboperator=False,\n"
@@ -566,7 +566,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
-        "   operator_stats=[\n"
+        "   operators_stats=[\n"
         "      OperatorStatsSummary(\n"
         "         operator_name='MapBatches(<lambda>)',\n"
         "         is_suboperator=False,\n"
@@ -600,7 +600,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "         base_name=None,\n"
         "         number=N,\n"
         "         extra_metrics={},\n"
-        "         operator_stats=[\n"
+        "         operators_stats=[\n"
         "            OperatorStatsSummary(\n"
         "               operator_name='Read',\n"
         "               is_suboperator=False,\n"
@@ -853,7 +853,7 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
         metadata={"Read": block_meta_list},
         parent=None,
     )
-    calculated_stats = stats.to_summary().operator_stats[0]
+    calculated_stats = stats.to_summary().operators_stats[0]
 
     assert calculated_stats.output_num_rows == {
         "min": min(block_params["num_rows"]),
@@ -994,7 +994,7 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     )
 
     dataset_stats_summary = stats.to_summary()
-    stage_stats = dataset_stats_summary.operator_stats[0]
+    stage_stats = dataset_stats_summary.operators_stats[0]
     wall_time_stats = stage_stats.wall_time
     assert dataset_stats_summary.get_total_wall_time() == wall_time_stats.get("max")
 

@@ -648,10 +648,10 @@ class DatasetStats:
                 for _, blocks_metadata in sorted(stats_map.items()):
                     self.metadata["Read"] += blocks_metadata
 
-        operator_stats = []
+        operators_stats = []
         is_sub_operator = len(self.metadata) > 1
         for name, meta in self.metadata.items():
-            operator_stats.append(
+            operators_stats.append(
                 OperatorStatsSummary.from_block_metadata(
                     name,
                     meta,
@@ -677,7 +677,7 @@ class DatasetStats:
         if self.parents is not None:
             stats_summary_parents = [p.to_summary() for p in self.parents]
         return DatasetStatsSummary(
-            operator_stats,
+            operators_stats,
             iter_stats,
             stats_summary_parents,
             self.number,
@@ -694,7 +694,7 @@ class DatasetStats:
 @DeveloperAPI
 @dataclass
 class DatasetStatsSummary:
-    operator_stats: List["OperatorStatsSummary"]
+    operators_stats: List["OperatorStatsSummary"]
     iter_stats: "IterStatsSummary"
     parents: List["DatasetStatsSummary"]
     number: int
@@ -733,18 +733,18 @@ class DatasetStatsSummary:
                 if parent_sum:
                     out += parent_sum
                     out += "\n"
-        operator_stats_summary = None
-        if len(self.operator_stats) == 1:
-            operator_stats_summary = self.operator_stats[0]
-            operator_name = operator_stats_summary.operator_name
+        operators_stats_summary = None
+        if len(self.operators_stats) == 1:
+            operators_stats_summary = self.operators_stats[0]
+            operator_name = operators_stats_summary.operator_name
             operator_uuid = self.dataset_uuid + operator_name
             out += "Operator {} {}: ".format(self.number, operator_name)
             if operator_uuid in already_printed:
                 out += "[execution cached]\n"
             else:
                 already_printed.add(operator_uuid)
-                out += str(operator_stats_summary)
-        elif len(self.operator_stats) > 1:
+                out += str(operators_stats_summary)
+        elif len(self.operators_stats) > 1:
             rounded_total = round(self.time_total_s, 2)
             if rounded_total <= 0:
                 # Handle -0.0 case.
@@ -752,8 +752,8 @@ class DatasetStatsSummary:
             out += "Operator {} {}: executed in {}s\n".format(
                 self.number, self.base_name, rounded_total
             )
-            for n, operator_stats_summary in enumerate(self.operator_stats):
-                operator_name = operator_stats_summary.operator_name
+            for n, operators_stats_summary in enumerate(self.operators_stats):
+                operator_name = operators_stats_summary.operator_name
                 operator_uuid = self.dataset_uuid + operator_name
                 out += "\n"
                 out += "\tSuboperator {} {}: ".format(n, operator_name)
@@ -761,18 +761,18 @@ class DatasetStatsSummary:
                     out += "\t[execution cached]\n"
                 else:
                     already_printed.add(operator_uuid)
-                    out += str(operator_stats_summary)
+                    out += str(operators_stats_summary)
         if self.extra_metrics:
             indent = (
                 "\t"
-                if operator_stats_summary and operator_stats_summary.is_sub_operator
+                if operators_stats_summary and operators_stats_summary.is_sub_operator
                 else ""
             )
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)
 
-        if len(self.operator_stats) > 0 and add_global_stats:
+        if len(self.operators_stats) > 0 and add_global_stats:
             mb_spilled = round(self.global_bytes_spilled / 1e6)
             mb_restored = round(self.global_bytes_restored / 1e6)
             if mb_spilled or mb_restored:
@@ -789,8 +789,8 @@ class DatasetStatsSummary:
 
     def __repr__(self, level=0) -> str:
         indent = leveled_indent(level)
-        operator_stats = "\n".join(
-            [ss.__repr__(level + 2) for ss in self.operator_stats]
+        operators_stats = "\n".join(
+            [ss.__repr__(level + 2) for ss in self.operators_stats]
         )
         parent_stats = "\n".join([ps.__repr__(level + 2) for ps in self.parents])
         extra_metrics = "\n".join(
@@ -799,7 +799,9 @@ class DatasetStatsSummary:
         )
 
         # Handle formatting case for empty outputs.
-        operator_stats = f"\n{operator_stats},\n{indent}   " if operator_stats else ""
+        operators_stats = (
+            f"\n{operators_stats},\n{indent}   " if operators_stats else ""
+        )
         parent_stats = f"\n{parent_stats},\n{indent}   " if parent_stats else ""
         extra_metrics = f"\n{extra_metrics}\n{indent}   " if extra_metrics else ""
         return (
@@ -808,7 +810,7 @@ class DatasetStatsSummary:
             f"{indent}   base_name={self.base_name},\n"
             f"{indent}   number={self.number},\n"
             f"{indent}   extra_metrics={{{extra_metrics}}},\n"
-            f"{indent}   operator_stats=[{operator_stats}],\n"
+            f"{indent}   operators_stats=[{operators_stats}],\n"
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
             f"{indent}   global_bytes_spilled={self.global_bytes_spilled / 1e6}MB,\n"
             f"{indent}   global_bytes_restored={self.global_bytes_restored / 1e6}MB,\n"
@@ -821,22 +823,24 @@ class DatasetStatsSummary:
         parent_wall_times = [p.get_total_wall_time() for p in self.parents]
         parent_max_wall_time = max(parent_wall_times) if parent_wall_times else 0
         return parent_max_wall_time + sum(
-            ss.wall_time.get("max", 0) for ss in self.operator_stats
+            ss.wall_time.get("max", 0) for ss in self.operators_stats
         )
 
     def get_total_cpu_time(self) -> float:
         parent_sum = sum(p.get_total_cpu_time() for p in self.parents)
-        return parent_sum + sum(ss.cpu_time.get("sum", 0) for ss in self.operator_stats)
+        return parent_sum + sum(
+            ss.cpu_time.get("sum", 0) for ss in self.operators_stats
+        )
 
     def get_max_heap_memory(self) -> float:
         parent_memory = [p.get_max_heap_memory() for p in self.parents]
         parent_max = max(parent_memory) if parent_memory else 0
-        if not self.operator_stats:
+        if not self.operators_stats:
             return parent_max
 
         return max(
             parent_max,
-            *[ss.memory.get("max", 0) for ss in self.operator_stats],
+            *[ss.memory.get("max", 0) for ss in self.operators_stats],
         )
 
 
