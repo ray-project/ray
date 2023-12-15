@@ -1,7 +1,7 @@
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Set
 
 from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateReply,
@@ -96,8 +96,8 @@ class InstanceUtil:
     @staticmethod
     def is_cloud_instance_allocated(instance: Instance) -> bool:
         """
-        Returns True if the instance is allocated by the cloud provider, i.e.
-        there's already a cloud node for the instance.
+        Returns True if the instance is in a status where there could exist
+        a cloud instance allocated by the cloud provider.
         """
         assert instance.status != Instance.UNKNOWN
         return instance.status in {
@@ -111,10 +111,10 @@ class InstanceUtil:
         }
 
     @staticmethod
-    def is_ray_pending(instance: Instance) -> bool:
+    def is_ray_running_reachable(instance: Instance) -> bool:
         """
-        Returns True if the instance is pending ray installation or ray startup,
-        regardless of whether the instance is allocated by the cloud provider.
+        Returns True if the instance is in a status where it may transition
+        to RAY_RUNNING status.
         """
         assert instance.status != Instance.UNKNOWN
         return instance.status in [
@@ -124,7 +124,6 @@ class InstanceUtil:
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
             Instance.ALLOCATION_FAILED,
-            Instance.RAY_INSTALL_FAILED,
         ]
 
     @staticmethod
@@ -135,8 +134,6 @@ class InstanceUtil:
     ):
         """Transitions the instance to the new state.
 
-        This should be called by the reconciler and the instance manager.
-
         Args:
             instance: The instance to update.
             new_instance_status: The new status to transition to.
@@ -145,7 +142,13 @@ class InstanceUtil:
         Raises:
             ValueError if the transition is not allowed.
         """
-        InstanceUtil._check_valid_next_instance_status(instance, new_instance_status)
+        if (
+            new_instance_status
+            not in InstanceUtil.get_valid_transitions()[instance.status]
+        ):
+            raise ValueError(
+                f"Invalid transition from {instance.status} to {new_instance_status}"
+            )
         instance.status = new_instance_status
         InstanceUtil._record_status_transition(instance, new_instance_status, details)
 
@@ -155,22 +158,11 @@ class InstanceUtil:
     ):
         """Records the status transition.
 
-        This should be called by the instance manager.
-
         Args:
             instance: The instance to update.
             status: The new status to transition to.
         """
         now_ms = time.time_ns() // 1000000
-        if (
-            len(instance.status_history) > 0
-            and instance.status_history[-1].timestamp_ms > now_ms
-        ):
-            raise ValueError(
-                f"Invalid timestamp: new timestamp({now_ms}) < previous timestamp("
-                f"({instance.status_history[-1].timestamp_ms})"
-            )
-
         instance.status_history.append(
             Instance.StatusHistory(
                 instance_status=status,
@@ -180,19 +172,10 @@ class InstanceUtil:
         )
 
     @staticmethod
-    def _check_valid_next_instance_status(
-        instance: Instance, new_status: Instance.InstanceStatus
-    ) -> None:
-        """Checks if the transition is allowed.
-
-        Args:
-            instance: The instance to update.
-            new_status: The new status to transition to.
-
-        Raises:
-            ValueError if the transition is not allowed.
-        """
-        valid_transitions = {
+    def get_valid_transitions() -> Dict[
+        "Instance.InstanceStatus", Set["Instance.InstanceStatus"]
+    ]:
+        return {
             Instance.QUEUED: {
                 # Cloud provider requested to launch a node for the instance.
                 Instance.REQUESTED
@@ -245,7 +228,7 @@ class InstanceUtil:
                 Instance.STOPPED,
             },
             Instance.STOPPING: {Instance.STOPPED},
-            Instance.STOPPED: {},  # Terminal state.
+            Instance.STOPPED: set(),  # Terminal state.
             Instance.ALLOCATION_FAILED: {
                 # Autoscaler might retry to allocate the instance.
                 Instance.QUEUED
@@ -256,25 +239,32 @@ class InstanceUtil:
                 # Cloud node somehow failed.
                 Instance.STOPPED,
             },
+            Instance.UNKNOWN: set(),  # Initial state before the instance is created.
         }
-
-        if new_status not in valid_transitions[instance.status]:
-            raise ValueError(
-                f"Invalid transition from {instance.status} to {new_status}"
-            )
 
     @staticmethod
     def get_status_time_ms(
         instance: Instance,
-        instance_status: Instance.InstanceStatus,
-        reverse: bool = False,
-    ) -> Optional[int]:
-        for status_update in sorted(
-            instance.status_history, key=lambda x: x.timestamp_ms, reverse=reverse
-        ):
-            if status_update.instance_status != instance_status:
+        select_instance_status: Optional["Instance.InstanceStatus"] = None,
+    ) -> List[int]:
+        """
+        Returns the timestamp of the instance status update.
+
+        Args:
+            instance: The instance.
+            instance_status: The status to search for. If None, returns all
+                status updates timestamps.
+
+        Returns:
+            The list of timestamps of the instance status updates.
+        """
+        ts_list = []
+        for status_update in instance.status_history:
+            if (
+                select_instance_status
+                and status_update.instance_status != select_instance_status
+            ):
                 continue
+            ts_list.append(status_update.timestamp_ms)
 
-            return status_update.timestamp_ms
-
-        return None
+        return ts_list
