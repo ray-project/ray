@@ -206,7 +206,7 @@ class ProcessFD {
     if (pipe_to_stdin) {
       if (pid <= 0 && parent_lifetime_pipe[1] != -1) {
         // Child. Close sthe write end of the pipe from child.
-        close(parent_lifetime_pipe[1]);  
+        close(parent_lifetime_pipe[1]);
         parent_lifetime_pipe[1] = -1;
       }
       if (pid != 0 && parent_lifetime_pipe[0] != -1) {

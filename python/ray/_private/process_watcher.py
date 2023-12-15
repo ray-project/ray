@@ -64,15 +64,16 @@ def create_check_raylet_task(log_dir, gcs_address, parent_dead_callback, loop):
 
     if dashboard_consts.PARENT_HEALTH_CHECK_BY_PIPE:
         logger.info("check_parent_via_pipe")
-        check_parent_task = _check_parent_via_pipe(log_dir, gcs_address, loop, parent_dead_callback)
+        check_parent_task = _check_parent_via_pipe(
+            log_dir, gcs_address, loop, parent_dead_callback
+        )
     else:
         logger.info("_check_parent")
         check_parent_task = _check_parent(
-            raylet_pid, log_dir, gcs_address, parent_dead_callback)
+            raylet_pid, log_dir, gcs_address, parent_dead_callback
+        )
 
-    return run_background_task(
-        check_parent_task
-    )
+    return run_background_task(check_parent_task)
 
 
 def report_raylet_error_logs(log_dir: str, gcs_address: str):
@@ -90,9 +91,7 @@ def report_raylet_error_logs(log_dir: str, gcs_address: str):
             raylet_logs = f.readlines()
             # Assume the SIGTERM message must exist within the last
             # _RAYLET_LOG_MAX_TAIL_SIZE of the log file.
-            if any(
-                "Raylet received SIGTERM" in line for line in raylet_logs
-            ):
+            if any("Raylet received SIGTERM" in line for line in raylet_logs):
                 msg += "Termination is graceful."
                 logger.info(msg)
             else:
@@ -126,10 +125,8 @@ def report_raylet_error_logs(log_dir: str, gcs_address: str):
 
 
 async def _check_parent_via_pipe(
-        log_dir: str,
-        gcs_address:str,
-        loop,
-        parent_dead_callback):
+    log_dir: str, gcs_address: str, loop, parent_dead_callback
+):
     while True:
         try:
             # Read input asynchronously.
@@ -138,7 +135,8 @@ async def _check_parent_via_pipe(
             # the process is dead.
             with ThreadPoolExecutor(max_workers=1) as executor:
                 input_data = await loop.run_in_executor(
-                    executor, lambda: sys.stdin.readline())
+                    executor, lambda: sys.stdin.readline()
+                )
             if len(input_data) == 0:
                 # cannot read bytes from parent == parent is dead.
                 parent_dead_callback("_check_parent_via_pipe: The parent is dead.")
@@ -147,7 +145,8 @@ async def _check_parent_via_pipe(
         except Exception as e:
             logger.exception(
                 "raylet health checking is failed. "
-                f"The agent process may leak. Exception: {e}")
+                f"The agent process may leak. Exception: {e}"
+            )
 
 
 async def _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback):
@@ -185,7 +184,7 @@ async def _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback):
                         dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
                     )
                     continue
-                
+
                 parent_dead_callback("_check_parent: The parent is dead.")
                 report_raylet_error_logs(log_dir, gcs_address)
                 sys.exit(0)
