@@ -8,6 +8,7 @@ forge_prefix: cr.ray.io/rayproject/
 builder_queues:
   builder: large
   builder-arm64: "~"
+  builder-windows: "~"
 runner_queues:
   default: small
   small: small
