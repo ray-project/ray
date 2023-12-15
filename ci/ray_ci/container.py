@@ -13,6 +13,14 @@ _DOCKER_GCP_REGISTRY = os.environ.get(
     "RAYCI_GCP_REGISTRY",
     "us-west1-docker.pkg.dev/anyscale-oss-ci",
 )
+_DOCKER_ENV = [
+    "BUILDKITE_BUILD_URL",
+    "BUILDKITE_BRANCH",
+    "BUILDKITE_COMMIT",
+    "BUILDKITE_JOB_ID",
+    "BUILDKITE_LABEL",
+    "BUILDKITE_PIPELINE_ID",
+]
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 
 
@@ -21,8 +29,10 @@ class Container(abc.ABC):
     A wrapper for running commands in ray ci docker container
     """
 
-    def __init__(self, docker_tag: str) -> None:
+    def __init__(self, docker_tag: str, envs: Optional[List[str]] = None) -> None:
         self.docker_tag = docker_tag
+        self.envs = envs or []
+        self.envs += _DOCKER_ENV
 
     def run_script_with_output(self, script: List[str]) -> bytes:
         """
@@ -64,13 +74,11 @@ class Container(abc.ABC):
         :param script: script to run in container
         :param gpu_ids: ids of gpus on the host machine
         """
+        command = ["docker", "run", "-i", "--rm"]
+        for env in self.envs:
+            command += ["--env", env]
         return (
-            [
-                "docker",
-                "run",
-                "-i",
-                "--rm",
-            ]
+            command
             + self.get_run_command_extra_args(gpu_ids)
             + [self._get_docker_image()]
             + self.get_run_command_shell()

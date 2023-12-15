@@ -735,10 +735,15 @@ class ApplicationState:
         return {k: v for k, v in details.items() if v is not None}
 
     def _update_status(self, status: ApplicationStatus, status_msg: str = "") -> None:
-        if status_msg and status in [
-            ApplicationStatus.DEPLOY_FAILED,
-            ApplicationStatus.UNHEALTHY,
-        ]:
+        if (
+            status_msg
+            and status
+            in [
+                ApplicationStatus.DEPLOY_FAILED,
+                ApplicationStatus.UNHEALTHY,
+            ]
+            and status_msg != self._status_msg
+        ):
             logger.warning(status_msg)
 
         self._status = status

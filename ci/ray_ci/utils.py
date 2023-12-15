@@ -37,7 +37,7 @@ def docker_login(docker_ecr: str) -> None:
     Login to docker with AWS credentials
     """
     password = subprocess.check_output(
-        ["aws", "ecr", "get-login-password", "--region", "us-west-2"],
+        ["bash", "-c", "aws ecr get-login-password --region us-west-2"],
         stderr=sys.stderr,
     )
     with tempfile.TemporaryFile() as f:

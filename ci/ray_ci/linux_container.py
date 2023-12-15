@@ -5,14 +5,6 @@ from typing import List, Optional
 
 from ci.ray_ci.container import Container
 
-_DOCKER_ENV = [
-    "BUILDKITE_BUILD_URL",
-    "BUILDKITE_BRANCH",
-    "BUILDKITE_COMMIT",
-    "BUILDKITE_JOB_ID",
-    "BUILDKITE_LABEL",
-    "BUILDKITE_PIPELINE_ID",
-]
 _DOCKER_CAP_ADD = [
     "SYS_PTRACE",
     "SYS_ADMIN",
@@ -27,10 +19,8 @@ class LinuxContainer(Container):
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
     ) -> None:
-        super().__init__(docker_tag)
+        super().__init__(docker_tag, envs)
         self.volumes = volumes or []
-        self.envs = envs or []
-        self.envs += _DOCKER_ENV
 
     def install_ray(self, build_type: Optional[str] = None) -> List[str]:
         env = os.environ.copy()
@@ -72,8 +62,6 @@ class LinuxContainer(Container):
         ]
         for volume in self.volumes:
             extra_args += ["--volume", volume]
-        for env in self.envs:
-            extra_args += ["--env", env]
         for cap in _DOCKER_CAP_ADD:
             extra_args += ["--cap-add", cap]
         if gpu_ids:
