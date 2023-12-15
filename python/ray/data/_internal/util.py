@@ -547,7 +547,7 @@ def get_compute_strategy(
             "The argument ``compute`` is deprecated in Ray 2.9. Please specify "
             "argument ``concurrency`` instead. For more information, see "
             "https://docs.ray.io/en/master/data/transforming-data.html#"
-            "transforming-with-python-class."
+            "stateful-transforms."
         )
         if is_callable_class and (
             compute == "tasks" or isinstance(compute, TaskPoolStrategy)
