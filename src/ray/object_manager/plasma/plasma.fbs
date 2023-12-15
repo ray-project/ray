@@ -104,6 +104,8 @@ struct PlasmaObjectSpec {
   metadata_offset: ulong;
   // The size in bytes of the metadata.
   metadata_size: ulong;
+  // Whether this object is on a fallback allocated mmap.
+  fallback_allocated: bool;
   // Device to create buffer on.
   device_num: int;
 }
@@ -231,6 +233,9 @@ table PlasmaGetReply {
 table PlasmaReleaseRequest {
   // ID of the object to be released.
   object_id: string;
+  // Client concerns this request may unmap a mmap region, and will wait for a reply.
+  // If false, the server should not send a PlasmaReleaseReply.
+  may_unmap: bool;
 }
 
 table PlasmaReleaseReply {
