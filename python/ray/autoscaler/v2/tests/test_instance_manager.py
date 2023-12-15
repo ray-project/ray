@@ -97,6 +97,10 @@ class InstanceUtilTest(unittest.TestCase):
         instance = InstanceUtil.new_instance("i-123", "type_1", {"CPU": 1}, "rq-1")
         # OK
         assert InstanceUtil.get_status_time_ms(instance, Instance.QUEUED)[0] == 1
+        # No filter.
+        assert InstanceUtil.get_status_time_ms(
+            instance,
+        ) == [1]
 
         # Missing status returns empty list
         assert InstanceUtil.get_status_time_ms(instance, Instance.REQUESTED) == []
