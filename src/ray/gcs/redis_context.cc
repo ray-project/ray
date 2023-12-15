@@ -201,8 +201,11 @@ void RedisRequestContext::Run() {
     return Status::RedisError(REPLY->str);      \
   }
 
-RedisContext::RedisContext(instrumented_io_context &io_service)
-    : io_service_(io_service), context_(nullptr), ssl_context_(nullptr) {
+RedisContext::RedisContext(instrumented_io_context &io_service, RedisClient &redis_client)
+    : io_service_(io_service),
+      redis_client_(redis_client),
+      context_(nullptr),
+      ssl_context_(nullptr) {
   redisSSLContextError ssl_error;
   redisInitOpenSSL();
 
@@ -479,10 +482,15 @@ bool HasSameAddress(RedisAsyncContext &context1, RedisAsyncContext &context2) {
          (strcmp(tcp1.source_addr, tcp2.source_addr) == 0) && (tcp1.port == tcp2.port);
 }
 
-void RedisContext::ResetAsyncContext(std::shared_ptr<RedisAsyncContext> &redis_context) {
+void RedisContext::ResetOrRetrieveAsyncContext(
+    std::shared_ptr<RedisAsyncContext> &new_async_context) {
   absl::MutexLock l(&mu_);
-  if (!HasSameAddress(*redis_async_context_.get(), *redis_context.get())) {
-    redis_async_context_.swap(redis_context);
+  if (!HasSameAddress(*redis_async_context_.get(), *new_async_context.get())) {
+    redis_async_context_ = new_async_context;
+    redis_client_.ReattachContext(*this);
+  } else {
+    // Return an attached context.
+    new_async_context = redis_async_context_;
   }
 }
 

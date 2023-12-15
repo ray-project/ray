@@ -42,6 +42,8 @@ namespace gcs {
 
 using rpc::TablePrefix;
 
+class RedisClient;
+
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
  public:
@@ -147,7 +149,7 @@ struct RedisRequestContext {
 
 class RedisContext {
  public:
-  RedisContext(instrumented_io_context &io_service);
+  RedisContext(instrumented_io_context &io_service, RedisClient &redis_client);
 
   virtual ~RedisContext();
 
@@ -174,7 +176,10 @@ class RedisContext {
   virtual void RunArgvAsync(std::vector<std::string> args,
                             RedisCallback redis_callback = nullptr);
 
-  void ResetAsyncContext(std::shared_ptr<RedisAsyncContext> &redis_async_context);
+  // Either set the context held by the client to this one, or, if equal,
+  // set the argument to the one held by the client because it has been Attached().
+  void ResetOrRetrieveAsyncContext(
+      std::shared_ptr<RedisAsyncContext> &redis_async_context);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);
@@ -195,6 +200,7 @@ class RedisContext {
   static void FreeRedisReply(void *reply);
 
   instrumented_io_context &io_service_;
+  RedisClient &redis_client_;
 
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;

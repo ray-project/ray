@@ -768,12 +768,17 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     - After Redis recovered, Ray should be able to use the new Master.
     - When the master becomes slaves, Ray should crash.
     """
+    print("vct AAAAA")
     cluster = ray_start_cluster_head_with_external_redis
     import redis
+
+    print("vct BBBBB")
 
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
     ip, port = redis_addr.split(":")
     redis_cli = redis.Redis(ip, port)
+
+    print("vct CCCCC")
 
     def get_connected_nodes():
         return [

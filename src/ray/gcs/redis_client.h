@@ -92,6 +92,8 @@ class RedisClient {
 
   int GetNextJobID();
 
+  void ReattachContext(RedisContext &context);
+
  protected:
   /// Attach this client to an asio event loop. Note that only
   /// one event loop should be attached at a time.

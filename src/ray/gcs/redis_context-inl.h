@@ -14,6 +14,7 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/stats/metric_defs.h"
 
@@ -123,7 +124,8 @@ void RedisResponseFn(struct redisAsyncContext *async_context,
         } else {
           request_cxt->redis_context_.reset(CreateAsyncContext(std::move(resp.second)));
           // Set the context in the longer-lived RedisContext object.
-          request_cxt->parent_context_.ResetAsyncContext(request_cxt->redis_context_);
+          request_cxt->parent_context_.ResetOrRetrieveAsyncContext(
+              request_cxt->redis_context_);
           // TODO(vitsai): do we need to Attach
         }
       } else {

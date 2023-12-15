@@ -150,7 +150,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
     return Status::Invalid("Redis server address is invalid!");
   }
 
-  primary_context_ = std::make_shared<RedisContext>(*io_services[0]);
+  primary_context_ = std::make_shared<RedisContext>(*io_services[0], *this);
 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
                                          options_.server_port_,
@@ -174,7 +174,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
       size_t io_service_index = (i + 1) % io_services.size();
       instrumented_io_context &io_service = *io_services[io_service_index];
       // Populate shard_contexts.
-      shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
+      shard_contexts_.push_back(std::make_shared<RedisContext>(io_service, *this));
       // Only async context is used in sharding context, so we disable the other two.
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i],
                                                ports[i],
@@ -183,7 +183,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
                                                /*enable_ssl=*/options_.enable_ssl_));
     }
   } else {
-    shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0]));
+    shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0], *this));
     // Only async context is used in sharding context, so we disable the other two.
     RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_,
                                              options_.server_port_,
@@ -198,6 +198,13 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
   RAY_LOG(DEBUG) << "RedisClient connected.";
 
   return Status::OK();
+}
+
+void RedisClient::ReattachContext(RedisContext &context) {
+  // TODO ideally we want to remove the old one too
+  instrumented_io_context &io_service = context.io_service();
+  shard_asio_async_clients_.emplace_back(
+      new RedisAsioClient(io_service, context.async_context()));
 }
 
 void RedisClient::Attach() {
