@@ -78,6 +78,7 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing lr-scheduling correctness.
@@ -86,7 +87,6 @@ class TestPPO(unittest.TestCase):
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=[[0, 0.1], [256, 0.0]],  # 256=2x128,
                 train_batch_size=128,
-                _enable_learner_api=True,
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -95,7 +95,6 @@ class TestPPO(unittest.TestCase):
                 enable_connectors=True,
             )
             .callbacks(MyCallbacks)
-            .rl_module(_enable_rl_module_api=True)
         )
 
         num_iterations = 2
@@ -138,6 +137,7 @@ class TestPPO(unittest.TestCase):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
@@ -147,8 +147,6 @@ class TestPPO(unittest.TestCase):
                 num_rollout_workers=1,
                 enable_connectors=True,
             )
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True)
         )
         obs = np.array(0)
 
@@ -183,24 +181,21 @@ class TestPPO(unittest.TestCase):
     def test_ppo_free_log_std_with_rl_modules(self):
         """Tests the free log std option works."""
         config = (
-            (
-                ppo.PPOConfig()
-                .environment("Pendulum-v1")
-                .rollouts(
-                    num_rollout_workers=1,
-                )
-                .training(
-                    gamma=0.99,
-                    model=dict(
-                        fcnet_hiddens=[10],
-                        fcnet_activation="linear",
-                        free_log_std=True,
-                        vf_share_layers=True,
-                    ),
-                )
+            ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
+            .environment("Pendulum-v1")
+            .rollouts(
+                num_rollout_workers=1,
             )
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True)
+            .training(
+                gamma=0.99,
+                model=dict(
+                    fcnet_hiddens=[10],
+                    fcnet_activation="linear",
+                    free_log_std=True,
+                    vf_share_layers=True,
+                ),
+            )
         )
 
         for fw in framework_iterator(config, frameworks=("torch", "tf2")):

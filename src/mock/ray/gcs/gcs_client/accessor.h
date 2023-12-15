@@ -173,19 +173,10 @@ namespace gcs {
 class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
  public:
   MOCK_METHOD(Status,
-              AsyncGetResources,
-              (const NodeID &node_id, const OptionalItemCallback<ResourceMap> &callback),
-              (override));
-  MOCK_METHOD(Status,
               AsyncGetAllAvailableResources,
               (const MultiItemCallback<rpc::AvailableResources> &callback),
               (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
-  MOCK_METHOD(Status,
-              AsyncReportResourceUsage,
-              (const std::shared_ptr<rpc::ResourcesData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
   MOCK_METHOD(Status,
               AsyncGetAllResourceUsage,
               (const ItemCallback<rpc::ResourceUsageBatchData> &callback),

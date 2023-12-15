@@ -113,7 +113,7 @@ def load_experiments_from_file(
         config = algo_config.to_dict()
         experiments = {
             f"default_{uuid.uuid4().hex}": {
-                "run": algo_config.__class__.__name__.replace("Config", ""),
+                "run": algo_config.algo_class,
                 "env": config.get("env"),
                 "config": config,
                 "stop": stop,

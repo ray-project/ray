@@ -5,7 +5,6 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve.drivers import DAGDriver
 from ray.util.state import list_actors
 
 
@@ -15,7 +14,13 @@ def get_node_to_deployment_to_num_replicas():
     # {node_id: {deployment_name: num_replicas}}
     node_to_deployment_to_num_replicas = defaultdict(dict)
     for actor in actors:
-        if "app#deploy" not in actor["name"] or actor["state"] != "ALIVE":
+        if (
+            not any(
+                name in actor["name"]
+                for name in ["app#deploy", "app1#deploy", "app2#deploy"]
+            )
+            or actor["state"] != "ALIVE"
+        ):
             continue
         deployment_name = None
         if "deploy1" in actor["name"]:
@@ -64,15 +69,16 @@ def test_basic(ray_autoscaling_cluster):
         def __call__(self):
             return "hello"
 
-    deployments = {
-        "/deploy1": D.options(
-            num_replicas=6, max_replicas_per_node=3, name="deploy1"
-        ).bind(),
-        "/deploy2": D.options(
-            num_replicas=2, max_replicas_per_node=1, name="deploy2"
-        ).bind(),
-    }
-    serve.run(DAGDriver.bind(deployments), name="app")
+    serve.run(
+        D.options(num_replicas=6, max_replicas_per_node=3, name="deploy1").bind(),
+        name="app1",
+        route_prefix="/deploy1",
+    )
+    serve.run(
+        D.options(num_replicas=2, max_replicas_per_node=1, name="deploy2").bind(),
+        name="app2",
+        route_prefix="/deploy2",
+    )
 
     # 2 worker nodes should be started.
     # Each worker node should run 3 deploy1 replicas

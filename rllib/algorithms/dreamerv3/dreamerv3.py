@@ -63,38 +63,36 @@ _, tf, _ = try_import_tf()
 class DreamerV3Config(AlgorithmConfig):
     """Defines a configuration class from which a DreamerV3 can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
-        >>> config = DreamerV3Config()
-        >>> config = config.training(  # doctest: +SKIP
-        ...     batch_size_B=8, model_size="M"
-        ... )
-        >>> config = config.resources(num_learner_workers=4)  # doctest: +SKIP
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = DreamerV3Config()
-        >>> # Print out some default values.
-        >>> print(config.training_ratio)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config = config.training(   # doctest: +SKIP
-        ...     training_ratio=tune.grid_search([256, 512, 1024])
-        ... )
-        >>> # Set the config object's env.
-        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "DreamerV3",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
+        config = (
+            DreamerV3Config()
+            .environment("CartPole-v1")
+            .training(
+                model_size="XS",
+                training_ratio=1,
+                # TODO
+                model={
+                    "batch_size_B": 1,
+                    "batch_length_T": 1,
+                    "horizon_H": 1,
+                    "gamma": 0.997,
+                    "model_size": "XS",
+                },
+            )
+        )
+
+        config = config.resources(num_learner_workers=0)
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build()
+        # algo.train()
+        del algo
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
@@ -155,8 +153,7 @@ class DreamerV3Config(AlgorithmConfig):
         # with RLlib's `RemoteVectorEnv`).
         self.remote_worker_envs = True
         # Dreamer only runs on the new API stack.
-        self._enable_learner_api = True
-        self._enable_rl_module_api = True
+        self._enable_new_api_stack = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -389,10 +386,10 @@ class DreamerV3Config(AlgorithmConfig):
             raise ValueError("DreamerV3 does NOT support multi-agent setups yet!")
 
         # Make sure, we are configure for the new API stack.
-        if not (self._enable_learner_api and self._enable_rl_module_api):
+        if not self._enable_new_api_stack:
             raise ValueError(
-                "DreamerV3 must be run with `config._enable_learner_api`=True AND "
-                "with `config._enable_rl_module_api`=True!"
+                "DreamerV3 must be run with `config.experimental("
+                "_enable_new_api_stack=True)`!"
             )
 
         # If run on several Learners, the provided batch_size_B must be a multiple
@@ -493,6 +490,16 @@ class DreamerV3Config(AlgorithmConfig):
 
 class DreamerV3(Algorithm):
     """Implementation of the model-based DreamerV3 RL algorithm described in [1]."""
+
+    # TODO (sven): Deprecate/do-over the Algorithm.compute_single_action() API.
+    @override(Algorithm)
+    def compute_single_action(self, *args, **kwargs):
+        raise NotImplementedError(
+            "DreamerV3 does not support the `compute_single_action()` API. Refer to the"
+            " README here (https://github.com/ray-project/ray/tree/master/rllib/"
+            "algorithms/dreamerv3) to find more information on how to run action "
+            "inference with this algorithm."
+        )
 
     @classmethod
     @override(Algorithm)

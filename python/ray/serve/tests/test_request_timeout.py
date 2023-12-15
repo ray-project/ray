@@ -15,8 +15,8 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.common import ApplicationStatus
+from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve.schema import ServeInstanceDetails
-from ray.serve.tests.common.utils import send_signal_on_cancellation
 from ray.util.state import list_tasks
 
 
@@ -135,7 +135,7 @@ def test_with_rest_api(ray_start_stop):
             }
         ],
     }
-    ServeSubmissionClient("http://localhost:52365").deploy_applications(config)
+    ServeSubmissionClient("http://localhost:8265").deploy_applications(config)
 
     def application_running():
         response = requests.get(
@@ -155,7 +155,7 @@ def test_with_rest_api(ray_start_stop):
     response = requests.get("http://localhost:8000")
     assert response.status_code == 200
     print("Requests succeeded! Deleting application.")
-    ServeSubmissionClient("http://localhost:52365").delete_applications()
+    ServeSubmissionClient("http://localhost:8265").delete_applications()
 
 
 @pytest.mark.parametrize(
@@ -268,7 +268,7 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
             )
         )
 
-    assert get_num_running_tasks() == 0
+    wait_for_condition(lambda: get_num_running_tasks() == 0)
 
     # Send a number of requests that all will be timed out.
     results = ray.get([do_request.remote() for _ in range(10)])

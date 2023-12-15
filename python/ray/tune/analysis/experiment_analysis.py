@@ -1,9 +1,11 @@
+import copy
 import fnmatch
 import io
 import json
 import logging
 from numbers import Number
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pyarrow.fs
@@ -95,12 +97,12 @@ class ExperimentAnalysis:
         else:
             self._experiment_fs_path = experiment_checkpoint_path
 
-            experiment_json_filename = (
+            experiment_json_fs_path = (
                 ExperimentAnalysis._find_newest_experiment_checkpoint(
                     self._fs, self._experiment_fs_path
                 )
             )
-            if experiment_json_filename is None:
+            if experiment_json_fs_path is None:
                 pattern = TuneController.CKPT_FILE_TMPL.format("*")
                 raise ValueError(
                     f"No experiment checkpoint file of form '{pattern}' was found at: "
@@ -110,9 +112,7 @@ class ExperimentAnalysis:
                     "specified in your run."
                 )
 
-            self._experiment_json_fs_path = os.path.join(
-                self._experiment_fs_path, experiment_json_filename
-            )
+            self._experiment_json_fs_path = experiment_json_fs_path
 
         self.trials = trials or self._load_trials()
         self._trial_dataframes = self._fetch_trial_dataframes()
@@ -122,12 +122,20 @@ class ExperimentAnalysis:
         with self._fs.open_input_stream(self._experiment_json_fs_path) as f:
             experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)
 
+        experiment_fs_path = Path(self._experiment_fs_path)
+
         trials = []
         trial_states = experiment_state["trial_data"]
         for trial_json_state, trial_runtime_metadata in trial_states:
             trial = Trial.from_json_state(trial_json_state, stub=True)
             trial.restore_run_metadata(trial_runtime_metadata)
-            # TODO(justinvyu): [handle_moved_storage_path]
+
+            new_storage = copy.copy(trial.storage)
+            new_storage.storage_fs_path = experiment_fs_path.parent.as_posix()
+            new_storage.storage_filesystem = self._fs
+            new_storage.experiment_dir_name = experiment_fs_path.name
+            trial.set_storage(new_storage)
+
             trials.append(trial)
         return trials
 
@@ -214,7 +222,8 @@ class ExperimentAnalysis:
         matching = fnmatch.filter(filenames, pattern)
         if not matching:
             return None
-        return max(matching)
+        filename = max(matching)
+        return os.path.join(experiment_fs_path, filename)
 
     @property
     def experiment_path(self) -> str:

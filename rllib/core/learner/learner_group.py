@@ -4,8 +4,8 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Dict,
     List,
-    Mapping,
     Optional,
     Set,
     Type,
@@ -17,18 +17,19 @@ import uuid
 import ray
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
-    ModuleID,
     SingleAgentRLModuleSpec,
     RLMODULE_STATE_DIR_NAME,
 )
 from ray.rllib.core.learner.learner import LearnerSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import ModuleID, ResultDict, ShouldModuleBeUpdatedFn
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
+from ray.util.annotations import PublicAPI
 
 
 if TYPE_CHECKING:
@@ -50,14 +51,18 @@ def _get_backend_config(learner_class: Type["Learner"]) -> str:
     return backend_config
 
 
-def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
-    """Default implemntation for is_module_trainable()
+def _default_should_module_be_updated_fn(
+    module_id: ModuleID,
+    batch: MultiAgentBatch,
+) -> bool:
+    """Default implemntation for `LearnerGroup.should_module_be_updated_fn()`.
 
-    It assumes that the module is trainable by default.
+    It assumes that all modules are to be updated by default.
     """
     return True
 
 
+@PublicAPI(stability="alpha")
 class LearnerGroup:
     """Coordinator of Learners.
 
@@ -87,7 +92,7 @@ class LearnerGroup:
         # ray train.
         self._is_shut_down = False
 
-        self._is_module_trainable = _is_module_trainable
+        self._should_module_be_updated_fn = _default_should_module_be_updated_fn
 
         # How many timesteps had to be dropped due to a full input queue?
         self._in_queue_ts_dropped = 0
@@ -131,7 +136,7 @@ class LearnerGroup:
             self._inflight_request_tags: Set[str] = set()
             self._in_queue = deque(maxlen=max_queue_len)
 
-    def get_in_queue_stats(self) -> Mapping[str, Any]:
+    def get_in_queue_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
         return {
             "learner_group_queue_size": len(self._in_queue),
@@ -148,10 +153,10 @@ class LearnerGroup:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
+        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
-    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Do one or more gradient based updates to the Learner(s) based on given data.
 
         Args:
@@ -172,10 +177,11 @@ class LearnerGroup:
             a list of dictionaries of results from the updates from the Learner(s).
         """
 
-        # Construct a multi-agent batch with only the trainable modules.
+        # Construct a multi-agent batch with only those modules in it that should
+        # be updated.
         train_batch = {}
         for module_id in batch.policy_batches.keys():
-            if self._is_module_trainable(module_id, batch):
+            if self.should_module_be_updated_fn(module_id, batch):
                 train_batch[module_id] = batch.policy_batches[module_id]
         train_batch = MultiAgentBatch(train_batch, batch.count)
 
@@ -219,10 +225,10 @@ class LearnerGroup:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
+        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
-    ) -> Union[List[Mapping[str, Any]], List[List[Mapping[str, Any]]]]:
+    ) -> Union[List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
         """Asnychronously do gradient based updates to the Learner(s) with `batch`.
 
         Args:
@@ -361,7 +367,7 @@ class LearnerGroup:
         *,
         reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
         **kwargs,
-    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Apply additional non-gradient based updates to the Learners.
 
         For example, this could be used to do a polyak averaging update
@@ -431,26 +437,7 @@ class LearnerGroup:
                 refs.append(ref)
             ray.get(refs)
 
-    def set_weights(self, weights: Mapping[str, Any]) -> None:
-        """Set the weights of the MultiAgentRLModule maintained by each Learner.
-
-        The weights don't have to include all the modules in the MARLModule.
-            This way the weights of only some of the Agents can be set.
-
-        Args:
-            weights: The weights to set each RLModule in the MARLModule to.
-
-        """
-        if self.is_local:
-            self._learner.set_module_state(weights)
-        else:
-            results_or_errors = self._worker_manager.foreach_actor(
-                lambda w: w.set_module_state(weights)
-            )
-            # raise errors if any
-            self._get_results(results_or_errors)
-
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
         """Get the weights of the MultiAgentRLModule maintained by each Learner.
 
         Args:
@@ -472,46 +459,103 @@ class LearnerGroup:
 
         return convert_to_numpy(state)
 
-    def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
-        """Get the states of the first Learners.
+    def set_weights(self, weights: Dict[str, Any]) -> None:
+        """Set the weights of the MultiAgentRLModule maintained by each Learner.
 
-        This should be the same across Learners
+        The weights don't have to include all the modules in the MARLModule.
+            This way the weights of only some of the Agents can be set.
+
+        Args:
+            weights: The weights to set each RLModule in the MARLModule to.
+
         """
         if self.is_local:
-            return self._learner.get_state()
+            self._learner.set_module_state(weights)
+        else:
+            results_or_errors = self._worker_manager.foreach_actor(
+                lambda w: w.set_module_state(weights)
+            )
+            # raise errors if any
+            self._get_results(results_or_errors)
+
+    def get_state(self) -> Dict[str, Any]:
+        """Get the states of this LearnerGroup.
+
+        Contains the Learners' state (which should be the same across Learners) and
+        some other information.
+
+        Returns:
+            The state dict mapping str keys to state information.
+        """
+        if self.is_local:
+            learner_state = self._learner.get_state()
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
             results = self._worker_manager.foreach_actor(
                 lambda w: w.get_state(), remote_actor_ids=[worker]
             )
-            return self._get_results(results)[0]
+            learner_state = self._get_results(results)[0]
+        return {
+            "learner_state": learner_state,
+            "should_module_be_updated_fn": self.should_module_be_updated_fn,
+        }
 
-    def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:
-        """Sets the states of the Learners.
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Sets the state of this LearnerGroup.
+
+        Note that all Learners share the same state.
 
         Args:
-            state: The state of the Learners
-
+            state: The state dict mapping str keys to state information.
         """
-        if self.is_local:
-            self._learner.set_state(state)
-        else:
-            self._worker_manager.foreach_actor(lambda w: w.set_state(state))
+        learner_state = state.get("learner_state")
+        if learner_state is not None:
+            if self.is_local:
+                self._learner.set_state(learner_state)
+            else:
+                self._worker_manager.foreach_actor(lambda w: w.set_state(learner_state))
+        if state.get("should_module_be_updated_fn"):
+            self.set_should_module_be_updated_fn(state["should_module_be_updated_fn"])
 
-    def set_is_module_trainable(
-        self, is_module_trainable: Callable[[ModuleID, MultiAgentBatch], bool] = None
+    @property
+    def should_module_be_updated_fn(self):
+        return self._should_module_be_updated_fn
+
+    def set_should_module_be_updated_fn(
+        self, should_module_be_updated_fn: Optional[ShouldModuleBeUpdatedFn] = None
     ) -> None:
-        """Sets the function that determines whether a module is trainable.
+        """Sets the function that determines whether a module should be updated or not.
 
         Args:
-            is_module_trainable: A function that takes in a module id and a batch
-                and returns a boolean indicating whether the module should be trained
-                on the batch.
+            should_module_be_updated_fn: An optional callable that takes in a ModuleID
+                and a batch and returns a boolean indicating whether the module should
+                be updated on the given batch.
         """
-        if is_module_trainable is not None:
-            self._is_module_trainable = is_module_trainable
+        # If None, use default implementation (all modules should be updated).
+        if should_module_be_updated_fn is None:
+            should_module_be_updated_fn = _default_should_module_be_updated_fn
+        # If container given, construct a simple callable returning True
+        # if the ModuleID is found in the list/set of IDs.
+        elif not callable(should_module_be_updated_fn):
+            if not isinstance(should_module_be_updated_fn, (list, set, tuple)):
+                raise ValueError(
+                    "`should_module_be_updated_fn` arg must either be a [list|set|"
+                    "tuple] or a callable taking a ModuleID and a MultiAgentBatch as "
+                    "call args and returning True|False (whether module is to be "
+                    "updated or not?)."
+                )
+            module_ids = set(should_module_be_updated_fn)
 
+            def should_module_be_updated_fn(mid, batch=None):
+                return mid in module_ids
+
+        self._should_module_be_updated_fn = should_module_be_updated_fn
+
+    # TODO (sven): Why did we chose to re-invent the wheel here and provide load/save
+    #  from/to disk functionality? This should all be replaced with a simple
+    #  get/set_state logic, which returns/takes a dict and then loading and saving
+    #  should be managed by the owner class (Algorithm/Trainable).
     def save_state(self, path: str) -> None:
         """Saves the state of the LearnerGroup.
 
@@ -604,7 +648,7 @@ class LearnerGroup:
         *,
         marl_module_ckpt_dir: Optional[str] = None,
         modules_to_load: Optional[Set[str]] = None,
-        rl_module_ckpt_dirs: Optional[Mapping[ModuleID, str]] = None,
+        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ) -> None:
 
         """Load the checkpoints of the modules being trained by this LearnerGroup.
@@ -715,7 +759,7 @@ class LearnerGroup:
         *,
         marl_module_ckpt_dir: Optional[str] = None,
         modules_to_load: Optional[Set[str]] = None,
-        rl_module_ckpt_dirs: Optional[Mapping[ModuleID, str]] = None,
+        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ):
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
@@ -842,3 +886,7 @@ class LearnerGroup:
     def __del__(self):
         if not self._is_shut_down:
             self.shutdown()
+
+    @Deprecated(new="LearnerGroup.set_should_module_be_updated_fn()", error=True)
+    def set_is_module_trainable(self, *args, **kwargs):
+        pass

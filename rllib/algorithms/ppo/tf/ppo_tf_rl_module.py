@@ -1,4 +1,4 @@
-from typing import Mapping, Any
+from typing import Any, Dict
 
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 from ray.rllib.core.models.base import ACTOR, CRITIC
@@ -17,7 +17,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
     framework: str = "tf2"
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
         output = {}
 
         encoder_outs = self.encoder(batch)
@@ -31,7 +31,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
         """PPO forward pass during exploration.
 
         Besides the action distribution, this method also returns the parameters of the

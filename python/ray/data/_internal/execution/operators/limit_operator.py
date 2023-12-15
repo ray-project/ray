@@ -27,7 +27,7 @@ class LimitOperator(OneToOneOperator):
         self._name = f"limit={limit}"
         self._output_metadata: List[BlockMetadata] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, input_op)
+        super().__init__(self._name, input_op, target_max_block_size=None)
         if self._limit <= 0:
             self.all_inputs_done()
 

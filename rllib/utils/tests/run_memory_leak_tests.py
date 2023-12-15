@@ -93,6 +93,8 @@ if __name__ == "__main__":
         # For python files, need to make sure, we only deliver the module name into the
         # `load_experiments_from_file` function (everything from "/ray/rllib" on).
         if file.endswith(".py"):
+            if file.endswith("__init__.py"):  # weird CI learning test (BAZEL) case
+                continue
             experiments = load_experiments_from_file(file, SupportedFileType.python)
         else:
             experiments = load_experiments_from_file(file, SupportedFileType.yaml)
@@ -122,11 +124,12 @@ if __name__ == "__main__":
         leaking = True
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)
-            algo = get_trainable_cls(experiment["run"])(experiment["config"])
-            results = check_memory_leaks(
-                algo,
-                to_check=set(args.to_check),
-            )
+            if isinstance(experiment["run"], str):
+                algo_cls = get_trainable_cls(experiment["run"])
+            else:
+                algo_cls = get_trainable_cls(experiment["run"].__name__)
+            algo = algo_cls(experiment["config"])
+            results = check_memory_leaks(algo, to_check=set(args.to_check))
             if not results:
                 leaking = False
         finally:

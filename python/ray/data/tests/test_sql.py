@@ -70,3 +70,9 @@ def test_write_sql_nonexistant_table(temp_database: str):
         dataset.write_sql(
             "INSERT INTO test VALUES(?)", lambda: sqlite3.connect(temp_database)
         )
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

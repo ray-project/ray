@@ -9,6 +9,7 @@ import json
 from subprocess import Popen, PIPE, STDOUT, list2cmdline
 from typing import List
 from pathlib import Path
+import pytest
 
 import ray
 from ray._private.test_utils import (
@@ -39,6 +40,17 @@ def execute_driver(commands: List[str], input: bytes = None):
                 p.kill()
             except Exception:
                 pass
+
+
+def test_invalid_gcs_address():
+    with pytest.raises(ValueError):
+        JobSubmissionClient("foobar")
+
+    with pytest.raises(ValueError):
+        JobSubmissionClient("")
+
+    with pytest.raises(ValueError):
+        JobSubmissionClient("abc:abc")
 
 
 def test_job_isolation(call_ray_start):
@@ -323,7 +335,6 @@ ray.get(f.remote())
 
 
 if __name__ == "__main__":
-    import pytest
 
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

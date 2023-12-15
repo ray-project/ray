@@ -1,4 +1,5 @@
 import copy
+import functools
 import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
@@ -6,7 +7,7 @@ from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Un
 
 import ray
 from ray import ObjectRef
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -27,7 +28,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
 )
-from ray.data._internal.execution.operators.map_transformer import MapTransformer
+from ray.data._internal.execution.operators.map_transformer import (
+    ApplyAdditionalSplitToOutputBlocks,
+    MapTransformer,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
@@ -46,6 +50,7 @@ class MapOperator(OneToOneOperator, ABC):
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         name: str,
+        target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
         ray_remote_args: Optional[Dict[str, Any]],
     ):
@@ -75,14 +80,36 @@ class MapOperator(OneToOneOperator, ABC):
         # TODO(hchen): This is a workaround for a bug of lineage reconstruction.
         # When the streaming generator ref is GC'ed, the objects it generated
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
-        self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
-        super().__init__(name, input_op)
+        self._finished_streaming_gens: List[ObjectRefGenerator] = []
+        super().__init__(name, input_op, target_max_block_size)
+
+        # If set, then all output blocks will be split into
+        # this many sub-blocks. This is to avoid having
+        # too-large blocks, which may reduce parallelism for
+        # the subsequent stage.
+        self._additional_split_factor = None
+
+    def get_additional_split_factor(self) -> int:
+        if self._additional_split_factor is None:
+            return 1
+        return self._additional_split_factor
+
+    def set_additional_split_factor(self, k: int):
+        self._additional_split_factor = k
+
+    @property
+    def name(self) -> str:
+        name = super().name
+        if self._additional_split_factor is not None:
+            name += f"->SplitBlocks({self._additional_split_factor})"
+        return name
 
     @classmethod
     def create(
         cls,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
@@ -103,6 +130,8 @@ class MapOperator(OneToOneOperator, ABC):
             init_fn: The callable class to instantiate if using ActorPoolMapOperator.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -121,6 +150,7 @@ class MapOperator(OneToOneOperator, ABC):
                 map_transformer,
                 input_op,
                 name=name,
+                target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 ray_remote_args=ray_remote_args,
             )
@@ -141,6 +171,7 @@ class MapOperator(OneToOneOperator, ABC):
                 input_op,
                 autoscaling_policy=autoscaling_policy,
                 name=name,
+                target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 ray_remote_args=ray_remote_args,
             )
@@ -179,9 +210,16 @@ class MapOperator(OneToOneOperator, ABC):
 
             self._ray_remote_args_factory = RoundRobinAssign(locs)
 
+        map_transformer = self._map_transformer
+        # Apply additional block split if needed.
+        if self.get_additional_split_factor() > 1:
+            split_transformer = MapTransformer(
+                [ApplyAdditionalSplitToOutputBlocks(self.get_additional_split_factor())]
+            )
+            map_transformer = map_transformer.fuse(split_transformer)
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
-        self._map_transformer_ref = ray.put(self._map_transformer)
+        self._map_transformer_ref = ray.put(map_transformer)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
@@ -237,7 +275,7 @@ class MapOperator(OneToOneOperator, ABC):
 
     def _submit_data_task(
         self,
-        gen: StreamingObjectRefGenerator,
+        gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
     ):
@@ -259,8 +297,8 @@ class MapOperator(OneToOneOperator, ABC):
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
 
-        def _task_done_callback(task_index):
-            self._metrics.on_task_finished(task_index)
+        def _task_done_callback(task_index: int, exception: Optional[Exception]):
+            self._metrics.on_task_finished(task_index, exception)
 
             # Estimate number of tasks from inputs received and tasks submitted so far
             estimated_num_tasks = (
@@ -282,9 +320,10 @@ class MapOperator(OneToOneOperator, ABC):
                 task_done_callback()
 
         self._data_tasks[task_index] = DataOpTask(
+            task_index,
             gen,
             lambda output: _output_ready_callback(task_index, output),
-            lambda: _task_done_callback(task_index),
+            functools.partial(_task_done_callback, task_index),
         )
 
     def _submit_metadata_task(
@@ -300,7 +339,7 @@ class MapOperator(OneToOneOperator, ABC):
             task_done_callback()
 
         self._metadata_tasks[task_index] = MetadataOpTask(
-            result_ref, _task_done_callback
+            task_index, result_ref, _task_done_callback
         )
 
     def get_active_tasks(self) -> List[OpTask]:
@@ -375,6 +414,7 @@ def _map_task(
     """
     DataContext._set_current(data_context)
     stats = BlockExecStats.builder()
+    map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)

@@ -17,7 +17,7 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -143,7 +143,7 @@ class DataIterator(abc.ABC):
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over record batches.
+            An iterable over record batches.
         """
 
         if prefetch_blocks > 0:
@@ -179,13 +179,19 @@ class DataIterator(abc.ABC):
                 )
             )
 
+            dataset_tag = self._get_dataset_tag()
             for batch in iterator:
                 yield batch
+                StatsManager.update_iteration_metrics(stats, dataset_tag)
+            StatsManager.clear_iteration_metrics(dataset_tag)
 
             if stats:
                 stats.iter_total_s.add(time.perf_counter() - time_start)
 
         return _IterableFromIterator(_create_iterator)
+
+    def _get_dataset_tag(self) -> str:
+        return "unknown_dataset"
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.
@@ -207,7 +213,7 @@ class DataIterator(abc.ABC):
                 current block during the scan.
 
         Returns:
-            An iterator over rows of the dataset.
+            An iterable over rows of the dataset.
         """
         iter_batch_args = {"batch_size": None, "batch_format": None}
 
@@ -249,7 +255,7 @@ class DataIterator(abc.ABC):
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
 
-        This iterator yields a dictionary of column-tensors. If you are looking for
+        This iterable yields a dictionary of column-tensors. If you are looking for
         more flexibility in the tensor conversion (e.g. casting dtypes) or the batch
         format, try using :meth:`~ray.data.iterator.DataIterator.iter_batches` directly.
 
@@ -324,7 +330,7 @@ class DataIterator(abc.ABC):
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over Torch Tensor batches.
+            An iterable over Torch Tensor batches.
         """
 
         from ray.air._internal.torch_utils import (
@@ -395,7 +401,7 @@ class DataIterator(abc.ABC):
     ) -> Iterable["TensorFlowTensorBatchType"]:
         """Return a batched iterable of TensorFlow Tensors over the dataset.
 
-        This iterator will yield single-tensor batches of the underlying dataset
+        This iterable will yield single-tensor batches of the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
         column-tensors.
 
@@ -842,6 +848,10 @@ class DataIterator(abc.ABC):
             "To iterate over one epoch of data, use iter_batches(), "
             "iter_torch_batches(), or to_tf()."
         )
+
+    def __del__(self):
+        # Clear metrics on deletion in case the iterator was not fully consumed.
+        StatsManager.clear_iteration_metrics(self._get_dataset_tag())
 
 
 # Backwards compatibility alias.

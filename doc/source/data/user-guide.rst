@@ -24,3 +24,5 @@ show you how achieve several tasks.
     batch_inference
     performance-tips
     preprocessors
+    monitoring-your-workload
+    custom-datasource-example

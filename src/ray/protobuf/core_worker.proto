@@ -412,7 +412,12 @@ message ReportGeneratorItemReturnsRequest {
   uint64 attempt_number = 6;
 }
 
-message ReportGeneratorItemReturnsReply {}
+message ReportGeneratorItemReturnsReply {
+  // The total number objects consumed from the generator.
+  // -1 means it is not known. The executor side should just
+  // assume everything is consumed if it is -1.
+  int64 total_num_object_consumed = 1;
+}
 
 service CoreWorkerService {
   // Notify core worker GCS has restarted.

@@ -8,7 +8,7 @@ import pyarrow
 import requests
 
 from ray.data.block import BlockMetadata
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 _STATEMENT_EXEC_POLL_TIME_S = 1
 
 
-class _DatabricksUCReader(Reader):
+@PublicAPI(stability="alpha")
+class DatabricksUCDatasource(Datasource):
     def __init__(
         self,
         host: str,
@@ -169,25 +170,3 @@ class _DatabricksUCReader(Reader):
             parallelism = self.num_chunks
 
         return [self._get_read_task(index, parallelism) for index in range(parallelism)]
-
-
-@PublicAPI(stability="alpha")
-class DatabricksUCDatasource(Datasource):
-    def create_reader(
-        self,
-        *,
-        host: str,
-        token: str,
-        warehouse_id: str,
-        catalog: Optional[str],
-        schema: Optional[str],
-        query: str,
-    ) -> "Reader":
-        return _DatabricksUCReader(
-            host=host,
-            token=token,
-            warehouse_id=warehouse_id,
-            catalog=catalog,
-            schema=schema,
-            query=query,
-        )

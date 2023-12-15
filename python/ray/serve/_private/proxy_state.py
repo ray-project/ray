@@ -26,7 +26,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.utils import Timer, TimerBase, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
-from ray.serve.schema import ProxyDetails
+from ray.serve.schema import LoggingConfig, ProxyDetails
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -100,10 +100,10 @@ class ProxyWrapper(ABC):
 class ActorProxyWrapper(ProxyWrapper):
     def __init__(
         self,
+        logging_config: LoggingConfig,
         actor_handle: Optional[ActorHandle] = None,
         config: Optional[HTTPOptions] = None,
         grpc_options: Optional[gRPCOptions] = None,
-        controller_name: Optional[str] = None,
         name: Optional[str] = None,
         node_id: Optional[str] = None,
         node_ip_address: Optional[str] = None,
@@ -114,12 +114,12 @@ class ActorProxyWrapper(ProxyWrapper):
         self._actor_handle = actor_handle or self._get_or_create_proxy_actor(
             config=config,
             grpc_options=grpc_options,
-            controller_name=controller_name,
             name=name,
             node_id=node_id,
             node_ip_address=node_ip_address,
             port=port,
             proxy_actor_class=proxy_actor_class,
+            logging_config=logging_config,
         )
         self._ready_obj_ref = None
         self._health_check_obj_ref = None
@@ -132,11 +132,11 @@ class ActorProxyWrapper(ProxyWrapper):
     def _get_or_create_proxy_actor(
         config: HTTPOptions,
         grpc_options: gRPCOptions,
-        controller_name: str,
         name: str,
         node_id: str,
         node_ip_address: str,
         port: int,
+        logging_config: LoggingConfig,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
     ) -> ProxyWrapper:
         """Helper to start or reuse existing proxy.
@@ -166,13 +166,13 @@ class ActorProxyWrapper(ProxyWrapper):
             config.host,
             port,
             config.root_path,
-            controller_name=controller_name,
             node_ip_address=node_ip_address,
             node_id=node_id,
             http_middlewares=config.middlewares,
             request_timeout_s=config.request_timeout_s,
             keep_alive_timeout_s=config.keep_alive_timeout_s,
             grpc_options=grpc_options,
+            logging_config=logging_config,
         )
         return proxy
 
@@ -280,8 +280,15 @@ class ActorProxyWrapper(ProxyWrapper):
         finished, _ = ray.wait([self._is_drained_obj_ref], timeout=0)
         if finished:
             self._is_drained_obj_ref = None
-            ray.get(finished[0])
-            return ProxyWrapperCallStatus.FINISHED_SUCCEED
+            is_drained = ray.get(finished[0])
+            if is_drained:
+                return ProxyWrapperCallStatus.FINISHED_SUCCEED
+            else:
+                # NOTE: Even though call returned successfully, we have to
+                #       report it as FINISHED_FAILED to make sure that
+                #       draining process doesn't move forward until draining
+                #       completes
+                return ProxyWrapperCallStatus.FINISHED_FAILED
         else:
             return ProxyWrapperCallStatus.PENDING
 
@@ -586,16 +593,16 @@ class ProxyStateManager:
 
     def __init__(
         self,
-        controller_name: str,
         config: HTTPOptions,
         head_node_id: str,
         cluster_node_info_cache: ClusterNodeInfoCache,
+        logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
         timer: TimerBase = Timer(),
     ):
-        self._controller_name = controller_name
+        self.logging_config = logging_config
         if config is not None:
             self._config = config
         else:
@@ -611,6 +618,9 @@ class ProxyStateManager:
         self._cluster_node_info_cache = cluster_node_info_cache
 
         assert isinstance(head_node_id, str)
+
+    def reconfiture_logging_config(self, logging_config: LoggingConfig):
+        self.logging_config = logging_config
 
     def shutdown(self) -> None:
         for proxy_state in self._proxy_states.values():
@@ -701,7 +711,7 @@ class ProxyStateManager:
         return target_nodes
 
     def _generate_actor_name(self, node_id: str) -> str:
-        return format_actor_name(SERVE_PROXY_NAME, self._controller_name, node_id)
+        return format_actor_name(SERVE_PROXY_NAME, node_id)
 
     def _start_proxy(
         self,
@@ -740,9 +750,9 @@ class ProxyStateManager:
             grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
 
         return self._actor_proxy_wrapper_class(
+            logging_config=self.logging_config,
             config=self._config,
             grpc_options=grpc_options,
-            controller_name=self._controller_name,
             name=name,
             node_id=node_id,
             node_ip_address=node_ip_address,

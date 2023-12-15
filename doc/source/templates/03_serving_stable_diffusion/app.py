@@ -9,11 +9,11 @@ from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
 app = FastAPI()
 
 
-@serve.deployment(num_replicas=1, route_prefix="/")
+@serve.deployment(num_replicas=1)
 @serve.ingress(app)
 class APIIngress:
     def __init__(self, diffusion_model_handle) -> None:
-        self.handle = diffusion_model_handle
+        self.handle = diffusion_model_handle.options(use_new_handle_api=True)
 
     @app.get(
         "/imagine",
@@ -23,7 +23,7 @@ class APIIngress:
     async def generate(self, prompt: str, img_size: int = 512):
         assert len(prompt), "prompt parameter cannot be empty"
 
-        image = await (await self.handle.generate.remote(prompt, img_size=img_size))
+        image = await self.handle.generate.remote(prompt, img_size=img_size)
 
         file_stream = BytesIO()
         image.save(file_stream, "PNG")

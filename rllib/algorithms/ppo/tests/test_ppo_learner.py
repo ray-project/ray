@@ -60,6 +60,7 @@ class TestPPO(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -71,10 +72,6 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
-            )
-            .rl_module(
-                _enable_rl_module_api=True,
             )
         )
 
@@ -120,6 +117,7 @@ class TestPPO(unittest.TestCase):
         """Tests saving and loading the state of the PPO Learner Group."""
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -131,10 +129,6 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
-            )
-            .rl_module(
-                _enable_rl_module_api=True,
             )
         )
         algo = config.build()
@@ -158,7 +152,12 @@ class TestPPO(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner_group1.save_state(tmpdir)
                 learner_group2.load_state(tmpdir)
-                check(learner_group1.get_state(), learner_group2.get_state())
+                # Remove functions from state b/c they are not comparable via `check`.
+                s1 = learner_group1.get_state()
+                s1.pop("should_module_be_updated_fn")
+                s2 = learner_group2.get_state()
+                s2.pop("should_module_be_updated_fn")
+                check(s1, s2)
 
     def test_kl_coeff_changes(self):
         # Simple environment with 4 independent cartpole entities
@@ -169,6 +168,7 @@ class TestPPO(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -181,11 +181,7 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
                 kl_coeff=initial_kl_coeff,
-            )
-            .rl_module(
-                _enable_rl_module_api=True,
             )
             .exploration(exploration_config={})
             .environment("multi_agent_cartpole")

@@ -1,7 +1,6 @@
 import logging
 import os
 from typing import Dict, List, Optional
-import pkg_resources
 
 import ray._private.ray_constants as ray_constants
 from ray._private.utils import (
@@ -446,15 +445,6 @@ class RayParams:
 
         if self.redirect_output is not None:
             raise DeprecationWarning("The redirect_output argument is deprecated.")
-
-        # Parse the numpy version.
-        numpy_version = pkg_resources.get_distribution("numpy").version.split(".")
-        numpy_major, numpy_minor = int(numpy_version[0]), int(numpy_version[1])
-        if numpy_major <= 1 and numpy_minor < 16:
-            logger.warning(
-                "Using ray with numpy < 1.16.0 will result in slow "
-                "serialization. Upgrade numpy if using with ray."
-            )
 
         if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
             raise ValueError("temp_dir must be absolute path or None.")

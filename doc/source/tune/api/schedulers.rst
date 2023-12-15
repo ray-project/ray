@@ -240,7 +240,7 @@ The Tune implementation of PB2 requires GPy and sklearn to be installed:
 
 .. code-block:: bash
 
-    pip install GPy sklearn
+    pip install GPy scikit-learn
 
 
 PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig`` which is taken in by ``Tuner``, e.g.:

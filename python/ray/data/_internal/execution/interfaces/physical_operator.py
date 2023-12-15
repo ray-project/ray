@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -11,9 +11,10 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.stats import StatsDict
+from ray.data.context import DataContext
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
-Waitable = Union[ray.ObjectRef, StreamingObjectRefGenerator]
+Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
 
 
 class OpTask(ABC):
@@ -22,18 +23,16 @@ class OpTask(ABC):
     The task can be either a regular task or an actor task.
     """
 
+    def __init__(self, task_index: int):
+        self._task_index = task_index
+
+    def task_index(self) -> int:
+        """Return the index of the task."""
+        return self._task_index
+
     @abstractmethod
     def get_waitable(self) -> Waitable:
-        """Return the ObjectRef or StreamingObjectRefGenerator to wait on."""
-        pass
-
-    @abstractmethod
-    def on_waitable_ready(self):
-        """Called when the waitable is ready.
-
-        This method may get called multiple times if the waitable is a
-        streaming generator.
-        """
+        """Return the ObjectRef or ObjectRefGenerator to wait on."""
         pass
 
 
@@ -42,9 +41,10 @@ class DataOpTask(OpTask):
 
     def __init__(
         self,
-        streaming_gen: StreamingObjectRefGenerator,
+        task_index: int,
+        streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[], None],
+        task_done_callback: Callable[[Optional[Exception]], None],
     ):
         """
         Args:
@@ -53,6 +53,7 @@ class DataOpTask(OpTask):
                 from the generator.
             task_done_callback: The callback to call when the task is done.
         """
+        super().__init__(task_index)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
         # interface. So each individual operator don't need to take care of the
@@ -61,21 +62,28 @@ class DataOpTask(OpTask):
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
 
-    def get_waitable(self) -> StreamingObjectRefGenerator:
+    def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
-    def on_waitable_ready(self):
-        # Handle all the available outputs of the streaming generator.
-        while True:
+    def on_data_ready(self, max_blocks_to_read: Optional[int]) -> int:
+        """Callback when data is ready to be read from the streaming generator.
+
+        Args:
+            max_blocks_to_read: Max number of blocks to read. If None, all available
+                will be read.
+        Returns: The number of blocks read.
+        """
+        num_blocks_read = 0
+        while max_blocks_to_read is None or num_blocks_read < max_blocks_to_read:
             try:
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
-                    return
+                    break
             except StopIteration:
-                self._task_done_callback()
-                return
+                self._task_done_callback(None)
+                break
 
             try:
                 meta = ray.get(next(self._streaming_gen))
@@ -86,32 +94,42 @@ class DataOpTask(OpTask):
                 # And in this case, the block_ref is the exception object.
                 # TODO(hchen): Ray Core should have a better interface for
                 # detecting and obtaining the exception.
-                ex = ray.get(block_ref)
-                self._task_done_callback()
-                raise ex
+                try:
+                    ray.get(block_ref)
+                    assert False, "Above ray.get should raise an exception."
+                except Exception as ex:
+                    self._task_done_callback(ex)
+                    raise ex from None
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
+            num_blocks_read += 1
+        return num_blocks_read
 
 
 class MetadataOpTask(OpTask):
     """Represents an OpTask that only handles metadata, instead of Block data."""
 
     def __init__(
-        self, object_ref: ray.ObjectRef, task_done_callback: Callable[[], None]
+        self,
+        task_index: int,
+        object_ref: ray.ObjectRef,
+        task_done_callback: Callable[[], None],
     ):
         """
         Args:
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
         """
+        super().__init__(task_index)
         self._object_ref = object_ref
         self._task_done_callback = task_done_callback
 
     def get_waitable(self) -> ray.ObjectRef:
         return self._object_ref
 
-    def on_waitable_ready(self):
+    def on_task_finished(self):
+        """Callback when the task is finished."""
         self._task_done_callback()
 
 
@@ -148,11 +166,18 @@ class PhysicalOperator(Operator):
     be interleaved.
     """
 
-    def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
+    def __init__(
+        self,
+        name: str,
+        input_dependencies: List["PhysicalOperator"],
+        target_max_block_size: Optional[int],
+    ):
         super().__init__(name, input_dependencies)
+
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._target_max_block_size = target_max_block_size
         self._dependents_complete = False
         self._started = False
         self._metrics = OpRuntimeMetrics(self)
@@ -160,6 +185,27 @@ class PhysicalOperator(Operator):
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
+
+    @property
+    def target_max_block_size(self) -> Optional[int]:
+        """
+        Target max block size output by this operator. If this returns None,
+        then the default from DataContext should be used.
+        """
+        return self._target_max_block_size
+
+    @property
+    def actual_target_max_block_size(self) -> int:
+        """
+        The actual target max block size output by this operator.
+        """
+        target_max_block_size = self._target_max_block_size
+        if target_max_block_size is None:
+            target_max_block_size = DataContext.get_current().target_max_block_size
+        return target_max_block_size
+
+    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
+        self._target_max_block_size = target_max_block_size
 
     def completed(self) -> bool:
         """Return True when this operator is completed.

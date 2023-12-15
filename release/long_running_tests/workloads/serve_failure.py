@@ -82,13 +82,13 @@ class RandomKiller:
             ray.kill(chosen, no_restart=False)
             await asyncio.sleep(self.kill_period_s)
 
-    async def spare(self, deployment_name: str):
-        print(f'Sparing deployment "{deployment_name}" replicas.')
-        self.sanctuary.add(deployment_name)
+    async def spare(self, app_name: str):
+        print(f'Sparing application "{app_name}" replicas.')
+        self.sanctuary.add(app_name)
 
-    async def stop_spare(self, deployment_name: str):
-        print(f'No longer sparing deployment "{deployment_name}" replicas.')
-        self.sanctuary.discard(deployment_name)
+    async def stop_spare(self, app_name: str):
+        print(f'No longer sparing application "{app_name}" replicas.')
+        self.sanctuary.discard(app_name)
 
     def _get_serve_actors(self):
         controller = _get_global_client()._controller
@@ -96,7 +96,7 @@ class RandomKiller:
         all_handles = routers + [controller]
         replica_dict = ray.get(controller._all_running_replicas.remote())
         for deployment_id, replica_info_list in replica_dict.items():
-            if deployment_id.name not in self.sanctuary:
+            if deployment_id.app not in self.sanctuary:
                 for replica_info in replica_info_list:
                     all_handles.append(replica_info.actor_handle)
 
@@ -104,32 +104,32 @@ class RandomKiller:
 
 
 class RandomTest:
-    def __init__(self, random_killer_handle, max_deployments=1):
-        self.max_deployments = max_deployments
+    def __init__(self, random_killer_handle, max_applications=1):
+        self.max_applications = max_applications
         self.weighted_actions = [
-            (self.create_deployment, 1),
-            (self.verify_deployment, 4),
+            (self.create_application, 1),
+            (self.verify_application, 4),
         ]
-        self.deployments = []
+        self.applications = []
 
         self.random_killer = random_killer_handle
 
         # Deploy in parallel to avoid long test startup time.
-        self.wait_for_deployments_ready(
-            [self.create_deployment(blocking=False) for _ in range(max_deployments)]
+        self.wait_for_applications_running(
+            [self.create_application(blocking=False) for _ in range(max_applications)]
         )
 
         self.random_killer.run.remote()
 
-    def wait_for_deployments_ready(self, deployment_names: List[str]):
+    def wait_for_applications_running(self, application_names: List[str]):
         client = _get_global_client()
-        for deployment_name in deployment_names:
-            client._wait_for_deployment_healthy(deployment_name, timeout_s=60)
+        for name in application_names:
+            client._wait_for_application_running(name, timeout_s=60)
 
-    def create_deployment(self, blocking: bool = True) -> str:
-        if len(self.deployments) == self.max_deployments:
-            deployment_to_delete = self.deployments.pop()
-            serve.get_deployment(deployment_to_delete).delete()
+    def create_application(self, blocking: bool = True) -> str:
+        if len(self.applications) == self.max_applications:
+            app_to_delete = self.applications.pop()
+            serve.delete(app_to_delete)
 
         new_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 
@@ -140,23 +140,33 @@ class RandomTest:
 
         if blocking:
             ray.get(self.random_killer.spare.remote(new_name))
-            handler.deploy(_blocking=blocking)
-            self.deployments.append(new_name)
+            serve.run(
+                handler.bind(),
+                name=new_name,
+                route_prefix=f"/{new_name}",
+                _blocking=True,
+            )
+            self.applications.append(new_name)
             ray.get(self.random_killer.stop_spare.remote(new_name))
         else:
-            handler.deploy(_blocking=False)
-            self.deployments.append(new_name)
+            serve.run(
+                handler.bind(),
+                name=new_name,
+                route_prefix=f"/{new_name}",
+                _blocking=False,
+            )
+            self.applications.append(new_name)
 
         return new_name
 
-    def verify_deployment(self):
-        deployment = random.choice(self.deployments)
+    def verify_application(self):
+        app = random.choice(self.applications)
         for _ in range(100):
             try:
-                r = requests.get("http://127.0.0.1:8000/" + deployment)
-                assert r.text == deployment
+                r = requests.get("http://127.0.0.1:8000/" + app)
+                assert r.text == app
             except Exception:
-                print("Request to {} failed.".format(deployment))
+                print("Request to {} failed.".format(app))
                 time.sleep(0.1)
 
     def run(self):
@@ -191,5 +201,5 @@ class RandomTest:
 
 
 random_killer = RandomKiller.remote()
-tester = RandomTest(random_killer, max_deployments=NUM_NODES * CPUS_PER_NODE)
+tester = RandomTest(random_killer, max_applications=NUM_NODES * CPUS_PER_NODE)
 tester.run()

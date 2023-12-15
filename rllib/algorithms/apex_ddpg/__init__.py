@@ -3,6 +3,7 @@ from ray.rllib.algorithms.apex_ddpg.apex_ddpg import (
     ApexDDPGConfig,
 )
 
+
 __all__ = [
     "ApexDDPG",
     "ApexDDPGConfig",

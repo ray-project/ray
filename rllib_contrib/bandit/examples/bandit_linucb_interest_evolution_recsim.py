@@ -19,7 +19,7 @@ def get_cli_args():
 if __name__ == "__main__":
     args = get_cli_args()
 
-    ray.init()
+    ray.init(local_mode=True)
 
     config = (
         BanditLinUCBConfig()

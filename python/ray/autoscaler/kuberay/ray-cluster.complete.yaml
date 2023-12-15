@@ -1,5 +1,5 @@
 # This is adapted from https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.complete.yaml
-# It is a general RayCluster that has most fields in it for maximum flexibility in the Ray/Kuberay integration MVP.
+# It is a general RayCluster that has most fields in it for maximum flexibility in the Ray/KubeRay integration MVP.
 apiVersion: ray.io/v1alpha1
 kind: RayCluster
 metadata:

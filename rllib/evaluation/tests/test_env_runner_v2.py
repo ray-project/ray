@@ -51,6 +51,7 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_single_agent_env(self):
         config = (
             PPOConfig()
+            .environment(DebugCounterEnv)
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
@@ -64,7 +65,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
         )
 
-        algo = PPO(config, env=DebugCounterEnv)
+        algo = PPO(config)
 
         rollout_worker = algo.workers.local_worker()
         sample_batch = rollout_worker.sample()
@@ -77,6 +78,7 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_multi_agent_env(self):
         config = (
             PPOConfig()
+            .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
@@ -90,7 +92,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
         )
 
-        algo = PPO(config, env="basic_multiagent")
+        algo = PPO(config)
 
         rollout_worker = algo.workers.local_worker()
         sample_batch = rollout_worker.sample()
@@ -146,7 +148,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         config = (
             PPOConfig()
             .framework("torch")
-            .environment(disable_env_checking=True, env="env_under_test")
+            .environment("env_under_test", disable_env_checking=True)
             .rollouts(
                 num_envs_per_worker=1,
                 num_rollout_workers=0,
@@ -177,7 +179,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             .debugging(seed=42)
         )
 
-        algo = PPO(config, env="env_under_test")
+        algo = PPO(config)
 
         rollout_worker = algo.workers.local_worker()
         sample_batch = rollout_worker.sample()
@@ -208,6 +210,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
@@ -242,7 +245,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
         )
 
-        algo = PPO(config, env="basic_multiagent")
+        algo = PPO(config)
         local_worker = algo.workers.local_worker()
         env = local_worker.env
 
@@ -278,6 +281,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
@@ -294,7 +298,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
         )
 
-        algo = PPO(config, env="basic_multiagent")
+        algo = PPO(config)
 
         rollout_worker = algo.workers.local_worker()
         # As long as we can successfully sample(), things should be good.
@@ -303,6 +307,7 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_start_episode(self):
         config = (
             PPOConfig()
+            .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
@@ -337,7 +342,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
         )
 
-        algo = PPO(config, env="basic_multiagent")
+        algo = PPO(config)
 
         local_worker = algo.workers.local_worker()
 
@@ -358,6 +363,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
@@ -392,7 +398,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
         )
 
-        algo = PPO(config, env="basic_multiagent")
+        algo = PPO(config)
 
         local_worker = algo.workers.local_worker()
 
@@ -416,6 +422,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
@@ -453,7 +460,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
         )
 
-        algo = PPO(config, env="basic_multiagent")
+        algo = PPO(config)
 
         local_worker = algo.workers.local_worker()
 

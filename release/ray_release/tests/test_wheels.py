@@ -7,8 +7,6 @@ from unittest.mock import patch
 from freezegun import freeze_time
 
 from ray_release.bazel import bazel_runfile
-from ray_release.test import Test
-from ray_release.template import load_test_cluster_env
 from ray_release.exception import RayWheelsNotFoundError, RayWheelsTimeoutError
 from ray_release.util import url_exists
 from ray_release.wheels import (
@@ -222,29 +220,6 @@ def test_rewrite_wheels_url(remove_buildkite_env):
         )
         == f"http://some/location/{get_wheels_filename('3.0.0dev0', (3, 7))}"
     )
-
-
-def test_wheels_sanity_string(remove_buildkite_env):
-    this_env = {"env": None}
-
-    def override_env(path, env):
-        this_env["env"] = env
-
-    with patch(
-        "ray_release.template.load_and_render_yaml_template", override_env
-    ), patch("ray_release.template.get_test_environment", lambda: {}):
-        load_test_cluster_env(
-            Test(cluster=dict(cluster_env="invalid")),
-            ray_wheels_url="https://no-commit-url",
-        )
-        assert "No commit sanity check" in this_env["env"]["RAY_WHEELS_SANITY_CHECK"]
-
-        sha = "abcdef1234abcdef1234abcdef1234abcdef1234"
-        load_test_cluster_env(
-            Test(cluster=dict(cluster_env="invalid")),
-            ray_wheels_url=f"https://some/{sha}/binary.whl",
-        )
-        assert sha in this_env["env"]["RAY_WHEELS_SANITY_CHECK"]
 
 
 def test_url_exist():

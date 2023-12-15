@@ -20,3 +20,4 @@ UDF(s)?
 [Ss]calers
 dtype
 ndarray(s)?
+autoscaler

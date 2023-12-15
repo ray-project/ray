@@ -1,7 +1,7 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test", "cc_binary")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 COPTS_WITHOUT_LOG = select({
     "//:opt": ["-DBAZEL_OPT"],
@@ -180,7 +180,6 @@ def ray_cc_library(name, strip_include_prefix = "/src", copts = [], **kwargs):
         **kwargs
     )
 
-
 def ray_cc_test(name, linkopts = [], copts = [], **kwargs):
     cc_test(
         name = name,
@@ -197,7 +196,6 @@ def ray_cc_binary(name, linkopts = [], copts = [], **kwargs):
         **kwargs
     )
 
-
 def _filter_files_with_suffix_impl(ctx):
     suffix = ctx.attr.suffix
     filtered_files = [f for f in ctx.files.srcs if f.basename.endswith(suffix)]
@@ -211,7 +209,7 @@ def _filter_files_with_suffix_impl(ctx):
 filter_files_with_suffix = rule(
     implementation = _filter_files_with_suffix_impl,
     attrs = {
-        "srcs": attr.label_list(allow_files=True),
+        "srcs": attr.label_list(allow_files = True),
         "suffix": attr.string(),
     },
 )

@@ -33,13 +33,15 @@ class Counter:
 
 
 class MySource(CSVDatasource):
-    def __init__(self, counter):
+    def __init__(self, paths, counter):
+        super().__init__(paths)
+
         self.counter = counter
 
-    def _read_stream(self, f, path: str, **reader_args):
+    def _read_stream(self, f, path: str):
         count = self.counter.increment.remote()
         ray.get(count)
-        for block in super()._read_stream(f, path, **reader_args):
+        for block in super()._read_stream(f, path):
             yield block
 
 
@@ -94,7 +96,7 @@ class OnesSource(Datasource):
         return read_tasks
 
 
-def test_memory_release_lazy(shutdown_only):
+def test_memory_release(shutdown_only):
     context = DataContext.get_current()
     # Ensure that stage fusion is enabled.
     context.optimize_fuse_stages = True
@@ -102,7 +104,6 @@ def test_memory_release_lazy(shutdown_only):
     ds = ray.data.range(10)
 
     # Should get fused into single stage.
-    ds = ds.lazy()
     ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
     ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
     ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
@@ -112,7 +113,7 @@ def test_memory_release_lazy(shutdown_only):
 
 
 @pytest.mark.skip(reason="Flaky, see https://github.com/ray-project/ray/issues/24757")
-def test_memory_release_lazy_shuffle(shutdown_only):
+def test_memory_release_shuffle(shutdown_only):
     # TODO(ekl) why is this flaky? Due to eviction delay?
     error = None
     for trial in range(3):
@@ -122,7 +123,6 @@ def test_memory_release_lazy_shuffle(shutdown_only):
             ds = ray.data.range(10)
 
             # Should get fused into single stage.
-            ds = ds.lazy()
             ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
             ds.random_shuffle().materialize()
             meminfo = memory_summary(info.address_info["address"], stats_only=True)
@@ -149,12 +149,11 @@ def test_lazy_fanout(shutdown_only, local_path):
     path = os.path.join(local_path, "test.csv")
     df.to_csv(path, index=False, storage_options={})
     read_counter = Counter.remote()
-    source = MySource(read_counter)
+    source = MySource(path, read_counter)
 
     # Test that fan-out of a lazy dataset results in re-execution up to the datasource,
     # due to block move semantics.
-    ds = ray.data.read_datasource(source, parallelism=1, paths=path)
-    ds = ds.lazy()
+    ds = ray.data.read_datasource(source, parallelism=1)
     ds1 = ds.map(inc)
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
@@ -184,7 +183,6 @@ def test_lazy_fanout(shutdown_only, local_path):
 
     # The source data shouldn't be cleared since it's non-lazy.
     ds = ray.data.from_items(list(range(10)))
-    ds = ds.lazy()
     ds1 = ds.map(inc)
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
@@ -198,7 +196,6 @@ def test_lazy_fanout(shutdown_only, local_path):
     # The source data shouldn't be cleared since it's non-lazy.
     ds = ray.data.from_items(list(range(10)))
     # Add extra transformation after being lazy.
-    ds = ds.lazy()
     ds = ds.map(inc)
     ds1 = ds.map(inc)
     ds2 = ds.map(inc)
@@ -212,7 +209,7 @@ def test_lazy_fanout(shutdown_only, local_path):
 
 
 def test_spread_hint_inherit(ray_start_regular_shared):
-    ds = ray.data.range(10).lazy()
+    ds = ray.data.range(10)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
     for s in ds._plan._stages_before_snapshot:
@@ -236,7 +233,7 @@ def _assert_has_stages(stages, stage_names):
 )
 def test_stage_linking(ray_start_regular_shared):
     # Test lazy dataset.
-    ds = ray.data.range(10).lazy()
+    ds = ray.data.range(10)
     assert len(ds._plan._stages_before_snapshot) == 0
     assert len(ds._plan._stages_after_snapshot) == 0
     assert ds._plan._last_optimized_stages is None
@@ -327,11 +324,10 @@ def test_optimize_lazy_reuse_base_data(
     for df, path in zip(dfs, paths):
         df.to_csv(path, index=False)
     counter = Counter.remote()
-    source = MySource(counter)
-    ds = ray.data.read_datasource(source, parallelism=4, paths=paths)
+    source = MySource(paths, counter)
+    ds = ray.data.read_datasource(source, parallelism=4)
     num_reads = ray.get(counter.get.remote())
     assert num_reads == 1, num_reads
-    ds = ds.lazy()
     ds = ds.map(column_udf("id", lambda x: x))
     if with_shuffle:
         ds = ds.random_shuffle()

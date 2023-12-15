@@ -5,6 +5,7 @@ from rllib_leela_chess_zero.leela_chess_zero import LeelaChessZero, LeelaChessZe
 
 import ray
 from ray import air, tune
+from ray.rllib.examples.env.pettingzoo_connect4 import MultiAgentConnect4
 
 
 def get_cli_args():
@@ -25,7 +26,7 @@ if __name__ == "__main__":
         LeelaChessZeroConfig()
         .rollouts(num_rollout_workers=7)
         .framework("torch")
-        .environment("ray.rllib.examples.env.pettingzoo_connect4.MultiAgentConnect4")
+        .environment(MultiAgentConnect4)
         .training(model={"custom_model": DenseModel, "max_seq_len": 0})
         .multi_agent(
             policies=["p_0", "p_1"],

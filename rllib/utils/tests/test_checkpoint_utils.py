@@ -7,7 +7,7 @@ import ray
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.algorithms.simple_q import SimpleQConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.checkpoints import (
@@ -92,7 +92,7 @@ class TestCheckpointUtils(unittest.TestCase):
         pickle-checkpoint-recovered Algorithm (given same initial config).
         """
         # Base config used for both pickle-based checkpoint and msgpack-based one.
-        config = SimpleQConfig().environment("CartPole-v1")
+        config = DQNConfig().environment("CartPole-v1")
         # Build algorithm object.
         algo1 = config.build()
         # Fake one result for the checkpoint saving to succeed
@@ -237,7 +237,7 @@ class TestCheckpointUtils(unittest.TestCase):
         pickle-checkpoint-recovered Policy (given same initial config).
         """
         # Base config used for both pickle-based checkpoint and msgpack-based one.
-        config = SimpleQConfig().environment("CartPole-v1")
+        config = PPOConfig().environment("CartPole-v1")
         # Build algorithm/policy objects.
         algo1 = config.build()
         pol1 = algo1.get_policy()

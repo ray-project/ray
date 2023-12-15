@@ -112,16 +112,15 @@ def test_get_wheel_filename():
     """Test the code that generates the filenames of the `latest` wheels."""
     # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
-    for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
-            # TODO(https://github.com/ray-project/ray/issues/31362)
-            if py_version == (3, 11) and sys_platform != "linux":
-                continue
-
-            filename = get_wheel_filename(sys_platform, ray_version, py_version)
-            prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
-            url = f"{prefix}{filename}"
-            assert requests.head(url).status_code == 200, url
+    for arch in ["x86_64", "aarch64", "arm64"]:
+        for sys_platform in ["darwin", "linux", "win32"]:
+            for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
+                filename = get_wheel_filename(
+                    sys_platform, ray_version, py_version, arch
+                )
+                prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
+                url = f"{prefix}{filename}"
+                assert requests.head(url).status_code == 200, url
 
 
 def test_get_master_wheel_url():
@@ -131,13 +130,9 @@ def test_get_master_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/master/<test_commit>/`.
-    test_commit = "cf23cd6810dbfd7b1ac3016fba02ff4594f24b7f"
+    test_commit = "0910639b6eba1b77b9a36b9f3350c5aa274578dd"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
-            # TODO(https://github.com/ray-project/ray/issues/31362)
-            if py_version == (3, 11) and sys_platform != "linux":
-                continue
-
             url = get_master_wheel_url(
                 test_commit, sys_platform, ray_version, py_version
             )
@@ -149,14 +144,10 @@ def test_get_release_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    test_commits = {"2.5.0": "ddf0ccab7aa87be5cf6cf7df9d6e24a3611fb345"}
+    test_commits = {"2.7.0": "904dbce085bc542b93fbe06d75f3b02a65d3a2b4"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():
-                # TODO(https://github.com/ray-project/ray/issues/31362)
-                if py_version == (3, 11) and sys_platform != "linux":
-                    continue
-
                 url = get_release_wheel_url(commit, sys_platform, version, py_version)
                 assert requests.head(url).status_code == 200, url
 

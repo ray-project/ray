@@ -81,6 +81,7 @@ if __name__ == "__main__":
     # Construct two independent Algorithm configs
     ppo_config = (
         PPOConfig()
+        .experimental(_enable_new_api_stack=False)
         .environment("multi_agent_cartpole")
         .framework(args.framework)
         # disable filters, otherwise we would need to synchronize those
@@ -90,11 +91,9 @@ if __name__ == "__main__":
             model={"vf_share_layers": True},
             vf_loss_coeff=0.01,
             num_sgd_iter=6,
-            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rl_module(_enable_rl_module_api=False)
     )
 
     dqn_config = (

@@ -37,6 +37,22 @@ You should see the following logs:
 2023-03-08 21:10:21,685 SUCC <string>:93 -- Deployed Serve app successfully.
 ```
 
+:::{tip}
+If running the Serve app raises an error similar to
+
+```
+ImportError: libGL.so.1: cannot open shared object file: No such file or directory
+```
+
+then in your Ray cluster, try running
+
+```
+pip uninstall opencv-python; pip install opencv-python-headless
+```
+
+This error usually occurs when running `opencv-python` (an image recognition library used in this example) on a headless environment, such as a container. This environment may lack dependencies that `opencv-python` needs. `opencv-python-headless` has fewer external dependencies and is tailored to headless environments.
+:::
+
 Use the following code to send requests:
 ```python
 import requests

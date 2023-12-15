@@ -94,6 +94,8 @@ class TaskStatusEvent : public TaskEvent {
 
     TaskStateUpdate(uint32_t pid) : pid_(pid) {}
 
+    TaskStateUpdate(bool is_debugger_paused) : is_debugger_paused_(is_debugger_paused) {}
+
    private:
     friend class TaskStatusEvent;
 
@@ -109,6 +111,8 @@ class TaskStatusEvent : public TaskEvent {
     const std::string actor_repr_name_ = "";
     /// Worker's pid if it's a RUNNING status change.
     const absl::optional<uint32_t> pid_ = absl::nullopt;
+    /// Is the task is paused by the debugger.
+    const absl::optional<bool> is_debugger_paused_ = absl::nullopt;
   };
 
   explicit TaskStatusEvent(
@@ -279,13 +283,14 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Add a task status event to be reported.
   ///
   /// \param status_event Task status event.
-  void AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_event) LOCKS_EXCLUDED(mutex_);
+  void AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_event)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Add a task profile event to be reported.
   ///
   /// \param profile_event Task profile event.
   void AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event)
-      LOCKS_EXCLUDED(profile_mutex_);
+      ABSL_LOCKS_EXCLUDED(profile_mutex_);
 
   /// Get data related to task status events to be send to GCS.
   ///
@@ -295,14 +300,14 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   void GetTaskStatusEventsToSend(
       std::vector<std::unique_ptr<TaskEvent>> *status_events_to_send,
       absl::flat_hash_set<TaskAttempt> *dropped_task_attempts_to_send)
-      LOCKS_EXCLUDED(mutex_);
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get data related to task profile events to be send to GCS.
   ///
   /// \param[out] profile_events_to_send Task profile events to be sent.
   void GetTaskProfileEventsToSend(
       std::vector<std::unique_ptr<TaskEvent>> *profile_events_to_send)
-      LOCKS_EXCLUDED(profile_mutex_);
+      ABSL_LOCKS_EXCLUDED(profile_mutex_);
 
   /// Get the task events to GCS.
   ///
@@ -387,11 +392,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Buffered task attempts that were dropped due to status events being dropped.
   /// This will be sent to GCS to surface the dropped task attempts.
-  absl::flat_hash_set<TaskAttempt> dropped_task_attempts_unreported_ GUARDED_BY(mutex_);
+  absl::flat_hash_set<TaskAttempt> dropped_task_attempts_unreported_
+      ABSL_GUARDED_BY(mutex_);
 
   /// Buffered task profile events. A FIFO queue to be sent to GCS.
   absl::flat_hash_map<TaskAttempt, std::vector<std::unique_ptr<TaskEvent>>>
-      profile_events_ GUARDED_BY(profile_mutex_);
+      profile_events_ ABSL_GUARDED_BY(profile_mutex_);
 
   /// Stats counter map.
   CounterMapThreadSafe<TaskEventBufferCounter> stats_counter_;

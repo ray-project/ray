@@ -56,8 +56,7 @@ class InstanceReconcilerTest(unittest.TestCase):
             instance_id="0",
             instance_type="worker_nodes1",
             cloud_instance_id="0",
-            status=Instance.ALLOCATED,
-            ray_status=Instance.RAY_STOPPED,
+            status=Instance.RAY_STOPPED,
         )
         assert not self.base_provider.is_terminated(instance.cloud_instance_id)
         success, verison = self.instance_storage.upsert_instance(instance)

@@ -1,5 +1,4 @@
 import abc
-import contextlib
 import copy
 import datetime
 import logging
@@ -260,7 +259,6 @@ def run(
     max_failures: int = 0,
     fail_fast: bool = False,
     restore: Optional[str] = None,
-    server_port: Optional[int] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
     raise_on_failed_trial: bool = True,
@@ -274,7 +272,6 @@ def run(
     chdir_to_trial_dir: bool = _DEPRECATED_VALUE,  # Deprecated (2.8)
     local_dir: Optional[str] = None,
     # == internal only ==
-    _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
@@ -421,7 +418,6 @@ def run(
             is best used with `ray.init(local_mode=True)`).
         restore: Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
-        server_port: Port number for launching TuneServer.
         resume: One of [True, False, "LOCAL", "REMOTE", "PROMPT", "AUTO"]. Can
             be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
             "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"] (e.g. ``AUTO+ERRORED``).
@@ -783,7 +779,6 @@ def run(
                 num_samples=num_samples,
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
-                _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,
                 trial_name_creator=trial_name_creator,
@@ -932,7 +927,6 @@ def run(
         scheduler=scheduler,
         stopper=experiments[0].stopper,
         resume=resume,
-        server_port=server_port,
         fail_fast=fail_fast,
         callbacks=callbacks,
         metric=metric,
@@ -985,60 +979,48 @@ def run(
                 )
                 break
 
-    # rich live context manager has to be called encapsulating
-    # the while loop. For other kind of reporters, no op.
-    # `ExitStack` allows us to *conditionally* apply context manager.
-    with contextlib.ExitStack() as stack:
-        from ray.tune.experimental.output import TuneRichReporter
+    experiment_local_path = runner._storage.experiment_local_path
+    experiment_dir_name = runner._storage.experiment_dir_name
 
-        experiment_local_path = runner._storage.experiment_local_path
-        experiment_dir_name = runner._storage.experiment_dir_name
+    if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
+        tensorboard_path = experiment_local_path
+    else:
+        tensorboard_path = None
 
-        if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
-            tensorboard_path = experiment_local_path
-        else:
-            tensorboard_path = None
+    if air_progress_reporter:
+        air_progress_reporter.experiment_started(
+            experiment_name=experiment_dir_name,
+            experiment_path=runner.experiment_path,
+            searcher_str=search_alg.__class__.__name__,
+            scheduler_str=scheduler.__class__.__name__,
+            total_num_samples=search_alg.total_samples,
+            tensorboard_path=tensorboard_path,
+        )
 
-        if air_progress_reporter and isinstance(
-            air_progress_reporter, TuneRichReporter
-        ):
-            stack.enter_context(air_progress_reporter.with_live())
-        elif air_progress_reporter:
-            air_progress_reporter.experiment_started(
-                experiment_name=experiment_dir_name,
-                experiment_path=runner.experiment_path,
-                searcher_str=search_alg.__class__.__name__,
-                scheduler_str=scheduler.__class__.__name__,
-                total_num_samples=search_alg.total_samples,
-                tensorboard_path=tensorboard_path,
-            )
+    try:
+        while not runner.is_finished() and not experiment_interrupted_event.is_set():
+            runner.step()
+            if has_verbosity(Verbosity.V1_EXPERIMENT):
+                _report_progress(runner, progress_reporter)
 
-        try:
-            while (
-                not runner.is_finished() and not experiment_interrupted_event.is_set()
-            ):
-                runner.step()
-                if has_verbosity(Verbosity.V1_EXPERIMENT):
-                    _report_progress(runner, progress_reporter)
+            if air_verbosity is not None:
+                _report_air_progress(runner, air_progress_reporter)
+    except Exception:
+        runner.cleanup()
+        raise
 
-                if air_verbosity is not None:
-                    _report_air_progress(runner, air_progress_reporter)
-        except Exception:
-            runner.cleanup()
-            raise
+    tune_taken = time.time() - tune_start
 
-        tune_taken = time.time() - tune_start
+    try:
+        runner.checkpoint(force=True, wait=True)
+    except Exception as e:
+        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
-        try:
-            runner.checkpoint(force=True, wait=True)
-        except Exception as e:
-            logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+    if has_verbosity(Verbosity.V1_EXPERIMENT):
+        _report_progress(runner, progress_reporter, done=True)
 
-        if has_verbosity(Verbosity.V1_EXPERIMENT):
-            _report_progress(runner, progress_reporter, done=True)
-
-        if air_verbosity is not None:
-            _report_air_progress(runner, air_progress_reporter, force=True)
+    if air_verbosity is not None:
+        _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
 
@@ -1090,7 +1072,6 @@ def run(
 def run_experiments(
     experiments: Union[Experiment, Mapping, Sequence[Union[Experiment, Mapping]]],
     scheduler: Optional[TrialScheduler] = None,
-    server_port: Optional[int] = None,
     verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
@@ -1142,7 +1123,6 @@ def run_experiments(
             remote_run.remote(
                 experiments,
                 scheduler,
-                server_port,
                 verbose,
                 progress_reporter,
                 resume,
@@ -1162,7 +1142,6 @@ def run_experiments(
     if concurrent:
         return run(
             experiments,
-            server_port=server_port,
             verbose=verbose,
             progress_reporter=progress_reporter,
             resume=resume,
@@ -1177,7 +1156,6 @@ def run_experiments(
         for exp in experiments:
             trials += run(
                 exp,
-                server_port=server_port,
                 verbose=verbose,
                 progress_reporter=progress_reporter,
                 resume=resume,

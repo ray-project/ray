@@ -21,7 +21,7 @@ class TestRayDockerContainer(RayCITestBase):
         with mock.patch(
             "ci.ray_ci.ray_docker_container.docker_pull", return_value=None
         ), mock.patch(
-            "ci.ray_ci.docker_container.Container.run_script",
+            "ci.ray_ci.docker_container.LinuxContainer.run_script",
             side_effect=_mock_run_script,
         ):
             container = RayDockerContainer("3.8", "cu11.8.0", "ray")
@@ -49,8 +49,14 @@ class TestRayDockerContainer(RayCITestBase):
             )
 
     def test_canonical_tag(self) -> None:
+        container = RayDockerContainer("3.8", "cpu", "ray", canonical_tag="abc")
+        assert container._get_canonical_tag() == "abc"
+
         container = RayDockerContainer("3.8", "cpu", "ray")
         assert container._get_canonical_tag() == "123456-py38-cpu"
+
+        container = RayDockerContainer("3.8", "cpu", "ray", "aarch64")
+        assert container._get_canonical_tag() == "123456-py38-cpu-aarch64"
 
         container = RayDockerContainer("3.8", "cu11.8.0", "ray-ml")
         assert container._get_canonical_tag() == "123456-py38-cu118"
@@ -58,6 +64,12 @@ class TestRayDockerContainer(RayCITestBase):
         with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
             container = RayDockerContainer("3.8", "cpu", "ray")
             assert container._get_canonical_tag() == "1.0.0.123456-py38-cpu"
+
+        with mock.patch.dict(
+            os.environ, {"BUILDKITE_BRANCH": "abc", "BUILDKITE_PULL_REQUEST": "123"}
+        ):
+            container = RayDockerContainer("3.8", "cpu", "ray")
+            assert container._get_canonical_tag() == "pr-123.123456-py38-cpu"
 
     def test_get_image_tags(self) -> None:
         # bulk logic of _get_image_tags is tested in its callers (get_image_name and

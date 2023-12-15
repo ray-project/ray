@@ -10,7 +10,14 @@ class LogicalOperator(Operator):
     physical operator.
     """
 
-    def __init__(self, name: str, input_dependencies: List["LogicalOperator"]):
-        super().__init__(name, input_dependencies)
+    def __init__(
+        self,
+        name: str,
+        input_dependencies: List["LogicalOperator"],
+    ):
+        super().__init__(
+            name,
+            input_dependencies,
+        )
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x

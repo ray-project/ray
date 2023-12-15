@@ -116,7 +116,7 @@ if __name__ == "__main__":
             ds = ds.random_shuffle()
         else:
             ds = ds.sort(key="c_0")
-        ds.materialize()
+        ds = ds.materialize()
         ds_stats = ds.stats()
 
         print("==== Driver memory summary ====")

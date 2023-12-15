@@ -145,11 +145,16 @@ def test_global_bytes_spilled(shutdown_only):
     # The object store is about 90MB.
     ctx = ray.init(object_store_memory=90e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
-    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100).materialize()
+    ds = (
+        ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
+        .materialize()
+        .map_batches(lambda x: x)
+        .materialize()
+    )
 
     with pytest.raises(AssertionError):
         check_no_spill(ctx, ds)
-    print(ds._get_stats_summary())
+
     assert ds._get_stats_summary().global_bytes_spilled > 0
     assert ds._get_stats_summary().global_bytes_restored > 0
 

@@ -5,6 +5,7 @@ import os
 import shutil
 import platform
 import pytest
+import psutil
 
 import ray
 from ray._private.test_utils import (
@@ -70,6 +71,42 @@ def test_fallback_when_spilling_impossible_on_get():
         check_spilled_mb(address, spilled=800, restored=800, fallback=400)
         del x1p
         del x2p
+    finally:
+        ray.shutdown()
+
+
+def fallback_allocation_mmaps():
+    p = psutil.Process()
+    return [
+        mmap
+        for mmap in p.memory_maps(grouped=False)
+        if mmap.path.startswith("/tmp/ray/plasma")
+    ]
+
+
+@pytest.mark.skipif(
+    platform.system() != "Linux", reason="Using the Linux psutil.Process.memory_maps()"
+)
+def test_core_worker_fallback_allocations_munmap():
+    try:
+        address = _init_ray()
+        x1 = ray.put(np.zeros(400 * MB, dtype=np.uint8))
+        # x1 will be spilled.
+        x2 = ray.put(np.zeros(400 * MB, dtype=np.uint8))
+        check_spilled_mb(address, spilled=400)
+        # x1 will be restored, x2 will be spilled.
+        x1p = ray.get(x1)
+        check_spilled_mb(address, spilled=800, restored=400)
+        # No fallback allocations yet
+        assert len(fallback_allocation_mmaps()) == 0, fallback_allocation_mmaps()
+        # x2 will be restored, triggering a fallback allocation.
+        x2p = ray.get(x2)
+        check_spilled_mb(address, spilled=800, restored=800, fallback=400)
+        assert len(fallback_allocation_mmaps()) == 1, fallback_allocation_mmaps()
+        del x1p
+        del x2p
+        # after the del, the fallback allocation should be unmapped.
+        assert len(fallback_allocation_mmaps()) == 0, fallback_allocation_mmaps()
     finally:
         ray.shutdown()
 

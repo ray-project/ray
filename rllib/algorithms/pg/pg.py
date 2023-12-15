@@ -111,20 +111,6 @@ class PGConfig(AlgorithmConfig):
     error=False,
 )
 class PG(Algorithm):
-    """Policy Gradient (PG) Algorithm.
-
-    Defines the distributed Algorithm class for policy gradients.
-    See `pg_[tf|torch]_policy.py` for the definition of the policy losses for
-    TensorFlow and PyTorch.
-
-    Detailed documentation:
-    https://docs.ray.io/en/master/rllib-algorithms.html#pg
-
-    Only overrides the default config- and policy selectors
-    (`get_default_policy_class` and `get_default_config`). Utilizes
-    the default `training_step()` method of `Algorithm`.
-    """
-
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:

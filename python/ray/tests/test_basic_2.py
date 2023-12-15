@@ -1,6 +1,8 @@
 # coding: utf-8
+import array
 import logging
 import os
+import random
 import subprocess
 import sys
 import tempfile
@@ -8,7 +10,6 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
@@ -75,11 +76,10 @@ def test_defining_remote_functions(shutdown_only):
 
     # Test that we can close over plain old data.
     data = [
-        np.zeros([3, 5]),
         (1, 2, "a"),
         [0.0, 1.0, 1 << 62],
         1 << 60,
-        {"a": np.zeros(3)},
+        {"a": bytes(3)},
     ]
 
     @ray.remote
@@ -91,9 +91,9 @@ def test_defining_remote_functions(shutdown_only):
     # Test that we can close over modules.
     @ray.remote
     def h():
-        return np.zeros([3, 5])
+        return array.array("d", [1.0, 2.0, 3.0])
 
-    assert np.alltrue(ray.get(h.remote()) == np.zeros([3, 5]))
+    assert ray.get(h.remote()) == array.array("d", [1.0, 2.0, 3.0])
 
     @ray.remote
     def j():
@@ -185,7 +185,7 @@ def test_call_matrix(shutdown_only):
             return 0
 
         def large_value(self):
-            return np.zeros(10 * 1024 * 1024)
+            return bytes(80 * 1024 * 1024)
 
         def echo(self, x):
             if isinstance(x, list):
@@ -198,7 +198,7 @@ def test_call_matrix(shutdown_only):
 
     @ray.remote
     def large_value():
-        return np.zeros(10 * 1024 * 1024)
+        return bytes(80 * 1024 * 1024)
 
     @ray.remote
     def echo(x):
@@ -234,7 +234,7 @@ def test_call_matrix(shutdown_only):
         else:
             x = ray.get(echo.remote(x_id))
         if is_large:
-            assert isinstance(x, np.ndarray)
+            assert isinstance(x, bytes)
         else:
             assert isinstance(x, int)
 
@@ -250,7 +250,7 @@ def test_actor_call_order(shutdown_only):
 
     @ray.remote
     def small_value():
-        time.sleep(0.01 * np.random.randint(0, 10))
+        time.sleep(0.01 * random.randint(0, 10))
         return 0
 
     @ray.remote
@@ -345,10 +345,10 @@ def test_system_config_when_connecting(ray_start_cluster):
 
     # Check that the config was picked up (object pinning is disabled).
     ray.init(address=cluster.address)
-    obj_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+    obj_ref = ray.put(bytes(40 * 1024 * 1024))
 
     for _ in range(5):
-        put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+        put_ref = ray.put(bytes(40 * 1024 * 1024))
     del put_ref
 
     ray.get(obj_ref)
@@ -359,7 +359,7 @@ def test_get_multiple(ray_start_regular_shared):
     assert ray.get(object_refs) == list(range(10))
 
     # Get a random choice of object refs with duplicates.
-    indices = list(np.random.choice(range(10), 5))
+    indices = [random.choice(range(10)) for i in range(5)]
     indices += indices
     results = ray.get([object_refs[i] for i in indices])
     assert results == indices
@@ -428,7 +428,7 @@ def test_call_actors_indirect_through_tasks(ray_start_regular_shared):
 def test_inline_arg_memory_corruption(ray_start_regular_shared):
     @ray.remote
     def f():
-        return np.zeros(1000, dtype=np.uint8)
+        return bytes(1000)
 
     @ray.remote
     class Actor:
@@ -438,7 +438,7 @@ def test_inline_arg_memory_corruption(ray_start_regular_shared):
         def add(self, x):
             self.z.append(x)
             for prev in self.z:
-                assert np.sum(prev) == 0, ("memory corruption detected", prev)
+                assert sum(prev) == 0, ("memory corruption detected", prev)
 
     a = Actor.remote()
     for i in range(100):
@@ -471,7 +471,7 @@ def test_actor_large_objects(ray_start_regular_shared):
 
         def f(self):
             time.sleep(1)
-            return np.zeros(10000000)
+            return bytes(80000000)
 
     a = Actor.remote()
     obj_ref = a.f.remote()
@@ -479,7 +479,7 @@ def test_actor_large_objects(ray_start_regular_shared):
     done, _ = ray.wait([obj_ref])
     assert len(done) == 1
     assert ray._private.worker.global_worker.core_worker.object_exists(obj_ref)
-    assert isinstance(ray.get(obj_ref), np.ndarray)
+    assert isinstance(ray.get(obj_ref), bytes)
 
 
 def test_actor_pass_by_ref(ray_start_regular_shared):

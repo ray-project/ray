@@ -71,11 +71,20 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 
     non_default_values = {}  # Maps field name to value.
 
+    def equals(value, default_value):
+        # We need to special case None because of a bug in pyarrow:
+        # https://github.com/apache/arrow/issues/38535
+        if value is None and default_value is None:
+            return True
+        if value is None or default_value is None:
+            return False
+        return value == default_value
+
     for field in fields(obj):
         value = getattr(obj, field.name)
         default_value = default_values.get(field.name, field.default)
         is_required = isinstance(field.default, _MISSING_TYPE)
-        if is_required or value != default_value:
+        if is_required or not equals(value, default_value):
             non_default_values[field.name] = value
 
     string = f"{obj.__class__.__name__}("
@@ -373,27 +382,26 @@ class FailureConfig:
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
-        fail_fast: Whether to fail upon the first error. Only used for
-            Ray Tune - this does not apply
-            to single training runs (e.g. with ``Trainer.fit()``).
-            If fail_fast='raise' provided, Ray Tune will automatically
-            raise the exception received by the Trainable. fail_fast='raise'
-            can easily leak resources and should be used with caution (it
-            is best used with `ray.init(local_mode=True)`).
+        fail_fast: Whether to fail upon the first error.
+            If fail_fast='raise' provided, the original error during training will be
+            immediately raised. fail_fast='raise' can easily leak resources and
+            should be used with caution.
     """
 
     max_failures: int = 0
     fail_fast: Union[bool, str] = False
 
     def __post_init__(self):
-        # Same check as in tune.run
-        if self.fail_fast and self.max_failures != 0:
-            raise ValueError("max_failures must be 0 if fail_fast=True.")
-
         # Same check as in TuneController
         if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
+            )
+
+        # Same check as in tune.run
+        if self.fail_fast and self.max_failures != 0:
+            raise ValueError(
+                f"max_failures must be 0 if fail_fast={repr(self.fail_fast)}."
             )
 
     def __repr__(self):

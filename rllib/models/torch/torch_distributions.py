@@ -79,9 +79,14 @@ class TorchCategorical(TorchDistribution):
     If `probs` is N-dimensional, the first N-1 dimensions are treated as a batch of
     relative probability vectors.
 
-    Example::
-        >>> m = TorchCategorical(torch.tensor([ 0.25, 0.25, 0.25, 0.25 ]))
-        >>> m.sample(sample_shape=(2,))  # equal probability of 0, 1, 2, 3
+    .. testcode::
+        :skipif: True
+
+        m = TorchCategorical(torch.tensor([ 0.25, 0.25, 0.25, 0.25 ]))
+        m.sample(sample_shape=(2,))  # equal probability of 0, 1, 2, 3
+
+    .. testoutput::
+
         tensor([3, 4])
 
     Args:
@@ -152,15 +157,26 @@ class TorchDiagGaussian(TorchDistribution):
     Creates a normal distribution parameterized by :attr:`loc` and :attr:`scale`. In
     case of multi-dimensional distribution, the variance is assumed to be diagonal.
 
-    Example::
-        >>> loc, scale = torch.tensor([0.0, 0.0]), torch.tensor([1.0, 1.0])
-        >>> m = TorchDiagGaussian(loc=loc, scale=scale)
-        >>> m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
+    .. testcode::
+        :skipif: True
+
+        loc, scale = torch.tensor([0.0, 0.0]), torch.tensor([1.0, 1.0])
+        m = TorchDiagGaussian(loc=loc, scale=scale)
+        m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
+
+    .. testoutput::
+
         tensor([[ 0.1046, -0.6120], [ 0.234, 0.556]])
 
-        >>> # scale is None
-        >>> m = TorchDiagGaussian(loc=torch.tensor([0.0, 1.0]))
-        >>> m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
+    .. testcode::
+        :skipif: True
+
+        # scale is None
+        m = TorchDiagGaussian(loc=torch.tensor([0.0, 1.0]))
+        m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
+
+    .. testoutput::
+
         tensor([0.1046, 0.6120])
 
 
@@ -221,10 +237,14 @@ class TorchDeterministic(Distribution):
 
     Note: entropy is always zero, ang logp and kl are not implemented.
 
-    Example::
+    .. testcode::
+        :skipif: True
 
-        >>> m = TorchDeterministic(loc=torch.tensor([0.0, 0.0]))
-        >>> m.sample(sample_shape=(2,))
+        m = TorchDeterministic(loc=torch.tensor([0.0, 0.0]))
+        m.sample(sample_shape=(2,))
+
+    .. testoutput::
+
         tensor([[ 0.0, 0.0], [ 0.0, 0.0]])
 
     Args:

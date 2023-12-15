@@ -9,7 +9,7 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 """
 
 import argparse
-from gymnasium.spaces import Dict, Discrete, Tuple, MultiDiscrete
+from gymnasium.spaces import Dict, Tuple, MultiDiscrete
 import logging
 import os
 
@@ -18,7 +18,6 @@ from ray import air, tune
 from ray.tune import register_env
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
-from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls
 
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run", type=str, default="PG", help="The RLlib-registered algorithm to use."
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
 )
 parser.add_argument(
     "--framework",
@@ -108,50 +107,6 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
-
-    if args.run == "MADDPG":
-        obs_space = Discrete(6)
-        act_space = TwoStepGame.action_space
-        (
-            config.framework("tf")
-            .environment(env_config={"actions_are_logits": True})
-            .training(num_steps_sampled_before_learning_starts=100)
-            .multi_agent(
-                policies={
-                    "pol1": PolicySpec(
-                        observation_space=obs_space,
-                        action_space=act_space,
-                        config=config.overrides(agent_id=0),
-                    ),
-                    "pol2": PolicySpec(
-                        observation_space=obs_space,
-                        action_space=act_space,
-                        config=config.overrides(agent_id=1),
-                    ),
-                },
-                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol2"
-                if agent_id
-                else "pol1",
-            )
-        )
-    elif args.run == "QMIX":
-        (
-            config.framework("torch")
-            .training(mixer=args.mixer, train_batch_size=32)
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=4)
-            .exploration(
-                exploration_config={
-                    "final_epsilon": 0.0,
-                }
-            )
-            .environment(
-                env="grouped_twostep",
-                env_config={
-                    "separate_state_space": True,
-                    "one_hot_state_encoding": True,
-                },
-            )
-        )
 
     stop = {
         "episode_reward_mean": args.stop_reward,
