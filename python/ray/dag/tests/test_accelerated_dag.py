@@ -10,7 +10,6 @@ import ray
 import ray.cluster_utils
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
-from ray._private.test_utils import wait_for_condition
 
 
 logger = logging.getLogger(__name__)
@@ -58,6 +57,10 @@ def test_basic(ray_start_regular):
         assert result == i + 1
         output_channel.end_read()
 
+    # Note: must teardown before starting a new Ray session, otherwise you'll get
+    # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
 
 def test_regular_args(ray_start_regular):
     # Test passing regular args to .bind in addition to DAGNode args.
@@ -73,6 +76,8 @@ def test_regular_args(ray_start_regular):
         result = output_channel.begin_read()
         assert result == (i + 1) * 3
         output_channel.end_read()
+
+    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("num_actors", [1, 4])
@@ -92,6 +97,8 @@ def test_scatter_gather_dag(ray_start_regular, num_actors):
         for chan in output_channels:
             chan.end_read()
 
+    compiled_dag.teardown()
+
 
 @pytest.mark.parametrize("num_actors", [1, 4])
 def test_chain_dag(ray_start_regular, num_actors):
@@ -110,6 +117,8 @@ def test_chain_dag(ray_start_regular, num_actors):
         assert result == list(range(num_actors))
         output_channel.end_read()
 
+    compiled_dag.teardown()
+
 
 def test_dag_exception(ray_start_regular, capsys):
     a = Actor.remote(0)
@@ -117,10 +126,11 @@ def test_dag_exception(ray_start_regular, capsys):
         dag = a.inc.bind(inp)
 
     compiled_dag = dag.experimental_compile()
-    compiled_dag.execute("hello")
-    wait_for_condition(
-        lambda: "Compiled DAG task aborted with exception" in capsys.readouterr().err
-    )
+    output_channel = compiled_dag.execute("hello")
+    with pytest.raises(TypeError):
+        output_channel.begin_read()
+
+    compiled_dag.teardown()
 
 
 def test_dag_errors(ray_start_regular):
@@ -206,24 +216,6 @@ def test_dag_fault_tolerance(ray_start_regular, num_actors):
                 chan.begin_read()
             for chan in output_channels:
                 chan.end_read()
-
-
-def test_dag_teardown(ray_start_regular):
-    actor = Actor.remote(0)
-    with InputNode() as i:
-        dag = actor.inc.bind(i)
-
-    # Test we can go through multiple rounds of setup/teardown without issues.
-    for _ in range(10):
-        compiled_dag = dag.experimental_compile()
-
-        for _ in range(3):
-            output_channel = compiled_dag.execute(1)
-            # TODO(swang): Replace with fake ObjectRef.
-            output_channel.begin_read()
-            output_channel.end_read()
-
-        compiled_dag.teardown()
 
 
 if __name__ == "__main__":

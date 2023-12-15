@@ -416,9 +416,11 @@ class CompiledDAG:
                 except Exception as e:
                     if self.in_teardown:
                         return
-                    logger.info(f"Error executing worker task: {e}")
-                    for output_channel in outer.dag_output_channels:
-                        output_channel.set_error(e)
+                    if isinstance(outer.dag_output_channels, list):
+                        for output_channel in outer.dag_output_channels:
+                            output_channel.set_error(e)
+                    else:
+                        outer.dag_output_channels.set_error(e)
                     self.teardown()
 
         monitor = Monitor()

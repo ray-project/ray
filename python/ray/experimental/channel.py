@@ -3,6 +3,7 @@ import logging
 from typing import Any, Optional
 
 import ray
+from ray.exceptions import RaySystemError
 from ray.util.annotations import PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -186,5 +187,5 @@ class Channel:
 
 
 def _is_write_acquire_failed_error(e: Exception) -> bool:
-    # XXX detect the exception type better
-    return "write acquire failed" in str(e)
+    # TODO(ekl): detect the exception type better
+    return isinstance(e, RaySystemError)
