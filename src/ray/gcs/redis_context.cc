@@ -369,9 +369,11 @@ Status RedisContext::Connect(const std::string &address,
   //        address from the error message. Re-run this function with the
   //        right leader address.
 
-  absl::MutexLock l(&mu_);
-  RAY_CHECK(!context_);
-  RAY_CHECK(!redis_async_context_);
+  {
+    absl::MutexLock l(&mu_);
+    RAY_CHECK(!context_);
+    RAY_CHECK(!redis_async_context_);
+  }
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
   auto ip_addresses = ResolveDNS(address, port);
@@ -381,33 +383,37 @@ Status RedisContext::Connect(const std::string &address,
   RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
 
   {
-    auto resp = ConnectWithRetries<redisContext>(ip_addresses[0], port, redisConnect);
-    RAY_CHECK_OK(resp.first /* status */);
-    context_ = std::move(resp.second /* redisContext */);
-  }
+    absl::MutexLock l(&mu_);
 
-  if (enable_ssl) {
-    RAY_CHECK(ssl_context_ != nullptr);
-    RAY_CHECK(redisInitiateSSLWithContext(context_.get(), ssl_context_) == REDIS_OK)
-        << "Failed to setup encrypted redis: " << context_->errstr;
-  }
-  RAY_CHECK_OK(AuthenticateRedis(context_.get(), password));
+    {
+      auto resp = ConnectWithRetries<redisContext>(ip_addresses[0], port, redisConnect);
+      RAY_CHECK_OK(resp.first /* status */);
+      context_ = std::move(resp.second /* redisContext */);
+    }
 
-  // Connect to async context
-  std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
-  {
-    auto resp = ConnectWithRetries<redisAsyncContext>(address, port, redisAsyncConnect);
-    RAY_CHECK_OK(resp.first);
-    async_context = std::move(resp.second);
+    if (enable_ssl) {
+      RAY_CHECK(ssl_context_ != nullptr);
+      RAY_CHECK(redisInitiateSSLWithContext(context_.get(), ssl_context_) == REDIS_OK)
+          << "Failed to setup encrypted redis: " << context_->errstr;
+    }
+    RAY_CHECK_OK(AuthenticateRedis(context_.get(), password));
+
+    // Connect to async context
+    std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
+    {
+      auto resp = ConnectWithRetries<redisAsyncContext>(address, port, redisAsyncConnect);
+      RAY_CHECK_OK(resp.first);
+      async_context = std::move(resp.second);
+    }
+    if (enable_ssl) {
+      RAY_CHECK(ssl_context_ != nullptr);
+      RAY_CHECK(redisInitiateSSLWithContext(&async_context->c, ssl_context_) == REDIS_OK)
+          << "Failed to setup encrypted redis: " << async_context->errstr;
+    }
+    RAY_CHECK_OK(AuthenticateRedis(async_context.get(), password));
+    redis_async_context_.reset(new RedisAsyncContext(std::move(async_context)));
+    SetDisconnectCallback(redis_async_context_.get());
   }
-  if (enable_ssl) {
-    RAY_CHECK(ssl_context_ != nullptr);
-    RAY_CHECK(redisInitiateSSLWithContext(&async_context->c, ssl_context_) == REDIS_OK)
-        << "Failed to setup encrypted redis: " << async_context->errstr;
-  }
-  RAY_CHECK_OK(AuthenticateRedis(async_context.get(), password));
-  redis_async_context_.reset(new RedisAsyncContext(std::move(async_context)));
-  SetDisconnectCallback(redis_async_context_.get());
 
   // Ray has some restrictions for RedisDB. Validate it here.
   ValidateRedisDB(*this);
