@@ -274,10 +274,11 @@ def inference(
     dataset.map_batches(
         model_cls,
         fn_constructor_args=[load_model_func],
-        concurrency=(1, 1000),
+        concurrency=1,
         batch_size=batch_size,
         batch_format="pandas",
         num_gpus=num_gpus,
+        num_cpus=0,
     ).write_parquet(result_path)
 
 
@@ -648,9 +649,7 @@ if __name__ == "__main__":
     results = trainer.fit()
 
     with results.checkpoint.as_directory() as tmpdir:
-        state_dict = torch.load(
-            os.path.join(tmpdir, "checkpoint.pt"), map_location="cpu"
-        )
+        state_dict = torch.load(os.path.join(tmpdir, "checkpoint.pt"))
 
     def load_model_func():
         num_layers = config["num_layers"]
