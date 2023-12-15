@@ -74,7 +74,7 @@ WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
   std::memcpy(data.data(), job_id.Data(), JobID::Size());
   std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), 0xFF);
   return WorkerID::FromBinary(
-      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+      std::string(reinterpret_cast<const char *>(data.data()), WorkerID::Size()));
 }
 
 // This code is from https://sites.google.com/site/murmurhash/
@@ -296,7 +296,7 @@ JobID JobID::FromInt(uint32_t value) {
   std::vector<uint8_t> data(JobID::Size(), 0);
   std::memcpy(data.data(), &value, JobID::Size());
   return JobID::FromBinary(
-      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+      std::string(reinterpret_cast<const char *>(data.data()), JobID::Size()));
 }
 
 uint32_t JobID::ToInt() {
