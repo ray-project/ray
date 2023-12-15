@@ -273,6 +273,7 @@ if __name__ == "__main__":
                 RAY_CI_CPP_AFFECTED = 1
             elif (
                 changed_file.startswith("docker/")
+                or changed_file == ".buildkite/_forge.rayci.yml"
                 or changed_file == ".buildkite/pipeline.build_release.yml"
             ):
                 RAY_CI_DOCKER_AFFECTED = 1
