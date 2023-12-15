@@ -159,3 +159,32 @@ class Channel:
         self._worker.core_worker.experimental_mutable_object_read_release(
             [self._base_ref]
         )
+
+    def set_error(self, e: Exception) -> None:
+        """
+        Shutdown the channel with the specified error object. New readers will see
+        the error raised when they try to read from the channel.
+
+        Does not block.
+
+        Args:
+            e: The exception object to write to the channel.
+        """
+        logger.info(f"Putting cancellation token: {self._base_ref} <- {e}")
+        serialized_exc = self._worker.get_serialization_context().serialize(e)
+        try:
+            self._worker.core_worker.experimental_mutable_object_put_serialized(
+                serialized_exc,
+                self._base_ref,
+                num_readers=1,
+                try_wait=True,
+            )
+        except Exception as e:
+            if not _is_write_acquire_failed_error(e):
+                logger.exception("Error setting error on channel")
+                raise
+
+
+def _is_write_acquire_failed_error(e: Exception) -> bool:
+    # XXX detect the exception type better
+    return "write acquire failed" in str(e)

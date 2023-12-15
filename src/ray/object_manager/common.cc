@@ -57,14 +57,22 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
                  << "metadata_size: " << header->metadata_size << "\n";
 }
 
-void PlasmaObjectHeader::WriteAcquire(int64_t write_version,
+bool PlasmaObjectHeader::WriteAcquire(int64_t write_version,
                                       uint64_t write_data_size,
                                       uint64_t write_metadata_size,
-                                      int64_t write_num_readers) {
+                                      int64_t write_num_readers,
+                                      bool try_wait) {
   RAY_LOG(DEBUG) << "WriteAcquire. version: " << write_version << ", data size "
                  << write_data_size << ", metadata size " << write_metadata_size
-                 << ", num readers: " << write_num_readers;
-  sem_wait(&rw_semaphore);
+                 << ", num readers: " << write_num_readers << ", try_wait: " << try_wait;
+  if (try_wait) {
+    if (sem_trywait(&rw_semaphore)) {
+      /* abort */
+      return false;
+    }
+  } else {
+    sem_wait(&rw_semaphore);
+  }
   RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
   PrintPlasmaObjectHeader(this);
 
@@ -84,6 +92,7 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version,
   RAY_LOG(DEBUG) << "WriteAcquire done";
   PrintPlasmaObjectHeader(this);
   RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
+  return true;
 }
 
 void PlasmaObjectHeader::WriteRelease(int64_t write_version) {

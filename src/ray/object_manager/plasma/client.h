@@ -94,6 +94,7 @@ class PlasmaClientInterface {
   /// \param[in] metadata_size The number of bytes to copy from the metadata
   /// pointer.
   /// \param[in] num_readers The number of readers that must read and release
+  /// \param[in] try_wait Whether to abort if we cannot immediately acquire the lock.
   /// the object before the caller can write again.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   virtual Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
@@ -101,6 +102,7 @@ class PlasmaClientInterface {
                                                        const uint8_t *metadata,
                                                        int64_t metadata_size,
                                                        int64_t num_readers,
+                                                       bool try_wait,
                                                        std::shared_ptr<Buffer> *data) = 0;
 
   /// Experimental method for mutable objects. Releases a write lock on the
@@ -243,6 +245,7 @@ class PlasmaClient : public PlasmaClientInterface {
                                                const uint8_t *metadata,
                                                int64_t metadata_size,
                                                int64_t num_readers,
+                                               bool try_wait,
                                                std::shared_ptr<Buffer> *data);
 
   Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);

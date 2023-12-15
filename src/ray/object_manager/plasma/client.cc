@@ -160,6 +160,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                                                const uint8_t *metadata,
                                                int64_t metadata_size,
                                                int64_t num_readers,
+                                               bool try_wait,
                                                std::shared_ptr<Buffer> *data);
 
   Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
@@ -415,6 +416,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
     const uint8_t *metadata,
     int64_t metadata_size,
     int64_t num_readers,
+    bool try_wait,
     std::shared_ptr<Buffer> *data) {
 #ifdef __linux__
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
@@ -445,8 +447,13 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
                                    ") is larger than allocated buffer size " +
                                    std::to_string(entry->object.allocated_size));
   }
-  plasma_header->WriteAcquire(
-      entry->next_version_to_write, data_size, metadata_size, num_readers);
+  if (!plasma_header->WriteAcquire(entry->next_version_to_write,
+                                   data_size,
+                                   metadata_size,
+                                   num_readers,
+                                   try_wait)) {
+    return Status::IOError("write acquire failed");
+  };
 
   // Prepare the data buffer and return to the client instead of sending
   // the IPC to object store.
@@ -751,8 +758,14 @@ Status PlasmaClient::Impl::EnsureGetAcquired(
   }
 
   int64_t version_read = 0;
+
+  // Need to unlock the client mutex since ReadAcquire() is blocking.
+  // TODO(ekl) is this entirely thread-safe?
+  client_mutex_.unlock();
   bool success =
       plasma_header->ReadAcquire(object_entry->next_version_to_read, &version_read);
+  client_mutex_.lock();
+
   if (!success) {
     return Status::Invalid(
         "Reader missed a value. Are you sure there are num_readers many readers?");
@@ -1062,9 +1075,10 @@ Status PlasmaClient::ExperimentalMutableObjectWriteAcquire(
     const uint8_t *metadata,
     int64_t metadata_size,
     int64_t num_readers,
+    bool try_wait,
     std::shared_ptr<Buffer> *data) {
   return impl_->ExperimentalMutableObjectWriteAcquire(
-      object_id, data_size, metadata, metadata_size, num_readers, data);
+      object_id, data_size, metadata, metadata_size, num_readers, try_wait, data);
 }
 
 Status PlasmaClient::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {

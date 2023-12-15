@@ -1,6 +1,7 @@
 # coding: utf-8
 import logging
 import os
+import random
 import sys
 
 import pytest
@@ -20,12 +21,17 @@ if sys.platform != "linux":
 
 @ray.remote
 class Actor:
-    def __init__(self, init_value):
+    def __init__(self, init_value, fail_after=None):
         print("__init__ PID", os.getpid())
         self.i = init_value
+        self.fail_after = fail_after
 
     def inc(self, x):
         self.i += x
+        if self.fail_after and self.i > self.fail_after:
+            # Randomize the failures to better cover multi actor scenarios.
+            if random.random() > 0.5:
+                raise Exception("injected fault")
         return self.i
 
     def append_to(self, lst):
@@ -174,6 +180,50 @@ def test_dag_errors(ray_start_regular):
         "for InputNode",
     ):
         dag.experimental_compile()
+
+
+@pytest.mark.parametrize("num_actors", [1, 4])
+def test_dag_fault_tolerance(ray_start_regular, num_actors):
+    actors = [Actor.remote(0, fail_after=100) for _ in range(num_actors)]
+    with InputNode() as i:
+        out = [a.inc.bind(i) for a in actors]
+        dag = MultiOutputNode(out)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(99):
+        output_channels = compiled_dag.execute(1)
+        # TODO(swang): Replace with fake ObjectRef.
+        results = [chan.begin_read() for chan in output_channels]
+        assert results == [i + 1] * num_actors
+        for chan in output_channels:
+            chan.end_read()
+
+    with pytest.raises(ValueError):
+        for i in range(99):
+            output_channels = compiled_dag.execute(1)
+            for chan in output_channels:
+                chan.begin_read()
+            for chan in output_channels:
+                chan.end_read()
+
+
+def test_dag_teardown(ray_start_regular):
+    actor = Actor.remote(0)
+    with InputNode() as i:
+        dag = actor.inc.bind(i)
+
+    # Test we can go through multiple rounds of setup/teardown without issues.
+    for _ in range(10):
+        compiled_dag = dag.experimental_compile()
+
+        for _ in range(3):
+            output_channel = compiled_dag.execute(1)
+            # TODO(swang): Replace with fake ObjectRef.
+            output_channel.begin_read()
+            output_channel.end_read()
+
+        compiled_dag.teardown()
 
 
 if __name__ == "__main__":
