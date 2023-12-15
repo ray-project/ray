@@ -71,11 +71,12 @@ class RemoteTrainingHelper:
             # do it here for testing purposes
             tf.compat.v1.enable_eager_execution()
             tf.random.set_seed(0)
+
         env = gym.make("CartPole-v1")
         config_overrides = LOCAL_CONFIGS[scaling_mode]
         config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-        learner_group = config.build_learner_group()
-        local_learner = config.build_learner()
+        learner_group = config.build_learner_group(env=env)
+        local_learner = config.build_learner(env=env)
 
         # make the state of the learner and the local learner_group identical
         local_learner.set_state(learner_group.get_state()["learner_state"])
