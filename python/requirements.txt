@@ -38,7 +38,6 @@ scipy
 colorful
 pyyaml
 rich
-gpustat>=1.0.0
 opentelemetry-sdk
 fastapi
 gymnasium==0.28.1
