@@ -81,6 +81,10 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
         executor = StreamingExecutor(ExecutionOptions())
+        o = InputDataBuffer([])
+        # Start the executor. Because non-started executors don't
+        # need to be shut down.
+        executor.execute(o)
         del executor
     assert streaming_executor._num_shutdown - initial == num_runs
 
