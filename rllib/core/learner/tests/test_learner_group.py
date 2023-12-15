@@ -122,10 +122,12 @@ class RemoteTrainingHelper:
 
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init()
 
-    def tearDown(self) -> None:
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_learner_group_build_from_algorithm_config(self):
@@ -166,6 +168,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling_mode: {scaling_mode}")
             training_helper = RemoteTrainingHelper.remote()
             ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
+            del training_helper
 
     def test_update_multigpu(self):
         fws = ["torch", "tf2"]
@@ -208,16 +211,6 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             # autoscale.
             learner_group.shutdown()
             del learner_group
-
-    def _check_multi_worker_weights(self, results: List[Dict[str, Any]]):
-        # check that module weights are updated across workers and synchronized
-        for i in range(1, len(results)):
-            for module_id in results[i].keys():
-                if module_id == ALL_MODULES:
-                    continue
-                current_weights = results[i][module_id]["mean_weight"]
-                prev_weights = results[i - 1][module_id]["mean_weight"]
-                self.assertEqual(current_weights, prev_weights)
 
     def test_add_remove_module(self):
         fws = ["torch", "tf2"]
@@ -282,12 +275,24 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             learner_group.shutdown()
             del learner_group
 
+    def _check_multi_worker_weights(self, results: List[Dict[str, Any]]):
+        # check that module weights are updated across workers and synchronized
+        for i in range(1, len(results)):
+            for module_id in results[i].keys():
+                if module_id == ALL_MODULES:
+                    continue
+                current_weights = results[i][module_id]["mean_weight"]
+                prev_weights = results[i - 1][module_id]["mean_weight"]
+                self.assertEqual(current_weights, prev_weights)
+
 
 class TestLearnerGroupCheckpointRestore(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init()
 
-    def tearDown(self) -> None:
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_load_module_state(self):
@@ -424,10 +429,12 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
 
 class TestLearnerGroupSaveLoadState(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init()
 
-    def tearDown(self) -> None:
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_save_load_state(self):
@@ -494,10 +501,12 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
 
 class TestLearnerGroupAsyncUpdate(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init()
 
-    def tearDown(self) -> None:
+    @classmethod
+    def tearDown(cls) -> None:
         ray.shutdown()
 
     def test_async_update(self):
