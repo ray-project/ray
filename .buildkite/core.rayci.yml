@@ -23,7 +23,9 @@ steps:
 
   # tests
   - label: ":ray: core: python tests"
-    tags: python
+    tags: 
+      - python
+      - dashboard
     instance_type: large
     parallelism: 4
     commands:
@@ -45,8 +47,10 @@ steps:
     tags:
       - python
       - oss
+      - skip-on-premerge
     instance_type: medium
     commands:
+      - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
       - (cd dashboard/client && npm ci && npm run build)
       - pip install -e python[client]
       - bazel test --config=ci --jobs=1 $(./ci/run/bazel_export_options)
@@ -222,7 +226,7 @@ steps:
 
   - label: ":ray: core: cpp ubsan tests"
     tags: core_cpp
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type ubsan
         --except-tags no_ubsan

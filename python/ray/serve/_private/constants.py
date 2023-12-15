@@ -248,3 +248,8 @@ MAX_REPLICAS_PER_NODE_MAX_VALUE = 100
 
 # Argument name for passing in the gRPC context into a replica.
 GRPC_CONTEXT_ARG_NAME = "grpc_context"
+
+# Whether or not to forcefully kill replicas that fail health checks.
+RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = (
+    os.environ.get("RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0") == "1"
+)

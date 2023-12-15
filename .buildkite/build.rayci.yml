@@ -77,8 +77,7 @@ steps:
   - label: ":tapioca: build: doc"
     instance_type: medium
     commands:
-      - cd doc
-      - FAST=True make html
+      - FAST=True make -C doc/ html
     depends_on: docbuild
     job_env: docbuild
 
