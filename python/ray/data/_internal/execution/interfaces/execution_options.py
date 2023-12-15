@@ -103,7 +103,7 @@ class ExecutionOptions:
             operators under the streaming executor. The bulk executor always preserves
             order. Off by default.
         actor_locality_enabled: Whether to enable locality-aware task dispatch to
-            actors (on by default). This applies to both stateful map and
+            actors (on by default). This parameter applies to both stateful map and
             streaming_split operations.
         verbose_progress: Whether to report progress individually per operator. By
             default, only AllToAll operators and global progress is reported. This
