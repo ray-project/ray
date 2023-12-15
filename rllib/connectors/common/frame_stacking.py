@@ -57,7 +57,7 @@ class _FrameStackingConnector(ConnectorV2):
                 self.observation_space.high, repeats=self.num_frames, axis=-1
             ),
             shape=list(self.observation_space.shape)[:-1] + [self.num_frames],
-            dtype=self.observation_space.dtype,
+            dtype=self.observation_space.dtypege
         )
 
     @override(ConnectorV2)
@@ -74,38 +74,63 @@ class _FrameStackingConnector(ConnectorV2):
         # This is a data-in-data-out connector, so we expect `input_` to be a dict
         # with: key=column name, e.g. "obs" and value=[data to be processed by
         # RLModule]. We will add to `input_` the last n observations.
-
         observations = []
-        for episode in episodes:
 
-            # Learner connector pipeline. Episodes have been finalized/numpy'ized.
-            if self.as_learner_connector:
-                # Loop through each timestep in the episode and add the previous n
-                # observations (based on that timestep) to the batch.
-                for ts in range(len(episode)):
-                    # Get the observation stack for this timestep as shape
-                    # ([num_frames], w, h, 1).
-                    obs_stack = episode.get_observations(
-                        # Extract n observations from `ts` to `ts - n`
-                        # (excluding `ts - n`).
-                        indices=slice(ts - self.num_frames + 1, ts + 1),
-                        # Make sure negative indices are NOT interpreted as
-                        # "counting from the end", but as absolute indices meaning
-                        # they refer to timesteps before 0 (which is the lookback
-                        # buffer).
-                        neg_indices_left_of_zero=True,
-                        # In case we are at the very beginning of the episode, e.g.
-                        # ts==0, fill the left side with zero-observations.
-                        fill=0.0,
-                    )
-                    # Transpose to (w, h, [num_frames], 1) and squeeze out last dim to
-                    # get (w, h, [num_frames]).
-                    observations.append(tree.map_structure(
-                        lambda s: np.transpose(np.squeeze(s, axis=-1), axes=[1, 2, 0]),
-                        obs_stack,
-                    ))
-            # Env-to-module pipeline. Episodes still operate on lists.
-            else:
+        # Learner connector pipeline. Episodes have been finalized/numpy'ized.
+        if self.as_learner_connector:
+            for episode in episodes:
+
+                def _map_fn(s):
+                    # Squeeze out last dim.
+                    s = np.squeeze(s, axis=-1)
+                    N = s.shape[0]
+                    # Calculate new shape and strides
+                    new_shape = (len(episode), self.num_frames) + s.shape[1:]
+                    new_strides = (s.strides[0],) + s.strides
+                    # Create a strided view of the array.
+                    return np.lib.stride_tricks.as_strided(s, shape=new_shape, strides=new_strides)
+
+                # Get all observations from the episode in one np array (except for
+                # the very last one, which is the final observation not needed for
+                # learning).
+                observations.append(tree.map_structure(_map_fn, episode.get_observations(
+                    indices=slice(-self.num_frames + 1, len(episode)),
+                    neg_indices_left_of_zero=True,
+                    fill=0.0,
+                )))
+            input_[SampleBatch.OBS] = tree.map_structure(
+                lambda *s: np.transpose(np.concatenate(s, axis=0), axes=[0, 2, 3, 1]),
+                *observations,
+            )
+        else:
+            for episode in episodes:
+
+                    ## Loop through each timestep in the episode and add the previous n
+                    ## observations (based on that timestep) to the batch.
+                    #for ts in range(len(episode)):
+                    #    # Get the observation stack for this timestep as shape
+                    #    # ([num_frames], w, h, 1).
+                    #    obs_stack = episode.get_observations(
+                    #        # Extract n observations from `ts` to `ts - n`
+                    #        # (excluding `ts - n`).
+                    #        indices=slice(ts - self.num_frames + 1, ts + 1),
+                    #        # Make sure negative indices are NOT interpreted as
+                    #        # "counting from the end", but as absolute indices meaning
+                    #        # they refer to timesteps before 0 (which is the lookback
+                    #        # buffer).
+                    #        neg_indices_left_of_zero=True,
+                    #        # In case we are at the very beginning of the episode, e.g.
+                    #        # ts==0, fill the left side with zero-observations.
+                    #        fill=0.0,
+                    #    )
+                    #    # Transpose to (w, h, [num_frames], 1) and squeeze out last dim to
+                    #    # get (w, h, [num_frames]).
+                    #    observations.append(tree.map_structure(
+                    #        lambda s: np.transpose(np.squeeze(s, axis=-1), axes=[1, 2, 0]),
+                    #        obs_stack,
+                    #    ))
+                # Env-to-module pipeline. Episodes still operate on lists.
+                #else:
                 assert not episode.is_finalized
                 # Get the list of observations to stack.
                 obs_stack = episode.get_observations(
@@ -121,5 +146,6 @@ class _FrameStackingConnector(ConnectorV2):
                 )
                 observations.append(stacked_obs)
 
-        input_[SampleBatch.OBS] = batch(observations)
+            input_[SampleBatch.OBS] = batch(observations)
+
         return input_
