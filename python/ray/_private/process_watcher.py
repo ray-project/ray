@@ -4,6 +4,8 @@ import logging
 import sys
 import os
 
+from concurrent.futures import ThreadPoolExecutor
+
 import ray
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 import ray.dashboard.consts as dashboard_consts
@@ -58,7 +60,7 @@ def create_check_raylet_task(log_dir, gcs_address, parent_dead_callback, loop):
     """
     if sys.platform in ["win32", "cygwin"]:
         raise RuntimeError("can't check raylet process in Windows.")
-    raylet_pid = get_raylet_pid()
+    # raylet_pid = get_raylet_pid()
     return run_background_task(
         # _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback)
         check_parent_via_pipe(log_dir, gcs_address, loop, parent_dead_callback)
@@ -121,21 +123,23 @@ async def check_parent_via_pipe(
         loop,
         parent_dead_callback):
     while True:
-
-        def read_pipe():
-            # stdin is the pipe from the parents
-            data = sys.stdin.readline()
-            return data
-
-        # Read input asynchronously
-        print("readpipe")
-        input_data = await loop.run_in_executor(None, read_pipe)
-        print("readpipe result, ", input_data)
-        if len(input_data) == 0:
-            # cannot read bytes from parent == parent is dead.
-            parent_dead_callback("readpipe done.")
-            report_raylet_error_logs(log_dir, gcs_address)
-            sys.exit(0)
+        try:
+            # Read input asynchronously.
+            # The parent (raylet) should have redirected its pipe
+            # to stdin. If we read 0 bytes from stdin, it means
+            # the process is dead.
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                input_data = await loop.run_in_executor(
+                    executor, lambda: sys.stdin.readline())
+            if len(input_data) == 0:
+                # cannot read bytes from parent == parent is dead.
+                parent_dead_callback("The parent is dead.")
+                report_raylet_error_logs(log_dir, gcs_address)
+                sys.exit(0)
+        except Exception as e:
+            logger.exception(
+                "raylet health checking is failed. "
+                f"The agent process may leak. Exception: {e}")
 
 
 async def _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback):
