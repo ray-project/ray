@@ -33,8 +33,13 @@ class _FrameStackingConnector(ConnectorV2):
         Args:
             num_frames: The number of observation frames to stack up (into a single
                 observation) for the RLModule's forward pass.
+            as_preprocessor: Whether this connector should simply postprocess the
+                received observations from the env and store these directly in the
+                episode object. In this mode, the connector can only be used in
+                an `EnvToModulePipeline` and it will act as a classic
+                RLlib framestacking postprocessor.
             as_learner_connector: Whether this connector is part of a Learner connector
-                pipeline, as opposed to a env-to-module pipeline.
+                pipeline, as opposed to an env-to-module pipeline.
         """
         super().__init__(
             input_observation_space=input_observation_space,
