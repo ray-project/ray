@@ -78,10 +78,6 @@ bool PlasmaObjectHeader::WriteAcquire(int64_t write_version,
 
   RAY_CHECK(num_read_acquires_remaining == 0);
   RAY_CHECK(num_read_releases_remaining == 0);
-  RAY_CHECK(write_version == version + 1)
-      << "Write version " << write_version
-      << " is more than 1 greater than current version " << version
-      << ". Are you sure this is the only writer?";
 
   version = write_version;
   is_sealed = false;

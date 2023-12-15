@@ -170,7 +170,7 @@ class Channel:
         Args:
             e: The exception object to write to the channel.
         """
-        logger.info(f"Putting cancellation token: {self._base_ref} <- {e}")
+        logger.debug(f"Writing error to channel: {self._base_ref}: {e}")
         serialized_exc = self._worker.get_serialization_context().serialize(e)
         try:
             self._worker.core_worker.experimental_mutable_object_put_serialized(

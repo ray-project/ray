@@ -73,7 +73,7 @@ def do_exec_compiled_task(
                 channel.end_read()
 
     except Exception as e:
-        logging.warn(f"Compiled DAG task aborted with exception: {e}")
+        logging.info(f"Compiled DAG task exited with exception: {e}")
         raise
 
 
@@ -357,7 +357,7 @@ class CompiledDAG:
             # Assign the task with the correct input and output buffers.
             worker_fn = task.dag_node._get_remote_method("__ray_call__")
             self.worker_task_refs.append(
-                worker_fn.remote(
+                worker_fn.options(concurrency_group="_ray_system").remote(
                     do_exec_compiled_task,
                     resolved_args,
                     task.dag_node.get_method_name(),
@@ -402,12 +402,13 @@ class CompiledDAG:
                 logger.info("Tearing down compiled DAG")
                 self.in_teardown = True
                 for actor in outer.actor_refs:
-                    logger.debug(f"Cancelling compiled worker on actor: {actor}")
+                    logger.info(f"Cancelling compiled worker on actor: {actor}")
                     try:
-                        ray.get(actor.__ray_apply__.remote(do_cancel_compiled_task))
+                        ray.get(actor.__ray_call__.remote(do_cancel_compiled_task))
                     except Exception as e:
                         logger.info(f"Error cancelling worker task: {e}")
                         pass
+                logger.info("Teardown complete")
 
             def run(self):
                 try:
@@ -448,6 +449,10 @@ class CompiledDAG:
         input_channel, output_channels = self._get_or_compile()
         input_channel.write(args[0])
         return output_channels
+
+    def teardown(self):
+        """Teardown and cancel all worker tasks for this DAG."""
+        self._monitor.teardown()
 
 
 @DeveloperAPI

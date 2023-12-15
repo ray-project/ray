@@ -425,7 +425,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
     return Status::Invalid(
         "Plasma buffer for mutable object not in scope. Are you sure you're the writer?");
   }
-  if (!object_entry->second->is_writer) {
+  if (!object_entry->second->is_writer && !try_wait) {
     return Status::Invalid(
         "Mutable objects can only be written by the original creator process.");
   }
@@ -447,6 +447,8 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
                                    ") is larger than allocated buffer size " +
                                    std::to_string(entry->object.allocated_size));
   }
+  // TODO(ekl) should we just only track the version in the plasma header?
+  entry->next_version_to_write = plasma_header->version + 1;
   if (!plasma_header->WriteAcquire(entry->next_version_to_write,
                                    data_size,
                                    metadata_size,
@@ -480,10 +482,6 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteRelease(
   if (object_entry == objects_in_use_.end()) {
     return Status::Invalid(
         "Plasma buffer for mutable object not in scope. Are you sure you're the writer?");
-  }
-  if (!object_entry->second->is_writer) {
-    return Status::Invalid(
-        "Mutable objects can only be written by the original creator process.");
   }
   RAY_CHECK(object_entry != objects_in_use_.end());
 

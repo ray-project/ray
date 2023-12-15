@@ -31,7 +31,7 @@ class Actor:
         if self.fail_after and self.i > self.fail_after:
             # Randomize the failures to better cover multi actor scenarios.
             if random.random() > 0.5:
-                raise Exception("injected fault")
+                raise ValueError("injected fault")
         return self.i
 
     def append_to(self, lst):
