@@ -444,10 +444,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
                                    ") is larger than allocated buffer size " +
                                    std::to_string(entry->object.allocated_size));
   }
-  if (!plasma_header->WriteAcquire(data_size,
-                                   metadata_size,
-                                   num_readers,
-                                   try_wait)) {
+  if (!plasma_header->WriteAcquire(data_size, metadata_size, num_readers, try_wait)) {
     return Status::IOError("write acquire failed");
   };
 

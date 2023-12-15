@@ -48,6 +48,8 @@ def do_exec_compiled_task(
         actor_method_name: The name of the actual actor method to execute in
             the loop.
     """
+    self._dag_cancelled = False
+
     try:
         self._input_channels = [i for i in inputs if isinstance(i, Channel)]
         method = getattr(self, actor_method_name)
@@ -68,6 +70,8 @@ def do_exec_compiled_task(
 
             output_val = method(*resolved_inputs)
 
+            if self._dag_cancelled:
+                raise RuntimeError("DAG execution cancelled")
             self._output_channel.write(output_val)
             for _, channel in input_channel_idxs:
                 channel.end_read()
@@ -79,6 +83,7 @@ def do_exec_compiled_task(
 
 @DeveloperAPI
 def do_cancel_compiled_task(self):
+    self._dag_cancelled = True
     e = RayTaskError(
         function_name="do_exec_compiled_task",
         traceback_str="",
@@ -407,6 +412,12 @@ class CompiledDAG:
                         ray.get(actor.__ray_call__.remote(do_cancel_compiled_task))
                     except Exception:
                         logger.exception("Error cancelling worker task")
+                        pass
+                logger.info("Waiting for worker tasks to exit")
+                for ref in outer.worker_task_refs:
+                    try:
+                        ray.get(ref)
+                    except Exception:
                         pass
                 logger.info("Teardown complete")
 

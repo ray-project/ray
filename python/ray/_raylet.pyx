@@ -3518,7 +3518,7 @@ cdef class CoreWorker:
     def experimental_mutable_object_put_serialized(self, serialized_object,
                                                    ObjectRef object_ref,
                                                    num_readers,
-                                                   try_wait: bool=False
+                                                   try_wait: bool = False
                                                    ):
         cdef:
             CObjectID c_object_id = object_ref.native()

@@ -3,11 +3,13 @@ import logging
 import os
 import random
 import sys
+import time
 
 import pytest
 
 import ray
 import ray.cluster_utils
+from ray.exceptions import RayActorError
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
 
@@ -20,17 +22,21 @@ if sys.platform != "linux":
 
 @ray.remote
 class Actor:
-    def __init__(self, init_value, fail_after=None):
+    def __init__(self, init_value, fail_after=None, sys_exit=False):
         print("__init__ PID", os.getpid())
         self.i = init_value
         self.fail_after = fail_after
+        self.sys_exit = sys_exit
 
     def inc(self, x):
         self.i += x
         if self.fail_after and self.i > self.fail_after:
             # Randomize the failures to better cover multi actor scenarios.
             if random.random() > 0.5:
-                raise ValueError("injected fault")
+                if self.sys_exit:
+                    os._exit(1)
+                else:
+                    raise ValueError("injected fault")
         return self.i
 
     def append_to(self, lst):
@@ -41,6 +47,10 @@ class Actor:
         self.i += x
         self.i += y
         return self.i
+
+    def sleep(self, x):
+        time.sleep(x)
+        return x
 
 
 def test_basic(ray_start_regular):
@@ -194,7 +204,9 @@ def test_dag_errors(ray_start_regular):
 
 @pytest.mark.parametrize("num_actors", [1, 4])
 def test_dag_fault_tolerance(ray_start_regular, num_actors):
-    actors = [Actor.remote(0, fail_after=100) for _ in range(num_actors)]
+    actors = [
+        Actor.remote(0, fail_after=100, sys_exit=False) for _ in range(num_actors)
+    ]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
         dag = MultiOutputNode(out)
@@ -216,6 +228,54 @@ def test_dag_fault_tolerance(ray_start_regular, num_actors):
                 chan.begin_read()
             for chan in output_channels:
                 chan.end_read()
+
+
+def test_dag_fault_tolerance_sys_exit(ray_start_regular):
+    actors = [Actor.remote(0, fail_after=100, sys_exit=True) for _ in range(1)]
+    with InputNode() as i:
+        out = [a.inc.bind(i) for a in actors]
+        dag = MultiOutputNode(out)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(99):
+        output_channels = compiled_dag.execute(1)
+        # TODO(swang): Replace with fake ObjectRef.
+        results = [chan.begin_read() for chan in output_channels]
+        assert results == [i + 1]
+        for chan in output_channels:
+            chan.end_read()
+
+    with pytest.raises(RayActorError):
+        for i in range(99):
+            output_channels = compiled_dag.execute(1)
+            for chan in output_channels:
+                chan.begin_read()
+            for chan in output_channels:
+                chan.end_read()
+
+
+def test_dag_teardown_while_running(ray_start_regular):
+    a = Actor.remote(0)
+
+    with InputNode() as inp:
+        dag = a.sleep.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    compiled_dag.execute(3)  # 3-second slow task running async
+    compiled_dag.teardown()
+
+    # Check we can still use the actor after first DAG teardown.
+    with InputNode() as inp:
+        dag = a.sleep.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    chan = compiled_dag.execute(0.1)
+    result = chan.begin_read()
+    assert result == 0.1
+    chan.end_read()
+
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
