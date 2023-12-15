@@ -2366,9 +2366,9 @@ def from_spark(
             datasource=datasource,
             parallelism=parallelism,
         )
-        dataset.materialize()
+        materialized_dataset = dataset.materialize()
         datasource.dispose_spark_cache()
-        return dataset
+        return materialized_dataset
     else:
         import raydp
 
