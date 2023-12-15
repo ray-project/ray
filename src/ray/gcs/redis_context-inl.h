@@ -116,6 +116,7 @@ void RedisResponseFn(struct redisAsyncContext *async_context,
       if (auto maybe_ip_port =
               ParseIffMovedError(std::string(redis_reply->str, redis_reply->len));
           maybe_ip_port.has_value()) {
+        RAY_LOG(INFO) << "vct a";
         const auto [ip, port] = maybe_ip_port.value();
         auto resp = ConnectWithRetries<ConnectType>(ip.c_str(), port, redisAsyncConnect);
         if (auto st = resp.first; !st.ok()) {
@@ -126,7 +127,6 @@ void RedisResponseFn(struct redisAsyncContext *async_context,
           // Set the context in the longer-lived RedisContext object.
           request_cxt->parent_context_.ResetOrRetrieveAsyncContext(
               request_cxt->redis_context_);
-          // TODO(vitsai): do we need to Attach
         }
       } else {
         request_cxt->exp_back_off_.Next();

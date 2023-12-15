@@ -111,7 +111,7 @@ class CallbackReply {
 using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 
 class RedisContext;
-class MockRedisContext;
+class MockRedisAsyncContext;
 
 template <typename ConnectType = redisAsyncContext>
 void RedisResponseFn(struct redisAsyncContext *async_context,
@@ -129,9 +129,8 @@ struct RedisRequestContext {
   friend void RedisResponseFn<redisAsyncContext>(struct redisAsyncContext *async_context,
                                                  void *raw_reply,
                                                  void *privdata);
-  friend void RedisResponseFn<MockRedisContext>(struct redisAsyncContext *async_context,
-                                                void *raw_reply,
-                                                void *privdata);
+  friend void RedisResponseFn<MockRedisAsyncContext>(
+      struct redisAsyncContext *async_context, void *raw_reply, void *privdata);
 
  private:
   ExponentialBackOff exp_back_off_;
@@ -190,6 +189,12 @@ class RedisContext {
     absl::MutexLock l(&mu_);
     RAY_CHECK(redis_async_context_);
     return *redis_async_context_.get();
+  }
+
+  void SetRedisAsyncContextInTest(
+      std::shared_ptr<RedisAsyncContext> &redis_async_context) {
+    absl::MutexLock l(&mu_);
+    redis_async_context_ = redis_async_context;
   }
 
   instrumented_io_context &io_service() { return io_service_; }

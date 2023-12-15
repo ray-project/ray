@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
 
@@ -69,8 +70,13 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
   redisAsyncCommand(ac, NULL, NULL, "SET key test");
   redisAsyncCommand(ac, GetCallback, nullptr, "GET key");
 
+  std::string fake_client_ip = "";
+  std::string fake_client_pw = "";
+  RedisClientOptions fake_options(fake_client_ip, 0, fake_client_pw);
+  RedisClient redis_client(fake_options);
+
   std::shared_ptr<RedisContext> shard_context =
-      std::make_shared<RedisContext>(io_service);
+      std::make_shared<RedisContext>(io_service, redis_client);
   ASSERT_TRUE(shard_context
                   ->Connect(std::string("127.0.0.1"),
                             TEST_REDIS_SERVER_PORTS.front(),

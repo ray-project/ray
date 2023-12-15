@@ -33,7 +33,7 @@ typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
 namespace ray {
 namespace gcs {
 
-class MockRedisContext;
+class MockRedisAsyncContext;
 class RedisAsyncContext;
 
 struct RedisContextDeleter {
@@ -41,7 +41,7 @@ struct RedisContextDeleter {
 
   void operator()(redisContext *context) { redisFree(context); }
   void operator()(redisAsyncContext *context) { redisAsyncFree(context); }
-  void operator()(MockRedisContext *context){};
+  void operator()(MockRedisAsyncContext *context){};
 };
 
 /// \class RedisAsyncContext
@@ -57,7 +57,7 @@ class RedisAsyncContext {
   /// Get the raw 'redisAsyncContext' pointer.
   ///
   /// \return redisAsyncContext *
-  redisAsyncContext *GetRawRedisAsyncContext();
+  virtual redisAsyncContext *GetRawRedisAsyncContext();
 
   /// Reset the raw 'redisAsyncContext' pointer to nullptr.
   void ResetRawRedisAsyncContext();
@@ -91,7 +91,7 @@ class RedisAsyncContext {
                                        const char **argv,
                                        const size_t *argvlen);
 
-  friend class MockRedisContext;
+  friend class MockRedisAsyncContext;
 
  private:
   /// This mutex is used to protect `redis_async_context`.

@@ -30,6 +30,8 @@ RedisAsyncContext::RedisAsyncContext(
 }
 
 redisAsyncContext *RedisAsyncContext::GetRawRedisAsyncContext() {
+  RAY_LOG(INFO) << "in case below is sad";
+  RAY_LOG(INFO) << "vct :) " << redis_async_context_.get();
   return redis_async_context_.get();
 }
 
