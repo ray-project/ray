@@ -98,39 +98,16 @@ class _FrameStackingConnector(ConnectorV2):
                     neg_indices_left_of_zero=True,
                     fill=0.0,
                 )))
+
+            # Move stack-dimension to the end and concatenate along batch axis.
             input_[SampleBatch.OBS] = tree.map_structure(
                 lambda *s: np.transpose(np.concatenate(s, axis=0), axes=[0, 2, 3, 1]),
                 *observations,
             )
+
+        # Env-to-module pipeline. Episodes still operate on lists.
         else:
             for episode in episodes:
-
-                    ## Loop through each timestep in the episode and add the previous n
-                    ## observations (based on that timestep) to the batch.
-                    #for ts in range(len(episode)):
-                    #    # Get the observation stack for this timestep as shape
-                    #    # ([num_frames], w, h, 1).
-                    #    obs_stack = episode.get_observations(
-                    #        # Extract n observations from `ts` to `ts - n`
-                    #        # (excluding `ts - n`).
-                    #        indices=slice(ts - self.num_frames + 1, ts + 1),
-                    #        # Make sure negative indices are NOT interpreted as
-                    #        # "counting from the end", but as absolute indices meaning
-                    #        # they refer to timesteps before 0 (which is the lookback
-                    #        # buffer).
-                    #        neg_indices_left_of_zero=True,
-                    #        # In case we are at the very beginning of the episode, e.g.
-                    #        # ts==0, fill the left side with zero-observations.
-                    #        fill=0.0,
-                    #    )
-                    #    # Transpose to (w, h, [num_frames], 1) and squeeze out last dim to
-                    #    # get (w, h, [num_frames]).
-                    #    observations.append(tree.map_structure(
-                    #        lambda s: np.transpose(np.squeeze(s, axis=-1), axes=[1, 2, 0]),
-                    #        obs_stack,
-                    #    ))
-                # Env-to-module pipeline. Episodes still operate on lists.
-                #else:
                 assert not episode.is_finalized
                 # Get the list of observations to stack.
                 obs_stack = episode.get_observations(
