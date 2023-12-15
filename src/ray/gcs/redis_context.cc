@@ -493,7 +493,6 @@ void RedisContext::ResetOrRetrieveAsyncContext(
     redis_async_context_ = new_async_context;
     redis_client_.ReattachContext(*this);
   } else {
-    RAY_LOG(INFO) << "vct they are equal!!!";
     // Return an attached context.
     new_async_context = redis_async_context_;
   }

@@ -94,7 +94,7 @@ RedisAsyncContext *CreateAsyncContext(
   return new RedisAsyncContext(std::move(context));
 }
 
-template <typename ConnectType>
+template <typename RedisContextType>
 void RedisResponseFn(struct redisAsyncContext *async_context,
                      void *raw_reply,
                      void *privdata) {
@@ -116,9 +116,9 @@ void RedisResponseFn(struct redisAsyncContext *async_context,
       if (auto maybe_ip_port =
               ParseIffMovedError(std::string(redis_reply->str, redis_reply->len));
           maybe_ip_port.has_value()) {
-        RAY_LOG(INFO) << "vct a";
         const auto [ip, port] = maybe_ip_port.value();
-        auto resp = ConnectWithRetries<ConnectType>(ip.c_str(), port, redisAsyncConnect);
+        auto resp =
+            ConnectWithRetries<RedisContextType>(ip.c_str(), port, redisAsyncConnect);
         if (auto st = resp.first; !st.ok()) {
           // We will ultimately return a MOVED error if we fail to reconnect.
           RAY_LOG(ERROR) << "Failed to connect to the new leader " << ip << ":" << port;

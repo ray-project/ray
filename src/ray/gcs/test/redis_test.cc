@@ -64,7 +64,7 @@ class RedisContextTest : public ::testing::Test {
   virtual ~RedisContextTest() = default;
 
   static const std::string &GetTestAddress() {
-    static const std::string ip = "10.0.106.72";
+    static const std::string ip = "127.0.0.1";
     return ip;
   }
 
@@ -192,11 +192,12 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   RedisContext parent_context(io_service, redis_client);
 
   parent_context.SetRedisAsyncContextInTest(old_context_wrapper);
-  RedisRequestContext privdata(io_service,
-                               [](std::shared_ptr<CallbackReply>) {},
-                               std::move(async_context_wrapper),
-                               parent_context,
-                               {"HGET", "namespace", "key"});
+  RedisRequestContext *privdata =
+      new RedisRequestContext(io_service,
+                              [](std::shared_ptr<CallbackReply>) {},
+                              std::move(async_context_wrapper),
+                              parent_context,
+                              {"HGET", "namespace", "key"});
 
   std::promise<bool> second_request;
   auto fut = second_request.get_future();
@@ -218,13 +219,107 @@ TEST_F(RedisContextTest, TestRedisMoved) {
 
   // Call the function
   RedisResponseFn<MockRedisAsyncContext>(
-      base_context, static_cast<void *>(&reply), static_cast<void *>(&privdata));
+      base_context, static_cast<void *>(&reply), static_cast<void *>(privdata));
 
   // Wait for the second callback to happen.
   fut.wait_for(std::chrono::milliseconds(3000));
 
   // The most important check in the test is this one.
   EXPECT_TRUE(RedisContextTest::GetMutableConnectTested());
+
+  io_service_thread_->join();
+}
+
+// Same as above test, but instead of checking for the Connect call,
+// we check that we actually connected to Redis.
+TEST_F(RedisContextTest, TestRedisMovedRealConnect) {
+  struct RedisServers {
+    RedisServers() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+    ~RedisServers() { TestSetupUtil::ShutDownRedisServers(); }
+  } redis_servers;
+
+  // Start IO service in a different thread.
+  instrumented_io_context io_service;
+  std::unique_ptr<std::thread> io_service_thread_ =
+      std::make_unique<std::thread>([&io_service] {
+        std::unique_ptr<boost::asio::io_service::work> work(
+            new boost::asio::io_service::work(io_service));
+        io_service.run_for(std::chrono::milliseconds(10000));
+      });
+
+  // Initialize the reply with MOVED error.
+  auto base_context = new redisAsyncContext();
+  const std::string hostname = "hostname";
+  SetAddress(*base_context,
+             hostname,
+             RedisContextTest::GetTestAddress(),
+             RedisContextTest::GetTestPort());
+
+  // This will delete our created base context for us. We bypass redisAsyncFree
+  // because it expects very specific values in the struct.
+  struct ContextGuard {
+    redisAsyncContext *raw_context_;
+    ContextGuard(redisAsyncContext *raw_context) : raw_context_(raw_context) {
+      // Setting this flag skips the free in redisAsyncFree.
+      redisContext *c = &(raw_context_->c);
+      c->flags |= REDIS_IN_CALLBACK;
+    }
+    ~ContextGuard() {
+      // We manually delete it here.
+      delete raw_context_;
+    }
+  };
+
+  ContextGuard g1(base_context);
+
+  std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context(
+      base_context, RedisContextDeleter());
+  std::shared_ptr<RedisAsyncContext> async_context_wrapper =
+      std::make_shared<RedisAsyncContext>(std::move(async_context));
+
+  auto old_context = new redisAsyncContext();
+  ContextGuard g2(old_context);
+  const std::string hostname2 = "hostname2";
+  const std::string ip2 = "10.0.106.73";
+  SetAddress(*old_context, hostname2, ip2, RedisContextTest::GetTestPort());
+  std::shared_ptr<RedisAsyncContext> old_context_wrapper =
+      std::make_shared<RedisAsyncContext>(
+          std::unique_ptr<redisAsyncContext, RedisContextDeleter>(old_context,
+                                                                  RedisContextDeleter()));
+  redisReply reply;
+
+  std::string error = "MOVED 1234 " + RedisContextTest::GetTestAddress() + ":" +
+                      std::to_string(TEST_REDIS_SERVER_PORTS.front());
+
+  reply.str = &error.front();
+  reply.len = error.length();
+  reply.type = REDIS_REPLY_ERROR;
+
+  // TODO(real options, real redis)
+  std::string fake_client_ip = "";
+  std::string fake_client_pw = "";
+  RedisClientOptions fake_options(fake_client_ip, 0, fake_client_pw);
+  MockRedisClient redis_client(fake_options);
+
+  RedisContext parent_context(io_service, redis_client);
+
+  parent_context.SetRedisAsyncContextInTest(old_context_wrapper);
+  RedisRequestContext *privdata =
+      new RedisRequestContext(io_service,
+                              [](std::shared_ptr<CallbackReply>) {},
+                              std::move(async_context_wrapper),
+                              parent_context,
+                              {"HGET", "namespace", "key"});
+
+  std::promise<bool> second_request;
+  auto fut = second_request.get_future();
+
+  // Call the function
+  RedisResponseFn<redisAsyncContext>(
+      base_context, static_cast<void *>(&reply), static_cast<void *>(privdata));
+
+  // Wait for the second callback to happen.
+  fut.wait_for(std::chrono::milliseconds(3000));
 
   io_service_thread_->join();
 }
