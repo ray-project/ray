@@ -308,6 +308,7 @@ class MultiAgentEpisode:
         neg_indices_left_of_zero: bool = False,
         fill: Optional[float] = None,
         one_hot_discrete: bool = False,
+        as_list: bool = False,
     ) -> MultiAgentDict:
         """Returns multi-agent observations for requested indices.
 
@@ -349,7 +350,10 @@ class MultiAgentEpisode:
                 space that are Discrete or MultiDiscrete.  Note that if `fill=0` and the
                 requested `indices` are out of the range of our data, the returned
                 one-hot vectors will actually be zero-hot (all slots zero).
+            as_list:
         """
+
+        # User wants to have global timesteps.
         if global_ts:
             # Get the corresponding local timesteps from the timestep mappings.
             indices = {
@@ -357,21 +361,120 @@ class MultiAgentEpisode:
                     indices,
                     neg_timesteps_left_of_zero=neg_indices_left_of_zero,
                     fill=fill,
+                    # Return `None` for timesteps not found, if user wants list.
+                    return_none=as_list,
                     t=self.t,
                 )
                 for agent_id, agent_map in self.global_t_to_local_t.items()
             }
 
-        return {
-            agent_id: agent_eps.get_observations(
-                indices[agent_id],
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
-                fill=fill,
-                one_hot_discrete=one_hot_discrete,
-            )
-            for agent_id, agent_eps in self.agent_episodes.items()
-            if indices[agent_id]
-        }
+        # User wants to receive results in a list of `MultiAgentDict`s.
+        if as_list:
+            # We only return as a list if global timesteps are requested.
+            if not global_ts:
+                RuntimeError(
+                    "Cannot return observations as a list when local timesteps are "
+                    "requested."
+                )
+
+            # Get the number of requested timesteps. Note
+            num_indices = len(next(iter(indices.values())))
+
+            # Return the values.
+            return [
+                {
+                    agent_id: agent_eps.get_observations(
+                        indices[agent_id][idx],
+                        neg_indices_left_of_zero=neg_indices_left_of_zero,
+                        fill=fill,
+                    )
+                    for agent_id, agent_eps in self.agent_episodes.items()
+                    # Only include in `MultiAgentDict`, if index was found
+                    # via `get_local_timesteps`.
+                    if indices[agent_id][idx]
+                }
+                for idx in range(num_indices)
+            ]
+        # User wants a `MultiAgentDict` with agent results as `list`.
+        else:
+            return {
+                agent_id: agent_eps.get_observations(
+                    indices[agent_id],
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    fill=fill,
+                    one_hot_discrete=one_hot_discrete,
+                )
+                for agent_id, agent_eps in self.agent_episodes.items()
+                if indices[agent_id]
+            }
+
+    # TODO (simon): This should replace all getter logic. Refactor in the next commits.
+    def _get_data_by_indices(
+        self,
+        attr: str,
+        indices: Optional[Union[int, List[int], slice]] = None,
+        global_ts: bool = True,
+        neg_indices_left_of_zero: bool = False,
+        fill: Optional[float] = None,
+        one_hot_discrete: bool = False,
+        as_list: bool = False,
+        shift: int = 0,
+    ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
+        # User wants to have global timesteps.
+        if global_ts:
+            # Get the corresponding local timesteps from the timestep mappings.
+            indices = {
+                agent_id: agent_map.get_local_timesteps(
+                    indices,
+                    neg_timesteps_left_of_zero=neg_indices_left_of_zero,
+                    fill=fill,
+                    # Return `None` for timesteps not found, if user wants list.
+                    return_none=as_list,
+                    t=self.t,
+                    shift=shift,
+                )
+                for agent_id, agent_map in self.global_t_to_local_t.items()
+            }
+
+        # User wants to receive results in a list of `MultiAgentDict`s.
+        if as_list:
+            # We only return as a list if global timesteps are requested.
+            if not global_ts:
+                RuntimeError(
+                    f"Cannot return {attr} as a list when local timesteps are "
+                    "requested."
+                )
+
+            # Get the number of requested timesteps. Note
+            num_indices = len(next(iter(indices.values())))
+
+            # Return the values.
+            return [
+                {
+                    agent_id: agent_eps.get_observations(
+                        indices[agent_id][idx],
+                        neg_indices_left_of_zero=neg_indices_left_of_zero,
+                        fill=fill,
+                    )
+                    for agent_id, agent_eps in self.agent_episodes.items()
+                    # Only include in `MultiAgentDict`, if index was found
+                    # via `get_local_timesteps`.
+                    if indices[agent_id][idx]
+                }
+                for idx in range(num_indices)
+            ]
+        # User wants a `MultiAgentDict` with agent results as `list`.
+        else:
+            return {
+                agent_id: getattr(agent_eps, "get_" + attr)(
+                    indices[agent_id],
+                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    fill=fill,
+                    one_hot_discrete=one_hot_discrete,
+                )
+                for agent_id, agent_eps in self.agent_episodes.items()
+                if indices[agent_id]
+            }
 
     def get_infos(
         self,

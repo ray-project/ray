@@ -136,6 +136,7 @@ class TimestepMappingWithInfiniteLookback:
         global_timesteps: Optional[Union[int, List[int], slice]] = None,
         neg_timesteps_left_of_zero: bool = False,
         fill: float = None,
+        return_none: bool = False,
         t: int = 0,
         shift: int = 0,
     ) -> List[int]:
@@ -153,19 +154,23 @@ class TimestepMappingWithInfiniteLookback:
         # If no global timesteps are provided return all of them.
         if global_timesteps is None:
             return self._get_all_local_timesteps()
+        # If a `slice` is requested, return a `slice` as long as `return_none=False`.
         elif isinstance(global_timesteps, slice):
             return self._get_local_timestep_slice(
                 global_timesteps,
                 neg_timesteps_left_of_zero=neg_timesteps_left_of_zero,
                 t=t,
                 shift=shift,
+                return_none=return_none,
             )
+        # If timesteps come as a `list`, we also return a `list`
         elif isinstance(global_timesteps, list):
             return self._get_local_timestep_list(
                 global_timesteps,
                 neg_timesteps_left_of_zero=neg_timesteps_left_of_zero,
                 t=t,
                 shift=shift,
+                return_none=return_none,
             )
         # Must be single time step.
         else:
@@ -173,6 +178,7 @@ class TimestepMappingWithInfiniteLookback:
             return self._get_single_local_timestep(
                 global_timesteps,
                 neg_timesteps_left_of_zero=neg_timesteps_left_of_zero,
+                return_none=return_none,
                 t=t,
                 shift=shift,
             )
@@ -185,7 +191,7 @@ class TimestepMappingWithInfiniteLookback:
         return self.timesteps
 
     def _get_single_local_timestep(
-        self, global_timesteps, neg_timesteps_left_of_zero, t, shift=0
+        self, global_timesteps, neg_timesteps_left_of_zero, return_none, t, shift=0
     ):
         # User wants negative timesteps.
         if global_timesteps < 0:
@@ -203,13 +209,14 @@ class TimestepMappingWithInfiniteLookback:
         return (
             [self.timesteps.index(global_timesteps + shift) - self.lookback]
             if (global_timesteps + shift) in self.timesteps
-            else None
+            else ([None] if return_none else None)
         )
 
     def _get_local_timestep_slice(
         self,
         global_timesteps: slice,
         neg_timesteps_left_of_zero: bool,
+        return_none: bool,
         t: int,
         shift: int = 0,
     ):
@@ -217,6 +224,9 @@ class TimestepMappingWithInfiniteLookback:
         start = global_timesteps.start
         stop = global_timesteps.stop
         step = global_timesteps.step
+
+        if stop < start and step > 0:
+            return []
 
         if start is None:
             # Exclude the lookback buffer.
@@ -229,7 +239,7 @@ class TimestepMappingWithInfiniteLookback:
             # Otherwise, (the default), the user wants to look back from 't'.
             else:
                 # Translate relative timestep (towards `t`) to total one.
-                start += t
+                start += t + 1
 
         if stop is None:
             # User wants to have a ascending order in the slice.
@@ -250,12 +260,6 @@ class TimestepMappingWithInfiniteLookback:
                 # Translate relative timestep (towards `t`) to total one.
                 stop += t + 1
 
-        # Take care of descending slices.
-        if stop < start:
-            # User could have chosen a step size larger than 1, so keep it,
-            # but revert it.
-            step = -step if step is not None and step > 0 else -1
-
         # Generate a list from the slice.
         global_timesteps = (
             list(range(start, stop, step)) if step else list(range(start, stop))
@@ -269,86 +273,32 @@ class TimestepMappingWithInfiniteLookback:
         local_timesteps = self._get_local_timestep_list(
             global_timesteps,
             neg_timesteps_left_of_zero=neg_timesteps_left_of_zero,
+            return_none=return_none,
             t=t,
             shift=shift,
         )
 
         # Generate a slice from retrieved local timesteps.
-        if local_timesteps:
+        if local_timesteps and not return_none:
             return slice(local_timesteps[0], local_timesteps[-1] + 1, step)
+        # If we need to return `None` for non-existent timesteps we return a `list`.
         else:
             return local_timesteps
 
-    def _get_local_timestep_slice_as_list(
-        self,
-        global_timesteps,
-        neg_timesteps_left_of_zero,
-        t,
-        shift=0,
-    ):
-        # Time steps are given by slice.
-        start = global_timesteps.start
-        stop = global_timesteps.stop
-        step = global_timesteps.step
-
-        # Note, the timestep zero is special b/c it could be either
-        # a global timestep at which an agent stepped or the timestep
-        # at which the lookback ends. Calling a slice, e.g. slice(-3, 0)
-        # could end in an empty list b/c the start of the slice could
-        # be larger than the stop.
-        if start is None:
-            # Exclude the lookback buffer.
-            # TODO (simon): Maybe change to `t_started` for the case
-            # `self.timesteps=[]`.
-            start = self.timesteps[self.lookback]
-        # User wants negative timesteps.
-        elif start < 0:
-            # User wants to index into lookback buffer.
-            if neg_timesteps_left_of_zero:
-                # Translate negative timestep to global timestep.
-                start += self.t_started
-                # shift -= self.lookback
-            # User wants to lookback from actual global timesteps `t`.
-            else:
-                # Translate negative timestep to global timestep
-                start += t
-                # start = min(self.timesteps[0], start)
-
-        if stop is None:
-            # Search for timesteps until the end.
-            stop = self.timesteps[-1] + 1
-        # Stop is negative.
-        elif stop < 0:
-            # User wants to index into lookback buffer.
-            if neg_timesteps_left_of_zero:
-                # Translate negative timestep to global timestep.
-                stop += self.t_started
-            # User wants to lookback from actual global timesteps `t`.
-            else:
-                # Translate negative timestep to global timestep
-                stop += t
-
-        if stop < start:
-            step = -step if step is not None and step > 0 else -1
-
-        global_timesteps = (
-            list(range(start, stop, step)) if step else list(range(start, stop))
-        )
-
-        return self._get_local_timestep_list(
-            global_timesteps,
-            neg_timesteps_left_of_zero=neg_timesteps_left_of_zero,
-            t=t,
-            shift=shift,
-        )
-
     def _get_local_timestep_list(
-        self, global_timesteps, neg_timesteps_left_of_zero, t, shift=0
+        self, global_timesteps, neg_timesteps_left_of_zero, return_none, t, shift=0
     ):
+        # Get all local timesteps.
         local_timesteps = [
             self._get_single_local_timestep(
-                ts, neg_timesteps_left_of_zero, t, shift=shift
+                ts, neg_timesteps_left_of_zero, return_none, t, shift=shift
             )
             for ts in global_timesteps
         ]
-        return [ts[0] for ts in local_timesteps if ts]
+
+        # Non-existent timesteps should be returned as `None`.
+        if return_none:
+            return [ts[0] if ts else ts for ts in local_timesteps]
+        # Return only local timesteps for global ones that exist in `self.timesteps`.
+        else:
+            return [ts[0] for ts in local_timesteps if ts]
