@@ -56,32 +56,29 @@ def request(to_launch=None, to_terminate=None):
 def test_node_providers_pass_through(node_providers):
     base_provider, node_provider = node_providers
     # Launch 1
-    nodes = node_provider.update(request(to_launch={"worker_nodes1": 1})).launching
-    assert nodes is not None and len(nodes) == 1
-    if base_provider.is_sync():
-        assert nodes == {"worker_nodes1": ["0"]}
-    else:
-        assert nodes == {"worker_nodes1": []}
+    num_launching = node_provider.update(
+        request(to_launch={"worker_nodes1": 1})
+    ).num_launching
+    assert num_launching == {"worker_nodes1": 1}
+
     assert len(base_provider.mock_nodes) == 1
-    assert len(node_provider.running_nodes()) == 0
+    assert len(node_provider.get_running_nodes()) == 0
 
     base_provider.finish_starting_nodes()
-    assert len(node_provider.running_nodes()) == 1
-    assert node_provider.running_nodes()[0].cloud_instance_id == "0"
-    assert node_provider.running_nodes()[0].node_type == "worker_nodes1"
+    assert len(node_provider.get_running_nodes()) == 1
+    assert node_provider.get_running_nodes()[0].cloud_instance_id == "0"
+    assert node_provider.get_running_nodes()[0].node_type == "worker_nodes1"
 
     # Launch multiple
-    nodes = node_provider.update(request(to_launch={"worker_nodes": 2})).launching
-    assert len(nodes) == 1
-    if base_provider.is_sync():
-        assert nodes["worker_nodes"] == sorted(["1", "2"])
-    else:
-        assert nodes["worker_nodes"] == sorted([])
+    num_launching = node_provider.update(
+        request(to_launch={"worker_nodes": 2})
+    ).num_launching
+    assert num_launching == {"worker_nodes": 2}
 
     base_provider.finish_starting_nodes()
 
     running_cloud_ids_types = [
-        (n.cloud_instance_id, n.node_type) for n in node_provider.running_nodes()
+        (n.cloud_instance_id, n.node_type) for n in node_provider.get_running_nodes()
     ]
     assert sorted(running_cloud_ids_types) == sorted(
         [("0", "worker_nodes1"), ("1", "worker_nodes"), ("2", "worker_nodes")]
@@ -91,7 +88,7 @@ def test_node_providers_pass_through(node_providers):
     terminating = node_provider.update(request(to_terminate=["0"])).terminating
     assert terminating == ["0"]
     running_cloud_ids_types = [
-        (n.cloud_instance_id, n.node_type) for n in node_provider.running_nodes()
+        (n.cloud_instance_id, n.node_type) for n in node_provider.get_running_nodes()
     ]
     assert sorted(running_cloud_ids_types) == sorted(
         [("1", "worker_nodes"), ("2", "worker_nodes")]
@@ -104,7 +101,7 @@ def test_create_node_failure(node_providers):
         "hello", "failed to create node", src_exc_info=None
     )
     reply = node_provider.update(request(to_launch={"worker_nodes": 1}))
-    assert reply.launching == {}
+    assert reply.num_launching == {"worker_nodes": 0}
     assert "worker_nodes" in reply.launch_failures
     assert type(reply.launch_failures["worker_nodes"].exception) == NodeLaunchException
     assert len(base_provider.mock_nodes) == 0
@@ -112,7 +109,7 @@ def test_create_node_failure(node_providers):
         "worker_nodes"
         in node_provider._node_launcher.node_provider_availability_tracker.summary().node_availabilities  # noqa
     )
-    assert node_provider.running_nodes() == []
+    assert node_provider.get_running_nodes() == []
 
 
 def test_terminate_node_failure(node_providers):
@@ -127,7 +124,7 @@ def test_terminate_node_failure(node_providers):
         in node_provider._node_launcher.node_provider_availability_tracker.summary().node_availabilities  # noqa
     )
     running_cloud_ids_types = [
-        (n.cloud_instance_id, n.node_type) for n in node_provider.running_nodes()
+        (n.cloud_instance_id, n.node_type) for n in node_provider.get_running_nodes()
     ]
     assert running_cloud_ids_types == [("0", "worker_nodes")]
 

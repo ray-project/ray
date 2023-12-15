@@ -172,9 +172,6 @@ class MockProvider(NodeProvider):
         self.num_non_terminated_nodes_calls = 0
         super().__init__(None, None)
 
-    def is_sync(self):
-        return True
-
     def non_terminated_nodes(self, tag_filters):
         self.num_non_terminated_nodes_calls += 1
         with self.lock:
@@ -306,9 +303,6 @@ class MockBatchingProvider(MockProvider):
         self.batch_size = batch_size
         self.to_create = []
         self.to_terminate = []
-
-    def is_sync(self):
-        return False
 
     def post_process(self) -> None:
         for node_config, tags, count, resources, labels in self.to_create:
