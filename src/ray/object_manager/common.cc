@@ -57,11 +57,11 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
                  << "metadata_size: " << header->metadata_size << "\n";
 }
 
-bool PlasmaObjectHeader::WriteAcquire(int64_t write_version,
-                                      uint64_t write_data_size,
+bool PlasmaObjectHeader::WriteAcquire(uint64_t write_data_size,
                                       uint64_t write_metadata_size,
                                       int64_t write_num_readers,
                                       bool try_wait) {
+  auto write_version = version + 1;
   RAY_LOG(DEBUG) << "WriteAcquire. version: " << write_version << ", data size "
                  << write_data_size << ", metadata size " << write_metadata_size
                  << ", num readers: " << write_num_readers << ", try_wait: " << try_wait;
@@ -91,17 +91,12 @@ bool PlasmaObjectHeader::WriteAcquire(int64_t write_version,
   return true;
 }
 
-void PlasmaObjectHeader::WriteRelease(int64_t write_version) {
-  RAY_LOG(DEBUG) << "WriteRelease Waiting. version: " << write_version;
+void PlasmaObjectHeader::WriteRelease() {
+  RAY_LOG(DEBUG) << "WriteRelease Waiting. version: " << version;
   RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
-  RAY_LOG(DEBUG) << "WriteRelease " << write_version;
+  RAY_LOG(DEBUG) << "WriteRelease " << version;
   PrintPlasmaObjectHeader(this);
 
-  RAY_CHECK(version == write_version)
-      << "Write version " << write_version << " no longer matches current version "
-      << version << ". Are you sure this is the only writer?";
-
-  version = write_version;
   is_sealed = true;
   RAY_CHECK(num_readers != 0) << num_readers;
   num_read_acquires_remaining = num_readers;

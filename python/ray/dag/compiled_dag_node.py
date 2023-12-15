@@ -85,7 +85,7 @@ def do_cancel_compiled_task(self):
         cause=TaskCancelledError(),
     )
     for channel in self._input_channels:
-        channel.set_error(e)
+        channel.unblock_readers_with_error(e)
 
 
 @DeveloperAPI
@@ -405,8 +405,8 @@ class CompiledDAG:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
                     try:
                         ray.get(actor.__ray_call__.remote(do_cancel_compiled_task))
-                    except Exception as e:
-                        logger.info(f"Error cancelling worker task: {e}")
+                    except Exception:
+                        logger.exception("Error cancelling worker task")
                         pass
                 logger.info("Teardown complete")
 
@@ -418,9 +418,9 @@ class CompiledDAG:
                         return
                     if isinstance(outer.dag_output_channels, list):
                         for output_channel in outer.dag_output_channels:
-                            output_channel.set_error(e)
+                            output_channel.unblock_readers_with_error(e)
                     else:
-                        outer.dag_output_channels.set_error(e)
+                        outer.dag_output_channels.unblock_readers_with_error(e)
                     self.teardown()
 
         monitor = Monitor()

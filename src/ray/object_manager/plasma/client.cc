@@ -110,9 +110,6 @@ struct ObjectInUseEntry {
   /// objects, ReadRelease resets this to false, and ReadAcquire resets to
   /// true.
   bool read_acquired = false;
-  /// The last version that we wrote. To write again, we must pass a newer
-  /// version than this.
-  int64_t next_version_to_write = 1;
 };
 
 class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Impl> {
@@ -447,10 +444,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
                                    ") is larger than allocated buffer size " +
                                    std::to_string(entry->object.allocated_size));
   }
-  // TODO(ekl) should we just only track the version in the plasma header?
-  entry->next_version_to_write = plasma_header->version + 1;
-  if (!plasma_header->WriteAcquire(entry->next_version_to_write,
-                                   data_size,
+  if (!plasma_header->WriteAcquire(data_size,
                                    metadata_size,
                                    num_readers,
                                    try_wait)) {
@@ -492,10 +486,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteRelease(
 
   entry->is_sealed = true;
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  plasma_header->WriteRelease(
-      /*write_version=*/entry->next_version_to_write);
-  // The next Write must pass a higher version.
-  entry->next_version_to_write++;
+  plasma_header->WriteRelease();
 #endif
   return Status::OK();
 }
@@ -757,8 +748,9 @@ Status PlasmaClient::Impl::EnsureGetAcquired(
 
   int64_t version_read = 0;
 
-  // Need to unlock the client mutex since ReadAcquire() is blocking.
-  // TODO(ekl) is this entirely thread-safe?
+  // Need to unlock the client mutex since ReadAcquire() is blocking. This is
+  // thread-safe since the plasma object cannot be deallocated while there is a
+  // reader active.
   client_mutex_.unlock();
   bool success =
       plasma_header->ReadAcquire(object_entry->next_version_to_read, &version_read);

@@ -94,27 +94,21 @@ struct PlasmaObjectHeader {
   uint64_t metadata_size = 0;
 
   /// Blocks until all readers for the previous write have ReadRelease'd the
-  /// value. Protects against concurrent writers. Caller must pass consecutive
-  /// versions on each new write, starting with write_version=1.
+  /// value. Protects against concurrent writers.
   ///
-  /// \param write_version The new version for write.
   /// \param data_size The new data size of the object.
   /// \param metadata_size The new metadata size of the object.
   /// \param num_readers The number of readers for the object.
   /// \param try_wait Whether to fail the acquire if this would block.
   /// \return true if the acquire was successful.
-  bool WriteAcquire(int64_t write_version,
-                    uint64_t data_size,
+  bool WriteAcquire(uint64_t data_size,
                     uint64_t metadata_size,
                     int64_t num_readers,
                     bool try_wait);
 
   /// Call after completing a write to signal that readers may read.
   /// num_readers should be set before calling this.
-  ///
-  /// \param write_version The new version for write. This must match the
-  /// version previously passed to WriteAcquire.
-  void WriteRelease(int64_t write_version);
+  void WriteRelease();
 
   // Blocks until the given version is ready to read. Returns false if the
   // maximum number of readers have already read the requested version.
