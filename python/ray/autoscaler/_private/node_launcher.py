@@ -74,7 +74,11 @@ class BaseNodeLauncher:
         return created_nodes
 
     def _launch_node(
-        self, config: Dict[str, Any], count: int, node_type: str, raise_exception: bool
+        self,
+        config: Dict[str, Any],
+        count: int,
+        node_type: str,
+        raise_exception: bool = False,
     ) -> Optional[Dict]:
         if self.node_types:
             assert node_type, node_type

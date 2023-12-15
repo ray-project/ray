@@ -22,7 +22,7 @@ from ray.tests.autoscaler_test_utils import MockBatchingProvider, MockProvider
 
 @pytest.fixture(scope="function")
 def node_providers(request):
-    if hasattr(request, "param") and request.param == "async":
+    if hasattr(request, "param") and request.param == "batch":
         base_provider = MockBatchingProvider()
     else:
         base_provider = MockProvider()
@@ -50,7 +50,7 @@ def request(to_launch=None, to_terminate=None):
 
 @pytest.mark.parametrize(
     "node_providers",
-    ["sync", "async"],
+    ["sync", "batch"],
     indirect=True,
 )
 def test_node_providers_pass_through(node_providers):
