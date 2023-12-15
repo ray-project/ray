@@ -2225,7 +2225,8 @@ tensorflow-estimator==2.11.0
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
-tensorflow-io-gcs-filesystem==0.34.0
+tensorflow-io-gcs-filesystem==0.31.0
+    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     # via tensorflow
 tensorflow-metadata==1.13.0
     # via tensorflow-datasets
