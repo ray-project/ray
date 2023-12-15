@@ -71,12 +71,11 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                     batch["output"] = [sequences[0]["generated_text"] for sequences in predictions]
                     return batch
 
+            # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            concurrency = 2
-            # Step 3: Map the Predictor over the Dataset to get predictions.
-            predictions = ds.map_batches(HuggingFacePredictor, concurrency=concurrency)
-            # Step 4: Show one prediction output.
+            predictions = ds.map_batches(HuggingFacePredictor, concurrency=2)
+            # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
         .. testoutput::
@@ -122,12 +121,11 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                         # Get the predictions from the input batch.
                         return {"output": self.model(tensor).numpy()}
 
+            # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            concurrency = 2
-            # Step 3: Map the Predictor over the Dataset to get predictions.
-            predictions = ds.map_batches(TorchPredictor, concurrency=concurrency)
-            # Step 4: Show one prediction output.
+            predictions = ds.map_batches(TorchPredictor, concurrency=2)
+            # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
         .. testoutput::
@@ -168,12 +166,11 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                     # Get the predictions from the input batch.
                     return {"output": self.model(batch["data"]).numpy()}
 
+            # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            concurrency = 2
-            # Step 3: Map the Predictor over the Dataset to get predictions.
-            predictions = ds.map_batches(TFPredictor, concurrency=concurrency)
-             # Step 4: Show one prediction output.
+            predictions = ds.map_batches(TFPredictor, concurrency=2)
+             # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
         .. testoutput::
@@ -497,13 +494,12 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
             return {"predictions": self.model.predict(dmatrix)}
 
 
+    # Map the Predictor over the Dataset to get predictions.
     # Use 2 parallel actors for inference. Each actor predicts on a
     # different partition of data.
-    concurrency = 2
-    # Map the Predictor over the Dataset to get predictions.
     predictions = test_dataset.map_batches(
         XGBoostPredictor,
-        concurrency=concurrency,
+        concurrency=2,
         batch_format="pandas",
         # Pass in the Checkpoint to the XGBoostPredictor constructor.
         fn_constructor_kwargs={"checkpoint": checkpoint}
