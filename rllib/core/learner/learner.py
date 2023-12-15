@@ -437,12 +437,15 @@ class Learner:
         self._is_built = True
 
         # Build learner connector and context.
-        # TODO (sven): Support multi-agent; Also, what if user requires a different
-        #  learner connector per single-agent RLModule?
+        # TODO (sven): Support multi-agent.
+        module_spec = self._module_spec.module_specs["default_policy"]
         self._learner_connector = self.hps.learner_connector(
-            self._module_spec.module_specs["default_policy"].observation_space,
-            self._module_spec.module_specs["default_policy"].action_space,
+            module_spec.observation_space,
+            module_spec.action_space,
         )
+        # Adjust module spec based on connector's (possibly transformed) spaces.
+        module_spec.observation_space = self._learner_connector.observation_space
+        module_spec.action_space = self._learner_connector.action_space
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()

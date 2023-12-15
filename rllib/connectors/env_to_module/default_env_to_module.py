@@ -15,13 +15,18 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class DefaultEnvToModule(ConnectorV2):
-    """Default env-to-module-connector always in the pipeline at the very end.
+    """Default connector piece added by RLlib to the end of any env-to-module pipeline.
 
-    Makes sure that there is at least an observation (the most recent one) for each
-    agent as well as a state - in case the RLModule is recurrent. Doesn't do anything
-    in case other pieces in the pipeline already take care of populating these fields.
+    Makes sure that the output data will have at the minimum:
+    a) An observation (the most recent one returned by `env.step()`) under the
+    SampleBatch.OBS key for each agent and
+    b) In case the RLModule is stateful, a STATE_IN key populated with the most recently
+    computed STATE_OUT.
 
-    TODO: Generalize to MultiAgentEpisodes.
+    The connector will not add any new data in case other connector pieces in the
+    pipeline already take care of populating these fields (obs and state in).
+
+    TODO (sven): Generalize to MultiAgentEpisodes.
     """
 
     @override(ConnectorV2)
@@ -35,29 +40,32 @@ class DefaultEnvToModule(ConnectorV2):
         persistent_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # If obs are not already part of the input, add the most recent ones (from all
-        # single-agent episodes).
+        # If observations cannot be found in `input`, add the most recent ones (from all
+        # episodes).
         if SampleBatch.OBS not in input_:
+            # Collect all most-recent observations from given episodes.
             observations = []
             for episode in episodes:
-                # Make sure, we have at least one observation in the episode.
-                assert len(episode.observations) > 0
-                observations.append(episode.observations[-1])
+                observations.append(episode.get_observation(indices=-1))
+            # Batch all collected observations together.
             input_[SampleBatch.OBS] = batch(observations)
 
-        # If our module is recurrent:
-        # - Add the most recent states to the inputs.
-        # - Make all inputs have T=1.
+        # If our module is stateful:
+        # - Add the most recent STATE_OUTs to `input_`.
+        # - Make all data in `input_` have a time rank (T=1).
         if rl_module.is_stateful():
+            # Collect all most recently computed STATE_OUT (or use initial states from
+            # RLModule if at beginning of episode).
             states = []
             for episode in episodes:
                 # Make sure, we have at least one observation in the episode.
                 assert episode.observations
 
-                # TODO: Generalize to MultiAgentEpisodes.
-                # Episode just started, get initial state from our RLModule.
+                # TODO (sven): Generalize to MultiAgentEpisodes.
+                # Episode just started -> Get initial state from our RLModule.
                 if len(episode) == 0:
                     state = rl_module.get_initial_state()
+                # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:
                     state = episode.extra_model_outputs[STATE_OUT][-1]
                 states.append(state)

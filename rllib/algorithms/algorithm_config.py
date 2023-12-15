@@ -1164,7 +1164,9 @@ class AlgorithmConfig(_Config):
             else:
                 return val_
 
-        from ray.rllib.connectors.connector_pipeline_v2 import EnvToModulePipeline
+        from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
+            EnvToModulePipeline
+        )
 
         return EnvToModulePipeline(
             connectors=custom_connectors,
@@ -1192,7 +1194,9 @@ class AlgorithmConfig(_Config):
             else:
                 return val_
 
-        from ray.rllib.connectors.connector_pipeline_v2 import ModuleToEnvPipeline
+        from ray.rllib.connectors.module_to_env.module_to_env_pipeline import (
+            ModuleToEnvPipeline
+        )
 
         return ModuleToEnvPipeline(
             connectors=custom_connectors,
@@ -1220,9 +1224,11 @@ class AlgorithmConfig(_Config):
             else:
                 return val_
 
-        from ray.rllib.connectors.connector_pipeline_v2 import LearnerPipeline
+        from ray.rllib.connectors.learner.learner_connector_pipeline import (
+            LearnerConnectorPipeline
+        )
 
-        return LearnerPipeline(
+        return LearnerConnectorPipeline(
             connectors=custom_connectors,
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
