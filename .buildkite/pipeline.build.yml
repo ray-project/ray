@@ -17,7 +17,7 @@
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
     - pip install -e /ray/python
     - echo "--- Setting up local kind cluster."
-    - ./ci/k8s/prep-k8s-environment.sh
+    - RAYCI_DIND=true bash ci/k8s/prep-k8s-environment.sh
     - echo "--- Building py38-cpu Ray image for the test."
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker
