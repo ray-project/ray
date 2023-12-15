@@ -1676,7 +1676,7 @@ def start_raylet(
     )
 
     if storage is not None:
-        start_worker_command.append(f"--storage=\"{storage}\"")
+        start_worker_command.append(f'--storage="{storage}"')
 
     start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 

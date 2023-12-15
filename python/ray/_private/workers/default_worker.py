@@ -198,6 +198,9 @@ if __name__ == "__main__":
     # for asyncio
     try_install_uvloop()
 
+    if args.storage:
+        args.storage = args.storage.strip('"')
+
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
