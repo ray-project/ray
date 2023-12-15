@@ -51,10 +51,14 @@ class SparkDatasource(Datasource):
             exec_stats=None,
         )
 
+        chunk_id_list = [
+            self.chunk_meta_list[chunk_index].id
+            for chunk_index in chunk_index_list
+        ]
+
         def read_fn():
             from pyspark.sql.chunk_api import read_chunk
-            for chunk_index in chunk_index_list:
-                chunk_id = self.chunk_meta_list[chunk_index].id
+            for chunk_id in chunk_id_list:
                 yield read_chunk(chunk_id)
 
         return ReadTask(read_fn=read_fn, metadata=metadata)
