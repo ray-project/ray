@@ -3,7 +3,7 @@ import subprocess
 import urllib
 from pathlib import Path
 
-from pkg_resources._vendor.packaging.version import parse as parse_version
+from packaging.version import parse as parse_version
 import pyarrow.fs
 import pytest
 

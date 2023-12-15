@@ -34,3 +34,18 @@ steps:
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail 
         "./java/test.sh"
     depends_on: [ "corebuild", "forge" ]
+
+  - label: "flaky :windows: tests"
+    tags: skip-on-premerge
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
+        --run-flaky-tests
+        --build-name windowsbuild
+        --operating-system windows
+        --test-env=CI="1"
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
+        --test-env=USERPROFILE
+    depends_on: windowsbuild

@@ -1,89 +1,108 @@
 :root {
   --ray-example-gallery-gap-x: 18px;
   --ray-example-gallery-gap-y: 22px;
-  --sidebar-top: 5em;
 }
 
-#site-navigation {
-  width: 330px !important;
-  border-right: none;
-  margin-left: 32px;
-  overflow-y: auto;
-  max-height: calc(100vh - var(--sidebar-top));
-  position: sticky;
-  top: var(--sidebar-top) !important;
-  z-index: 1000;
+.gallery-sidebar {
+  width: 100%;
 }
 
-#site-navigation h5 {
+.gallery-sidebar h5 {
   font-size: 16px;
   font-weight: 600;
-  color: #000;
 }
 
-#site-navigation h6 {
+.gallery-sidebar h6 {
   font-size: 14px;
   font-weight: 600;
-  color: #000;
   text-transform: uppercase;
-}
-
-/* Hide the default sidebar content */
-#site-navigation > div.bd-sidebar__content {
-  display: none;
-}
-#site-navigation > div.rtd-footer-container {
-  display: none;
 }
 
 .searchDiv {
   margin-bottom: 2em;
+  display: flex;
+  flex-direction: row;
+  border: 1px solid var(--pst-color-border);
+  border-radius: 4px;
+  background-color: var(--pst-color-on-background);
+  justify-content: center;
+  align-items: center;
+  height: 50px;
+}
+
+#search-input-label {
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.searchDiv:focus-within {
+  outline: 2px solid var(--pst-color-border);
+}
+
+#search-icon {
+  fill: var(--pst-color-text-base);
+  margin: 0em 1em;
 }
 
 #searchInput {
   width: 100%;
-  color: #5F6469;
-  border: 1px solid #D2DCE6;
-  height: 50px;
-  border-radius: 4px;
-  background-color: #F9FAFB;
-  background-image: url("data:image/svg+xml,%3Csvg width='25' height='25' viewBox='0 0 25 25' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cg id='Systems / search-line' clip-path='url(%23clip0_1_150)'%3E%3Crect width='24' height='24' transform='translate(0.398529 0.0546875)' fill='%23F9FAFB'/%3E%3Cg id='Group'%3E%3Cpath id='Vector' d='M18.4295 16.6717L22.7125 20.9537L21.2975 22.3687L17.0155 18.0857C15.4223 19.3629 13.4405 20.0576 11.3985 20.0547C6.43053 20.0547 2.39853 16.0227 2.39853 11.0547C2.39853 6.08669 6.43053 2.05469 11.3985 2.05469C16.3665 2.05469 20.3985 6.08669 20.3985 11.0547C20.4014 13.0967 19.7068 15.0784 18.4295 16.6717ZM16.4235 15.9297C17.6926 14.6246 18.4014 12.8751 18.3985 11.0547C18.3985 7.18669 15.2655 4.05469 11.3985 4.05469C7.53053 4.05469 4.39853 7.18669 4.39853 11.0547C4.39853 14.9217 7.53053 18.0547 11.3985 18.0547C13.219 18.0576 14.9684 17.3488 16.2735 16.0797L16.4235 15.9297V15.9297Z' fill='%238C9196'/%3E%3C/g%3E%3C/g%3E%3Cdefs%3E%3CclipPath id='clip0_1_150'%3E%3Crect width='24' height='24' fill='white' transform='translate(0.398529 0.0546875)'/%3E%3C/clipPath%3E%3C/defs%3E%3C/svg%3E%0A");
-  background-repeat: no-repeat;
-  background-position-x: 0.5em;
-  background-position-y: center;
-  background-size: 1.5em;
-  padding-left: 3em;
+  color: var(--pst-color-text-base);
+  border: none;
+  background-color: transparent;
+}
+
+#searchInput:focus-visible {
+  outline: none;
 }
 
 #searchInput::placeholder {
-  color: #5F6469;
+  color: var(--pst-color-text-muted);
   opacity: 1;
 }
 
-.tag {
-    margin-bottom: 5px;
-    font-size: small;
-    color: #000000;
-    border: 1px solid #D2DCE6;
-    border-radius: 14px;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    width: fit-content;
-    gap: 1em;
+/* Tag button styling */
+.tag-group {
+  display: flex;
+  flex-flow: wrap;
+  gap: 0em 0.5em;
 }
-
-.tag.btn-outline-primary {
-  color: #000000;
+.tag {
+  margin-bottom: 5px;
+  font-size: small;
+  background-color: var(--pst-color-on-background);
+  border: 1px solid var(--pst-color-border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: fit-content;
+  gap: 0.5em;
+  color: var(--pst-color-text-base);
   padding: 3px 12px 3px 12px;
   line-height: 20px;
 }
 
-.tag-btn-wrapper {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 1em;
+.tag > svg > path {
+  fill: var(--pst-color-text-base);
+}
+.tag:hover {
+  background-color: var(--pst-color-info-highlight) !important;
+  color: var(--pst-color-info-text) !important;
+}
+.tag:hover > svg > path {
+  fill: var(--pst-color-info-text) !important;
+}
+
+/* Selected tag buttons */
+.tag.btn-primary {
+  background-color: var(--pst-color-info-bg);
+}
+/* Inactive tag buttons */
+.tag.btn-outline-primary {
+  background-color: var(--pst-color-on-background);
 }
 
 div.sd-container-fluid.docutils > div {
@@ -103,9 +122,10 @@ div.gallery-item {
   width: auto;
 }
 
+/* Override sphinx-design box shadow styles */
 div.gallery-item > div.sd-card {
-  border-radius: 8px;
-  box-shadow: 0px 4px 10px 0px rgba(0, 0, 0, 0.05) !important;
+  box-shadow: 0 .125rem .25rem var(--pst-color-shadow) !important;
+  border: none;
 }
 
 /* Example gallery "Tutorial" title */
@@ -148,18 +168,6 @@ div.sd-card-title > span.sd-bg-info.sd-bg-text-info {
   background-color: initial !important;
 }
 
-div.sd-card-body > p.sd-card-text > a {
-  text-align: initial;
-}
-
-div.sd-card-body > p.sd-card-text > a > span {
-  color: rgb(81, 81, 81);
-}
-
-#main-content {
-  max-width: 100%;
-}
-
 #noMatches {
   display: flex;
   flex-direction: column;
@@ -175,49 +183,5 @@ div.sd-card-body > p.sd-card-text > a > span {
 }
 
 #noMatches.hidden,.gallery-item.hidden {
-  display: none !important;
-}
-
-.btn-primary {
-  color: #004293;
-  background: rgba(61, 138, 233, 0.20);
-  padding: 3px 12px 3px 12px;
-  border: 1px solid #D2DCE6;
-}
-
-button.try-anyscale {
-  background-color: initial !important;
-  width: fit-content;
-  padding: 0 !important;
-  margin-left: auto !important;
-  float: initial !important;
-}
-
-button.try-anyscale > svg {
-  display: none;
-}
-
-button.try-anyscale > i {
-  display: none;
-}
-
-button.try-anyscale > span {
-  margin: 0;
-  text-decoration-line: underline;
-  font-weight: 500;
-  color: #000;
-}
-
-.top-nav-content {
-  justify-content: initial;
-}
-
-/* Hide nav bar that has github, fullscreen, and print icons */
-div.header-article.row.sticky-top.noprint {
-  display: none !important;
-}
-
-/* Hide the footer with 'prev article' and 'next article' buttons */
-.footer-article.hidden {
   display: none !important;
 }

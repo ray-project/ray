@@ -1208,6 +1208,12 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     assert set(locations) == {node1_id, node2_id}
 
 
+def test_parquet_bulk_columns(ray_start_regular_shared):
+    ds = ray.data.read_parquet_bulk("example://iris.parquet", columns=["variety"])
+
+    assert ds.columns() == ["variety"]
+
+
 if __name__ == "__main__":
     import sys
 

@@ -16,18 +16,23 @@ trainer = XGBoostTrainer(
     scaling_config=ScalingConfig(
         # Number of workers to use for data parallelism.
         num_workers=2,
-        # Whether to use GPU acceleration.
+        # Whether to use GPU acceleration. Set to True to schedule GPU workers.
         use_gpu=False,
     ),
     label_column="target",
     num_boost_round=20,
     params={
-        # XGBoost specific params
+        # XGBoost specific params (see the `xgboost.train` API reference)
         "objective": "binary:logistic",
-        # "tree_method": "gpu_hist",  # uncomment this to use GPU for training
+        # uncomment this and set `use_gpu=True` to use GPU for training
+        # "tree_method": "gpu_hist",
         "eval_metric": ["logloss", "error"],
     },
     datasets={"train": train_dataset, "valid": valid_dataset},
+    # If running in a multi-node cluster, this is where you
+    # should configure the run's persistent storage that is accessible
+    # across all worker nodes.
+    # run_config=ray.train.RunConfig(storage_path="s3://..."),
 )
 result = trainer.fit()
 print(result.metrics)
@@ -64,7 +69,8 @@ trainer = XGBoostTrainer(
     params={
         # XGBoost specific params
         "objective": "binary:logistic",
-        # "tree_method": "gpu_hist",  # uncomment this to use GPU for training
+        # uncomment this and set `use_gpu=True` to use GPU for training
+        # "tree_method": "gpu_hist",
         "eval_metric": ["logloss", "error"],
     },
     datasets={"train": train_dataset, "valid": valid_dataset},
@@ -92,7 +98,7 @@ trainer = LightGBMTrainer(
     scaling_config=ScalingConfig(
         # Number of workers to use for data parallelism.
         num_workers=2,
-        # Whether to use GPU acceleration.
+        # Whether to use GPU acceleration. Set to True to schedule GPU workers.
         use_gpu=False,
     ),
     label_column="target",
@@ -103,6 +109,10 @@ trainer = LightGBMTrainer(
         "metric": ["binary_logloss", "binary_error"],
     },
     datasets={"train": train_dataset, "valid": valid_dataset},
+    # If running in a multi-node cluster, this is where you
+    # should configure the run's persistent storage that is accessible
+    # across all worker nodes.
+    # run_config=ray.train.RunConfig(storage_path="s3://..."),
 )
 result = trainer.fit()
 print(result.metrics)

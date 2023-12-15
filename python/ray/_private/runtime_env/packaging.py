@@ -149,8 +149,8 @@ def _hash_directory(
     BUF_SIZE = 4096 * 1024
 
     def handler(path: Path):
-        md5 = hashlib.md5()
-        md5.update(str(path.relative_to(relative_path)).encode())
+        sha1 = hashlib.sha1()
+        sha1.update(str(path.relative_to(relative_path)).encode())
         if not path.is_dir():
             try:
                 f = path.open("rb")
@@ -163,13 +163,13 @@ def _hash_directory(
                 try:
                     data = f.read(BUF_SIZE)
                     while len(data) != 0:
-                        md5.update(data)
+                        sha1.update(data)
                         data = f.read(BUF_SIZE)
                 finally:
                     f.close()
 
         nonlocal hash_val
-        hash_val = _xor_bytes(hash_val, md5.digest())
+        hash_val = _xor_bytes(hash_val, sha1.digest())
 
     excludes = [] if excludes is None else [excludes]
     _dir_travel(root, excludes, handler, logger=logger)
@@ -444,7 +444,7 @@ def get_uri_for_package(package: Path) -> str:
             protocol=Protocol.GCS.value, whl_filename=package.name
         )
     else:
-        hash_val = hashlib.md5(package.read_bytes()).hexdigest()
+        hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
         return "{protocol}://{pkg_name}.zip".format(
             protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
         )

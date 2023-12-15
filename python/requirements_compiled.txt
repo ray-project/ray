@@ -194,9 +194,7 @@ backoff==1.10.0
 base58==2.0.1
     # via aimrecords
 bayesian-optimization==1.4.3
-    # via
-    #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
-    #   nevergrad
+    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 bcrypt==4.0.1
     # via paramiko
 beautifulsoup4==4.11.1
@@ -287,7 +285,6 @@ click==8.1.7
     #   mlflow
     #   ray
     #   semgrep
-    #   sigopt
     #   sphinx-click
     #   sphinx-external-toc
     #   tensorflow-datasets
@@ -309,9 +306,7 @@ cloudpickle==2.2.0
     #   pymars
     #   tensorflow-probability
 cma==3.2.2
-    # via
-    #   nevergrad
-    #   pymoo
+    # via pymoo
 cmaes==0.10.0
     # via optuna
 colorama==0.4.6
@@ -441,8 +436,6 @@ dopamine-rl==4.0.5 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   recsim
-dragonfly-opt==0.1.7
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 dulwich==0.21.6
     # via comet-ml
 ecdsa==0.18.0
@@ -515,8 +508,6 @@ flake8-comprehensions==3.10.1
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 flake8-quotes==2.0.0
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
-flaml==1.1.1
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 flask==2.1.3
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -561,7 +552,6 @@ fsspec==2023.5.0
 future==0.18.3
     # via
     #   autograd
-    #   dragonfly-opt
     #   hyperopt
 gast==0.4.0
     # via
@@ -579,7 +569,6 @@ gitpython==3.1.40
     # via
     #   mlflow
     #   nbdime
-    #   sigopt
     #   wandb
 glfw==2.6.3
     # via
@@ -751,7 +740,7 @@ humanfriendly==10.0
     #   coloredlogs
 hyperopt==0.2.7
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
-idna==3.5
+idna==3.6
     # via
     #   anyio
     #   httpx
@@ -799,7 +788,7 @@ importlib-resources==5.13.0
     #   tensorflow-datasets
 iniconfig==2.0.0
     # via pytest
-ipykernel==6.26.0
+ipykernel==6.27.1
     # via
     #   nbclassic
     #   notebook
@@ -811,7 +800,6 @@ ipython==8.12.3
     #   jupyter-sphinx
     #   jupyterlab
     #   myst-nb
-    #   sigopt
 ipython-genutils==0.2.0
     # via
     #   ipywidgets
@@ -1002,7 +990,6 @@ libclang==16.0.6
 lightgbm==3.3.5
     # via
     #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
-    #   flaml
     #   hebo
     #   lightgbm-ray
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
@@ -1200,8 +1187,6 @@ networkx==3.1 ; python_version < "3.11"
     #   hyperopt
     #   scikit-image
     #   torch
-nevergrad==0.4.3.post7
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 ninja==1.11.1.1
     # via deepspeed
 notebook==6.5.6
@@ -1243,10 +1228,8 @@ numpy==1.23.5 ; python_version < "3.9"
     #   dm-control
     #   dm-env
     #   dopamine-rl
-    #   dragonfly-opt
     #   etils
     #   evaluate
-    #   flaml
     #   flax
     #   gpy
     #   gradio
@@ -1270,7 +1253,6 @@ numpy==1.23.5 ; python_version < "3.9"
     #   modin
     #   msgpack-numpy
     #   mujoco
-    #   nevergrad
     #   numba
     #   numexpr
     #   onnx
@@ -1447,7 +1429,6 @@ pandas==1.5.3
     #   datasets
     #   dopamine-rl
     #   evaluate
-    #   flaml
     #   gradio
     #   hebo
     #   mlflow
@@ -1682,7 +1663,7 @@ pymars==0.10.0
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 pymongo==4.3.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-pymoo==0.6.1
+pymoo==0.6.1.1
     # via hebo
 pymunk==6.2.1
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
@@ -1712,8 +1693,6 @@ pyparsing==3.1.1
     #   packaging
     #   pydot
     #   torch-geometric
-pypng==0.20220715.0
-    # via sigopt
 pyro-api==0.1.2
     # via pyro-ppl
 pyro-ppl==1.8.6
@@ -1843,7 +1822,6 @@ pyyaml==6.0.1
     #   pymars
     #   pytorch-lightning
     #   ray
-    #   sigopt
     #   sphinx-book-theme
     #   sphinx-external-toc
     #   sphinx-jsonschema
@@ -1913,7 +1891,6 @@ requests==2.31.0
     #   responses
     #   segment-analytics-python
     #   semgrep
-    #   sigopt
     #   sphinx
     #   sphinx-jsonschema
     #   tensorboard
@@ -1974,7 +1951,7 @@ s3fs==2023.5.0
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 s3transfer==0.6.2
     # via boto3
-safetensors==0.4.0
+safetensors==0.4.1
     # via timm
 sarif-om==1.0.4
     # via cfn-lint
@@ -1985,7 +1962,6 @@ scikit-learn==1.0.2 ; python_version < "3.11"
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ax-platform
     #   bayesian-optimization
-    #   flaml
     #   gpytorch
     #   hebo
     #   lightgbm
@@ -2005,8 +1981,6 @@ scipy==1.10.1 ; python_version < "3.11"
     #   catboost
     #   configspace
     #   dm-control
-    #   dragonfly-opt
-    #   flaml
     #   gpy
     #   hpbandster
     #   hyperopt
@@ -2064,8 +2038,6 @@ shortuuid==1.0.1
     # via
     #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
     #   wandb
-sigopt==7.5.0
-    # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
 six==1.16.0
     # via
     #   asttokens
@@ -2079,7 +2051,6 @@ six==1.16.0
     #   configobj
     #   databricks-cli
     #   docker-pycreds
-    #   dragonfly-opt
     #   ecdsa
     #   gcs-oauth2-boto-plugin
     #   google-apitools
@@ -2254,7 +2225,8 @@ tensorflow-estimator==2.11.0
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
-tensorflow-io-gcs-filesystem==0.34.0
+tensorflow-io-gcs-filesystem==0.31.0
+    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     # via tensorflow
 tensorflow-metadata==1.13.0
     # via tensorflow-datasets
@@ -2389,7 +2361,7 @@ tqdm==4.64.1
     #   torch-geometric
     #   torchtext
     #   transformers
-traitlets==5.13.0
+traitlets==5.14.0
     # via
     #   comm
     #   ipykernel
@@ -2441,7 +2413,6 @@ typing-extensions==4.8.0
     #   huggingface-hub
     #   ipython
     #   mypy
-    #   nevergrad
     #   onnx
     #   orbax-checkpoint
     #   polars
@@ -2547,7 +2518,7 @@ werkzeug==2.1.2
     #   moto
     #   pytest-httpserver
     #   tensorboard
-wheel==0.41.3
+wheel==0.42.0
     # via
     #   astunparse
     #   lightgbm
@@ -2569,7 +2540,6 @@ wurlitzer==3.0.3
 xgboost==1.7.6
     # via
     #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
-    #   flaml
     #   hebo
     #   xgboost-ray
     # via

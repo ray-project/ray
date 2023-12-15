@@ -119,6 +119,7 @@ steps:
   - label: ":database: data: dashboard tests"
     tags:
       - python
+      - data
       - dashboard
     instance_type: small
     commands:

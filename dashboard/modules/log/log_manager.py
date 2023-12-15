@@ -14,6 +14,9 @@ from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
 from ray._private.pydantic_compat import BaseModel
 
+if BaseModel is None:
+    raise ModuleNotFoundError("Please install pydantic via `pip install pydantic`.")
+
 # TODO(sang): Remove the usage of this class.
 from ray.dashboard.datacenter import DataSource
 

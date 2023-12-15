@@ -63,8 +63,7 @@ bool ObjectRefStream::IsObjectConsumed(int64_t item_index) {
 
 Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   *object_id_out = GetObjectRefAtIndex(next_index_);
-  bool is_eof_set = end_of_stream_index_ != -1;
-  if (is_eof_set && next_index_ >= end_of_stream_index_) {
+  if (IsFinished()) {
     // next_index_ cannot be bigger than end_of_stream_index_.
     RAY_CHECK(next_index_ == end_of_stream_index_);
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
@@ -88,6 +87,11 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
     *object_id_out = ObjectID::Nil();
   }
   return Status::OK();
+}
+
+bool ObjectRefStream::IsFinished() const {
+  bool is_eof_set = end_of_stream_index_ != -1;
+  return is_eof_set && next_index_ >= end_of_stream_index_;
 }
 
 std::pair<ObjectID, bool> ObjectRefStream::PeekNextItem() {
@@ -331,7 +335,10 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
                   << spec.AttemptNumber() << ": " << spec.DebugString();
-    retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
+    // We should actually detect if the actor for this task is dead, but let's just assume
+    // it's not for now.
+    retry_task_callback_(
+        spec, /*object_recovery*/ true, /*update_seqno=*/true, /*delay_ms*/ 0);
   }
 
   return true;
@@ -529,6 +536,16 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   }
 
   return status;
+}
+
+bool TaskManager::IsFinished(const ObjectID &generator_id) const {
+  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "IsFinished API can be used only when the stream has been "
+         "created "
+         "and not removed.";
+  return stream_it->second.IsFinished();
 }
 
 std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
@@ -881,6 +898,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
+  bool actor_died = error_info.error_type() == rpc::ErrorType::ACTOR_DIED;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -933,7 +951,11 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
+    // If actor is not dead, we should update the seq no. If an actor is dead and
+    // restarted, the seqno is reset, and we don't need to update it when resubmitting a
+    // task.
+    retry_task_callback_(
+        spec, /*object_recovery*/ false, /*update_seqno=*/!actor_died, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
@@ -1025,7 +1047,9 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type) << " Fail immediately? "
-                 << fail_immediately;
+                 << fail_immediately << ", status " << *status << ", error info "
+                 << (ray_error_info == nullptr ? "nullptr"
+                                               : ray_error_info->DebugString());
   bool will_retry = false;
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(
@@ -1304,7 +1328,8 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   if (it == submissible_tasks_.end()) {
     return;
   }
-  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)
+      << ", task ID = " << it->first << ", status = " << it->second.GetStatus();
   it->second.SetNodeId(node_id);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
   RecordTaskStatusEvent(it->second.spec.AttemptNumber(),
@@ -1410,6 +1435,27 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
   task_counter_.FlushOnChangeCallbacks();
+}
+
+void TaskManager::RecordTaskStatusEvent(
+    const TaskID &task_id,
+    const JobID &job_id,
+    int32_t attempt_number,
+    rpc::TaskStatus status,
+    worker::TaskStatusEvent::TaskStateUpdate &&state_update) {
+  if (!task_event_buffer_.Enabled()) {
+    return;
+  }
+  auto task_event = std::make_unique<worker::TaskStatusEvent>(
+      task_id,
+      job_id,
+      attempt_number,
+      status,
+      /* timestamp */ absl::GetCurrentTimeNanos(),
+      /* task_spec */ nullptr,
+      std::move(state_update));
+
+  task_event_buffer_.AddTaskEvent(std::move(task_event));
 }
 
 void TaskManager::RecordTaskStatusEvent(

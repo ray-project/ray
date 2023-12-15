@@ -280,6 +280,17 @@ message UpdateWorkerDebuggerPortReply {
   GcsStatus status = 1;
 }
 
+message UpdateWorkerNumPausedThreadsRequest {
+  // ID of this worker.
+  bytes worker_id = 1;
+  // The delta of the number of paused threads.
+  int32 num_paused_threads_delta = 2;
+}
+
+message UpdateWorkerNumPausedThreadsReply {
+  GcsStatus status = 1;
+}
+
 // Service for worker info access.
 service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.
@@ -293,6 +304,9 @@ service WorkerInfoGcsService {
   // Update worker debugger port in the GCS Service.
   rpc UpdateWorkerDebuggerPort(UpdateWorkerDebuggerPortRequest)
       returns (UpdateWorkerDebuggerPortReply);
+  // Update the worker number of paused threads in the GCS Service.
+  rpc UpdateWorkerNumPausedThreads(UpdateWorkerNumPausedThreadsRequest)
+      returns (UpdateWorkerNumPausedThreadsReply);
 }
 
 message CreateActorRequest {

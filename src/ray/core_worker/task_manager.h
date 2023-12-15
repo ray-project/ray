@@ -79,8 +79,8 @@ class TaskResubmissionInterface {
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
-using RetryTaskCallback =
-    std::function<void(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms)>;
+using RetryTaskCallback = std::function<void(
+    TaskSpecification &spec, bool object_recovery, bool update_seqno, uint32_t delay_ms)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
@@ -109,6 +109,9 @@ class ObjectRefStream {
   /// Nil ID is returned if the next index hasn't been written.
   /// \return KeyError if it reaches to EoF. Ok otherwise.
   Status TryReadNextItem(ObjectID *object_id_out);
+
+  /// Return True if there's no more object to read. False otherwise.
+  bool IsFinished() const;
 
   std::pair<ObjectID, bool> PeekNextItem();
 
@@ -315,7 +318,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    *   or objects are already consumed), it replies immediately.
    *
    * Reference implementation of streaming generator using the following APIs
-   * is available from `_raylet.StreamingObjectRefGenerator`.
+   * is available from `_raylet.ObjectRefGenerator`.
    */
 
   /// Handle the generator task return so that it will be accessible
@@ -405,6 +408,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
       ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Return True if there's no more object to read. False otherwise.
+  bool IsFinished(const ObjectID &generator_id) const ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.
@@ -575,6 +581,19 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       bool include_task_info = false,
       absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update =
           absl::nullopt);
+
+  /// Update task status change for the task attempt in TaskEventBuffer.
+  ///
+  /// \param task_id ID of the task to query.
+  /// \param job_id ID of the job to query.
+  /// \param attempt_number Attempt number for the task attempt.
+  /// \param status the changed status.
+  /// \param state_update task state updates.
+  void RecordTaskStatusEvent(const TaskID &task_id,
+                             const JobID &job_id,
+                             int32_t attempt_number,
+                             rpc::TaskStatus status,
+                             worker::TaskStatusEvent::TaskStateUpdate &&state_update);
 
  private:
   struct TaskEntry {
