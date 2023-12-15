@@ -294,12 +294,10 @@ class ConnectorPipelineV2(ConnectorV2):
             #  are changed several times by the individual pieces.
             self.input_observation_space = self.connectors[0].input_observation_space
             self.input_action_space = self.connectors[0].input_action_space
-            self.observation_space = self.connectors[-1].observation_space
-            self.action_space = self.connectors[-1].action_space
+            self._observation_space = self.connectors[-1].observation_space
+            self._action_space = self.connectors[-1].action_space
         else:
             self.input_type = None
             self.output_type = None
-            self.input_observation_space = None
-            self.input_action_space = None
-            self.observation_space = None
-            self.action_space = None
+            self._observation_space = None
+            self._action_space = None

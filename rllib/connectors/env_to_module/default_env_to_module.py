@@ -46,7 +46,7 @@ class DefaultEnvToModule(ConnectorV2):
             # Collect all most-recent observations from given episodes.
             observations = []
             for episode in episodes:
-                observations.append(episode.get_observation(indices=-1))
+                observations.append(episode.get_observations(indices=-1))
             # Batch all collected observations together.
             input_[SampleBatch.OBS] = batch(observations)
 
