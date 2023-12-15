@@ -470,33 +470,28 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
 }
 
 bool HasSameAddress(RedisAsyncContext &context1, RedisAsyncContext &context2) {
-  RAY_LOG(INFO) << "istg 11111 " << &context1 << " " << &context2;
   redisAsyncContext *raw1 = context1.GetRawRedisAsyncContext();
-  RAY_LOG(INFO) << "istg 1.5";
   redisAsyncContext *raw2 = context2.GetRawRedisAsyncContext();
-  RAY_LOG(INFO) << "istg 22222";
 
   redisContext c1 = static_cast<redisContext>(raw1->c);
   redisContext c2 = static_cast<redisContext>(raw2->c);
-  RAY_LOG(INFO) << "istg 333333";
 
   auto tcp1 = c1.tcp;
   auto tcp2 = c2.tcp;
 
-  RAY_LOG(INFO) << "istg 444444";
   // Would like to use strncmp but couldn't find the len limits.
-  return (strcmp(tcp1.host, tcp2.host) == 0) &&
-         (strcmp(tcp1.source_addr, tcp2.source_addr) == 0) && (tcp1.port == tcp2.port);
+  bool retval = (strcmp(tcp1.host, tcp2.host) == 0) &&
+                (strcmp(tcp1.source_addr, tcp2.source_addr) == 0) &&
+                (tcp1.port == tcp2.port);
+  return retval;
 }
 
 void RedisContext::ResetOrRetrieveAsyncContext(
     std::shared_ptr<RedisAsyncContext> &new_async_context) {
   absl::MutexLock l(&mu_);
   if (!HasSameAddress(*redis_async_context_.get(), *new_async_context.get())) {
-    RAY_LOG(INFO) << "vct are we here";
     redis_async_context_ = new_async_context;
     redis_client_.ReattachContext(*this);
-    RAY_LOG(INFO) << "vct :(";
   } else {
     RAY_LOG(INFO) << "vct they are equal!!!";
     // Return an attached context.
