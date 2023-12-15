@@ -60,6 +60,8 @@ class RedisClient {
  public:
   RedisClient(const RedisClientOptions &options);
 
+  virtual ~RedisClient() = default;
+
   /// Connect to Redis. Non-thread safe.
   /// Call this function before calling other functions.
   ///
@@ -92,7 +94,7 @@ class RedisClient {
 
   int GetNextJobID();
 
-  void ReattachContext(RedisContext &context);
+  virtual void ReattachContext(RedisContext &context);
 
  protected:
   /// Attach this client to an asio event loop. Note that only

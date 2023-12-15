@@ -19,6 +19,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_async_context.h"
+#include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context-inl.h"
 #include "ray/util/logging.h"
 
@@ -58,6 +59,13 @@ class RedisContextTest : public ::testing::Test {
     static auto mock_redis_context = std::make_unique<MockRedisContext>();
     return mock_redis_context.get();
   }
+};
+
+class MockRedisClient : public RedisClient {
+ public:
+  MockRedisClient(RedisClientOptions options) : RedisClient(options) {}
+
+  MOCK_METHOD(void, ReattachContext, (RedisContext &), (override));
 };
 
 class MockRedisContext : public RedisAsyncContext {
@@ -148,7 +156,12 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   reply.str = &error.front();
   reply.len = error.length();
   reply.type = REDIS_REPLY_ERROR;
-  RedisContext parent_context(io_service);
+
+  std::string fake_client_ip = "";
+  std::string fake_client_pw = "";
+  RedisClientOptions fake_options(fake_client_ip, 0, fake_client_pw);
+  MockRedisClient redis_client(fake_options);
+  RedisContext parent_context(io_service, redis_client);
   RedisRequestContext privdata(io_service,
                                [](std::shared_ptr<CallbackReply>) {},
                                std::move(async_context_wrapper),
@@ -177,6 +190,8 @@ TEST_F(RedisContextTest, TestRedisMoved) {
 
   // The most important check in the test is this one.
   EXPECT_TRUE(RedisContextTest::GetMutableConnectTested());
+
+  RAY_LOG(INFO) << "check that we've gotten here";
 
   io_service_thread_->join();
 }
