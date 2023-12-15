@@ -122,7 +122,7 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
 
     def get_actor_memory_flamegraph():
         response = requests.get(
-            f"{webui_url}/worker/memory_profile?pid={pid}&leaks={leaks}&duration=5"
+            f"{webui_url}/memory_profile?pid={pid}&leaks={leaks}&duration=5"
         )
         response.raise_for_status()
 
@@ -145,7 +145,7 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
 
     def get_actor_memory_multiple_flamegraphs():
         response = requests.get(
-            f"{webui_url}/worker/memory_profile?pid={pid}&leaks={leaks}&duration=5"
+            f"{webui_url}/memory_profile?pid={pid}&leaks={leaks}&duration=5"
         )
         response.raise_for_status()
 
@@ -229,7 +229,7 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     assert "Failed to execute" in content, content
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(f"{webui_url}/worker/memory_profile?pid=1234567")
+    response = requests.get(f"{webui_url}/memory_profile?pid=1234567")
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers

@@ -875,7 +875,7 @@ def test_get_memory_profile_running_task(shutdown_only):
     }
 
     def verify():
-        resp = requests.get(f"{webui_url}/task/memory_profile", params=params)
+        resp = requests.get(f"{webui_url}/memory_profile", params=params)
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert resp.status_code == 200

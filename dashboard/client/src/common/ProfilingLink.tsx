@@ -174,7 +174,7 @@ export const ProfilerButton = ({
 
   return (
     <div>
-      <Button className={buttonLinkClasses.buttonLink} onClick={handleOpen}>
+      <Button className={buttonLinkClasses.buttonLink} onClick={handleOpen} aria-label="Memory Profiling" >
         <Typography component={Link} variant="body2">
           Memory&nbsp;Profiling{type ? ` (${type})` : ""}
         </Typography>
@@ -188,6 +188,7 @@ export const ProfilerButton = ({
             labelId="format-label"
             id="format"
             value={format}
+            aria-label={format}
             onChange={(e) => setFormat(e.target.value as string)}
             fullWidth
             style={{ marginBottom: "12px" }}
@@ -196,6 +197,7 @@ export const ProfilerButton = ({
             <MenuItem value="table">Table</MenuItem>
           </Select>
           <TextField
+            aria-label="Duration"
             label="Duration (seconds)"
             type="number"
             value={duration !== null ? duration : ""}
@@ -211,7 +213,7 @@ export const ProfilerButton = ({
               />
             }
             label={
-              <div>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
                 <span style={{ marginRight: '4px' }}>Leaks</span>
                 <HelpInfo>
                   <Typography>
@@ -262,7 +264,7 @@ export const MemoryProfilingButton = ({
   if (!pid || !ip) {
     return <div></div>;
   }
-  const profilerUrl = `worker/memory_profile?pid=${pid}&ip=${ip}`;
+  const profilerUrl = `/memory_profile?pid=${pid}&ip=${ip}`;
 
   return <ProfilerButton profilerUrl={profilerUrl} type={type} />;
 };
@@ -275,7 +277,7 @@ export const TaskMemoryProfilingButton = ({
   if (!taskId) {
     return null;
   }
-  const profilerUrl = `task/memory_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`;
+  const profilerUrl = `/memory_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`;
 
   return <ProfilerButton profilerUrl={profilerUrl}/>;
 };
