@@ -57,7 +57,7 @@ class _FrameStackingConnector(ConnectorV2):
                 self.observation_space.high, repeats=self.num_frames, axis=-1
             ),
             shape=list(self.observation_space.shape)[:-1] + [self.num_frames],
-            dtype=self.observation_space.dtypege
+            dtype=self.observation_space.dtype,
         )
 
     @override(ConnectorV2)
