@@ -649,7 +649,10 @@ if __name__ == "__main__":
     results = trainer.fit()
 
     with results.checkpoint.as_directory() as tmpdir:
-        state_dict = torch.load(os.path.join(tmpdir, "checkpoint.pt"))
+        state_dict = torch.load(
+            os.path.join(tmpdir, "checkpoint.pt"),
+            map_location="cpu",
+        )
 
     def load_model_func():
         num_layers = config["num_layers"]
