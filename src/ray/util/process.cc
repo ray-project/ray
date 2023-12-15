@@ -102,7 +102,8 @@ class ProcessFD {
   static ProcessFD spawnvpe(const char *argv[],
                             std::error_code &ec,
                             bool decouple,
-                            const ProcessEnvironment &env) {
+                            const ProcessEnvironment &env,
+                            bool pipe_to_stdin) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
@@ -172,17 +173,23 @@ class ProcessFD {
     // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
     // file descriptors into the child process, as that can be problematic.
     int pipefds[2];  // Create pipe to get PID & track lifetime
-    // Create pipe to get PID & track lifetime from child -> parent.
     int parent_lifetime_pipe[2];
 
+    // Create pipes to health check parent <> child.
+    // pipefds is used for parent to check child's health.
     if (pipe(pipefds) == -1) {
       pipefds[0] = pipefds[1] = -1;
     }
-    if (pipe(parent_lifetime_pipe) == -1) {
-      parent_lifetime_pipe[0] = parent_lifetime_pipe[1] = -1;
+    // parent_lifetime_pipe is used for child to check parent's health.
+    if (pipe_to_stdin) {
+      if (pipe(parent_lifetime_pipe) == -1) {
+        parent_lifetime_pipe[0] = parent_lifetime_pipe[1] = -1;
+      }
     }
 
     pid = pipefds[1] != -1 ? fork() : -1;
+
+    // If we don't pipe to stdin close pipes that are not needed.
     if (pid <= 0 && pipefds[0] != -1) {
       close(pipefds[0]);  // not the parent, so close the read end of the pipe
       pipefds[0] = -1;
@@ -192,15 +199,25 @@ class ProcessFD {
       pipefds[1] = -1;
     }
 
-    if (pid <= 0 && parent_lifetime_pipe[1] != -1) {
-      // Child. Close sthe write end of the pipe from child.
-      close(parent_lifetime_pipe[1]);  
-      parent_lifetime_pipe[1] = -1;
-    }
-    if (pid != 0 && parent_lifetime_pipe[0] != -1) {
-      // Parent. Close the read end of the pipe.
-      close(parent_lifetime_pipe[0]);
+    // Create a pipe and redirect the read pipe to a child's stdin.
+    // Child can use it to detect the parent's lifetime.
+    // See the below link for details.
+    // https://stackoverflow.com/questions/12193581/detect-death-of-parent-process
+    if (pipe_to_stdin) {
+      if (pid <= 0 && parent_lifetime_pipe[1] != -1) {
+        // Child. Close sthe write end of the pipe from child.
+        close(parent_lifetime_pipe[1]);  
+        parent_lifetime_pipe[1] = -1;
+      }
+      if (pid != 0 && parent_lifetime_pipe[0] != -1) {
+        // Parent. Close the read end of the pipe.
+        close(parent_lifetime_pipe[0]);
+        parent_lifetime_pipe[0] = -1;
+      }
+    } else {
+      // parent_lifetime_pipe pipes are not used.
       parent_lifetime_pipe[0] = -1;
+      parent_lifetime_pipe[1] = -1;
     }
 
     if (pid == 0) {
@@ -210,9 +227,12 @@ class ProcessFD {
       if (pid_t pid2 = decouple ? fork() : 0) {
         _exit(pid2 == -1 ? errno : 0);  // Parent of grandchild; must exit
       }
+
       // Redirect the read pipe to stdin so that child can track the
       // parent lifetime.
-      dup2(parent_lifetime_pipe[0], STDIN_FILENO);
+      if (parent_lifetime_pipe[0] != -1) {
+        dup2(parent_lifetime_pipe[0], STDIN_FILENO);
+      }
 
       // This is the spawned process. Any intermediate parent is now dead.
       pid_t my_pid = getpid();
@@ -340,10 +360,11 @@ Process::Process(const char *argv[],
                  void *io_service,
                  std::error_code &ec,
                  bool decouple,
-                 const ProcessEnvironment &env) {
+                 const ProcessEnvironment &env,
+                 bool pipe_to_stdin) {
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
-  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
+  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }

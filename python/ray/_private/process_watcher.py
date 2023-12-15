@@ -60,10 +60,18 @@ def create_check_raylet_task(log_dir, gcs_address, parent_dead_callback, loop):
     """
     if sys.platform in ["win32", "cygwin"]:
         raise RuntimeError("can't check raylet process in Windows.")
-    # raylet_pid = get_raylet_pid()
+    raylet_pid = get_raylet_pid()
+
+    if dashboard_consts.PARENT_HEALTH_CHECK_BY_PIPE:
+        logger.info("check_parent_via_pipe")
+        check_parent_task = _check_parent_via_pipe(log_dir, gcs_address, loop, parent_dead_callback)
+    else:
+        logger.info("_check_parent")
+        check_parent_task = _check_parent(
+            raylet_pid, log_dir, gcs_address, parent_dead_callback)
+
     return run_background_task(
-        # _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback)
-        check_parent_via_pipe(log_dir, gcs_address, loop, parent_dead_callback)
+        check_parent_task
     )
 
 
@@ -117,7 +125,7 @@ def report_raylet_error_logs(log_dir: str, gcs_address: str):
         logger.info(msg)
 
 
-async def check_parent_via_pipe(
+async def _check_parent_via_pipe(
         log_dir: str,
         gcs_address:str,
         loop,
@@ -133,7 +141,7 @@ async def check_parent_via_pipe(
                     executor, lambda: sys.stdin.readline())
             if len(input_data) == 0:
                 # cannot read bytes from parent == parent is dead.
-                parent_dead_callback("The parent is dead.")
+                parent_dead_callback("_check_parent_via_pipe: The parent is dead.")
                 report_raylet_error_logs(log_dir, gcs_address)
                 sys.exit(0)
         except Exception as e:
@@ -178,7 +186,7 @@ async def _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback):
                     )
                     continue
                 
-                parent_dead_callback()
+                parent_dead_callback("_check_parent: The parent is dead.")
                 report_raylet_error_logs(log_dir, gcs_address)
                 sys.exit(0)
             else:
