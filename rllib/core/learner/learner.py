@@ -20,6 +20,9 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.connectors.learner.learner_connector_pipeline import (
+    LearnerConnectorPipeline
+)
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
@@ -258,6 +261,8 @@ class Learner:
 
         # The actual MARLModule used by this Learner.
         self._module: Optional[MultiAgentRLModule] = None
+        # Our Learner connector pipeline.
+        self._learner_connector: Optional[LearnerConnectorPipeline] = None
         # These are set for properly applying optimizers and adding or removing modules.
         self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
         self._named_optimizers: Dict[str, Optimizer] = {}
@@ -286,12 +291,11 @@ class Learner:
         if self._is_built:
             logger.debug("Learner already built. Skipping build.")
             return
-        self._is_built = True
 
-        # Build learner connector and context.
+        # Build learner connector pipeline used on this Learner worker.
         # TODO (sven): Support multi-agent.
         module_spec = self._module_spec.module_specs["default_policy"]
-        self._learner_connector = self.config.learner_connector(
+        self._learner_connector = self.config.build_learner_connector(
             input_observation_space=module_spec.observation_space,
             input_action_space=module_spec.action_space,
         )
@@ -305,6 +309,8 @@ class Learner:
         # Configure, construct, and register all optimizers needed to train
         # `self.module`.
         self.configure_optimizers()
+
+        self._is_built = True
 
     @property
     def distributed(self) -> bool:
