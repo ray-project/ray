@@ -1,2 +1,3 @@
 flaky_tests:
   - //python/ray/tests:test_autoscaler
+  - windows://:metric_exporter_grpc_test
