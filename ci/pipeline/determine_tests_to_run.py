@@ -329,6 +329,7 @@ if __name__ == "__main__":
                 RAY_CI_TOOLS_AFFECTED = 1
             elif (
                 changed_file.endswith("build-docker-images.py")
+                or changed_file == ".buildkite/base.rayci.yml"
                 or changed_file == ".buildkite/build.rayci.yml"
                 or changed_file == ".buildkite/pipeline.arm64.yml"
                 or changed_file == "ci/docker/manylinux.Dockerfile"
@@ -338,6 +339,8 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/ray.cpu.base.aarch64.wanda.yaml"
                 or changed_file == "ci/docker/ray.cuda.base.wanda.yaml"
                 or changed_file == "ci/docker/ray.cuda.base.aarch64.wanda.yaml"
+                or changed_file == "ci/docker/windows.build.Dockerfile"
+                or changed_file == "ci/docker/windows.build.wanda.yaml"
             ):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
