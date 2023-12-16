@@ -4,6 +4,7 @@ from unittest import mock
 from typing import List
 
 from ci.ray_ci.windows_container import WindowsContainer
+from ci.ray_ci.container import _DOCKER_ENV
 
 
 def test_install_ray() -> None:
@@ -36,11 +37,16 @@ def test_install_ray() -> None:
 
 def test_get_run_command() -> None:
     container = WindowsContainer("test")
+    envs = []
+    for env in _DOCKER_ENV:
+        envs.extend(["--env", env])
+
     assert container.get_run_command(["hi", "hello"]) == [
         "docker",
         "run",
         "-i",
         "--rm",
+    ] + envs + [
         "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-test",
         "bash",
         "-c",
