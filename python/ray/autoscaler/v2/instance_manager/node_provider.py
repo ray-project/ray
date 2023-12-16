@@ -81,7 +81,7 @@ class ICloudNodeProvider(ABC):
     The interface for a cloud node provider.
 
     This interface is a minimal interface that should be implemented by the
-    various cloud node providers (e.g. AWS, Kuberay, and etc).
+    various cloud node providers (e.g. AWS, and etc).
 
     The cloud node provider is responsible for managing the cloud nodes in the
     cluster. It provides the following main functionalities:
