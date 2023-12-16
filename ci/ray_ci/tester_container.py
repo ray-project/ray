@@ -1,4 +1,5 @@
 import os
+import platform
 import subprocess
 from typing import List, Optional
 
@@ -85,6 +86,11 @@ class TesterContainer(Container):
                     "cleanup() { ./ci/build/upload_build_info.sh; }",
                     "trap cleanup EXIT",
                 ]
+            )
+        if platform.system() == "Windows":
+            # allow window tests to access aws services
+            commands.append(
+                "powershell ci/pipeline/fix-windows-container-networking.ps1"
             )
         if self.build_type == "ubsan":
             # clang currently runs into problems with ubsan builds, this will revert to
