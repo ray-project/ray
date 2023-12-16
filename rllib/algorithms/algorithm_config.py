@@ -958,8 +958,8 @@ class AlgorithmConfig(_Config):
             raise ValueError(
                 "Cannot set both `num_cpus_per_learner_worker` > 1 and "
                 " `num_gpus_per_learner_worker` > 0! Either set "
-                "`num_cpus_per_learner_worker` > 1 (and `num_gpus_per_learner_worker`=0)"
-                " OR set `num_gpus_per_learner_worker` > 0 (and leave "
+                "`num_cpus_per_learner_worker` > 1 (and `num_gpus_per_learner_worker`"
+                "=0) OR set `num_gpus_per_learner_worker` > 0 (and leave "
                 "`num_cpus_per_learner_worker` at its default value of 1). "
                 "This is due to issues with placement group fragmentation. See "
                 "https://github.com/ray-project/ray/issues/35409 for more details."
