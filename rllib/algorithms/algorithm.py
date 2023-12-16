@@ -176,15 +176,6 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@Deprecated(
-    new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
-    "print(config.lr) -> 0.001; if config.a > 0: [do something];",
-    error=True,
-)
-def with_common_config(*args, **kwargs):
-    pass
-
-
 @PublicAPI
 class Algorithm(Trainable, AlgorithmBase):
     """An RLlib algorithm responsible for optimizing one or more Policies.
@@ -3291,11 +3282,6 @@ class Algorithm(Trainable, AlgorithmBase):
     @Deprecated(new="AlgorithmConfig.validate()", error=True)
     def validate_config(self, config):
         pass
-
-
-# TODO: Create a dict that throw a deprecation warning once we have fully moved
-#  to AlgorithmConfig() objects (some algos still missing).
-COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()
 
 
 class TrainIterCtx:
