@@ -1,9 +1,11 @@
 import pytest
 
 from unittest.mock import MagicMock, patch
-from ray.autoscaler._private.vsphere.vsphere_sdk_provider import VsphereSdkProvider
-from ray.autoscaler._private.vsphere.utils import Constants
-from com.vmware.vcenter.vm_client import Power as HardPower
+from ray.autoscaler._private.vsphere.vsphere_sdk_provider import (
+    VsphereSdkProvider,
+    Constants,
+    HardPower,
+)
 
 
 @pytest.fixture
