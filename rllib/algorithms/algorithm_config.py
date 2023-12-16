@@ -956,10 +956,12 @@ class AlgorithmConfig(_Config):
             and self.num_gpus_per_learner_worker > 0
         ):
             raise ValueError(
-                "Cannot set both `num_cpus_per_learner_worker` and "
-                " `num_gpus_per_learner_worker` > 0! Users must set one"
-                " or the other due to issues with placement group"
-                " fragmentation. See "
+                "Cannot set both `num_cpus_per_learner_worker` > 1 and "
+                " `num_gpus_per_learner_worker` > 0! Either set "
+                "`num_cpus_per_learner_worker` > 1 (and `num_gpus_per_learner_worker`=0)"
+                " OR set `num_gpus_per_learner_worker` > 0 (and leave "
+                "`num_cpus_per_learner_worker` at its default value of 1). "
+                "This is due to issues with placement group fragmentation. See "
                 "https://github.com/ray-project/ray/issues/35409 for more details."
             )
 
@@ -1330,17 +1332,17 @@ class AlgorithmConfig(_Config):
             num_gpus_per_learner_worker: Number of GPUs allocated per worker. If
                 `num_learner_workers = 0`, any value greater than 0 will run the
                 training on a single GPU on the head node, while a value of 0 will run
-                the training on head node CPU cores. If num_gpus_per_learner_worker is
-                set, then num_cpus_per_learner_worker cannot be set.
-            local_gpu_idx: if num_gpus_per_worker > 0, and num_workers<2, then this gpu
-                index will be used for training. This is an index into the available
-                cuda devices. For example if os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-                then a local_gpu_idx of 0 will use the gpu with id 1 on the node.
-            custom_resources_per_worker: Any custom Ray resources to allocate per
-                worker.
+                the training on head node CPU cores. If `num_gpus_per_learner_worker` is
+                set to > 0, then `num_cpus_per_learner_worker` should not be changed
+                (from its default value of 1).
             num_cpus_for_local_worker: Number of CPUs to allocate for the algorithm.
                 Note: this only takes effect when running in Tune. Otherwise,
                 the algorithm runs in the main program (driver).
+            local_gpu_idx: If `num_gpus_per_learner_worker` > 0, and
+                `num_learner_workers` < 2, then this GPU index will be used for
+                training. This is an index into the available
+                CUDA devices. For example if `os.environ["CUDA_VISIBLE_DEVICES"] = "1"`
+                then a `local_gpu_idx` of 0 will use the GPU with ID=1 on the node.
             custom_resources_per_worker: Any custom Ray resources to allocate per
                 worker.
             placement_strategy: The strategy for the placement group factory returned by
