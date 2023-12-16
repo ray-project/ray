@@ -18,14 +18,8 @@ from typing import (
     Union,
 )
 
-import gymnasium as gym
-
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.learner.default_learner_connector import (
-    DefaultLearnerConnector,
-)
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,

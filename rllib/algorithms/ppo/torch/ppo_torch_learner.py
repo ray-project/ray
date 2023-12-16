@@ -1,8 +1,6 @@
 import logging
 from typing import Any, Dict
 
-import tree  # pip install dm_tree
-
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,

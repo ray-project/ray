@@ -15,12 +15,12 @@ import uuid
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
     RLMODULE_STATE_DIR_NAME,
 )
-from ray.rllib.core.learner.learner import Learner
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning

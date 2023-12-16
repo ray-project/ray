@@ -7,7 +7,7 @@ from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
     PPOConfig,
 )
-from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.postprocessing_v2 import compute_value_targets
 from ray.rllib.policy.sample_batch import SampleBatch
