@@ -12,7 +12,7 @@ from ray.autoscaler._private.util import (
     prepare_config,
     validate_config,
 )
-from ray.autoscaler.v2.scheduler import InstancesConfig, NodeTypeConfig
+from ray.autoscaler.v2.scheduler import ClusterConfig, NodeTypeConfig
 from ray.autoscaler.v2.schema import NodeType
 
 logger = logging.getLogger(__name__)
@@ -204,9 +204,9 @@ class AutoscalingConfig(object):
         else:
             raise ValueError(f"Unknown provider {provider}")
 
-    def get_instances_config(self) -> Optional[InstancesConfig]:
+    def get_cluster_config(self) -> Optional[ClusterConfig]:
         """
-        Generate the instances config from the autoscaling config.
+        Generate the cluster_config from the autoscaling config.
         """
         available_node_types = self._configs.get("available_node_types", {})
         if not available_node_types:
@@ -223,7 +223,7 @@ class AutoscalingConfig(object):
                 labels=node_config.get("labels", {}),
             )
 
-        return InstancesConfig(
+        return ClusterConfig(
             node_type_configs=node_type_configs,
             max_num_worker_nodes=max_num_worker_nodes,
         )

@@ -119,33 +119,33 @@ def test_multi_provider_instance_type():
     # We don't have kuberay and local config yet.
 
 
-def test_instances_config():
+def test_cluster_config():
     config = FileConfigReader(
         get_test_config_path("test_ray_complex.yaml")
     ).get_autoscaling_config()
 
-    instances_config = config.get_instances_config()
-    assert instances_config.max_num_worker_nodes == 10
-    assert len(instances_config.node_type_configs) == 4
-    assert instances_config.node_type_configs["head_node"].max_workers == 0
-    assert instances_config.node_type_configs["head_node"].min_workers == 0
-    assert instances_config.node_type_configs["head_node"].resources == {}
-    assert instances_config.node_type_configs["head_node"].labels == {}
+    cluster_config = config.get_cluster_config()
+    assert cluster_config.max_num_worker_nodes == 10
+    assert len(cluster_config.node_type_configs) == 4
+    assert cluster_config.node_type_configs["head_node"].max_workers == 0
+    assert cluster_config.node_type_configs["head_node"].min_workers == 0
+    assert cluster_config.node_type_configs["head_node"].resources == {}
+    assert cluster_config.node_type_configs["head_node"].labels == {}
 
-    assert instances_config.node_type_configs["default"].max_workers == 2
-    assert instances_config.node_type_configs["default"].min_workers == 0
-    assert instances_config.node_type_configs["default"].resources == {}
-    assert instances_config.node_type_configs["default"].labels == {}
+    assert cluster_config.node_type_configs["default"].max_workers == 2
+    assert cluster_config.node_type_configs["default"].min_workers == 0
+    assert cluster_config.node_type_configs["default"].resources == {}
+    assert cluster_config.node_type_configs["default"].labels == {}
 
-    assert instances_config.node_type_configs["worker_nodes"].max_workers == 2
-    assert instances_config.node_type_configs["worker_nodes"].min_workers == 1
-    assert instances_config.node_type_configs["worker_nodes"].resources == {}
-    assert instances_config.node_type_configs["worker_nodes"].labels == {}
+    assert cluster_config.node_type_configs["worker_nodes"].max_workers == 2
+    assert cluster_config.node_type_configs["worker_nodes"].min_workers == 1
+    assert cluster_config.node_type_configs["worker_nodes"].resources == {}
+    assert cluster_config.node_type_configs["worker_nodes"].labels == {}
 
-    assert instances_config.node_type_configs["worker_nodes1"].max_workers == 2
-    assert instances_config.node_type_configs["worker_nodes1"].min_workers == 1
-    assert instances_config.node_type_configs["worker_nodes1"].resources == {"CPU": 2}
-    assert instances_config.node_type_configs["worker_nodes1"].labels == {"foo": "bar"}
+    assert cluster_config.node_type_configs["worker_nodes1"].max_workers == 2
+    assert cluster_config.node_type_configs["worker_nodes1"].min_workers == 1
+    assert cluster_config.node_type_configs["worker_nodes1"].resources == {"CPU": 2}
+    assert cluster_config.node_type_configs["worker_nodes1"].labels == {"foo": "bar"}
 
 
 if __name__ == "__main__":

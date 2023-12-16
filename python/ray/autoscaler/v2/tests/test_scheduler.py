@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 import pytest
 
 from ray.autoscaler.v2.scheduler import (
-    InstancesConfig,
+    ClusterConfig,
     NodeTypeConfig,
     ResourceDemandScheduler,
     SchedulingRequest,
@@ -24,7 +24,7 @@ ResourceMap = Dict[str, float]
 
 
 def sched_request(
-    cluster_config: InstancesConfig,
+    cluster_config: ClusterConfig,
     resource_requests: Optional[List[ResourceRequestByCount]] = None,
     gang_resource_requests: Optional[List[GangResourceRequest]] = None,
     cluster_resource_constraints: Optional[List[ClusterResourceConstraint]] = None,
@@ -55,7 +55,7 @@ def sched_request(
 
 def test_min_workers():
     scheduler = ResourceDemandScheduler()
-    cluster_config = InstancesConfig(
+    cluster_config = ClusterConfig(
         node_type_configs={
             "type_1": NodeTypeConfig(
                 name="type_1",
