@@ -12,8 +12,7 @@ torch, nn = try_import_torch()
 
 
 class LSTMwPrevRewardsActionsRLM(PPORLModule):
-    """RLModule taking previous n rewards and/or actions as input (plus observations).
-    """
+    """RLModule taking previous n rewards and/or actions as input (plus observations)."""
 
     def __init__(self, config: RLModuleConfig):
         super().__init__(config)

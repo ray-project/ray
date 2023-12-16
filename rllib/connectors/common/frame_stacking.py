@@ -93,16 +93,23 @@ class _FrameStackingConnector(ConnectorV2):
                     new_shape = (len(episode), self.num_frames) + s.shape[1:]
                     new_strides = (s.strides[0],) + s.strides
                     # Create a strided view of the array.
-                    return np.lib.stride_tricks.as_strided(s, shape=new_shape, strides=new_strides)
+                    return np.lib.stride_tricks.as_strided(
+                        s, shape=new_shape, strides=new_strides
+                    )
 
                 # Get all observations from the episode in one np array (except for
                 # the very last one, which is the final observation not needed for
                 # learning).
-                observations.append(tree.map_structure(_map_fn, episode.get_observations(
-                    indices=slice(-self.num_frames + 1, len(episode)),
-                    neg_indices_left_of_zero=True,
-                    fill=0.0,
-                )))
+                observations.append(
+                    tree.map_structure(
+                        _map_fn,
+                        episode.get_observations(
+                            indices=slice(-self.num_frames + 1, len(episode)),
+                            neg_indices_left_of_zero=True,
+                            fill=0.0,
+                        ),
+                    )
+                )
 
             # Move stack-dimension to the end and concatenate along batch axis.
             input_[SampleBatch.OBS] = tree.map_structure(

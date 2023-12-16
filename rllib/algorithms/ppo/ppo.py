@@ -450,8 +450,8 @@ class PPO(Algorithm):
         # Train
         if self.config._enable_new_api_stack:
             mbs_per_learner = (
-                    self.config.mini_batch_size_per_learner
-                    or self.config.sgd_minibatch_size
+                self.config.mini_batch_size_per_learner
+                or self.config.sgd_minibatch_size
             )
             if (
                 self.config.env_runner_cls is None

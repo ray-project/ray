@@ -176,7 +176,7 @@ class ConnectorV2(abc.ABC):
     #    """
 
 
-#class EnvToModule(ConnectorV2):
+# class EnvToModule(ConnectorV2):
 #    """EnvToModule connector base class with a mandatory RLModule arg for __call__."""
 #    @abc.abstractmethod
 #    def __call__(
@@ -192,7 +192,7 @@ class ConnectorV2(abc.ABC):
 #        """Method for transforming input data from the env into output data."""
 
 
-#class ModuleToEnv(ConnectorV2):
+# class ModuleToEnv(ConnectorV2):
 #    @abc.abstractmethod
 #    def __call__(
 #        self,

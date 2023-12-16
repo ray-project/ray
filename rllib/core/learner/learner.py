@@ -1176,7 +1176,7 @@ class Learner:
 
         # Call the learner connector.
         batch = self._learner_connector(
-            rl_module=self.module["default_policy"], # TODO: make multi-agent capable
+            rl_module=self.module["default_policy"],  # TODO: make multi-agent capable
             input_=batch,
             episodes=episodes,
             # persistent_data=None, # TODO

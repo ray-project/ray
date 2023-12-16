@@ -17,15 +17,20 @@ tune.register_env(
     "env",
     (
         lambda cfg: (
-            MaxAndSkipEnv(NoopResetEnv(NormalizedImageEnv(
-                partial(resize_v1, x_size=64, y_size=64)(
-                    partial(gym.wrappers.TimeLimit, max_episode_steps=108000)(
-                        gym.make("ALE/Pong-v5", **dict(
-                            cfg, **{"render_mode": "rgb_array"}
-                        ))
+            MaxAndSkipEnv(
+                NoopResetEnv(
+                    NormalizedImageEnv(
+                        partial(resize_v1, x_size=64, y_size=64)(
+                            partial(gym.wrappers.TimeLimit, max_episode_steps=108000)(
+                                gym.make(
+                                    "ALE/Pong-v5",
+                                    **dict(cfg, **{"render_mode": "rgb_array"})
+                                )
+                            )
+                        )
                     )
                 )
-            )))
+            )
         )
     ),
 )

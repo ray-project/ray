@@ -4,7 +4,8 @@ from typing import List
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-#from ray.rllib.utils.typing import EpisodeType
+
+# from ray.rllib.utils.typing import EpisodeType
 
 
 @DeveloperAPI
@@ -172,6 +173,7 @@ class ShardEpisodesIterator:
     Yields:
         A sub-list of Episodes with sums of lengths as equal as possible.
     """
+
     def __init__(self, episodes, num_shards: int):
         self._episodes = sorted(episodes, key=len, reverse=True)
         self._num_shards = num_shards
@@ -201,8 +203,10 @@ class ShardEpisodesIterator:
                 # Otherwise, slice the episode
                 remaining_length = self._target_lengths[min_index] - lengths[min_index]
                 if remaining_length > 0:
-                    slice_part, remaining_part = episode[:remaining_length], episode[
-                                                                             remaining_length:]
+                    slice_part, remaining_part = (
+                        episode[:remaining_length],
+                        episode[remaining_length:],
+                    )
                     sublists[min_index].append(slice_part)
                     lengths[min_index] += len(slice_part)
                     self._episodes[episode_index] = remaining_part

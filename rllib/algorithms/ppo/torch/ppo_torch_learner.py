@@ -173,7 +173,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
     def _compute_values(self, batch):
         infos = batch.pop(SampleBatch.INFOS, None)
         batch = convert_to_torch_tensor(batch, device=self._device)
-        #batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
+        # batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
         if infos is not None:
             batch[SampleBatch.INFOS] = infos
 

@@ -16,17 +16,17 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
     """A connector piece that adds previous rewards and actions to the input."""
 
     def __init__(
-            self,
-            *,
-            # Base class constructor args.
-            input_observation_space: Optional[gym.Space],
-            input_action_space: Optional[gym.Space],
-            env: Optional[gym.Env] = None,
-            # Specific prev. r/a args.
-            n_prev_actions: int = 1,
-            n_prev_rewards: int = 1,
-            as_learner_connector: bool = False,
-            **kwargs,
+        self,
+        *,
+        # Base class constructor args.
+        input_observation_space: Optional[gym.Space],
+        input_action_space: Optional[gym.Space],
+        env: Optional[gym.Env] = None,
+        # Specific prev. r/a args.
+        n_prev_actions: int = 1,
+        n_prev_rewards: int = 1,
+        as_learner_connector: bool = False,
+        **kwargs,
     ):
         """Initializes a PrevRewardPrevActionConnector instance.
 

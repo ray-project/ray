@@ -9,7 +9,6 @@ from typing import (
     Optional,
     Set,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 import uuid
@@ -244,7 +243,7 @@ class LearnerGroup:
             a list of dictionaries of results from the updates from the Learner(s).
         """
 
-        #if minibatch_size is not None:
+        # if minibatch_size is not None:
         #    minibatch_size //= len(self._workers)
 
         # Construct a multi-agent batch with only the trainable modules.
@@ -407,9 +406,7 @@ class LearnerGroup:
                 self._worker_manager.foreach_actor_async(
                     [
                         partial(_learner_update, minibatch=minibatch)
-                        for minibatch in ShardBatchIterator(
-                            batch, len(self._workers)
-                        )
+                        for minibatch in ShardBatchIterator(batch, len(self._workers))
                     ],
                     tag=update_tag,
                 )
