@@ -15,18 +15,25 @@ from typing import (
 import uuid
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
     RLMODULE_STATE_DIR_NAME,
 )
-from ray.rllib.core.learner.learner import Learner, LearnerSpec
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator, ShardEpisodesIterator
-from ray.rllib.utils.typing import EpisodeType, ModuleID, ResultDict, ShouldModuleBeUpdatedFn
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.typing import (
+    EpisodeType,
+    ModuleID,
+    ResultDict,
+    RLModuleSpec,
+    ShouldModuleBeUpdatedFn,
+)
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI
@@ -60,26 +67,58 @@ def _default_should_module_be_updated_fn(
 
 @PublicAPI(stability="alpha")
 class LearnerGroup:
-    """Coordinator of Learners.
+    """Coordinator of n (possibly remote) Learner workers.
 
-    Args:
-        learner_spec: The specification for constructing Learners.
-        max_queue_len: The maximum number of batches to queue up if doing async_update
-            If the queue is full itwill evict the oldest batch first.
-
+    Each Learner worker
     """
 
     def __init__(
         self,
-        learner_spec: LearnerSpec,
+        *,
+        config: AlgorithmConfig = None,  # TODO (sven): Make this arg mandatory.
+        module_spec: Optional[RLModuleSpec] = None,
         max_queue_len: int = 20,
+        # Deprecated args.
+        learner_spec=None,
     ):
-        scaling_config = learner_spec.learner_group_scaling_config
-        learner_class = learner_spec.learner_class
+        """Initializes a LearnerGroup instance.
 
-        # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
-        #  explicit.
-        self._is_local = scaling_config.num_workers == 0
+        Args:
+            config: The AlgorithmConfig object to use to configure this LearnerGroup.
+                Call the `resources(num_learner_workers=...)` method on your config to
+                specify the number of learner workers to use.
+                Call the same method with arguments `num_cpus_per_learner_worker` and/or
+                `num_gpus_per_learner_worker` to configure the compute used by each
+                Learner worker in this LearnerGroup.
+                Call the `training(learner_class=...)` method on your config to specify,
+                which exact Learner class to use.
+                Call the `rl_module(rl_module_spec=...)` method on your config to set up
+                the specifics for your RLModule to be used in each Learner.
+            module_spec: If not already specified in `config`, a separate overriding
+                RLModuleSpec may be provided via this argument.
+            max_queue_len: The maximum number of batches to queue up if doing
+                async_update. If the queue is full it will evict the oldest batch first.
+        """
+        if learner_spec is not None:
+            deprecation_warning(
+                old="LearnerGroup(learner_spec=...)",
+                new="config = AlgorithmConfig().[resources|training|rl_module](...); "
+                "LearnerGroup(config=config)",
+                error=True,
+            )
+        if config is None:
+            raise ValueError(
+                "LearnerGroup constructor must be called with a `config` arg! "
+                "Pass in a `ray.rllib.algorithms.algorithm_config::AlgorithmConfig` "
+                "object with the proper settings configured."
+            )
+
+        # scaling_config = learner_spec.learner_group_scaling_config
+        self.config = config
+
+        learner_class = self.config.learner_class
+        module_spec = module_spec or self.config.get_marl_module_spec()
+
         self._learner = None
         self._workers = None
         # If a user calls self.shutdown() on their own then this flag is set to true.
@@ -88,28 +127,43 @@ class LearnerGroup:
         # ray train.
         self._is_shut_down = False
 
+        # The callable to use to figure out whether a (single-agent) sub-module is
+        # trainable (via its ModuleID and the train batch) or not.
         self._should_module_be_updated_fn = _default_should_module_be_updated_fn
 
         # How many timesteps had to be dropped due to a full input queue?
         self._in_queue_ts_dropped = 0
 
-        if self._is_local:
-            self._learner = learner_class(**learner_spec.get_params_dict())
+        # A single local Learner.
+        if not self.is_remote:
+            self._learner = learner_class(config=config, module_spec=module_spec)
             self._learner.build()
             self._worker_manager = None
             self._in_queue = []
+        # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
-                num_workers=scaling_config.num_workers,
-                num_cpus_per_worker=scaling_config.num_cpus_per_worker,
-                num_gpus_per_worker=scaling_config.num_gpus_per_worker,
+                num_workers=self.config.num_learner_workers,
+                # TODO (sven): Cannot set both `num_cpus_per_learner_worker`>1 and
+                #  `num_gpus_per_learner_worker`>0! Users must set one or the other due
+                #  to issues with placement group fragmentation. See
+                #  https://github.com/ray-project/ray/issues/35409 for more details.
+                num_cpus_per_worker=(
+                    self.config.num_cpus_per_learner_worker
+                    if not self.config.num_gpus_per_learner_worker
+                    else 0
+                ),
+                num_gpus_per_worker=self.config.num_gpus_per_learner_worker,
                 max_retries=0,
             )
             backend_executor.start(
                 train_cls=learner_class,
-                train_cls_kwargs=learner_spec.get_params_dict(),
+                train_cls_kwargs={
+                    "config": config,
+                    "module_spec": module_spec,
+                },
             )
             self._backend_executor = backend_executor
 
@@ -140,8 +194,12 @@ class LearnerGroup:
         }
 
     @property
+    def is_remote(self) -> bool:
+        return self.config.num_learner_workers > 0
+
+    @property
     def is_local(self) -> bool:
-        return self._is_local
+        return not self.is_remote
 
     def update(
         self,
@@ -787,7 +845,7 @@ class LearnerGroup:
 
         # No need to do any file transfer operations if we are running training
         # on the experiment head node.
-        if self._is_local:
+        if self.is_local:
             if marl_module_ckpt_dir:
                 # load the MARLModule checkpoint if they were specified
                 self._learner.module.load_state(
@@ -931,9 +989,9 @@ class LearnerGroup:
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""
-        if not self._is_local:
+        if self.is_remote and hasattr(self, "_backend_executor"):
             self._backend_executor.shutdown()
-            self._is_shut_down = True
+        self._is_shut_down = True
 
     def __del__(self):
         if not self._is_shut_down:
