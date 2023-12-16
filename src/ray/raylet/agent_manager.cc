@@ -49,10 +49,24 @@ void AgentManager::StartAgent() {
   ProcessEnvironment env;
   env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
   env.insert({"RAY_RAYLET_PID", std::to_string(getpid())});
+  env.insert({"RAY_enable_pipe_based_agent_to_parent_health_check",
+              RayConfig::instance().enable_pipe_based_agent_to_parent_health_check()
+                  ? "1"
+                  : "0"});
 
   // Launch the process to create the agent.
   std::error_code ec;
-  process_ = Process(argv.data(), nullptr, ec, false, env);
+  // NOTE: we pipe to stdin so that agent can read stdin to detect when
+  // the parent dies. See
+  // https://stackoverflow.com/questions/12193581/detect-death-of-parent-process
+  process_ =
+      Process(argv.data(),
+              nullptr,
+              ec,
+              false,
+              env,
+              /*pipe_to_stdin*/
+              RayConfig::instance().enable_pipe_based_agent_to_parent_health_check());
   if (!process_.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent " << options_.agent_name
