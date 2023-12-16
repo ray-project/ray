@@ -266,13 +266,10 @@ class PPOConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        # TODO (sven): Move to generic AlgorithmConfig.
-        if lr_schedule is not NotProvided:
-            self.lr_schedule = lr_schedule
         if use_critic is not NotProvided:
             self.use_critic = use_critic
-            # TODO (Kourosh) This is experimental. Set learner_hps parameters as
-            # well. Don't forget to remove .use_critic from algorithm config.
+            # TODO (Kourosh) This is experimental.
+            #  Don't forget to remove .use_critic from algorithm config.
         if use_gae is not NotProvided:
             self.use_gae = use_gae
         if lambda_ is not NotProvided:
@@ -295,14 +292,18 @@ class PPOConfig(AlgorithmConfig):
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-        if entropy_coeff_schedule is not NotProvided:
-            self.entropy_coeff_schedule = entropy_coeff_schedule
         if clip_param is not NotProvided:
             self.clip_param = clip_param
         if vf_clip_param is not NotProvided:
             self.vf_clip_param = vf_clip_param
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
+
+        # TODO (sven): Remove these once new API stack is only option for PPO.
+        if lr_schedule is not NotProvided:
+            self.lr_schedule = lr_schedule
+        if entropy_coeff_schedule is not NotProvided:
+            self.entropy_coeff_schedule = entropy_coeff_schedule
 
         return self
 

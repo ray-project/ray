@@ -88,8 +88,8 @@ class PPOLearner(Learner):
             truncateds=self._unpad_data_if_necessary(
                 episode_lens_p1, batch_for_vf[SampleBatch.TRUNCATEDS]
             ),
-            gamma=self.hps.gamma,
-            lambda_=self.hps.lambda_,
+            gamma=self.config.gamma,
+            lambda_=self.config.lambda_,
         )
 
         # Remove the extra timesteps again from vf_preds and value targets. Now that
