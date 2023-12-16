@@ -283,7 +283,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         accidental modification of the internal state.
         """
 
-        # The cluster_config for this scheduling request.
+        # The cluster config for this scheduling request.
         _cluster_config: ClusterConfig
         # The current schedulable nodes (including pending nodes and pending requests).
         _nodes: List[SchedulingNode] = field(default_factory=list)
@@ -364,7 +364,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             the max number of workers in the config.
             Args:
                 nodes: The current existing nodes.
-                cluster_config: The cluster cluster_config.
+                cluster_config: The cluster instances config.
             Returns:
                 A dict of node types and the number of nodes available for launching.
             """

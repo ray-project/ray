@@ -29,7 +29,7 @@ class Provider(Enum):
 
 
 class IConfigReader(ABC):
-    """An interface for reading cluster config.
+    """An interface for reading Autoscaling config.
 
     A utility class that converts the raw autoscaling configs into
     various data structures that are used by the autoscaler.
@@ -58,7 +58,7 @@ class AutoscalingConfig(object):
     ) -> None:
         """
         Args:
-            configs : The node configs.
+            configs : The raw configs dict.
             skip_content_hash :
                 Whether to skip file mounts/ray command hash calculation.
         """
@@ -219,7 +219,7 @@ class AutoscalingConfig(object):
 
     def get_cluster_config(self) -> Optional[ClusterConfig]:
         """
-        Generate the cluster_config from the autoscaling config.
+        Generate the cluster config from the autoscaling config.
         """
         available_node_types = self._configs.get("available_node_types", {})
         if not available_node_types:
