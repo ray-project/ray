@@ -28,6 +28,19 @@ class Provider(Enum):
     LOCAL = 6
 
 
+class IConfigReader(ABC):
+    """An interface for reading cluster config.
+
+    A utility class that converts the raw autoscaling configs into
+    various data structures that are used by the autoscaler.
+    """
+
+    @abstractmethod
+    def get_autoscaling_config(self) -> "AutoscalingConfig":
+        """Returns the autoscaling config."""
+        pass
+
+
 class AutoscalingConfig(object):
     """
     AutoscalingConfig is the helper class to provide autoscaling
@@ -245,19 +258,6 @@ class AutoscalingConfig(object):
             return Provider.KUBERAY
         else:
             return Provider.UNKNOWN
-
-
-class IConfigReader(ABC):
-    """An interface for reading cluster config.
-
-    A utility class that converts the raw autoscaling configs into
-    various data structures that are used by the autoscaler.
-    """
-
-    @abstractmethod
-    def get_autoscaling_config(self) -> AutoscalingConfig:
-        """Returns the autoscaling config."""
-        pass
 
 
 class FileConfigReader(IConfigReader):
