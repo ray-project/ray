@@ -13,23 +13,22 @@ import collections
 import os
 import sys
 import time
-from typing import Tuple
 from tempfile import TemporaryDirectory
+from typing import Tuple
 
 import boto3
 import mlflow
 import pandas as pd
-from ray.train import DataConfig, ScalingConfig
-from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
 import ray
 from ray import train
-from ray.train import Checkpoint, RunConfig
-from ray.data.aggregate import Mean, Std
 from ray.air.integrations.mlflow import MLflowLoggerCallback
+from ray.data.aggregate import Mean, Std
+from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
+from ray.train.torch.torch_trainer import TorchTrainer
 
 
 def make_and_upload_dataset(dir_path):
@@ -275,7 +274,7 @@ def inference(
     dataset.map_batches(
         model_cls,
         fn_constructor_args=[load_model_func],
-        compute=ray.data.ActorPoolStrategy(),
+        concurrency=1,
         batch_size=batch_size,
         batch_format="pandas",
         num_gpus=num_gpus,
@@ -650,7 +649,10 @@ if __name__ == "__main__":
     results = trainer.fit()
 
     with results.checkpoint.as_directory() as tmpdir:
-        state_dict = torch.load(os.path.join(tmpdir, "checkpoint.pt"))
+        state_dict = torch.load(
+            os.path.join(tmpdir, "checkpoint.pt"),
+            map_location="cpu",
+        )
 
     def load_model_func():
         num_layers = config["num_layers"]
