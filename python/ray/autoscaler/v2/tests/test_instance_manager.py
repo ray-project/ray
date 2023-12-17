@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceUtil
+from ray.autoscaler.v2.schema import InvalidInstanceStatusError
 from ray.core.generated.instance_manager_pb2 import Instance
 
 
@@ -32,6 +33,25 @@ def exists_path(
 
 
 class InstanceUtilTest(unittest.TestCase):
+    def test_basic(self):
+        # New instance.
+        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
+        assert instance.instance_id == "i-123"
+        assert instance.instance_type == "type_1"
+        assert instance.launch_request_id == "rq-1"
+        assert instance.status == Instance.QUEUED
+
+        # Set status.
+        InstanceUtil.set_status(instance, Instance.REQUESTED)
+        assert instance.status == Instance.REQUESTED
+
+        # Set status with invalid status.
+        with pytest.raises(InvalidInstanceStatusError):
+            InstanceUtil.set_status(instance, Instance.RAY_RUNNING)
+
+        with pytest.raises(InvalidInstanceStatusError):
+            InstanceUtil.set_status(instance, Instance.UNKNOWN)
+
     def test_transition_graph(self):
         # Assert on each edge in the graph.
         all_status = set(Instance.InstanceStatus.values())
@@ -92,31 +112,30 @@ class InstanceUtilTest(unittest.TestCase):
 
     @patch("time.time_ns")
     def test_status_time(self, mock_time):
-        ns_to_ms = 1000 * 1000
-        mock_time.return_value = 1 * ns_to_ms
-        instance = InstanceUtil.new_instance("i-123", "type_1", {"CPU": 1}, "rq-1")
+        mock_time.return_value = 1
+        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
         # OK
-        assert InstanceUtil.get_status_time_ms(instance, Instance.QUEUED)[0] == 1
+        assert InstanceUtil.get_status_times_ns(instance, Instance.QUEUED)[0] == 1
         # No filter.
-        assert InstanceUtil.get_status_time_ms(
+        assert InstanceUtil.get_status_times_ns(
             instance,
         ) == [1]
 
         # Missing status returns empty list
-        assert InstanceUtil.get_status_time_ms(instance, Instance.REQUESTED) == []
+        assert InstanceUtil.get_status_times_ns(instance, Instance.REQUESTED) == []
 
         # Multiple status.
-        mock_time.return_value = 2 * ns_to_ms
+        mock_time.return_value = 2
         InstanceUtil.set_status(instance, Instance.REQUESTED)
-        mock_time.return_value = 3 * ns_to_ms
+        mock_time.return_value = 3
         InstanceUtil.set_status(instance, Instance.ALLOCATION_FAILED)
-        mock_time.return_value = 4 * ns_to_ms
+        mock_time.return_value = 4
         InstanceUtil.set_status(instance, Instance.QUEUED)
-        assert InstanceUtil.get_status_time_ms(instance, Instance.QUEUED) == [1, 4]
+        assert InstanceUtil.get_status_times_ns(instance, Instance.QUEUED) == [1, 4]
 
     def test_is_cloud_instance_allocated(self):
         all_status = set(Instance.InstanceStatus.values())
-        instance = InstanceUtil.new_instance("i-123", "type_1", {"CPU": 1}, "rq-1")
+        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
         positive_status = {
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
@@ -139,7 +158,7 @@ class InstanceUtilTest(unittest.TestCase):
 
     def test_is_ray_running_reachable(self):
         all_status = set(Instance.InstanceStatus.values())
-        instance = InstanceUtil.new_instance("i-123", "type_1", {"CPU": 1}, "rq-1")
+        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
         positive_status = {
             Instance.QUEUED,
             Instance.REQUESTED,

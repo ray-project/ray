@@ -3,6 +3,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Set
 
+from ray.autoscaler.v2.schema import InvalidInstanceStatusError
 from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateReply,
     GetInstanceManagerStateRequest,
@@ -78,7 +79,6 @@ class InstanceUtil:
     def new_instance(
         instance_id: str,
         instance_type: str,
-        resources: Dict[str, float],
         request_id: str = "",
     ) -> Instance:
         instance = Instance()
@@ -86,7 +86,6 @@ class InstanceUtil:
         instance.instance_id = instance_id
         instance.instance_type = instance_type
         instance.launch_request_id = request_id
-        instance.total_resources.update(resources)
         instance.status = Instance.QUEUED
         InstanceUtil._record_status_transition(
             instance, Instance.QUEUED, "created from InstanceUtil"
@@ -140,14 +139,16 @@ class InstanceUtil:
             details: The details of the transition.
 
         Raises:
-            ValueError if the transition is not allowed.
+            InvalidInstanceStatusError if the transition is not allowed.
         """
         if (
             new_instance_status
             not in InstanceUtil.get_valid_transitions()[instance.status]
         ):
-            raise ValueError(
-                f"Invalid transition from {instance.status} to {new_instance_status}"
+            raise InvalidInstanceStatusError(
+                instance_id=instance.instance_id,
+                cur_status=instance.status,
+                new_status=new_instance_status,
             )
         instance.status = new_instance_status
         InstanceUtil._record_status_transition(instance, new_instance_status, details)
@@ -162,11 +163,11 @@ class InstanceUtil:
             instance: The instance to update.
             status: The new status to transition to.
         """
-        now_ms = time.time_ns() // 1000000
+        now_ns = time.time_ns()
         instance.status_history.append(
             Instance.StatusHistory(
                 instance_status=status,
-                timestamp_ms=now_ms,
+                timestamp_ns=now_ns,
                 details=details,
             )
         )
@@ -178,21 +179,32 @@ class InstanceUtil:
         return {
             Instance.QUEUED: {
                 # Cloud provider requested to launch a node for the instance.
+                # This happens when the a launch request is made to the node provider.
                 Instance.REQUESTED
             },
             Instance.REQUESTED: {
                 # Cloud provider allocated a cloud node for the instance.
+                # This happens when the cloud node first appears in the list of running
+                # cloud nodes from the cloud node provider.
                 Instance.ALLOCATED,
-                # Cloud provider failed to allocate one. Either timeout or
-                # failed immediately.
+                # Cloud provider fails to allocate one. Either as a timeout or
+                # the launch request fails immediately.
                 Instance.ALLOCATION_FAILED,
             },
             Instance.ALLOCATED: {
                 # Ray needs to be install and launch on the provisioned cloud node.
+                # This happens when the cloud node is allocated, and the autoscaler
+                # is responsible for installing and launching ray on the cloud node.
+                # For node provider that manages the ray installation and launching,
+                # this state is skipped.
                 Instance.RAY_INSTALLING,
                 # Ray is already installed and running on the provisioned cloud node.
+                # This happens when a ray node joins the ray cluster, and the instance
+                # is discovered in the set of running ray nodes from the Ray cluster.
                 Instance.RAY_RUNNING,
                 # Instance is requested to be stopped, e.g. instance leaked.
+                # This happens when the autoscaler is terminating the ray process on
+                # the instance, e.g. idle termination.
                 Instance.STOPPING,
                 # Cloud node somehow failed.
                 Instance.STOPPED,
@@ -243,12 +255,12 @@ class InstanceUtil:
         }
 
     @staticmethod
-    def get_status_time_ms(
+    def get_status_times_ns(
         instance: Instance,
         select_instance_status: Optional["Instance.InstanceStatus"] = None,
     ) -> List[int]:
         """
-        Returns the timestamp of the instance status update.
+        Returns a list of timestamps of the instance status update.
 
         Args:
             instance: The instance.
@@ -265,6 +277,6 @@ class InstanceUtil:
                 and status_update.instance_status != select_instance_status
             ):
                 continue
-            ts_list.append(status_update.timestamp_ms)
+            ts_list.append(status_update.timestamp_ns)
 
         return ts_list

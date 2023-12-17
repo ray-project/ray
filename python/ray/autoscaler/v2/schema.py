@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
 
+from ray.core.generated.instance_manager_pb2 import Instance
+
 # TODO(rickyx): once we have graceful shutdown, we could populate
 # the failure detail with the actual termination message. As of now,
 # we will use a more generic message to include cases such as:
@@ -213,3 +215,21 @@ class ClusterStatus:
     # TODO(rickyx): we don't show infeasible requests as of now.
     # (They will just be pending forever as part of the demands)
     # We should show them properly in the future.
+
+
+@dataclass
+class InvalidInstanceStatusError(ValueError):
+    """Raised when an instance has an invalid status."""
+
+    # The instance id.
+    instance_id: str
+    # The current status of the instance.
+    cur_status: Instance.InstanceStatus
+    # The new status to be set to.
+    new_status: Instance.InstanceStatus
+
+    def __str__(self):
+        return (
+            f"Instance {self.instance_id} with current status {self.cur_status} "
+            f"cannot be set to {self.new_status}"
+        )

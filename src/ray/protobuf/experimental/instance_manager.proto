@@ -98,8 +98,8 @@ message Instance {
   // The status history of the instance.
   message StatusHistory {
     InstanceStatus instance_status = 1;
-    // Unix timestamp of the last time the instance get modified in milliseconds.
-    int64 timestamp_ms = 2;
+    // Unix timestamp of the last time the instance get modified in nanoseconds.
+    int64 timestamp_ns = 2;
     // The details of the status change if any.
     string details = 3;
   }
