@@ -207,9 +207,8 @@ class InstanceUtil:
                 # This happens when a ray node joins the ray cluster, and the instance
                 # is discovered in the set of running ray nodes from the Ray cluster.
                 Instance.RAY_RUNNING,
-                # Instance is requested to be stopped, e.g. instance leaked.
-                # This happens when the autoscaler is terminating the ray process on
-                # the instance, e.g. idle termination.
+                # Instance is requested to be stopped, e.g. instance leaked: no matching
+                # Instance with the same type is found in the autoscaler's state.
                 Instance.STOPPING,
                 # Cloud node somehow failed.
                 Instance.STOPPED,
