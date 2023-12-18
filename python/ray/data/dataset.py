@@ -1885,7 +1885,7 @@ class Dataset:
             # Gather read task names from input blocks of unioned Datasets,
             # and concat them before passing to resulting LazyBlockList
             read_task_names = []
-            self_read_name = self._plan._in_blocks._read_stage_name or "Read"
+            self_read_name = self._plan._in_blocks._read_operator_name or "Read"
             read_task_names.append(self_read_name)
             other_read_names = [
                 o._plan._in_blocks._read_stage_name or "Read" for o in other

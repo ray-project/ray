@@ -370,7 +370,7 @@ def read_datasource(
 
     block_list = LazyBlockList(
         read_tasks,
-        read_stage_name=read_stage_name,
+        read_operator_name=read_stage_name,
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )
