@@ -31,24 +31,28 @@ class ConnectorV2(abc.ABC):
     connectors used in Learner pipelines). From this input data, a ConnectorV2 then
     performs a transformation step.
 
-    There are 3 types of pipelines a ConnectorV2 can belong to:
-    1) env-to-module: The connector transforms envrionment data before it gets to the
-    RLModule. This type of pipeline is used by an EnvRunner for transforming
-    env output data to RLModule readable data (for the next RLModule forward pass).
-    2) module-to-env: The connector transforms RLModule outputs before they are sent
-    back to the environment (as actions). This type of pipeline is used by an EnvRunner
-    to transform RLModule output data to env readable actions (for the next
-    `env.step()` call).
-    3) learner pipeline: The connector transforms data coming directly from an
-    environment sampling step or a replay buffer and will be sent into the RLModule's
-    `forward_train()` method afterwards to compute the loss inputs. This type of
-    pipeline is used by a Learner to transform raw training data (a batch or a list of
-    episodes) to RLModule readable training data (for the next RLModule
-    `forward_train()` call).
+    There are 3 types of pipelines any ConnectorV2 piece can belong to:
+    1) EnvToModulePipeline: The connector transforms environment data before it gets to
+    the RLModule. This type of pipeline is used by an EnvRunner for transforming
+    env output data into RLModule readable data (for the next RLModule forward pass).
+    For example, such a pipeline would include observation postprocessors, -filters,
+    or any RNN preparation code related to time-sequences and zero-padding.
+    2) ModuleToEnvPipeline: This type of pipeline is used by an
+    EnvRunner to transform RLModule output data to env readable actions (for the next
+    `env.step()` call). For example, in case the RLModule only outputs action
+    distribution parameters (but not actual actions), the ModuleToEnvPipeline would
+    take care of sampling the actions to be sent back to the end from the
+    resulting distribution (made deterministic if exploration is off).
+    3) LearnerConnectorPipeline: This connector pipeline type transforms data coming
+    from an `EnvRunner.sample()` call or a replay buffer and will then be sent into the
+    RLModule's `forward_train()` method in order to compute loss function inputs.
+    This type of pipeline is used by a Learner worker to transform raw training data
+    (a batch or a list of episodes) to RLModule readable training data (for the next
+    RLModule `forward_train()` call).
 
     Some connectors might be stateful, for example for keeping track of observation
     filtering stats (mean and stddev values). Any Algorithm, which uses connectors is
-    responsible for frequenly synchronizing the states of all connectors and connector
+    responsible for frequently synchronizing the states of all connectors and connector
     pipelines between the EnvRunners (owning the env-to-module and module-to-env
     pipelines) and the Learners (owning the Learner pipelines).
     """
@@ -62,48 +66,82 @@ class ConnectorV2(abc.ABC):
 
     @property
     def observation_space(self):
-        return self.input_observation_space
+        """Getter for our (output) observation space.
+
+        Logic: Use user provided space (if set via `observation_space` setter)
+        otherwise, use the same as the input space, assuming this connector piece
+        does not alter the space.
+        """
+        return self._observation_space or self.input_observation_space
 
     @observation_space.setter
     def observation_space(self, value):
-        self.observation_space = value
+        """Setter for our (output) observation space."""
+        self._observation_space = value
 
     @property
     def action_space(self):
-        return self.input_action_space
+        """Getter for our (output) action space.
+
+        Logic: Use user provided space (if set via `action_space` setter)
+        otherwise, use the same as the input space, assuming this connector piece
+        does not alter the space.
+        """
+        return self._action_space or self.input_action_space
 
     @action_space.setter
     def action_space(self, value):
-        self.action_space = value
+        """Setter for our (output) action space."""
+        self._action_space = value
 
     def __init__(
         self,
         *,
-        input_observation_space: gym.Space,
-        input_action_space: gym.Space,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         env: Optional[gym.Env] = None,
         **kwargs,
     ):
         """Initializes a ConnectorV2 instance.
 
         Args:
-            input_observation_space: The (mandatory) input observation space. This
+            input_observation_space: An optional input observation space. This
                 is the space coming from a previous connector piece in the
                 (env-to-module or learner) pipeline or it is directly defined within
-                the used gym.Env.
-            input_action_space: The (mandatory) input action space. This
+                the used gym.Env. If None, `env` must be provided.
+            input_action_space: An optional input action space. This
                 is the space coming from a previous connector piece in the
                 (module-to-env) pipeline or it is directly defined within the used
-                gym.Env.
+                gym.Env. If None, `env` must be provided.
             env: An optional env object that the connector might need to know about.
                 Note that normally, env-to-module and module-to-env connectors get this
                 information at construction time, but learner connectors won't (b/c
                 Learner objects don't carry an environment object).
             **kwargs: Forward API-compatibility kwargs.
         """
+        # Infer spaces from `env` argument if spaces are not explicitly provided.
+        if input_observation_space is None or input_action_space is None:
+            if env is None:
+                raise ValueError(
+                    "`env` argument must be provided if `input_observation_space` or "
+                    "`input_action_space` are None!"
+                )
+        if input_observation_space is None:
+            input_observation_space = (
+                env.single_observation_space if isinstance(env, gym.vector.Env)
+                else env.observation_space
+            )
+        if input_action_space is None:
+            input_action_space = (
+                env.single_action_space if isinstance(env, gym.vector.Env)
+                else env.action_space
+            )
         self.input_observation_space = input_observation_space
         self.input_action_space = input_action_space
         self.env = env
+
+        self._observation_space = None
+        self._action_space = None
 
     @abc.abstractmethod
     def __call__(
@@ -140,25 +178,45 @@ class ConnectorV2(abc.ABC):
             The transformed connector output abiding to `self.output_type`.
         """
 
-    def __str__(self, indentation: int = 0):
-        return " " * indentation + self.__class__.__name__
-
     def get_state(self) -> Dict[str, Any]:
-        """Returns the current state of this ConnectorV2.
-
-        Used for checkpointing (connectors may be stateful) as well as synchronization
-        between connectors that are run on the (distributed) EnvRunners vs those that
-        run on the (distributed) Learners.
+        """Returns the current state of this ConnectorV2 as a state dict.
 
         Returns:
-            A dict mapping str keys to state information.
+            A state dict mapping any string keys to their (state-defining) values.
         """
         return {}
 
     def set_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of this connector to the provided one.
+        """Sets the state of this ConnectorV2 to the given value.
 
         Args:
-            state: The new state to set this connector to.
+            state: The state dict to define this ConnectorV2's new state.
         """
         pass
+
+    def reset_state(self) -> None:
+        """Resets the state of this ConnectorV2 to some initial value.
+
+        Note that this may NOT be the exact state that this ConnectorV2 was originally
+        constructed with.
+        """
+        pass
+
+    @staticmethod
+    def merge_states(states: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Computes a resulting state given a list of other state dicts.
+
+        Algorithms should use this method for synchronizing states between connectors
+        running on workers (of the same type, e.g. EnvRunner workers).
+
+        Args:
+            states: The list of n other ConnectorV2 states to merge into a single
+                resulting state.
+
+        Returns:
+            The resulting state dict.
+        """
+        return {}
+
+    def __str__(self, indentation: int = 0):
+        return " " * indentation + self.__class__.__name__

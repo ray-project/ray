@@ -197,7 +197,7 @@ class ConnectorPipelineV2(ConnectorV2):
         return ConnectorPipelineV2.__name__, children
 
     @override(ConnectorV2)
-    def set_state(self, state: Dict[str, Any]):
+    def set_state(self, state: Dict[str, Any]) -> None:
         connectors = []
         for state in params:
             try:
@@ -265,10 +265,12 @@ class ConnectorPipelineV2(ConnectorV2):
             self.output_type = self.connectors[-1].output_type
             # TODO (sven): Create some examples for pipelines, in which the spaces
             #  are changed several times by the individual pieces.
-            # self.input_observation_space = self.connectors[0].input_observation_space
-            # self.input_action_space = self.connectors[0].input_action_space
-            # self.observation_space = self.connectors[-1].observation_space
-            # self.action_space = self.connectors[-1].action_space
+            self.input_observation_space = self.connectors[0].input_observation_space
+            self.input_action_space = self.connectors[0].input_action_space
+            self._observation_space = self.connectors[-1].observation_space
+            self._action_space = self.connectors[-1].action_space
         else:
             self.input_type = None
             self.output_type = None
+            self._observation_space = None
+            self._action_space = None
