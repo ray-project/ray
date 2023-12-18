@@ -40,8 +40,9 @@ class _MergeTaskSchedule:
     def __repr__(self):
         return (
             f"\tnum merge tasks per round: {self.num_merge_tasks_per_round}\n"
-            f"\tmerge partition size: {self.num_reducers_per_merger}\n"
-            f"\tpartitions with extra task: {self._num_mergers_with_extra_reducer}"
+            f"\tnum reduce tasks per merge task: {self.num_reducers_per_merger}\n"
+            "\tnum merge tasks with extra reduce task: "
+            f"{self._num_mergers_with_extra_reducer}"
         )
 
     def get_num_reducers_per_merge_idx(self, merge_idx: int) -> Optional[int]:
@@ -115,7 +116,12 @@ class _PushBasedShuffleStage:
         num_map_tasks_per_round: int,
         merge_task_placement: List[str],
     ):
+        # The number of rounds of map-merge tasks. Reducer tasks are given the
+        # outputs of the merge tasks as inputs. Reducer tasks receive one input
+        # per round.
         self.num_rounds = num_rounds
+        # The number of map tasks per round of map-merge tasks. The map task
+        # produces one output per merge task in the same round.
         self.num_map_tasks_per_round = num_map_tasks_per_round
 
         node_strategies = {
@@ -140,8 +146,9 @@ class _PushBasedShuffleStage:
     def __repr__(self):
         return (
             "\n"
-            f"num map tasks per round: {self.num_map_tasks_per_round}\n"
-            f"num rounds: {self.num_rounds}\n"
+            "num map tasks per round (num args per merge task): "
+            f"{self.num_map_tasks_per_round}\n"
+            f"num rounds (num args per reduce task): {self.num_rounds}\n"
             "merge task placement: \n"
             f"{self.merge_schedule}"
         )
@@ -292,6 +299,11 @@ class _MergeStageIterator:
         return metadata_ref
 
     def pop_merge_results(self) -> List[List[ObjectRef]]:
+        """Return a nested list of merge task results. The list at index i
+        stores the outputs of the i-th merge task submitted during each
+        map-merge round. Each merge task returns a list of outputs because it
+        may produce outputs for multiple downstream reduce tasks.
+        """
         all_merge_results = self._all_merge_results
         self._all_merge_results = []
         return all_merge_results
@@ -305,6 +317,7 @@ class _ReduceStageIterator:
         all_merge_results: List[List[List[ObjectRef]]],
         ray_remote_args,
         reduce_args: List[Any],
+        _debug_limit_execution_to_num_blocks: Optional[int],
     ):
         self._shuffle_reduce = shuffle_reduce
         self._stage = stage
@@ -320,7 +333,16 @@ class _ReduceStageIterator:
                 merge_results.pop(0) for merge_results in all_merge_results[merge_idx]
             ]
             self._reduce_arg_blocks.append((reduce_idx, reduce_arg_blocks))
+
         assert len(self._reduce_arg_blocks) == stage.merge_schedule.output_num_blocks
+
+        if _debug_limit_execution_to_num_blocks is not None:
+            self._reduce_arg_blocks = self._reduce_arg_blocks[
+                :_debug_limit_execution_to_num_blocks
+            ]
+            logger.get_logger().info(
+                f"Limiting execution to {len(self._reduce_arg_blocks)} reduce tasks"
+            )
 
         for merge_idx, merge_results in enumerate(all_merge_results):
             assert all(len(merge_result) == 0 for merge_result in merge_results), (
@@ -398,6 +420,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: int = 2,
+        _debug_limit_execution_to_num_blocks: int = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
         logger.get_logger().info("Using experimental push-based shuffle.")
         # TODO: Preemptively clear the blocks list since we will incrementally delete
@@ -457,6 +480,11 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             num_returns=1 + stage.merge_schedule.num_merge_tasks_per_round,
         )
 
+        if _debug_limit_execution_to_num_blocks is not None:
+            input_blocks_list = input_blocks_list[:_debug_limit_execution_to_num_blocks]
+            logger.get_logger().info(
+                f"Limiting execution to {len(input_blocks_list)} map tasks"
+            )
         map_stage_iter = _MapStageIterator(
             input_blocks_list,
             shuffle_map,
@@ -502,6 +530,14 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 break
         all_merge_results = merge_stage_iter.pop_merge_results()
 
+        if _debug_limit_execution_to_num_blocks is not None:
+            for merge_idx in range(len(all_merge_results)):
+                while len(all_merge_results[merge_idx]) < stage.num_rounds:
+                    # Repeat the first merge task's results.
+                    all_merge_results[merge_idx].append(
+                        all_merge_results[merge_idx][0][:]
+                    )
+
         # Execute and wait for the reduce stage.
         bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
         assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
@@ -514,6 +550,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             all_merge_results,
             reduce_ray_remote_args,
             self._exchange_spec._reduce_args,
+            _debug_limit_execution_to_num_blocks,
         )
 
         max_reduce_tasks_in_flight = output_num_blocks
@@ -549,6 +586,11 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         if sorted_blocks:
             _, new_blocks, reduce_stage_metadata = zip(*sorted_blocks)
         del sorted_blocks
+
+        if _debug_limit_execution_to_num_blocks is not None:
+            output_num_blocks = min(
+                _debug_limit_execution_to_num_blocks, output_num_blocks
+            )
 
         assert (
             len(new_blocks) == output_num_blocks

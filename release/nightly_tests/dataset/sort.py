@@ -101,6 +101,7 @@ if __name__ == "__main__":
         type=int,
     )
     parser.add_argument("--use-polars", action="store_true")
+    parser.add_argument("--limit-num-blocks", type=int, default=None)
 
     args = parser.parse_args()
 
@@ -129,9 +130,14 @@ if __name__ == "__main__":
         )
 
         if args.shuffle:
-            ds = ds.random_shuffle()
+            ds = ds.random_shuffle(
+                _debug_limit_shuffle_execution_to_num_blocks=args.limit_num_blocks
+            )
         else:
-            ds = ds.sort(key="c_0")
+            ds = ds.sort(
+                key="c_0",
+                _debug_limit_shuffle_execution_to_num_blocks=args.limit_num_blocks,
+            )
         ds = ds.materialize()
         ds_stats = ds.stats()
 
