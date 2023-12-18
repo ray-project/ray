@@ -54,6 +54,21 @@ adduser --home /home/forge --uid 2000 forge --gid 100
 usermod -a -G docker0 forge
 usermod -a -G docker forge
 
+if [[ "$(uname -i)" == "x86_64" ]]; then
+  curl -sfL "https://github.com/kubernetes-sigs/kind/releases/download/v0.11.1/kind-linux-amd64" -o /usr/local/bin/kind
+  chmod +x /usr/local/bin/kind
+
+  curl -sfL "https://dl.k8s.io/release/v1.28.4/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl
+  chmod +x /usr/local/bin/kubectl
+
+  curl -sfL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.2.1/kustomize_v5.2.1_linux_amd64.tar.gz" \
+      | tar -xzf - -C /usr/local/bin kustomize
+
+  mkdir -p /usr/local/helm
+  curl -sfL "https://get.helm.sh/helm-v3.12.2-linux-amd64.tar.gz" | tar -xzf - -C /usr/local/helm linux-amd64/helm
+  ln -s /usr/local/helm/linux-amd64/helm /usr/local/bin/helm
+fi
+
 EOF
 
 USER forge

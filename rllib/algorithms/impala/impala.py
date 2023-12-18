@@ -1,5 +1,4 @@
 import copy
-import dataclasses
 from functools import partial
 import logging
 import platform
@@ -15,11 +14,6 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaLearnerHyperparameters,
-    _reduce_impala_results,
-)
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
@@ -63,6 +57,9 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 logger = logging.getLogger(__name__)
+
+
+LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
 class ImpalaConfig(AlgorithmConfig):
@@ -432,32 +429,8 @@ class ImpalaConfig(AlgorithmConfig):
                     f"than or equal to `train_batch_size` ({self.train_batch_size})!"
                 )
 
-    @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> ImpalaLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        learner_hps = ImpalaLearnerHyperparameters(
-            rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
-            discount_factor=self.gamma,
-            entropy_coeff=self.entropy_coeff,
-            vf_loss_coeff=self.vf_loss_coeff,
-            vtrace_clip_rho_threshold=self.vtrace_clip_rho_threshold,
-            vtrace_clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
-            **dataclasses.asdict(base_hps),
-        )
-        # TODO: We currently do not use the `recurrent_seq_len` property anyways.
-        #  We should re-think the handling of RNN/SEQ_LENs/etc.. once we start
-        #  supporting them in RLModules and then revisit this check here.
-        #  Also, such a check should be moved into `IMPALAConfig.validate()`.
-        assert (learner_hps.rollout_frag_or_episode_len is None) != (
-            learner_hps.recurrent_seq_len is None
-        ), (
-            "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
-            "None in ImpalaLearnerHyperparameters!"
-        )
-        return learner_hps
-
-    # TODO (sven): Make these get_... methods all read-only @properties instead.
-    def get_replay_ratio(self) -> float:
+    @property
+    def replay_ratio(self) -> float:
         """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
 
         Formula: ratio = 1 / proportion
@@ -494,6 +467,8 @@ class ImpalaConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
@@ -671,7 +646,7 @@ class Impala(Algorithm):
                     if self.config.replay_buffer_num_slots > 0
                     else 1
                 ),
-                replay_ratio=self.config.get_replay_ratio(),
+                replay_ratio=self.config.replay_ratio,
                 replay_mode=ReplayMode.LOCKSTEP,
             )
             self._aggregator_actor_manager = None
@@ -1281,7 +1256,7 @@ class AggregatorWorker(FaultAwareApply):
                 if self.config.replay_buffer_num_slots > 0
                 else 1
             ),
-            replay_ratio=self.config.get_replay_ratio(),
+            replay_ratio=self.config.replay_ratio,
             replay_mode=ReplayMode.LOCKSTEP,
         )
 
@@ -1293,3 +1268,23 @@ class AggregatorWorker(FaultAwareApply):
 
     def get_host(self) -> str:
         return platform.node()
+
+
+def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
+    """Reduce/Aggregate a list of results from Impala Learners.
+
+    Average the values of the result dicts. Add keys for the number of agent and env
+    steps trained (on all modules).
+
+    Args:
+        results: result dicts to reduce.
+
+    Returns:
+        A reduced result dict.
+    """
+    result = tree.map_structure(lambda *x: np.mean(x), *results)
+    agent_steps_trained = sum(r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results)
+    env_steps_trained = sum(r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results)
+    result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = agent_steps_trained
+    result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = env_steps_trained
+    return result
