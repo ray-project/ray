@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 import ray
 from ray.data._internal.execution.backpressure_policy import (
@@ -409,6 +410,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         )
 
 
+@pytest.mark.skip("Re-enable after enabling StreamingOutputBackpressurePolicy.")
 def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F811
     """Test backpressure on a synthetic large-scale workload."""
     # The cluster has 10 CPUs and 200MB object store memory.
