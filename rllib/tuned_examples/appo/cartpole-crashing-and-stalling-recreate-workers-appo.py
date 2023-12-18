@@ -15,7 +15,7 @@ tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
 
 
 stop = {
-    "evaluation/sampler_results/episode_reward_mean": 400.0,
+    "evaluation/episode_reward_mean": 400.0,
     "num_env_steps_sampled": 250000,
 }
 
