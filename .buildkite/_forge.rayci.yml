@@ -36,6 +36,7 @@ steps:
       - python
       - docker
       - tune
+      - serve
     wanda: ci/docker/ray.cpu.base.wanda.yaml
     matrix:
       - "3.8"

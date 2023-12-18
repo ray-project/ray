@@ -250,6 +250,7 @@ py_test_module_list(
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
+    "test_channel.py",
     "test_concurrency_group.py",
     "test_component_failures.py",
     "test_cross_language.py",
@@ -374,6 +375,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_actor_retry.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_failure.py",
@@ -491,6 +493,14 @@ py_test(
     deps = ["//:ray_lib", ":conftest"]
 )
 
+py_test(
+    name = "test_runtime_env_container",
+    size = "large",
+    srcs = ["test_runtime_env_container.py"],
+    tags = ["exclusive", "team:core", "container"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 # TODO(barakmich): aws/ might want its own buildfile, or
 #    py_test_module_list should support subdirectories.
 py_test(
@@ -529,6 +539,14 @@ py_test(
     name = "vsphere/test_vsphere_node_provider",
     size = "small",
     srcs = ["vsphere/test_vsphere_node_provider.py"],
+    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "vsphere/test_vsphere_sdk_provider",
+    size = "small",
+    srcs = ["vsphere/test_vsphere_sdk_provider.py"],
     tags = ["exclusive", "small_size_python_tests", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )

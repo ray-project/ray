@@ -91,7 +91,8 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
     const std::vector<ObjectID> &ids, int timeout_ms) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::vector<std::shared_ptr<::ray::RayObject>> results;
-  ::ray::Status status = core_worker.Get(ids, timeout_ms, &results);
+  ::ray::Status status = core_worker.Get(
+      ids, timeout_ms, /*is_experimental_mutable_object=*/false, &results);
   if (!status.ok()) {
     if (status.IsTimedOut()) {
       throw RayTimeoutException("Get object error:" + status.message());

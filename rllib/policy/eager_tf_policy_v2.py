@@ -1033,9 +1033,8 @@ class EagerTFPolicyV2(Policy):
                     episodes=episodes,
                 )
             else:
+                # Try `action_distribution_fn`.
                 if is_overridden(self.action_distribution_fn):
-                    # Try new action_distribution_fn signature, supporting
-                    # state_batches and seq_lens.
                     (
                         dist_inputs,
                         self.dist_class,

@@ -38,11 +38,10 @@ scipy
 colorful
 pyyaml
 rich
-gpustat>=1.0.0
 opentelemetry-sdk
 fastapi
 gymnasium==0.28.1
-virtualenv<20.21.1,>=20.0.24
+virtualenv!=20.21.1,>=20.0.24
 opentelemetry-api
 opencensus
 aiohttp_cors

@@ -1,5 +1,6 @@
 import asyncio
 import time
+import urllib
 from typing import Dict, Optional, List
 from pprint import pprint
 
@@ -41,7 +42,7 @@ endpoints = [
     "/api/cluster_status",
     "/events",
     "/api/jobs/",
-    "/log_index",
+    "/api/v0/logs",
     "/api/prometheus_health",
 ]
 
@@ -60,9 +61,22 @@ class DashboardTester:
 
     async def ping(self, endpoint):
         """Synchronously call an endpoint."""
+        node_id = ray.get_runtime_context().get_node_id()
         while True:
             start = time.monotonic()
-            resp = requests.get(self.dashboard_url + endpoint, timeout=30)
+            # for logs API, we should append node ID and glob.
+            if "/api/v0/logs" in endpoint:
+                glob_filter = "*"
+
+                options_dict = {"node_id": node_id, "glob": glob_filter}
+                url = (
+                    f"{self.dashboard_url}{endpoint}?"
+                    f"{urllib.parse.urlencode(options_dict)}"
+                )
+            else:
+                url = f"{self.dashboard_url}{endpoint}"
+
+            resp = requests.get(url, timeout=30)
             elapsed = time.monotonic() - start
 
             if resp.status_code == 200:
