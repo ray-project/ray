@@ -230,6 +230,7 @@ class InvalidInstanceStatusError(ValueError):
 
     def __str__(self):
         return (
-            f"Instance {self.instance_id} with current status {self.cur_status} "
-            f"cannot be set to {self.new_status}"
+            f"Instance {self.instance_id} with current status "
+            f"{Instance.InstanceStatus.Name(self.cur_status)} "
+            f"cannot be set to {Instance.InstanceStatus.Name(self.new_status)}"
         )
