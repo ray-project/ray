@@ -122,9 +122,7 @@ def concat_aligned(
 
 
 @PublicAPI
-def convert_to_numpy(
-    x: TensorStructType, reduce_type: bool = True, reduce_floats=DEPRECATED_VALUE
-):
+def convert_to_numpy(x: TensorStructType, reduce_type: bool = True) -> TensorStructType:
     """Converts values in `stats` to non-Tensor numpy or python types.
 
     Args:
@@ -138,9 +136,6 @@ def convert_to_numpy(
         A new struct with the same structure as `x`, but with all
         values converted to numpy arrays (on CPU).
     """
-
-    if reduce_floats != DEPRECATED_VALUE:
-        deprecation_warning(old="reduce_floats", new="reduce_type", error=True)
 
     # The mapping function used to numpyize torch/tf Tensors (and move them
     # to the CPU beforehand).

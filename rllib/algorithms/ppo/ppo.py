@@ -18,7 +18,6 @@ import tree
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -34,7 +33,6 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
     ALL_MODULES,
@@ -465,13 +463,6 @@ class PPO(Algorithm):
             else:
                 weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
-
-        # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
-        # states back to all workers.
-        with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
-            # Merge connector states from all EnvRunners and broadcast updated
-            # states back to all EnvRunners.
-            self.workers.sync_connectors()
 
         kl_dict = {}
         if self.config.use_kl_loss:

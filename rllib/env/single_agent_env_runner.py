@@ -14,7 +14,6 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorStructType, TensorType
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -209,7 +208,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     explore=explore,
                     # persistent_data=None, #TODO
                 )
-                to_env = convert_to_numpy(to_env)
                 actions = to_env.pop(SampleBatch.ACTIONS)
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
@@ -351,7 +349,6 @@ class SingleAgentEnvRunner(EnvRunner):
                     episodes=self._episodes,
                     explore=explore,
                 )
-                to_env = convert_to_numpy(to_env)
                 actions = to_env.pop(SampleBatch.ACTIONS)
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
@@ -481,51 +478,6 @@ class SingleAgentEnvRunner(EnvRunner):
     def stop(self):
         # Close our env object via gymnasium's API.
         self.env.close()
-
-    # TODO (sven): Replace by default "to-env" connector.
-    def _sample_actions_if_necessary(
-        self, fwd_out: TensorStructType, explore: bool = True
-    ) -> Tuple[np.array, np.array]:
-        """Samples actions from action distribution if necessary."""
-
-        # TODO (sven): Move this into connector pipeline (if no
-        # "actions" key in returned dict, sample automatically as
-        # the last piece of the connector pipeline; basically do
-        # the same thing that the Policy is currently doing, but
-        # using connectors)
-        # If actions are provided just load them.
-        if SampleBatch.ACTIONS in fwd_out.keys():
-            actions = convert_to_numpy(fwd_out[SampleBatch.ACTIONS])
-            # TODO (simon, sven): Some algos do not return logps.
-            action_logp = convert_to_numpy(fwd_out[SampleBatch.ACTION_LOGP])
-        # If no actions are provided we need to sample them.
-        else:
-            # Explore or not.
-            if explore:
-                action_dist_cls = self.module.get_exploration_action_dist_cls()
-            else:
-                action_dist_cls = self.module.get_inference_action_dist_cls()
-            # Generate action distribution and sample actions.
-            action_dist = action_dist_cls.from_logits(
-                fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-            )
-            actions = action_dist.sample()
-            # We need numpy actions for gym environments.
-            action_logp = convert_to_numpy(action_dist.logp(actions))
-            actions = convert_to_numpy(actions)
-            # Squeeze for the last dimension if necessary.
-            # TODO (sven, simon): This is not optimal here. But there seems
-            # to be some differences between MultiDiscrete action spaces
-            # and Box action spaces for `gym.VectorEnv`.
-            # For the former we have to squeeze away the last action
-            # dimension delivered from the action_dist and for the latter
-            # we should not. This might be connected to the way how the
-            # `action_space` is defined for the `RLModule` in the
-            # `__init__()` of this class here.
-            # if actions.ndim > len(self.env.action_space.shape):
-            #    actions = actions.squeeze(axis=-1)
-
-        return actions, action_logp
 
     def _convert_from_numpy(self, array: np.array) -> TensorType:
         """Converts a numpy array to a framework-specific tensor."""

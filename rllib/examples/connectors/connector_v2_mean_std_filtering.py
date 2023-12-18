@@ -1,7 +1,4 @@
 import argparse
-from functools import partial
-
-import gymnasium as gym
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
@@ -30,13 +27,13 @@ parser.add_argument(
     "be achieved within --stop-timesteps AND --stop-iters.",
 )
 parser.add_argument(
-    "--stop-iters", type=int, default=2000, help="Number of iterations to train."
+    "--stop-iters", type=int, default=500, help="Number of iterations to train."
 )
 parser.add_argument(
-    "--stop-timesteps", type=int, default=2000000, help="Number of timesteps to train."
+    "--stop-timesteps", type=int, default=500000, help="Number of timesteps to train."
 )
 parser.add_argument(
-    "--stop-reward", type=float, default=20.0, help="Reward at which we stop training."
+    "--stop-reward", type=float, default=-200.0, help="Reward at which we stop training."
 )
 
 
@@ -58,9 +55,10 @@ if __name__ == "__main__":
             # ... new EnvRunner and our frame stacking env-to-module connector.
             env_runner_cls=SingleAgentEnvRunner,
             # Define our custom connector pipeline.
-            # Returning a list of an `EnvToModulePipeline` directly would also be ok.
-            # e.g. `lambda: [MeanStdFilter()]`
-            env_to_module_connector=lambda: MeanStdFilter(),
+            # Alternatively, return a list of n ConnectorV2 pieces (which will then be
+            # included in an automatically generated EnvToModulePipeline or return a
+            # EnvToModulePipeline directly.
+            env_to_module_connector=lambda env: MeanStdFilter(env=env),
         )
         .resources(
             num_learner_workers=args.num_gpus,
@@ -68,21 +66,15 @@ if __name__ == "__main__":
             num_cpus_for_local_worker=1,
         )
         .training(
-            lambda_=0.95,
-            kl_coeff=0.5,
-            clip_param=0.1,
-            vf_clip_param=10.0,
-            entropy_coeff=0.01,
-            num_sgd_iter=10,
+            train_batch_size_per_learner=512,
+            mini_batch_size_per_learner=64,
+            gamma=0.95,
             # Linearly adjust learning rate based on number of GPUs.
-            lr=0.00015 * (args.num_gpus or 1),
-            grad_clip=100.0,
-            grad_clip_by="global_norm",
+            lr=0.0003 * (args.num_gpus or 1),
+            lambda_=0.1,
+            vf_clip_param=10.0,
             model={
-                "vf_share_layers": True,
-                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                "conv_activation": "relu",
-                "post_fcnet_hiddens": [256],
+                "fcnet_activation": "relu",
             },
         )
     )

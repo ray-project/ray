@@ -1161,8 +1161,12 @@ class AlgorithmConfig(_Config):
         )
 
     def build_env_to_module_connector(self, env):
-        custom_connectors = []
+        from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
+            DefaultEnvToModule,
+            EnvToModulePipeline,
+        )
 
+        custom_connectors = []
         # Create an env-to-module connector pipeline (including RLlib's default
         # env->module connector piece) and return it.
         if self._env_to_module_connector is not None:
@@ -1172,7 +1176,7 @@ class AlgorithmConfig(_Config):
             from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
             if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, ConnectorPipelineV2
+                val_, EnvToModulePipeline
             ):
                 custom_connectors = [val_]
             elif isinstance(val_, (list, tuple)):
@@ -1180,30 +1184,36 @@ class AlgorithmConfig(_Config):
             else:
                 return val_
 
-        from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
-            EnvToModulePipeline,
-        )
-
-        return EnvToModulePipeline(
+        pipeline = EnvToModulePipeline(
             connectors=custom_connectors,
             input_observation_space=env.single_observation_space,
             input_action_space=env.single_action_space,
             env=env,
         )
+        pipeline.append(DefaultEnvToModule(
+            input_observation_space=pipeline.observation_space,
+            input_action_space=pipeline.action_space,
+            env=env,
+        ))
+        return pipeline
 
     def build_module_to_env_connector(self, env):
-        custom_connectors = []
 
+        from ray.rllib.connectors.module_to_env.module_to_env_pipeline import (
+            ModuleToEnvPipeline,
+            DefaultModuleToEnv,
+        )
+
+        custom_connectors = []
         # Create a module-to-env connector pipeline (including RLlib's default
         # module->env connector piece) and return it.
         if self._module_to_env_connector is not None:
             val_ = self._module_to_env_connector(env)
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
-            from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
             if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, ConnectorPipelineV2
+                val_, ModuleToEnvPipeline
             ):
                 custom_connectors = [val_]
             elif isinstance(val_, (list, tuple)):
@@ -1211,20 +1221,28 @@ class AlgorithmConfig(_Config):
             else:
                 return val_
 
-        from ray.rllib.connectors.module_to_env.module_to_env_pipeline import (
-            ModuleToEnvPipeline,
-        )
-
-        return ModuleToEnvPipeline(
+        pipeline = ModuleToEnvPipeline(
             connectors=custom_connectors,
             input_observation_space=env.single_observation_space,
             input_action_space=env.single_action_space,
             env=env,
         )
+        pipeline.append(DefaultModuleToEnv(
+            input_observation_space=pipeline.observation_space,
+            input_action_space=pipeline.action_space,
+            env=env,
+            normalize_actions=self.normalize_actions,
+            clip_actions=self.clip_actions,
+        ))
+        return pipeline
 
     def build_learner_connector(self, input_observation_space, input_action_space):
-        custom_connectors = []
+        from ray.rllib.connectors.learner.learner_connector_pipeline import (
+            DefaultLearnerConnector,
+            LearnerConnectorPipeline,
+        )
 
+        custom_connectors = []
         # Create a learner connector pipeline (including RLlib's default
         # learner connector piece) and return it.
         if self._learner_connector is not None:
@@ -1234,7 +1252,7 @@ class AlgorithmConfig(_Config):
             from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
             if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, ConnectorPipelineV2
+                val_, LearnerConnectorPipeline
             ):
                 custom_connectors = [val_]
             elif isinstance(val_, (list, tuple)):
@@ -1242,15 +1260,16 @@ class AlgorithmConfig(_Config):
             else:
                 return val_
 
-        from ray.rllib.connectors.learner.learner_connector_pipeline import (
-            LearnerConnectorPipeline,
-        )
-
-        return LearnerConnectorPipeline(
+        pipeline = LearnerConnectorPipeline(
             connectors=custom_connectors,
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
         )
+        pipeline.append(DefaultLearnerConnector(
+            input_observation_space=pipeline.observation_space,
+            input_action_space=pipeline.action_space,
+        ))
+        return pipeline
 
     def build_learner_group(
         self,
@@ -1640,11 +1659,11 @@ class AlgorithmConfig(_Config):
                 Tuple[value1, value2]: Clip at value1 and value2.
             normalize_actions: If True, RLlib will learn entirely inside a normalized
                 action space (0.0 centered with small stddev; only affecting Box
-                components). We will unsquash actions (and clip, just in case) to the
+                components). RLlib will unsquash actions (and clip, just in case) to the
                 bounds of the env's action space before sending actions back to the env.
-            clip_actions: If True, RLlib will clip actions according to the env's bounds
-                before sending them back to the env.
-                TODO: (sven) This option should be deprecated and always be False.
+            clip_actions: If True, the RLlib default ModuleToEnv connector will clip
+                actions according to the env's bounds (before sending them into the
+                `env.step()` call).
             disable_env_checking: If True, disable the environment pre-checking module.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect

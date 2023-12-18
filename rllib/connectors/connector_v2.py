@@ -66,45 +66,76 @@ class ConnectorV2(abc.ABC):
 
     @property
     def observation_space(self):
+        """Getter for our (output) observation space.
+        
+        Logic: Use user provided space (if set via `observation_space` setter)
+        otherwise, use the same as the input space, assuming this connector piece
+        does not alter the space.
+        """
         return self._observation_space or self.input_observation_space
 
     @observation_space.setter
     def observation_space(self, value):
+        """Setter for our (output) observation space."""
         self._observation_space = value
 
     @property
     def action_space(self):
+        """Getter for our (output) action space.
+
+        Logic: Use user provided space (if set via `action_space` setter)
+        otherwise, use the same as the input space, assuming this connector piece
+        does not alter the space.
+        """
         return self._action_space or self.input_action_space
 
     @action_space.setter
     def action_space(self, value):
+        """Setter for our (output) action space."""
         self._action_space = value
 
     def __init__(
         self,
         *,
-        input_observation_space: gym.Space,
-        input_action_space: gym.Space,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         env: Optional[gym.Env] = None,
         **kwargs,
     ):
         """Initializes a ConnectorV2 instance.
 
         Args:
-            input_observation_space: The (mandatory) input observation space. This
+            input_observation_space: An optional input observation space. This
                 is the space coming from a previous connector piece in the
                 (env-to-module or learner) pipeline or it is directly defined within
-                the used gym.Env.
-            input_action_space: The (mandatory) input action space. This
+                the used gym.Env. If None, `env` must be provided.
+            input_action_space: An optional input action space. This
                 is the space coming from a previous connector piece in the
                 (module-to-env) pipeline or it is directly defined within the used
-                gym.Env.
+                gym.Env. If None, `env` must be provided.
             env: An optional env object that the connector might need to know about.
                 Note that normally, env-to-module and module-to-env connectors get this
                 information at construction time, but learner connectors won't (b/c
                 Learner objects don't carry an environment object).
             **kwargs: Forward API-compatibility kwargs.
         """
+        # Infer spaces from `env` argument if spaces are not explicitly provided.
+        if input_observation_space is None or input_action_space is None:
+            if env is None:
+                raise ValueError(
+                    "`env` argument must be provided if `input_observation_space` or "
+                    "`input_action_space` are None!"
+                )
+        if input_observation_space is None:
+            input_observation_space = (
+                env.single_observation_space if isinstance(env, gym.vector.Env)
+                else env.observation_space
+            )
+        if input_action_space is None:
+            input_action_space = (
+                env.single_action_space if isinstance(env, gym.vector.Env)
+                else env.action_space
+            )
         self.input_observation_space = input_observation_space
         self.input_action_space = input_action_space
         self.env = env

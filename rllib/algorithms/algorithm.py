@@ -92,6 +92,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
+    SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
     SAMPLE_TIMER,
@@ -746,11 +747,12 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
             # Only when using RolloutWorkers: Update also the worker set's
-            # `should_module_be_updated_fn` (analogous to is_policy_to_train).
+            # `is_policy_to_train` (analogous to LearnerGroup's
+            # `should_module_be_updated_fn`).
             # Note that with the new EnvRunner API in combination with the new stack,
             # this information only needs to be kept in the LearnerGroup and not on the
             # EnvRunners anymore.
-            if self._uses_new_env_runners:
+            if not self._uses_new_env_runners:
                 update_fn = self.learner_group.should_module_be_updated_fn
                 self.workers.foreach_worker(
                     lambda w: w.set_is_policy_to_train(update_fn),
@@ -836,11 +838,12 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Sync filters on workers.
         if self._uses_new_env_runners:
-            self._sync_connectors_if_needed(
-                central_worker=self.workers.local_worker(),
-                workers=self.workers,
-                config=self.config,
-            )
+            # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
+            # states back to all workers.
+            with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+                # Merge connector states from all EnvRunners and broadcast updated
+                # states back to all EnvRunners.
+                self.workers.sync_connectors()
         else:
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
@@ -1367,12 +1370,13 @@ class Algorithm(Trainable, AlgorithmBase):
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
 
-        # TODO (sven): Implement solution via connectors.
-        self._sync_filters_if_needed(
-            central_worker=self.workers.local_worker(),
-            workers=self.evaluation_workers,
-            config=eval_cfg,
-        )
+        # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
+        # states back to all workers.
+        with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+            # Merge connector states from all EnvRunners and broadcast updated
+            # states back to all EnvRunners.
+            assert False, "TODO: Fix below: Needs to synch from training local worker"
+            self.evaluation_workers.sync_connectors()
 
         if self.evaluation_workers is None and (
             self.workers.local_worker().input_reader is None

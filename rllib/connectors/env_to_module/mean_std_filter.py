@@ -120,12 +120,24 @@ class MeanStdFilter(ConnectorV2):
         # will only see and operate the already normalized data (w/o having access
         # anymore to the original observations).
         for episode in episodes:
-            observations = episode.get_observations()
-            normalize_observations = self._filter(
+            observations = episode.get_observations(indices=-1)
+            normalized_observations = self._filter(
                 observations, update=self._update_stats
             )
-            episode.set_observations(new_data=normalize_observations)
+            # TODO (sven): This is kind of a hack.
+            #  We set the Episode's observation space to ours so that we can safely
+            #  set the last obs to the new value (without causing a space mismatch
+            #  error). However, this would NOT work if our
+            #  space were to be more more restrictive than the env's original space
+            #  b/c then the adding of the original env observation would fail.
+            episode.observation_space = episode.observations.space = self.observation_space
+            episode.set_observations(
+                new_data=normalized_observations,
+                at_indices=-1,
+            )
 
+        # Leave the `input_` as is. RLlib's default connector will automatically
+        # populate the OBS column therein from the episodes' (transformed) observations.
         return input_
 
     def get_state(self) -> Any:

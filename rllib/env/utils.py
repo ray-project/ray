@@ -580,14 +580,16 @@ class BufferWithInfiniteLookback:
 
                 def __set(s, n):
                     if self.space:
-                        assert self.space.contains(n)
+                        assert self.space.contains(n), n
                     s[actual_idx] = n
 
                 tree.map_structure(__set, self.data, new_data)
             else:
                 if self.space:
-                    assert self.space.contains(new_data)
+                    assert self.space.contains(new_data), new_data
                 self.data[actual_idx] = new_data
+        except Exception as e:
+            print(e)#TODO
         except IndexError:
             raise IndexError(
                 f"Cannot `set()` value at index {idx} (option "

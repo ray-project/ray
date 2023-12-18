@@ -69,8 +69,6 @@ if __name__ == "__main__":
         # here, which RLlib will then automatically integrate into a pipeline (and
         # add its default connector piece to the end of that pipeline).
         return FrameStackingEnvToModule(
-            input_observation_space=env.single_observation_space,
-            input_action_space=env.single_action_space,
             env=env,
             num_frames=args.num_frames,
         )
