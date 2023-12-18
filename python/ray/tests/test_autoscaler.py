@@ -197,7 +197,7 @@ class NoUpdaterMockAutoscaler(MockAutoscaler):
 
 SMALL_CLUSTER = {
     "cluster_name": "default",
-    "idle_timeout_minutes": 5,
+    "idle_timeout_minutes": 0.1,
     "max_workers": 2,
     "provider": {
         "type": "mock",
