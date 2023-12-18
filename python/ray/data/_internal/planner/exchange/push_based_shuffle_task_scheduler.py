@@ -145,7 +145,6 @@ class _PushBasedShuffleStage:
 
     def __repr__(self):
         return (
-            "\n"
             "num map tasks per round (num args per merge task): "
             f"{self.num_map_tasks_per_round}\n"
             f"num rounds (num args per reduce task): {self.num_rounds}\n"
