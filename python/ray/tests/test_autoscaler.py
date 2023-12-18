@@ -413,7 +413,7 @@ class AutoscalingTest(unittest.TestCase):
         """
         if comparison is None:
             comparison = self.assertEqual
-        MAX_ITER = 30
+        MAX_ITER = 20
         for i in range(MAX_ITER):
             n = self.num_nodes(tag_filters)
             try:
@@ -423,7 +423,7 @@ class AutoscalingTest(unittest.TestCase):
                 if i == MAX_ITER - 1:
                     print(self.provider.non_terminated_nodes(tag_filters))
                     raise
-            time.sleep(1)
+            time.sleep(0.5)
             if wait_update_callback:
                 wait_update_callback()
 
