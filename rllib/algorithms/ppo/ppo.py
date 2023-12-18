@@ -34,6 +34,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
+    SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
     ALL_MODULES,
@@ -404,71 +405,131 @@ class PPO(Algorithm):
             return PPOTF2Policy
 
     @override(Algorithm)
-    def training_step(self) -> ResultDict:
-        use_rollout_worker = self.config.env_runner_cls is None or issubclass(
-            self.config.env_runner_cls, RolloutWorker
-        )
+    def training_step(self):
+        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
+        if self._uses_new_env_runners:
+            return self._training_step_new_api_stack()
+        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
+        # maybe Learner).
+        else:
+            return self._training_step_old_and_hybrid_api_stacks()
 
+    def _training_step_new_api_stack(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
-            # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
-            if use_rollout_worker:
-                if self.config.count_steps_by == "agent_steps":
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_agent_steps=self.config.total_train_batch_size,
-                    )
-                else:
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_env_steps=self.config.total_train_batch_size,
-                    )
-                train_batch = train_batch.as_multi_agent()
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-                self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
-                # Standardize advantages.
-                train_batch = standardize_fields(train_batch, ["advantages"])
-
-            # New Episode-returning EnvRunner API.
+            # TODO (sven): Make this also use `synchronous_parallel_sample`.
+            #  Which needs to be enhanced to be able to handle episodes as well.
+            #  Also, this would make this sampling with the EnvRunners fault
+            #  tolerant, which it is NOT right now.
+            if self.workers.num_remote_workers() == 0:
+                episodes: List[SingleAgentEpisode] = [
+                    self.workers.local_worker().sample()
+                ]
             else:
-                # TODO (sven): Make this also use `synchronous_parallel_sample`.
-                #  Which needs to be enhanced to be able to handle episodes as well.
-                #  Also, this would make this sampling with the EnvRunners fault
-                #  tolerant, which it is NOT right now.
-                if self.workers.num_remote_workers() == 0:
-                    episodes: List[SingleAgentEpisode] = [
-                        self.workers.local_worker().sample()
-                    ]
-                else:
-                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
-                        lambda w: w.sample(), local_worker=False
-                    )
-                episodes = tree.flatten(episodes)
-                # TODO (sven): single- vs multi-agent.
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
-                self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+                episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
+                    lambda w: w.sample(), local_worker=False
+                )
+            episodes = tree.flatten(episodes)
+            # TODO (sven): single- vs multi-agent.
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
 
-        # Train
+        # Perform a train step on the collected batch.
+        train_results = self.learner_group.update(
+            episodes=episodes,
+            minibatch_size=(
+                self.config.mini_batch_size_per_learner
+                or self.config.sgd_minibatch_size
+            ),
+            num_iters=self.config.num_sgd_iter,
+        )
+
+        # The train results's loss keys are pids to their loss values. But we also
+        # return a total_loss key at the same level as the pid keys. So we need to
+        # subtract that to get the total set of pids to update.
+        # TODO (Kourosh): We should also not be using train_results as a message
+        #  passing medium to infer which policies to update. We could use
+        #  policies_to_train variable that is given by the user to infer this.
+        policies_to_update = set(train_results.keys()) - {ALL_MODULES}
+
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            if self.workers.num_remote_workers() > 0:
+                self.workers.sync_weights(
+                    # Sync weights from learner_group to all rollout workers.
+                    from_worker_or_learner_group=self.learner_group,
+                    policies=policies_to_update,
+                    global_vars=None,
+                )
+            else:
+                weights = self.learner_group.get_weights()
+                self.workers.local_worker().set_weights(weights)
+
+        # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
+        # states back to all workers.
+        with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+            # Merge connector states from all EnvRunners and broadcast updated
+            # states back to all EnvRunners.
+            self.workers.sync_connectors()
+
+        kl_dict = {}
+        if self.config.use_kl_loss:
+            for pid in policies_to_update:
+                kl = train_results[pid][LEARNER_RESULTS_KL_KEY]
+                kl_dict[pid] = kl
+                if np.isnan(kl):
+                    logger.warning(
+                        f"KL divergence for Module {pid} is non-finite, this will "
+                        "likely destabilize your model and the training process. "
+                        "Action(s) in a specific state have near-zero probability. "
+                        "This can happen naturally in deterministic environments "
+                        "where the optimal policy has zero mass for a specific "
+                        "action. To fix this issue, consider setting `kl_coeff` to "
+                        "0.0 or increasing `entropy_coeff` in your config."
+                    )
+
+        # triggers a special update method on RLOptimizer to update the KL values.
+        additional_results = self.learner_group.additional_update(
+            module_ids_to_update=policies_to_update,
+            sampled_kl_values=kl_dict,
+            timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
+        )
+        for pid, res in additional_results.items():
+            train_results[pid].update(res)
+
+        return train_results
+
+    def _training_step_old_and_hybrid_api_stacks(self) -> ResultDict:
+        # Collect SampleBatches from sample workers until we have a full batch.
+        with self._timers[SAMPLE_TIMER]:
+            if self.config.count_steps_by == "agent_steps":
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=self.config.total_train_batch_size,
+                )
+            else:
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_env_steps=self.config.total_train_batch_size,
+                )
+            train_batch = train_batch.as_multi_agent()
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+            self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+            # Standardize advantages.
+            train_batch = standardize_fields(train_batch, ["advantages"])
+
+        # Perform a train step on the collected batch.
         if self.config._enable_new_api_stack:
-            mbs_per_learner = (
+            mini_batch_size_per_learner = (
                 self.config.mini_batch_size_per_learner
                 or self.config.sgd_minibatch_size
             )
-            if (
-                self.config.env_runner_cls is None
-                or self.config.env_runner_cls.__name__ == "RolloutWorker"
-            ):
-                train_results = self.learner_group.update(
-                    batch=train_batch,
-                    minibatch_size=mbs_per_learner,
-                    num_iters=self.config.num_sgd_iter,
-                )
-            else:
-                train_results = self.learner_group.update(
-                    episodes=episodes,
-                    minibatch_size=mbs_per_learner,
-                    num_iters=self.config.num_sgd_iter,
-                )
+            train_results = self.learner_group.update(
+                batch=train_batch,
+                minibatch_size=mini_batch_size_per_learner,
+                num_iters=self.config.num_sgd_iter,
+            )
 
         elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
@@ -486,18 +547,15 @@ class PPO(Algorithm):
         else:
             policies_to_update = list(train_results.keys())
 
-        # TODO (Kourosh): num_grad_updates per each policy should be accessible via
-        #  train_results.
-        if not use_rollout_worker:
-            global_vars = None
-        else:
-            global_vars = {
-                "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
-                "num_grad_updates_per_policy": {
-                    pid: self.workers.local_worker().policy_map[pid].num_grad_updates
-                    for pid in policies_to_update
-                },
-            }
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            # TODO (sven): num_grad_updates per each policy should be
+            #  accessible via `train_results` (and get rid of global_vars).
+            "num_grad_updates_per_policy": {
+                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                for pid in policies_to_update
+            },
+        }
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
@@ -517,7 +575,6 @@ class PPO(Algorithm):
                 self.workers.local_worker().set_weights(weights)
 
         if self.config._enable_new_api_stack:
-
             kl_dict = {}
             if self.config.use_kl_loss:
                 for pid in policies_to_update:

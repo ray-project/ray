@@ -1175,6 +1175,8 @@ class AlgorithmConfig(_Config):
                 val_, ConnectorPipelineV2
             ):
                 custom_connectors = [val_]
+            elif isinstance(val_, (list, tuple)):
+                custom_connectors = list(val_)
             else:
                 return val_
 
@@ -1204,6 +1206,8 @@ class AlgorithmConfig(_Config):
                 val_, ConnectorPipelineV2
             ):
                 custom_connectors = [val_]
+            elif isinstance(val_, (list, tuple)):
+                custom_connectors = list(val_)
             else:
                 return val_
 
@@ -1233,6 +1237,8 @@ class AlgorithmConfig(_Config):
                 val_, ConnectorPipelineV2
             ):
                 custom_connectors = [val_]
+            elif isinstance(val_, (list, tuple)):
+                custom_connectors = list(val_)
             else:
                 return val_
 

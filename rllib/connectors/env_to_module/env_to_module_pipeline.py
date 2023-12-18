@@ -8,8 +8,10 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.connectors.env_to_module.default_env_to_module import DefaultEnvToModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class EnvToModulePipeline(ConnectorPipelineV2):
     def __init__(
         self,

@@ -554,6 +554,11 @@ class Algorithm(Trainable, AlgorithmBase):
             config_obj.env = self._env_id
             self.config = config_obj
 
+        self._uses_new_env_runners = (
+            self.config.env_runner_cls is not None
+            and not issubclass(self.config.env_runner_cls, RolloutWorker)
+        )
+
         # Set Algorithm's seed after we have - if necessary - enabled
         # tf eager-execution.
         update_global_seed_if_necessary(self.config.framework_str, self.config.seed)
@@ -745,9 +750,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # Note that with the new EnvRunner API in combination with the new stack,
             # this information only needs to be kept in the LearnerGroup and not on the
             # EnvRunners anymore.
-            if self.config.env_runner_cls is None or issubclass(
-                self.config.env_runner_cls, RolloutWorker
-            ):
+            if self._uses_new_env_runners:
                 update_fn = self.learner_group.should_module_be_updated_fn
                 self.workers.foreach_worker(
                     lambda w: w.set_is_policy_to_train(update_fn),
@@ -831,23 +834,30 @@ class Algorithm(Trainable, AlgorithmBase):
             ), "Algorithm.evaluate() needs to return a dict."
             results.update(self.evaluation_metrics)
 
-        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
-            # Sync filters on workers.
+        # Sync filters on workers.
+        if self._uses_new_env_runners:
+            self._sync_connectors_if_needed(
+                central_worker=self.workers.local_worker(),
+                workers=self.workers,
+                config=self.config,
+            )
+        else:
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
                 workers=self.workers,
                 config=self.config,
             )
-            episodes_this_iter = collect_episodes(
-                self.workers,
-                self._remote_worker_ids_for_metrics(),
-                timeout_seconds=self.config.metrics_episode_collection_timeout_s,
-            )
-            results = self._compile_iteration_results(
-                episodes_this_iter=episodes_this_iter,
-                step_ctx=train_iter_ctx,
-                iteration_results=results,
-            )
+
+        episodes_this_iter = collect_episodes(
+            self.workers,
+            self._remote_worker_ids_for_metrics(),
+            timeout_seconds=self.config.metrics_episode_collection_timeout_s,
+        )
+        results = self._compile_iteration_results(
+            episodes_this_iter=episodes_this_iter,
+            step_ctx=train_iter_ctx,
+            iteration_results=results,
+        )
 
         # Check `env_task_fn` for possible update of the env's task.
         if self.config.env_task_fn is not None:
@@ -3022,8 +3032,7 @@ class Algorithm(Trainable, AlgorithmBase):
             self._evaluate_async_with_env_runner
             if (
                 self.config.enable_async_evaluation
-                and self.config.env_runner_cls is not None
-                and not issubclass(self.config.env_runner_cls, RolloutWorker)
+                and self._uses_new_env_runners
             )
             else self._evaluate_async
             if self.config.enable_async_evaluation

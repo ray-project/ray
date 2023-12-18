@@ -1,5 +1,5 @@
 import abc
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -31,24 +31,28 @@ class ConnectorV2(abc.ABC):
     connectors used in Learner pipelines). From this input data, a ConnectorV2 then
     performs a transformation step.
 
-    There are 3 types of pipelines a ConnectorV2 can belong to:
-    1) env-to-module: The connector transforms envrionment data before it gets to the
-    RLModule. This type of pipeline is used by an EnvRunner for transforming
-    env output data to RLModule readable data (for the next RLModule forward pass).
-    2) module-to-env: The connector transforms RLModule outputs before they are sent
-    back to the environment (as actions). This type of pipeline is used by an EnvRunner
-    to transform RLModule output data to env readable actions (for the next
-    `env.step()` call).
-    3) learner pipeline: The connector transforms data coming directly from an
-    environment sampling step or a replay buffer and will be sent into the RLModule's
-    `forward_train()` method afterwards to compute the loss inputs. This type of
-    pipeline is used by a Learner to transform raw training data (a batch or a list of
-    episodes) to RLModule readable training data (for the next RLModule
-    `forward_train()` call).
+    There are 3 types of pipelines any ConnectorV2 piece can belong to:
+    1) EnvToModulePipeline: The connector transforms environment data before it gets to
+    the RLModule. This type of pipeline is used by an EnvRunner for transforming
+    env output data into RLModule readable data (for the next RLModule forward pass).
+    For example, such a pipeline would include observation postprocessors, -filters,
+    or any RNN preparation code related to time-sequences and zero-padding.
+    2) ModuleToEnvPipeline: This type of pipeline is used by an
+    EnvRunner to transform RLModule output data to env readable actions (for the next
+    `env.step()` call). For example, in case the RLModule only outputs action
+    distribution parameters (but not actual actions), the ModuleToEnvPipeline would
+    take care of sampling the actions to be sent back to the end from the
+    resulting distribution (made deterministic if exploration is off).
+    3) LearnerConnectorPipeline: This connector pipeline type transforms data coming
+    from an `EnvRunner.sample()` call or a replay buffer and will then be sent into the
+    RLModule's `forward_train()` method in order to compute loss function inputs.
+    This type of pipeline is used by a Learner worker to transform raw training data
+    (a batch or a list of episodes) to RLModule readable training data (for the next
+    RLModule `forward_train()` call).
 
     Some connectors might be stateful, for example for keeping track of observation
     filtering stats (mean and stddev values). Any Algorithm, which uses connectors is
-    responsible for frequenly synchronizing the states of all connectors and connector
+    responsible for frequently synchronizing the states of all connectors and connector
     pipelines between the EnvRunners (owning the env-to-module and module-to-env
     pipelines) and the Learners (owning the Learner pipelines).
     """
@@ -143,65 +147,45 @@ class ConnectorV2(abc.ABC):
             The transformed connector output abiding to `self.output_type`.
         """
 
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the current state of this ConnectorV2 as a state dict.
+
+        Returns:
+            A state dict mapping any string keys to their (state-defining) values.
+        """
+        return {}
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Sets the state of this ConnectorV2 to the given value.
+
+        Args:
+            state: The state dict to define this ConnectorV2's new state.
+        """
+        pass
+
+    def reset_state(self) -> None:
+        """Resets the state of this ConnectorV2 to some initial value.
+
+        Note that this may NOT be the exact state that this ConnectorV2 was originally
+        constructed with.
+        """
+        pass
+
+    @staticmethod
+    def merge_states(states: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Computes a resulting state given a list of other state dicts.
+
+        Algorithms should use this method for synchronizing states between connectors
+        running on workers (of the same type, e.g. EnvRunner workers).
+
+        Args:
+            states: The list of n other ConnectorV2 states to merge into a single
+                resulting state.
+
+        Returns:
+            The resulting state dict.
+        """
+        return {}
+
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
-
-    # @abc.abstractmethod
-    # def serialize(self) -> Tuple[str, Any]:
-    #    """Serialize a connector into a JSON serializable Tuple.
-
-    #    `serialize()` is required, so that all Connectors are serializable.
-
-    #    Returns:
-    #        A tuple of connector's name and its serialized states.
-    #        String should match the name used to register the connector,
-    #        while state can be any single data structure that contains the
-    #        serialized state of the connector. If a connector is stateless,
-    #        state can simply be None.
-    #    """
-
-    # @staticmethod
-    # @abc.abstractmethod
-    # def from_state(ctx: ConnectorContextV2, params: Any) -> "ConnectorV2":
-    #    """De-serialize a JSON params back into a Connector.
-
-    #    `from_state()` is required, so that all Connectors are serializable.
-
-    #    Args:
-    #        ctx: ConnectorContextV2 for constructing this connector.
-    #        params: Serialized states of the connector to be recovered.
-
-    #    Returns:
-    #        De-serialized connector.
-    #    """
-
-
-# class EnvToModule(ConnectorV2):
-#    """EnvToModule connector base class with a mandatory RLModule arg for __call__."""
-#    @abc.abstractmethod
-#    def __call__(
-#        self,
-#        *,
-#        input_: Optional[Any] = None,
-#        episodes: List[EpisodeType],
-#        explore: Optional[bool] = None,
-#        persistent_data: Optional[dict] = None,
-#        rl_module: RLModule,
-#        **kwargs,
-#    ) -> Any:
-#        """Method for transforming input data from the env into output data."""
-
-
-# class ModuleToEnv(ConnectorV2):
-#    @abc.abstractmethod
-#    def __call__(
-#        self,
-#        *,
-#        input_: Optional[Any] = None,
-#        episodes: List[EpisodeType],
-#        explore: Optional[bool] = None,
-#        persistent_data: Optional[dict] = None,
-#        rl_module: RLModule,
-#        **kwargs,
-#    ) -> Any:
-#        """Method for transforming input data from the env into output data."""
