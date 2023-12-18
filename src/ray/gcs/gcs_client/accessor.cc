@@ -744,7 +744,6 @@ Status TaskInfoAccessor::AsyncAddTaskEventData(
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Accessor added task events grpc OK";
       });
   return Status::OK();
 }

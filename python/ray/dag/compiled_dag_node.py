@@ -16,8 +16,16 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
+def do_get_node_id(self) -> str:
+    return ray.get_runtime_context().get_node_id()
+
+
+@DeveloperAPI
 def do_allocate_channel(
-    self, buffer_size_bytes: int, num_readers: int = 1
+    self,
+    buffer_size_bytes: int,
+    num_readers: int = 1,
+    receiver: Optional["ray.actor.ActorHandle"] = None,
 ) -> ChannelType:
     """Generic actor method to allocate an output channel.
 
@@ -28,7 +36,7 @@ def do_allocate_channel(
     Returns:
         The allocated channel.
     """
-    self._output_channel = ray_channel.Channel(buffer_size_bytes, num_readers)
+    self._output_channel = ray_channel.Channel(buffer_size_bytes, num_readers, receiver)
     return self._output_channel
 
 
@@ -103,11 +111,16 @@ class CompiledTask:
     def num_readers(self) -> int:
         return len(self.downstream_node_idxs)
 
+    @property
+    def actor_handle(self) -> Optional["ray.actor.ActorHandle"]:
+        return self.dag_node._get_actor_handle()
+
     def __str__(self) -> str:
         return f"""
 Node: {self.dag_node}
 Arguments: {self.args}
 Output: {self.output_channel}
+Actor: {self.actor_handle}
 """
 
 
@@ -144,7 +157,9 @@ class CompiledDAG:
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
         self.has_single_output: bool = False
+        self.actor_handles: Dict["ray._raylet.ActorID", "ray.actor.ActorHandle"] = {}
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
+        self.actor_node_ids: Dict["ray._raylet.ActorID", str] = {}
 
         # Cached attributes that are set during compilation.
         self.dag_input_channel: Optional[ChannelType] = None
@@ -158,6 +173,11 @@ class CompiledDAG:
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
         self.counter += 1
+
+    def _get_task_node_id(self, idx: int) -> str:
+        actor_handle = self.idx_to_task[idx].actor_handle
+        assert actor_handle is not None
+        return self.actor_node_ids[actor_handle._ray_actor_id]
 
     def _preprocess(self) -> None:
         """Before compiling, preprocess the DAG to build an index from task to
@@ -203,12 +223,13 @@ class CompiledDAG:
                     )
 
             if isinstance(dag_node, ClassMethodNode):
-                actor_handle = dag_node._get_actor_handle()
+                actor_handle = task.actor_handle
                 if actor_handle is None:
                     raise ValueError(
                         "Compiled DAGs can only bind methods to an actor "
                         "that is already created with Actor.remote()"
                     )
+                self.actor_handles[actor_handle._actor_id] = actor_handle
                 self.actor_task_count[actor_handle._actor_id] += 1
 
             for arg in task.args:
@@ -251,6 +272,12 @@ class CompiledDAG:
             # Preprocess one more time so that we have the right output node
             # now.
             self._preprocess()
+
+        for actor_id in self.actor_task_count:
+            actor_handle = self.actor_handles[actor_id]
+            self.actor_node_ids[actor_id] = ray.get(
+                actor_handle.__ray_call__.remote(do_get_node_id)
+            )
 
     def _get_or_compile(
         self,
@@ -295,14 +322,53 @@ class CompiledDAG:
             # Create an output buffer on the actor.
             assert task.output_channel is None
             if isinstance(task.dag_node, ClassMethodNode):
-                fn = task.dag_node._get_remote_method("__ray_call__")
+                # TODO: Check that all downstream readers are on the same node.
+                sender_node_id = self._get_task_node_id(cur_idx)
+                receiver_node_id = None
+                receiver = None
+                for receiver_idx in task.downstream_node_idxs:
+                    if receiver_node_id is not None:
+                        if receiver_node_id != self._get_task_node_id(receiver_idx):
+                            raise NotImplementedError(
+                                "Downstream tasks must be local to the sender, "
+                                "or, if remote, there must be exactly one "
+                                "downstream task"
+                            )
+
+                    receiver_node_id = self._get_task_node_id(receiver_idx)
+
+                    if sender_node_id == receiver_node_id:
+                        continue
+                    if task.num_readers != 1:
+                        raise NotImplementedError(
+                            "Downstream tasks must be local to the sender, "
+                            "or, if remote, there must be exactly one "
+                            "downstream task"
+                        )
+
+                    receiver = self.idx_to_task[receiver_idx].actor_handle
+
                 task.output_channel = ray.get(
-                    fn.remote(
+                    task.actor_handle.__ray_call__.remote(
                         do_allocate_channel,
                         buffer_size_bytes=self._buffer_size_bytes,
                         num_readers=task.num_readers,
+                        receiver=receiver,
                     )
                 )
+
+                # If the downstream task is on a different node than the
+                # current task, then create a receiving channel that is local
+                # to the downstream task.
+                if receiver is not None:
+                    ray.get(
+                        receiver.__ray_call__.remote(
+                            do_allocate_channel,
+                            buffer_size_bytes=self._buffer_size_bytes,
+                            num_readers=task.num_readers,
+                        )
+                    )
+
             elif isinstance(task.dag_node, InputNode):
                 task.output_channel = ray_channel.Channel(
                     buffer_size_bytes=self._buffer_size_bytes,

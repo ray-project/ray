@@ -227,6 +227,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options_.worker_type),
                                         assigned_port,
                                         options_.node_ip_address == "127.0.0.1");
+  // ClusterID::Nil(),
+  // 2);
   core_worker_server_->RegisterService(grpc_service_, false /* token_auth */);
   core_worker_server_->Run();
 
@@ -358,6 +360,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
               }
             },
             "CoreWorker.HandleException");
+      }));
+
+  channel_manager_.reset(new ExperimentalChannelManager(
+      plasma_store_provider_->GetPlasmaClient(), [this](const ActorID &actor_id) {
+        return direct_actor_submitter_->GetActorClientIfConnected(actor_id);
       }));
 
   auto push_error_callback = [this](const JobID &job_id,
@@ -4139,6 +4146,31 @@ void CoreWorker::HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                                        rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received NumPendingTasks request.";
   reply->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::ExperimentalRegisterCrossNodeWriterChannel(const ObjectID &channel_id,
+                                                            const ActorID &receiver_id) {
+  RAY_LOG(DEBUG) << "RegisterCrossNodeWriterChannel " << channel_id << " sends to actor "
+                 << receiver_id;
+  channel_manager_->RegisterCrossNodeWriterChannel(channel_id, receiver_id);
+}
+
+void CoreWorker::ExperimentalRegisterCrossNodeReaderChannel(
+    const ObjectID &channel_id,
+    int64_t num_readers,
+    const ObjectID &local_reader_channel_id) {
+  RAY_LOG(DEBUG) << "RegisterCrossReaderChannel " << channel_id << " num readers "
+                 << num_readers << " local channel " << local_reader_channel_id;
+  channel_manager_->RegisterCrossNodeReaderChannel(
+      channel_id, num_readers, local_reader_channel_id);
+}
+
+void CoreWorker::HandlePushExperimentalChannelValue(
+    rpc::PushExperimentalChannelValueRequest request,
+    rpc::PushExperimentalChannelValueReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  channel_manager_->HandlePushExperimentalChannelValue(request, reply);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

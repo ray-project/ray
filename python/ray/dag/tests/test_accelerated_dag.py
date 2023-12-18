@@ -176,6 +176,24 @@ def test_dag_errors(ray_start_regular):
         dag.experimental_compile()
 
 
+def test_cluster(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1)
+
+    sender = Actor.remote(0)
+    receiver = Actor.remote(0)
+
+    with InputNode() as i:
+        dag = sender.inc.bind(i)
+        dag = receiver.inc.bind(i)
+
+    dag = dag.experimental_compile()
+
+    print(ray.get(dag.execute(1)))
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

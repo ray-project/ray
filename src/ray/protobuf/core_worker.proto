@@ -419,6 +419,17 @@ message ReportGeneratorItemReturnsReply {
   int64 total_num_object_consumed = 1;
 }
 
+message PushExperimentalChannelValueRequest {
+  bytes channel_id = 1;
+  uint64 data_size_bytes = 2;
+  uint64 metadata_size_bytes = 3;
+  bytes data = 4;
+}
+
+message PushExperimentalChannelValueReply {
+  bool success = 1;
+}
+
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
@@ -479,4 +490,5 @@ service CoreWorkerService {
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
   // Get the number of pending tasks.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
+  rpc PushExperimentalChannelValue(PushExperimentalChannelValueRequest) returns (PushExperimentalChannelValueReply);
 }

@@ -61,6 +61,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
+      store_client_(new plasma::PlasmaClient()),
       reference_counter_(reference_counter),
       check_signals_(check_signals) {
   if (get_current_call_site != nullptr) {
@@ -70,14 +71,14 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  RAY_CHECK_OK(store_client_.Connect(store_socket));
+  RAY_CHECK_OK(store_client_->Connect(store_socket));
   if (warmup) {
     RAY_CHECK_OK(WarmupStore());
   }
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
-  RAY_IGNORE_EXPR(store_client_.Disconnect());
+  RAY_IGNORE_EXPR(store_client_->Disconnect());
 }
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
@@ -114,7 +115,7 @@ Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteAcquire(
     uint64_t data_size,
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
-  return store_client_.ExperimentalMutableObjectWriteAcquire(
+  return store_client_->ExperimentalMutableObjectWriteAcquire(
       object_id,
       data_size,
       metadata ? metadata->Data() : nullptr,
@@ -125,7 +126,7 @@ Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteAcquire(
 
 Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteRelease(
     const ObjectID &object_id) {
-  return store_client_.ExperimentalMutableObjectWriteRelease(object_id);
+  return store_client_->ExperimentalMutableObjectWriteRelease(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
@@ -140,15 +141,15 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
   }
   Status status =
-      store_client_.CreateAndSpillIfNeeded(object_id,
-                                           owner_address,
-                                           is_mutable,
-                                           data_size,
-                                           metadata ? metadata->Data() : nullptr,
-                                           metadata ? metadata->Size() : 0,
-                                           data,
-                                           source,
-                                           /*device_num=*/0);
+      store_client_->CreateAndSpillIfNeeded(object_id,
+                                            owner_address,
+                                            is_mutable,
+                                            data_size,
+                                            metadata ? metadata->Data() : nullptr,
+                                            metadata ? metadata->Size() : 0,
+                                            data,
+                                            source,
+                                            /*device_num=*/0);
 
   if (status.IsObjectStoreFull()) {
     RAY_LOG(ERROR) << "Failed to put object " << object_id
@@ -176,11 +177,11 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
 }
 
 Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
-  return store_client_.Seal(object_id);
+  return store_client_->Seal(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
-  return store_client_.Release(object_id);
+  return store_client_->Release(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
@@ -204,10 +205,10 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   }
 
   std::vector<plasma::ObjectBuffer> plasma_results;
-  RAY_RETURN_NOT_OK(store_client_.Get(batch_ids,
-                                      timeout_ms,
-                                      &plasma_results,
-                                      /*is_from_worker=*/true));
+  RAY_RETURN_NOT_OK(store_client_->Get(batch_ids,
+                                       timeout_ms,
+                                       &plasma_results,
+                                       /*is_from_worker=*/true));
 
   // Add successfully retrieved objects to the result map and remove them from
   // the set of IDs to get.
@@ -242,7 +243,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 
 Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectReadRelease(
     const ObjectID &object_id) {
-  return store_client_.ExperimentalMutableObjectReadRelease(object_id);
+  return store_client_->ExperimentalMutableObjectReadRelease(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
@@ -250,10 +251,10 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<plasma::ObjectBuffer> plasma_results;
   // Since this path is used only for spilling, we should set is_from_worker: false.
-  RAY_RETURN_NOT_OK(store_client_.Get(object_ids,
-                                      /*timeout_ms=*/0,
-                                      &plasma_results,
-                                      /*is_from_worker=*/false));
+  RAY_RETURN_NOT_OK(store_client_->Get(object_ids,
+                                       /*timeout_ms=*/0,
+                                       &plasma_results,
+                                       /*is_from_worker=*/false));
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
@@ -331,7 +332,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     return UnblockIfNeeded(raylet_client_, ctx);
   }
 
-  RAY_CHECK(!is_experimental_mutable_object) << "Mutable objects must always be local";
+  if (is_experimental_mutable_object) {
+    return Status::Invalid("Mutable objects must always be local in order to read.");
+  }
 
   // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
   // and Get from the local object store in batches. This loop will run indefinitely
@@ -407,7 +410,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
                                                bool *has_object) {
-  return store_client_.Contains(object_id, has_object);
+  return store_client_->Contains(object_id, has_object);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Wait(
@@ -467,7 +470,7 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
 }
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
-  return store_client_.DebugString();
+  return store_client_->DebugString();
 }
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
@@ -516,6 +519,10 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   RAY_RETURN_NOT_OK(Release(object_id));
   RAY_RETURN_NOT_OK(Delete({object_id}, true));
   return Status::OK();
+}
+
+std::shared_ptr<plasma::PlasmaClient> CoreWorkerPlasmaStoreProvider::GetPlasmaClient() {
+  return store_client_;
 }
 
 }  // namespace core

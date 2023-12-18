@@ -3515,12 +3515,42 @@ cdef class CoreWorker:
                             generator_id=CObjectID.Nil(),
                             owner_address=c_owner_address))
 
+    def experimental_register_cross_node_writer_channel(self,
+                                                        ObjectRef channel_ref,
+                                                        ActorID receiver_actor_id):
+        cdef:
+            CObjectID c_channel_id = channel_ref.native()
+            CActorID c_receiver_actor_id = receiver_actor_id.native()
+
+        with nogil:
+            (CCoreWorkerProcess.GetCoreWorker()
+                               .ExperimentalRegisterCrossNodeWriterChannel(
+                                       c_channel_id, c_receiver_actor_id))
+
+    def experimental_register_cross_node_reader_channel(self,
+                                                        ObjectRef channel_ref,
+                                                        int64_t num_readers,
+                                                        ObjectRef
+                                                        local_reader_channel_ref):
+
+        cdef:
+            CObjectID c_channel_id = channel_ref.native()
+            CObjectID c_local_reader_channel_id = local_reader_channel_ref.native()
+
+        with nogil:
+            (CCoreWorkerProcess.GetCoreWorker()
+             .ExperimentalRegisterCrossNodeReaderChannel(
+                     c_channel_id,
+                     num_readers,
+                     c_local_reader_channel_id))
+
     def experimental_mutable_object_put_serialized(self, serialized_object,
                                                    ObjectRef object_ref,
-                                                   num_readers,
+                                                   num_readers
                                                    ):
         cdef:
             CObjectID c_object_id = object_ref.native()
+            CActorID c_actor_id
             shared_ptr[CBuffer] data
             unique_ptr[CAddress] null_owner_address
 

@@ -2,6 +2,7 @@
 import logging
 import os
 import sys
+import copy
 
 import numpy as np
 import pytest
@@ -150,6 +151,49 @@ def test_put_remote_get(ray_start_regular, num_readers):
         chan.write(val, num_readers=num_readers)
 
     ray.get(done)
+
+
+def test_remote_reader(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Reader:
+        def __init__(self):
+            pass
+
+        def ready(self):
+            return
+
+        def allocate_local_reader_channel(self, writer_channel):
+            self._reader_chan = ray_channel.Channel(_writer_channel=writer_channel)
+
+        def read(self, num_vals):
+            values = []
+            for i in range(num_vals):
+                print("read value x", i)
+                values.append(copy.deepcopy(self._reader_chan.begin_read()))
+                print("read value y", i)
+                self._reader_chan.end_read()
+            print("READER HERE")
+            return values
+
+    reader = Reader.remote()
+    ray.get(reader.ready.remote())
+    channel = ray_channel.Channel(1000, _receiver_actor_handle=reader)
+    print("xxx")
+
+    print(ray.get(reader.allocate_local_reader_channel.remote(channel)))
+
+    write_vals = [b"hello", "world", 1]
+    write_vals = [b"hello"]
+    read_values = reader.read.remote(len(write_vals))
+    for val in write_vals:
+        channel.write(val)
+        print("write value", val)
+    assert ray.get(read_values) == write_vals, read_values
 
 
 if __name__ == "__main__":

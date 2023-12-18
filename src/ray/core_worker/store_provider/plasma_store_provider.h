@@ -215,6 +215,8 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] object_id The ID of the object.
   Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
 
+  std::shared_ptr<plasma::PlasmaClient> GetPlasmaClient();
+
  private:
   /// Ask the raylet to fetch a set of objects and then attempt to get them
   /// from the local plasma store. Successfully fetched objects will be removed
@@ -256,7 +258,7 @@ class CoreWorkerPlasmaStoreProvider {
   Status WarmupStore();
 
   const std::shared_ptr<raylet::RayletClient> raylet_client_;
-  plasma::PlasmaClient store_client_;
+  std::shared_ptr<plasma::PlasmaClient> store_client_;
   /// Used to look up a plasma object's owner.
   const std::shared_ptr<ReferenceCounter> reference_counter_;
   std::function<Status()> check_signals_;

@@ -325,8 +325,8 @@ void PlasmaClient::Impl::InsertObjectInUse(const ObjectID &object_id,
   // corresponding call to free happens in PlasmaClient::Release.
   it->second->object = *object.release();
   // Count starts at 1 to pin the object.
-  it->second->count = 1;
   it->second->is_sealed = is_sealed;
+  IncrementObjectCount(object_id);
 }
 
 void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id) {
@@ -335,6 +335,8 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
   object_entry->second->count += 1;
+  RAY_LOG(DEBUG) << "PlasmaClient::IncrementObjectCount " << object_id << " count is now "
+                 << object_entry->second->count;
 }
 
 Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
@@ -445,8 +447,10 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
                                    ") is larger than allocated buffer size " +
                                    std::to_string(entry->object.allocated_size));
   }
+  client_mutex_.unlock();
   plasma_header->WriteAcquire(
       entry->next_version_to_write, data_size, metadata_size, num_readers);
+  client_mutex_.lock();
 
   // Prepare the data buffer and return to the client instead of sending
   // the IPC to object store.
@@ -751,8 +755,10 @@ Status PlasmaClient::Impl::EnsureGetAcquired(
   }
 
   int64_t version_read = 0;
+  client_mutex_.unlock();
   bool success =
       plasma_header->ReadAcquire(object_entry->next_version_to_read, &version_read);
+  client_mutex_.lock();
   if (!success) {
     return Status::Invalid(
         "Reader missed a value. Are you sure there are num_readers many readers?");
@@ -832,6 +838,8 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
     object_entry->second->count -= 1;
     RAY_CHECK(object_entry->second->count >= 0);
   }
+  RAY_LOG(DEBUG) << "PlasmaClient::Release " << object_id << " count is now "
+                 << object_entry->second->count;
 
   if (object_entry->second->count == 0) {
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
