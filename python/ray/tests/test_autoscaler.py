@@ -244,7 +244,7 @@ MOCK_DEFAULT_CONFIG = {
     "cluster_name": "default",
     "max_workers": 2,
     "upscaling_speed": 1.0,
-    "idle_timeout_minutes": 5,
+    "idle_timeout_minutes": 0.01,
     "provider": {
         "type": "mock",
         "region": "us-east-1",
@@ -2222,6 +2222,7 @@ class AutoscalingTest(unittest.TestCase):
     def testConfiguresNewNodes(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["available_node_types"]["worker"]["min_workers"] = 1
+        config["idle_timeout_minutes"] = 0.001
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2994,7 +2995,8 @@ class AutoscalingTest(unittest.TestCase):
         self.provider.finish_starting_nodes()
         autoscaler.update()
         self.waitForNodes(
-            3, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
+            3, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER},
+            wait_update_callback=lambda: autoscaler.update()
         )
 
         self.provider.terminate_node("1")
@@ -3009,11 +3011,12 @@ class AutoscalingTest(unittest.TestCase):
         self.write_config(config)
         autoscaler.update()
         autoscaler.update()
-        self.waitForNodes(8, tag_filters=WORKER_FILTER)
+        self.waitForNodes(8, tag_filters=WORKER_FILTER, wait_update_callback=lambda: autoscaler.update())
         self.provider.finish_starting_nodes()
         autoscaler.update()
         self.waitForNodes(
-            8, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
+            8, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER},
+            wait_update_callback=lambda: autoscaler.update()
         )
         autoscaler.update()
         for i in [1, 2, 3]:
