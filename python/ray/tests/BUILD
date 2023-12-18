@@ -544,7 +544,7 @@ py_test(
 )
 
 py_test(
-    name = "vsphere/test_vsphere_sdk_provider.py",
+    name = "vsphere/test_vsphere_sdk_provider",
     size = "small",
     srcs = ["vsphere/test_vsphere_sdk_provider.py"],
     tags = ["exclusive", "small_size_python_tests", "team:serverless"],
