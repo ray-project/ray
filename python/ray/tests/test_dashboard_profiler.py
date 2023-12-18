@@ -172,10 +172,6 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
-@pytest.mark.skipif(
-    sys.platform == "darwin",
-    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
-)
 def test_profiler_failure_message(ray_start_with_dashboard):
     # Sanity check py-spy and memray is installed.
     subprocess.check_call(["py-spy", "--version"])
@@ -234,6 +230,11 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
+
+    # Check wrong ip failure
+    response = requests.get(f"{webui_url}/memory_profile?ip=1234567&pid=1234567")
+    content = response.content
+    assert "No stub with given ip value" in content, content
 
 
 if __name__ == "__main__":

@@ -378,9 +378,11 @@ class ReporterAgent(
         leaks = request.leaks
         duration = request.duration
         native = request.native
+        trace_python_allocators = request.trace_python_allocators
         p = MemoryProfilingManager(self._log_dir)
-        success, output = await p.attach_profiler(pid, native=native)
-        profiler_filename = output.split("\n")[-1]
+        success, profiler_filename, output = await p.attach_profiler(
+            pid, native=native, trace_python_allocators=trace_python_allocators
+        )
         if not success:
             return reporter_pb2.MemoryProfilingReply(output=output, success=success)
 

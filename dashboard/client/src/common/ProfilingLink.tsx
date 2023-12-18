@@ -16,7 +16,6 @@ import { makeStyles } from "@material-ui/core/styles";
 import React, { PropsWithChildren, useState } from "react";
 import { HelpInfo } from "../components/Tooltip";
 import { ClassNameProps } from "./props";
-import rowStyles from "./RowStyles";
 
 const buttonLinkStyles = makeStyles((theme) => ({
   buttonLink: {
@@ -33,9 +32,9 @@ const buttonLinkStyles = makeStyles((theme) => ({
     display: "flex",
     justifyContent: "flex-end",
   },
-  secondaryButton: { 
-    textTransform: "capitalize", 
-    color: "#5F6469", 
+  secondaryButton: {
+    textTransform: "capitalize",
+    color: "#5F6469",
   },
 }));
 
@@ -159,6 +158,8 @@ export const ProfilerButton = ({
 }: MemoryProfilingButtonProps) => {
   const [duration, setDuration] = useState(5);
   const [leaks, setLeaks] = useState(true);
+  const [native, setNative] = useState(false);
+  const [allocator, setAllocator] = useState(false);
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState("flamegraph");
 
@@ -174,7 +175,11 @@ export const ProfilerButton = ({
 
   return (
     <div>
-      <Button className={buttonLinkClasses.buttonLink} onClick={handleOpen} aria-label="Memory Profiling" >
+      <Button
+        className={buttonLinkClasses.buttonLink}
+        onClick={handleOpen}
+        aria-label="Memory Profiling"
+      >
         <Typography component={Link} variant="body2">
           Memory&nbsp;Profiling{type ? ` (${type})` : ""}
         </Typography>
@@ -213,20 +218,61 @@ export const ProfilerButton = ({
               />
             }
             label={
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={{ marginRight: '4px' }}>Leaks</span>
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ marginRight: "4px" }}>Leaks</span>
                 <HelpInfo>
                   <Typography>
-                    Enable memory leaks, instead of peak memory usage. Refer to Memray documentation for more details.
+                    Enable memory leaks, instead of peak memory usage. Refer to
+                    Memray documentation for more details.
+                  </Typography>
+                </HelpInfo>
+              </div>
+            }
+          />
+          <br />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={native}
+                onChange={(e) => setNative(e.target.checked)}
+              />
+            }
+            label={
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ marginRight: "4px" }}>Native</span>
+                <HelpInfo>
+                  <Typography>
+                    Track native (C/C++) stack frames. Refer to Memray
+                    documentation for more details.
+                  </Typography>
+                </HelpInfo>
+              </div>
+            }
+          />
+          <br />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={allocator}
+                onChange={(e) => setAllocator(e.target.checked)}
+              />
+            }
+            label={
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ marginRight: "4px" }}>
+                  Python Allocator Tracing
+                </span>
+                <HelpInfo>
+                  <Typography>
+                    Record allocations made by the pymalloc allocator. Refer to
+                    Memray documentation for more details.
                   </Typography>
                 </HelpInfo>
               </div>
             }
           />
         </DialogContent>
-        <div
-          className={buttonLinkClasses.dialogContent}
-        >
+        <div className={buttonLinkClasses.dialogContent}>
           <Button
             onClick={handleClose}
             variant="text"
@@ -241,9 +287,12 @@ export const ProfilerButton = ({
             style={{ textTransform: "capitalize" }}
           >
             <Link
-              href={`${profilerUrl}&format=${format}&duration=${duration}&native=0&leaks=${
-                leaks ? "1" : "0"
-              }`}
+              href={
+                `${profilerUrl}&format=${format}&duration=${duration}` +
+                `&leaks=${leaks ? "1" : "0"}` +
+                `&native=${native ? "1" : "0"}` +
+                `&trace_python_alocators=${allocator ? "1" : "0"}`
+              }
               rel="noreferrer"
               target="_blank"
             >
@@ -279,5 +328,5 @@ export const TaskMemoryProfilingButton = ({
   }
   const profilerUrl = `/memory_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`;
 
-  return <ProfilerButton profilerUrl={profilerUrl}/>;
+  return <ProfilerButton profilerUrl={profilerUrl} />;
 };

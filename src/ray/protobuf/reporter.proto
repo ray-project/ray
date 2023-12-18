@@ -70,6 +70,8 @@ message MemoryProfilingRequest {
   optional bool native = 4;
   // If show memory leaks
   optional bool leaks = 5;
+  // If trace python memory allocator
+  optional bool trace_python_allocators = 6;
 }
 
 message MemoryProfilingReply {

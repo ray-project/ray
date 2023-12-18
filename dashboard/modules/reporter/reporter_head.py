@@ -413,7 +413,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/worker/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:
-        if "ip" in req.query:
+        if "ip" in req.query and req.query["ip"] in self._stubs:
             reporter_stub = self._stubs[req.query["ip"]]
         else:
             reporter_stub = list(self._stubs.values())[0]
@@ -436,7 +436,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/worker/cpu_profile")
     async def cpu_profile(self, req) -> aiohttp.web.Response:
-        if "ip" in req.query:
+        if "ip" in req.query and req.query["ip"] in self._stubs:
             reporter_stub = self._stubs[req.query["ip"]]
         else:
             reporter_stub = list(self._stubs.values())[0]
@@ -487,8 +487,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             aiohttp.web.Response: The HTTP response containing the memory profile data.
 
         Raises:
-            ValueError: if 
-            ValueError: If the "task_id" parameter exists but either 
+            ValueError: if no stub found from the given ip value
+            ValueError: If the "task_id" parameter exists but either
             "attempt_number" or "node id" is missing in the request query.
             ValueError: If the maximum duration allowed is exceeded.
             ValueError: If requesting task profiling for the worker begins working on
@@ -524,6 +524,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         format = req.query.get("format", "flamegraph")
         native = req.query.get("native", False) == "1"
         leaks = req.query.get("leaks", False) == "1"
+        trace_python_allocators = req.query.get("trace_python_allocators", False) == "1"
 
         if ip:
             if ip not in self._stubs:
@@ -540,21 +541,26 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         reply = await reporter_stub.MemoryProfiling(
             reporter_pb2.MemoryProfilingRequest(
-                pid=pid, format=format, leaks=leaks, duration=duration_s, native=native
+                pid=pid,
+                format=format,
+                leaks=leaks,
+                duration=duration_s,
+                native=native,
+                trace_python_allocators=trace_python_allocators,
             )
         )
 
         task_ids_in_a_worker = None
         if is_task:
             """
-                In order to truly confirm whether there are any other tasks
-                running during the profiling, we need to retrieve all tasks
-                that are currently running or have finished, and then parse
-                the task events (i.e., their start and finish times) to check
-                for any potential overlap. However, this process can be quite
-                extensive, so here we will make our best efforts to check
-                for any overlapping tasks. Therefore, we will check if
-                the task is still running
+            In order to truly confirm whether there are any other tasks
+            running during the profiling, we need to retrieve all tasks
+            that are currently running or have finished, and then parse
+            the task events (i.e., their start and finish times) to check
+            for any potential overlap. However, this process can be quite
+            extensive, so here we will make our best efforts to check
+            for any overlapping tasks. Therefore, we will check if
+            the task is still running
             """
             try:
                 (_, worker_id) = await self.get_worker_details_for_running_task(
@@ -563,7 +569,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             except ValueError as e:
                 raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
-            task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(worker_id)
+            task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(
+                worker_id
+            )
 
         if not reply.success:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
