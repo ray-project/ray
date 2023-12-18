@@ -811,7 +811,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core", "manual"],
+    tags = ["team:core", "no_windows", "manual"],
     deps = [
         ":core_worker_lib",
         ":gcs",
@@ -1564,7 +1564,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = ["team:core", "no_windows", "no_tsan"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1610,7 +1610,7 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     deps = [
         ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
@@ -1977,7 +1977,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
@@ -2224,7 +2224,7 @@ ray_cc_test(
         "//:redis-server",
     ],
     env = {"REDIS_CHAOS": "1"},
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     target_compatible_with = [
         "@platforms//os:linux",
     ],

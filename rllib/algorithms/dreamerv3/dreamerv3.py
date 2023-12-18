@@ -8,7 +8,6 @@ D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
 import copy
-import dataclasses
 import gc
 import logging
 import tree  # pip install dm_tree
@@ -20,16 +19,12 @@ import numpy as np
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamerv3.dreamerv3_catalog import DreamerV3Catalog
-from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
-    DreamerV3LearnerHyperparameters,
-)
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
     report_predicted_vs_sampled_obs,
     report_sampling_and_replay_buffer,
 )
-from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models.catalog import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -127,6 +122,7 @@ class DreamerV3Config(AlgorithmConfig):
         self.actor_grad_clip_by_global_norm = 100.0
         self.symlog_obs = "auto"
         self.use_float16 = False
+        self.use_curiosity = False
 
         # Reporting.
         # DreamerV3 is super sample efficient and only needs very few episodes
@@ -156,6 +152,13 @@ class DreamerV3Config(AlgorithmConfig):
         self._enable_new_api_stack = True
         # __sphinx_doc_end__
         # fmt: on
+
+    @property
+    def batch_size_B_per_learner(self):
+        """Returns the batch_size_B per Learner worker.
+
+        Needed by some of the DreamerV3 loss math."""
+        return self.batch_size_B // (self.num_learner_workers or 1)
 
     @property
     def model(self):
@@ -197,6 +200,7 @@ class DreamerV3Config(AlgorithmConfig):
         symlog_obs: Optional[Union[bool, str]] = NotProvided,
         use_float16: Optional[bool] = NotProvided,
         replay_buffer_config: Optional[dict] = NotProvided,
+        use_curiosity: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "DreamerV3Config":
         """Sets the training related configuration.
@@ -275,6 +279,13 @@ class DreamerV3Config(AlgorithmConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
+        # Not fully supported/tested yet.
+        if use_curiosity is not NotProvided:
+            raise ValueError(
+                "`DreamerV3Config.curiosity` is not fully supported and tested yet! "
+                "It thus remains disabled for now."
+            )
+
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
@@ -422,39 +433,6 @@ class DreamerV3Config(AlgorithmConfig):
                 "DreamerV3 must be run with the `EpisodeReplayBuffer` type! None "
                 "other supported."
             )
-
-    @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> LearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        return DreamerV3LearnerHyperparameters(
-            model_size=self.model_size,
-            training_ratio=self.training_ratio,
-            batch_size_B=self.batch_size_B // (self.num_learner_workers or 1),
-            batch_length_T=self.batch_length_T,
-            horizon_H=self.horizon_H,
-            gamma=self.gamma,
-            gae_lambda=self.gae_lambda,
-            entropy_scale=self.entropy_scale,
-            return_normalization_decay=self.return_normalization_decay,
-            train_actor=self.train_actor,
-            train_critic=self.train_critic,
-            world_model_lr=self.world_model_lr,
-            intrinsic_rewards_scale=self.intrinsic_rewards_scale,
-            actor_lr=self.actor_lr,
-            critic_lr=self.critic_lr,
-            world_model_grad_clip_by_global_norm=(
-                self.world_model_grad_clip_by_global_norm
-            ),
-            actor_grad_clip_by_global_norm=self.actor_grad_clip_by_global_norm,
-            critic_grad_clip_by_global_norm=self.critic_grad_clip_by_global_norm,
-            use_float16=self.use_float16,
-            report_individual_batch_item_stats=(
-                self.report_individual_batch_item_stats
-            ),
-            report_dream_data=self.report_dream_data,
-            report_images_and_videos=self.report_images_and_videos,
-            **dataclasses.asdict(base_hps),
-        )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):

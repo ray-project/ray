@@ -22,7 +22,7 @@ You can propose changes to the main project by submitting a pull request to the 
 
 1. Navigate to the `Ray GitHub repository <https://github.com/ray-project/ray>`_.
 2. Follow these `GitHub instructions <https://docs.github.com/en/get-started/quickstart/fork-a-repo>`_, and do the following:
-    
+
     a. `Fork the repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#forking-a-repository>`_ using your preferred method.
     b. `Clone <https://docs.github.com/en/get-started/quickstart/fork-a-repo#cloning-your-forked-repository>`_ to your local machine.
     c. `Connect your repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#configuring-git-to-sync-your-fork-with-the-upstream-repository>`_ to the upstream (main project) Ray repo to sync changes.
@@ -327,6 +327,32 @@ Dependencies for running Ray unit tests under ``python/ray/tests`` can be instal
  pip install -c python/requirements_compiled.txt -r python/requirements/test-requirements.txt
 
 Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
+
+Pre-commit Hooks
+----------------
+
+Ray is planning to replace the pre-push hooks that are invoked from ``scripts/format.sh`` with
+pre-commit hooks using `the pre-commit python package <https://pre-commit.com/>`_ in the future. At
+the moment, we have configured a ``.pre-commit-config.yaml`` which runs all the same checks done by
+``scripts/format.sh`` along with a few additional ones too. Currently this developer tooling is
+opt-in, with any formatting changes made by ``scripts/format.sh`` expected to be caught by
+``pre-commit`` as well. To start using ``pre-commit``:
+
+.. code-block: shell
+
+   pip install pre-commit
+   pre-commit install
+
+This will install pre-commit into the current environment, and enable pre-commit checks every time
+you commit new code changes with git. To temporarily skip pre-commit checks, use the ``-n`` or
+``--no-verify`` flag when committing:
+
+.. code-block: shell
+
+   git commit -n
+
+If you find that ``scripts/format.sh`` makes a change that is different from what ``pre-commit``
+does, please report an issue on the Ray github page.
 
 Fast, Debug, and Optimized Builds
 ---------------------------------

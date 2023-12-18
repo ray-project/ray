@@ -4,7 +4,7 @@ import numpy as np
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.algorithms.ppo.ppo_learner import (
+from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
