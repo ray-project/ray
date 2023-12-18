@@ -45,13 +45,14 @@ class _BigQueryDatasink(Datasink):
         client = bigquery.Client(project=self.project_id)
         dataset_id = self.dataset.split(".", 1)[0]
         try:
-            client.create_dataset(f"{self.project_id}.{dataset_id}", timeout=30)
-            logger.info("Created dataset " + dataset_id)
-        except exceptions.Conflict:
+            client.get_dataset(dataset_id)
             logger.info(
                 f"Dataset {dataset_id} already exists. "
                 "The table will be overwritten if it already exists."
             )
+        except exceptions.NotFound:
+            client.create_dataset(f"{self.project_id}.{dataset_id}", timeout=30)
+            logger.info("Created dataset " + dataset_id)
 
         # Delete table if it already exists
         client.delete_table(f"{self.project_id}.{self.dataset}", not_found_ok=True)

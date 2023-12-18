@@ -20,15 +20,6 @@ py_test(
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
 
-### Ray Data
-py_test(
-    name = "datasets_train",
-    size = "medium",
-    srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "datasets_train", "gpu"],
-    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
-)
-
 py_test(
     name = "plot_hyperparameter",
     size = "small",
@@ -59,15 +50,6 @@ py_test(
     args = ["--path", "doc/source/ray-core/examples/batch_prediction.ipynb"]
 )
 
-py_test(
-    name = "batch_training",
-    size = "medium",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml"],
-    data = ["//doc/source/ray-core/examples:core_examples"],
-    args = ["--path", "doc/source/ray-core/examples/batch_training.ipynb"]
-)
 
 py_test(
     name = "plot_parameter_server",

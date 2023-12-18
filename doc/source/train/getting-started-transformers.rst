@@ -1,7 +1,7 @@
 .. _train-pytorch-transformers:
 
-Get Started with Hugging Face Transformers
-==========================================
+Get Started with Distributed Training using Hugging Face Transformers
+=====================================================================
 
 This tutorial walks through the process of converting an existing Hugging Face Transformers script to use Ray Train.
 
@@ -100,7 +100,9 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
     .. tab-item:: Hugging Face Transformers + Ray Train
 
         .. code-block:: python
-            :emphasize-lines: 11-13, 15-18, 55-72
+            :emphasize-lines: 13-15, 21, 67-68, 72, 80-87
+
+            import os
 
             import numpy as np
             import evaluate
@@ -116,6 +118,7 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
             from ray.train import ScalingConfig
             from ray.train.torch import TorchTrainer
 
+
             # [1] Encapsulate data preprocessing, training, and evaluation
             # logic in a training function
             # ============================================================
@@ -127,8 +130,12 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
                 def tokenize_function(examples):
                     return tokenizer(examples["text"], padding="max_length", truncation=True)
 
-                small_train_dataset = dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
-                small_eval_dataset = dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
+                small_train_dataset = (
+                    dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
+                )
+                small_eval_dataset = (
+                    dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
+                )
 
                 # Model
                 model = AutoModelForSequenceClassification.from_pretrained(
@@ -145,7 +152,10 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
 
                 # Hugging Face Trainer
                 training_args = TrainingArguments(
-                    output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
+                    output_dir="test_trainer",
+                    evaluation_strategy="epoch",
+                    save_strategy="epoch",
+                    report_to="none",
                 )
 
                 trainer = Trainer(
@@ -168,12 +178,26 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
                 # Start Training
                 trainer.train()
 
+
             # [4] Define a Ray TorchTrainer to launch `train_func` on all workers
             # ===================================================================
             ray_trainer = TorchTrainer(
-                train_func, scaling_config=ScalingConfig(num_workers=4, use_gpu=True)
+                train_func,
+                scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+                # [4a] If running in a multi-node cluster, this is where you
+                # should configure the run's persistent storage that is accessible
+                # across all worker nodes.
+                # run_config=ray.train.RunConfig(storage_path="s3://..."),
             )
-            ray_trainer.fit()
+            result: ray.train.Result = ray_trainer.fit()
+
+            # [5] Load the trained model.
+            with result.checkpoint.as_directory() as checkpoint_dir:
+                checkpoint_path = os.path.join(
+                    checkpoint_dir,
+                    ray.train.huggingface.transformers.RayTrainReportCallback.CHECKPOINT_NAME,
+                )
+                model = AutoModelForSequenceClassification.from_pretrained(checkpoint_path)
 
 
 Set up a training function
@@ -245,59 +269,8 @@ your configurations and enable Ray Data Integration.
          ...
 
 
-Configure scale and GPUs
-------------------------
+.. include:: ./common/torch-configure-run.rst
 
-Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
-
-1. `num_workers` - The number of distributed training worker processes.
-2. `use_gpu` - Whether each worker should use a GPU (or CPU).
-
-.. testcode::
-
-    from ray.train import ScalingConfig
-    scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
-
-
-For more details, see :ref:`train_scaling_config`.
-
-Launch a training job
----------------------
-
-Tying this all together, you can now launch a distributed training job
-with a :class:`~ray.train.torch.TorchTrainer`.
-
-.. testcode::
-    :hide:
-
-    from ray.train import ScalingConfig
-
-    train_func = lambda: None
-    scaling_config = ScalingConfig(num_workers=1)
-
-.. testcode::
-
-    from ray.train.torch import TorchTrainer
-
-    trainer = TorchTrainer(train_func, scaling_config=scaling_config)
-    result = trainer.fit()
-
-Refer to :ref:`train-run-config` for more configuration options for `TorchTrainer`.
-
-Access training results
------------------------
-
-After training completes, a :class:`~ray.train.Result` object is returned which contains
-information about the training run, including the metrics and checkpoints reported during training.
-
-.. testcode::
-
-    result.metrics     # The metrics reported during training.
-    result.checkpoint  # The latest checkpoint reported during training.
-    result.path     # The path where logs are stored.
-    result.error       # The exception that was raised, if training failed.
-
-.. TODO: Add results guide
 
 Next steps
 ----------

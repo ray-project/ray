@@ -1,10 +1,7 @@
 import pytest
 
 import ray
-from ray.dag import (
-    PARENT_CLASS_NODE_KEY,
-    PREV_CLASS_METHOD_CALL_KEY,
-)
+from ray.dag import PARENT_CLASS_NODE_KEY, PREV_CLASS_METHOD_CALL_KEY
 
 
 @ray.remote

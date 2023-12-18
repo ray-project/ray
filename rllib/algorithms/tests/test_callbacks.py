@@ -11,9 +11,10 @@ from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
+from ray import tune
 
 
-class OnWorkerCreatedCallbacks(DefaultCallbacks):
+class OnWorkersRecreatedCallbacks(DefaultCallbacks):
     def on_workers_recreated(
         self,
         *,
@@ -109,11 +110,13 @@ class TestCallbacks(unittest.TestCase):
         ray.shutdown()
 
     def test_on_workers_recreated_callback(self):
+        tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
+
         config = (
             APPOConfig()
-            .environment(CartPoleCrashing)
-            .callbacks(OnWorkerCreatedCallbacks)
-            .rollouts(num_rollout_workers=2)
+            .environment("env")
+            .callbacks(OnWorkersRecreatedCallbacks)
+            .rollouts(num_rollout_workers=3)
             .fault_tolerance(recreate_failed_workers=True)
         )
 
@@ -122,19 +125,24 @@ class TestCallbacks(unittest.TestCase):
             original_worker_ids = algo.workers.healthy_worker_ids()
             for id_ in original_worker_ids:
                 self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 0)
+            self.assertTrue(algo._counters["total_num_workers_recreated"] == 0)
 
             # After building the algorithm, we should have 2 healthy (remote) workers.
-            self.assertTrue(len(original_worker_ids) == 2)
+            self.assertTrue(len(original_worker_ids) == 3)
 
             # Train a bit (and have the envs/workers crash a couple of times).
-            for _ in range(3):
-                algo.train()
+            for _ in range(5):
+                print(algo.train())
 
-            # After training, each new worker should have been recreated at least once.
+            # After training, the `on_workers_recreated` callback should have captured
+            # the exact worker IDs recreated (the exact number of times) as the actor
+            # manager itself. This confirms that the callback is triggered correctly,
+            # always.
             new_worker_ids = algo.workers.healthy_worker_ids()
-            self.assertTrue(len(new_worker_ids) == 2)
+            self.assertTrue(len(new_worker_ids) == 3)
             for id_ in new_worker_ids:
-                self.assertTrue(algo._counters[f"worker_{id_}_recreated"] >= 1)
+                # num_restored = algo.workers.restored_actors_history[id_]
+                self.assertTrue(algo._counters[f"worker_{id_}_recreated"] > 1)
             algo.stop()
 
     def test_on_init_and_checkpoint_loaded(self):

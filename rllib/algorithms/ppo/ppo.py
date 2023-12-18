@@ -9,7 +9,6 @@ See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
-import dataclasses
 import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 
@@ -18,11 +17,6 @@ import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.ppo_learner import (
-    PPOLearnerHyperparameters,
-    LEARNER_RESULTS_KL_KEY,
-)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -56,6 +50,12 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY = "vf_loss_unclipped"
+LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY = "vf_explained_var"
+LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
+LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
 class PPOConfig(AlgorithmConfig):
@@ -152,6 +152,8 @@ class PPOConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+
         if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule,
@@ -189,22 +191,6 @@ class PPOConfig(AlgorithmConfig):
                 f"The framework {self.framework_str} is not supported. "
                 "Use either 'torch' or 'tf2'."
             )
-
-    @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> PPOLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        return PPOLearnerHyperparameters(
-            use_critic=self.use_critic,
-            use_kl_loss=self.use_kl_loss,
-            kl_coeff=self.kl_coeff,
-            kl_target=self.kl_target,
-            vf_loss_coeff=self.vf_loss_coeff,
-            entropy_coeff=self.entropy_coeff,
-            entropy_coeff_schedule=self.entropy_coeff_schedule,
-            clip_param=self.clip_param,
-            vf_clip_param=self.vf_clip_param,
-            **dataclasses.asdict(base_hps),
-        )
 
     @override(AlgorithmConfig)
     def training(
@@ -437,21 +423,6 @@ class PPO(Algorithm):
         if self.config._enable_new_api_stack:
             # TODO (Kourosh) Clearly define what train_batch_size
             #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
-            # TODO (Kourosh) Do this inside the Learner so that we don't have to do
-            #  this back and forth communication between driver and the remote
-            #  learner actors.
-            # TODO (sven): What's the plan for multi-agent setups when the
-            #  policy is gone?
-            # TODO (simon): The default method has already this functionality,
-            #  but this serves simply as a placeholder until it is decided on
-            #  how to replace the functionalities of the policy.
-
-            if (
-                self.config.env_runner_cls is None
-                or self.config.env_runner_cls.__name__ == "RolloutWorker"
-            ):
-                is_module_trainable = self.workers.local_worker().is_policy_to_train
-                self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,

@@ -1,7 +1,7 @@
 # Short term workaround for https://github.com/ray-project/ray/issues/32435
 # Dataset has a hard dependency on pandas, so it doesn't need to be delayed.
 import pandas  # noqa
-from pkg_resources._vendor.packaging.version import parse as parse_version
+from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.compute import ActorPoolStrategy
@@ -75,8 +75,14 @@ try:
         # PyArrow is mocked in documentation builds. In this case, we don't need to do
         # anything.
         pass
-    elif parse_version(pyarrow_version) >= parse_version("14.0.1"):
-        pa.PyExtensionType.set_auto_load(True)
+    else:
+        if parse_version(pyarrow_version) >= parse_version("14.0.1"):
+            pa.PyExtensionType.set_auto_load(True)
+        # Import these arrow extension types to ensure that they are registered.
+        from ray.air.util.tensor_extensions.arrow import (  # noqa
+            ArrowTensorType,
+            ArrowVariableShapedTensorType,
+        )
 except ModuleNotFoundError:
     pass
 

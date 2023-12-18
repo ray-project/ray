@@ -578,6 +578,10 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 100 * 1000)
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 #endif
 
+/// If true, agent checks the health of parent by reading pipe.
+/// If false, it checks the parent pid using psutil.
+RAY_CONFIG(bool, enable_pipe_based_agent_to_parent_health_check, true)
+
 /// If the agent manager fails to communicate with the dashboard agent or the runtime env
 /// agent, we will retry after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000)
@@ -743,6 +747,11 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
 RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU")
 
+/// The name of the system-created concurrency group for actors. This group is
+/// created with 1 thread, and is created lazily. The intended usage is for
+/// Ray-internal auxiliary tasks (e.g., accelerated dag workers).
+RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
+
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
 
@@ -780,6 +789,8 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
 /// grpc keepalive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
+
+RAY_CONFIG(int64_t, grpc_client_idle_timeout_ms, 1800000)
 
 /// grpc streaming buffer size
 /// Set it to 512kb

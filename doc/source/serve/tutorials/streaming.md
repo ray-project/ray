@@ -20,7 +20,7 @@ This tutorial serves the [DialoGPT](https://huggingface.co/microsoft/DialoGPT-sm
 pip install transformers
 ```
 
-# Create a Streaming Deployment
+## Create a Streaming Deployment
 
 Open a new Python file called `textbot.py`. First, add the imports and the [Serve logger](serve-logging).
 
@@ -73,7 +73,7 @@ Run the model with `serve run textbot:app`, and query it from another terminal w
 
 You should see the output printed token by token.
 
-# Stream inputs and outputs using WebSockets
+## Stream inputs and outputs using WebSockets
 
 WebSockets let you stream input into the application and stream output back to the client. Use WebSockets to create a chatbot that stores a conversation with a user.
 
@@ -134,7 +134,7 @@ Run the model with `serve run chatbot:app`. Query it using the `websockets` pack
 
 You should see the outputs printed token by token.
 
-# Batch requests and stream the output for each
+## Batch requests and stream the output for each
 
 Improve model utilization and request latency by batching requests together when running the model.
 

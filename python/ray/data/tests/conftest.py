@@ -118,7 +118,7 @@ def s3_fs_with_anonymous_crendential(
 def _s3_fs(aws_credentials, s3_server, s3_path):
     import urllib.parse
 
-    from pkg_resources._vendor.packaging.version import parse as parse_version
+    from packaging.version import parse as parse_version
 
     kwargs = aws_credentials.copy()
 

@@ -20,10 +20,10 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.test_utils import MockKVStore
+from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import DeploymentSchema, ServeApplicationSchema
-from ray.serve.tests.common.utils import MockKVStore
 
 
 class MockEndpointState:
@@ -151,7 +151,7 @@ def deployment_params(name: str, route_prefix: str = None, docs_path: str = None
     return {
         "deployment_name": name,
         "deployment_config_proto_bytes": DeploymentConfig(
-            num_replicas=1, user_config={}, version=get_random_letters()
+            num_replicas=1, user_config={}, version=get_random_string()
         ).to_proto_bytes(),
         "replica_config_proto_bytes": ReplicaConfig.create(
             lambda x: x

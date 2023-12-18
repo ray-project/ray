@@ -142,7 +142,6 @@ Execution
     :toctree: doc/
 
     Dataset.materialize
-    ActorPoolStrategy
 
 Serialization
 -------------
