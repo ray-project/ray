@@ -4570,6 +4570,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4594,6 +4596,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4617,6 +4621,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4699,6 +4705,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4881,6 +4889,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4921,6 +4931,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4951,6 +4963,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5010,6 +5024,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5034,6 +5050,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5084,6 +5102,11 @@
     wait_for_nodes:
       num_nodes: 32
 
+  variations:
+    - __suffix__: aws.py311
+      python: "3.11"
+
+
 
 - name: many_nodes_actor_test_on_v2
   group: core-daily-test
@@ -5105,6 +5128,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5143,6 +5168,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5167,6 +5194,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -6237,6 +6266,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -6262,6 +6293,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
