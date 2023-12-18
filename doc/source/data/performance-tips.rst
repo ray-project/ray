@@ -30,7 +30,7 @@ Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~r
 
 Ray Data decides the default value for ``parallelism`` based on the following heuristics, applied in order:
 
-1. Start with the default parallelism of 200. You can overwrite this by setting :class:`DataContext.min_parallelism <ray.data.context.DataContext>`.
+1. Start with the default parallelism of 32. You can overwrite this by setting :class:`DataContext.min_parallelism <ray.data.context.DataContext>`.
 2. Min block size (default=1 MiB). If the parallelism would make blocks smaller than this threshold, reduce parallelism to avoid the overhead of tiny blocks. You can override by setting :class:`DataContext.target_min_block_size <ray.data.context.DataContext>` (bytes).
 3. Max block size (default=128 MiB). If the parallelism would make blocks larger than this threshold, increase parallelism to avoid out-of-memory errors during processing. You can override by setting :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` (bytes).
 4. Available CPUs. Increase parallelism to utilize all of the available CPUs in the cluster. Ray Data chooses the number of read tasks to be at least 2x the number of available CPUs.
@@ -155,7 +155,7 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
     ...
     Stage 1 ReadCSV->SplitBlocks(4): 4/4 blocks executed in 0.01s
     ...
-    
+
     Stage 2 Map(<lambda>): 4/4 blocks executed in 0.03s
     ...
 

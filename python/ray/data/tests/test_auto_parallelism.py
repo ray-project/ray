@@ -42,20 +42,14 @@ TEST_CASES = [
     TestCase(
         avail_cpus=4,
         target_max_block_size=DataContext.get_current().target_max_block_size,
-        data_size=100 * MiB,
-        expected_parallelism=100,  # MIN_BLOCK_SIZE has precedence
-    ),
-    TestCase(
-        avail_cpus=4,
-        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=1 * GiB,
-        expected_parallelism=200,  # MIN_PARALLELISM has precedence
+        expected_parallelism=32,  # MIN_PARALLELISM has precedence
     ),
     TestCase(
         avail_cpus=4,
         target_max_block_size=DataContext.get_current().target_max_block_size,
-        data_size=10 * GiB,
-        expected_parallelism=200,  # MIN_PARALLELISM has precedence
+        data_size=4 * GiB,
+        expected_parallelism=32,  # MIN_PARALLELISM has precedence
     ),
     TestCase(
         avail_cpus=150,
