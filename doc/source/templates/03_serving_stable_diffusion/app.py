@@ -13,7 +13,7 @@ app = FastAPI()
 @serve.ingress(app)
 class APIIngress:
     def __init__(self, diffusion_model_handle) -> None:
-        self.handle = diffusion_model_handle.options(use_new_handle_api=True)
+        self.handle = diffusion_model_handle
 
     @app.get(
         "/imagine",
@@ -31,8 +31,9 @@ class APIIngress:
 
 
 @serve.deployment(
-    ray_actor_options={"num_gpus": 1},
-    autoscaling_config={"min_replicas": 1, "max_replicas": 3},
+    ray_actor_options={"num_gpus": 1, "num_cpus": 1},
+    max_concurrent_queries=2,
+    autoscaling_config={"min_replicas": 1, "max_replicas": 3, "target_num_ongoing_requests_per_replica": 1},
 )
 class StableDiffusionV2:
     def __init__(self):
