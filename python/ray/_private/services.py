@@ -74,7 +74,7 @@ RAY_JEMALLOC_LIB_PATH = "RAY_JEMALLOC_LIB_PATH"
 RAY_JEMALLOC_CONF = "RAY_JEMALLOC_CONF"
 RAY_JEMALLOC_PROFILE = "RAY_JEMALLOC_PROFILE"
 
-# Comma separated name of components that will run memory profiler.
+
 # Ray uses `memray` to memory profile internal components.
 # The name of the component must be one of ray_constants.PROCESS_TYPE*.
 RAY_MEMRAY_PROFILE_COMPONENT_ENV = "RAY_INTERNAL_MEM_PROFILE_COMPONENTS"
