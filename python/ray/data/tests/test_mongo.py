@@ -134,7 +134,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     )
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=200,\n"
+        "   num_blocks=35,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"
@@ -247,7 +247,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     ).materialize()
     assert str(ds) == (
         "MaterializedDataset(\n"
-        "   num_blocks=200,\n"
+        "   num_blocks=35,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"

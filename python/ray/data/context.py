@@ -65,7 +65,7 @@ DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
 
 # Minimum amount of parallelism to auto-detect for a dataset. Note that the min
 # block size config takes precedence over this.
-DEFAULT_MIN_PARALLELISM = 200
+DEFAULT_MIN_PARALLELISM = 32
 
 # Wether to use actor based block prefetcher.
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
@@ -186,7 +186,7 @@ class DataContext:
         use_streaming_executor: bool,
         eager_free: bool,
         decoding_size_estimation: bool,
-        min_parallelism: bool,
+        min_parallelism: int,
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
         trace_allocations: bool,
