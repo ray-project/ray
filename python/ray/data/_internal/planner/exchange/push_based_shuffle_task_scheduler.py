@@ -28,19 +28,21 @@ class _MergeTaskSchedule:
     def __init__(self, output_num_blocks: int, num_merge_tasks_per_round: int):
         self.output_num_blocks = output_num_blocks
         self.num_merge_tasks_per_round = num_merge_tasks_per_round
-        self.merge_partition_size = output_num_blocks // num_merge_tasks_per_round
-        self._partitions_with_extra_task = output_num_blocks % num_merge_tasks_per_round
+        self.num_reducers_per_merger = output_num_blocks // num_merge_tasks_per_round
+        self._num_mergers_with_extra_reducer = (
+            output_num_blocks % num_merge_tasks_per_round
+        )
 
-        if self.merge_partition_size == 0:
-            self.num_merge_tasks_per_round = self._partitions_with_extra_task
-            self.merge_partition_size = 1
-            self._partitions_with_extra_task = 0
+        if self.num_reducers_per_merger == 0:
+            self.num_merge_tasks_per_round = self._num_mergers_with_extra_reducer
+            self.num_reducers_per_merger = 1
+            self._num_mergers_with_extra_reducer = 0
 
     def __repr__(self):
         return (
             f"\tnum merge tasks per round: {self.num_merge_tasks_per_round}\n"
-            f"\tmerge partition size: {self.merge_partition_size}\n"
-            f"\tpartitions with extra task: {self._partitions_with_extra_task}"
+            f"\tmerge partition size: {self.num_reducers_per_merger}\n"
+            f"\tpartitions with extra task: {self._num_mergers_with_extra_reducer}"
         )
 
     def get_num_reducers_per_merge_idx(self, merge_idx: int) -> Optional[int]:
@@ -51,24 +53,24 @@ class _MergeTaskSchedule:
         """
         if merge_idx >= self.num_merge_tasks_per_round:
             return None
-        partition_size = self.merge_partition_size
-        if merge_idx < self._partitions_with_extra_task:
-            partition_size += 1
-        return partition_size
+        num_reducers_for_cur_merger = self.num_reducers_per_merger
+        if merge_idx < self._num_mergers_with_extra_reducer:
+            num_reducers_for_cur_merger += 1
+        return num_reducers_for_cur_merger
 
     def get_merge_idx_for_reducer_idx(self, reducer_idx: int) -> int:
         if (
             reducer_idx
-            < (self.merge_partition_size + 1) * self._partitions_with_extra_task
+            < (self.num_reducers_per_merger + 1) * self._num_mergers_with_extra_reducer
         ):
-            merge_idx = reducer_idx // (self.merge_partition_size + 1)
+            merge_idx = reducer_idx // (self.num_reducers_per_merger + 1)
         else:
             reducer_idx -= (
-                self.merge_partition_size + 1
-            ) * self._partitions_with_extra_task
+                self.num_reducers_per_merger + 1
+            ) * self._num_mergers_with_extra_reducer
             merge_idx = (
-                self._partitions_with_extra_task
-                + reducer_idx // self.merge_partition_size
+                self._num_mergers_with_extra_reducer
+                + reducer_idx // self.num_reducers_per_merger
             )
         assert merge_idx < self.num_merge_tasks_per_round
         return merge_idx
@@ -86,18 +88,18 @@ class _MergeTaskSchedule:
         round_idx = 0
         while idx < self.output_num_blocks:
             for merge_idx in range(self.num_merge_tasks_per_round):
-                if merge_idx < self._partitions_with_extra_task:
-                    reduce_idx = merge_idx * (self.merge_partition_size + 1)
-                    partition_size = self.merge_partition_size + 1
+                if merge_idx < self._num_mergers_with_extra_reducer:
+                    reduce_idx = merge_idx * (self.num_reducers_per_merger + 1)
+                    num_reducers_for_cur_merger = self.num_reducers_per_merger + 1
                 else:
-                    reduce_idx = self._partitions_with_extra_task * (
-                        self.merge_partition_size + 1
+                    reduce_idx = self._num_mergers_with_extra_reducer * (
+                        self.num_reducers_per_merger + 1
                     )
-                    merge_idx -= self._partitions_with_extra_task
-                    reduce_idx += merge_idx * self.merge_partition_size
-                    partition_size = self.merge_partition_size
+                    merge_idx -= self._num_mergers_with_extra_reducer
+                    reduce_idx += merge_idx * self.num_reducers_per_merger
+                    num_reducers_for_cur_merger = self.num_reducers_per_merger
 
-                if round_idx >= partition_size:
+                if round_idx >= num_reducers_for_cur_merger:
                     continue
 
                 reduce_idx += round_idx
@@ -140,6 +142,7 @@ class _PushBasedShuffleStage:
         return (
             "\n"
             f"num map tasks per round: {self.num_map_tasks_per_round}\n"
+            f"num rounds: {self.num_rounds}\n"
             "merge task placement: \n"
             f"{self.merge_schedule}"
         )
@@ -590,16 +593,18 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # to the number of reducers downstream to the merge task.
         partition = []
         merge_idx = 0
-        partition_size = schedule.get_num_reducers_per_merge_idx(merge_idx)
+        num_reducers_for_cur_merger = schedule.get_num_reducers_per_merge_idx(merge_idx)
         for output in mapper_outputs:
-            if len(partition) == partition_size:
+            if len(partition) == num_reducers_for_cur_merger:
                 yield partition
 
                 partition = []
                 merge_idx += 1
-                partition_size = schedule.get_num_reducers_per_merge_idx(merge_idx)
+                num_reducers_for_cur_merger = schedule.get_num_reducers_per_merge_idx(
+                    merge_idx
+                )
 
-            if partition_size is None:
+            if num_reducers_for_cur_merger is None:
                 assert not partition
                 # The last output should be the metadata.
                 yield output
