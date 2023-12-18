@@ -3,6 +3,7 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
@@ -16,7 +17,7 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-logger = logging.getLogger(__name__)
+logger = DatasetLogger(__name__)
 
 
 T = TypeVar("T")
@@ -37,9 +38,9 @@ class _MergeTaskSchedule:
 
     def __repr__(self):
         return (
-            f"num merge tasks per round: {self.num_merge_tasks_per_round}\n"
-            f"merge partition size: {self.merge_partition_size}\n"
-            f"partitions with extra task: {self._partitions_with_extra_task}"
+            f"\tnum merge tasks per round: {self.num_merge_tasks_per_round}\n"
+            f"\tmerge partition size: {self.merge_partition_size}\n"
+            f"\tpartitions with extra task: {self._partitions_with_extra_task}"
         )
 
     def get_num_reducers_per_merge_idx(self, merge_idx: int) -> Optional[int]:
@@ -396,7 +397,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: int = 2,
     ) -> Tuple[List[RefBundle], StatsDict]:
-        logger.info("Using experimental push-based shuffle.")
+        logger.get_logger().info("Using experimental push-based shuffle.")
         # TODO: Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks during the
         # map-merge stage.
@@ -433,7 +434,11 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             merge_factor,
             output_num_blocks,
         )
-        print(f"Stage:\n{stage}")
+
+        # TODO(swang): Remove before merge, DatasetLogger.setLevel(DEBUG)
+        # doesn't seem to be working.
+        print(f"Shuffle schedule:\n{stage}")
+        logger.get_logger().debug(f"Shuffle schedule:\n{stage}")
 
         map_fn = self._map_partition
         merge_fn = self._merge
@@ -743,9 +748,6 @@ def _get_num_cpus_per_node_map() -> Dict[str, int]:
     # Map from per-node resource name to number of CPUs available on that
     # node.
     num_cpus_per_node_map = {}
-    # for i in range(99):
-    #    num_cpus_per_node_map[str(i)] = 8
-    # return num_cpus_per_node_map
     for node in nodes:
         resources = node["Resources"]
         num_cpus = int(resources.get("CPU", 0))
