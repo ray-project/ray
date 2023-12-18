@@ -476,33 +476,53 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                  << ", number of chunks: " << chunk_reader->GetNumChunks()
                  << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
 
-  auto push_id = UniqueID::FromRandom();
-  push_manager_->StartPush(
-      node_id, object_id, chunk_reader->GetNumChunks(), [=](int64_t chunk_id) {
-        rpc_service_.post(
-            [=]() {
-              // Post to the multithreaded RPC event loop so that data is copied
-              // off of the main thread.
-              SendObjectChunk(
-                  push_id,
-                  object_id,
-                  node_id,
-                  chunk_id,
-                  rpc_client,
-                  [=](const Status &status) {
-                    // Post back to the main event loop because the
-                    // PushManager is not thread-safe.
-                    main_service_->post(
-                        [this, node_id, object_id]() {
-                          push_manager_->OnChunkComplete(node_id, object_id);
-                        },
-                        "ObjectManager.Push");
-                  },
-                  chunk_reader,
-                  from_disk);
-            },
-            "ObjectManager.Push");
-      });
+  // These infos are used in multiple async steps. We can use a shared context to prevent
+  // unnecessery copies.
+  struct PushObjectContext {
+    NodeID node_id;
+    ObjectID object_id;
+    UniqueID push_id;
+    std::shared_ptr<rpc::ObjectManagerClient> rpc_client;
+    std::shared_ptr<ChunkObjectReader> chunk_reader;
+    bool from_disk;
+  };
+  auto context = std::make_shared<PushObjectContext>();
+  context->node_id = node_id;
+  context->object_id = object_id;
+  context->push_id = UniqueID::FromRandom();
+  context->rpc_client = rpc_client;
+  context->chunk_reader = chunk_reader;
+  context->from_disk = from_disk;
+
+  push_manager_->StartPush(node_id,
+                           object_id,
+                           chunk_reader->GetNumChunks(),
+                           [this, context](int64_t chunk_id) {
+                             rpc_service_.post(
+                                 [this, context, chunk_id]() {
+                                   // Post to the multithreaded RPC event loop so that
+                                   // data is copied off of the main thread.
+                                   SendObjectChunk(
+                                       context->push_id,
+                                       context->object_id,
+                                       context->node_id,
+                                       chunk_id,
+                                       context->rpc_client,
+                                       [this, context](const Status &status) {
+                                         // Post back to the main event loop because the
+                                         // PushManager is not thread-safe.
+                                         main_service_->post(
+                                             [this, context]() {
+                                               push_manager_->OnChunkComplete(
+                                                   context->node_id, context->object_id);
+                                             },
+                                             "ObjectManager.Push");
+                                       },
+                                       context->chunk_reader,
+                                       context->from_disk);
+                                 },
+                                 "ObjectManager.Push");
+                           });
 }
 
 void ObjectManager::SendObjectChunk(const UniqueID &push_id,
