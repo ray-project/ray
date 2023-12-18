@@ -22,6 +22,12 @@ NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
 MIG_UUID_DRIVER_VERSION = "470.42.01"
 
 
+def _decode(string):
+    if isinstance(string, bytes):
+        return string.decode("utf-8")
+    return string
+
+
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
     """Nvidia GPU accelerators."""
 
@@ -57,7 +63,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             pynvml.nvmlInit()
         except pynvml.NVMLError:
             return 0  # pynvml init failed
-        driver_version = pynvml.nvmlSystemGetDriverVersion()
+        driver_version = _decode(pynvml.nvmlSystemGetDriverVersion())
         device_count = pynvml.nvmlDeviceGetCount()
         cuda_devices = []
         mig_enabled = ray_constants.RAY_ENABLE_MIG_DETECTION
@@ -82,12 +88,17 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
                             handle, mig_index
                         )
                         if Version(driver_version) >= Version(MIG_UUID_DRIVER_VERSION):
-                            mig_uuid = pynvml.nvmlDeviceGetUUID(mig_handle)
+                            mig_uuid = _decode(pynvml.nvmlDeviceGetUUID(mig_handle))
                         else:
+                            gi_id = _decode(
+                                pynvml.nvmlDeviceGetGpuInstanceId(mig_handle)
+                            )
+                            ci_id = _decode(
+                                pynvml.nvmlDeviceGetComputeInstanceId(mig_handle)
+                            )
                             mig_uuid = (
-                                f"MIG-{pynvml.nvmlDeviceGetUUID(handle)}"
-                                f"/{pynvml.nvmlDeviceGetGpuInstanceId(mig_handle)}"
-                                f"/{pynvml.nvmlDeviceGetComputeInstanceId(mig_handle)}"
+                                f"MIG-{_decode(pynvml.nvmlDeviceGetUUID(handle))}"
+                                f"/{gi_id}/{ci_id}"
                             )
                         cuda_devices.append(mig_uuid)
                     except pynvml.NVMLError:
@@ -112,9 +123,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         cuda_device_type = None
         if device_count > 0:
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            device_name = pynvml.nvmlDeviceGetName(handle)
-            if isinstance(device_name, bytes):
-                device_name = device_name.decode("utf-8")
+            device_name = _decode(pynvml.nvmlDeviceGetName(handle))
             cuda_device_type = (
                 NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(device_name)
             )
