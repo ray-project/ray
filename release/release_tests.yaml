@@ -2178,6 +2178,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -2303,6 +2305,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -2343,6 +2347,8 @@
   alert: long_running_tests
 
   variations:
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: aws
     - __suffix__: gce
       env: gce
@@ -2430,6 +2436,8 @@
   alert: long_running_tests
 
   variations:
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: aws
     - __suffix__: gce
       env: gce
@@ -2471,6 +2479,8 @@
   alert: long_running_tests
 
   variations:
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: aws
     - __suffix__: gce
       env: gce
@@ -2512,6 +2522,8 @@
   alert: long_running_tests
 
   variations:
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: aws
     - __suffix__: gce
       env: gce
@@ -4649,6 +4661,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4852,6 +4866,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -6754,3 +6770,7 @@
   run:
     timeout: 1800
     script: python run.py
+
+  variations:
+    - __suffix__: aws.py311
+      python: "3.11"
