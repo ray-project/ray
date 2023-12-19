@@ -39,9 +39,9 @@ class _MergeTaskSchedule:
 
     def __repr__(self):
         return (
-            f"\tnum merge tasks per round: {self.num_merge_tasks_per_round}\n"
-            f"\tnum reduce tasks per merge task: {self.num_reducers_per_merger}\n"
-            "\tnum merge tasks with extra reduce task: "
+            f"    num merge tasks per round: {self.num_merge_tasks_per_round}\n"
+            f"    num reduce tasks per merge task: {self.num_reducers_per_merger}\n"
+            "    num merge tasks with extra reduce task: "
             f"{self._num_mergers_with_extra_reducer}"
         )
 
@@ -190,6 +190,7 @@ class _PipelinedStageExecutor:
                     prev_metadata = self._progress_bar.fetch_until_complete(
                         prev_metadata_refs
                     )
+                    # TODO(swang): Eagerly free the previous round's args.
                 else:
                     prev_metadata = ray.get(prev_metadata_refs)
 
