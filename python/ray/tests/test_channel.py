@@ -164,8 +164,8 @@ def test_remote_reader(ray_start_cluster):
         def __init__(self):
             pass
 
-        def ready(self):
-            return
+        def get_node_id(self) -> str:
+            return ray.get_runtime_context().get_node_id()
 
         def allocate_local_reader_channel(self, writer_channel):
             self._reader_chan = ray_channel.Channel(_writer_channel=writer_channel)
@@ -181,8 +181,8 @@ def test_remote_reader(ray_start_cluster):
             return values
 
     reader = Reader.remote()
-    ray.get(reader.ready.remote())
-    channel = ray_channel.Channel(1000, _receiver_actor_handle=reader)
+    reader_node_id = ray.get(reader.get_node_id.remote())
+    channel = ray_channel.Channel(1000, _reader_node_id=reader_node_id)
     print("xxx")
 
     print(ray.get(reader.allocate_local_reader_channel.remote(channel)))

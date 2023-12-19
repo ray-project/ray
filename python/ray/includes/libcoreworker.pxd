@@ -254,7 +254,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const CObjectID &object_id)
         void ExperimentalRegisterCrossNodeWriterChannel(
                 const CObjectID &object_id,
-                const CActorID &receiver_id
+                const CNodeID &receiver_node_id
                 )
         void ExperimentalRegisterCrossNodeReaderChannel(
                 const CObjectID &channel_id,

@@ -228,7 +228,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                     const std::function<std::shared_ptr<Buffer>(
                         const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
                     ObjectBuffer *object_buffers,
-                    bool is_from_worker);
+                    bool is_from_worker,
+                    bool read_acquire_experimental_mutable_object = true);
 
   uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val) const;
 
@@ -588,7 +589,9 @@ Status PlasmaClient::Impl::GetBuffers(
     const std::function<std::shared_ptr<Buffer>(
         const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
     ObjectBuffer *object_buffers,
-    bool is_from_worker) {
+    bool is_from_worker,
+    bool read_acquire_experimental_mutable_object) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   // Fill out the info for the objects that are already in use locally.
   bool all_present = true;
   for (int64_t i = 0; i < num_objects; ++i) {
@@ -607,7 +610,8 @@ Status PlasmaClient::Impl::GetBuffers(
           << "Attempting to get an object that this client created but hasn't sealed.";
       all_present = false;
     } else {
-      if (object_entry->second->object.is_experimental_mutable_object) {
+      if (object_entry->second->object.is_experimental_mutable_object &&
+          read_acquire_experimental_mutable_object) {
         // Wait for the object to become ready to read.
         RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry->second));
       }
@@ -694,7 +698,8 @@ Status PlasmaClient::Impl::GetBuffers(
       auto &object_entry = objects_in_use_[received_object_ids[i]];
 
       // Wait for the object to become ready to read.
-      if (object_entry->object.is_experimental_mutable_object) {
+      if (object_entry->object.is_experimental_mutable_object &&
+          read_acquire_experimental_mutable_object) {
         RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry));
       }
       std::shared_ptr<Buffer> physical_buf;
@@ -1065,6 +1070,21 @@ Status PlasmaClient::ExperimentalMutableObjectWriteAcquire(
     std::shared_ptr<Buffer> *data) {
   return impl_->ExperimentalMutableObjectWriteAcquire(
       object_id, data_size, metadata, metadata_size, num_readers, data);
+}
+
+Status PlasmaClient::ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) {
+  ObjectBuffer object_buffer;
+  const auto wrap_buffer = [=](const ObjectID &object_id,
+                               const std::shared_ptr<Buffer> &buffer) {
+    return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
+  };
+  return impl_->GetBuffers(&object_id,
+                           /*num_objects=*/1,
+                           /*timeout_ms=*/ = -1,
+                           wrap_buffer,
+                           &object_buffer,
+                           /*is_from_worker=*/false,
+                           /*read_acquire_experimental_mutable_object=*/false);
 }
 
 Status PlasmaClient::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {

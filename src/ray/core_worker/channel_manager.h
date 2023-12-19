@@ -15,21 +15,20 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
-namespace core {
 
 class ExperimentalChannelManager {
  public:
   ExperimentalChannelManager(
       std::shared_ptr<plasma::PlasmaClient> plasma_client,
-      std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(
-          const ActorID &actor_id)> actor_client_factory)
-      : plasma_client_(plasma_client), actor_client_factory_(actor_client_factory) {}
+      std::function<std::shared_ptr<ExperimentalChannelReaderInterface>(
+          const NodeID &node_id)> raylet_client_factory)
+      : plasma_client_(plasma_client), raylet_client_factory_(raylet_client_factory) {}
 
-  void RegisterCrossNodeWriterChannel(const ObjectID &channel_id,
-                                      const ActorID &actor_id);
+  void RegisterCrossNodeWriterChannel(const ObjectID &channel_id, const NodeID &node_id);
 
   void RegisterCrossNodeReaderChannel(const ObjectID &channel_id,
                                       int64_t num_readers,
@@ -41,10 +40,9 @@ class ExperimentalChannelManager {
 
  private:
   struct WriterChannelInfo {
-    WriterChannelInfo(const ActorID &reader_actor_id)
-        : reader_actor_id(reader_actor_id) {}
+    WriterChannelInfo(const NodeID &reader_node_id) : reader_node_id(reader_node_id) {}
 
-    const ActorID reader_actor_id;
+    const NodeID reader_node_id;
     std::thread send_thread;
   };
 
@@ -58,14 +56,14 @@ class ExperimentalChannelManager {
 
   void PollWriterChannelAndCopyToReader(
       const ObjectID &object_id,
-      std::shared_ptr<rpc::CoreWorkerClientInterface> reader_client);
+      std::shared_ptr<ExperimentalChannelReaderInterface> reader_client);
 
   std::shared_ptr<plasma::PlasmaClient> plasma_client_;
-  std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(const ActorID &actor_id)>
-      actor_client_factory_;
+  std::function<std::shared_ptr<ExperimentalChannelReaderInterface>(
+      const NodeID &node_id)>
+      raylet_client_factory_;
   absl::flat_hash_map<ObjectID, WriterChannelInfo> write_channels_;
   absl::flat_hash_map<ObjectID, ReaderChannelInfo> read_channels_;
 };
 
-}  // namespace core
 }  // namespace ray

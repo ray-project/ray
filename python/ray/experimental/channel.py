@@ -3,7 +3,6 @@ import logging
 from typing import Any, Optional
 
 import ray
-from ray.actor import ActorHandle
 from ray.util.annotations import PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -57,7 +56,7 @@ class Channel:
         self,
         buffer_size_bytes: Optional[int] = None,
         num_readers: int = 1,
-        _receiver_actor_handle: Optional["ray.actor.ActorHandle"] = None,
+        _reader_node_id: Optional[str] = None,
         _writer_channel: Optional["Channel"] = None,
         _base_ref: Optional["ray.ObjectRef"] = None,
     ):
@@ -105,12 +104,12 @@ class Channel:
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
-        if _receiver_actor_handle is not None:
-            if not isinstance(_receiver_actor_handle, ActorHandle):
-                raise ValueError("`_receiver_actor_handle` must be an ActorHandle")
-            print(self._base_ref, _receiver_actor_handle._ray_actor_id)
+        if _reader_node_id is not None:
+            if not isinstance(_reader_node_id, str):
+                raise ValueError("`_reader_node_id` must be a str")
+            print(self._base_ref, _reader_node_id)
             self._worker.core_worker.experimental_register_cross_node_writer_channel(
-                self._base_ref, _receiver_actor_handle._ray_actor_id
+                self._base_ref, _reader_node_id
             )
 
         if _writer_channel is not None:

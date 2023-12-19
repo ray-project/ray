@@ -355,6 +355,16 @@ message DrainRayletReply {
   bool is_accepted = 1;
 }
 
+message ExperimentalRegisterCrossNodeReaderChannelRequest {
+  bytes channel_id = 1;
+  int64 num_readers = 2;
+  bytes local_channel_id = 3;
+}
+
+message ExperimentalRegisterCrossNodeReaderChannelReply {
+  bool success = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Handle the case when GCS restarted.
@@ -418,4 +428,6 @@ service NodeManagerService {
   // Gets the task execution result. May contain a result if
   // the task completed in error.
   rpc GetTaskFailureCause(GetTaskFailureCauseRequest) returns (GetTaskFailureCauseReply);
+  rpc ExperimentalRegisterCrossNodeReaderChannel(ExperimentalRegisterCrossNodeReaderChannelRequest) returns (ExperimentalRegisterCrossNodeReaderChannelReply);
+  rpc PushExperimentalChannelValue(PushExperimentalChannelValueRequest) returns (PushExperimentalChannelValueReply);
 }

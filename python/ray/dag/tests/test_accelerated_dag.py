@@ -178,19 +178,16 @@ def test_dag_errors(ray_start_regular):
 
 def test_cluster(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=1)
 
-    sender = Actor.remote(0)
-    receiver = Actor.remote(0)
+    actor = Actor.remote(0)
 
     with InputNode() as i:
-        dag = sender.inc.bind(i)
-        dag = receiver.inc.bind(i)
+        dag = actor.inc.bind(i)
 
     dag = dag.experimental_compile()
-
     print(ray.get(dag.execute(1)))
 
 

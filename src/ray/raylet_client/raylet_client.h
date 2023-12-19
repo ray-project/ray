@@ -170,11 +170,27 @@ class ResourceTrackingInterface {
   virtual ~ResourceTrackingInterface(){};
 };
 
+class ExperimentalChannelReaderInterface {
+ public:
+  virtual void ExperimentalRegisterCrossNodeReaderChannel(
+      const ObjectID &channel_id,
+      int64_t num_readers,
+      const ObjectID &local_reader_channel_id,
+      const ray::rpc::ClientCallback<
+          ray::rpc::ExperimentalRegisterCrossNodeReaderChannelReply> &callback) = 0;
+
+  virtual void PushExperimentalChannelValue(
+      const rpc::PushExperimentalChannelValueRequest &request,
+      const ray::rpc::ClientCallback<ray::rpc::PushExperimentalChannelValueReply>
+          &callback) = 0;
+};
+
 class RayletClientInterface : public PinObjectsInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
                               public ResourceReserveInterface,
-                              public ResourceTrackingInterface {
+                              public ResourceTrackingInterface,
+                              public ExperimentalChannelReaderInterface {
  public:
   virtual ~RayletClientInterface(){};
 
@@ -417,6 +433,18 @@ class RayletClient : public RayletClientInterface {
       const TaskID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override;
+
+  void ExperimentalRegisterCrossNodeReaderChannel(
+      const ObjectID &channel_id,
+      int64_t num_readers,
+      const ObjectID &local_reader_channel_id,
+      const ray::rpc::ClientCallback<
+          ray::rpc::ExperimentalRegisterCrossNodeReaderChannelReply> &callback) override;
+
+  void PushExperimentalChannelValue(
+      const rpc::PushExperimentalChannelValueRequest &request,
+      const ray::rpc::ClientCallback<ray::rpc::PushExperimentalChannelValueReply>
+          &callback) override;
 
   /// Implements WorkerLeaseInterface.
   void ReportWorkerBacklog(

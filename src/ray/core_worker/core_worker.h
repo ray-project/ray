@@ -1293,7 +1293,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
 
   void ExperimentalRegisterCrossNodeWriterChannel(const ObjectID &channel_id,
-                                                  const ActorID &receiver_id);
+                                                  const NodeID &receiver_id);
 
   void ExperimentalRegisterCrossNodeReaderChannel(
       const ObjectID &channel_id,

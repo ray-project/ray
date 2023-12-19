@@ -175,6 +175,10 @@ class CompiledDAG:
         self.counter += 1
 
     def _get_task_node_id(self, idx: int) -> str:
+        # Input and outputs are on the driver's node.
+        if idx == self.input_task_idx or idx == self.output_task_idx:
+            return do_get_node_id(self=None)
+
         actor_handle = self.idx_to_task[idx].actor_handle
         assert actor_handle is not None
         return self.actor_node_ids[actor_handle._ray_actor_id]

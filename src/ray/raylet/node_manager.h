@@ -48,6 +48,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
+#include "ray/core_worker/channel_manager.h"
 // clang-format on
 
 namespace ray {
@@ -608,6 +609,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                  rpc::GetTaskFailureCauseReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleExperimentalRegisterCrossNodeReaderChannel(
+      rpc::ExperimentalRegisterCrossNodeReaderChannelRequest request,
+      rpc::ExperimentalRegisterCrossNodeReaderChannelReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePushExperimentalChannelValue(
+      rpc::PushExperimentalChannelValueRequest request,
+      rpc::PushExperimentalChannelValueReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `GetObjectsInfo` request.
   void HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
                             rpc::GetObjectsInfoReply *reply,
@@ -732,7 +743,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
-  plasma::PlasmaClient store_client_;
+  std::shared_ptr<plasma::PlasmaClient> store_client_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
@@ -879,6 +890,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
+
+  /// Experimental channels.
+  std::unique_ptr<ExperimentalChannelManager> channel_manager_;
 };
 
 }  // namespace raylet

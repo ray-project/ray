@@ -402,6 +402,26 @@ void raylet::RayletClient::GetTaskFailureCause(
       });
 }
 
+void raylet::RayletClient::ExperimentalRegisterCrossNodeReaderChannel(
+    const ObjectID &channel_id,
+    int64_t num_readers,
+    const ObjectID &local_reader_channel_id,
+    const ray::rpc::ClientCallback<
+        ray::rpc::ExperimentalRegisterCrossNodeReaderChannelReply> &callback) {
+  rpc::ExperimentalRegisterCrossNodeReaderChannelRequest request;
+  request.set_channel_id(channel_id.Binary());
+  request.set_num_readers(num_readers);
+  request.set_local_channel_id(local_reader_channel_id.Binary());
+  grpc_client_->ExperimentalRegisterCrossNodeReaderChannel(request, callback);
+}
+
+void raylet::RayletClient::PushExperimentalChannelValue(
+    const rpc::PushExperimentalChannelValueRequest &request,
+    const ray::rpc::ClientCallback<ray::rpc::PushExperimentalChannelValueReply>
+        &callback) {
+  grpc_client_->PushExperimentalChannelValue(request, callback);
+}
+
 void raylet::RayletClient::ReleaseUnusedWorkers(
     const std::vector<WorkerID> &workers_in_use,
     const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) {

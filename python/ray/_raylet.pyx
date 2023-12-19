@@ -3517,15 +3517,15 @@ cdef class CoreWorker:
 
     def experimental_register_cross_node_writer_channel(self,
                                                         ObjectRef channel_ref,
-                                                        ActorID receiver_actor_id):
+                                                        receiver_node_id_str):
         cdef:
             CObjectID c_channel_id = channel_ref.native()
-            CActorID c_receiver_actor_id = receiver_actor_id.native()
+            CNodeID c_receiver_node_id = CNodeID.FromHex(receiver_node_id_str)
 
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                                .ExperimentalRegisterCrossNodeWriterChannel(
-                                       c_channel_id, c_receiver_actor_id))
+                                       c_channel_id, c_receiver_node_id))
 
     def experimental_register_cross_node_reader_channel(self,
                                                         ObjectRef channel_ref,

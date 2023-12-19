@@ -18,14 +18,14 @@
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
-namespace core {
 
 void ExperimentalChannelManager::PollWriterChannelAndCopyToReader(
     const ObjectID &channel_id,
-    std::shared_ptr<rpc::CoreWorkerClientInterface> reader_client) {
+    std::shared_ptr<ExperimentalChannelReaderInterface> reader_client) {
   std::vector<plasma::ObjectBuffer> objects;
   std::vector<ObjectID> object_ids = {channel_id};
 
+  // TODO(swang): Cache this?
   rpc::PushExperimentalChannelValueRequest request;
   request.set_channel_id(channel_id.Binary());
 
@@ -46,8 +46,7 @@ void ExperimentalChannelManager::PollWriterChannelAndCopyToReader(
                    objects[0].data->Size() + objects[0].metadata->Size());
 
   RAY_LOG(DEBUG) << "PushExperimentalChannelValue, pushing value from sender channel "
-                 << channel_id << " to remote reader with worker ID "
-                 << WorkerID::FromBinary(reader_client->Addr().worker_id());
+                 << channel_id << " to remote reader";
 
   reader_client->PushExperimentalChannelValue(
       request,
@@ -60,13 +59,14 @@ void ExperimentalChannelManager::PollWriterChannelAndCopyToReader(
 }
 
 void ExperimentalChannelManager::RegisterCrossNodeWriterChannel(
-    const ObjectID &channel_id, const ActorID &actor_id) {
-  auto inserted = write_channels_.insert({channel_id, WriterChannelInfo(actor_id)});
+    const ObjectID &channel_id, const NodeID &node_id) {
+  plasma_client_->ExperimentalMutableObjectRegisterWriter(channel_id);
+  auto inserted = write_channels_.insert({channel_id, WriterChannelInfo(node_id)});
   RAY_CHECK(inserted.second);
 
   // Start a thread that repeatedly listens for values on this
   // channel, then sends via RPC to the remote reader.
-  auto reader_client = actor_client_factory_(actor_id);
+  auto reader_client = raylet_client_factory_(node_id);
   RAY_CHECK(reader_client);
   std::thread send_thread([this, channel_id, reader_client]() {
     PollWriterChannelAndCopyToReader(channel_id, reader_client);
@@ -120,5 +120,4 @@ void ExperimentalChannelManager::HandlePushExperimentalChannelValue(
   reply->set_success(true);
 }
 
-}  // namespace core
 }  // namespace ray

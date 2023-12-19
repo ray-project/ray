@@ -197,6 +197,15 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         ExperimentalRegisterCrossNodeReaderChannel,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         PushExperimentalChannelValue,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
  private:
   /// Constructor.
   ///
