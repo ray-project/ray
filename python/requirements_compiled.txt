@@ -1440,7 +1440,7 @@ pandas==1.5.3
     #   xgboost-ray
 pandocfilters==1.5.0
     # via nbconvert
-paramiko==2.12.0
+paramiko==3.4.0
     # via azure-cli-core
 paramz==0.9.5
     # via gpy
