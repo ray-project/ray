@@ -78,8 +78,7 @@ class RayServeWrappedReplica:
             deployment_config_proto_bytes
         )
         self._configure_logger_and_profilers(
-            replica_tag,
-            LoggingConfig(**(deployment_config.logging_config or {}))
+            replica_tag, LoggingConfig(**(deployment_config.logging_config or {}))
         )
         self._event_loop = get_or_create_event_loop()
         self._user_callable_wrapper = UserCallableWrapper(
@@ -454,7 +453,9 @@ class UserCallableWrapper:
             self.controller_handle = ray.get_actor(
                 SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
             )
-            process_remote_func = self.controller_handle.record_autoscaling_metrics.remote
+            process_remote_func = (
+                self.controller_handle.record_autoscaling_metrics.remote
+            )
             config = autoscaling_config
             self.metrics_pusher.register_task(
                 self.collect_autoscaling_metrics,
