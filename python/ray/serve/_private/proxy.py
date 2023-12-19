@@ -20,6 +20,7 @@ import ray
 from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
+from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import EndpointInfo, EndpointTag, NodeId, RequestProtocol
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
@@ -742,7 +743,7 @@ class gRPCProxy(GenericProxy):
 
             yield ResponseStatus(code=grpc.StatusCode.OK)
         except TimeoutError:
-            message = f"Request {request_id} timed out after {self.request_timeout_s}s."
+            message = f"Request timed out after {self.request_timeout_s}s."
             logger.warning(message)
             yield ResponseStatus(
                 code=grpc.StatusCode.DEADLINE_EXCEEDED,
@@ -758,7 +759,12 @@ class gRPCProxy(GenericProxy):
                 message=message,
             )
         except Exception as e:
-            logger.exception(e)
+            if isinstance(e, (RayActorError, RayTaskError)):
+                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
+            else:
+                logger.exception(
+                    f"Request failed due to unexpected error."
+                )
             yield ResponseStatus(
                 code=grpc.StatusCode.INTERNAL,
                 is_error=True,
@@ -1017,7 +1023,7 @@ class HTTPProxy(GenericProxy):
                 is_error=True,
             )
             logger.warning(
-                f"Request {request_id} timed out after {self.request_timeout_s}s."
+                f"Request timed out after {self.request_timeout_s}s."
             )
             # We should only send timeout response if we have not sent
             # any messages to the client yet. Header (including status code)
@@ -1034,7 +1040,12 @@ class HTTPProxy(GenericProxy):
                 f"Client for request {request_id} disconnected, cancelling request."
             )
         except Exception as e:
-            logger.exception(e)
+            if isinstance(e, (RayActorError, RayTaskError)):
+                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
+            else:
+                logger.exception(
+                    f"Request failed due to unexpected error."
+                )
             status = ResponseStatus(
                 code="500",
                 is_error=True,
