@@ -79,6 +79,12 @@ def create_object_containing_ref():
     return obj_refs
 
 
+@ray.remote
+class DAGActor:
+    def echo(self, x):
+        return x
+
+
 def check_optimized_build():
     if not ray._raylet.OPTIMIZED:
         msg = (
@@ -384,12 +390,7 @@ def main(results=None):
         for output_channel in output_channels:
             output_channel.end_read()
 
-    @ray.remote
-    class Actor:
-        def echo(self, x):
-            return x
-
-    a = Actor.remote()
+    a = DAGActor.remote()
     with InputNode() as inp:
         dag = a.echo.bind(inp)
 
@@ -399,7 +400,7 @@ def main(results=None):
 
     del a
     n_cpu = multiprocessing.cpu_count() // 2
-    actors = [Actor.remote() for _ in range(n_cpu)]
+    actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
         dag = MultiOutputNode([a.echo.bind(inp) for a in actors])
     results += timeit(
@@ -411,7 +412,7 @@ def main(results=None):
         lambda: _exec_multi_output(dag),
     )
 
-    actors = [Actor.remote() for _ in range(n_cpu)]
+    actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
         dag = inp
         for a in actors:

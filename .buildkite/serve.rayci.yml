@@ -13,6 +13,16 @@ steps:
   - name: servepython311build
     wanda: ci/docker/servepython311.build.wanda.yaml
 
+  - name: minbuild-serve
+    label: "wanda: minbuild-{{matrix}}-py38"
+    wanda: ci/docker/min.build.wanda.yaml
+    matrix:
+      - serve
+      - default
+    env:
+      PYTHON_VERSION: "3.8"
+      EXTRA_DEPENDENCY: "{{matrix}}"
+
   # tests
   - label: ":ray-serve: serve: tests"
     parallelism: 2
@@ -55,6 +65,23 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servepython311build --test-env=EXPECTED_PYTHON_VERSION=3.11
     depends_on: servepython311build
+
+  - label: ":ray-serve: serve: :windows: tests"
+    tags: serve
+    job_env: WINDOWS
+    instance_type: windows
+    parallelism: 2
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
+        --build-name windowsbuild
+        --operating-system windows
+        --except-tags no_windows
+        --test-env=CI="1"
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
+        --test-env=USERPROFILE
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+    depends_on: windowsbuild
 
   - label: ":ray-serve: serve: release tests"
     tags:
@@ -174,7 +201,7 @@ steps:
         --build-name docgpubuild
         --only-tags gpu
     depends_on: docgpubuild
-  
+
   - label: ":ray-serve: serve: flaky tests"
     tags: 
       - serve
@@ -185,22 +212,3 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
     depends_on: servebuild
-
-  - name: minbuild-serve
-    label: "wanda: minbuild-{{matrix}}-py38"
-    wanda: ci/docker/min.build.wanda.yaml
-    matrix:
-      - serve
-      - default
-    env:
-      PYTHON_VERSION: "3.8"
-      EXTRA_DEPENDENCY: "{{matrix}}"
-
-  - label: ":windows: serve tests"
-    tags:
-      - serve
-    job_env: WINDOWS
-    instance_type: windows
-    parallelism: 5
-    commands:
-      - bash /c/workdir/.buildkite/windows_ci.sh test_serve

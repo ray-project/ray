@@ -43,6 +43,23 @@ steps:
         --test-env=TEST_EXTERNAL_REDIS=1
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,xcommit,container,manual
 
+  - label: ":ray: core: :windows: python tests"
+    tags: python
+    job_env: WINDOWS
+    instance_type: windows
+    parallelism: 5
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --build-name windowsbuild
+        --operating-system windows
+        --except-tags no_windows
+        --test-env=CI="1"
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
+        --test-env=USERPROFILE
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
+    depends_on: windowsbuild
+
   - label: ":ray: core: memory pressure tests"
     tags:
       - python
@@ -240,6 +257,22 @@ steps:
         --except-tags no_tsan
         --parallelism-per-worker 2
 
+  - label: ":ray: core: :windows: cpp tests"
+    tags: core_cpp
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
+        --build-name windowsbuild
+        --operating-system windows
+        --except-tags no_windows
+        --test-env=CI="1"
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
+        --test-env=USERPROFILE
+        --parallelism-per-worker 2
+    depends_on: windowsbuild
+
   - label: ":ray: core: flaky tests"
     tags:
       - python
@@ -297,20 +330,3 @@ steps:
       - forge
       - raycpubase
       - corebuild
-    
-  - label: ":windows: python tests"
-    tags:
-      - python
-    job_env: WINDOWS
-    instance_type: windows
-    commands:
-      - bash /c/workdir/.buildkite/windows_ci.sh test_python
-    parallelism: 10
-
-  - label: ":windows: core tests"
-    tags:
-      - core_cpp
-    job_env: WINDOWS
-    instance_type: windows
-    commands:
-      - bash /c/workdir/.buildkite/windows_ci.sh test_core
