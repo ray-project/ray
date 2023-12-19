@@ -43,6 +43,12 @@ class IConfigReader(ABC):
 
 @dataclass
 class NodeTypeConfig:
+    """
+    NodeTypeConfig is the helper class to provide node type specific configs.
+    This maps to subset of the `available_node_types` field in the
+    autoscaling config.
+    """
+
     # Node type name
     name: NodeType
     # The minimal number of workers to be launched for this node type.
