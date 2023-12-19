@@ -120,7 +120,6 @@ void RedisResponseFn(struct redisAsyncContext *async_context,
 struct RedisRequestContext {
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
-                      std::shared_ptr<RedisAsyncContext> &&context,
                       RedisContext &parent_context,
                       std::vector<std::string> args);
 
@@ -135,7 +134,6 @@ struct RedisRequestContext {
  private:
   ExponentialBackOff exp_back_off_;
   instrumented_io_context &io_service_;
-  std::shared_ptr<RedisAsyncContext> redis_context_;
   RedisContext &parent_context_;
   size_t pending_retries_;
   RedisCallback callback_;
@@ -175,20 +173,19 @@ class RedisContext {
   virtual void RunArgvAsync(std::vector<std::string> args,
                             RedisCallback redis_callback = nullptr);
 
-  // Either set the context held by the client to this one, or, if equal,
-  // set the argument to the one held by the client because it has been Attached().
-  void ResetOrRetrieveAsyncContext(
-      std::shared_ptr<RedisAsyncContext> &redis_async_context);
+  // Set the context held by the client to this one if not equal.
+  // Noop if equal to existing context.
+  void MaybeResetContext(std::shared_ptr<RedisAsyncContext> &&redis_async_context);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);
     return context_.get();
   }
 
-  RedisAsyncContext &async_context() {
+  std::shared_ptr<RedisAsyncContext> async_context() {
     absl::MutexLock l(&mu_);
     RAY_CHECK(redis_async_context_);
-    return *redis_async_context_.get();
+    return redis_async_context_;
   }
 
   void SetRedisAsyncContextInTest(

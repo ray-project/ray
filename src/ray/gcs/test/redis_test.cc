@@ -92,9 +92,10 @@ class MockRedisClient : public RedisClient {
 };
 
 // Hacky glue for testing.
-RedisAsyncContext *CreateAsyncContext(
+std::shared_ptr<RedisAsyncContext> CreateAsyncContext(
     std::unique_ptr<MockRedisAsyncContext, RedisContextDeleter> context) {
-  return static_cast<RedisAsyncContext *>(context.release());
+  return std::shared_ptr<RedisAsyncContext>(
+      static_cast<RedisAsyncContext *>(context.release()));
 }
 
 // We specialize on the mock object to mock this function.
@@ -195,7 +196,6 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   RedisRequestContext *privdata =
       new RedisRequestContext(io_service,
                               [](std::shared_ptr<CallbackReply>) {},
-                              std::move(async_context_wrapper),
                               parent_context,
                               {"HGET", "namespace", "key"});
 
@@ -227,6 +227,7 @@ TEST_F(RedisContextTest, TestRedisMoved) {
   // The most important check in the test is this one.
   EXPECT_TRUE(RedisContextTest::GetMutableConnectTested());
 
+  io_service.stop();
   io_service_thread_->join();
 }
 
@@ -295,11 +296,12 @@ TEST_F(RedisContextTest, TestRedisMovedRealConnect) {
   reply.len = error.length();
   reply.type = REDIS_REPLY_ERROR;
 
-  // TODO(real options, real redis)
-  std::string fake_client_ip = "";
-  std::string fake_client_pw = "";
-  RedisClientOptions fake_options(fake_client_ip, 0, fake_client_pw);
-  MockRedisClient redis_client(fake_options);
+  // Create the client but don't connect it.
+  std::string test_pw = "";
+  RedisClientOptions fake_options(
+      RedisContextTest::GetTestAddress(), TEST_REDIS_SERVER_PORTS.front(), test_pw);
+  RedisClient redis_client(fake_options);
+  RAY_CHECK_OK(redis_client.Connect(io_service));
 
   RedisContext parent_context(io_service, redis_client);
 
@@ -307,7 +309,6 @@ TEST_F(RedisContextTest, TestRedisMovedRealConnect) {
   RedisRequestContext *privdata =
       new RedisRequestContext(io_service,
                               [](std::shared_ptr<CallbackReply>) {},
-                              std::move(async_context_wrapper),
                               parent_context,
                               {"HGET", "namespace", "key"});
 
@@ -321,6 +322,7 @@ TEST_F(RedisContextTest, TestRedisMovedRealConnect) {
   // Wait for the second callback to happen.
   fut.wait_for(std::chrono::milliseconds(3000));
 
+  io_service.stop();
   io_service_thread_->join();
 }
 

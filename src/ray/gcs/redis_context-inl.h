@@ -38,9 +38,8 @@ std::pair<Status, std::unique_ptr<RedisContextType, RedisContextDeleter>>
 ConnectWithoutRetries(const std::string &address,
                       int port,
                       const RedisConnectFunctionType &connect_function) {
-  // This currently returns the errorMessage in two different ways,
-  // as an output parameter and in the Status::RedisError,
-  // because we're not sure whether we'll want to change what this returns.
+  RAY_LOG(INFO) << "vct Attempting to connect to address " << address << ":" << port
+                << ".";
   RedisContextType *newContext = connect_function(address.c_str(), port);
   if (newContext == nullptr || (newContext)->err) {
     std::ostringstream oss;
@@ -89,9 +88,9 @@ ConnectWithRetries(const std::string &address,
   return resp;
 }
 
-RedisAsyncContext *CreateAsyncContext(
+std::shared_ptr<RedisAsyncContext> CreateAsyncContext(
     std::unique_ptr<redisAsyncContext, RedisContextDeleter> context) {
-  return new RedisAsyncContext(std::move(context));
+  return std::make_shared<RedisAsyncContext>(std::move(context));
 }
 
 template <typename RedisContextType>
@@ -108,9 +107,6 @@ void RedisResponseFn(struct redisAsyncContext *async_context,
                    << " failed due to error " << error_msg << ". "
                    << request_cxt->pending_retries_ << " retries left.";
 
-    // Retry the request after a while.
-    auto delay = request_cxt->exp_back_off_.Current();
-
     // First check if we need to redirect on MOVED.
     if (RayConfig::instance().enable_moved_redirect()) {
       if (auto maybe_ip_port =
@@ -123,23 +119,23 @@ void RedisResponseFn(struct redisAsyncContext *async_context,
           // We will ultimately return a MOVED error if we fail to reconnect.
           RAY_LOG(ERROR) << "Failed to connect to the new leader " << ip << ":" << port;
         } else {
-          request_cxt->redis_context_.reset(CreateAsyncContext(std::move(resp.second)));
           // Set the context in the longer-lived RedisContext object.
-          request_cxt->parent_context_.ResetOrRetrieveAsyncContext(
-              request_cxt->redis_context_);
+          request_cxt->parent_context_.MaybeResetContext(
+              CreateAsyncContext(std::move(resp.second)));
         }
-      } else {
-        request_cxt->exp_back_off_.Next();
       }
-    } else {
-      request_cxt->exp_back_off_.Next();
     }
+
+    // Retry the request after a while.
+    auto delay = request_cxt->exp_back_off_.Current();
+    request_cxt->exp_back_off_.Next();
 
     execute_after(
         request_cxt->io_service_,
         [request_cxt]() { request_cxt->Run(); },
         std::chrono::milliseconds(delay));
   } else {
+    RAY_LOG(INFO) << "vct :/";
     auto reply = std::make_shared<CallbackReply>(redis_reply);
     request_cxt->io_service_.post(
         [reply, callback = std::move(request_cxt->callback_)]() {

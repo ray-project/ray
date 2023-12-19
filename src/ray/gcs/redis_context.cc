@@ -153,14 +153,12 @@ const std::vector<std::optional<std::string>> &CallbackReply::ReadAsStringArray(
 
 RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                                          RedisCallback callback,
-                                         std::shared_ptr<RedisAsyncContext> &&context,
                                          RedisContext &parent_context,
                                          std::vector<std::string> args)
     : exp_back_off_(RayConfig::instance().redis_retry_base_ms(),
                     RayConfig::instance().redis_retry_multiplier(),
                     RayConfig::instance().redis_retry_max_ms()),
       io_service_(io_service),
-      redis_context_(std::move(context)),
       parent_context_(parent_context),
       pending_retries_(RayConfig::instance().num_redis_request_retries() + 1),
       callback_(std::move(callback)),
@@ -181,11 +179,12 @@ void RedisRequestContext::Run() {
 
   --pending_retries_;
 
-  Status status = redis_context_->RedisAsyncCommandArgv(
+  auto redis_context = parent_context_.async_context();
+  Status status = redis_context->RedisAsyncCommandArgv(
       RedisResponseFn<redisAsyncContext>, this, argv_.size(), argv_.data(), argc_.data());
 
   if (!status.ok()) {
-    RedisResponseFn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);
+    RedisResponseFn(redis_context->GetRawRedisAsyncContext(), nullptr, this);
   }
 }
 
@@ -486,15 +485,12 @@ bool HasSameAddress(RedisAsyncContext &context1, RedisAsyncContext &context2) {
   return retval;
 }
 
-void RedisContext::ResetOrRetrieveAsyncContext(
-    std::shared_ptr<RedisAsyncContext> &new_async_context) {
+void RedisContext::MaybeResetContext(
+    std::shared_ptr<RedisAsyncContext> &&new_async_context) {
   absl::MutexLock l(&mu_);
   if (!HasSameAddress(*redis_async_context_.get(), *new_async_context.get())) {
     redis_async_context_ = new_async_context;
     redis_client_.ReattachContext(*this);
-  } else {
-    // Return an attached context.
-    new_async_context = redis_async_context_;
   }
 }
 
@@ -506,11 +502,8 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
     RAY_CHECK(redis_async_context_);
     redis_async_context = redis_async_context_;
   }
-  auto request_context = new RedisRequestContext(io_service_,
-                                                 std::move(redis_callback),
-                                                 std::move(redis_async_context),
-                                                 *this,
-                                                 std::move(args));
+  auto request_context = new RedisRequestContext(
+      io_service_, std::move(redis_callback), *this, std::move(args));
   request_context->Run();
 }
 

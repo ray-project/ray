@@ -98,11 +98,9 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn,
     if (!redis_async_context_) {
       return Status::Disconnected("Redis is disconnected");
     }
-    RAY_LOG(INFO) << argvlen << " " << argc << "!!!!";
     ret_code = redisAsyncCommandArgv(
         redis_async_context_.get(), fn, privdata, argc, argv, argvlen);
   }
-  RAY_LOG(INFO) << argvlen << " " << argc << "????";
 
   if (ret_code == REDIS_ERR) {
     return Status::RedisError(std::string(redis_async_context_->errstr));

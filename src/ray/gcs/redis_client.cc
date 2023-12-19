@@ -202,22 +202,25 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
 
 void RedisClient::ReattachContext(RedisContext &context) {
   // TODO ideally we want to remove the old one too
+  auto async_context = context.async_context();
   instrumented_io_context &io_service = context.io_service();
   shard_asio_async_clients_.emplace_back(
-      new RedisAsioClient(io_service, context.async_context()));
+      new RedisAsioClient(io_service, *async_context.get()));
 }
 
 void RedisClient::Attach() {
   // Take care of sharding contexts.
   RAY_CHECK(shard_asio_async_clients_.empty()) << "Attach shall be called only once";
   for (std::shared_ptr<RedisContext> context : shard_contexts_) {
+    auto async_context = context->async_context();
     instrumented_io_context &io_service = context->io_service();
     shard_asio_async_clients_.emplace_back(
-        new RedisAsioClient(io_service, context->async_context()));
+        new RedisAsioClient(io_service, *async_context.get()));
   }
   instrumented_io_context &io_service = primary_context_->io_service();
+  auto async_context = primary_context_->async_context();
   asio_async_auxiliary_client_.reset(
-      new RedisAsioClient(io_service, primary_context_->async_context()));
+      new RedisAsioClient(io_service, *async_context.get()));
 }
 
 void RedisClient::Disconnect() {
