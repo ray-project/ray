@@ -8,7 +8,7 @@ import pytest  # noqa
 
 from ray._private.test_utils import load_test_config
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+from ray.autoscaler.v2.config import AutoscalingConfig
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstaller
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage

@@ -12,7 +12,7 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
 )
 from ray.autoscaler.node_launch_exception import NodeLaunchException
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+from ray.autoscaler.v2.config import AutoscalingConfig
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
 from ray.autoscaler.v2.tests.util import FakeCounter
 from ray.core.generated.instance_manager_pb2 import Instance

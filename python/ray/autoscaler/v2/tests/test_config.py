@@ -6,7 +6,7 @@ import pytest  # noqa
 
 from ray._private.test_utils import get_test_config_path
 from ray.autoscaler import AUTOSCALER_DIR_PATH
-from ray.autoscaler.v2.instance_manager.config import FileConfigReader
+from ray.autoscaler.v2.config import FileConfigReader
 
 
 @pytest.mark.parametrize(

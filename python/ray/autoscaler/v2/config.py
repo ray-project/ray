@@ -1,6 +1,7 @@
 import copy
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -12,7 +13,6 @@ from ray.autoscaler._private.util import (
     prepare_config,
     validate_config,
 )
-from ray.autoscaler.v2.scheduler import ClusterConfig, NodeTypeConfig
 from ray.autoscaler.v2.schema import NodeType
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,24 @@ class IConfigReader(ABC):
     def get_autoscaling_config(self) -> "AutoscalingConfig":
         """Returns the autoscaling config."""
         pass
+
+
+@dataclass
+class NodeTypeConfig:
+    # Node type name
+    name: NodeType
+    # The minimal number of workers to be launched for this node type.
+    min_workers: int
+    # The maximal number of workers can be launched for this node type.
+    max_workers: int
+    # The total resources on the node.
+    resources: Dict[str, float] = field(default_factory=dict)
+    # The labels on the node.
+    labels: Dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self):
+        assert self.min_workers <= self.max_workers
+        assert self.min_workers >= 0
 
 
 class AutoscalingConfig(object):
@@ -217,15 +235,16 @@ class AutoscalingConfig(object):
         else:
             raise ValueError(f"Unknown provider {provider}")
 
-    def get_cluster_config(self) -> Optional[ClusterConfig]:
+    def get_node_type_configs(self) -> Dict[NodeType, NodeTypeConfig]:
         """
-        Generate the cluster config from the autoscaling config.
+        Returns the node type configs from the `available_node_types` field.
+
+        Returns:
+            Dict[NodeType, NodeTypeConfig]: The node type configs.
         """
         available_node_types = self._configs.get("available_node_types", {})
         if not available_node_types:
             return None
-
-        max_num_worker_nodes = self._configs.get("max_workers", None)
         node_type_configs = {}
         for node_type, node_config in available_node_types.items():
             node_type_configs[node_type] = NodeTypeConfig(
@@ -235,11 +254,10 @@ class AutoscalingConfig(object):
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
             )
+        return node_type_configs
 
-        return ClusterConfig(
-            node_type_configs=node_type_configs,
-            max_num_worker_nodes=max_num_worker_nodes,
-        )
+    def get_max_num_worker_nodes(self) -> Optional[int]:
+        return self.get_config("max_workers", None)
 
     @property
     def provider(self) -> Provider:
