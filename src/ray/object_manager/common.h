@@ -95,19 +95,18 @@ struct PlasmaObjectHeader {
   // different data/metadata size.
   uint64_t data_size = 0;
   uint64_t metadata_size = 0;
-
   /// Blocks until all readers for the previous write have ReadRelease'd the
   /// value. Protects against concurrent writers.
   ///
   /// \param data_size The new data size of the object.
   /// \param metadata_size The new metadata size of the object.
   /// \param num_readers The number of readers for the object.
-  /// \return true if the acquire was successful.
-  bool WriteAcquire(uint64_t data_size, uint64_t metadata_size, int64_t num_readers);
+  /// \return if the acquire was successful.
+  Status WriteAcquire(uint64_t data_size, uint64_t metadata_size, int64_t num_readers);
 
   /// Call after completing a write to signal that readers may read.
   /// num_readers should be set before calling this.
-  void WriteRelease();
+  Status WriteRelease();
 
   // Blocks until the given version is ready to read. Returns false if the
   // maximum number of readers have already read the requested version.
@@ -115,16 +114,16 @@ struct PlasmaObjectHeader {
   // \param[in] read_version The version to read.
   // \param[out] version_read For normal immutable objects, this will be set to
   // 0. Otherwise, the current version.
-  // \return success Whether the correct version was read and there were still
+  // \return Whether the correct version was read and there were still
   // reads remaining.
-  bool ReadAcquire(int64_t version_to_read, int64_t *version_read);
+  Status ReadAcquire(int64_t version_to_read, int64_t *version_read);
 
   // Finishes the read. If all reads are done, signals to the writer. This is
   // not necessary to call for objects that have num_readers=-1.
   ///
   /// \param read_version This must match the version previously passed in
   /// ReadAcquire.
-  void ReadRelease(int64_t read_version);
+  Status ReadRelease(int64_t read_version);
 #endif
 
   /// Setup synchronization primitives.
@@ -132,6 +131,11 @@ struct PlasmaObjectHeader {
 
   /// Destroy synchronization primitives.
   void Destroy();
+
+  /// Helper method to acquire the writer mutex while aborting if the
+  /// error bit is set.
+  /// \return if the mutex was acquired successfully.
+  Status TryAcquireWriterMutex();
 };
 
 /// A struct that includes info about the object.

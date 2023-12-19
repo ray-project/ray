@@ -444,9 +444,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
                                    ") is larger than allocated buffer size " +
                                    std::to_string(entry->object.allocated_size));
   }
-  if (!plasma_header->WriteAcquire(data_size, metadata_size, num_readers)) {
-    return Status::IOError("write acquire failed");
-  };
+  RAY_RETURN_NOT_OK(plasma_header->WriteAcquire(data_size, metadata_size, num_readers));
 
   // Prepare the data buffer and return to the client instead of sending
   // the IPC to object store.
@@ -483,7 +481,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteRelease(
 
   entry->is_sealed = true;
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  plasma_header->WriteRelease();
+  RAY_RETURN_NOT_OK(plasma_header->WriteRelease());
 #endif
   return Status::OK();
 }
@@ -767,14 +765,10 @@ Status PlasmaClient::Impl::EnsureGetAcquired(
   // thread-safe since the plasma object cannot be deallocated while there is a
   // reader active.
   client_mutex_.unlock();
-  bool success =
+  Status status =
       plasma_header->ReadAcquire(object_entry->next_version_to_read, &version_read);
   client_mutex_.lock();
-
-  if (!success) {
-    return Status::Invalid(
-        "Reader missed a value. Are you sure there are num_readers many readers?");
-  }
+  RAY_RETURN_NOT_OK(status);
 
   object_entry->read_acquired = true;
   RAY_CHECK(version_read > 0);
@@ -816,7 +810,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectReadRelease(
   RAY_RETURN_NOT_OK(EnsureGetAcquired(entry));
   RAY_LOG(DEBUG) << "Release shared object " << object_id;
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  plasma_header->ReadRelease(entry->next_version_to_read);
+  RAY_RETURN_NOT_OK(plasma_header->ReadRelease(entry->next_version_to_read));
   // The next read needs to read at least this version.
   entry->next_version_to_read++;
   entry->read_acquired = false;
@@ -1087,6 +1081,10 @@ Status PlasmaClient::ExperimentalMutableObjectWriteAcquire(
 
 Status PlasmaClient::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {
   return impl_->ExperimentalMutableObjectWriteRelease(object_id);
+}
+
+Status PlasmaClient::ExperimentalMutableObjectSetError(const ObjectID &object_id) {
+  return impl_->ExperimentalMutableObjectSetError(object_id);
 }
 
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,

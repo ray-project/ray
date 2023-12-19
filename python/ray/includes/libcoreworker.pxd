@@ -249,7 +249,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const shared_ptr[CBuffer] &metadata,
                                   uint64_t data_size,
                                   int64_t num_readers,
-                                  c_bool try_wait,
                                   shared_ptr[CBuffer] *data)
         CRayStatus ExperimentalMutableObjectWriteRelease(
                                   const CObjectID &object_id)
