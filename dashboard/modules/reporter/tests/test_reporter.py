@@ -939,5 +939,41 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
     wait_for_condition(verify, timeout=10)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+def test_task_get_memory_profile_missing_params(shutdown_only):
+    """
+    Verify that we throw an error for a non-running task.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def f():
+        pass
+
+    ray.get([f.remote() for _ in range(5)])
+
+    missing_node_id_params = {
+        "task_id": TASK["task_id"],
+        "attempt_number": TASK["attempt_number"],
+    }
+
+    # Make sure the API works.
+    def verify():
+        with pytest.raises(requests.exceptions.HTTPError) as exc_info:
+            resp = requests.get(
+                f"{webui_url}/memory_profile", params=missing_node_id_params
+            )
+            resp.raise_for_status()
+        assert isinstance(exc_info.value, requests.exceptions.HTTPError)
+        return True
+
+    wait_for_condition(verify, timeout=10)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

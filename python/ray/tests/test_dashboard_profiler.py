@@ -233,7 +233,8 @@ def test_profiler_failure_message(ray_start_with_dashboard):
 
     # Check wrong ip failure
     response = requests.get(f"{webui_url}/memory_profile?ip=1234567&pid=1234567")
-    content = response.content
+    content = response.content.decode("utf-8")
+    print(content)
     assert "No stub with given ip value" in content, content
 
 

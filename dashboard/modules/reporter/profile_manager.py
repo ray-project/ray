@@ -94,7 +94,7 @@ class CpuProfilingManager:
         """
         pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
-            return False, "py-spy is not installed"
+            return False, "Failed to execute: py-spy is not installed"
 
         cmd = [pyspy, "dump", "-p", str(pid)]
         # We
@@ -137,12 +137,13 @@ class CpuProfilingManager:
         """
         pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
-            return False, "py-spy is not installed"
+            return False, "Failed to execute: py-spy is not installed"
 
         if format not in ("flamegraph", "raw", "speedscope"):
             return (
                 False,
-                f"Invalid format {format}, " + "must be [flamegraph, raw, speedscope]",
+                f"Failed to execute: Invalid format {format}, "
+                + "must be [flamegraph, raw, speedscope]",
             )
 
         if format == "flamegraph":
@@ -214,11 +215,11 @@ class MemoryProfilingManager:
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
-            return False, "memray is not installed"
+            return False, "Failed to execute: memray is not installed"
 
         profile_file_path = self.profile_dir_path / profiler_filename
         if not Path(profile_file_path).is_file():
-            return False, f"process {pid} has not been profiled"
+            return False, f"Failed to execute: process {pid} has not been profiled"
 
         profiler_name, _ = os.path.splitext(profiler_filename)
         profile_visualize_path = self.profile_dir_path / f"{profiler_name}.html"
@@ -239,7 +240,10 @@ class MemoryProfilingManager:
                 "-f",
             ]
         else:
-            return False, f"Report with format: {format} is not supported"
+            return (
+                False,
+                f"Failed to execute: Report with format: {format} is not supported",
+            )
 
         if leaks:
             visualize_cmd.append("--leaks")
@@ -278,7 +282,7 @@ class MemoryProfilingManager:
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
-            return False, None, "memray is not installed"
+            return False, None, "Failed to execute: memray is not installed"
 
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         profiler_filename = f"{pid}_memory_profiling_{timestamp}.bin"
@@ -311,7 +315,7 @@ class MemoryProfilingManager:
             return (
                 True,
                 profiler_filename,
-                (f"Success attaching memray to process {pid}"),
+                f"Success attaching memray to process {pid}",
             )
 
     async def detach_profiler(
@@ -331,7 +335,7 @@ class MemoryProfilingManager:
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
-            return False, "memray is not installed"
+            return False, "Failed to execute: memray is not installed"
 
         cmd = [memray, "detach", str(pid)]
         process = await asyncio.create_subprocess_exec(
