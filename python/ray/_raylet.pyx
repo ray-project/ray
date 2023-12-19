@@ -3517,8 +3517,7 @@ cdef class CoreWorker:
 
     def experimental_mutable_object_put_serialized(self, serialized_object,
                                                    ObjectRef object_ref,
-                                                   num_readers,
-                                                   try_wait: bool = False
+                                                   num_readers
                                                    ):
         cdef:
             CObjectID c_object_id = object_ref.native()
@@ -3533,7 +3532,6 @@ cdef class CoreWorker:
                          metadata,
                          data_size,
                          num_readers,
-                         try_wait,
                          &data,
                          ))
         if data_size > 0:

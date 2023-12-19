@@ -94,15 +94,12 @@ class PlasmaClientInterface {
   /// \param[in] metadata_size The number of bytes to copy from the metadata
   /// pointer.
   /// \param[in] num_readers The number of readers that must read and release
-  /// \param[in] try_wait Whether to abort if we cannot immediately acquire the lock.
-  /// the object before the caller can write again.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   virtual Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
                                                        int64_t data_size,
                                                        const uint8_t *metadata,
                                                        int64_t metadata_size,
                                                        int64_t num_readers,
-                                                       bool try_wait,
                                                        std::shared_ptr<Buffer> *data) = 0;
 
   /// Experimental method for mutable objects. Releases a write lock on the
@@ -113,7 +110,7 @@ class PlasmaClientInterface {
   virtual Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) = 0;
 
   /// Experimental method for mutable objects. Sets the error bit, causing all
-  /// future readers to raise a channel closed error on get.
+  /// future readers and writers to raise an error on acquire.
   ///
   /// \param[in] object_id The ID of the object.
   virtual Status ExperimentalMutableObjectSetError(const ObjectID &object_id) = 0;
@@ -251,10 +248,11 @@ class PlasmaClient : public PlasmaClientInterface {
                                                const uint8_t *metadata,
                                                int64_t metadata_size,
                                                int64_t num_readers,
-                                               bool try_wait,
                                                std::shared_ptr<Buffer> *data);
 
   Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
+
+  Status ExperimentalMutableObjectSetError(const ObjectID &object_id);
 
   Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
 

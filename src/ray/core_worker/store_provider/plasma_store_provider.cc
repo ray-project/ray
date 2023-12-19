@@ -113,7 +113,6 @@ Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteAcquire(
     const std::shared_ptr<Buffer> &metadata,
     uint64_t data_size,
     int64_t num_readers,
-    bool try_wait,
     std::shared_ptr<Buffer> *data) {
   return store_client_.ExperimentalMutableObjectWriteAcquire(
       object_id,
@@ -121,7 +120,6 @@ Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteAcquire(
       metadata ? metadata->Data() : nullptr,
       metadata ? metadata->Size() : 0,
       num_readers,
-      try_wait,
       data);
 }
 

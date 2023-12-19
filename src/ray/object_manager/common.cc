@@ -59,20 +59,14 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
 
 bool PlasmaObjectHeader::WriteAcquire(uint64_t write_data_size,
                                       uint64_t write_metadata_size,
-                                      int64_t write_num_readers,
-                                      bool try_wait) {
+                                      int64_t write_num_readers) {
   auto write_version = version + 1;
   RAY_LOG(DEBUG) << "WriteAcquire. version: " << write_version << ", data size "
                  << write_data_size << ", metadata size " << write_metadata_size
-                 << ", num readers: " << write_num_readers << ", try_wait: " << try_wait;
-  if (try_wait) {
-    if (sem_trywait(&rw_semaphore)) {
-      /* abort */
-      return false;
-    }
-  } else {
-    sem_wait(&rw_semaphore);
-  }
+                 << ", num readers: " << write_num_readers;
+  // TODO add timeout and check error bit
+  sem_wait(&rw_semaphore);
+  // TODO add timeout and check error bit
   RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
   PrintPlasmaObjectHeader(this);
 
@@ -111,12 +105,14 @@ void PlasmaObjectHeader::WriteRelease() {
 
 bool PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version_read) {
   RAY_LOG(DEBUG) << "ReadAcquire waiting version " << version_to_read;
+  // TODO add timeout and check error bit
   RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
   RAY_LOG(DEBUG) << "ReadAcquire " << version_to_read;
   PrintPlasmaObjectHeader(this);
 
   // Wait for the requested version (or a more recent one) to be sealed.
   while (version < version_to_read || !is_sealed) {
+    // TODO add timeout and check error bit
     RAY_CHECK(pthread_cond_wait(&cond, &wr_mut) == 0);
   }
 

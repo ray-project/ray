@@ -694,13 +694,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// current data size.
   /// \param[in] num_readers The number of readers that must read and release
   /// the object before the caller can write again.
-  /// \param[in] try_wait Whether to abort if we cannot immediately acquire the lock.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
                                                const std::shared_ptr<Buffer> &metadata,
                                                uint64_t data_size,
                                                int64_t num_readers,
-                                               bool try_wait,
                                                std::shared_ptr<Buffer> *data);
 
   /// Experimental method for mutable objects. Releases a write lock on the
@@ -711,7 +709,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
 
   /// Experimental method for mutable objects. Sets the error bit, causing all
-  /// future readers to raise a channel closed error on get.
+  /// future readers and writers to raise an error on acquire.
   ///
   /// \param[in] object_id The ID of the object.
   Status ExperimentalMutableObjectSetError(const ObjectID &object_id);

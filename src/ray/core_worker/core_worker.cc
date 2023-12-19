@@ -1341,10 +1341,9 @@ Status CoreWorker::ExperimentalMutableObjectWriteAcquire(
     const std::shared_ptr<Buffer> &metadata,
     uint64_t data_size,
     int64_t num_readers,
-    bool try_wait,
     std::shared_ptr<Buffer> *data) {
   return plasma_store_provider_->ExperimentalMutableObjectWriteAcquire(
-      object_id, metadata, data_size, num_readers, try_wait, data);
+      object_id, metadata, data_size, num_readers, data);
 }
 
 Status CoreWorker::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {

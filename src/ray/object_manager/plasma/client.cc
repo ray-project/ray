@@ -157,7 +157,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                                                const uint8_t *metadata,
                                                int64_t metadata_size,
                                                int64_t num_readers,
-                                               bool try_wait,
                                                std::shared_ptr<Buffer> *data);
 
   Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
@@ -415,7 +414,6 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
     const uint8_t *metadata,
     int64_t metadata_size,
     int64_t num_readers,
-    bool try_wait,
     std::shared_ptr<Buffer> *data) {
 #ifdef __linux__
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
@@ -424,7 +422,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
     return Status::Invalid(
         "Plasma buffer for mutable object not in scope. Are you sure you're the writer?");
   }
-  if (!object_entry->second->is_writer && !try_wait) {
+  if (!object_entry->second->is_writer) {
     return Status::Invalid(
         "Mutable objects can only be written by the original creator process.");
   }
@@ -446,7 +444,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
                                    ") is larger than allocated buffer size " +
                                    std::to_string(entry->object.allocated_size));
   }
-  if (!plasma_header->WriteAcquire(data_size, metadata_size, num_readers, try_wait)) {
+  if (!plasma_header->WriteAcquire(data_size, metadata_size, num_readers)) {
     return Status::IOError("write acquire failed");
   };
 
@@ -1082,10 +1080,9 @@ Status PlasmaClient::ExperimentalMutableObjectWriteAcquire(
     const uint8_t *metadata,
     int64_t metadata_size,
     int64_t num_readers,
-    bool try_wait,
     std::shared_ptr<Buffer> *data) {
   return impl_->ExperimentalMutableObjectWriteAcquire(
-      object_id, data_size, metadata, metadata_size, num_readers, try_wait, data);
+      object_id, data_size, metadata, metadata_size, num_readers, data);
 }
 
 Status PlasmaClient::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {
