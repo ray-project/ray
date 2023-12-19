@@ -2221,7 +2221,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testConfiguresNewNodes(self):
         config = copy.deepcopy(SMALL_CLUSTER)
-        config["available_node_types"]["worker"]["min_workers"] = 1
+        config["available_node_types"]["worker"]["min_workers"] = 2
         config["idle_timeout_minutes"] = 0.001
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -2246,11 +2246,11 @@ class AutoscalingTest(unittest.TestCase):
         )
         autoscaler.update()
         autoscaler.update()
-        self.waitForNodes(2)
+        self.waitForNodes(3)
         self.provider.finish_starting_nodes()
         autoscaler.update()
         self.waitForNodes(
-            2,
+            3,
             tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE},
             wait_update_callback=lambda: autoscaler.update(),
         )
