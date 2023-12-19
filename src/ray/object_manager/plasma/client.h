@@ -112,6 +112,12 @@ class PlasmaClientInterface {
   /// \param[in] object_id The ID of the object.
   virtual Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) = 0;
 
+  /// Experimental method for mutable objects. Sets the error bit, causing all
+  /// future readers to raise a channel closed error on get.
+  ///
+  /// \param[in] object_id The ID of the object.
+  virtual Status ExperimentalMutableObjectSetError(const ObjectID &object_id) = 0;
+
   /// Experimental method for mutable objects. Releases the objects, allowing them
   /// to be written again. If the caller did not previously Get the objects,
   /// then this first blocks until the latest value is available to read, then

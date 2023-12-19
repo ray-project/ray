@@ -3544,6 +3544,13 @@ cdef class CoreWorker:
                          c_object_id,
                          ))
 
+    def experimental_mutable_object_set_error(self, ObjectRef object_ref):
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+
+        check_status(CCoreWorkerProcess.GetCoreWorker()
+                     .ExperimentalMutableObjectSetError(c_object_id))
+
     def experimental_mutable_object_read_release(self, object_refs):
         """
         For experimental.channel.Channel.

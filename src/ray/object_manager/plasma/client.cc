@@ -162,6 +162,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
 
+  Status ExperimentalMutableObjectSetError(const ObjectID &object_id);
+
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers,
@@ -484,6 +486,24 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteRelease(
   entry->is_sealed = true;
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
   plasma_header->WriteRelease();
+#endif
+  return Status::OK();
+}
+
+Status PlasmaClient::Impl::ExperimentalMutableObjectSetError(const ObjectID &object_id) {
+#ifdef __linux__
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  auto object_entry = objects_in_use_.find(object_id);
+  if (object_entry == objects_in_use_.end()) {
+    return Status::Invalid(
+        "Plasma buffer for mutable object not in scope. Are you sure you're the writer?");
+  }
+  RAY_CHECK(object_entry != objects_in_use_.end());
+
+  auto &entry = object_entry->second;
+  RAY_CHECK(entry->object.is_experimental_mutable_object);
+  auto plasma_header = GetPlasmaObjectHeader(entry->object);
+  plasma_header->has_error = true;
 #endif
   return Status::OK();
 }

@@ -5,7 +5,7 @@ import threading
 import traceback
 
 import ray
-from ray.exceptions import RayTaskError, TaskCancelledError
+from ray.exceptions import RayTaskError
 from ray.experimental.channel import Channel
 from ray.util.annotations import DeveloperAPI
 
@@ -73,12 +73,16 @@ def do_exec_compiled_task(
                 output_val = method(*resolved_inputs)
             except Exception as exc:
                 backtrace = ray._private.utils.format_error_message(
-                    "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
-                    task_exception=True)
+                    "".join(
+                        traceback.format_exception(type(exc), exc, exc.__traceback__)
+                    ),
+                    task_exception=True,
+                )
                 wrapped = RayTaskError(
                     function_name="do_exec_compiled_task",
                     traceback_str=backtrace,
-                    cause=exc)
+                    cause=exc,
+                )
                 self._output_channel.write(wrapped)
                 raise
 
@@ -88,7 +92,7 @@ def do_exec_compiled_task(
             for _, channel in input_channel_idxs:
                 channel.end_read()
 
-    except Exception as e:
+    except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise
 

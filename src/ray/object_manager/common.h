@@ -67,6 +67,9 @@ struct PlasmaObjectHeader {
   // has been WriteRelease'd. A reader may read the actual object value if
   // is_sealed=true and num_read_acquires_remaining != 0.
   bool is_sealed = false;
+  // Set to indicate an error was encountered computing the next version of
+  // the mutable object. Lockless access allowed.
+  volatile bool has_error = false;
   // The total number of reads allowed before the writer can write again. This
   // value should be set by the writer before releasing to readers.
   // For immutable objects, this is set to -1 and infinite reads are allowed.
