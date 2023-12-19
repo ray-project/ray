@@ -66,32 +66,27 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 class RayServeWrappedReplica:
     async def __init__(
         self,
-        deployment_name: str,
+        deployment_id: DeploymentID,
         replica_tag: str,
         serialized_deployment_def: bytes,
         serialized_init_args: bytes,
         serialized_init_kwargs: bytes,
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
-        app_name: str = None,
     ):
-        self._replica_tag = replica_tag
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
-        if deployment_config.logging_config is None:
-            logging_config = LoggingConfig()
-        else:
-            logging_config = LoggingConfig(**deployment_config.logging_config)
-
-        self._configure_logger_and_profilers(replica_tag, logging_config)
+        self._configure_logger_and_profilers(
+            replica_tag,
+            LoggingConfig(**(deployment_config.logging_config or {}))
+        )
         self._event_loop = get_or_create_event_loop()
-
         self._user_callable_wrapper = UserCallableWrapper(
             cloudpickle.loads(serialized_deployment_def),
             cloudpickle.loads(serialized_init_args),
             cloudpickle.loads(serialized_init_kwargs),
-            deployment_id=DeploymentID(deployment_name, app_name),
+            deployment_id=deployment_id,
             replica_tag=replica_tag,
             version=version,
             autoscaling_config=deployment_config.autoscaling_config,
