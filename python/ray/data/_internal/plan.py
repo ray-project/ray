@@ -169,9 +169,11 @@ class ExecutionPlan:
         # cheap.
         plan_str = ""
         dataset_blocks = None
-        if self._snapshot_blocks is None:
+        if self._snapshot_blocks is None or self._snapshot_operator != self._logical_plan.dag:
 
             def generate_string(op, depth=0):
+                if isinstance(op, (Read, InputData)):
+                    return
                 nonlocal plan_str
                 op_name = op.name
                 if depth == 0:
@@ -458,8 +460,8 @@ class ExecutionPlan:
         Returns:
             The number of records of the result Dataset, or None.
         """
-        if self._is_input_data_only():
-            # If the plan only has input blocks, we execute it, so snapshot has output.
+        if self.is_read_only():
+            # If the plan is input/read only, we execute it, so snapshot has output.
             # This applies to newly created dataset. For example, initial dataset
             # from read, and output datasets of Dataset.split().
             self.execute()
