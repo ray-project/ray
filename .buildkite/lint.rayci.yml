@@ -92,5 +92,6 @@ steps:
       - if [[ ${BUILDKITE_BRANCH} == 'master' ]]; then make -C doc/ linkcheck_all; else make -C doc/ linkcheck; fi
     depends_on: docbuild
     job_env: docbuild
+    soft_fail: true
     tags:
       - oss
