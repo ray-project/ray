@@ -4,7 +4,7 @@ import subprocess
 from ray.autoscaler._private.updater import NodeUpdater
 from ray.autoscaler._private.util import with_envs, with_head_node_ip
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class RayInstaller(object):
     def __init__(
         self,
         provider: NodeProviderV1,
-        config: NodeProviderConfig,
+        config: AutoscalingConfig,
         process_runner=subprocess,
     ) -> None:
         self._provider = provider

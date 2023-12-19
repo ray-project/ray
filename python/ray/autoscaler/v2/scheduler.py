@@ -43,6 +43,10 @@ class NodeTypeConfig:
     # The labels on the node.
     labels: Dict[str, str] = field(default_factory=dict)
 
+    def __post_init__(self):
+        assert self.min_workers <= self.max_workers
+        assert self.min_workers >= 0
+
 
 @dataclass
 class ClusterConfig:
@@ -50,6 +54,17 @@ class ClusterConfig:
     node_type_configs: Dict[NodeType, NodeTypeConfig] = field(default_factory=dict)
     # The max number of worker nodes to be launched for the entire cluster.
     max_num_worker_nodes: Optional[int] = None
+
+    def __post_init__(self):
+        assert self.max_num_worker_nodes is None or self.max_num_worker_nodes > 0
+        sum_all_min_workers = sum(
+            node_type_config.min_workers
+            for node_type_config in self.node_type_configs.values()
+        )
+        assert (
+            self.max_num_worker_nodes is None
+            or self.max_num_worker_nodes >= sum_all_min_workers
+        )
 
 
 @dataclass

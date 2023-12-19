@@ -11,7 +11,7 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
 )
 from ray.autoscaler.node_launch_exception import NodeLaunchException
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.instance_manager.node_provider import (
     NodeProviderAdapter,
     UpdateCloudNodeProviderRequest,
@@ -34,7 +34,7 @@ def node_providers(request):
             EventSummarizer(),
             NodeProviderAvailabilityTracker(),
         ),
-        NodeProviderConfig(load_test_config("test_ray_complex.yaml")),
+        AutoscalingConfig(load_test_config("test_ray_complex.yaml")),
     )
 
     yield base_provider, node_provider
