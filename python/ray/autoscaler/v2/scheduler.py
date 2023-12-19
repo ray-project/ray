@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 from google.protobuf.json_format import MessageToDict
 
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
-from ray.autoscaler.v2.config import NodeTypeConfig
+from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import NodeType
 from ray.autoscaler.v2.utils import is_pending, resource_requests_by_count
 from ray.core.generated.autoscaler_pb2 import (
