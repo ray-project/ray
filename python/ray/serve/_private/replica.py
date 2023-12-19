@@ -451,10 +451,10 @@ class UserCallableWrapper:
         self.autoscaling_metrics_store = InMemoryMetricsStore()
         self.metrics_pusher = MetricsPusher()
         if autoscaling_config:
-            controller_handle = ray.get_actor(
+            self.controller_handle = ray.get_actor(
                 SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
             )
-            process_remote_func = controller_handle.record_autoscaling_metrics.remote
+            process_remote_func = self.controller_handle.record_autoscaling_metrics.remote
             config = autoscaling_config
             self.metrics_pusher.register_task(
                 self.collect_autoscaling_metrics,
