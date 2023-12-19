@@ -9,7 +9,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.exceptions import RayActorError
+from ray.exceptions import RaySystemError
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
 
@@ -246,7 +246,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular):
         for chan in output_channels:
             chan.end_read()
 
-    with pytest.raises(RayActorError):
+    with pytest.raises(RaySystemError, match="channel closed"):
         for i in range(99):
             output_channels = compiled_dag.execute(1)
             for chan in output_channels:
