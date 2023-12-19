@@ -80,10 +80,8 @@ def get_cli_args():
 if __name__ == "__main__":
     args = get_cli_args()
 
-    args.local_model = True
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    args.framework = "tf2"
     if args.framework == "torch":
         rlm_class = TorchActionMaskRLM
     elif args.framework == "tf2":
