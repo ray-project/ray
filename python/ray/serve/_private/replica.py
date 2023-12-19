@@ -18,7 +18,7 @@ import ray
 from ray import cloudpickle
 from ray._private.async_compat import sync_to_async
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorClass, ActorHandle
+from ray.actor import ActorClass
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
@@ -156,10 +156,6 @@ def create_replica_wrapper(actor_class_name: str):
                 servable_object=None,
             )
 
-            controller_handle = ray.get_actor(
-                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-            )
-
             # Indicates whether the replica has finished initializing.
             self._initialized = False
 
@@ -203,7 +199,6 @@ def create_replica_wrapper(actor_class_name: str):
                     deployment_config.autoscaling_config,
                     version,
                     is_function,
-                    controller_handle,
                     app_name,
                 )
                 self._initialized = True
@@ -521,7 +516,6 @@ class RayServeReplica:
         autoscaling_config: Any,
         version: DeploymentVersion,
         is_function: bool,
-        controller_handle: ActorHandle,
         app_name: str,
     ) -> None:
         self.deployment_id = DeploymentID(deployment_name, app_name)
@@ -586,7 +580,12 @@ class RayServeReplica:
         self.autoscaling_metrics_store = InMemoryMetricsStore()
         self.metrics_pusher = MetricsPusher()
         if autoscaling_config:
-            process_remote_func = controller_handle.record_autoscaling_metrics.remote
+            self.controller_handle = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
+            process_remote_func = (
+                self.controller_handle.record_autoscaling_metrics.remote
+            )
             config = autoscaling_config
             self.metrics_pusher.register_task(
                 self.collect_autoscaling_metrics,
