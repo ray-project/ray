@@ -202,7 +202,7 @@ def test_dag_errors(ray_start_regular):
         dag.experimental_compile()
 
 
-def test_dag_fault_tolerance(ray_start_regular):
+def test_dag_fault_tolerance(ray_start_regular_shared):
     actors = [Actor.remote(0, fail_after=100, sys_exit=False) for _ in range(4)]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
@@ -227,7 +227,7 @@ def test_dag_fault_tolerance(ray_start_regular):
                 chan.end_read()
 
 
-def test_dag_fault_tolerance_sys_exit(ray_start_regular):
+def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
     actors = [Actor.remote(0, fail_after=100, sys_exit=True) for _ in range(4)]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
@@ -252,7 +252,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular):
                 chan.end_read()
 
 
-def test_dag_teardown_while_running(ray_start_regular):
+def test_dag_teardown_while_running(ray_start_regular_shared):
     a = Actor.remote(0)
 
     with InputNode() as inp:

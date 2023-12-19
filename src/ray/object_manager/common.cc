@@ -60,7 +60,6 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
 Status PlasmaObjectHeader::TryAcquireWriterMutex() {
   // Try to acquire the lock, checking every 1s for the error bit.
   struct timespec ts;
-  int i = 0;
   do {
     if (has_error) {
       return Status::IOError("channel closed");
@@ -134,9 +133,14 @@ Status PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version
   PrintPlasmaObjectHeader(this);
 
   // Wait for the requested version (or a more recent one) to be sealed.
+  int tries = 0;
   while (version < version_to_read || !is_sealed) {
     RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
-    std::this_thread::yield();
+    // Lower values than 100k seem to start impacting perf compared
+    // to mutex.
+    if (tries++ > 100000) {
+      std::this_thread::yield();  // Too many tries, yield thread.
+    }
     RAY_RETURN_NOT_OK(TryAcquireWriterMutex());
     // TODO(ekl) this doesn't work since it requires re-acquiring the mutex regardless of
     // timeout
