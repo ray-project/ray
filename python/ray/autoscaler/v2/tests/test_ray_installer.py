@@ -16,13 +16,9 @@ from ray.tests.autoscaler_test_utils import MockProcessRunner, MockProvider
 class RayInstallerTest(unittest.TestCase):
     def setUp(self):
         self.base_provider = MockProvider()
-        self.instance_config_provider = AutoscalingConfig(
-            load_test_config("test_ray_complex.yaml")
-        )
+        self.config = AutoscalingConfig(load_test_config("test_ray_complex.yaml"))
         self.runner = MockProcessRunner()
-        self.ray_installer = RayInstaller(
-            self.base_provider, self.instance_config_provider, self.runner
-        )
+        self.ray_installer = RayInstaller(self.base_provider, self.config, self.runner)
 
     def test_install_succeeded(self):
         self.base_provider.create_node({}, {TAG_RAY_NODE_KIND: "worker_nodes1"}, 1)

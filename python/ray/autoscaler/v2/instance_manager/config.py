@@ -265,6 +265,9 @@ class AutoscalingConfig:
     def get_max_num_worker_nodes(self) -> Optional[int]:
         return self.get_config("max_workers", None)
 
+    def get_raw_config_mutable(self) -> Dict[str, Any]:
+        return self._configs
+
     @property
     def provider(self) -> Provider:
         provider_str = self._configs.get("provider", {}).get("type", "")
@@ -282,6 +285,14 @@ class AutoscalingConfig:
             return Provider.KUBERAY
         else:
             return Provider.UNKNOWN
+
+    @property
+    def runtime_hash(self) -> str:
+        return self._runtime_hash
+
+    @property
+    def file_mounts_contents_hash(self) -> str:
+        return self._file_mounts_contents_hash
 
 
 class FileConfigReader(IConfigReader):

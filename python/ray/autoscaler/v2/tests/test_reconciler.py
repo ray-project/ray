@@ -31,11 +31,9 @@ class InstanceReconcilerTest(unittest.TestCase):
             EventSummarizer(),
             self.availability_tracker,
         )
-        self.instance_config_provider = AutoscalingConfig(
-            load_test_config("test_ray_complex.yaml")
-        )
+        self.config = AutoscalingConfig(load_test_config("test_ray_complex.yaml"))
         self.node_provider = NodeProviderAdapter(
-            self.base_provider, self.node_launcher, self.instance_config_provider
+            self.base_provider, self.node_launcher, self.config
         )
 
         self.instance_storage = InstanceStorage(
