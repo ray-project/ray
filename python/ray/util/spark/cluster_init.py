@@ -1202,6 +1202,12 @@ def _setup_ray_cluster_internal(
 
     head_ip = cluster.address.split(":")[0]
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
+
+    if is_in_databricks_runtime():
+        displayHTML(
+            "<b style='background-color:yellow;'>When you are using Ray on spark cluster, "
+            "you only pay for spark cluster usage.</b>"
+        )
     return cluster.address, remote_connection_address
 
 
