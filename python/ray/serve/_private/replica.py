@@ -17,7 +17,7 @@ from starlette.types import Message, Receive, Scope, Send
 import ray
 from ray import cloudpickle
 from ray._private.async_compat import sync_to_async
-from ray._private.utils import get_or_create_event_loop, parse_import_path
+from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
@@ -57,7 +57,12 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.router import RequestMetadata
-from ray.serve._private.utils import MetricsPusher, merge_dict, wrap_to_ray_error
+from ray.serve._private.utils import (
+    MetricsPusher,
+    merge_dict,
+    parse_import_path,
+    wrap_to_ray_error,
+)
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
