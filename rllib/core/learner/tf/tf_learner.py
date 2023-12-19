@@ -423,8 +423,8 @@ class TfLearner(Learner):
             #  constraint on forward_train and compute_loss APIs. This seems to be
             #  in-efficient. However, for tf>=2.12, it works also w/o this conversion
             #  so remove this after we upgrade officially to tf==2.12.
-            _batch = NestedDict(_batch)
-            with tf.GradientTape(persistent=True) as tape:
+            _batch = NestedDict(_batch.copy())
+            with tf.GradientTape(persistent=False) as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
             gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
