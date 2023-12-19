@@ -65,8 +65,9 @@ The Ray MPI plugin also supports actors. This code adds the function for an
 actor to call MPI, so it can utilize MPI to run some distributed computation.
 
     .. testcode::
-      import ray
       
+      import ray
+
       def entry(val=None):
         from mpi4py import MPI
         import os
