@@ -762,9 +762,7 @@ class gRPCProxy(GenericProxy):
             if isinstance(e, (RayActorError, RayTaskError)):
                 logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
             else:
-                logger.exception(
-                    f"Request failed due to unexpected error."
-                )
+                logger.exception("Request failed due to unexpected error.")
             yield ResponseStatus(
                 code=grpc.StatusCode.INTERNAL,
                 is_error=True,
@@ -1022,9 +1020,7 @@ class HTTPProxy(GenericProxy):
                 code=TIMEOUT_ERROR_CODE,
                 is_error=True,
             )
-            logger.warning(
-                f"Request timed out after {self.request_timeout_s}s."
-            )
+            logger.warning(f"Request timed out after {self.request_timeout_s}s.")
             # We should only send timeout response if we have not sent
             # any messages to the client yet. Header (including status code)
             # messages can only be sent once.
@@ -1043,9 +1039,7 @@ class HTTPProxy(GenericProxy):
             if isinstance(e, (RayActorError, RayTaskError)):
                 logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
             else:
-                logger.exception(
-                    f"Request failed due to unexpected error."
-                )
+                logger.exception("Request failed due to unexpected error.")
             status = ResponseStatus(
                 code="500",
                 is_error=True,
