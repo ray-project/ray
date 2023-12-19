@@ -354,7 +354,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             ) in node_type_configs.items():
                 node_type_available[
                     node_type
-                ] = node_type_config.max_workers - node_type_existing.get(node_type, 0)
+                ] = node_type_config.max_worker_nodes - node_type_existing.get(
+                    node_type, 0
+                )
 
             return node_type_available
 
@@ -438,7 +440,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             node_type_config,
         ) in self._ctx.get_node_type_configs().items():
             cur_count = count_by_node_type.get(node_type, 0)
-            min_count = node_type_config.min_workers
+            min_count = node_type_config.min_worker_nodes
             if cur_count < min_count:
                 new_nodes.extend(
                     [

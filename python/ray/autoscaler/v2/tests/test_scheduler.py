@@ -55,26 +55,26 @@ def sched_request(
     )
 
 
-def test_min_workers():
+def test_min_worker_nodes():
     scheduler = ResourceDemandScheduler()
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
             resources={"CPU": 1},
-            min_workers=1,
-            max_workers=10,
+            min_worker_nodes=1,
+            max_worker_nodes=10,
         ),
         "type_2": NodeTypeConfig(
             name="type_2",
             resources={"CPU": 1},
-            min_workers=0,
-            max_workers=10,
+            min_worker_nodes=0,
+            max_worker_nodes=10,
         ),
         "type_3": NodeTypeConfig(
             name="type_3",
             resources={"CPU": 1},
-            min_workers=2,
-            max_workers=10,
+            min_worker_nodes=2,
+            max_worker_nodes=10,
         ),
     }
     # With empty cluster

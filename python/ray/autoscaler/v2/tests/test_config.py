@@ -127,23 +127,23 @@ def test_node_type_configs():
     node_type_configs = config.get_node_type_configs()
     assert config.get_max_num_worker_nodes() == 10
     assert len(node_type_configs) == 4
-    assert node_type_configs["head_node"].max_workers == 0
-    assert node_type_configs["head_node"].min_workers == 0
+    assert node_type_configs["head_node"].max_worker_nodes == 0
+    assert node_type_configs["head_node"].min_worker_nodes == 0
     assert node_type_configs["head_node"].resources == {}
     assert node_type_configs["head_node"].labels == {}
 
-    assert node_type_configs["default"].max_workers == 2
-    assert node_type_configs["default"].min_workers == 0
+    assert node_type_configs["default"].max_worker_nodes == 2
+    assert node_type_configs["default"].min_worker_nodes == 0
     assert node_type_configs["default"].resources == {}
     assert node_type_configs["default"].labels == {}
 
-    assert node_type_configs["worker_nodes"].max_workers == 2
-    assert node_type_configs["worker_nodes"].min_workers == 1
+    assert node_type_configs["worker_nodes"].max_worker_nodes == 2
+    assert node_type_configs["worker_nodes"].min_worker_nodes == 1
     assert node_type_configs["worker_nodes"].resources == {}
     assert node_type_configs["worker_nodes"].labels == {}
 
-    assert node_type_configs["worker_nodes1"].max_workers == 2
-    assert node_type_configs["worker_nodes1"].min_workers == 1
+    assert node_type_configs["worker_nodes1"].max_worker_nodes == 2
+    assert node_type_configs["worker_nodes1"].min_worker_nodes == 1
     assert node_type_configs["worker_nodes1"].resources == {"CPU": 2}
     assert node_type_configs["worker_nodes1"].labels == {"foo": "bar"}
 

@@ -51,21 +51,21 @@ class NodeTypeConfig:
 
     # Node type name
     name: NodeType
-    # The minimal number of workers to be launched for this node type.
-    min_workers: int
-    # The maximal number of workers can be launched for this node type.
-    max_workers: int
+    # The minimal number of worker nodes to be launched for this node type.
+    min_worker_nodes: int
+    # The maximal number of worker nodes can be launched for this node type.
+    max_worker_nodes: int
     # The total resources on the node.
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
     labels: Dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self):
-        assert self.min_workers <= self.max_workers
-        assert self.min_workers >= 0
+        assert self.min_worker_nodes <= self.max_worker_nodes
+        assert self.min_worker_nodes >= 0
 
 
-class AutoscalingConfig(object):
+class AutoscalingConfig:
     """
     AutoscalingConfig is the helper class to provide autoscaling
     related configs.
@@ -255,8 +255,8 @@ class AutoscalingConfig(object):
         for node_type, node_config in available_node_types.items():
             node_type_configs[node_type] = NodeTypeConfig(
                 name=node_type,
-                min_workers=node_config.get("min_workers", 0),
-                max_workers=node_config.get("max_workers", 0),
+                min_worker_nodes=node_config.get("min_workers", 0),
+                max_worker_nodes=node_config.get("max_workers", 0),
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
             )
