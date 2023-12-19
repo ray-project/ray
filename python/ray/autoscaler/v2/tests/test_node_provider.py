@@ -1,7 +1,6 @@
 # coding: utf-8
 import os
 import sys
-import unittest
 
 import pytest  # noqa
 
@@ -13,87 +12,121 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
 )
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
-from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
+from ray.autoscaler.v2.instance_manager.node_provider import (
+    NodeProviderAdapter,
+    UpdateCloudNodeProviderRequest,
+)
 from ray.autoscaler.v2.tests.util import FakeCounter
-from ray.core.generated.instance_manager_pb2 import Instance
-from ray.tests.autoscaler_test_utils import MockProvider
+from ray.tests.autoscaler_test_utils import MockBatchingProvider, MockProvider
 
 
-class NodeProviderTest(unittest.TestCase):
-    def setUp(self):
-        self.base_provider = MockProvider()
-        self.availability_tracker = NodeProviderAvailabilityTracker()
-        self.node_launcher = BaseNodeLauncher(
-            self.base_provider,
+@pytest.fixture(scope="function")
+def node_providers(request):
+    if hasattr(request, "param") and request.param == "batch":
+        base_provider = MockBatchingProvider()
+    else:
+        base_provider = MockProvider()
+    node_provider = NodeProviderAdapter(
+        base_provider,
+        BaseNodeLauncher(
+            base_provider,
             FakeCounter(),
             EventSummarizer(),
-            self.availability_tracker,
-        )
-        self.instance_config_provider = NodeProviderConfig(
-            load_test_config("test_ray_complex.yaml")
-        )
-        self.node_provider = NodeProviderAdapter(
-            self.base_provider, self.node_launcher, self.instance_config_provider
-        )
+            NodeProviderAvailabilityTracker(),
+        ),
+        NodeProviderConfig(load_test_config("test_ray_complex.yaml")),
+    )
 
-    def test_node_providers_pass_through(self):
-        nodes = self.node_provider.create_nodes("worker_nodes1", 1)
-        assert len(nodes) == 1
-        assert nodes[0] == Instance(
-            instance_type="worker_nodes1",
-            cloud_instance_id="0",
-            internal_ip="172.0.0.0",
-            external_ip="1.2.3.4",
-            status=Instance.UNKNOWN,
-        )
-        self.assertEqual(len(self.base_provider.mock_nodes), 1)
-        self.assertEqual(self.node_provider.get_non_terminated_nodes(), {"0": nodes[0]})
-        nodes1 = self.node_provider.create_nodes("worker_nodes", 2)
-        assert len(nodes1) == 2
-        assert nodes1[0] == Instance(
-            instance_type="worker_nodes",
-            cloud_instance_id="1",
-            internal_ip="172.0.0.1",
-            external_ip="1.2.3.4",
-            status=Instance.UNKNOWN,
-        )
-        assert nodes1[1] == Instance(
-            instance_type="worker_nodes",
-            cloud_instance_id="2",
-            internal_ip="172.0.0.2",
-            external_ip="1.2.3.4",
-            status=Instance.UNKNOWN,
-        )
-        self.assertEqual(
-            self.node_provider.get_non_terminated_nodes(),
-            {"0": nodes[0], "1": nodes1[0], "2": nodes1[1]},
-        )
-        self.assertEqual(
-            self.node_provider.get_nodes_by_cloud_instance_id(["0"]),
-            {
-                "0": nodes[0],
-            },
-        )
-        self.node_provider.terminate_node("0")
-        self.assertEqual(
-            self.node_provider.get_non_terminated_nodes(),
-            {"1": nodes1[0], "2": nodes1[1]},
-        )
-        self.assertFalse(self.node_provider.is_readonly())
+    yield base_provider, node_provider
 
-    def test_create_node_failure(self):
-        self.base_provider.error_creates = NodeLaunchException(
-            "hello", "failed to create node", src_exc_info=None
-        )
-        self.assertEqual(self.node_provider.create_nodes("worker_nodes1", 1), [])
-        self.assertEqual(len(self.base_provider.mock_nodes), 0)
-        self.assertTrue(
-            "worker_nodes1" in self.availability_tracker.summary().node_availabilities
-        )
-        self.assertEqual(
-            self.node_provider.get_non_terminated_nodes(),
-            {},
-        )
+
+def request(to_launch=None, to_terminate=None):
+    if to_launch is None:
+        to_launch = {}
+    if to_terminate is None:
+        to_terminate = []
+    return UpdateCloudNodeProviderRequest(to_launch, to_terminate)
+
+
+@pytest.mark.parametrize(
+    "node_providers",
+    ["sync", "batch"],
+    indirect=True,
+)
+def test_node_providers_pass_through(node_providers):
+    base_provider, node_provider = node_providers
+    # Launch 1
+    num_launching = node_provider.update(
+        request(to_launch={"worker_nodes1": 1})
+    ).num_launching
+    assert num_launching == {"worker_nodes1": 1}
+
+    assert len(base_provider.mock_nodes) == 1
+    assert len(node_provider.get_running_nodes()) == 0
+
+    base_provider.finish_starting_nodes()
+    assert len(node_provider.get_running_nodes()) == 1
+    assert node_provider.get_running_nodes()[0].cloud_instance_id == "0"
+    assert node_provider.get_running_nodes()[0].node_type == "worker_nodes1"
+
+    # Launch multiple
+    num_launching = node_provider.update(
+        request(to_launch={"worker_nodes": 2})
+    ).num_launching
+    assert num_launching == {"worker_nodes": 2}
+
+    base_provider.finish_starting_nodes()
+
+    running_cloud_ids_types = [
+        (n.cloud_instance_id, n.node_type) for n in node_provider.get_running_nodes()
+    ]
+    assert sorted(running_cloud_ids_types) == sorted(
+        [("0", "worker_nodes1"), ("1", "worker_nodes"), ("2", "worker_nodes")]
+    )
+
+    # Terminate one
+    terminating = node_provider.update(request(to_terminate=["0"])).terminating
+    assert terminating == ["0"]
+    running_cloud_ids_types = [
+        (n.cloud_instance_id, n.node_type) for n in node_provider.get_running_nodes()
+    ]
+    assert sorted(running_cloud_ids_types) == sorted(
+        [("1", "worker_nodes"), ("2", "worker_nodes")]
+    )
+
+
+def test_create_node_failure(node_providers):
+    base_provider, node_provider = node_providers
+    base_provider.error_creates = NodeLaunchException(
+        "hello", "failed to create node", src_exc_info=None
+    )
+    reply = node_provider.update(request(to_launch={"worker_nodes": 1}))
+    assert reply.num_launching == {"worker_nodes": 0}
+    assert "worker_nodes" in reply.launch_failures
+    assert type(reply.launch_failures["worker_nodes"].exception) == NodeLaunchException
+    assert len(base_provider.mock_nodes) == 0
+    assert (
+        "worker_nodes"
+        in node_provider._node_launcher.node_provider_availability_tracker.summary().node_availabilities  # noqa
+    )
+    assert node_provider.get_running_nodes() == []
+
+
+def test_terminate_node_failure(node_providers):
+    base_provider, node_provider = node_providers
+    base_provider.error_terminates = Exception("failed to terminate node")
+    node_provider.update(request(to_launch={"worker_nodes": 1}))
+    base_provider.finish_starting_nodes()
+    node_provider.update(request(to_terminate=["0"]))
+    assert len(base_provider.mock_nodes) == 1
+    assert (
+        "worker_nodes"
+        in node_provider._node_launcher.node_provider_availability_tracker.summary().node_availabilities  # noqa
+    )
+    running_cloud_ids_types = [
+        (n.cloud_instance_id, n.node_type) for n in node_provider.get_running_nodes()
+    ]
+    assert running_cloud_ids_types == [("0", "worker_nodes")]
 
 
 if __name__ == "__main__":
