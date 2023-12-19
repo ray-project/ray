@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Union, Optional
 import logging
 import threading
+import traceback
 
 import ray
 from ray.exceptions import RayTaskError, TaskCancelledError
@@ -68,7 +69,18 @@ def do_exec_compiled_task(
             for idx, channel in input_channel_idxs:
                 resolved_inputs[idx] = channel.begin_read()
 
-            output_val = method(*resolved_inputs)
+            try:
+                output_val = method(*resolved_inputs)
+            except Exception as exc:
+                backtrace = ray._private.utils.format_error_message(
+                    "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                    task_exception=True)
+                wrapped = RayTaskError(
+                    function_name="do_exec_compiled_task",
+                    traceback_str=backtrace,
+                    cause=exc)
+                self._output_channel.write(wrapped)
+                raise
 
             if self._dag_cancelled:
                 raise RuntimeError("DAG execution cancelled")
@@ -77,20 +89,15 @@ def do_exec_compiled_task(
                 channel.end_read()
 
     except Exception as e:
-        logging.info(f"Compiled DAG task exited with exception: {e}")
+        logging.exception("Compiled DAG task exited with exception")
         raise
 
 
 @DeveloperAPI
 def do_cancel_compiled_task(self):
     self._dag_cancelled = True
-    e = RayTaskError(
-        function_name="do_exec_compiled_task",
-        traceback_str="",
-        cause=TaskCancelledError(),
-    )
     for channel in self._input_channels:
-        channel.unblock_readers_with_error(e)
+        channel.close()
 
 
 @DeveloperAPI
@@ -424,14 +431,10 @@ class CompiledDAG:
             def run(self):
                 try:
                     ray.get(outer.worker_task_refs)
-                except Exception as e:
+                except Exception:
+                    logger.exception("Handling exception from worker tasks")
                     if self.in_teardown:
                         return
-                    if isinstance(outer.dag_output_channels, list):
-                        for output_channel in outer.dag_output_channels:
-                            output_channel.unblock_readers_with_error(e)
-                    else:
-                        outer.dag_output_channels.unblock_readers_with_error(e)
                     self.teardown()
 
         monitor = Monitor()

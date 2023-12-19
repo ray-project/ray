@@ -161,34 +161,14 @@ class Channel:
             [self._base_ref]
         )
 
-    def unblock_readers_with_error(self, e: Exception) -> None:
+    def close(self) -> None:
         """
-        If readers are blocked on the channel, shut it down by writing an error
-        object to the channel.
+        Close this channel by setting the error bit on the object.
 
         Does not block.
-
-        Args:
-            e: The exception object to write to the channel.
         """
-        logger.debug(f"Writing error to channel: {self._base_ref}: {e}")
-        serialized_exc = self._worker.get_serialization_context().serialize(e)
-        try:
-            # Write an error if a reader is blocked. If a value is already available,
-            # no need to write anything.
-            self._worker.core_worker.experimental_mutable_object_put_serialized(
-                serialized_exc,
-                self._base_ref,
-                num_readers=1,
-                try_wait=True,
-            )
-        except Exception as e:
-            # If we get a write acquire failed error, that's expected since it means
-            # no reader is currently blocked for this channel.
-            # Raise other types of errors encountered.
-            if not _is_write_acquire_failed_error(e):
-                logger.exception("Error setting error on channel")
-                raise
+        logger.debug(f"Setting error bit on channel: {self._base_ref}")
+        self._worker.core_worker.experimental_mutable_object_set_error(self._base_ref)
 
 
 def _is_write_acquire_failed_error(e: Exception) -> bool:
