@@ -45,6 +45,7 @@ def test_get_container() -> None:
             workers=3,
             worker_id=1,
             parallelism_per_worker=2,
+            network=None,
             gpus=0,
         )
         assert isinstance(container, LinuxTesterContainer)
@@ -58,6 +59,7 @@ def test_get_container() -> None:
             workers=3,
             worker_id=1,
             parallelism_per_worker=2,
+            network=None,
             gpus=0,
         )
         assert isinstance(container, WindowsTesterContainer)
