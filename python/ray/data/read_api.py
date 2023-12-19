@@ -375,6 +375,7 @@ def read_datasource(
         owned_by_consumer=False,
     )
     block_list._estimated_num_blocks = len(read_tasks) if read_tasks else 0
+    parallelism = block_list._estimated_num_blocks
 
     read_op = Read(
         datasource,

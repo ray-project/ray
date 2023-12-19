@@ -30,6 +30,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.operators.from_operators import AbstractFrom
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
@@ -169,10 +170,13 @@ class ExecutionPlan:
         # cheap.
         plan_str = ""
         dataset_blocks = None
-        if self._snapshot_blocks is None or self._snapshot_operator != self._logical_plan.dag:
+        if (
+            self._snapshot_blocks is None
+            or self._snapshot_operator != self._logical_plan.dag
+        ):
 
             def generate_string(op, depth=0):
-                if isinstance(op, (Read, InputData)):
+                if isinstance(op, (Read, InputData, AbstractFrom)):
                     return
                 nonlocal plan_str
                 op_name = op.name
