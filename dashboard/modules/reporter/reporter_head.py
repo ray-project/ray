@@ -487,12 +487,16 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             aiohttp.web.Response: The HTTP response containing the memory profile data.
 
         Raises:
-            ValueError: if no stub found from the given ip value
-            ValueError: If the "task_id" parameter exists but either
-            "attempt_number" or "node id" is missing in the request query.
-            ValueError: If the maximum duration allowed is exceeded.
-            ValueError: If requesting task profiling for the worker begins working on
-            another task during the profile retrieval.
+            aiohttp.web.HTTPInternalServerError: If no stub
+            found from the given ip value
+            aiohttp.web.HTTPInternalServerError: If the
+            "task_id" parameter exists but either "attempt_number"
+            or "node id" is missing in the request query.
+            aiohttp.web.HTTPInternalServerError: If the maximum
+            duration allowed is exceeded.
+            aiohttp.web.HTTPInternalServerError If requesting task
+            profiling for the worker begins working on another task
+            during the profile retrieval.
             aiohttp.web.HTTPInternalServerError: If there is
             an internal server error during the profile retrieval.
         """
@@ -500,9 +504,19 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         if is_task:
             if "attempt_number" not in req.query:
-                raise ValueError("task's attempt number is required")
+                return aiohttp.web.HTTPInternalServerError(
+                    text=(
+                        "Failed to execute task profiling: "
+                        "task's attempt number is required"
+                    )
+                )
             if "node_id" not in req.query:
-                raise ValueError("node_id is required")
+                return aiohttp.web.HTTPInternalServerError(
+                    text=(
+                        "Failed to execute task profiling: "
+                        "task's node id is required"
+                    )
+                )
 
             task_id = req.query.get("task_id")
             attempt_number = req.query.get("attempt_number")
@@ -528,7 +542,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         if ip:
             if ip not in self._stubs:
-                return ValueError("No stub with given ip value")
+                return aiohttp.web.HTTPInternalServerError(
+                    text="Failed to execute: No stub with given ip value"
+                )
             reporter_stub = self._stubs[ip]
         else:
             reporter_stub = list(self._stubs.values())[0]

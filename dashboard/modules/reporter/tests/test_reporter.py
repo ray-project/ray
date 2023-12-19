@@ -964,12 +964,11 @@ def test_task_get_memory_profile_missing_params(shutdown_only):
 
     # Make sure the API works.
     def verify():
-        with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(
-                f"{webui_url}/memory_profile", params=missing_node_id_params
-            )
-            resp.raise_for_status()
-        assert isinstance(exc_info.value, requests.exceptions.HTTPError)
+        resp = requests.get(
+            f"{webui_url}/memory_profile", params=missing_node_id_params
+        )
+        content = resp.content.decode("utf-8")
+        assert "task's node id is required" in content, content
         return True
 
     wait_for_condition(verify, timeout=10)
