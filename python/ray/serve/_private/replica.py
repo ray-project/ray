@@ -146,10 +146,6 @@ class RayServeWrappedReplica:
             servable_object=None,
         )
 
-        controller_handle = ray.get_actor(
-            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-        )
-
         # Indicates whether the replica has finished initializing.
         self._initialized = False
 
@@ -193,7 +189,6 @@ class RayServeWrappedReplica:
                 deployment_config.autoscaling_config,
                 version,
                 is_function,
-                controller_handle,
                 app_name,
             )
             self._initialized = True
