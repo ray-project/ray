@@ -6,6 +6,7 @@ import pickle
 import time
 import traceback
 from contextlib import asynccontextmanager
+from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple
 
 import aiorwlock
@@ -16,7 +17,9 @@ from starlette.types import Message, Receive, Scope, Send
 import ray
 from ray import cloudpickle
 from ray._private.async_compat import sync_to_async
-from ray._private.utils import get_or_create_event_loop
+from ray._private.utils import get_or_create_event_loop, parse_import_path
+from ray.actor import ActorClass
+from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
@@ -56,11 +59,33 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import MetricsPusher, merge_dict, wrap_to_ray_error
 from ray.serve._private.version import DeploymentVersion
+from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _load_deployment_def_from_import_path(import_path: str) -> Callable:
+    module_name, attr_name = parse_import_path(import_path)
+    deployment_def = getattr(import_module(module_name), attr_name)
+
+    # For ray or serve decorated class or function, strip to return
+    # original body.
+    if isinstance(deployment_def, RemoteFunction):
+        deployment_def = deployment_def._function
+    elif isinstance(deployment_def, ActorClass):
+        deployment_def = deployment_def.__ray_metadata__.modified_class
+    elif isinstance(deployment_def, Deployment):
+        logger.warning(
+            f'The import path "{import_path}" contains a '
+            "decorated Serve deployment. The decorator's settings "
+            "are ignored when deploying via import path."
+        )
+        deployment_def = deployment_def.func_or_class
+
+    return deployment_def
 
 
 class RayServeWrappedReplica:
@@ -81,8 +106,13 @@ class RayServeWrappedReplica:
             replica_tag, LoggingConfig(**(deployment_config.logging_config or {}))
         )
         self._event_loop = get_or_create_event_loop()
+
+        deployment_def = cloudpickle.loads(serialized_deployment_def)
+        if isinstance(deployment_def, str):
+            deployment_def = _load_deployment_def_from_import_path(deployment_def)
+
         self._user_callable_wrapper = UserCallableWrapper(
-            cloudpickle.loads(serialized_deployment_def),
+            deployment_def,
             cloudpickle.loads(serialized_init_args),
             cloudpickle.loads(serialized_init_kwargs),
             deployment_id=deployment_id,
