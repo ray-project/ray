@@ -407,7 +407,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         N * P = R = total number of output blocks
         M / N = merge factor - the ratio of map : merge tasks is to improve
           pipelined parallelism. For example, if map takes twice as long to
-          execute as merge, then we should set this to 2.
+          execute as merge, then we should set this to 2. If pipeline bubbles
+          appear and the merge tasks are much longer than the map tasks, then
+          the merge factor should be decreased, and vice versa.
         See paper at https://arxiv.org/abs/2203.05072 for more details.
     """
 
@@ -418,7 +420,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-        merge_factor: int = 2,
+        merge_factor: float = 2,
         _debug_limit_execution_to_num_blocks: int = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
         logger.get_logger().info("Using experimental push-based shuffle.")
@@ -459,10 +461,10 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             output_num_blocks,
         )
 
-        # TODO(swang): Remove before merge, DatasetLogger.setLevel(DEBUG)
-        # doesn't seem to be working.
-        print(f"Shuffle schedule:\n{stage}")
-        logger.get_logger().debug(f"Shuffle schedule:\n{stage}")
+        # TODO(swang): Use INFO level. Currently there is no easy way to set
+        # the logging level to DEBUG from a driver script, so just print
+        # verbosely for now.
+        logger.get_logger().info(f"Push-based shuffle schedule:\n{stage}")
 
         map_fn = self._map_partition
         merge_fn = self._merge
@@ -701,6 +703,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         num_output_blocks: int,
     ) -> _PushBasedShuffleStage:
         num_cpus_total = sum(v for v in num_cpus_per_node_map.values())
+        logger.get_logger().info(
+            f"Found {num_cpus_total} CPUs available CPUs for push-based shuffle."
+        )
         task_parallelism = min(num_cpus_total, num_input_blocks)
 
         num_tasks_per_map_merge_group = merge_factor + 1
@@ -744,9 +749,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         assert num_merge_tasks_per_round == len(merge_task_placement)
         assert num_merge_tasks_per_round > 0, num_merge_tasks_per_round
-        # Compute the total number of map tasks per round.
-        num_map_tasks_per_round = int(num_merge_tasks_per_round * merge_factor)
-        num_map_tasks_per_round = min(num_map_tasks_per_round, task_parallelism)
+        # Use the remaining CPUs to execute map tasks.
+        num_map_tasks_per_round = task_parallelism - num_merge_tasks_per_round
         # Make sure there is at least one map task in each round.
         num_map_tasks_per_round = max(num_map_tasks_per_round, 1)
 

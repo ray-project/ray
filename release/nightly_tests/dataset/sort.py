@@ -138,9 +138,17 @@ if __name__ == "__main__":
                 key="c_0",
                 _debug_limit_shuffle_execution_to_num_blocks=args.limit_num_blocks,
             )
-        ds = ds.materialize()
+        exc = None
+        try:
+            ds = ds.materialize()
+        except Exception as e:
+            exc = e
+
         ds_stats = ds.stats()
 
+        # TODO(swang): Add stats for OOM worker kills. This is not very
+        # convenient to do programmatically right now because it requires
+        # querying Prometheus.
         print("==== Driver memory summary ====")
         maxrss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3)
         print(f"max: {maxrss / 1e9}/GB")
@@ -163,10 +171,20 @@ if __name__ == "__main__":
             "partition_size": partition_size,
             "peak_driver_memory": maxrss,
         }
+
+        # Wait until after the stats have been printed to raise any exceptions.
+        if exc is not None:
+            print(results)
+            raise exc
+
         return results
 
     benchmark = Benchmark("sort-shuffle")
     benchmark.run_fn("main", run_benchmark, args)
 
-    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    benchmark.write_result(out_file)
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "")
+    if test_output_json:
+        out_file = open(test_output_json, "w")
+        benchmark.write_result(out_file)
+
+    ray.timeline("dump.json")
