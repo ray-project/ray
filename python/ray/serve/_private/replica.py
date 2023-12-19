@@ -680,7 +680,7 @@ class UserCallableWrapper:
             yield
         except Exception as e:
             user_exception = e
-            logger.exception(f"Request failed due to {type(e).__name__}:")
+            logger.error(f"Request failed:\n{e}")
             if ray.util.pdb._is_ray_debugger_enabled():
                 ray.util.pdb._post_mortem()
 
