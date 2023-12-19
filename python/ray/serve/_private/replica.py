@@ -72,6 +72,27 @@ from ray.serve.schema import LoggingConfig
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+def _load_deployment_def_from_import_path(import_path: str) -> Callable:
+    module_name, attr_name = parse_import_path(import_path)
+    deployment_def = getattr(import_module(module_name), attr_name)
+
+    # For ray or serve decorated class or function, strip to return
+    # original body.
+    if isinstance(deployment_def, RemoteFunction):
+        deployment_def = deployment_def._function
+    elif isinstance(deployment_def, ActorClass):
+        deployment_def = deployment_def.__ray_metadata__.modified_class
+    elif isinstance(deployment_def, Deployment):
+        logger.warning(
+            f'The import path "{import_path}" contains a '
+            "decorated Serve deployment. The decorator's settings "
+            "are ignored when deploying via import path."
+        )
+        deployment_def = deployment_def.func_or_class
+
+    return deployment_def
+
+
 def create_replica_wrapper(actor_class_name: str):
     """Creates a replica class wrapping the provided function or class.
 
@@ -106,24 +127,10 @@ def create_replica_wrapper(actor_class_name: str):
             self._event_loop = get_or_create_event_loop()
 
             deployment_def = cloudpickle.loads(serialized_deployment_def)
-
             if isinstance(deployment_def, str):
-                import_path = deployment_def
-                module_name, attr_name = parse_import_path(import_path)
-                deployment_def = getattr(import_module(module_name), attr_name)
-                # For ray or serve decorated class or function, strip to return
-                # original body
-                if isinstance(deployment_def, RemoteFunction):
-                    deployment_def = deployment_def._function
-                elif isinstance(deployment_def, ActorClass):
-                    deployment_def = deployment_def.__ray_metadata__.modified_class
-                elif isinstance(deployment_def, Deployment):
-                    logger.warning(
-                        f'The import path "{import_path}" contains a '
-                        "decorated Serve deployment. The decorator's settings "
-                        "are ignored when deploying via import path."
-                    )
-                    deployment_def = deployment_def.func_or_class
+                # `deployment_def` can be an import path (this is used by Java to
+                # deploy Python deployments).
+                deployment_def = _load_deployment_def_from_import_path(deployment_def)
 
             init_args = cloudpickle.loads(serialized_init_args)
             init_kwargs = cloudpickle.loads(serialized_init_kwargs)
