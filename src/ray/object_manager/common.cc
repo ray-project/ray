@@ -60,6 +60,7 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
 Status PlasmaObjectHeader::TryAcquireWriterMutex() {
   // Try to acquire the lock, checking every 1s for the error bit.
   struct timespec ts;
+  int i = 0;
   do {
     if (has_error) {
       return Status::IOError("channel closed");
@@ -134,15 +135,17 @@ Status PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version
 
   // Wait for the requested version (or a more recent one) to be sealed.
   while (version < version_to_read || !is_sealed) {
-    // Try to do a cond wait, checking every 1s for the error bit.
-    struct timespec ts;
-    do {
-      if (has_error) {
-        return Status::IOError("channel closed");
-      }
-      clock_gettime(CLOCK_REALTIME, &ts);
-      ts.tv_sec += 1;
-    } while (pthread_cond_timedwait(&cond, &wr_mut, &ts));
+    RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
+    std::this_thread::yield();
+    RAY_RETURN_NOT_OK(TryAcquireWriterMutex());
+    // TODO(ekl) this doesn't work since it requires re-acquiring the mutex regardless of
+    // timeout
+    //    // Try to do a cond wait, checking every 1s for the error bit.
+    //    struct timespec ts;
+    //    do {
+    //      clock_gettime(CLOCK_REALTIME, &ts);
+    //      ts.tv_sec += 1;
+    //    } while (pthread_cond_timedwait(&cond, &wr_mut, &ts));
   }
 
   bool success = false;

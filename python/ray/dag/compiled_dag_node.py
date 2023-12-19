@@ -435,8 +435,8 @@ class CompiledDAG:
             def run(self):
                 try:
                     ray.get(outer.worker_task_refs)
-                except Exception:
-                    logger.exception("Handling exception from worker tasks")
+                except Exception as e:
+                    logger.debug(f"Handling exception from worker tasks: {e}")
                     if self.in_teardown:
                         return
                     if isinstance(outer.dag_output_channels, list):

@@ -202,11 +202,8 @@ def test_dag_errors(ray_start_regular):
         dag.experimental_compile()
 
 
-@pytest.mark.parametrize("num_actors", [1, 4])
-def test_dag_fault_tolerance(ray_start_regular, num_actors):
-    actors = [
-        Actor.remote(0, fail_after=100, sys_exit=False) for _ in range(num_actors)
-    ]
+def test_dag_fault_tolerance(ray_start_regular):
+    actors = [Actor.remote(0, fail_after=100, sys_exit=False) for _ in range(4)]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
         dag = MultiOutputNode(out)
@@ -217,7 +214,7 @@ def test_dag_fault_tolerance(ray_start_regular, num_actors):
         output_channels = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
         results = [chan.begin_read() for chan in output_channels]
-        assert results == [i + 1] * num_actors
+        assert results == [i + 1] * 4
         for chan in output_channels:
             chan.end_read()
 
@@ -231,7 +228,7 @@ def test_dag_fault_tolerance(ray_start_regular, num_actors):
 
 
 def test_dag_fault_tolerance_sys_exit(ray_start_regular):
-    actors = [Actor.remote(0, fail_after=100, sys_exit=True) for _ in range(1)]
+    actors = [Actor.remote(0, fail_after=100, sys_exit=True) for _ in range(4)]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
         dag = MultiOutputNode(out)
@@ -242,7 +239,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular):
         output_channels = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
         results = [chan.begin_read() for chan in output_channels]
-        assert results == [i + 1]
+        assert results == [i + 1] * 4
         for chan in output_channels:
             chan.end_read()
 
