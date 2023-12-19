@@ -664,6 +664,95 @@ class Impala(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
+        if self._uses_new_env_runners:
+            return self._training_step_new_api_stack()
+        else:
+            return self._training_step_old_and_hybrid_api_stacks()
+
+    def _training_step_new_api_stack(self):
+        use_tree_aggregation = (
+            self._aggregator_actor_manager
+            and self._aggregator_actor_manager.num_healthy_actors() > 0
+        )
+
+        # Get sampled Episodes from our workers (by ray references if we use
+        # tree-aggregation).
+        unprocessed_episodes = self.get_samples_from_workers(
+            return_object_refs=use_tree_aggregation,
+        )
+        # Tag workers that actually produced ready sample batches this iteration.
+        # Those workers will have to get updated at the end of the iteration.
+        workers_that_need_updates = {
+            worker_id for worker_id, _ in unprocessed_episodes
+        }
+
+        # Send the collected batches (still object refs) to our aggregation workers.
+        if use_tree_aggregation:
+            batches = self.process_experiences_tree_aggregation(
+                unprocessed_sample_batches
+            )
+        # Resolve collected batches here on local process (using the mixin buffer).
+        else:
+            batches = self.process_experiences_directly(unprocessed_sample_batches)
+
+        # Increase sampling counters now that we have the actual SampleBatches on
+        # the local process (and can measure their sizes).
+        for batch in batches:
+            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+
+        # Concatenate single batches into batches of size `train_batch_size`.
+        self.concatenate_batches_and_pre_queue(batches)
+        # Using the Learner API. Call `update()` on our LearnerGroup object with
+        # all collected batches.
+        train_results = self.learn_on_processed_samples()
+        module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
+        additional_results = self.learner_group.additional_update(
+            module_ids_to_update=module_ids_to_update,
+            timestep=self._counters[
+                NUM_ENV_STEPS_TRAINED
+                if self.config.count_steps_by == "env_steps"
+                else NUM_AGENT_STEPS_TRAINED
+            ],
+            # TODO (sven): Feels hacked, but solves the problem of algos inheriting
+            #  from IMPALA (like APPO). In the old stack, we didn't have this
+            #  problem b/c IMPALA didn't need to call any additional update methods
+            #  as the entropy- and lr-schedules were handled by
+            #  `Policy.on_global_var_update()`.
+            **self._get_additional_update_kwargs(train_results),
+        )
+        for key, res in additional_results.items():
+            if key in train_results:
+                train_results[key].update(res)
+
+        # Sync worker weights (only those policies that were actually updated).
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            if train_results:
+                pids = list(set(train_results.keys()) - {ALL_MODULES})
+                self.update_workers_from_learner_group(
+                    workers_that_need_updates=workers_that_need_updates,
+                    policy_ids=pids,
+                )
+
+        # With a training step done, try to bring any aggregators back to life
+        # if necessary.
+        # Aggregation workers are stateless, so we do not need to restore any
+        # state here.
+        if self._aggregator_actor_manager:
+            self._aggregator_actor_manager.probe_unhealthy_actors(
+                timeout_seconds=self.config.worker_health_probe_timeout_s,
+                mark_healthy=True,
+            )
+
+        if train_results:
+            # Store the most recent result and return it if no new result is
+            # available. This keeps backwards compatibility with the old
+            # training stack / results reporting stack. This is necessary
+            # any time we develop an asynchronous algorithm.
+            self._results = train_results
+        return self._results
+
+    def _training_step_old_and_hybrid_api_stacks(self):
         # First, check, whether our learner thread is still healthy.
         if (
             not self.config._enable_new_api_stack
