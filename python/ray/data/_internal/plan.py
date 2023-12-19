@@ -40,10 +40,7 @@ from ray.data._internal.planner.plan_read_op import (
     apply_output_blocks_handling_to_read_task,
 )
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data._internal.util import (
-    create_dataset_tag,
-    unify_block_metadata_schema,
-)
+from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -326,6 +323,7 @@ class ExecutionPlan:
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks
+            plan_copy._snapshot_operator = self._snapshot_operator
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
@@ -349,6 +347,7 @@ class ExecutionPlan:
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks.copy()
+            plan_copy._snapshot_operator = self._snapshot_operator
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
