@@ -751,7 +751,8 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
             # Only when using RolloutWorkers: Update also the worker set's
-            # `should_module_be_updated_fn` (analogous to is_policy_to_train).
+            # `is_policy_to_train` (analogous to LearnerGroup's
+            # `should_module_be_updated_fn`).
             # Note that with the new EnvRunner API in combination with the new stack,
             # this information only needs to be kept in the LearnerGroup and not on the
             # EnvRunners anymore.

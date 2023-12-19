@@ -1158,90 +1158,119 @@ class AlgorithmConfig(_Config):
         )
 
     def build_env_to_module_connector(self, env):
-        custom_connectors = []
+        from ray.rllib.connectors.env_to_module import (
+            EnvToModulePipeline,
+            DefaultEnvToModule,
+        )
 
+        custom_connectors = []
         # Create an env-to-module connector pipeline (including RLlib's default
         # env->module connector piece) and return it.
         if self._env_to_module_connector is not None:
             val_ = self._env_to_module_connector(env)
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
-            from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
             if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, ConnectorPipelineV2
+                val_, EnvToModulePipeline
             ):
                 custom_connectors = [val_]
+            elif isinstance(val_, (list, tuple)):
+                custom_connectors = list(val_)
             else:
                 return val_
 
-        from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
-            EnvToModulePipeline,
-        )
-
-        return EnvToModulePipeline(
+        pipeline = EnvToModulePipeline(
             connectors=custom_connectors,
             input_observation_space=env.single_observation_space,
             input_action_space=env.single_action_space,
             env=env,
         )
+        pipeline.append(
+            DefaultEnvToModule(
+                input_observation_space=pipeline.observation_space,
+                input_action_space=pipeline.action_space,
+                env=env,
+            )
+        )
+        return pipeline
 
     def build_module_to_env_connector(self, env):
-        custom_connectors = []
 
+        from ray.rllib.connectors.module_to_env import (
+            DefaultModuleToEnv,
+            ModuleToEnvPipeline,
+        )
+
+        custom_connectors = []
         # Create a module-to-env connector pipeline (including RLlib's default
         # module->env connector piece) and return it.
         if self._module_to_env_connector is not None:
             val_ = self._module_to_env_connector(env)
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
-            from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
             if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, ConnectorPipelineV2
+                val_, ModuleToEnvPipeline
             ):
                 custom_connectors = [val_]
+            elif isinstance(val_, (list, tuple)):
+                custom_connectors = list(val_)
             else:
                 return val_
 
-        from ray.rllib.connectors.module_to_env.module_to_env_pipeline import (
-            ModuleToEnvPipeline,
-        )
-
-        return ModuleToEnvPipeline(
+        pipeline = ModuleToEnvPipeline(
             connectors=custom_connectors,
             input_observation_space=env.single_observation_space,
             input_action_space=env.single_action_space,
             env=env,
         )
+        pipeline.append(
+            DefaultModuleToEnv(
+                input_observation_space=pipeline.observation_space,
+                input_action_space=pipeline.action_space,
+                env=env,
+                normalize_actions=self.normalize_actions,
+                clip_actions=self.clip_actions,
+            )
+        )
+        return pipeline
 
     def build_learner_connector(self, input_observation_space, input_action_space):
-        custom_connectors = []
+        from ray.rllib.connectors.learner import (
+            DefaultLearnerConnector,
+            LearnerConnectorPipeline,
+        )
 
+        custom_connectors = []
         # Create a learner connector pipeline (including RLlib's default
         # learner connector piece) and return it.
         if self._learner_connector is not None:
             val_ = self._learner_connector(input_observation_space, input_action_space)
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
-            from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
             if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, ConnectorPipelineV2
+                val_, LearnerConnectorPipeline
             ):
                 custom_connectors = [val_]
+            elif isinstance(val_, (list, tuple)):
+                custom_connectors = list(val_)
             else:
                 return val_
 
-        from ray.rllib.connectors.learner.learner_connector_pipeline import (
-            LearnerConnectorPipeline,
-        )
-
-        return LearnerConnectorPipeline(
+        pipeline = LearnerConnectorPipeline(
             connectors=custom_connectors,
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
         )
+        pipeline.append(
+            DefaultLearnerConnector(
+                input_observation_space=pipeline.observation_space,
+                input_action_space=pipeline.action_space,
+            )
+        )
+        return pipeline
 
     def build_learner_group(
         self,

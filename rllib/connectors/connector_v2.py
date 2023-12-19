@@ -97,48 +97,25 @@ class ConnectorV2(abc.ABC):
     def __init__(
         self,
         *,
-        input_observation_space: Optional[gym.Space] = None,
-        input_action_space: Optional[gym.Space] = None,
-        env: Optional[gym.Env] = None,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
         **kwargs,
     ):
         """Initializes a ConnectorV2 instance.
 
         Args:
-            input_observation_space: An optional input observation space. This
-                is the space coming from a previous connector piece in the
+            input_observation_space: The input observation space for this connector
+                piece. This is the space coming from a previous connector piece in the
                 (env-to-module or learner) pipeline or it is directly defined within
-                the used gym.Env. If None, `env` must be provided.
-            input_action_space: An optional input action space. This
+                the used gym.Env.
+            input_action_space: The input action space for this connector piece. This
                 is the space coming from a previous connector piece in the
                 (module-to-env) pipeline or it is directly defined within the used
-                gym.Env. If None, `env` must be provided.
-            env: An optional env object that the connector might need to know about.
-                Note that normally, env-to-module and module-to-env connectors get this
-                information at construction time, but learner connectors won't (b/c
-                Learner objects don't carry an environment object).
+                gym.Env.
             **kwargs: Forward API-compatibility kwargs.
         """
-        # Infer spaces from `env` argument if spaces are not explicitly provided.
-        if input_observation_space is None or input_action_space is None:
-            if env is None:
-                raise ValueError(
-                    "`env` argument must be provided if `input_observation_space` or "
-                    "`input_action_space` are None!"
-                )
-        if input_observation_space is None:
-            input_observation_space = (
-                env.single_observation_space if isinstance(env, gym.vector.Env)
-                else env.observation_space
-            )
-        if input_action_space is None:
-            input_action_space = (
-                env.single_action_space if isinstance(env, gym.vector.Env)
-                else env.action_space
-            )
         self.input_observation_space = input_observation_space
         self.input_action_space = input_action_space
-        self.env = env
 
         self._observation_space = None
         self._action_space = None
@@ -157,16 +134,16 @@ class ConnectorV2(abc.ABC):
         """Method for transforming input data into output data.
 
         Args:
+            rl_module: An optional RLModule object that the connector might need to know
+                about. Note that normally, only module-to-env connectors get this
+                information at construction time, but env-to-module and learner
+                connectors won't (b/c they get constructed before the RLModule).
             input_: The input data abiding to `self.input_type` to be transformed by
                 this connector. Transformations might either be done in-place or a new
                 structure may be returned that matches `self.output_type`.
             episodes: The list of SingleAgentEpisode or MultiAgentEpisode objects,
                 each corresponding to one slot in the vector env. Note that episodes
                 should always be considered read-only and not be altered.
-            rl_module: An optional RLModule object that the connector might need to know
-                about. Note that normally, only module-to-env connectors get this
-                information at construction time, but env-to-module and learner
-                connectors won't (b/c they get constructed before the RLModule).
             explore: Whether `explore` is currently on. Per convention, if True, the
                 RLModule's `forward_exploration` method should be called, if False, the
                 EnvRunner should call `forward_inference` instead.

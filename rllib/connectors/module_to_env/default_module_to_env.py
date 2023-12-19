@@ -8,6 +8,12 @@ from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.spaces.space_utils import (
+    clip_action,
+    get_base_struct_from_space,
+    unsquash_action,
+)
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -36,6 +42,41 @@ class DefaultModuleToEnv(ConnectorV2):
         out might contain an additional ACTIONS key if it was not previously present
         in the input).
     """
+
+    def __init__(
+        self,
+        *,
+        normalize_actions: bool,
+        clip_actions: bool,
+        **kwargs,
+    ):
+        """Initializes a DefaultModuleToEnv (connector piece) instance.
+
+        Args:
+            normalize_actions: If True, actions coming from the RLModule's distribution
+                (or are directly computed by the RLModule w/o sampling) will
+                be assumed 0.0 centered with a small stddev (only affecting Box
+                components) and thus be unsquashed (and clipped, just in case) to the
+                bounds of the env's action space. For example, if the action space of
+                the environment is `Box(-2.0, -0.5, (1,))`, the model outputs
+                mean and stddev as 0.1 and exp(0.2), and we sample an action of 0.9
+                from the resulting distribution, then this 0.9 will be unsquashed into
+                the [-2.0 -0.5] interval. If - after unsquashing - the action still
+                breaches the action space, it will simply be clipped.
+            clip_actions: If True, actions coming from the RLModule's distribution
+                (or are directly computed by the RLModule w/o sampling) will be clipped
+                such that they fit into the env's action space's bounds.
+                For example, if the action space of the environment is
+                `Box(-0.5, 0.5, (1,))`, the model outputs
+                mean and stddev as 0.1 and exp(0.2), and we sample an action of 0.9
+                from the resulting distribution, then this 0.9 will be clipped to 0.5
+                to fit into the [-0.5 0.5] interval.
+        """
+        super().__init__(**kwargs)
+
+        self._action_space_struct = get_base_struct_from_space(self.action_space)
+        self.normalize_actions = normalize_actions
+        self.clip_actions = clip_actions
 
     @override(ConnectorV2)
     def __call__(
@@ -90,20 +131,27 @@ class DefaultModuleToEnv(ConnectorV2):
                     f"the '{SampleBatch.ACTION_DIST_INPUTS}' key in it (or both)!"
                 )
             actions = action_dist.sample()
-            input_[SampleBatch.ACTIONS] = actions
 
         # For convenience and if possible, compute action logp from distribution
         # and add to output.
         if action_dist is not None and SampleBatch.ACTION_LOGP not in input_:
-            input_[SampleBatch.ACTION_LOGP] = action_dist.logp(actions)
+            input_[SampleBatch.ACTION_LOGP] = convert_to_numpy(
+                action_dist.logp(actions)
+            )
+
+        actions = convert_to_numpy(actions)
+
+        # Process actions according to Env's action space bounds, if necessary.
+        # Normalize actions.
+        if self.normalize_actions:
+            actions = unsquash_action(actions, self._action_space_struct)
+        # Clip actions.
+        elif self.clip_actions:
+            actions = clip_action(actions, self._action_space_struct)
+
+        input_[SampleBatch.ACTIONS] = actions
+
+        # Convert everything into numpy.
+        input_ = convert_to_numpy(input_)
 
         return input_
-
-    # @override(Connector)
-    # def serialize(self):
-    #    return ClipActions.__name__, None
-
-    # @staticmethod
-    # TODO
-    # def from_state(ctx: ConnectorContext, params: Any):
-    #    return ClipActions(ctx)

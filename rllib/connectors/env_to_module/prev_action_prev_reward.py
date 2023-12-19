@@ -21,7 +21,6 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         # Base class constructor args.
         input_observation_space: gym.Space,
         input_action_space: gym.Space,
-        env: Optional[gym.Env] = None,
         # Specific prev. r/a args.
         n_prev_actions: int = 1,
         n_prev_rewards: int = 1,
@@ -42,7 +41,6 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         super().__init__(
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
-            env=env,
             **kwargs,
         )
 
