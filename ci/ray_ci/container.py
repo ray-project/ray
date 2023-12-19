@@ -68,6 +68,7 @@ class Container(abc.ABC):
     def get_run_command(
         self,
         script: List[str],
+        network: Optional[str] = None,
         gpu_ids: Optional[List[int]] = None,
     ) -> List[str]:
         """
@@ -78,6 +79,8 @@ class Container(abc.ABC):
         command = ["docker", "run", "-i", "--rm"]
         for env in self.envs:
             command += ["--env", env]
+        if network:
+            command += ["--network", network]
         return (
             command
             + self.get_run_command_extra_args(gpu_ids)

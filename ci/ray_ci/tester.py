@@ -100,6 +100,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Number of GPUs to use for the test."),
 )
 @click.option(
+    "--network",
+    type=str,
+    help="Network to use for the test.",
+)
+@click.option(
     "--test-env",
     multiple=True,
     type=str,
@@ -155,6 +160,7 @@ def main(
     skip_ray_installation: bool,
     build_only: bool,
     gpus: int,
+    network: Optional[str],
     test_env: Tuple[str],
     test_arg: Optional[str],
     build_name: Optional[str],
@@ -176,6 +182,7 @@ def main(
         worker_id,
         parallelism_per_worker,
         gpus,
+        network,
         test_env=list(test_env),
         build_name=build_name,
         build_type=build_type,
@@ -210,6 +217,7 @@ def _get_container(
     worker_id: int,
     parallelism_per_worker: int,
     gpus: int,
+    network: Optional[str],
     test_env: Optional[List[str]] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
@@ -226,6 +234,7 @@ def _get_container(
             shard_count=shard_count,
             shard_ids=list(range(shard_start, shard_end)),
             gpus=gpus,
+            network=network,
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
         )
@@ -233,6 +242,7 @@ def _get_container(
     if operating_system == "windows":
         return WindowsTesterContainer(
             build_name or f"{team}build",
+            network=network,
             test_envs=test_env,
             shard_count=shard_count,
             shard_ids=list(range(shard_start, shard_end)),
