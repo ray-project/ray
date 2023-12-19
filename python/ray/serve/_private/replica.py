@@ -93,7 +93,16 @@ def _load_deployment_def_from_import_path(import_path: str) -> Callable:
     return deployment_def
 
 
-class RayServeWrappedReplica:
+class ReplicaActor:
+    """Actor definition for replicas of Ray Serve deployments.
+
+    This class defines the interface that the controller and deployment handles
+    (i.e., from proxies and other replicas) use to interact with a replica.
+
+    All interaction with the user-provided callable is done via the
+    `UserCallableWrapper` class.
+    """
+
     async def __init__(
         self,
         deployment_id: DeploymentID,
@@ -406,7 +415,7 @@ class RayServeWrappedReplica:
 
 
 class UserCallableWrapper:
-    """Handles requests with the provided callable."""
+    """Wraps a user-provided callable that is used to handle requests to a replica."""
 
     def __init__(
         self,
