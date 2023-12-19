@@ -1,5 +1,4 @@
-#ci:group=MacOS
-
+group: macos
 common: &common
   env:
     BUILDKITE: "true"
@@ -11,7 +10,6 @@ common: &common
     LANG: en_US.UTF-8
     BUILD: "1"
     DL: "1"
-
 prelude_commands: &prelude_commands |-
   rm -rf /tmp/bazel_event_logs
   cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -20,7 +18,6 @@ prelude_commands: &prelude_commands |-
   ./ci/ci.sh build
   ./ci/env/install-dependencies.sh
   ./ci/env/env_info.sh
-
 epilogue_commands: &epilogue_commands |-
   # Persist ray logs
   mkdir -p /tmp/artifacts/.ray/
@@ -29,11 +26,13 @@ epilogue_commands: &epilogue_commands |-
   rm -rf /tmp/ray || true
   # Cleanup local caches - this should not clean up global disk cache
   bazel clean
-
 steps:
 - label: ":mac: :apple: Wheels and Jars (intel)"
   <<: *common
-  conditions: ["RAY_CI_MACOS_WHEELS_AFFECTED", "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"]
+  tags: 
+    - macos_wheels
+    - python_dependencies
+  instance_type: macos
   commands:
     # Cleanup environments
     - rm -rf /tmp/bazel_event_logs
@@ -71,8 +70,10 @@ steps:
 
 - label: ":mac: :mechanical_arm: Wheels and Jars (arm64)"
   <<: *common
-  conditions: ["RAY_CI_MACOS_WHEELS_AFFECTED", "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"]
-  instance_size: arm64-medium
+  tags:
+    - macos_wheels
+    - python_dependencies
+  instance_size: macos-arm64
   commands:
     # Cleanup environments
     - rm -rf /tmp/bazel_event_logs
@@ -113,7 +114,10 @@ steps:
 
 - label: ":mac: :apple: Ray Core Unit Tests and Dashboard"
   <<: *common
-  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
+  tags:
+    - core_cpp
+    - python
+    - ci_dashboard
   commands:
     - *prelude_commands
     - TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
@@ -126,7 +130,9 @@ steps:
 
 - label: ":mac: :apple: Ray C++ and Java"
   <<: *common
-  conditions: ["RAY_CI_CPP_AFFECTED", "RAY_CI_JAVA_AFFECTED"]
+  tags:
+    - cpp
+    - java
   commands:
     - export RAY_INSTALL_JAVA=1
     - *prelude_commands
@@ -139,7 +145,9 @@ steps:
 
 - label: ":mac: :apple: Small & Client"
   <<: *common
-  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
+  tags:
+    - core_cpp
+    - python
   commands:
     - *prelude_commands
     - bazel test $(./ci/run/bazel_export_options) --config=ci
@@ -152,7 +160,9 @@ steps:
 - label: ":mac: :apple: Large"
   <<: *common
   parallelism: 3
-  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
+  tags:
+    - core_cpp
+    - python
   commands:
     - *prelude_commands
     - ./ci/ci.sh test_large
@@ -160,7 +170,10 @@ steps:
 
 - label: ":mac: :apple: Medium A-J"
   <<: *common
-  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
+  tags:
+    - core_cpp
+    - python
+    - dashboard
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
@@ -170,7 +183,10 @@ steps:
 
 - label: ":mac: :apple: Medium K-Z"
   <<: *common
-  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
+  tags:
+    - core_cpp
+    - python
+    - dashboard
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
