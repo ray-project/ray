@@ -22,7 +22,6 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
-import ray._private.utils
 from ray._private import storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
@@ -330,7 +329,9 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
-        self._record_stats()
+
+        if not connect_only:
+            self._record_stats()
 
     def check_persisted_session_name(self):
         if self._ray_params.external_addresses is None:
@@ -1720,11 +1721,16 @@ class Node:
         external_storage.reset_external_storage()
 
     def _record_stats(self):
+        # This is only called when a new node is started.
         # Initialize the internal kv so that the metrics can be put
-        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+        from ray._private.usage.usage_lib import (
+            TagKey,
+            record_extra_usage_tag,
+            record_hardware_usage,
+        )
 
         if not ray.experimental.internal_kv._internal_kv_initialized():
-            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client)
+            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client())
         assert ray.experimental.internal_kv._internal_kv_initialized()
         if self.head:
             # record head node stats
@@ -1732,3 +1738,9 @@ class Node:
                 "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
             )
             record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
+        cpu_model_name = ray._private.utils.get_current_node_cpu_model_name()
+        if cpu_model_name:
+            # CPU model name can be an arbitrary long string
+            # so we truncate it to the first 50 characters
+            # to avoid any issues.
+            record_hardware_usage(cpu_model_name[:50])

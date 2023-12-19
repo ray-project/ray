@@ -1,5 +1,4 @@
 import copy
-import dataclasses
 from functools import partial
 import logging
 import platform
@@ -15,11 +14,6 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaLearnerHyperparameters,
-    _reduce_impala_results,
-)
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
@@ -63,6 +57,9 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 logger = logging.getLogger(__name__)
+
+
+LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
 class ImpalaConfig(AlgorithmConfig):
@@ -432,32 +429,8 @@ class ImpalaConfig(AlgorithmConfig):
                     f"than or equal to `train_batch_size` ({self.train_batch_size})!"
                 )
 
-    @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> ImpalaLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        learner_hps = ImpalaLearnerHyperparameters(
-            rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
-            discount_factor=self.gamma,
-            entropy_coeff=self.entropy_coeff,
-            vf_loss_coeff=self.vf_loss_coeff,
-            vtrace_clip_rho_threshold=self.vtrace_clip_rho_threshold,
-            vtrace_clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
-            **dataclasses.asdict(base_hps),
-        )
-        # TODO: We currently do not use the `recurrent_seq_len` property anyways.
-        #  We should re-think the handling of RNN/SEQ_LENs/etc.. once we start
-        #  supporting them in RLModules and then revisit this check here.
-        #  Also, such a check should be moved into `IMPALAConfig.validate()`.
-        assert (learner_hps.rollout_frag_or_episode_len is None) != (
-            learner_hps.recurrent_seq_len is None
-        ), (
-            "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
-            "None in ImpalaLearnerHyperparameters!"
-        )
-        return learner_hps
-
-    # TODO (sven): Make these get_... methods all read-only @properties instead.
-    def get_replay_ratio(self) -> float:
+    @property
+    def replay_ratio(self) -> float:
         """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
 
         Formula: ratio = 1 / proportion
@@ -494,6 +467,8 @@ class ImpalaConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
@@ -671,7 +646,7 @@ class Impala(Algorithm):
                     if self.config.replay_buffer_num_slots > 0
                     else 1
                 ),
-                replay_ratio=self.config.get_replay_ratio(),
+                replay_ratio=self.config.replay_ratio,
                 replay_mode=ReplayMode.LOCKSTEP,
             )
             self._aggregator_actor_manager = None
@@ -733,8 +708,9 @@ class Impala(Algorithm):
         # all collected batches.
         if self.config._enable_new_api_stack:
             train_results = self.learn_on_processed_samples()
+            module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
             additional_results = self.learner_group.additional_update(
-                module_ids_to_update=set(train_results.keys()) - {ALL_MODULES},
+                module_ids_to_update=module_ids_to_update,
                 timestep=self._counters[
                     NUM_ENV_STEPS_TRAINED
                     if self.config.count_steps_by == "env_steps"
@@ -860,12 +836,11 @@ class Impala(Algorithm):
             strategy=cf.placement_strategy,
         )
 
-    def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]):
+    def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]) -> None:
         """Concatenate batches that are being returned from rollout workers
 
         Args:
-            batches: batches of experiences from rollout workers
-
+            batches: List of batches of experiences from EnvRunners.
         """
 
         def aggregate_into_larger_batch():
@@ -878,6 +853,32 @@ class Impala(Algorithm):
                 self.batch_being_built = []
 
         for batch in batches:
+            # TODO (sven): Strange bug after a RolloutWorker crash and proper
+            #  restart. The bug is related to (old, non-V2) connectors being used and
+            #  seems to happen inside the AgentCollector's `add_action_reward_next_obs`
+            #  method, at the end of which the number of vf_preds (and all other
+            #  extra action outs) in the batch is one smaller than the number of obs/
+            #  actions/rewards, which then leads to a malformed train batch.
+            #  IMPALA/APPO crash inside the loss function (during v-trace operations)
+            #  b/c of the resulting shape mismatch. The following if-block prevents
+            #  this from happening and it can be removed once we are on the new API
+            #  stack for good (and use the new connectors and also no longer
+            #  AgentCollectors, RolloutWorkers, Policies, TrajectoryView API, etc..):
+            if (
+                self.config.batch_mode == "truncate_episodes"
+                and self.config.enable_connectors
+                and self.config.recreate_failed_workers
+            ):
+                if any(
+                    SampleBatch.VF_PREDS in pb
+                    and (
+                        pb[SampleBatch.VF_PREDS].shape[0]
+                        != pb[SampleBatch.REWARDS].shape[0]
+                    )
+                    for pb in batch.policy_batches.values()
+                ):
+                    continue
+
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
 
@@ -929,7 +930,7 @@ class Impala(Algorithm):
                 sample_batches = [(0, sample_batch)]
             else:
                 # Not much we can do. Return empty list and wait.
-                return []
+                sample_batches = []
 
         return sample_batches
 
@@ -1255,7 +1256,7 @@ class AggregatorWorker(FaultAwareApply):
                 if self.config.replay_buffer_num_slots > 0
                 else 1
             ),
-            replay_ratio=self.config.get_replay_ratio(),
+            replay_ratio=self.config.replay_ratio,
             replay_mode=ReplayMode.LOCKSTEP,
         )
 
@@ -1267,3 +1268,23 @@ class AggregatorWorker(FaultAwareApply):
 
     def get_host(self) -> str:
         return platform.node()
+
+
+def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
+    """Reduce/Aggregate a list of results from Impala Learners.
+
+    Average the values of the result dicts. Add keys for the number of agent and env
+    steps trained (on all modules).
+
+    Args:
+        results: result dicts to reduce.
+
+    Returns:
+        A reduced result dict.
+    """
+    result = tree.map_structure(lambda *x: np.mean(x), *results)
+    agent_steps_trained = sum(r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results)
+    env_steps_trained = sum(r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results)
+    result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = agent_steps_trained
+    result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = env_steps_trained
+    return result

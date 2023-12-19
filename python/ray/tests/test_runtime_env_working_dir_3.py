@@ -266,6 +266,10 @@ class TestGC:
     ):
         """Tests that URIs for detached actors are GC'd only when they exit."""
         cluster, address = start_cluster
+        # Wait until agent is ready.
+        # TODO(sang): There's a bug where is runtime env creation request is
+        # sent before agent is ready, it fails. We will fix this issue soon.
+        time.sleep(2)
 
         if option == "working_dir":
             ray.init(address, namespace="test", runtime_env={"working_dir": source})

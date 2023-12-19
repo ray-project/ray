@@ -13,7 +13,7 @@ class WindowsTesterContainer(TesterContainer, WindowsContainer):
         shard_ids: Optional[List[int]] = None,
         skip_ray_installation: bool = False,
     ) -> None:
-        WindowsContainer.__init__(self, docker_tag)
+        WindowsContainer.__init__(self, docker_tag, test_envs)
         TesterContainer.__init__(
             self,
             shard_count,
