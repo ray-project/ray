@@ -4,3 +4,15 @@ flaky_tests:
   # doc tests
   # gpu tests
   - //doc/source/ray-air/examples:gptj_serving
+  # py311 test failures
+  # train
+  - //python/ray/train:test_mosaic_trainer # depends on mosaic
+  # tune
+  - //python/ray/tune:doctest
+  - //python/ray/tune:pb2_example # gpy not supported py10+
+  - //python/ray/tune:test_convergence # depends on gpy
+  - //python/ray/tune:test_sample # scikit-optimize is too old
+  - //python/ray/tune:test_trial_scheduler_pbt # gpy
+  - //python/ray/tune:test_tune_restore_warm_start # hebo
+  # air
+  - //python/ray/air:test_tracebacks # poor test

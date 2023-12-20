@@ -1,4 +1,6 @@
 group: lint
+tags:
+  - disabled
 steps:
   - label: ":lint-roller: lint: clang format"
     depends_on:

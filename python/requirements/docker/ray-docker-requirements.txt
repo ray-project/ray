@@ -3,7 +3,7 @@
 gsutil
 
 # Requirements that are shipped in the ML docker image.
-ipython
+ipython==8.12.3
 
 # Needed for rich visualization for Ray Train and Ray Data.
 # Todo: Pin to >=8 when myst-parser is upgraded

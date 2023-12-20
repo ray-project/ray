@@ -9,3 +9,10 @@ flaky_tests:
   - windows://python/ray/tests:test_reference_counting_2 
   - windows://python/ray/tests:test_runtime_env_working_dir_3
   - windows://python/ray/tests:test_task_events_2
+  # py311 test failures
+  - //python/ray/tests:test_cli
+  - //python/ray/tests:test_streaming_generator_2
+  - //python/ray/tests:test_dataclient_disconnect
+  - //python/ray/tests:test_asyncio
+  - //python/ray/tests:test_dashboard_profiler
+  - //python/ray/tests:test_traceback

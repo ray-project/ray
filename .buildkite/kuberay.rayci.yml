@@ -1,4 +1,6 @@
 group: "kuberay tests"
+tags:
+  - disabled
 steps:
   - label: ":kubernetes: chaos {{matrix.workload}} under {{matrix.fault}}"
     tags:

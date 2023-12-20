@@ -1,11 +1,12 @@
 # Used by CI for datasets and docs.
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
-dask[complete]==2022.10.1
+dask[complete]==2023.12.1
 aioboto3==11.2.0
 crc32c==2.3
 flask_cors
 modin==0.22.2
-raydp>=0.0.dev0
+pandas==1.5.3
+raydp==1.6.0
 responses==0.13.4
 pymars>=0.8.3

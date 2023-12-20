@@ -12,7 +12,7 @@ cd ray
 
 git checkout -f "${BUILDKITE_COMMIT}"
 
-export PYTHON="3.8"
+export PYTHON="3.11"
 export RAY_USE_RANDOM_PORTS="1"
 export RAY_DEFAULT_BUILD="1"
 export LC_ALL="en_US.UTF-8"
@@ -46,6 +46,7 @@ upload_wheels() {
 
 if [[ "$1" == "wheels" ]]; then
     export WINDOWS_WHEELS=1
+    conda install -q -y python="${PYTHON}"
     bash ci/ci.sh init
     bash ci/ci.sh build
     upload_wheels
