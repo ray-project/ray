@@ -11,7 +11,6 @@ steps:
     label: "wanda: minbuild-core-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -221,7 +220,6 @@ steps:
         --only-tags minimal
         --skip-ray-installation
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -306,7 +304,7 @@ steps:
       - docker
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu --canonical-tag ha_integration
+      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
     depends_on:
       - manylinux
@@ -320,7 +318,7 @@ steps:
       - docker
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8 --platform cpu
+      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
         --canonical-tag test_container
       - docker build --build-arg BASE_IMAGE="rayproject/ray:test_container"
         -t rayproject/ray:runtime_env_container -f docker/runtime_env_container/Dockerfile .

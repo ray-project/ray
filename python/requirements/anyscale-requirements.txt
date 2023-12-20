@@ -5,6 +5,5 @@ opentelemetry-sdk
 opentelemetry-exporter-otlp
 google-cloud-storage
 grpcio
-grpcio-tools
 pyyaml
 pyopenssl

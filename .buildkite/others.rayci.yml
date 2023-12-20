@@ -35,6 +35,17 @@ steps:
         "./java/test.sh"
     depends_on: [ "corebuild", "forge" ]
 
+  - label: "pip-compile dependencies"
+    instance_type: small
+    commands:
+      - rm ./python/requirements_compiled.txt
+      - ./ci/ci.sh compile_pip_dependencies
+      - cp -f ./python/requirements_compiled.txt /artifact-mount/
+    soft_fail: true
+    job_env: oss-ci-base_build
+    depends_on:
+      - oss-ci-base_build
+
   - label: "flaky :windows: tests"
     tags: skip-on-premerge
     job_env: WINDOWS

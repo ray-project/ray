@@ -5,7 +5,7 @@ dask[complete]==2022.10.1
 aioboto3==11.2.0
 crc32c==2.3
 flask_cors
-modin==0.22.2
-raydp>=0.0.dev0
+modin==0.26.0
+raydp==1.6.0
 responses==0.13.4
 pymars>=0.8.3
