@@ -363,7 +363,7 @@ class ReplicaActor:
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
             await self.check_health()
-            return await self._get_metadata()
+            return self._get_metadata()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
@@ -372,6 +372,9 @@ class ReplicaActor:
         deployment_config: DeploymentConfig,
     ) -> Tuple[DeploymentConfig, DeploymentVersion]:
         try:
+            user_config_changed = (
+                deployment_config.user_config != self._deployment_config.user_config
+            )
             logging_config_changed = (
                 deployment_config.logging_config
                 != self._deployment_config.logging_config
@@ -384,12 +387,16 @@ class ReplicaActor:
             if logging_config_changed:
                 self._configure_logger_and_profilers(deployment_config.logging_config)
 
-            await self._user_callable_wrapper.reconfigure(deployment_config.user_config)
-            return await self._get_metadata()
+            if user_config_changed:
+                await self._user_callable_wrapper.update_user_config(
+                    deployment_config.user_config
+                )
+
+            return self._get_metadata()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    async def _get_metadata(
+    def _get_metadata(
         self,
     ) -> Tuple[DeploymentConfig, DeploymentVersion]:
         return (
@@ -667,10 +674,6 @@ class UserCallableWrapper:
             await result(scope, receive, send)
         else:
             await Response(result).send(scope, receive, send)
-
-    async def reconfigure(self, user_config: Any):
-        if self._user_config != user_config:
-            await self.update_user_config(user_config)
 
     async def update_user_config(self, user_config: Any):
         async with self.rwlock.writer:
