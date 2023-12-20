@@ -32,22 +32,6 @@ class CloudInstance:
 
 
 @dataclass
-class UpdateCloudNodeProviderRequest:
-    # Update request id.
-    id: str
-    # Target cluster shape (number of running nodes by type).
-    target_running_nodes: Dict[NodeType, int] = field(default_factory=dict)
-    # Nodes to terminate.
-    to_terminate: List[CloudInstanceId] = field(default_factory=list)
-
-
-@dataclass
-class GetNodeProviderStateRequest:
-    # Errors that have happened since the given timestamp in nanoseconds.
-    errors_since_ns: int
-
-
-@dataclass
 class CloudNodeProviderError:
     """
     An error class that represents an error that happened in the cloud node provider.
@@ -122,14 +106,33 @@ class ICloudNodeProvider(ABC):
     3. Unique cloud node ids
     Cloud node ids are expected to be unique across the cluster.
 
+    Usage:
+        ```
+            cloud_node_provider: ICloudNodeProvider = ...
+
+            # Update the cluster with a designed shape.
+            cloud_node_provider.update(
+                id="update_1",
+                target_running_nodes={
+                    "worker_nodes": 10,
+                    "ray_head": 1,
+                },
+                to_terminate=["node_1", "node_2"],
+            )
+
+            # Poll the state of the cloud node provider.
+            state = cloud_node_provider.get_state()
+
+            # Process the state of the cloud node provider.
+        ```
     """
 
     @abstractmethod
-    def get_state(self, req: GetNodeProviderStateRequest) -> CloudNodeProviderState:
+    def get_state(self, errors_since_ns: Optional[int]) -> CloudNodeProviderState:
         """Get the current state of the cloud node provider.
 
         Args:
-            req: the request to get the state of the cloud node provider.
+            errors_since_ns: retrieve errors that happened since this timestamp.
 
         Returns:
             The current state of the cloud node provider.
@@ -137,15 +140,21 @@ class ICloudNodeProvider(ABC):
         pass
 
     @abstractmethod
-    def update(self, request: UpdateCloudNodeProviderRequest) -> None:
+    def update(
+        self,
+        id: str,
+        target_running_nodes: Dict[NodeType, int],
+        to_terminate: List[CloudInstanceId],
+    ) -> None:
         """Update the cloud node provider state by launching
          or terminating cloud nodes.
 
         Args:
-            request: the request to update the cluster.
+            id: the id of the update request.
+            target_running_nodes: the target cluster shape (number of running nodes by type).
+            to_terminate: the nodes to terminate.
         """
         pass
-
 
 class NodeProvider(metaclass=ABCMeta):
     """NodeProvider defines the interface for
