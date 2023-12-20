@@ -26,19 +26,12 @@ void PlasmaObjectHeader::Init() {
   pthread_mutex_init(&wr_mut, &mutex_attr);
 
   sem_init(&rw_semaphore, PTHREAD_PROCESS_SHARED, 1);
-
-  // Condition is shared between writer and readers.
-  pthread_condattr_t cond_attr;
-  pthread_condattr_init(&cond_attr);
-  pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
-  pthread_cond_init(&cond, &cond_attr);
 #endif
 }
 
 void PlasmaObjectHeader::Destroy() {
 #ifdef __linux__
   RAY_CHECK(pthread_mutex_destroy(&wr_mut) == 0);
-  RAY_CHECK(pthread_cond_destroy(&cond) == 0);
   RAY_CHECK(sem_destroy(&rw_semaphore) == 0);
 #endif
 }
@@ -119,8 +112,6 @@ Status PlasmaObjectHeader::WriteRelease() {
   RAY_LOG(DEBUG) << "WriteRelease done, num_readers: " << num_readers;
   PrintPlasmaObjectHeader(this);
   RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
-  // Signal to all readers.
-  RAY_CHECK(pthread_cond_broadcast(&cond) == 0);
   return Status::OK();
 }
 
@@ -140,14 +131,6 @@ Status PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version
       std::this_thread::yield();  // Too many tries, yield thread.
     }
     RAY_RETURN_NOT_OK(TryAcquireWriterMutex());
-    // TODO(ekl) this doesn't work since it requires re-acquiring the mutex regardless of
-    // timeout
-    //    // Try to do a cond wait, checking every 1s for the error bit.
-    //    struct timespec ts;
-    //    do {
-    //      clock_gettime(CLOCK_REALTIME, &ts);
-    //      ts.tv_sec += 1;
-    //    } while (pthread_cond_timedwait(&cond, &wr_mut, &ts));
   }
 
   bool success = false;
@@ -175,8 +158,6 @@ Status PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version
   PrintPlasmaObjectHeader(this);
 
   RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
-  // Signal to other readers that they may read.
-  RAY_CHECK(pthread_cond_signal(&cond) == 0);
   if (!success) {
     return Status::Invalid(
         "Reader missed a value. Are you sure there are num_readers many readers?");

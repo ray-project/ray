@@ -3,7 +3,6 @@ import logging
 from typing import Any, Optional
 
 import ray
-from ray.exceptions import RaySystemError
 from ray.util.annotations import PublicAPI
 
 # Logger for this module. It should be configured at the entry point

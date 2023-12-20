@@ -55,8 +55,6 @@ struct PlasmaObjectHeader {
 
   // Protects all following state, used to signal from writer to readers.
   pthread_mutex_t wr_mut;
-  // Used to signal to readers when the writer is done writing a new version.
-  pthread_cond_t cond;
   // The object version. For immutable objects, this gets incremented to 1 on
   // the first write and then should never be modified. For mutable objects,
   // each new write must increment the version before releasing to readers.
