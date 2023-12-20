@@ -64,6 +64,7 @@ message CpuProfilingReply {
 
 // Memory profiler request config
 message MemoryProfilingRequest {
+  // process pid
   uint32 pid = 1;
   optional string format = 2;
   optional uint32 duration = 3;
@@ -78,7 +79,9 @@ message MemoryProfilingRequest {
 // Memory profiler result
 message MemoryProfilingReply {
   bool success = 1;
+  // profiling result or error message
   string output = 2;
+  // profiling result warning
   optional string warning = 3;
 }
 

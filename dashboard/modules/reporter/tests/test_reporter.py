@@ -768,7 +768,7 @@ def test_reporter_worker_cpu_percent():
 )
 def test_get_task_traceback_running_task(shutdown_only):
     """
-    Verify that we can get the traceback for a running task.
+    Verify that Ray can get the traceback for a running task.
 
     """
     address_info = ray.init()
@@ -867,7 +867,7 @@ TASK = {
 )
 def test_get_task_traceback_non_running_task(shutdown_only):
     """
-    Verify that we throw an error for a non-running task.
+    Verify that Ray throws an error for a non-running task.
     """
 
     # The sleep is needed since it seems a previous shutdown could be not yet

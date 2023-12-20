@@ -197,7 +197,7 @@ class MemoryProfilingManager:
         leaks: bool = False,
     ) -> (bool, str):
         """
-        Convert memray profile result to specified format.
+        Convert the Memray profile result to specified format.
 
         Args:
             pid: The process ID (PID) associated with the profiling operation.
@@ -266,7 +266,7 @@ class MemoryProfilingManager:
         self, pid: int, native: bool = False, trace_python_allocators: bool = False
     ) -> (bool, str):
         """
-        Attach a memray profiler to a specified process.
+        Attach a Memray profiler to a specified process.
 
         Args:
             pid: The process ID (PID) of the target process which

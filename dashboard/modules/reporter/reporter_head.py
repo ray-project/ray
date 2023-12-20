@@ -476,8 +476,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/memory_profile")
     async def memory_profile(self, req) -> aiohttp.web.Response:
         """
-        Retrieves the memory profile for a specific wrker or task.
-        Note that for task, one worker process works on one task at a time
+        Retrieves the memory profile for a specific worker or task.
+        Note that for tasks, one worker process works on one task at a time
         or one worker works on multiple async tasks.
 
         Args:
@@ -488,7 +488,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         Raises:
             aiohttp.web.HTTPInternalServerError: If no stub
-                found from the given ip value
+                found from the given IP value
             aiohttp.web.HTTPInternalServerError: If the
                 "task_id" parameter exists but either "attempt_number"
                 or "node id" is missing in the request query.
@@ -571,13 +571,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if is_task:
             """
             In order to truly confirm whether there are any other tasks
-            running during the profiling, we need to retrieve all tasks
+            running during the profiling, Ray needs to retrieve all tasks
             that are currently running or have finished, and then parse
             the task events (i.e., their start and finish times) to check
             for any potential overlap. However, this process can be quite
-            extensive, so here we will make our best efforts to check
-            for any overlapping tasks. Therefore, we will check if
-            the task is still running
+            extensive, so Ray makes our best efforts to check
+            for any overlapping tasks. Therefore, Ray checks if
+            the task is still running.
             """
             try:
                 (_, worker_id) = await self.get_worker_details_for_running_task(

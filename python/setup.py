@@ -232,7 +232,7 @@ if setup_spec.type == SetupType.RAY:
         memray_dep = "memray >= 1.10.0"
     else:
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
-        # Memray is not supported in windows
+        # Memray is not supported in Windows
         pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
         memray_dep = ""
     setup_spec.extras = {
