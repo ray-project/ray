@@ -1,14 +1,148 @@
 import logging
-from abc import ABCMeta, abstractmethod
-from typing import Dict, List, Set
+from abc import ABC, ABCMeta, abstractmethod
+from typing import Dict, List, Optional, Set
+from dataclasses import dataclass, field
 
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.schema import NodeType
 from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
+
+
+# Type Alias. This is a **unique identifier** for a cloud node in the cluster.
+# The node provider should guarantee that this id is unique across the cluster,
+# such that:
+#   - When a cloud node is created and running, no other cloud node in the
+#     cluster has the same id.
+#   - When a cloud node is terminated, no other cloud node in the cluster should
+#     be assigned the same id later.
+CloudInstanceId = str
+
+
+@dataclass
+class CloudInstance:
+    # The cloud instance id.
+    cloud_instance_id: CloudInstanceId
+    # The node type of the cloud instance.
+    node_type: NodeType
+
+
+@dataclass
+class UpdateCloudNodeProviderRequest:
+    # Update request id.
+    id: str 
+    # Target cluster shape (number of running nodes by type).
+    target_running_nodes: Dict[NodeType, int] = field(default_factory=dict)
+    # Nodes to terminate.
+    to_terminate: List[CloudInstanceId] = field(default_factory=list)
+
+
+@dataclass
+class GetNodeProviderStateRequest:
+    # Errors that have happened since the given timestamp in nanoseconds.
+    errors_since_ns: int
+
+@dataclass
+class CloudNodeProviderError:
+    """
+    An error class that represents an error that happened in the cloud node provider.
+    """
+    # The exception that caused the error.
+    exception: Optional[Exception] = None
+    # The details of the error.
+    details: Optional[str] = None
+    # The timestamp of the error in nanoseconds.
+    timestamp_ns: int
+
+@dataclass
+class LaunchNodeError(CloudNodeProviderError):
+    # The node type that failed to launch.
+    node_type: NodeType
+    # Number of nodes that failed to launch.
+    count:int
+    # From which update request the error originates.
+    update_id: str
+
+@dataclass
+class TerminateNodeError(CloudNodeProviderError):
+    # The cloud instance id of the node that failed to terminate.
+    cloud_instance_id: CloudInstanceId
+    # From which update request the error originates.
+    update_id: str
+
+@dataclass
+class CloudNodeProviderState:
+    """
+    The state of a cloud node provider.
+    """
+
+    # The terminated cloud nodes in the cluster. 
+    terminated: List[CloudInstanceId] = field(default_factory=list)
+    # The cloud nodes that are currently running.
+    running: Dict[CloudInstanceId, CloudInstance] = field(default_factory=dict)
+    # Errors that have happened when launching nodes.
+    launch_errors: List[LaunchNodeError] = field(default_factory=list)
+    # Errors that have happened when terminating nodes.
+    termination_errors: List[TerminateNodeError] = field(default_factory=list)
+
+
+class ICloudNodeProvider(ABC):
+    """
+    The interface for a cloud node provider.
+
+    This interface is a minimal interface that should be implemented by the
+    various cloud node providers (e.g. AWS, and etc).
+
+    The cloud node provider is responsible for managing the cloud nodes in the
+    cluster. It provides the following main functionalities:
+        - Launch new cloud nodes.
+        - Terminate cloud nodes.
+        - Get the running cloud nodes in the cluster.
+
+    Below properties of the cloud node provider are assumed with this interface:
+
+    1. Eventually consistent
+    The cloud node provider is expected to be eventually consistent with the
+    cluster state. For example, when a node is request to be terminated/launched,
+    the node provider may not immediately reflect the change in its state.
+
+    2. Asynchronous
+    The node provider could also be asynchronous, where the termination/launch
+    request may not immediately return the result of the request.
+
+    3. Unique cloud node ids
+    Cloud node ids are expected to be unique across the cluster.
+
+    """
+
+    @abstractmethod
+    def get_state(self) -> CloudNodeProviderState:
+        """Get the current state of the cloud node provider.
+
+        Returns:
+            The current state of the cloud node provider.
+        """
+        pass
+
+    @abstractmethod
+    def update(
+        self, request: UpdateCloudNodeProviderRequest
+    ) -> None:
+        """Update the cloud node provider state by launching 
+         or terminating cloud nodes.
+
+        Args:
+            request: the request to update the cluster.
+
+        Returns:
+            reply to the update request.
+        """
+        pass
+
 
 
 class NodeProvider(metaclass=ABCMeta):
