@@ -26,21 +26,29 @@ if [[ ! -f /usr/local/bin/kustomize ]]; then
         | tar -xzf - -C /usr/local/bin kustomize
 fi
 
+if [[ ! -d /usr/local/helm ]]; then
+    mkdir -p /usr/local/helm
+    curl -sfL "https://get.helm.sh/helm-v3.12.2-linux-amd64.tar.gz" | tar -xzf - -C /usr/local/helm linux-amd64/helm
+    ln -s /usr/local/helm/linux-amd64/helm /usr/local/bin/helm
+fi
+
 set -x # Be more verbose now.
 
 # Delete dangling clusters
 kind delete clusters --all
 
 # Create the cluster
-time kind create cluster --wait 120s --config ./ci/k8s/kind.config.yaml
-docker ps
-
-# Now the kind node is running, it exposes port 6443 in the dind-daemon network.
-kubectl config set clusters.kind-kind.server https://docker:6443
+if [[ "${RAYCI_DIND:-}" == "true" ]]; then
+	time kind create cluster --wait 120s --config ci/k8s/kind-dind.config.yaml
+	# Now the kind node is running, it exposes port 6443 in the dind-daemon network.
+	kubectl config set clusters.kind-kind.server https://docker:6443
+else
+	time kind create cluster --wait 120s --config ci/k8s/kind.config.yaml
+fi
 
 # Verify the kubectl works
+docker ps
 kubectl version
 kubectl cluster-info
 kubectl get nodes
 kubectl get pods --all-namespaces
-

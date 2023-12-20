@@ -578,6 +578,10 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 100 * 1000)
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 #endif
 
+/// If true, agent checks the health of parent by reading pipe.
+/// If false, it checks the parent pid using psutil.
+RAY_CONFIG(bool, enable_pipe_based_agent_to_parent_health_check, true)
+
 /// If the agent manager fails to communicate with the dashboard agent or the runtime env
 /// agent, we will retry after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000)

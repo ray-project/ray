@@ -269,6 +269,7 @@ Status SendCreateReply(const std::shared_ptr<Client> &client,
                                  object.metadata_offset,
                                  object.metadata_size,
                                  object.allocated_size,
+                                 object.fallback_allocated,
                                  object.device_num,
                                  object.is_experimental_mutable_object);
   auto object_string = fbb.CreateString(object_id.Binary());
@@ -312,6 +313,7 @@ Status ReadCreateReply(uint8_t *data,
   object->metadata_offset = message->plasma_object()->metadata_offset();
   object->metadata_size = message->plasma_object()->metadata_size();
   object->allocated_size = message->plasma_object()->allocated_size();
+  object->fallback_allocated = message->plasma_object()->fallback_allocated();
   object->is_experimental_mutable_object =
       message->plasma_object()->is_experimental_mutable_object();
 
@@ -388,18 +390,23 @@ Status ReadSealReply(uint8_t *data, size_t size, ObjectID *object_id) {
 // Release messages.
 
 Status SendReleaseRequest(const std::shared_ptr<StoreConn> &store_conn,
-                          ObjectID object_id) {
+                          ObjectID object_id,
+                          bool may_unmap) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      fb::CreatePlasmaReleaseRequest(fbb, fbb.CreateString(object_id.Binary()));
+  auto message = fb::CreatePlasmaReleaseRequest(
+      fbb, fbb.CreateString(object_id.Binary()), may_unmap);
   return PlasmaSend(store_conn, MessageType::PlasmaReleaseRequest, &fbb, message);
 }
 
-Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id) {
+Status ReadReleaseRequest(uint8_t *data,
+                          size_t size,
+                          ObjectID *object_id,
+                          bool *may_unmap) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaReleaseRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
+  *may_unmap = message->may_unmap();
   return Status::OK();
 }
 
@@ -630,6 +637,7 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                                        object.metadata_offset,
                                        object.metadata_size,
                                        object.allocated_size,
+                                       object.fallback_allocated,
                                        object.device_num,
                                        object.is_experimental_mutable_object));
   }
@@ -674,6 +682,7 @@ Status ReadGetReply(uint8_t *data,
     plasma_objects[i].metadata_size = object->metadata_size();
     plasma_objects[i].allocated_size = object->allocated_size();
     plasma_objects[i].device_num = object->device_num();
+    plasma_objects[i].fallback_allocated = object->fallback_allocated();
     plasma_objects[i].is_experimental_mutable_object =
         object->is_experimental_mutable_object();
   }

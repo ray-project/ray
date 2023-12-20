@@ -35,6 +35,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+    RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -405,7 +406,7 @@ class ActorReplicaWrapper:
                     else deployment_info.replica_config.serialized_init_args
                 )
             init_args = (
-                self.deployment_name,
+                self._deployment_id,
                 self.replica_tag,
                 cloudpickle.dumps(deployment_info.replica_config.deployment_def)
                 if self._deployment_is_cross_language
@@ -416,7 +417,6 @@ class ActorReplicaWrapper:
                 else cloudpickle.dumps({}),
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
-                self.app_name,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -1019,7 +1019,7 @@ class DeploymentReplica(VersionedReplica):
         if self._actor.check_stopped():
             return True
 
-        timeout_passed = time.time() > self._shutdown_deadline
+        timeout_passed = time.time() >= self._shutdown_deadline
         if timeout_passed:
             # Graceful period passed, kill it forcefully.
             # This will be called repeatedly until the replica shuts down.
@@ -1210,6 +1210,8 @@ class ReplicaStateContainer:
 
 class DeploymentState:
     """Manages the target state and replicas for a single deployment."""
+
+    FORCE_STOP_UNHEALTHY_REPLICAS = RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS
 
     def __init__(
         self,
@@ -2081,7 +2083,9 @@ class DeploymentState:
                         "application": self.app_name,
                     },
                 )
-                self._stop_replica(replica, graceful_stop=False)
+                self._stop_replica(
+                    replica, graceful_stop=not self.FORCE_STOP_UNHEALTHY_REPLICAS
+                )
                 # If this is a replica of the target version, the deployment
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.

@@ -447,12 +447,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Handle the case that a worker is available.
   ///
-  /// \param client The connection for the worker.
-  /// \return Void.
-  void HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client);
-
-  /// Handle the case that a worker is available.
-  ///
   /// \param worker The pointer to the worker
   /// \return Void.
   void HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker);
