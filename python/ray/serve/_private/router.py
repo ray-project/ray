@@ -891,6 +891,133 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         return replica.send_query(query)
 
 
+
+class MagicReplicaScheduler(ReplicaScheduler):
+    """Chooses a replica MAGICALLY."""
+
+    def __init__(
+        self,
+        event_loop: asyncio.AbstractEventLoop,
+        deployment_id: DeploymentID,
+    ):
+        self._loop = event_loop
+        self._deployment_id = deployment_id
+
+        # replica_id -> info.
+        self._replicas: Dict[str, ReplicaWrapper] = {}
+        # replica_id -> cached queue length.
+        self._replica_queues: Dict[str, int] = {}
+
+        # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
+        # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
+        # determine the loop to attach to. This class can be constructed for the handle
+        # from a different loop than it uses for scheduling, so we need to construct it
+        # lazily to avoid an error due to the event being attached to the wrong loop.
+        self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
+
+    @property
+    def _replicas_updated_event(self) -> asyncio.Event:
+        """Lazily construct `asyncio.Event`.
+
+        See comment for self._lazily_constructed_replicas_updated_event.
+        """
+        if self._lazily_constructed_replicas_updated_event is None:
+            self._lazily_constructed_replicas_updated_event = asyncio.Event()
+
+        return self._lazily_constructed_replicas_updated_event
+
+    @property
+    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+        return self._replicas
+
+    @property
+    def app_name(self) -> str:
+        return self._deployment_id.app
+
+    def update_replicas(self, replicas: List[ReplicaWrapper]):
+        """Update the set of available replicas to be considered for scheduling."""
+
+        new_replicas = {}
+        new_replica_queues = {}
+        for r in replicas:
+            new_replicas[r.replica_id] = r
+            new_replica_queues = self._replica_queues.get(r.replica_id, 0)
+
+        self._replicas = new_replicas
+        self._new_replica_queues = new_replica_queues
+        self._replicas_updated_event.set()
+
+    async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
+        while len(self._replicas) == 0:
+            app_msg = (
+                f" in application '{self.app_name}'" if self.app_name else ""
+            )
+            logger.info(
+                "Tried to assign replica for deployment "
+                f"'{self._deployment_id.name}'{app_msg} but none are "
+                "available. Waiting for new replicas to be added.",
+                extra={"log_to_stderr": False},
+            )
+            self._replicas_updated_event.clear()
+            await self._replicas_updated_event.wait()
+            logger.info(
+                f"Got replicas for deployment '{self._deployment_id.name}'"
+                f"{app_msg}, waking up.",
+                extra={"log_to_stderr": False},
+            )
+
+        candidates = list()
+        for replica_id, queue_len in self._replica_queues.items():
+            if queue_len < self._replicas[replica_id]._replica_info.max_concurrent_queries:
+                candidates.append(replica_id)
+
+        if len(candidates) == 0:
+            # Fall back to randomly choosing something.
+            # print("No candidates, choosing totally randomly.")
+            chosen_id = random.choice(list(self._replicas.keys()))
+        elif len(candidates) == 1:
+            # print("Only one candidate, choosing it.")
+            chosen_id = candidates[0]
+        else:
+            choice_1, choice_2 = random.sample(
+                list(candidates),
+                k=min(2, len(candidates)),
+            )
+            # print("Choosing between two candidates.")
+            if self._replica_queues[choice_1] <= self._replica_queues[choice_2]:
+                chosen_id = choice_1
+            else:
+                chosen_id = choice_2
+
+        return self._replicas[chosen_id]
+
+    async def assign_replica(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+        """Choose a replica for the request and send it.
+
+        This will block indefinitely if no replicas are available to handle the
+        request, so it's up to the caller to time out or cancel the request.
+        """
+        while True:
+            try:
+                replica = await self.choose_replica_for_query(query)
+                obj_ref_gen = replica.send_query(query)
+
+                first_ref = await obj_ref_gen.__anext__()
+                system_response: Dict = pickle.loads(await first_ref)
+                self._replica_queues[replica.replica_id] = system_response["queue_len"]
+                if system_response["accepted"]:
+                    # print("REPLICA ACCEPTED, RETURN GEN!")
+                    return obj_ref_gen
+                # else:
+                    # print("REPLICA REJECTED!")
+            except Exception as e:
+                logger.exception(e)
+                raise
+
+
+
 class Router:
     def __init__(
         self,
@@ -914,6 +1041,11 @@ class Router:
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
                 event_loop=event_loop, deployment_id=deployment_id
+            )
+        elif True:  # XXX.
+            self._replica_scheduler = MagicReplicaScheduler(
+                event_loop,
+                deployment_id,
             )
         else:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(

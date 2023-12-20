@@ -116,6 +116,7 @@ class ReplicaActor:
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
+        self._deployment_config = deployment_config
         self._configure_logger_and_profilers(
             replica_tag, LoggingConfig(**(deployment_config.logging_config or {}))
         )
@@ -270,6 +271,12 @@ class ReplicaActor:
         **request_kwargs,
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
+        queue_len = self._user_callable_wrapper.get_num_pending_and_running_requests()
+        if queue_len > self._deployment_config.max_concurrent_queries:
+            sys_msg = {"accepted": False, "queue_len": queue_len}
+            yield pickle.dumps(sys_msg)
+            return
+
         request_metadata = pickle.loads(pickled_request_metadata)
         if request_metadata.is_grpc_request:
             # Ensure the request args are a single gRPCRequest object.
@@ -291,6 +298,8 @@ class ReplicaActor:
                 request_metadata, request_args, request_kwargs
             )
 
+        sys_msg = {"accepted": True, "queue_len": queue_len}
+        yield pickle.dumps(sys_msg)
         async for result in generator:
             yield result
 
