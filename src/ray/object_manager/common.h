@@ -136,7 +136,11 @@ struct PlasmaObjectHeader {
   Status TryAcquireWriterMutex();
 
   /// Set the error bit. This is a non-blocking method.
-  void SetErrorUnlocked() { has_error = true; }
+  void SetErrorUnlocked() {
+#ifdef __linux__
+    has_error = true;
+#endif
+  }
 };
 
 /// A struct that includes info about the object.
