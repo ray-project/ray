@@ -202,7 +202,6 @@ export const ProfilerButton = ({
             <MenuItem value="table">Table</MenuItem>
           </Select>
           <TextField
-            aria-label="Duration"
             label="Duration (seconds)"
             type="number"
             value={duration !== null ? duration : ""}
@@ -296,7 +295,7 @@ export const ProfilerButton = ({
               rel="noreferrer"
               target="_blank"
             >
-              Generate&nbsp;Report
+              Generate&nbsp;report
             </Link>
           </Button>
         </div>
