@@ -18,7 +18,7 @@ import ray
 from ray import cloudpickle
 from ray._private.async_compat import sync_to_async
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorClass, ActorHandle
+from ray.actor import ActorClass
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
@@ -72,6 +72,27 @@ from ray.serve.schema import LoggingConfig
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+def _load_deployment_def_from_import_path(import_path: str) -> Callable:
+    module_name, attr_name = parse_import_path(import_path)
+    deployment_def = getattr(import_module(module_name), attr_name)
+
+    # For ray or serve decorated class or function, strip to return
+    # original body.
+    if isinstance(deployment_def, RemoteFunction):
+        deployment_def = deployment_def._function
+    elif isinstance(deployment_def, ActorClass):
+        deployment_def = deployment_def.__ray_metadata__.modified_class
+    elif isinstance(deployment_def, Deployment):
+        logger.warning(
+            f'The import path "{import_path}" contains a '
+            "decorated Serve deployment. The decorator's settings "
+            "are ignored when deploying via import path."
+        )
+        deployment_def = deployment_def.func_or_class
+
+    return deployment_def
+
+
 class RayServeWrappedReplica:
     async def __init__(
         self,
@@ -98,24 +119,8 @@ class RayServeWrappedReplica:
         self._event_loop = get_or_create_event_loop()
 
         deployment_def = cloudpickle.loads(serialized_deployment_def)
-
         if isinstance(deployment_def, str):
-            import_path = deployment_def
-            module_name, attr_name = parse_import_path(import_path)
-            deployment_def = getattr(import_module(module_name), attr_name)
-            # For ray or serve decorated class or function, strip to return
-            # original body
-            if isinstance(deployment_def, RemoteFunction):
-                deployment_def = deployment_def._function
-            elif isinstance(deployment_def, ActorClass):
-                deployment_def = deployment_def.__ray_metadata__.modified_class
-            elif isinstance(deployment_def, Deployment):
-                logger.warning(
-                    f'The import path "{import_path}" contains a '
-                    "decorated Serve deployment. The decorator's settings "
-                    "are ignored when deploying via import path."
-                )
-                deployment_def = deployment_def.func_or_class
+            deployment_def = _load_deployment_def_from_import_path(deployment_def)
 
         init_args = cloudpickle.loads(serialized_init_args)
         init_kwargs = cloudpickle.loads(serialized_init_kwargs)
@@ -139,10 +144,6 @@ class RayServeWrappedReplica:
             deployment=deployment_name,
             replica_tag=replica_tag,
             servable_object=None,
-        )
-
-        controller_handle = ray.get_actor(
-            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
 
         # Indicates whether the replica has finished initializing.
@@ -188,7 +189,6 @@ class RayServeWrappedReplica:
                 deployment_config.autoscaling_config,
                 version,
                 is_function,
-                controller_handle,
                 app_name,
             )
             self._initialized = True
@@ -484,7 +484,6 @@ class RayServeReplica:
         autoscaling_config: Any,
         version: DeploymentVersion,
         is_function: bool,
-        controller_handle: ActorHandle,
         app_name: str,
     ) -> None:
         self.deployment_id = DeploymentID(deployment_name, app_name)
@@ -549,7 +548,12 @@ class RayServeReplica:
         self.autoscaling_metrics_store = InMemoryMetricsStore()
         self.metrics_pusher = MetricsPusher()
         if autoscaling_config:
-            process_remote_func = controller_handle.record_autoscaling_metrics.remote
+            self.controller_handle = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
+            process_remote_func = (
+                self.controller_handle.record_autoscaling_metrics.remote
+            )
             config = autoscaling_config
             self.metrics_pusher.register_task(
                 self.collect_autoscaling_metrics,
