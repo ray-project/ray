@@ -54,7 +54,7 @@ You can now do memory profiling for Ray Driver or Worker processes in the Ray Da
 
 ![memory profiling action](../images/memory-profiling-dashboard-view.png)
 
-Additionally, you can specify the following profiling memray parameters from the dashboard view:
+Additionally, you can specify the following profiling Memray parameters from the dashboard view:
 - **Format:** Format of the profiling result. The value is either "flamegraph" or "table"
 - **Duration:** Duration to track for (in seconds)
 - **Leaks:** Enables the Memory Leaks View, which displays memory that Ray didn't deallocate, instead of peak memory usage
