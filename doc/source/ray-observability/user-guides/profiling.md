@@ -58,7 +58,7 @@ Additionally, you can specify the following profiling memray parameters from the
 - **Format:** Format of the profiling result. The value is either "flamegraph" or "table"
 - **Duration:** Duration to track for (in seconds)
 - **Leaks:** Enables Memory Leaks View, where memory that was not deallocated is displayed, instead of peak memory usage
-- **Natives:** Track native (C/C++) stack frames (only supported in linux)
+- **Natives:** Track native (C/C++) stack frames (only supported in Linux)
 - **Python Allocator Tracing:** Record allocations made by the pymalloc allocator
 
 
