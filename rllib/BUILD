@@ -1138,13 +1138,6 @@ py_test(
 )
 
 py_test(
-    name = "test_learner_group_config",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/learner/tests/test_learner_group_config.py"]
-)
-
-py_test(
     name = "test_learner",
     tags = ["team:rllib", "core", "ray_data"],
     size = "medium",
