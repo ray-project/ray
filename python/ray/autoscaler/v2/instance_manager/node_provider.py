@@ -120,8 +120,11 @@ class ICloudNodeProvider(ABC):
     """
 
     @abstractmethod
-    def get_state(self) -> CloudNodeProviderState:
+    def get_state(self, req: GetNodeProviderStateRequest) -> CloudNodeProviderState:
         """Get the current state of the cloud node provider.
+
+        Args:
+            req: the request to get the state of the cloud node provider.
 
         Returns:
             The current state of the cloud node provider.
