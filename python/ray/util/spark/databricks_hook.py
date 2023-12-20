@@ -145,3 +145,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 time.sleep(DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
 
         threading.Thread(target=auto_shutdown_watcher, daemon=True).start()
+
+    def on_spark_job_created(self, job_group_id):
+        db_api_entry = get_db_entry_point()
+        db_api_entry.registerBackgroundSparkJobGroup("job_group_id")
