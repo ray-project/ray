@@ -137,12 +137,8 @@ class ICloudNodeProvider(ABC):
 
         Args:
             request: the request to update the cluster.
-
-        Returns:
-            reply to the update request.
         """
         pass
-
 
 
 class NodeProvider(metaclass=ABCMeta):
@@ -183,6 +179,10 @@ class NodeProvider(metaclass=ABCMeta):
         return False
 
 
+
+# TODO:
+#  We will make the NodeProviderAdaptor inherits from ICloudNodeProvider
+# to make V1 node providers work with the new interface.
 class NodeProviderAdapter(NodeProvider):
     """
     Warps a NodeProviderV1 to a NodeProvider.
