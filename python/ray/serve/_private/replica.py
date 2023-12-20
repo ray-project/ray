@@ -103,9 +103,13 @@ class ReplicaQueueMetricsManager:
     """
 
     def __init__(
-        self, replica_tag: ReplicaTag, autoscaling_config: Optional[AutoscalingConfig]
+        self,
+        replica_tag: ReplicaTag,
+        deployment_id: DeploymentID,
+        autoscaling_config: Optional[AutoscalingConfig],
     ):
         self._replica_tag = replica_tag
+        self._deployment_id = deployment_id
         self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
         self._autoscaling_config = autoscaling_config
@@ -157,13 +161,13 @@ class ReplicaQueueMetricsManager:
 
     def _collect_autoscaling_metrics(self):
         look_back_period = self._autoscaling_config.look_back_period_s
-        return self._replica_tag, self._autoscaling_metrics_store.window_average(
+        return self._replica_tag, self._metrics_store.window_average(
             self._replica_tag, time.time() - look_back_period
         )
 
     def _add_autoscaling_metrics_point(self, data, send_timestamp: float):
-        self._autoscaling_metrics_store.add_metrics_point(
-            {self._replica_tag, data},
+        self._metrics_store.add_metrics_point(
+            {self._replica_tag: data},
             send_timestamp,
         )
 
@@ -180,7 +184,7 @@ class ReplicaQueueMetricsManager:
         return stats.get("pending", 0)
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
-        replica_actor_name = self.deployment_id.to_replica_actor_class_name()
+        replica_actor_name = self._deployment_id.to_replica_actor_class_name()
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
         method_stats = actor_stats.get(f"{replica_actor_name}.handle_request")
         streaming_method_stats = actor_stats.get(
@@ -223,7 +227,7 @@ class ReplicaActor:
         )
         self._event_loop = get_or_create_event_loop()
         self._queue_metrics_manager = ReplicaQueueMetricsManager(
-            replica_tag, self._deployment_config.autoscaling_config
+            replica_tag, deployment_id, self._deployment_config.autoscaling_config
         )
 
         deployment_def = cloudpickle.loads(serialized_deployment_def)
