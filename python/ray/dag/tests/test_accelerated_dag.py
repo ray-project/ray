@@ -139,6 +139,12 @@ def test_dag_exception(ray_start_regular, capsys):
     output_channel = compiled_dag.execute("hello")
     with pytest.raises(TypeError):
         output_channel.begin_read()
+    output_channel.end_read()
+
+    # Can do it multiple times.
+    output_channel = compiled_dag.execute("hello")
+    with pytest.raises(TypeError):
+        output_channel.begin_read()
 
     compiled_dag.teardown()
 
@@ -226,6 +232,8 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
             for chan in output_channels:
                 chan.end_read()
 
+    compiled_dag.teardown()
+
 
 def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
     actors = [Actor.remote(0, fail_after=100, sys_exit=True) for _ in range(4)]
@@ -259,8 +267,12 @@ def test_dag_teardown_while_running(ray_start_regular_shared):
         dag = a.sleep.bind(inp)
 
     compiled_dag = dag.experimental_compile()
-    compiled_dag.execute(3)  # 3-second slow task running async
+    chan = compiled_dag.execute(3)  # 3-second slow task running async
     compiled_dag.teardown()
+    try:
+        chan.begin_read()  # Sanity check the channel doesn't block.
+    except Exception:
+        pass
 
     # Check we can still use the actor after first DAG teardown.
     with InputNode() as inp:

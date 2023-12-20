@@ -84,11 +84,11 @@ def do_exec_compiled_task(
                     cause=exc,
                 )
                 self._output_channel.write(wrapped)
-                raise
+            else:
+                if self._dag_cancelled:
+                    raise RuntimeError("DAG execution cancelled")
+                self._output_channel.write(output_val)
 
-            if self._dag_cancelled:
-                raise RuntimeError("DAG execution cancelled")
-            self._output_channel.write(output_val)
             for _, channel in input_channel_idxs:
                 channel.end_read()
 
@@ -102,6 +102,7 @@ def do_cancel_compiled_task(self):
     self._dag_cancelled = True
     for channel in self._input_channels:
         channel.close()
+    self._output_channel.close()
 
 
 @DeveloperAPI
@@ -303,7 +304,6 @@ class CompiledDAG:
 
         if self.dag_input_channel is not None:
             assert self.dag_output_channels is not None
-            # Driver should ray.put on input, ray.get/release on output
             return (
                 self.dag_input_channel,
                 self.dag_output_channels,

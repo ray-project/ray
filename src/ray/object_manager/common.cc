@@ -74,10 +74,8 @@ Status PlasmaObjectHeader::TryAcquireWriterMutex() {
 Status PlasmaObjectHeader::WriteAcquire(uint64_t write_data_size,
                                         uint64_t write_metadata_size,
                                         int64_t write_num_readers) {
-  auto write_version = version + 1;
-  RAY_LOG(DEBUG) << "WriteAcquire. version: " << write_version << ", data size "
-                 << write_data_size << ", metadata size " << write_metadata_size
-                 << ", num readers: " << write_num_readers;
+  RAY_LOG(DEBUG) << "WriteAcquire. data size " << write_data_size << ", metadata size "
+                 << write_metadata_size << ", num readers: " << write_num_readers;
 
   // Try to acquire the semaphore, checking every 1s for the error bit.
   struct timespec ts;
@@ -95,7 +93,7 @@ Status PlasmaObjectHeader::WriteAcquire(uint64_t write_data_size,
   RAY_CHECK(num_read_acquires_remaining == 0);
   RAY_CHECK(num_read_releases_remaining == 0);
 
-  version = write_version;
+  version++;
   is_sealed = false;
   data_size = write_data_size;
   metadata_size = write_metadata_size;

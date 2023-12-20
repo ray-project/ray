@@ -499,7 +499,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectSetError(const ObjectID &obj
   auto &entry = object_entry->second;
   RAY_CHECK(entry->object.is_experimental_mutable_object);
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  plasma_header->has_error = true;
+  plasma_header->SetErrorUnlocked();
 #endif
   return Status::OK();
 }

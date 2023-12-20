@@ -165,12 +165,8 @@ class Channel:
         """
         Close this channel by setting the error bit on the object.
 
-        Does not block.
+        Does not block. Any existing values in the channel may be lost after the
+        channel is closed.
         """
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
         self._worker.core_worker.experimental_mutable_object_set_error(self._base_ref)
-
-
-def _is_write_acquire_failed_error(e: Exception) -> bool:
-    # TODO(ekl): detect the exception type better
-    return isinstance(e, RaySystemError)
