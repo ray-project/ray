@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, ABCMeta, abstractmethod
-from typing import Dict, List, Optional, Set
 from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Set
 
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
@@ -34,7 +34,7 @@ class CloudInstance:
 @dataclass
 class UpdateCloudNodeProviderRequest:
     # Update request id.
-    id: str 
+    id: str
     # Target cluster shape (number of running nodes by type).
     target_running_nodes: Dict[NodeType, int] = field(default_factory=dict)
     # Nodes to terminate.
@@ -46,11 +46,13 @@ class GetNodeProviderStateRequest:
     # Errors that have happened since the given timestamp in nanoseconds.
     errors_since_ns: int
 
+
 @dataclass
 class CloudNodeProviderError:
     """
     An error class that represents an error that happened in the cloud node provider.
     """
+
     # The exception that caused the error.
     exception: Optional[Exception] = None
     # The details of the error.
@@ -58,14 +60,16 @@ class CloudNodeProviderError:
     # The timestamp of the error in nanoseconds.
     timestamp_ns: int
 
+
 @dataclass
 class LaunchNodeError(CloudNodeProviderError):
     # The node type that failed to launch.
     node_type: NodeType
     # Number of nodes that failed to launch.
-    count:int
+    count: int
     # From which update request the error originates.
     update_id: str
+
 
 @dataclass
 class TerminateNodeError(CloudNodeProviderError):
@@ -74,13 +78,14 @@ class TerminateNodeError(CloudNodeProviderError):
     # From which update request the error originates.
     update_id: str
 
+
 @dataclass
 class CloudNodeProviderState:
     """
     The state of a cloud node provider.
     """
 
-    # The terminated cloud nodes in the cluster. 
+    # The terminated cloud nodes in the cluster.
     terminated: List[CloudInstanceId] = field(default_factory=list)
     # The cloud nodes that are currently running.
     running: Dict[CloudInstanceId, CloudInstance] = field(default_factory=dict)
@@ -132,10 +137,8 @@ class ICloudNodeProvider(ABC):
         pass
 
     @abstractmethod
-    def update(
-        self, request: UpdateCloudNodeProviderRequest
-    ) -> None:
-        """Update the cloud node provider state by launching 
+    def update(self, request: UpdateCloudNodeProviderRequest) -> None:
+        """Update the cloud node provider state by launching
          or terminating cloud nodes.
 
         Args:
@@ -180,7 +183,6 @@ class NodeProvider(metaclass=ABCMeta):
     @abstractmethod
     def is_readonly(self) -> bool:
         return False
-
 
 
 # TODO:
