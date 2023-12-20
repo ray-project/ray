@@ -762,8 +762,7 @@ Status PlasmaClient::Impl::EnsureGetAcquired(
   int64_t version_read = 0;
 
   // Need to unlock the client mutex since ReadAcquire() is blocking. This is
-  // thread-safe since the plasma object cannot be deallocated while there is a
-  // reader active.
+  // thread-safe since mutable plasma object are never deallocated.
   client_mutex_.unlock();
   Status status =
       plasma_header->ReadAcquire(object_entry->next_version_to_read, &version_read);
