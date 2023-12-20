@@ -31,6 +31,7 @@ from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -316,7 +317,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
-    queue_len_response_deadline_s = 0.1
+    queue_len_response_deadline_s = RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S
 
     # Hard limit on the maximum number of scheduling tasks to run. Having too many of
     # these tasks can cause stability issue due to too much load on the local process
