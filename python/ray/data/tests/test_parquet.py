@@ -206,7 +206,10 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     pq.write_table(table, path2, filesystem=fs)
 
     class TestMetadataProvider(DefaultParquetMetadataProvider):
-        def prefetch_file_metadata(self, fragments):
+        def prefetch_file_metadata(self, fragments, **ray_remote_args):
+            assert ray_remote_args["num_cpus"] == 0.5
+            assert ray_remote_args["scheduling_strategy"] == "SPREAD"
+            assert ray_remote_args["retry_exceptions"] == [OSError]
             return None
 
     ds = ray.data.read_parquet(
