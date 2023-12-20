@@ -906,11 +906,6 @@ class UserCallableWrapper:
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
-        # TODO(edoakes): this is only here because there is an issue where async
-        # generators in actors have the `asyncio.current_task()` change between
-        # iterations: https://github.com/ray-project/ray/issues/37147. `aiorwlock`
-        # relies on the current task being stable, so it raises an exception.
-        # This flag should be removed once the above issue is closed.
         async with self.wrap_user_method_call(request_metadata):
             assert (
                 not request_metadata.is_http_request
