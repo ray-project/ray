@@ -37,7 +37,7 @@ numba==0.58.1
 openpyxl==3.0.10
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
-opentelemetry-exporter-otlp==1.1.0
+opentelemetry-exporter-otlp
 opentelemetry-exporter-opencensus==0.20b0
 pexpect==4.8.0
 Pillow==9.2.0; platform_system != "Windows"

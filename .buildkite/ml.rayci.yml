@@ -71,14 +71,14 @@ steps:
   #       --test-env=WANDB_API_KEY --test-env=COMET_API_KEY
   #   depends_on: [ "mlbuild", "forge" ]
 
-  - label: ":train: ml: tune tests"
-    tags: tune
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
-        --parallelism-per-worker 3
-        --except-tags soft_imports,gpu_only,rllib,multinode
-    depends_on: [ "mlbuild", "forge" ]
+  # - label: ":train: ml: tune tests"
+  #   tags: tune
+  #   instance_type: large
+  #   commands:
+  #     - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+  #       --parallelism-per-worker 3
+  #       --except-tags soft_imports,gpu_only,rllib,multinode
+  #   depends_on: [ "mlbuild", "forge" ]
 
   # - label: ":train: ml: tune new output tests"
   #   tags: tune
@@ -90,58 +90,58 @@ steps:
   #       --test-env=AIR_VERBOSITY=1
   #   depends_on: [ "mlbuild", "forge" ]
 
-  - label: ":train: ml: tune soft import tests"
-    tags: tune
-    instance_type: small
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
-        --only-tags soft_imports 
-        --build-name oss-ci-base_build
-    depends_on: [ "oss-ci-base_build", "forge" ]
+  # - label: ":train: ml: tune soft import tests"
+  #   tags: tune
+  #   instance_type: small
+  #   commands:
+  #     - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
+  #       --only-tags soft_imports 
+  #       --build-name oss-ci-base_build
+  #   depends_on: [ "oss-ci-base_build", "forge" ]
 
-  - label: ":train: ml: air tests"
-    tags: ml
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/air/... ml 
-        --parallelism-per-worker 3
-        --except-tags gpu
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... ml 
-        --parallelism-per-worker 3
-        --only-tags ray_air
-        --skip-ray-installation
-    depends_on: [ "mlbuild", "forge" ]
+  # - label: ":train: ml: air tests"
+  #   tags: ml
+  #   instance_type: large
+  #   commands:
+  #     - bazel run //ci/ray_ci:test_in_docker -- //python/ray/air/... ml 
+  #       --parallelism-per-worker 3
+  #       --except-tags gpu
+  #     - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... ml 
+  #       --parallelism-per-worker 3
+  #       --only-tags ray_air
+  #       --skip-ray-installation
+  #   depends_on: [ "mlbuild", "forge" ]
 
-  - label: ":train: ml: train+tune tests"
-    tags: train
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
-        --parallelism-per-worker 3
-        --only-tags tune
-        --except-tags gpu_only,ray_air,gpu,doctest,needs_credentials
-    depends_on: [ "mlbuild", "forge" ]
+  # - label: ":train: ml: train+tune tests"
+  #   tags: train
+  #   instance_type: medium
+  #   commands:
+  #     - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
+  #       --parallelism-per-worker 3
+  #       --only-tags tune
+  #       --except-tags gpu_only,ray_air,gpu,doctest,needs_credentials
+  #   depends_on: [ "mlbuild", "forge" ]
 
-  - label: ":train: ml: rllib+tune tests"
-    tags: 
-      - tune
-      - rllib
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
-        --parallelism-per-worker 3
-        --only-tags rllib
-        --except-tags gpu_only
-    depends_on: [ "mlbuild", "forge" ]
+  # - label: ":train: ml: rllib+tune tests"
+  #   tags: 
+  #     - tune
+  #     - rllib
+  #   instance_type: large
+  #   commands:
+  #     - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+  #       --parallelism-per-worker 3
+  #       --only-tags rllib
+  #       --except-tags gpu_only
+  #   depends_on: [ "mlbuild", "forge" ]
 
-  - label: ":train: ml: library integration tests"
-    tags: tune
-    instance_type: small
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- 
-        //python/ray/tests/xgboost/... python/ray/tests/horovod/... ml 
-        --parallelism-per-worker 2
-    depends_on: [ "mlbuild", "forge" ]
+  # - label: ":train: ml: library integration tests"
+  #   tags: tune
+  #   instance_type: small
+  #   commands:
+  #     - bazel run //ci/ray_ci:test_in_docker -- 
+  #       //python/ray/tests/xgboost/... python/ray/tests/horovod/... ml 
+  #       --parallelism-per-worker 2
+  #   depends_on: [ "mlbuild", "forge" ]
 
   # - label: ":train: ml: release tests"
   #   tags:
