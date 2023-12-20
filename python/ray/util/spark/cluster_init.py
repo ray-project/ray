@@ -34,7 +34,7 @@ from .utils import (
     _wait_service_up,
 )
 from .start_hook_base import RayOnSparkStartHook
-from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
+from .databricks_hook import DefaultDatabricksRayOnSparkStartHook, get_databricks_function
 from threading import Event
 
 
@@ -1204,7 +1204,7 @@ def _setup_ray_cluster_internal(
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
 
     if is_in_databricks_runtime():
-        displayHTML(
+        get_databricks_function("displayHTML")(
             "<b style='background-color:yellow;'>When you are using Ray on Spark cluster, "
             "you only pay for Spark cluster usage.</b>"
         )
