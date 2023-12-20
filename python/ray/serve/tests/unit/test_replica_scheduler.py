@@ -43,6 +43,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._sleep_time_s = sleep_time_s
 
         self.get_queue_state_was_cancelled = False
+        self.num_get_queue_state_calls = 0
 
     @property
     def replica_id(self) -> str:
@@ -73,6 +74,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
 
     async def get_queue_state(self) -> Tuple[int, bool]:
         try:
+            self.num_get_queue_state_calls += 1
             while not self._has_queue_len_response.is_set():
                 await self._has_queue_len_response.wait()
 
@@ -1169,6 +1171,34 @@ async def test_get_queue_state_cancelled_on_timeout(pow_2_scheduler, fake_query)
     task = loop.create_task(s.choose_replica_for_query(fake_query))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
+
+    # The `get_queue_state` method should be cancelled.
+    assert r1.get_queue_state_was_cancelled
+
+    r1.set_queue_state_response(0, accepted=True)
+    assert (await task) == r1
+
+
+@pytest.mark.asyncio
+async def test_queue_len_response_deadline_backoff(pow_2_scheduler, fake_query):
+    """
+    Verify that the response deadline is exponentially backed off up to the max.
+    """
+    s = pow_2_scheduler
+    s.queue_len_response_deadline_s = 0.1
+    s.max_queue_len_response_deadline_s = 1.0
+    loop = get_or_create_event_loop()
+
+    r1 = FakeReplicaWrapper("r1")
+    s.update_replicas([r1])
+
+    # Attempt to schedule; the replica will be attempted and a timeout will occur
+    # due to the short timeout set above.
+    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+
+    assert r1.num_get_queue_state_calls == 1
 
     # The `get_queue_state` method should be cancelled.
     assert r1.get_queue_state_was_cancelled
