@@ -222,6 +222,9 @@ class ReplicaActor:
             replica_tag, LoggingConfig(**(self._deployment_config.logging_config or {}))
         )
         self._event_loop = get_or_create_event_loop()
+        self._queue_metrics_manager = ReplicaQueueMetricsManager(
+            replica_tag, self._deployment_config.autoscaling_config
+        )
 
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
@@ -233,7 +236,6 @@ class ReplicaActor:
             cloudpickle.loads(serialized_init_kwargs),
             deployment_id=deployment_id,
             replica_tag=replica_tag,
-            autoscaling_config=self._deployment_config.autoscaling_config,
         )
 
         # Guards against calling the user's callable constructor multiple times.
@@ -572,7 +574,6 @@ class UserCallableWrapper:
         *,
         deployment_id: DeploymentID,
         replica_tag: ReplicaTag,
-        autoscaling_config: Optional[AutoscalingConfig],
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
