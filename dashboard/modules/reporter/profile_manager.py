@@ -85,12 +85,12 @@ class CpuProfilingManager:
         Args:
             pid: The process ID (PID) of the target process for trace capture.
             native (bool, optional): If True, includes native (C/C++) stack frames.
-            Default is False.
+                Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
-            of the trace capture operation and a string with the
-            trace data or an error message.
+                of the trace capture operation and a string with the
+                trace data or an error message.
         """
         pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
@@ -123,17 +123,17 @@ class CpuProfilingManager:
 
         Args:
             pid: The process ID (PID) of the target process to be profiled.
-            format (str, optional): The format of the CPU profile output.
-            Default is "flamegraph".
+                format (str, optional): The format of the CPU profile output.
+                Default is "flamegraph".
             duration (float, optional): The duration of the profiling
-            session in seconds. Default is 5 seconds.
+                session in seconds. Default is 5 seconds.
             native (bool, optional): If True, includes native (C/C++) stack frames.
-            Default is False.
+                Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
-            of the profiling operation and a string with the
-            profile data or an error message.
+                of the profiling operation and a string with the
+                profile data or an error message.
         """
         pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
