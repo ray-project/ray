@@ -96,6 +96,7 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn,
     // it.
     std::lock_guard<std::mutex> lock(mutex_);
     if (!redis_async_context_) {
+      RAY_LOG(INFO) << "nullptr disconnected vct";
       return Status::Disconnected("Redis is disconnected");
     }
     ret_code = redisAsyncCommandArgv(
@@ -103,6 +104,7 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn,
   }
 
   if (ret_code == REDIS_ERR) {
+    RAY_LOG(INFO) << "rediserror " << redis_async_context_->errstr;
     return Status::RedisError(std::string(redis_async_context_->errstr));
   }
   RAY_CHECK(ret_code == REDIS_OK);

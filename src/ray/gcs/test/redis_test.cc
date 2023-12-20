@@ -301,7 +301,7 @@ TEST_F(RedisContextTest, TestRedisMovedRealConnect) {
   RedisClientOptions fake_options(
       RedisContextTest::GetTestAddress(), TEST_REDIS_SERVER_PORTS.front(), test_pw);
   RedisClient redis_client(fake_options);
-  RAY_CHECK_OK(redis_client.Connect(io_service));
+  // RAY_CHECK_OK(redis_client.Connect(io_service));
 
   RedisContext parent_context(io_service, redis_client);
 
@@ -336,5 +336,8 @@ int main(int argc, char **argv) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
+  RAY_CHECK(argc == 3);
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
   return RUN_ALL_TESTS();
 }

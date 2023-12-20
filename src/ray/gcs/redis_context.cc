@@ -184,6 +184,7 @@ void RedisRequestContext::Run() {
       RedisResponseFn<redisAsyncContext>, this, argv_.size(), argv_.data(), argc_.data());
 
   if (!status.ok()) {
+    RAY_LOG(INFO) << "STATUS IS " << status;
     RedisResponseFn(redis_context->GetRawRedisAsyncContext(), nullptr, this);
   }
 }

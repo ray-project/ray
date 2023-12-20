@@ -2302,6 +2302,10 @@ ray_cc_test(
     name = "redis_test",
     size = "small",
     srcs = ["src/ray/gcs/test/redis_test.cc"],
+    args = [
+        "$(location redis-server)",
+        "$(location redis-cli)",
+    ],
     data = [
         "//:redis-cli",
         "//:redis-server",

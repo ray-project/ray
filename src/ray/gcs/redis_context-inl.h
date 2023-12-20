@@ -97,8 +97,11 @@ template <typename RedisContextType>
 void RedisResponseFn(struct redisAsyncContext *async_context,
                      void *raw_reply,
                      void *privdata) {
+  RAY_LOG(INFO) << "starting redisresponsefn " << async_context << " " << raw_reply << " "
+                << privdata;
   auto *request_cxt = static_cast<RedisRequestContext *>(privdata);
   auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
+  RAY_LOG(INFO) << "reply " << redis_reply;
   // Error happened.
   if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
     auto error_msg = redis_reply ? redis_reply->str : async_context->errstr;
@@ -108,11 +111,12 @@ void RedisResponseFn(struct redisAsyncContext *async_context,
                    << request_cxt->pending_retries_ << " retries left.";
 
     // First check if we need to redirect on MOVED.
-    if (RayConfig::instance().enable_moved_redirect()) {
+    if (redis_reply && RayConfig::instance().enable_moved_redirect()) {
       if (auto maybe_ip_port =
               ParseIffMovedError(std::string(redis_reply->str, redis_reply->len));
           maybe_ip_port.has_value()) {
         const auto [ip, port] = maybe_ip_port.value();
+        RAY_LOG(INFO) << "vct moved";
         auto resp =
             ConnectWithRetries<RedisContextType>(ip.c_str(), port, redisAsyncConnect);
         if (auto st = resp.first; !st.ok()) {
