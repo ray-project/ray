@@ -50,7 +50,7 @@ memray is a memory profiler for Python. It can track memory allocations in Pytho
 Here are the {ref}`steps to profile the memory usage of Ray Tasks and Actors <memray-profiling>`.
 
 #### Ray Dashboard View
-The Ray dashboard is now supporting memory profiling Ray Driver or Worker processes, by clicking on the "Memory profiling” actions for active Worker processes, Tasks, Actors, and Job’s driver process.
+You can now do memory profiling for Ray Driver or Worker processes in Ray dashboard, by clicking on the "Memory profiling” actions for active Worker processes, Tasks, Actors, and Job’s driver process.
 
 ![memory profiling action](../images/memory-profiling-dashboard-view.png)
 
