@@ -17,6 +17,7 @@ class TesterContainer(Container):
         self,
         shard_count: int = 1,
         gpus: int = 0,
+        network: Optional[str] = None,
         test_envs: Optional[List[str]] = None,
         shard_ids: Optional[List[int]] = None,
         skip_ray_installation: bool = False,
@@ -32,6 +33,7 @@ class TesterContainer(Container):
         self.shard_ids = shard_ids or []
         self.test_envs = test_envs or []
         self.build_type = build_type
+        self.network = network
         self.gpus = gpus
         assert (
             self.gpus == 0 or self.gpus >= self.shard_count
@@ -117,4 +119,10 @@ class TesterContainer(Container):
             test_cmd += f"--test_arg {test_arg} "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
-        return subprocess.Popen(self.get_run_command(commands, gpu_ids))
+        return subprocess.Popen(
+            self.get_run_command(
+                commands,
+                network=self.network,
+                gpu_ids=gpu_ids,
+            )
+        )
