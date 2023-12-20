@@ -2,7 +2,10 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
+import math
 from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from ray.autoscaler._private.constants import AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_MAX_CONCURRENT_TERMINATING, AUTOSCALER_MAX_LAUNCH_BATCH
 
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
@@ -32,48 +35,61 @@ class CloudInstance:
 
 @dataclass
 class UpdateCloudNodeProviderRequest:
-    # Nodes to launch.
-    to_launch: Dict[NodeType, int] = field(default_factory=dict)
+    # Update request id.
+    id: str 
+    # Target cluster shape (number of running nodes by type).
+    target_running_nodes: Dict[NodeType, int] = field(default_factory=dict)
     # Nodes to terminate.
     to_terminate: List[CloudInstanceId] = field(default_factory=list)
 
 
 @dataclass
-class UpdateCloudNodeProviderException:
-    # Launch failure exception.
-    exception: Optional[Exception] = None
-    # details
-    details: Optional[str] = None
-
+class GetNodeProviderStateRequest:
+    # Errors that have happened since the given timestamp in nanoseconds.
+    errors_since_ns: int
 
 @dataclass
-class UpdateCloudNodeProviderReply:
-    # Number of nodes that are launching.
-    # We are not providing more information than the count because
-    # some node providers will not return and  will not be able to
-    # return the cloud instance id of the launching nodes.
-    # A successfully launched node should be discovered by the
-    # get_running_nodes() API.
-    num_launching: Dict[NodeType, int] = field(default_factory=lambda: defaultdict(int))
+class CloudNodeProviderError:
+    """
+    An error class that represents an error that happened in the cloud node provider.
+    """
+    # The exception that caused the error.
+    exception: Optional[Exception] = None
+    # The details of the error.
+    details: Optional[str] = None
+    # The timestamp of the error in nanoseconds.
+    timestamp_ns: int
 
-    # Nodes launch failures grouped by each node type.
-    launch_failures: Dict[NodeType, UpdateCloudNodeProviderException] = field(
-        default_factory=dict
-    )
+@dataclass
+class LaunchNodeError(CloudNodeProviderError):
+    # The node type that failed to launch.
+    node_type: NodeType
+    # Number of nodes that failed to launch.
+    count:int
+    # From which update request the error originates.
+    update_id: str
 
-    # Nodes that are terminating.
-    # When a node is included in this list, it means that the node is being
-    # terminated. When node provider eventually terminate the node
-    # and a call to get_running_nodes() should not include
-    # this node anymore.
-    # A successfully terminated node should be discovered by being absent from
-    # get_running_nodes() API.
-    terminating: List[CloudInstanceId] = field(default_factory=list)
+@dataclass
+class TerminateNodeError(CloudNodeProviderError):
+    # The cloud instance id of the node that failed to terminate.
+    cloud_instance_id: CloudInstanceId
+    # From which update request the error originates.
+    update_id: str
 
-    # Nodes that failed to terminate and the reason.
-    terminate_failures: Dict[CloudInstanceId, UpdateCloudNodeProviderException] = field(
-        default_factory=dict
-    )
+@dataclass
+class CloudNodeProviderState:
+    """
+    The state of a cloud node provider.
+    """
+
+    # The terminated cloud nodes in the cluster. 
+    terminated: List[CloudInstanceId] = field(default_factory=list)
+    # The cloud nodes that are currently running.
+    running: Dict[CloudInstanceId, CloudInstance] = field(default_factory=dict)
+    # Errors that have happened when launching nodes.
+    launch_errors: List[LaunchNodeError] = field(default_factory=list)
+    # Errors that have happened when terminating nodes.
+    termination_errors: List[TerminateNodeError] = field(default_factory=list)
 
 
 class ICloudNodeProvider(ABC):
@@ -94,14 +110,11 @@ class ICloudNodeProvider(ABC):
     1. Eventually consistent
     The cloud node provider is expected to be eventually consistent with the
     cluster state. For example, when a node is request to be terminated/launched,
-    the node  provider may not immediately reflect the change in the result
-    of get_running_nodes().
+    the node provider may not immediately reflect the change in its state.
 
     2. Asynchronous
     The node provider could also be asynchronous, where the termination/launch
     request may not immediately return the result of the request.
-    # TODO(rickyx): we might able to have shortcuts for cloud node providers
-    impl that synchronously return results.
 
     3. Unique cloud node ids
     Cloud node ids are expected to be unique across the cluster.
@@ -109,25 +122,20 @@ class ICloudNodeProvider(ABC):
     """
 
     @abstractmethod
-    def get_running_nodes(
-        self,
-    ) -> List[CloudInstance]:
-        """Get cloud nodes in the cluster that are running.
-
-        Running cloud nodes are nodes that are launched and ready to have ray
-        processes be installed and initialized.
+    def get_state(self) -> CloudNodeProviderState:
+        """Get the current state of the cloud node provider.
 
         Returns:
-            List of cloud instances, uniquely identifying the cloud nodes in the
-            cluster.
+            The current state of the cloud node provider.
         """
         pass
 
     @abstractmethod
     def update(
         self, request: UpdateCloudNodeProviderRequest
-    ) -> UpdateCloudNodeProviderReply:
-        """Update the cluster.
+    ) -> None:
+        """Update the cloud node provider state by launching 
+         or terminating cloud nodes.
 
         Args:
             request: the request to update the cluster.
@@ -159,11 +167,33 @@ class NodeProviderAdapter(ICloudNodeProvider):
         provider: NodeProviderV1,
         node_launcher: BaseNodeLauncher,
         instance_config_provider: NodeProviderConfig,
+        max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+        max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
+        max_concurrent_terminating: int = AUTOSCALER_MAX_CONCURRENT_TERMINATING,
+        launch_timeout_s: Optional[int] = None,
+        terminate_timeout_s: Optional[int] = None,
     ) -> None:
         super().__init__()
         self._provider = provider
         self._node_launcher = node_launcher
         self._config = instance_config_provider
+        self._node_launcher_executors = ThreadPoolExecutor(
+            max_workers=math.ceil(max_concurrent_launches / float(max_launch_batch) if max_launch_batch > 0 else 1),
+            thread_name_prefix="ray::NodeLauncherPool",
+        )
+        self._node_terminator_executors = ThreadPoolExecutor(
+            max_workers=max_concurrent_terminating,
+        )
+        self._launch_timeout_s = launch_timeout_s
+        self._terminate_timeout_s = terminate_timeout_s
+
+        self._launch_errors: List[LaunchNodeError] = []
+        self._termination_errors: List[TerminateNodeError] = []
+
+
+    def get_state(self) -> CloudNodeProviderState:
+
+        # Running
 
     def get_running_nodes(self) -> List[CloudInstance]:
         """
@@ -216,6 +246,50 @@ class NodeProviderAdapter(ICloudNodeProvider):
     # Private APIs
     ###########################################
 
+    def _compute_to_launch(
+            self, req: UpdateCloudNodeProviderRequest
+    ) -> Dict[NodeType, int]:
+        """
+        Compute the number of nodes to launch for each node type.
+
+        """
+        terminating_nodes = set(req.to_terminate)
+        terminating_nodes_by_type = defaultdict(int)
+        for cloud_instance_id in terminating_nodes:
+            node_tags = self._v1_node_tags(cloud_instance_id)
+            node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE, None)
+            if node_type:
+                terminating_nodes_by_type[node_type] += 1
+            else:
+                logger.warning(
+                    f"Node {cloud_instance_id} does not have a node type tag."
+                )
+
+
+        non_terminated_nodes = self._v1_non_terminated_nodes({})
+        non_terminated_nodes_by_type = defaultdict(int)
+        for cloud_instance_id in non_terminated_nodes:
+            node_tags = self._v1_node_tags(cloud_instance_id)
+            node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE, None)
+            if node_type:
+                non_terminated_nodes_by_type[node_type] += 1
+            else:
+                logger.warning(
+                    f"Node {cloud_instance_id} does not have a node type tag."
+                )
+        
+        # Compute the number of nodes to launch for each node type.
+        to_launch = defaultdict(int)
+        for node_type, target_count in req.target_running_nodes.items():
+            non_terminated_count = non_terminated_nodes_by_type[node_type]
+            terminating_count = terminating_nodes_by_type[node_type]
+
+            if non_terminated_count - terminating_count < target_count:
+                to_launch[node_type] = target_count - (non_terminated_count - terminating_count)
+
+        return to_launch
+
+
     def _launch_nodes(
         self, req: UpdateCloudNodeProviderRequest, reply: UpdateCloudNodeProviderReply
     ) -> None:
@@ -228,16 +302,28 @@ class NodeProviderAdapter(ICloudNodeProvider):
             nodes and launch failures.
         """
 
-        # Default to synchronous update.
-        for node_type, count in req.to_launch.items():
+        to_launch = self._compute_to_launch(req)
+
+        futures_to_launch_args = {}
+
+        for node_type, count in to_launch.items():
+            futures_to_launch_args[self._node_launcher_executors.submit(
+                self._launch_nodes_by_type,
+                node_type,
+                count,
+            )] = (node_type, count)
+
+        # We are not waiting for any of the futures to complete if the launch
+        # timeout is 0, indicating immediate return. 
+        if self._launch_timeout_s == 0:
+            reply.num_launching = {node_type: count for node_type, count in to_launch.items()}
+            return
+
+        # NOTE: launch_timeout_s could be None to indicate wait forever. 
+        for fut in as_completed(futures_to_launch_args, timeout=self._launch_timeout_s):
+            node_type, count = futures_to_launch_args[fut]
             try:
-                self._node_launcher.launch_node(
-                    self._config.get_raw_config_mutable(),
-                    count,
-                    node_type,
-                    raise_exception=True,
-                )
-                reply.num_launching[node_type] += count
+                fut.result()
             except Exception as e:
                 # TODO(rickyx):
                 # This currently assumes that the node launcher will always
@@ -249,6 +335,20 @@ class NodeProviderAdapter(ICloudNodeProvider):
                 reply.launch_failures[node_type] = UpdateCloudNodeProviderException(
                     exception=e
                 )
+            else:
+                reply.num_launching[node_type] = count 
+
+    
+    def _launch_nodes_by_type(
+        self, node_type: NodeType, count: int
+    ) -> None:
+        # TODO: embed the node launcher logic here.
+        self._node_launcher.launch_node(
+            self._config.get_raw_config_mutable(),
+            count,
+            node_type,
+            raise_exception=True,
+        )
 
     def _terminate_nodes(
         self, req: UpdateCloudNodeProviderRequest, reply: UpdateCloudNodeProviderReply
@@ -261,23 +361,33 @@ class NodeProviderAdapter(ICloudNodeProvider):
             reply: the reply to the request. It will be populated with the terminating
             nodes.
         """
+        futures_to_terminating_ids = {}
         for cloud_instance_id in req.to_terminate:
+            futures_to_terminating_ids[self._node_terminator_executors.submit(
+                self._v1_terminate_node,
+                self,
+                cloud_instance_id,
+            )] = cloud_instance_id
+
+        if self._terminate_timeout_s == 0:
+            reply.terminating = req.to_terminate
+            return
+        
+        # NOTE: terminate_timeout_s could be None to indicate wait forever.
+        for fut in as_completed(futures_to_terminating_ids, timeout=self._terminate_timeout_s):
+            cloud_instance_id = futures_to_terminating_ids[fut]
             try:
-                self._v1_terminate_node(cloud_instance_id)
-                # We disregard the result here since when:
-                # 1. a result is returned to indicate successful termination request
-                # 2. a result is not returned since the node provider async terminates
-                # node.
-                # Both of these cases would indicate a successful termination request
-                reply.terminating.append(cloud_instance_id)
+                fut.result()
             except Exception as e:
                 logger.error(f"Failed to terminate node {cloud_instance_id}: {e}")
                 reply.terminate_failures[
                     cloud_instance_id
                 ] = UpdateCloudNodeProviderException(exception=e)
+            else:
+                reply.terminating.append(cloud_instance_id)
 
     ###########################################
-    # V1 Legacy APIs for backward compatibility
+    # V1 Legacy APIs
     ###########################################
     """
     Below are the necessary legacy APIs from the V1 node provider.

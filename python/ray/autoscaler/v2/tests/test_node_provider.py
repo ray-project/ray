@@ -53,7 +53,7 @@ def request(to_launch=None, to_terminate=None):
     ["sync", "batch"],
     indirect=True,
 )
-def test_node_providers_pass_through(node_providers):
+def test_node_providers_basic(node_providers):
     base_provider, node_provider = node_providers
     # Launch 1
     num_launching = node_provider.update(
