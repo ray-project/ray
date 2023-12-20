@@ -157,12 +157,12 @@ class ReplicaQueueMetricsManager:
 
     def _collect_autoscaling_metrics(self):
         look_back_period = self._autoscaling_config.look_back_period_s
-        return self._replica_tag, self.autoscaling_metrics_store.window_average(
+        return self._replica_tag, self._autoscaling_metrics_store.window_average(
             self._replica_tag, time.time() - look_back_period
         )
 
     def _add_autoscaling_metrics_point(self, data, send_timestamp: float):
-        self.autoscaling_metrics_store.add_metrics_point(
+        self._autoscaling_metrics_store.add_metrics_point(
             {self._replica_tag, data},
             send_timestamp,
         )
