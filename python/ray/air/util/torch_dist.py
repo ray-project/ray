@@ -139,6 +139,7 @@ def init_torch_dist_process_group(
 
     # Assume the first worker is the master.
     master_addr, master_port = ray.get(workers[0].execute.remote(get_address_and_port))
+    master_addr = master_addr.strip("[]")
 
     setup_futures = []
     world_size = len(workers)
