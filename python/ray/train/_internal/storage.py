@@ -490,18 +490,18 @@ class StorageContext:
         storage path to verify that the storage path can be written to.
         This validation file is also used to check whether the storage path is
         accessible by all nodes in the cluster."""
-        valid_file = os.path.join(
-            self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
-        )
+        valid_file = (
+            Path(self.experiment_fs_path) / _VALIDATE_STORAGE_MARKER_FILENAME
+        ).as_posix()
         self.storage_filesystem.create_dir(self.experiment_fs_path)
         with self.storage_filesystem.open_output_stream(valid_file):
             pass
 
     def _check_validation_file(self):
         """Checks that the validation file exists at the storage path."""
-        valid_file = os.path.join(
-            self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
-        )
+        valid_file = (
+            Path(self.experiment_fs_path) / _VALIDATE_STORAGE_MARKER_FILENAME
+        ).as_posix()
         if not _exists_at_fs_path(fs=self.storage_filesystem, fs_path=valid_file):
             raise RuntimeError(
                 f"Unable to set up cluster storage with the following settings:\n{self}"
