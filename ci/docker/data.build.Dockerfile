@@ -20,6 +20,8 @@ COPY . .
 RUN <<EOF
 #!/bin/bash
 
+set -ex
+
 DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
   ARROW_MONGO_VERSION=$ARROW_MONGO_VERSION ./ci/env/install-dependencies.sh
 

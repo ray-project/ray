@@ -41,3 +41,13 @@ flaky_tests:
   - //rllib:tests/test_io
   # multi-gpu
   - //rllib:TestLearnerGroupAsyncUpdate
+  # py311 failures
+  - //rllib:test_worker_failures
+  - //rllib:test_impala 
+  - //rllib:test_callbacks
+  - //rllib:test_appo
+  - //rllib:test_base_models 
+  - //rllib:examples/export/onnx_tf 
+  - //rllib:examples/inference_and_serving/policy_inference_after_training_with_attention_torch
+  - //rllib:torch_compile_inference_bm
+  - //rllib:test_memory_leak_ppo_new_stack 

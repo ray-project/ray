@@ -1,6 +1,7 @@
 import copy
 import os
 import posixpath
+import sys
 import time
 from collections import defaultdict
 
@@ -429,7 +430,7 @@ def ds_numpy_list_of_ndarray_tensor_format(ray_start_regular_shared):
     yield ray.data.from_numpy([np.arange(4).reshape((1, 2, 2))] * 4)
 
 
-@pytest.fixture(params=["5.0.0"])
+@pytest.fixture(params=["6.0.0"] if sys.version_info <= (3, 10) else ["10.0.1"])
 def unsupported_pyarrow_version(request):
     orig_version = pa.__version__
     pa.__version__ = request.param

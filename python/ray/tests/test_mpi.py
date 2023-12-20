@@ -53,6 +53,10 @@ def test_mpi_func_pi(change_test_dir, ray_start_regular):
                 "args": ["-n", "4"],
                 "worker_entry": "test_mpi.run",
             },
+            "env_vars": {
+                "OMPI_ALLOW_RUN_AS_ROOT": "1",
+                "OMPI_ALLOW_RUN_AS_ROOT_CONFIRM": "1",
+            },
         }
     )
     def calc_pi():
@@ -69,6 +73,10 @@ def test_mpi_actor_pi(change_test_dir, ray_start_regular):
             "mpi": {
                 "args": ["-n", "4"],
                 "worker_entry": "test_mpi.run",
+            },
+            "env_vars": {
+                "OMPI_ALLOW_RUN_AS_ROOT": "1",
+                "OMPI_ALLOW_RUN_AS_ROOT_CONFIRM": "1",
             },
         }
     )
@@ -104,6 +112,10 @@ def test_gpu_set(change_test_dir, ray_start_regular):
             "mpi": {
                 "args": ["-n", "4"],
                 "worker_entry": "test_mpi.check_gpu_setup",
+            },
+            "env_vars": {
+                "OMPI_ALLOW_RUN_AS_ROOT": "1",
+                "OMPI_ALLOW_RUN_AS_ROOT_CONFIRM": "1",
             },
         }
     )
