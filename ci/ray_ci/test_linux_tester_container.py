@@ -51,7 +51,7 @@ def test_run_tests_in_docker() -> None:
             "team", build_type="debug", test_envs=["ENV_01", "ENV_02"]
         )._run_tests_in_docker(["t1", "t2"], [0, 1], ["v=k"], "flag")
         input_str = inputs[-1]
-        assert "--env ENV_01 --env ENV_02 --env BUILDKITE_BUILD_URL" in input_str
+        assert "--env ENV_01 --env ENV_02 --env BUILDKITE" in input_str
         assert '--gpus "device=0,1"' in input_str
         assert (
             "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "

@@ -160,7 +160,7 @@ steps:
 
 - label: ":mac: :apple: Medium A-J"
   <<: *common
-  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
@@ -170,7 +170,7 @@ steps:
 
 - label: ":mac: :apple: Medium K-Z"
   <<: *common
-  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
