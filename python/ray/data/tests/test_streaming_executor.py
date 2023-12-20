@@ -257,11 +257,11 @@ def test_dispatch_next_task():
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    o2.add_input.assert_called_once_with(ref1)
+    o2.add_input.assert_called_once_with(ref1, input_index=0)
 
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
-    o2.add_input.assert_called_once_with(ref2)
+    o2.add_input.assert_called_once_with(ref2, input_index=0)
 
 
 def test_debug_dump_topology():
