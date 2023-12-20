@@ -391,10 +391,13 @@ class ReporterAgent(
         # add 1 second sleep for memray overhead
         await asyncio.sleep(duration + 1)
         success, output = await p.detach_profiler(pid)
+        warning = None if success else output
         success, output = await p.get_profile_result(
             pid, profiler_filename=profiler_filename, format=format, leaks=leaks
         )
-        return reporter_pb2.MemoryProfilingReply(output=output, success=success)
+        return reporter_pb2.MemoryProfilingReply(
+            output=output, success=success, warning=warning
+        )
 
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.

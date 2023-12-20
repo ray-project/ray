@@ -62,6 +62,7 @@ message CpuProfilingReply {
   string output = 2;
 }
 
+// Memory profiler request config
 message MemoryProfilingRequest {
   uint32 pid = 1;
   optional string format = 2;
@@ -74,9 +75,11 @@ message MemoryProfilingRequest {
   optional bool trace_python_allocators = 6;
 }
 
+// Memory profiler result
 message MemoryProfilingReply {
   bool success = 1;
   string output = 2;
+  optional string warning = 3;
 }
 
 message ReportMetricsRequest {

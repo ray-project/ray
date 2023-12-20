@@ -488,17 +488,17 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         Raises:
             aiohttp.web.HTTPInternalServerError: If no stub
-            found from the given ip value
+                found from the given ip value
             aiohttp.web.HTTPInternalServerError: If the
-            "task_id" parameter exists but either "attempt_number"
-            or "node id" is missing in the request query.
+                "task_id" parameter exists but either "attempt_number"
+                or "node id" is missing in the request query.
             aiohttp.web.HTTPInternalServerError: If the maximum
-            duration allowed is exceeded.
+                duration allowed is exceeded.
             aiohttp.web.HTTPInternalServerError If requesting task
-            profiling for the worker begins working on another task
-            during the profile retrieval.
+                profiling for the worker begins working on another task
+                during the profile retrieval.
             aiohttp.web.HTTPInternalServerError: If there is
-            an internal server error during the profile retrieval.
+                an internal server error during the profile retrieval.
         """
         is_task = "task_id" in req.query
 
@@ -567,6 +567,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
         task_ids_in_a_worker = None
+        warning = reply.warning if reply.warning else ""
         if is_task:
             """
             In order to truly confirm whether there are any other tasks
@@ -588,6 +589,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(
                 worker_id
             )
+            if len(task_ids_in_a_worker) > 1:
+                warning += (
+                    "\n"
+                    + WARNING_FOR_MULTI_TASK_IN_A_WORKER
+                    + str(task_ids_in_a_worker)
+                )
 
         if not reply.success:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
@@ -595,10 +602,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         return aiohttp.web.Response(
             body='<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
-                EMOJI_WARNING,
-                WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker),
+                EMOJI_WARNING, warning
             )
-            if task_ids_in_a_worker and len(task_ids_in_a_worker) > 1
+            + (reply.output)
+            if warning != ""
             else reply.output,
             headers={"Content-Type": "text/html"},
         )

@@ -235,7 +235,7 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     response = requests.get(f"{webui_url}/memory_profile?ip=1234567&pid=1234567")
     content = response.content.decode("utf-8")
     print(content)
-    assert "Failed to Execute: No stub with given ip value" in content, content
+    assert "Failed to execute: No stub with given ip value" in content, content
 
 
 if __name__ == "__main__":

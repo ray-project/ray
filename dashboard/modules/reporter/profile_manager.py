@@ -201,17 +201,17 @@ class MemoryProfilingManager:
 
         Args:
             pid: The process ID (PID) associated with the profiling operation.
-            profiler_filename: The filename of the profiler output to
-            be processed.
+                profiler_filename: The filename of the profiler output to
+                be processed.
             format (str, optional): The format of the profile result.
-            Default is "flamegraph".
+                Default is "flamegraph".
             leaks (bool, optional): If True, include memory leak information in
-            the profile result.
+                the profile result.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
-            of the operation and a string with the processed profile result
-            or an error message.
+                of the operation and a string with the processed profile result
+                or an error message.
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
@@ -270,15 +270,15 @@ class MemoryProfilingManager:
 
         Args:
             pid: The process ID (PID) of the target process which
-            the profiler attached to.
+                the profiler attached to.
             native (bool, optional): If True, includes native (C/C++) stack frames.
-            Default is False.
+                Default is False.
             trace_python_allocators (bool, optional): If True, includes Python
-            stack frames. Default is False.
+                stack frames. Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
-            of the operation and a string of a sucess message or an error message.
+                of the operation and a string of a sucess message or an error message.
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
@@ -327,11 +327,11 @@ class MemoryProfilingManager:
 
         Args:
             pid: The process ID (PID) of the target process the
-            profiler detached from.
+                profiler detached from.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
-            of the operation and a string of a success message or an error message.
+                of the operation and a string of a success message or an error message.
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
