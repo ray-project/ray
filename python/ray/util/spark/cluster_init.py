@@ -1205,8 +1205,8 @@ def _setup_ray_cluster_internal(
 
     if is_in_databricks_runtime():
         displayHTML(
-            "<b style='background-color:yellow;'>When you are using Ray on spark cluster, "
-            "you only pay for spark cluster usage.</b>"
+            "<b style='background-color:yellow;'>When you are using Ray on Spark cluster, "
+            "you only pay for Spark cluster usage.</b>"
         )
     return cluster.address, remote_connection_address
 
