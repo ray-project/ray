@@ -449,6 +449,15 @@ class UserCallableWrapper:
         self.callable = None
         self.user_health_check = None
 
+        # Set initial metadata for logs and metrics.
+        # servable_object will be populated in `initialize_callable`.
+        ray.serve.context._set_internal_replica_context(
+            app_name=self.deployment_id.app,
+            deployment=self.deployment_id.name,
+            replica_tag=self.replica_tag,
+            servable_object=None,
+        )
+
         self.request_counter = metrics.Counter(
             "serve_deployment_request_counter",
             description=(
@@ -530,14 +539,6 @@ class UserCallableWrapper:
         # for allocation of this replica by using the `is_allocated`
         # method. After that, it calls `reconfigure` to trigger
         # user code initialization.
-
-        # Set metadata for log messages to be populated in the constructor.
-        ray.serve.context._set_internal_replica_context(
-            app_name=self.deployment_id.app,
-            deployment=self.deployment_id.name,
-            replica_tag=self.replica_tag,
-            servable_object=None,
-        )
         logger.info(
             "Started initializing replica.",
             extra={"log_to_stderr": False},
