@@ -406,7 +406,7 @@ class ReplicaActor:
             )
 
     async def prepare_for_shutdown(self):
-        if self._user_callable_wrapper is not None:
+        if self._user_callable_initialized:
             return await self._user_callable_wrapper.prepare_for_shutdown()
 
     @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
