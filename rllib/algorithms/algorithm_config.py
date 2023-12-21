@@ -3330,8 +3330,7 @@ class AlgorithmConfig(_Config):
     # Various validation methods for different types of settings.
     # -----------------------------------------------------------
     def _validate_framework_settings(self) -> None:
-        """Validates framework settings and checks whether framework is installed.
-        """
+        """Validates framework settings and checks whether framework is installed."""
         _tf1, _tf, _tfv = None, None, None
         _torch = None
         if self.framework_str not in {"tf", "tf2"} and self.framework_str != "torch":
