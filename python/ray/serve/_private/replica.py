@@ -7,7 +7,7 @@ import time
 import traceback
 from contextlib import asynccontextmanager
 from importlib import import_module
-from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple
+from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
 import aiorwlock
 import starlette.responses
@@ -64,6 +64,7 @@ from ray.serve._private.utils import (
     wrap_to_ray_error,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
@@ -113,12 +114,12 @@ class ReplicaActor:
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
     ):
-        deployment_config = DeploymentConfig.from_proto_bytes(
+        self._version = version
+        self._replica_tag = replica_tag
+        self._deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
-        self._configure_logger_and_profilers(
-            replica_tag, LoggingConfig(**(deployment_config.logging_config or {}))
-        )
+        self._configure_logger_and_profilers(self._deployment_config.logging_config)
         self._event_loop = get_or_create_event_loop()
 
         deployment_def = cloudpickle.loads(serialized_deployment_def)
@@ -131,8 +132,7 @@ class ReplicaActor:
             cloudpickle.loads(serialized_init_kwargs),
             deployment_id=deployment_id,
             replica_tag=replica_tag,
-            version=version,
-            autoscaling_config=deployment_config.autoscaling_config,
+            autoscaling_config=self._deployment_config.autoscaling_config,
         )
 
         # Guards against calling the user's callable constructor multiple times.
@@ -140,9 +140,14 @@ class ReplicaActor:
         self._user_callable_initialized_lock = asyncio.Lock()
 
     def _configure_logger_and_profilers(
-        self, replica_tag: ReplicaTag, logging_config: LoggingConfig
+        self, logging_config: Union[None, Dict, LoggingConfig]
     ):
-        replica_name = ReplicaName.from_replica_tag(replica_tag)
+        if logging_config is None:
+            logging_config = {}
+        if isinstance(logging_config, dict):
+            logging_config = LoggingConfig(**logging_config)
+
+        replica_name = ReplicaName.from_replica_tag(self._replica_tag)
         if replica_name.app_name:
             component_name = f"{replica_name.app_name}_{replica_name.deployment_name}"
         else:
@@ -362,7 +367,7 @@ class ReplicaActor:
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
             await self.check_health()
-            return await self._get_metadata()
+            return self._get_metadata()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
@@ -371,17 +376,36 @@ class ReplicaActor:
         deployment_config: DeploymentConfig,
     ) -> Tuple[DeploymentConfig, DeploymentVersion]:
         try:
-            await self._user_callable_wrapper.reconfigure(deployment_config)
-            return await self._get_metadata()
+            user_config_changed = (
+                deployment_config.user_config != self._deployment_config.user_config
+            )
+            logging_config_changed = (
+                deployment_config.logging_config
+                != self._deployment_config.logging_config
+            )
+            self._deployment_config = deployment_config
+            self._version = DeploymentVersion.from_deployment_version(
+                self._version, deployment_config
+            )
+
+            if logging_config_changed:
+                self._configure_logger_and_profilers(deployment_config.logging_config)
+
+            if user_config_changed:
+                await self._user_callable_wrapper.update_user_config(
+                    deployment_config.user_config
+                )
+
+            return self._get_metadata()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    async def _get_metadata(
+    def _get_metadata(
         self,
     ) -> Tuple[DeploymentConfig, DeploymentVersion]:
         return (
-            self._user_callable_wrapper.version.deployment_config,
-            self._user_callable_wrapper.version,
+            self._version.deployment_config,
+            self._version,
         )
 
     def _save_cpu_profile_data(self) -> str:
@@ -407,7 +431,9 @@ class ReplicaActor:
 
     async def prepare_for_shutdown(self):
         if self._user_callable_initialized:
-            return await self._user_callable_wrapper.prepare_for_shutdown()
+            return await self._user_callable_wrapper.perform_graceful_shutdown(
+                self._deployment_config.graceful_shutdown_wait_loop_s
+            )
 
     @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
     async def check_health(self):
@@ -425,9 +451,8 @@ class UserCallableWrapper:
         *,
         deployment_id: DeploymentID,
         replica_tag: ReplicaTag,
-        version: DeploymentVersion,
-        autoscaling_config: Any,
-    ) -> None:
+        autoscaling_config: Optional[AutoscalingConfig],
+    ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
                 "deployment_def must be a function or class. Instead, its type was "
@@ -440,8 +465,6 @@ class UserCallableWrapper:
         self.is_function = inspect.isfunction(deployment_def)
         self.deployment_id = deployment_id
         self.replica_tag = replica_tag
-        self.version = version
-        self.deployment_config: DeploymentConfig = version.deployment_config
         self.rwlock = aiorwlock.RWLock()
         self.delete_lock = asyncio.Lock()
 
@@ -502,24 +525,24 @@ class UserCallableWrapper:
 
         self.autoscaling_metrics_store = InMemoryMetricsStore()
         self.metrics_pusher = MetricsPusher()
-        if autoscaling_config:
+        self._autoscaling_config = autoscaling_config
+        if self._autoscaling_config:
             self.controller_handle = ray.get_actor(
                 SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
             )
             process_remote_func = (
                 self.controller_handle.record_autoscaling_metrics.remote
             )
-            config = autoscaling_config
             self.metrics_pusher.register_task(
                 self.collect_autoscaling_metrics,
-                config.metrics_interval_s,
+                self._autoscaling_config.metrics_interval_s,
                 process_remote_func,
             )
             self.metrics_pusher.register_task(
                 lambda: {self.replica_tag: self.get_num_pending_and_running_requests()},
                 min(
                     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
-                    config.metrics_interval_s,
+                    self._autoscaling_config.metrics_interval_s,
                 ),
                 self._add_autoscaling_metrics_point,
             )
@@ -614,7 +637,7 @@ class UserCallableWrapper:
         return stats.get("pending", 0) + stats.get("running", 0)
 
     def collect_autoscaling_metrics(self):
-        look_back_period = self.deployment_config.autoscaling_config.look_back_period_s
+        look_back_period = self._autoscaling_config.look_back_period_s
         return self.replica_tag, self.autoscaling_metrics_store.window_average(
             self.replica_tag, time.time() - look_back_period
         )
@@ -655,25 +678,6 @@ class UserCallableWrapper:
             await result(scope, receive, send)
         else:
             await Response(result).send(scope, receive, send)
-
-    async def reconfigure(self, deployment_config: DeploymentConfig):
-        old_user_config = self.deployment_config.user_config
-        self.deployment_config = deployment_config
-        self.version = DeploymentVersion.from_deployment_version(
-            self.version, self.deployment_config
-        )
-
-        if deployment_config.logging_config:
-            logging_config = LoggingConfig(**deployment_config.logging_config)
-            configure_component_logger(
-                component_type=ServeComponentType.REPLICA,
-                component_name=self.deployment_id.name,
-                component_id=self.replica_tag,
-                logging_config=logging_config,
-            )
-
-        if old_user_config != deployment_config.user_config:
-            await self.update_user_config(deployment_config.user_config)
 
     async def update_user_config(self, user_config: Any):
         async with self.rwlock.writer:
@@ -927,7 +931,7 @@ class UserCallableWrapper:
                     f"function, but '{user_method.__name__}' is not."
                 )
 
-    async def prepare_for_shutdown(self):
+    async def perform_graceful_shutdown(self, wait_loop_period_s: float):
         """Perform graceful shutdown.
 
         Trigger a graceful shutdown protocol that will wait for all the queued
@@ -936,15 +940,13 @@ class UserCallableWrapper:
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
-            await asyncio.sleep(self.deployment_config.graceful_shutdown_wait_loop_s)
+            await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = self.get_num_pending_and_running_requests()
             if num_ongoing_requests > 0:
                 logger.info(
-                    "Waiting for an additional "
-                    f"{self.deployment_config.graceful_shutdown_wait_loop_s}s to shut "
-                    f"down because there are {num_ongoing_requests} ongoing "
-                    "requests."
+                    f"Waiting for an additional {wait_loop_period_s}s to shut down "
+                    f"because there are {num_ongoing_requests} ongoing requests."
                 )
             else:
                 logger.info(
