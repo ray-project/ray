@@ -156,13 +156,14 @@ def test_put_remote_get(ray_start_regular, num_readers):
 
 @pytest.mark.parametrize("remote", [True, False])
 def test_remote_reader(ray_start_cluster, remote):
+    num_readers = 2
     cluster = ray_start_cluster
     if remote:
         cluster.add_node(num_cpus=0)
         ray.init(address=cluster.address)
-        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=num_readers)
     else:
-        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=num_readers)
         ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=1)
@@ -173,9 +174,9 @@ def test_remote_reader(ray_start_cluster, remote):
         def get_node_id(self) -> str:
             return ray.get_runtime_context().get_node_id()
 
-        def allocate_local_reader_channel(self, writer_channel):
-            self._reader_chan = ray_channel.Channel(_writer_channel=writer_channel)
-            return self._reader_chan
+        def allocate_local_reader_channel(self, writer_channel, num_readers):
+            return ray_channel.Channel(_writer_channel=writer_channel,
+                num_readers=num_readers)
 
         def send_channel(self, reader_channel):
             self._reader_chan = reader_channel
@@ -193,20 +194,24 @@ def test_remote_reader(ray_start_cluster, remote):
             #print("READER HERE")
             #return values
 
-    reader = Reader.remote()
+    readers = [Reader.remote() for _ in range(num_readers)]
     if remote:
-        reader_node_id = ray.get(reader.get_node_id.remote())
+        reader_node_id = ray.get(readers[0].get_node_id.remote())
         channel = ray_channel.Channel(1000, _reader_node_id=reader_node_id)
-        print(ray.get(reader.allocate_local_reader_channel.remote(channel)))
+        reader_channel = ray.get(
+                readers[0].allocate_local_reader_channel.remote(channel, num_readers))
     else:
-        channel = ray_channel.Channel(1000)
-        print(ray.get(reader.send_channel.remote(channel)))
+        channel = ray_channel.Channel(1000, num_readers=num_readers)
+        reader_channel = channel
 
-    work = reader.read.remote()
+    ray.get([
+        reader.send_channel.remote(reader_channel) for reader in readers])
+
+    work = [reader.read.remote() for reader in readers]
 
     for _ in range(3):
         start = time.perf_counter()
-        for _ in range(10_000):
+        for _ in range(1000):
             channel.write(b"x")
         end = time.perf_counter()
         print(end - start, 10_000 / (end - start))
