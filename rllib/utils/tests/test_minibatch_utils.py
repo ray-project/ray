@@ -93,8 +93,8 @@ class TestMinibatchUtils(unittest.TestCase):
                         check(policy_batch.count, mini_batch_size)
                     iteration_counter += 1
 
-                # for each policy check that the last item in batch matches the expected
-                # values, i.e. iteration_counter * mini_batch_size % agent_steps - 1
+                # For each policy check that the last item in batch matches the expected
+                # values, i.e. iteration_counter * mini_batch_size % agent_steps - 1.
                 total_steps = iteration_counter * mini_batch_size
                 for policy_idx, policy_batch in enumerate(
                     batch.policy_batches.values()
@@ -104,8 +104,8 @@ class TestMinibatchUtils(unittest.TestCase):
                         expected_last_item = 0.0
                     check(policy_batch["obs"][-1], expected_last_item)
 
-                # check iteration counter (should be
-                # ceil(num_gsd_iter * max(agent_steps) / mini_batch_size))
+                # Check iteration counter (should be
+                # ceil(num_gsd_iter * max(agent_steps) / mini_batch_size)).
                 expected_iteration_counter = np.ceil(
                     num_sgd_iter * max(agent_steps) / mini_batch_size
                 )
