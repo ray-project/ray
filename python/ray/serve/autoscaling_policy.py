@@ -10,10 +10,12 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
 )
 from ray.serve.config import AutoscalingConfig
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+@PublicAPI(stability="stable")
 class AutoscalingPolicy:
     """Defines the interface for an autoscaling policy.
 
@@ -53,6 +55,7 @@ class AutoscalingPolicy:
         return curr_target_num_replicas
 
 
+@PublicAPI(stability="stable")
 class BasicAutoscalingPolicy(AutoscalingPolicy):
     """The default autoscaling policy based on basic thresholds for scaling.
     There is a minimum threshold for the average queue length in the cluster
