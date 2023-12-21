@@ -19,7 +19,11 @@ import _ from "lodash";
 import React, { useMemo, useState } from "react";
 import { DurationText } from "../common/DurationText";
 import { ActorLink } from "../common/links";
-import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+  MemoryProfilingButton,
+} from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { Actor, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
@@ -447,6 +451,11 @@ const ActorTable = ({
                         pid={pid}
                         ip={address?.ipAddress}
                         type=""
+                      />
+                      <br />
+                      <MemoryProfilingButton
+                        pid={pid}
+                        ip={address?.ipAddress}
                       />
                     </React.Fragment>
                   </TableCell>

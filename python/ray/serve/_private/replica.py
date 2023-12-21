@@ -7,7 +7,7 @@ import time
 import traceback
 from contextlib import asynccontextmanager
 from importlib import import_module
-from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple
+from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
 import aiorwlock
 import starlette.responses
@@ -219,12 +219,11 @@ class ReplicaActor:
         version: DeploymentVersion,
     ):
         self._version = version
+        self._replica_tag = replica_tag
         self._deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
-        self._configure_logger_and_profilers(
-            replica_tag, LoggingConfig(**(self._deployment_config.logging_config or {}))
-        )
+        self._configure_logger_and_profilers(self._deployment_config.logging_config)
         self._event_loop = get_or_create_event_loop()
         self._queue_metrics_manager = ReplicaQueueMetricsManager(
             replica_tag, deployment_id, self._deployment_config.autoscaling_config
@@ -247,9 +246,14 @@ class ReplicaActor:
         self._user_callable_initialized_lock = asyncio.Lock()
 
     def _configure_logger_and_profilers(
-        self, replica_tag: ReplicaTag, logging_config: LoggingConfig
+        self, logging_config: Union[None, Dict, LoggingConfig]
     ):
-        replica_name = ReplicaName.from_replica_tag(replica_tag)
+        if logging_config is None:
+            logging_config = {}
+        if isinstance(logging_config, dict):
+            logging_config = LoggingConfig(**logging_config)
+
+        replica_name = ReplicaName.from_replica_tag(self._replica_tag)
         if replica_name.app_name:
             component_name = f"{replica_name.app_name}_{replica_name.deployment_name}"
         else:
