@@ -2,6 +2,8 @@ import logging
 import threading
 from enum import Enum
 
+from pyVmomi import vim
+
 logger = logging.getLogger(__name__)
 
 
@@ -11,27 +13,29 @@ class Policy(Enum):
 
 class SchedulerFactory:
     @classmethod
-    def get_scheduler(cls, frozen_vms_resource_pool, policy_name=Policy.ROUNDROBIN):
+    def get_scheduler(
+        cls, pyvmomi_sdk_provider, resource_pool_name, policy_name=Policy.ROUNDROBIN
+    ):
         if policy_name == Policy.ROUNDROBIN:
-            return RoundRobinScheduler(frozen_vms_resource_pool)
+            return RoundRobinScheduler(pyvmomi_sdk_provider, resource_pool_name)
         raise RuntimeError(f"Unsupported schedule policy: {policy_name}")
 
 
 class RoundRobinScheduler:
-    def __init__(self, frozen_vms_resource_pool):
+    def __init__(self, pyvmomi_sdk_provider, resource_pool_name):
         self.current_vm_index = 0
         self.lock = threading.Lock()
-        self.frozen_vms_resource_pool = frozen_vms_resource_pool
+        self.resource_pool = pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.ResourcePool], resource_pool_name
+        )
         self.vms = None
         logger.debug("Inited the round robin scheduler for vSphere VMs")
 
     def next_frozen_vm(self):
         if not self.vms:
-            self.vms = self.frozen_vms_resource_pool.vm
+            self.vms = self.resource_pool.vm
             if len(self.vms) <= 0:
-                raise ValueError(
-                    f"No vm in resource pool {self.frozen_vms_resource_pool}!"
-                )
+                raise ValueError(f"No vm in resource pool {self.resource_pool.name}!")
         with self.lock:
             logger.debug(
                 "current_vm_index=%d",

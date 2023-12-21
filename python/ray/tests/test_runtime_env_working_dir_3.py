@@ -17,7 +17,6 @@ from ray._private.test_utils import (
     check_local_files_gced,
     wait_for_condition,
     find_free_port,
-    skip_flaky_core_test_premerge,
 )
 
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -253,7 +252,6 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/40781")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
@@ -268,6 +266,10 @@ class TestGC:
     ):
         """Tests that URIs for detached actors are GC'd only when they exit."""
         cluster, address = start_cluster
+        # Wait until agent is ready.
+        # TODO(sang): There's a bug where is runtime env creation request is
+        # sent before agent is ready, it fails. We will fix this issue soon.
+        time.sleep(2)
 
         if option == "working_dir":
             ray.init(address, namespace="test", runtime_env={"working_dir": source})

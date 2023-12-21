@@ -207,6 +207,12 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] object_id The ID of the object.
   Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
 
+  /// Experimental method for mutable objects. Sets the error bit, causing all
+  /// future readers and writers to raise an error on acquire.
+  ///
+  /// \param[in] object_id The ID of the object.
+  Status ExperimentalMutableObjectSetError(const ObjectID &object_id);
+
   /// Experimental method for mutable objects. Releases the objects, allowing them
   /// to be written again. If the caller did not previously Get the objects,
   /// then this first blocks until the latest value is available to read, then

@@ -206,7 +206,8 @@ class FileBasedDatasource(Datasource):
             file_sizes = [path_to_size[p] for p in paths]
             if len(paths) == 0:
                 raise ValueError(
-                    "No input files found to read. Please double check that "
+                    "No input files found to read with the following file extensions: "
+                    f"{file_extensions}. Please double check that "
                     "'file_extensions' field is set properly."
                 )
 

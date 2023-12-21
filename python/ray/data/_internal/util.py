@@ -13,6 +13,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
     Iterable,
     Iterator,
     List,
@@ -53,6 +54,25 @@ _EXAMPLE_SCHEME = "example"
 
 LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
+
+
+cached_cluster_resources = {}
+cluster_resources_last_fetch_time = 0
+CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS = 10
+
+
+def cluster_resources() -> Dict[str, float]:
+    """Fetch Ray cluster resources with cache."""
+    global cached_cluster_resources
+    global cluster_resources_last_fetch_time
+    now = time.time()
+    if (
+        now - cluster_resources_last_fetch_time
+        > CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS
+    ):
+        cached_cluster_resources = ray.cluster_resources()
+        cluster_resources_last_fetch_time = now
+    return cached_cluster_resources
 
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
@@ -547,7 +567,7 @@ def get_compute_strategy(
             "The argument ``compute`` is deprecated in Ray 2.9. Please specify "
             "argument ``concurrency`` instead. For more information, see "
             "https://docs.ray.io/en/master/data/transforming-data.html#"
-            "transforming-with-python-class."
+            "stateful-transforms."
         )
         if is_callable_class and (
             compute == "tasks" or isinstance(compute, TaskPoolStrategy)
