@@ -488,7 +488,8 @@ Status RedisContext::Connect(const std::string &address,
 
   // Connect to async context
   redisAsyncContext *async_context = nullptr;
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &async_context));
+  RAY_CHECK_OK(
+      ConnectWithRetries(ip_addresses[0], port, redisAsyncConnect, &async_context));
   if (enable_ssl) {
     RAY_CHECK(ssl_context_ != nullptr);
     RAY_CHECK(redisInitiateSSLWithContext(&async_context->c, ssl_context_) == REDIS_OK)
