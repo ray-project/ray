@@ -131,7 +131,7 @@ Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectWriteRelease(
 
 Status CoreWorkerPlasmaStoreProvider::ExperimentalMutableObjectSetError(
     const ObjectID &object_id) {
-  return store_client_.ExperimentalMutableObjectSetError(object_id);
+  return store_client_->ExperimentalMutableObjectSetError(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
