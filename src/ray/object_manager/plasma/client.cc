@@ -445,8 +445,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
                                    std::to_string(entry->object.allocated_size));
   }
   client_mutex_.unlock();
-  auto status = plasma_header->WriteAcquire(
-      entry->next_version_to_write, data_size, metadata_size, num_readers);
+  auto status = plasma_header->WriteAcquire(data_size, metadata_size, num_readers);
   client_mutex_.lock();
   RAY_RETURN_NOT_OK(status);
 
