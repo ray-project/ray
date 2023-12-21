@@ -60,6 +60,9 @@ message AutoscalingConfig {
 
   // The multiplicative "gain" factor to limit downscale.
   optional double downscale_smoothing_factor = 11;
+
+  // The cloudpickle base64 serialized callable for the autoscaling policy.
+  optional string policy = 12;
 }
 
 //[Begin] LOGGING CONFIG

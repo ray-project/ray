@@ -16,10 +16,6 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.autoscaling_policy import (
-    BasicAutoscalingPolicy,
-    calculate_desired_num_replicas,
-)
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
@@ -34,6 +30,8 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.controller import ServeController
+from ray.serve._private.utils import calculate_desired_num_replicas
+from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
