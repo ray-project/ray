@@ -33,7 +33,7 @@ DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
 DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
-DEFAULT_AMI_NAME = "Deep Learning Base GPU AMI (Ubuntu 20.04) 20230911"
+DEFAULT_AMI_NAME = "Deep Learning AMI GPU CUDA 11.2.1 (Ubuntu 20.04) 20230524"
 
 # Obtained by running the following command for each of the regions below:
 # aws ec2 describe-images \
@@ -45,21 +45,21 @@ DEFAULT_AMI_NAME = "Deep Learning Base GPU AMI (Ubuntu 20.04) 20230911"
 # TODO(alex) : write a unit test to make sure we update AMI version used in
 # ray/autoscaler/aws/example-full.yaml whenever we update this dict.
 DEFAULT_AMI = {
-    "us-east-1": "ami-068d304eca3399469",  # US East (N. Virginia)
-    "us-east-2": "ami-01d66247b45457f6b",  # US East (Ohio)
-    "us-west-1": "ami-0c1b0805e0f5a63f3",  # US West (N. California)
-    "us-west-2": "ami-0581161e178068142",  # US West (Oregon)
-    "ca-central-1": "ami-002845b64d842a2a1",  # Canada (Central)
-    "eu-central-1": "ami-034aae0781c0f3b1b",  # EU (Frankfurt)
-    "eu-west-1": "ami-08d286977c0d61d60",  # EU (Ireland)
-    "eu-west-2": "ami-06494a8cdbc94835c",  # EU (London)
-    "eu-west-3": "ami-01e329f22a25bcf0b",  # EU (Paris)
-    "sa-east-1": "ami-0b6cebaa28fdd35e7",  # SA (Sao Paulo)
-    "ap-northeast-1": "ami-020f0d5aa9f43db31",  # Asia Pacific (Tokyo)
-    "ap-northeast-2": "ami-0a73968b958434f9f",  # Asia Pacific (Seoul)
-    "ap-northeast-3": "ami-08e961078d46f1616",  # Asia Pacific (Osaka)
-    "ap-southeast-1": "ami-0a22a98eda5bc487e",  # Asia Pacific (Singapore)
-    "ap-southeast-2": "ami-032b58bab6a8ce5da",  # Asia Pacific (Sydney)
+    "us-east-1": "ami-0ef5f7e6314c26b09",  # US East (N. Virginia)
+    "us-east-2": "ami-0f45ce8e7ab781ee9",  # US East (Ohio)
+    "us-west-1": "ami-0b4f049c15f6508a1",  # US West (N. California)
+    "us-west-2": "ami-01b0d0971a5b140e5",  # US West (Oregon)
+    "ca-central-1": "ami-0ac72b281ea00712a",  # Canada (Central)
+    "eu-central-1": "ami-00f490b54f10fcdc9",  # EU (Frankfurt)
+    "eu-west-1": "ami-0b10dfd46eb95a61d",  # EU (Ireland)
+    "eu-west-2": "ami-0c0da5fe611be1918",  # EU (London)
+    "eu-west-3": "ami-03e87310f873f18d8",  # EU (Paris)
+    "sa-east-1": "ami-0c1b685969a75ec48",  # SA (Sao Paulo)
+    "ap-northeast-1": "ami-0d65d4bca3e415dc0",  # Asia Pacific (Tokyo)
+    "ap-northeast-2": "ami-0a1a2fa9c1257b696",  # Asia Pacific (Seoul)
+    "ap-northeast-3": "ami-068cb0ae0cb0aa3d4",  # Asia Pacific (Osaka)
+    "ap-southeast-1": "ami-08b6b0aabf11ecbba",  # Asia Pacific (Singapore)
+    "ap-southeast-2": "ami-0a7992bfb24c59bf3",  # Asia Pacific (Sydney)
 }
 
 # todo: cli_logger should handle this assert properly
