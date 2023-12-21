@@ -230,16 +230,16 @@ Updates
         .. testcode::
 
             # This is a blocking update
-            results = learner_group.update(DUMMY_BATCH)
+            results = learner_group.update(batch=DUMMY_BATCH)
 
             # This is a non-blocking update. The results are returned in a future
             # call to `async_update`
-            _ = learner_group.async_update(DUMMY_BATCH)
+            _ = learner_group.async_update(batch=DUMMY_BATCH)
 
             # Artificially wait for async request to be done to get the results
             # in the next call to `LearnerGroup.async_update()`.
             time.sleep(5)
-            results = learner_group.async_update(DUMMY_BATCH)
+            results = learner_group.async_update(batch=DUMMY_BATCH)
             # `results` is a list of results dict. The items in the list represent the different
             # remote results from the different calls to `async_update()`.
             assert len(results) > 0
@@ -257,7 +257,7 @@ Updates
         .. testcode::
 
             # This is a blocking update.
-            result = learner.update(DUMMY_BATCH)
+            result = learner.update(batch=DUMMY_BATCH)
 
             # This is an additional non-gradient based update.
             learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)
