@@ -3517,7 +3517,7 @@ cdef class CoreWorker:
 
     def experimental_mutable_object_put_serialized(self, serialized_object,
                                                    ObjectRef object_ref,
-                                                   num_readers,
+                                                   num_readers
                                                    ):
         cdef:
             CObjectID c_object_id = object_ref.native()
@@ -3541,6 +3541,13 @@ cdef class CoreWorker:
                      .ExperimentalMutableObjectWriteRelease(
                          c_object_id,
                          ))
+
+    def experimental_mutable_object_set_error(self, ObjectRef object_ref):
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+
+        check_status(CCoreWorkerProcess.GetCoreWorker()
+                     .ExperimentalMutableObjectSetError(c_object_id))
 
     def experimental_mutable_object_read_release(self, object_refs):
         """
