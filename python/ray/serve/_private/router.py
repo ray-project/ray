@@ -160,8 +160,11 @@ class ReplicaWrapper(ABC):
         """Set of model IDs on this replica."""
         pass
 
-    async def get_queue_state(self) -> Tuple[int, bool]:
-        """Returns tuple of (queue_len, accepted)."""
+    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
+        """Returns tuple of (queue_len, accepted).
+
+        `deadline_s` is passed to verify backoff for testing.
+        """
         pass
 
     def send_query(
@@ -197,7 +200,7 @@ class ActorReplicaWrapper:
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
-    async def get_queue_state(self) -> Tuple[int, bool]:
+    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
@@ -344,12 +347,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._prefer_local_az_routing = prefer_local_az_routing
         self._self_node_id = self_node_id
         self._self_availability_zone = self_availability_zone
-
-        # Ensure the max deadline is always >= the initial deadline.
-        self.max_queue_len_response_deadline_s = max(
-            self.queue_len_response_deadline_s,
-            self.max_queue_len_response_deadline_s,
-        )
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
@@ -717,14 +714,19 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         Among replicas that respond within the deadline and accept the request (don't
         have full queues), the one with the lowest queue length is chosen.
         """
+        # Ensure the max deadline is always >= the initial deadline.
+        max_queue_len_response_deadline_s = max(
+            self.queue_len_response_deadline_s,
+            self.max_queue_len_response_deadline_s,
+        )
         queue_len_response_deadline_s = min(
             self.queue_len_response_deadline_s * (2**backoff_index),
-            self.max_queue_len_response_deadline_s,
+            max_queue_len_response_deadline_s,
         )
 
         get_queue_state_tasks = []
         for c in candidates:
-            t = self._loop.create_task(c.get_queue_state())
+            t = self._loop.create_task(c.get_queue_state(queue_len_response_deadline_s))
             t.replica_id = c.replica_id
             get_queue_state_tasks.append(t)
 
