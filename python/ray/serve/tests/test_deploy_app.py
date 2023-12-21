@@ -1183,6 +1183,7 @@ def test_change_route_prefix(client: ServeControllerClient):
 def check_log_file(log_file: str, expected_regex: list):
     with open(log_file, "r") as f:
         s = f.read()
+        print(s)
         for regex in expected_regex:
             assert re.findall(regex, s) != []
     return True
@@ -1304,6 +1305,7 @@ class TestDeploywithLoggingConfig:
         )
         resp = requests.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+        # XXX
 
     def test_not_overwritting_logging_config_in_yaml(
         self, client: ServeControllerClient
