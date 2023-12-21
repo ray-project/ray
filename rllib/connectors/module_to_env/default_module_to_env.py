@@ -25,7 +25,7 @@ class DefaultModuleToEnv(ConnectorV2):
     If necessary, this connector samples actions, given action dist. inputs and a
     dist. class.
     The connector will only sample from the action distribution, if the
-    SampleBatch.ACTIONS key cannot be found in `input_`. Otherwise, it'll behave
+    SampleBatch.ACTIONS key cannot be found in `data`. Otherwise, it'll behave
     as pass through (noop). If SampleBatch.ACTIONS is not present, but
     SampleBatch.ACTION_DIST_INPUTS are, the connector will create a new action
     distribution using the RLModule in the connector context and sample from this
@@ -51,7 +51,7 @@ class DefaultModuleToEnv(ConnectorV2):
         **kwargs,
     ):
         """Initializes a DefaultModuleToEnv (connector piece) instance.
-        
+
         Args:
             normalize_actions: If True, actions coming from the RLModule's distribution
                 (or are directly computed by the RLModule w/o sampling) will
@@ -83,35 +83,35 @@ class DefaultModuleToEnv(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        input_: Any,
+        data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
 
         # Loop through all modules that created some output.
-        # for mid in input_.keys():
+        # for mid in data.keys():
         #    sa_module = ctx.rl_module.get_module(module_id=mid)
 
         # If our RLModule is stateful, remove the T=1 axis from all model outputs
         # (except the state outs, which never have this extra time axis).
         if rl_module.is_stateful():
-            state = input_.pop(STATE_OUT, None)
-            input_ = tree.map_structure(lambda s: np.squeeze(s, axis=1), input_)
+            state = data.pop(STATE_OUT, None)
+            data = tree.map_structure(lambda s: np.squeeze(s, axis=1), data)
             if state:
-                input_[STATE_OUT] = state
+                data[STATE_OUT] = state
 
         # ACTION_DIST_INPUTS field returned by `forward_exploration|inference()` ->
         # Create a new action distribution object.
         action_dist = None
-        if SampleBatch.ACTION_DIST_INPUTS in input_:
+        if SampleBatch.ACTION_DIST_INPUTS in data:
             if explore:
                 action_dist_class = rl_module.get_exploration_action_dist_cls()
             else:
                 action_dist_class = rl_module.get_inference_action_dist_cls()
             action_dist = action_dist_class.from_logits(
-                input_[SampleBatch.ACTION_DIST_INPUTS]
+                data[SampleBatch.ACTION_DIST_INPUTS]
             )
 
             # TODO (sven): Should this not already be taken care of by RLModule's
@@ -120,8 +120,8 @@ class DefaultModuleToEnv(ConnectorV2):
                 action_dist = action_dist.to_deterministic()
 
         # If `forward_...()` returned actions, use them here as-is.
-        if SampleBatch.ACTIONS in input_:
-            actions = input_[SampleBatch.ACTIONS]
+        if SampleBatch.ACTIONS in data:
+            actions = data[SampleBatch.ACTIONS]
         # Otherwise, sample actions from the distribution.
         else:
             if action_dist is None:
@@ -134,10 +134,8 @@ class DefaultModuleToEnv(ConnectorV2):
 
         # For convenience and if possible, compute action logp from distribution
         # and add to output.
-        if action_dist is not None and SampleBatch.ACTION_LOGP not in input_:
-            input_[SampleBatch.ACTION_LOGP] = convert_to_numpy(
-                action_dist.logp(actions)
-            )
+        if action_dist is not None and SampleBatch.ACTION_LOGP not in data:
+            data[SampleBatch.ACTION_LOGP] = convert_to_numpy(action_dist.logp(actions))
 
         actions = convert_to_numpy(actions)
 
@@ -149,9 +147,9 @@ class DefaultModuleToEnv(ConnectorV2):
         elif self.clip_actions:
             actions = clip_action(actions, self._action_space_struct)
 
-        input_[SampleBatch.ACTIONS] = actions
+        data[SampleBatch.ACTIONS] = actions
 
         # Convert everything into numpy.
-        input_ = convert_to_numpy(input_)
+        data = convert_to_numpy(data)
 
-        return input_
+        return data

@@ -19,16 +19,15 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         self,
         *,
         # Base class constructor args.
-        input_observation_space: Optional[gym.Space],
-        input_action_space: Optional[gym.Space],
-        env: Optional[gym.Env] = None,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
         # Specific prev. r/a args.
         n_prev_actions: int = 1,
         n_prev_rewards: int = 1,
         as_learner_connector: bool = False,
         **kwargs,
     ):
-        """Initializes a PrevRewardPrevActionConnector instance.
+        """Initializes a _PrevRewardPrevActionConnector instance.
 
         Args:
             n_prev_actions: The number of previous actions to include in the output
@@ -42,7 +41,6 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         super().__init__(
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
-            env=env,
             **kwargs,
         )
 
@@ -55,16 +53,16 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        input_: Optional[Any],
+        data: Optional[Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # This is a data-in-data-out connector, so we expect `input_` to be a dict
-        # with: key=column name, e.g. "obs" and value=[data to be processed by RLModule].
-        # We will just extract the most recent rewards and/or most recent actions from
-        # all episodes and store them inside the `input_` data dict.
+        # This is a data-in-data-out connector, so we expect `data` to be a dict
+        # with: key=column name, e.g. "obs" and value=[data to be processed by
+        # RLModule]. We will just extract the most recent rewards and/or most recent
+        # actions from all episodes and store them inside the `data` data dict.
 
         prev_a = []
         prev_r = []
@@ -82,9 +80,10 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                         episode.get_actions(
                             # Extract n actions from `ts - n` to `ts` (excluding `ts`).
                             indices=slice(ts - self.n_prev_actions, ts),
-                            # Make sure negative indices are NOT interpreted as "counting
-                            # from the end", but as absolute indices meaning they refer
-                            # to timesteps before 0 (which is the lookback buffer).
+                            # Make sure negative indices are NOT interpreted as
+                            # "counting from the end", but as absolute indices meaning
+                            # they refer to timesteps before 0 (which is the lookback
+                            # buffer).
                             neg_indices_left_of_zero=True,
                             # In case we are at the very beginning of the episode, e.g.
                             # ts==0, fill the left side with zero-actions.
@@ -123,9 +122,9 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                     )
                 )
 
-        input_[SampleBatch.PREV_ACTIONS] = batch(prev_a)
-        input_[SampleBatch.PREV_REWARDS] = np.array(prev_r)
-        return input_
+        data[SampleBatch.PREV_ACTIONS] = batch(prev_a)
+        data[SampleBatch.PREV_REWARDS] = np.array(prev_r)
+        return data
 
 
 PrevRewardPrevActionEnvToModule = partial(

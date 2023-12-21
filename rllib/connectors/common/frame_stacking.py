@@ -1,4 +1,3 @@
-from functools import partial
 import numpy as np
 from typing import Any, List, Optional
 
@@ -22,7 +21,6 @@ class _FrameStackingConnector(ConnectorV2):
         # Base class constructor args.
         input_observation_space: gym.Space,
         input_action_space: gym.Space,
-        env: Optional[gym.Env] = None,
         # Specific framestacking args.
         num_frames: int = 1,
         as_learner_connector: bool = False,
@@ -44,7 +42,6 @@ class _FrameStackingConnector(ConnectorV2):
         super().__init__(
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
-            env=env,
             **kwargs,
         )
 
@@ -70,15 +67,15 @@ class _FrameStackingConnector(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        input_: Optional[Any],
+        data: Optional[Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # This is a data-in-data-out connector, so we expect `input_` to be a dict
+        # This is a data-in-data-out connector, so we expect `data` to be a dict
         # with: key=column name, e.g. "obs" and value=[data to be processed by
-        # RLModule]. We will add to `input_` the last n observations.
+        # RLModule]. We will add to `data` the last n observations.
         observations = []
 
         # Learner connector pipeline. Episodes have been finalized/numpy'ized.
@@ -88,7 +85,6 @@ class _FrameStackingConnector(ConnectorV2):
                 def _map_fn(s):
                     # Squeeze out last dim.
                     s = np.squeeze(s, axis=-1)
-                    N = s.shape[0]
                     # Calculate new shape and strides
                     new_shape = (len(episode), self.num_frames) + s.shape[1:]
                     new_strides = (s.strides[0],) + s.strides
@@ -112,7 +108,7 @@ class _FrameStackingConnector(ConnectorV2):
                 )
 
             # Move stack-dimension to the end and concatenate along batch axis.
-            input_[SampleBatch.OBS] = tree.map_structure(
+            data[SampleBatch.OBS] = tree.map_structure(
                 lambda *s: np.transpose(np.concatenate(s, axis=0), axes=[0, 2, 3, 1]),
                 *observations,
             )
@@ -135,6 +131,6 @@ class _FrameStackingConnector(ConnectorV2):
                 )
                 observations.append(stacked_obs)
 
-            input_[SampleBatch.OBS] = batch(observations)
+            data[SampleBatch.OBS] = batch(observations)
 
-        return input_
+        return data

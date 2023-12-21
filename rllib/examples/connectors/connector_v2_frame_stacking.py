@@ -69,7 +69,8 @@ if __name__ == "__main__":
         # here, which RLlib will then automatically integrate into a pipeline (and
         # add its default connector piece to the end of that pipeline).
         return FrameStackingEnvToModule(
-            env=env,
+            input_observation_space=env.single_observation_space,
+            input_action_space=env.single_action_space,
             num_frames=args.num_frames,
         )
 
@@ -81,7 +82,7 @@ if __name__ == "__main__":
             num_frames=args.num_frames,
         )
 
-    # Create a custom Atari setup (w/o the usual Rllib-hard-coded framestacking in it).
+    # Create a custom Atari setup (w/o the usual RLlib-hard-coded framestacking in it).
     # We would like our frame stacking connector to do this job.
     tune.register_env(
         "env",

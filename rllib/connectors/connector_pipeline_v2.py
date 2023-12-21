@@ -1,6 +1,6 @@
 from collections import defaultdict
 import logging
-from typing import Any, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -33,10 +33,10 @@ class ConnectorPipelineV2(ConnectorV2):
     def __call__(
         self,
         rl_module: RLModule,
-        input_: Any,
+        data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         """In a pipeline, we simply call each of our connector pieces after each other.
@@ -46,16 +46,16 @@ class ConnectorPipelineV2(ConnectorV2):
         """
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
-        ret = input_
+        ret = data
         for connector in self.connectors:
             timer = self.timers[str(connector)]
             with timer:
                 ret = connector(
                     rl_module=rl_module,
-                    input_=ret,
+                    data=ret,
                     episodes=episodes,
                     explore=explore,
-                    persistent_data=persistent_data,
+                    shared_data=shared_data,
                     **kwargs,
                 )
         return ret
@@ -183,57 +183,22 @@ class ConnectorPipelineV2(ConnectorV2):
             f"{self.__class__.__name__}."
         )
 
-    def __call__(
-        self,
-        rl_module: RLModule,
-        input_: Any,
-        episodes: List[EpisodeType],
-        explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
-        **kwargs,
-    ) -> Any:
-        ret = input_
-        for connector in self.connectors:
-            timer = self.timers[str(connector)]
-            with timer:
-                ret = connector(
-                    rl_module=rl_module,
-                    input_=ret,
-                    episodes=episodes,
-                    explore=explore,
-                    persistent_data=persistent_data,
-                    **kwargs,
-                )
-        return ret
+    @override(ConnectorV2)
+    def get_state(self) -> Dict[str, Any]:
+        states = {}
+        for i, connector in enumerate(self.connectors):
+            key = f"{i:03d}_{type(connector).__name__}"
+            state = connector.get_state()
+            states[key] = state
+        return states
 
-    # @override(ConnectorV2)
-    # def serialize(self):
-    #    children = []
-    #    for c in self.connectors:
-    #        state = c.serialize()
-    #        assert isinstance(state, tuple) and len(state) == 2, (
-    #            "Serialized connector state must be in the format of "
-    #            f"Tuple[name: str, params: Any]. Instead we got {state}"
-    #            f"for connector {c.__name__}."
-    #        )
-    #        children.append(state)
-    #    return ConnectorPipelineV2.__name__, children
-    #
-    # @override(ConnectorV2)
-    # @staticmethod
-    # def from_state(ctx: ConnectorContextV2, params: List[Any]):
-    #    assert (
-    #        type(params) == list
-    #    ), "AgentConnectorPipeline takes a list of connector params."
-    #    connectors = []
-    #    for state in params:
-    #        try:
-    #            name, subparams = state
-    #            connectors.append(get_connector(name, ctx, subparams))
-    #        except Exception as e:
-    #            logger.error(f"Failed to de-serialize connector state: {state}")
-    #            raise e
-    #    return ConnectorPipelineV2(ctx, connectors)
+    @override(ConnectorV2)
+    def set_state(self, state: Dict[str, Any]) -> None:
+        for i, connector in enumerate(self.connectors):
+            key = f"{i:03d}_{type(connector).__name__}"
+            if key not in state:
+                raise KeyError(f"No state found in `state` for connector piece: {key}!")
+            connector.set_state(state[key])
 
     def __repr__(self, indentation: int = 0):
         return "\n".join(

@@ -529,7 +529,7 @@ def _fetch_metadata_parallel(
     **ray_remote_args,
 ) -> Iterator[Meta]:
     """Fetch file metadata in parallel using Ray tasks."""
-    remote_fetch_func = cached_remote_fn(fetch_func, num_cpus=0.5)
+    remote_fetch_func = cached_remote_fn(fetch_func)
     if ray_remote_args:
         remote_fetch_func = remote_fetch_func.options(**ray_remote_args)
     # Choose a parallelism that results in a # of metadata fetches per task that

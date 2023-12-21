@@ -257,6 +257,23 @@ class NormalizedImageEnv(gym.ObservationWrapper):
 
 
 @PublicAPI
+class NormalizedImageEnv(gym.ObservationWrapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.observation_space = gym.spaces.Box(
+            -1.0,
+            1.0,
+            shape=self.observation_space.shape,
+            dtype=np.float32,
+        )
+
+    # Divide by scale and center around 0.0, such that observations are in the range
+    # of -1.0 and 1.0.
+    def observation(self, observation):
+        return (observation.astype(np.float32) / 128.0) - 1.0
+
+
+@PublicAPI
 class WarpFrame(gym.ObservationWrapper):
     def __init__(self, env, dim):
         """Warp frames to the specified size (dim x dim)."""

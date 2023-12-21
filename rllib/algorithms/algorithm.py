@@ -3034,10 +3034,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         eval_func_to_use = (
             self._evaluate_async_with_env_runner
-            if (
-                self.config.enable_async_evaluation
-                and self._uses_new_env_runners
-            )
+            if self.config.enable_async_evaluation and self._uses_new_env_runners
             else self._evaluate_async
             if self.config.enable_async_evaluation
             else self.evaluate
