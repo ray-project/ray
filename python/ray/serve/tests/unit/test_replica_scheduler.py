@@ -1200,16 +1200,22 @@ async def test_queue_len_response_deadline_backoff(pow_2_scheduler, fake_query):
 
     # Verify that the deadline never exceeds the max and deadline_n+1 is equal to
     # the max or 2*deadline_n.
-    for i,j in zip(
-        range(0, len(r1.queue_len_deadline_history)-1),
+    for i, j in zip(
+        range(0, len(r1.queue_len_deadline_history) - 1),
         range(1, len(r1.queue_len_deadline_history)),
     ):
         deadline_i = r1.queue_len_deadline_history[i]
         deadline_j = r1.queue_len_deadline_history[j]
         print(deadline_i, deadline_j)
-        assert deadline_i <= deadline_j and deadline_j <= s.max_queue_len_response_deadline_s
+        assert (
+            deadline_i <= deadline_j
+            and deadline_j <= s.max_queue_len_response_deadline_s
+        )
         if deadline_i < s.max_queue_len_response_deadline_s:
-            assert (deadline_j == s.max_queue_len_response_deadline_s or deadline_j == 2*deadline_i)
+            assert (
+                deadline_j == s.max_queue_len_response_deadline_s
+                or deadline_j == 2 * deadline_i
+            )
 
     r1.set_queue_state_response(0, accepted=True)
     assert (await task) == r1
@@ -1235,7 +1241,9 @@ async def test_max_queue_len_response_deadline(pow_2_scheduler, fake_query):
     done, _ = await asyncio.wait([task], timeout=0.2)
     assert len(done) == 0
 
-    assert all(d == s.queue_len_response_deadline_s for d in r1.queue_len_deadline_history)
+    assert all(
+        d == s.queue_len_response_deadline_s for d in r1.queue_len_deadline_history
+    )
 
     r1.set_queue_state_response(0, accepted=True)
     assert (await task) == r1
