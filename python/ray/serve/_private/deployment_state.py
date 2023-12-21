@@ -1424,7 +1424,6 @@ class DeploymentState:
         self,
         target_info: DeploymentInfo,
         target_num_replicas: int,
-        autoscale: bool = False,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
@@ -1454,36 +1453,6 @@ class DeploymentState:
                 != new_target_state.version.deployment_config.num_replicas
             ):
                 ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
-
-        # Determine if the updated target state simply scales the current state.
-        if new_target_state.is_scaled_copy_of(self._target_state):
-            curr_num = self._target_state.target_num_replicas
-            new_num = new_target_state.target_num_replicas
-            should_autoscale = (
-                self.should_autoscale() and self._is_within_autoscaling_bounds()
-            )
-
-            if new_num > curr_num:
-                self._curr_status_info = self._curr_status_info.handle_transition(
-                    DeploymentStatusInternalTrigger.AUTOSCALE_UP
-                    if autoscale
-                    else DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS,
-                    message=f"Upscaling from {curr_num} to {new_num} replicas.",
-                    should_autoscale=should_autoscale,
-                )
-            elif new_num < curr_num:
-                self._curr_status_info = self._curr_status_info.handle_transition(
-                    DeploymentStatusInternalTrigger.AUTOSCALE_DOWN
-                    if autoscale
-                    else DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS,
-                    message=f"Downscaling from {curr_num} to {new_num} replicas.",
-                    should_autoscale=should_autoscale,
-                )
-        else:
-            # Otherwise, the deployment configuration has actually been updated.
-            self._curr_status_info = self._curr_status_info.handle_transition(
-                DeploymentStatusInternalTrigger.CONFIG_UPDATE
-            )
 
         self._target_state = new_target_state
 
@@ -1550,7 +1519,29 @@ class DeploymentState:
                 deployment_info.target_capacity,
             )
 
+        old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
+
+        # Determine if the updated target state simply scales the current state.
+        if self._target_state.is_scaled_copy_of(old_target_state):
+            old_num = old_target_state.target_num_replicas
+            new_num = self._target_state.target_num_replicas
+
+            if new_num > old_num:
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS,
+                    message=f"Upscaling from {old_num} to {new_num} replicas.",
+                )
+            elif new_num < old_num:
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS,
+                    message=f"Downscaling from {old_num} to {new_num} replicas.",
+                )
+        else:
+            # Otherwise, the deployment configuration has actually been updated.
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                DeploymentStatusInternalTrigger.CONFIG_UPDATE
+            )
 
         logger.info(
             f"Deploying new version of deployment {self.deployment_name} in "
@@ -1612,7 +1603,25 @@ class DeploymentState:
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
 
-        self._set_target_state(new_info, decision_num_replicas, autoscale=True)
+        old_num = self._target_state.target_num_replicas
+        self._set_target_state(new_info, decision_num_replicas)
+
+        # The deployment should only transition to UPSCALING/DOWNSCALING
+        # if it's within the autoscaling bounds
+        if not self._is_within_autoscaling_bounds():
+            return
+
+        new_num = self._target_state.target_num_replicas
+        if new_num > old_num:
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                DeploymentStatusInternalTrigger.AUTOSCALE_UP,
+                message=f"Upscaling from {old_num} to {new_num} replicas.",
+            )
+        elif new_num < old_num:
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
+                message=f"Downscaling from {old_num} to {new_num} replicas.",
+            )
 
     def _is_within_autoscaling_bounds(self) -> bool:
         """Whether or not this deployment is within the autoscaling bounds.

@@ -260,29 +260,17 @@ class DeploymentStatusInfo:
 
             # Autoscaling.
             elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP:
-                # The deployment should only transition to UPSCALING if
-                # it's within the autoscaling bounds
-                if should_autoscale:
-                    return self._update(
-                        status=DeploymentStatus.UPSCALING,
-                        status_trigger=DeploymentStatusTrigger.AUTOSCALING,
-                        message=message,
-                    )
-                # Otherwise, the status doesn't change
-                else:
-                    return self
+                return self._update(
+                    status=DeploymentStatus.UPSCALING,
+                    status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+                    message=message,
+                )
             elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN:
-                # The deployment should only transition to DOWNSCALING if
-                # it's within the autoscaling bounds
-                if should_autoscale:
-                    return self._update(
-                        status=DeploymentStatus.DOWNSCALING,
-                        status_trigger=DeploymentStatusTrigger.AUTOSCALING,
-                        message=message,
-                    )
-                # Otherwise, the status doesn't change
-                else:
-                    return self
+                return self._update(
+                    status=DeploymentStatus.DOWNSCALING,
+                    status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+                    message=message,
+                )
 
             # Manually increasing or decreasing num replicas does not
             # change the status while deployment is still updating.
