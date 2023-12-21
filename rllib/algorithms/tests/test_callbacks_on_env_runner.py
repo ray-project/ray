@@ -69,13 +69,14 @@ class TestCallbacks(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_episode_and_sample_callbacks(self):
+    def test_episode_and_sample_callbacks_batch_mode_truncate_episodes(self):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
+                batch_mode="truncate_episodes",
                 env_runner_cls=SingleAgentEnvRunner,
             )
             .callbacks(EpisodeAndSampleCallbacks)
@@ -105,6 +106,48 @@ class TestCallbacks(unittest.TestCase):
             )
             # We must have taken exactly `train_batch_size` steps.
             self.assertEqual(callback_obj.counts["step"], 50)
+
+            # We are still expecting to only have one env created.
+            self.assertEqual(callback_obj.counts["env_created"], 1)
+
+            algo.stop()
+
+    def test_episode_and_sample_callbacks_batch_mode_complete_episodes(self):
+        config = (
+            PPOConfig()
+            .experimental(_enable_new_api_stack=True)
+            .environment("CartPole-v1")
+            .rollouts(
+                batch_mode="complete_episodes",
+                env_runner_cls=SingleAgentEnvRunner,
+                num_rollout_workers=0,
+            )
+            .callbacks(EpisodeAndSampleCallbacks)
+            .training(
+                train_batch_size=50,  # <- rollout_fragment_length=50
+                sgd_minibatch_size=50,
+                num_sgd_iter=1,
+            )
+        )
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+            algo = config.build()
+            callback_obj = algo.workers.local_worker()._callbacks
+
+            # We must have had exactly one env creation event (already before training).
+            self.assertEqual(callback_obj.counts["env_created"], 1)
+
+            # Train one iteration.
+            algo.train()
+            # We must have has exactly one `sample()` call on our EnvRunner.
+            self.assertEqual(callback_obj.counts["sample"], 1)
+            # We should have had at least one episode start.
+            self.assertGreater(callback_obj.counts["start"], 0)
+            # Episode starts must be exact same as episode ends (b/c we always complete
+            # all episodes).
+            self.assertTrue(callback_obj.counts["start"] == callback_obj.counts["end"])
+            # We must have taken >= `train_batch_size` steps (b/c we complete all
+            # episodes).
+            self.assertGreaterEqual(callback_obj.counts["step"], 50)
 
             # We are still expecting to only have one env created.
             self.assertEqual(callback_obj.counts["env_created"], 1)

@@ -124,34 +124,53 @@ class SingleAgentEnvRunner(EnvRunner):
         """Runs and returns a sample (n timesteps or m episodes) on the env(s)."""
         assert not (num_timesteps is not None and num_episodes is not None)
 
-        # If not execution details are provided, use the config.
-        if num_timesteps is None and num_episodes is None:
-            if self.config.batch_mode == "truncate_episodes":
-                num_timesteps = (
-                    self.config.get_rollout_fragment_length(
-                        worker_index=self.worker_index
-                    )
-                    * self.num_envs
-                )
-            else:
-                num_episodes = self.num_envs
+        # If no execution details are provided, use the config to try to infer the
+        # desired timesteps/episodes to sample.
+        if (
+            num_timesteps is None
+            and num_episodes is None
+            and self.config.batch_mode == "truncate_episodes"
+        ):
+            num_timesteps = (
+                self.config.get_rollout_fragment_length(worker_index=self.worker_index)
+                * self.num_envs
+            )
 
         # Sample n timesteps.
         if num_timesteps is not None:
-            return self._sample_timesteps(
+            samples = self._sample_timesteps(
                 num_timesteps=num_timesteps,
                 explore=explore,
                 random_actions=random_actions,
                 force_reset=False,
             )
         # Sample m episodes.
-        else:
-            return self._sample_episodes(
+        elif num_episodes is not None:
+            samples = self._sample_episodes(
                 num_episodes=num_episodes,
                 explore=explore,
                 random_actions=random_actions,
                 with_render_data=with_render_data,
             )
+        # For complete episodes mode, sample as long as the number of timesteps
+        # done is smaller than the `train_batch_size`.
+        else:
+            total = 0
+            samples = []
+            while total < self.config.train_batch_size:
+                episodes = self._sample_episodes(
+                    num_episodes=self.num_envs,
+                    explore=explore,
+                    random_actions=random_actions,
+                    with_render_data=with_render_data,
+                )
+                total += sum(len(e) for e in episodes)
+                samples.extend(episodes)
+
+        # Make the `on_sample_end` callback.
+        self._callbacks.on_sample_end(env_runner=self, samples=samples)
+
+        return samples
 
     def _sample_timesteps(
         self,
@@ -355,7 +374,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Make the `on_sample_end` callback.
         samples = done_episodes_to_return + ongoing_episodes_to_return
-        self._callbacks.on_sample_end(env_runner=self, samples=samples)
 
         return samples
 
@@ -521,8 +539,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Initialized episodes have to be removed as they lack `extra_model_outputs`.
         samples = [episode for episode in done_episodes_to_return if episode.t > 0]
-        # Make the `on_sample_end` callback.
-        self._callbacks.on_sample_end(env_runner=self, samples=samples)
 
         return samples
 
