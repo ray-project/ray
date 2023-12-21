@@ -72,8 +72,8 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._exception = exception
         self._has_queue_len_response.set()
 
-    async def get_queue_state(self, queue_len_deadline_s: float) -> Tuple[int, bool]:
-        self.queue_len_deadline_history.append(queue_len_deadline_s)
+    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
+        self.queue_len_deadline_history.append(deadline_s)
         try:
             while not self._has_queue_len_response.is_set():
                 await self._has_queue_len_response.wait()
