@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import List, NamedTuple, Optional
+from typing import List, NamedTuple, Optional, Tuple
 
 from ray.actor import ActorHandle
 from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
@@ -140,9 +140,10 @@ class DeploymentStatusInfo:
     message: str = ""
 
     @staticmethod
-    def ranking_order() -> List:
+    def ranking_order() -> List[
+        Tuple[DeploymentStatus, Optional[DeploymentStatusTrigger]]
+    ]:
         """List of states in ranked order.
-
 
         Each ranked state has the format of a tuple with either 1 or 2 items.
         If 1 item: contains a single DeploymentStatus, representing states with
@@ -207,7 +208,20 @@ class DeploymentStatusInfo:
         trigger: DeploymentStatusInternalTrigger,
         message: str = "",
         should_autoscale: bool = False,
-    ):
+    ) -> "DeploymentStatusInfo":
+        """Handles a transition from one state to next state.
+
+        Args:
+            trigger: A (internal) trigger that determines the state
+                transition.
+            message: The message to set in status info.
+            should_autoscale: Whether the state should be allowed to
+                transition to an autoscaling status or not.
+
+        Returns: New instance of DeploymentStatusInfo representing the
+            next state to transition to.
+        """
+
         # If there was an unexpected internal error during reconciliation, set
         # status to unhealthy immediately and return
         if trigger == DeploymentStatusInternalTrigger.INTERNAL_ERROR:
@@ -272,10 +286,10 @@ class DeploymentStatusInfo:
 
             # Manually increasing or decreasing num replicas does not
             # change the status while deployment is still updating.
-            elif trigger in [
+            elif trigger in {
                 DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS,
                 DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS,
-            ]:
+            }:
                 return self
 
             # Failures occurred
@@ -292,7 +306,7 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
-        elif self.status in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]:
+        elif self.status in {DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING}:
             # Deployment transitions to healthy
             if trigger == DeploymentStatusInternalTrigger.HEALTHY:
                 return self._update(

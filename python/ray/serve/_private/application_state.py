@@ -454,12 +454,12 @@ class ApplicationState:
         if self._target_state.deleting:
             return ApplicationStatus.DELETING, ""
 
-        ranked = sorted(self.get_deployments_statuses(), key=lambda info: info.rank)
-        choice_status = ranked[0].status
-        choice_status_trigger = ranked[0].status_trigger
-        if choice_status == DeploymentStatus.UNHEALTHY:
+        choice_status = min(self.get_deployments_statuses(), key=lambda info: info.rank)
+        if choice_status.status == DeploymentStatus.UNHEALTHY:
             unhealthy_deployment_names = [
-                s.name for s in ranked if s.status == DeploymentStatus.UNHEALTHY
+                s.name
+                for s in self.get_deployments_statuses()
+                if s.status == DeploymentStatus.UNHEALTHY
             ]
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
             if self._status in [
@@ -469,11 +469,13 @@ class ApplicationState:
                 return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
-        elif choice_status == DeploymentStatus.UPDATING:
+        elif choice_status.status == DeploymentStatus.UPDATING:
             return ApplicationStatus.DEPLOYING, ""
         elif (
-            choice_status in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
-            and choice_status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+            choice_status.status
+            in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
+            and choice_status.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
         ):
             return ApplicationStatus.DEPLOYING, ""
         else:

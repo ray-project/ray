@@ -1459,6 +1459,9 @@ class DeploymentState:
         if new_target_state.is_scaled_copy_of(self._target_state):
             curr_num = self._target_state.target_num_replicas
             new_num = new_target_state.target_num_replicas
+            should_autoscale = (
+                self.should_autoscale() and self._is_within_autoscaling_bounds()
+            )
 
             if new_num > curr_num:
                 self._curr_status_info = self._curr_status_info.handle_transition(
@@ -1466,8 +1469,7 @@ class DeploymentState:
                     if autoscale
                     else DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS,
                     message=f"Upscaling from {curr_num} to {new_num} replicas.",
-                    should_autoscale=self.should_autoscale()
-                    and self._is_within_autoscaling_bounds(),
+                    should_autoscale=should_autoscale,
                 )
             elif new_num < curr_num:
                 self._curr_status_info = self._curr_status_info.handle_transition(
@@ -1475,8 +1477,7 @@ class DeploymentState:
                     if autoscale
                     else DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS,
                     message=f"Downscaling from {curr_num} to {new_num} replicas.",
-                    should_autoscale=self.should_autoscale()
-                    and self._is_within_autoscaling_bounds(),
+                    should_autoscale=should_autoscale,
                 )
         else:
             # Otherwise, the deployment configuration has actually been updated.
@@ -1548,12 +1549,6 @@ class DeploymentState:
                 deployment_info.deployment_config.num_replicas,
                 deployment_info.target_capacity,
             )
-
-        # Only allow the deployment status to become UPSCALING or DOWNSCALING
-        # if the deployment is not currently UPDATING.
-        # allow_scaling_statuses = (
-        #     self.curr_status_info.status is not DeploymentStatus.UPDATING
-        # )
 
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
 
@@ -2121,7 +2116,7 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = pending_allocation[0].resource_requirements()
-                msg = (
+                message = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' {len(pending_allocation)} replicas that have "
                     f"taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. This "
@@ -2130,29 +2125,33 @@ class DeploymentState:
                     f"replica: {required}, total resources available: {available}. Use "
                     "`ray status` for more details."
                 )
-                logger.warning(msg)
+                logger.warning(message)
                 if _SCALING_LOG_ENABLED:
                     print_verbose_scaling_log()
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info = self._curr_status_info.update_message(msg)
+                    self._curr_status_info = self._curr_status_info.update_message(
+                        message
+                    )
 
             if len(pending_initialization) > 0:
-                msg = (
+                message = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_initialization)} replicas "
                     f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
                     "initialize. This may be caused by a slow __init__ or reconfigure "
                     "method."
                 )
-                logger.warning(msg)
+                logger.warning(message)
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info = self._curr_status_info.update_message(msg)
+                    self._curr_status_info = self._curr_status_info.update_message(
+                        message
+                    )
 
             self._prev_startup_warning = time.time()
 
