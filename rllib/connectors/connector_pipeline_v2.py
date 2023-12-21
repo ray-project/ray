@@ -184,29 +184,21 @@ class ConnectorPipelineV2(ConnectorV2):
         )
 
     @override(ConnectorV2)
-    def get_state(self):
-        children = []
-        for c in self.connectors:
-            state = c.serialize()
-            assert isinstance(state, tuple) and len(state) == 2, (
-                "Serialized connector state must be in the format of "
-                f"Tuple[name: str, params: Any]. Instead we got {state}"
-                f"for connector {c.__name__}."
-            )
-            children.append(state)
-        return ConnectorPipelineV2.__name__, children
+    def get_state(self) -> Dict[str, Any]:
+        states = {}
+        for i, connector in enumerate(self.connectors):
+            key = f"{i:03d}_{type(connector).__name__}"
+            state = connector.get_state()
+            states[key] = state
+        return states
 
     @override(ConnectorV2)
     def set_state(self, state: Dict[str, Any]) -> None:
-        connectors = []
-        for state in params:
-            try:
-                name, subparams = state
-                connectors.append(get_connector(name, ctx, subparams))
-            except Exception as e:
-                logger.error(f"Failed to de-serialize connector state: {state}")
-                raise e
-        return ConnectorPipelineV2(ctx, connectors)
+        for i, connector in enumerate(self.connectors):
+            key = f"{i:03d}_{type(connector).__name__}"
+            if key not in state:
+                raise KeyError(f"No state found in `state` for connector piece: {key}!")
+            connector.set_state(state[key])
 
     def __repr__(self, indentation: int = 0):
         return "\n".join(

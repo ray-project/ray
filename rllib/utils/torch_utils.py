@@ -217,8 +217,8 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
     Returns:
         Any: A new struct with the same structure as `x`, but with all
-            values converted to torch Tensor types. This does not convert possibly
-            nested elements that are None because torch has no representation for that.
+        values converted to torch Tensor types. This does not convert possibly
+        nested elements that are None because torch has no representation for that.
     """
 
     def mapping(item):
