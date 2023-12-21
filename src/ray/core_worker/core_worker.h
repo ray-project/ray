@@ -1429,6 +1429,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 
+  void RunExperimentalChannelIOService();
+
   /// Forcefully exit the worker. `Force` means it will exit actor without draining
   /// or cleaning any resources.
   /// \param exit_type The reason why this worker process is disconnected.

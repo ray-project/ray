@@ -21,13 +21,10 @@ namespace ray {
 
 void ExperimentalChannelManager::PollWriterChannelAndCopyToReader(
     const ObjectID &channel_id,
-    std::shared_ptr<ExperimentalChannelReaderInterface> reader_client) {
+    std::shared_ptr<ExperimentalChannelReaderInterface> reader_client,
+    std::shared_ptr<rpc::PushExperimentalChannelValueRequest> request) {
   std::vector<plasma::ObjectBuffer> objects;
   std::vector<ObjectID> object_ids = {channel_id};
-
-  // TODO(swang): Cache this?
-  rpc::PushExperimentalChannelValueRequest request;
-  request.set_channel_id(channel_id.Binary());
 
   RAY_LOG(DEBUG)
       << "PushExperimentalChannelValue, waiting for next value from sender channel "
@@ -38,29 +35,28 @@ void ExperimentalChannelManager::PollWriterChannelAndCopyToReader(
                                    /*is_from_worker=*/true));
 
   RAY_CHECK(objects.size() == 1);
-  request.set_data_size_bytes(objects[0].data->Size());
-  request.set_metadata_size_bytes(objects[0].metadata->Size());
+  request->set_data_size_bytes(objects[0].data->Size());
+  request->set_metadata_size_bytes(objects[0].metadata->Size());
   // NOTE(swang): This assumes that the format of the object is a contiguous
   // buffer of  (data | metadata).
-  request.set_data(objects[0].data->Data(),
+  request->set_data(objects[0].data->Data(),
                    objects[0].data->Size() + objects[0].metadata->Size());
 
   RAY_LOG(DEBUG) << "PushExperimentalChannelValue, pushing value from sender channel "
                  << channel_id << " to remote reader";
 
   reader_client->PushExperimentalChannelValue(
-      request,
-      [this, channel_id, reader_client](
+      *request,
+      [this, channel_id, reader_client, request](
           const Status &status, const rpc::PushExperimentalChannelValueReply &reply) {
         RAY_CHECK(reply.success());
         plasma_client_->ExperimentalMutableObjectReadRelease(channel_id);
-        PollWriterChannelAndCopyToReader(channel_id, reader_client);
+        PollWriterChannelAndCopyToReader(channel_id, reader_client, std::move(request));
       });
 }
 
 void ExperimentalChannelManager::RegisterCrossNodeWriterChannel(
     const ObjectID &channel_id, const NodeID &node_id) {
-  plasma_client_->ExperimentalMutableObjectRegisterWriter(channel_id);
   auto inserted = write_channels_.insert({channel_id, WriterChannelInfo(node_id)});
   RAY_CHECK(inserted.second);
 
@@ -68,11 +64,14 @@ void ExperimentalChannelManager::RegisterCrossNodeWriterChannel(
   // channel, then sends via RPC to the remote reader.
   auto reader_client = raylet_client_factory_(node_id);
   RAY_CHECK(reader_client);
-  std::thread send_thread([this, channel_id, reader_client]() {
-    PollWriterChannelAndCopyToReader(channel_id, reader_client);
-  });
+  // TODO(swang): This will only work for one channel at a time right now,
+  // because ReadAcquire blocks the event loop.
+  io_service_.post([this, channel_id, reader_client]() {
+      auto request = std::make_shared<rpc::PushExperimentalChannelValueRequest>();
 
-  inserted.first->second.send_thread = std::move(send_thread);
+      request->set_channel_id(channel_id.Binary());
+      PollWriterChannelAndCopyToReader(channel_id, reader_client, std::move(request));
+  }, "ExperimentalChannelManager.PollWriterChannelAndCopyToReader");
 }
 
 void ExperimentalChannelManager::RegisterCrossNodeReaderChannel(
@@ -81,6 +80,7 @@ void ExperimentalChannelManager::RegisterCrossNodeReaderChannel(
     const ObjectID &local_reader_channel_id) {
   RAY_LOG(DEBUG) << "Register cross node reader channel " << channel_id
                  << " to local channel " << local_reader_channel_id;
+  RAY_CHECK_OK(plasma_client_->ExperimentalMutableObjectRegisterWriter(local_reader_channel_id));
   auto inserted = read_channels_.insert(
       {channel_id, ReaderChannelInfo(num_readers, local_reader_channel_id)});
   RAY_CHECK(inserted.second);
@@ -118,6 +118,21 @@ void ExperimentalChannelManager::HandlePushExperimentalChannelValue(
   RAY_CHECK_OK(plasma_client_->ExperimentalMutableObjectWriteRelease(
       it->second.local_reader_channel_id));
   reply->set_success(true);
+}
+
+void ExperimentalChannelManager::RunIOService() {
+#ifndef _WIN32
+  // Block SIGINT and SIGTERM so they will be handled by the main thread.
+  sigset_t mask;
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGTERM);
+  pthread_sigmask(SIG_BLOCK, &mask, NULL);
+#endif
+
+  SetThreadName("worker.channel_io");
+  io_service_.run();
+  RAY_LOG(INFO) << "Core worker channel io service stopped.";
 }
 
 }  // namespace ray

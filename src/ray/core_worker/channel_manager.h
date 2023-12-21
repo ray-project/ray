@@ -17,6 +17,7 @@
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/rpc/client_call.h"
 
 namespace ray {
 
@@ -25,8 +26,19 @@ class ExperimentalChannelManager {
   ExperimentalChannelManager(
       std::shared_ptr<plasma::PlasmaClient> plasma_client,
       std::function<std::shared_ptr<ExperimentalChannelReaderInterface>(
-          const NodeID &node_id)> raylet_client_factory)
-      : plasma_client_(plasma_client), raylet_client_factory_(raylet_client_factory) {}
+          const NodeID &node_id)> raylet_client_factory
+      )
+      : plasma_client_(plasma_client),
+      raylet_client_factory_(raylet_client_factory),
+      io_work_(io_service_),
+      client_call_manager_(new rpc::ClientCallManager(io_service_)) {
+    boost::thread::attributes io_thread_attrs;
+    io_thread_ = boost::thread(io_thread_attrs, [this]() { RunIOService(); });
+  }
+
+  std::unique_ptr<rpc::ClientCallManager> &GetClientCallManager() {
+    return client_call_manager_;
+  }
 
   void RegisterCrossNodeWriterChannel(const ObjectID &channel_id, const NodeID &node_id);
 
@@ -54,14 +66,23 @@ class ExperimentalChannelManager {
     const ObjectID local_reader_channel_id;
   };
 
+  void RunIOService();
+
   void PollWriterChannelAndCopyToReader(
       const ObjectID &object_id,
-      std::shared_ptr<ExperimentalChannelReaderInterface> reader_client);
+      std::shared_ptr<ExperimentalChannelReaderInterface> reader_client,
+      std::shared_ptr<rpc::PushExperimentalChannelValueRequest> request);
 
   std::shared_ptr<plasma::PlasmaClient> plasma_client_;
   std::function<std::shared_ptr<ExperimentalChannelReaderInterface>(
       const NodeID &node_id)>
       raylet_client_factory_;
+
+  instrumented_io_context io_service_;
+  boost::asio::io_service::work io_work_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  boost::thread io_thread_;
+
   absl::flat_hash_map<ObjectID, WriterChannelInfo> write_channels_;
   absl::flat_hash_map<ObjectID, ReaderChannelInfo> read_channels_;
 };

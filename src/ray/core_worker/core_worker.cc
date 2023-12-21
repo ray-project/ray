@@ -368,12 +368,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     auto grpc_client =
         rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
                                            node_info->node_manager_port(),
-                                           *client_call_manager_);
+                                           *channel_manager_->GetClientCallManager());
     return std::shared_ptr<raylet::RayletClient>(
         new raylet::RayletClient(std::move(grpc_client)));
   };
   channel_manager_.reset(new ExperimentalChannelManager(
-      plasma_store_provider_->GetPlasmaClient(), raylet_channel_client_factory));
+      plasma_store_provider_->GetPlasmaClient(),
+      raylet_channel_client_factory));
 
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
@@ -4178,13 +4179,15 @@ void CoreWorker::ExperimentalRegisterCrossNodeReaderChannel(
       channel_id,
       num_readers,
       local_reader_channel_id,
-      [this, &promise](
+      [this, &promise, channel_id](
           const Status &status,
           const rpc::ExperimentalRegisterCrossNodeReaderChannelReply &reply) {
         RAY_CHECK(reply.success());
+        RAY_LOG(DEBUG) << "Received register reply from remote reader for channel " << channel_id;
         promise.set_value();
       });
   future.wait();
+  RAY_LOG(DEBUG) << "Registered remote reader for channel " << channel_id;
 }
 
 void CoreWorker::HandlePushExperimentalChannelValue(
