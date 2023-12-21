@@ -1202,7 +1202,6 @@ def _setup_ray_cluster_internal(
 
     head_ip = cluster.address.split(":")[0]
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
-
     return cluster.address, remote_connection_address
 
 
