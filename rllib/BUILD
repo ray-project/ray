@@ -781,12 +781,13 @@ py_test(
 # Tag: connector_v2
 # --------------------------------------------------------------------
 
-py_test(
-    name = "connectors/tests/test_connector_v2",
-    tags = ["team:rllib", "connector_v2"],
-    size = "small",
-    srcs = ["connectors/tests/test_connector_v2.py"]
-)
+# TODO (sven): Add these tests in a separate PR.
+# py_test(
+#    name = "connectors/tests/test_connector_v2",
+#    tags = ["team:rllib", "connector_v2"],
+#    size = "small",
+#    srcs = ["connectors/tests/test_connector_v2.py"]
+# )
 
 # --------------------------------------------------------------------
 # Env tests

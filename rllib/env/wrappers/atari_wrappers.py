@@ -240,6 +240,7 @@ class MaxAndSkipEnv(gym.Wrapper):
         return self.env.reset(**kwargs)
 
 
+@PublicAPI
 class NormalizedImageEnv(gym.ObservationWrapper):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

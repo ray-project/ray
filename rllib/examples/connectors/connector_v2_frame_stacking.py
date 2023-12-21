@@ -82,7 +82,7 @@ if __name__ == "__main__":
             num_frames=args.num_frames,
         )
 
-    # Create a custom Atari setup (w/o the usual Rllib-hard-coded framestacking in it).
+    # Create a custom Atari setup (w/o the usual RLlib-hard-coded framestacking in it).
     # We would like our frame stacking connector to do this job.
     tune.register_env(
         "env",
