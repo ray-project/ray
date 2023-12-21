@@ -15,6 +15,7 @@ Test owner: justinvyu
 
 import collections
 from contextlib import contextmanager
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,7 @@ import shutil
 import subprocess
 import time
 from typing import Any, Dict
+import uuid
 
 import fsspec
 import numpy as np
@@ -46,6 +48,13 @@ from test_new_persistence import (
     _assert_storage_contents,
     _resume_from_checkpoint,
 )
+
+# Add a unique ID to the storage path to avoid collisions between release test runs.
+TEST_ID = uuid.uuid4().hex[:4] + "_" + datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+CLOUD_TEST_DIR = (
+    os.environ["ANYSCALE_ARTIFACT_STORAGE"] + f"/test-persistence-{TEST_ID}/"
+)
+NFS_TEST_DIR = f"/mnt/cluster_storage/test-persistence-{TEST_ID}/"
 
 
 class TestConstants:
@@ -170,20 +179,14 @@ def download_from_uri(uri: str, local_path: str):
 
 
 @pytest.mark.parametrize(
-    "storage_path_storage_filesystem_label",
+    "root_path_storage_filesystem_label",
     [
-        (os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence/", None, "cloud"),
-        ("/mnt/cluster_storage/test-persistence", None, "nfs"),
-        (
-            strip_prefix(
-                os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence/"
-            ),
-            get_custom_cloud_fs(),
-            "cloud+custom_fs",
-        ),
+        (CLOUD_TEST_DIR, None, "cloud"),
+        (NFS_TEST_DIR, None, "nfs"),
+        (strip_prefix(CLOUD_TEST_DIR), get_custom_cloud_fs(), "cloud+custom_fs"),
     ],
 )
-def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
+def test_trainer(root_path_storage_filesystem_label, tmp_path, monkeypatch):
     """Tests that a data parallel trainer can save and restore checkpoints to
     various storage types properly. Also records checkpoint save/restore timing.
 
@@ -204,19 +207,17 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
 
     ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
 
-    storage_path, storage_filesystem, label = storage_path_storage_filesystem_label
+    root_path, storage_filesystem, label = root_path_storage_filesystem_label
+    storage_path = root_path + label
     checkpoint_config = train.CheckpointConfig(
         num_to_keep=TestConstants.NUM_ITERATIONS // 2
     )
     exp_name = "test_trainer"
 
-    print("Deleting files from previous run...")
-    if "cloud" in label:
-        # NOTE: Use the CLI to delete files on cloud, since the python libraries
-        # (pyarrow, fsspec) aren't consistent across cloud platforms (s3, gs).
-        delete_at_uri(os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence/")
-    else:
-        shutil.rmtree(storage_path, ignore_errors=True)
+    print(
+        "\nSaving results under (storage_path, exp_name) = "
+        f"({storage_path}, {exp_name})\n"
+    )
 
     trainer = TorchTrainer(
         train_fn,
@@ -235,7 +236,7 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
         ),
         run_config=train.RunConfig(
             failure_config=train.FailureConfig(max_failures=2),
-            name="test_trainer",
+            name=exp_name,
             storage_path=storage_path,
             storage_filesystem=storage_filesystem,
             checkpoint_config=checkpoint_config,
@@ -261,12 +262,13 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
     if "cloud" in label:
         # NOTE: Use the CLI to download, since the python libraries
         # (pyarrow, fsspec) aren't consistent across cloud platforms (s3, gs).
-        download_from_uri(
-            os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence/",
-            str(local_inspect_dir),
-        )
-    else:
+        cloud_uri = CLOUD_TEST_DIR + label
+        print("\nDownloading from cloud URI:", cloud_uri, "\n")
+        download_from_uri(cloud_uri, str(local_inspect_dir))
+    elif label == "nfs":
         local_inspect_dir = Path(storage_path)
+    else:
+        raise NotImplementedError(f"Invalid storage type: {label}")
 
     _assert_storage_contents(
         local_inspect_dir,
@@ -311,6 +313,16 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
 
     print(aggregated_metrics)
     update_output_json(flatten_dict({label: aggregated_metrics}))
+
+    print("Deleting files from the run...")
+    if "cloud" in label:
+        # NOTE: Use the CLI to delete files on cloud, since the python libraries
+        # (pyarrow, fsspec) aren't consistent across cloud platforms (s3, gs).
+        delete_at_uri(CLOUD_TEST_DIR)
+    elif label == "nfs":
+        shutil.rmtree(NFS_TEST_DIR, ignore_errors=True)
+    else:
+        raise NotImplementedError(f"Invalid storage type: {label}")
 
 
 def test_no_storage_error(tmp_path, monkeypatch):

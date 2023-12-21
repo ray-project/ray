@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
 
-import pytest
 import pyarrow.fs
+import pytest
 
 import ray.cloudpickle as ray_pickle
 from ray.train import Checkpoint, SyncConfig
@@ -11,7 +11,6 @@ from ray.train._internal.storage import (
     StorageContext,
     _list_at_fs_path,
 )
-
 from ray.train.tests.test_new_persistence import _resolve_storage_type
 
 

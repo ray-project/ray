@@ -21,7 +21,7 @@ A RayService manages these components:
 * **Kubernetes-native support for Ray clusters and Ray Serve applications:** After using a Kubernetes config to define a Ray cluster and its Ray Serve applications, you can use `kubectl` to create the cluster and its applications.
 * **In-place updating for Ray Serve applications:** See [RayService](kuberay-rayservice) for more details.
 * **Zero downtime upgrading for Ray clusters:** See [RayService](kuberay-rayservice) for more details.
-* **High-availabilable services:** See [RayService](kuberay-rayservice) for more details.
+* **High-availabilable services:** See [RayService high availability](kuberay-rayservice-ha) for more details.
 
 ## Example: Serve two simple Ray Serve applications using RayService
 
@@ -40,7 +40,7 @@ Please note that the YAML file in this example uses `serveConfigV2` to specify a
 
 ```sh
 # Step 3.1: Download `ray_v1alpha1_rayservice.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
 
 # Step 3.2: Create a RayService
 kubectl apply -f ray_v1alpha1_rayservice.yaml

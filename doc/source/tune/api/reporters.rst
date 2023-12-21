@@ -95,11 +95,13 @@ Reporter Interface (tune.ProgressReporter)
 ------------------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ProgressReporter
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ProgressReporter.report
@@ -110,6 +112,7 @@ Tune Built-in Reporters
 -----------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     CLIReporter

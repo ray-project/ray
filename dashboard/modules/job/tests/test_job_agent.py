@@ -253,12 +253,27 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
-    wait_for_condition(
-        partial(
-            _check_job, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
-        ),
-        timeout=60,
-    )
+    try:
+        job_start_time = time.time()
+        wait_for_condition(
+            partial(
+                _check_job,
+                client=head_client,
+                job_id=job_id,
+                status=JobStatus.SUCCEEDED,
+            ),
+            timeout=300,
+        )
+        job_duration = time.time() - job_start_time
+        print(f"The job took {job_duration}s to succeed.")
+    except RuntimeError as e:
+        # If the job is still pending, include job logs and info in error.
+        if head_client.get_job_status(job_id) == JobStatus.PENDING:
+            logs = head_client.get_job_logs(job_id)
+            info = head_client.get_job_info(job_id)
+            raise RuntimeError(
+                f"Job was stuck in PENDING.\nLogs: {logs}\nInfo: {info}"
+            ) from e
 
     # There is only one node, so there is no need to replace the client of the JobAgent
     resp = await agent_client.get_job_logs_internal(job_id)

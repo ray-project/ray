@@ -127,10 +127,10 @@ def test_scheduling_placement_groups_during_draining(ray_start_cluster):
     """Test that the draining node is unschedulable for new pgs."""
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, resources={"node1": 1})
+    ray.init(address=cluster.address)
     cluster.add_node(num_cpus=1, resources={"node2": 1})
     cluster.add_node(num_cpus=2, resources={"node3": 1})
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
 
     @ray.remote
     def get_node_id():
@@ -246,6 +246,51 @@ def test_scheduling_tasks_and_actors_during_draining(ray_start_cluster):
 
     ray.kill(head_actor)
     ray.get(obj, timeout=2) == head_node_id
+
+
+@pytest.mark.parametrize(
+    "graceful",
+    [False, True],
+)
+def test_draining_reason(ray_start_cluster, graceful):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"node1": 1})
+    ray.init(
+        address=cluster.address,
+    )
+    n = cluster.add_node(num_cpus=1, resources={"node2": 1})
+
+    @ray.remote
+    class Actor:
+        def ping(self):
+            pass
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    node2_id = ray.get(get_node_id.options(resources={"node2": 1}).remote())
+
+    # Schedule actor
+    actor = Actor.options(num_cpus=0, resources={"node2": 1}).remote()
+    ray.get(actor.ping.remote())
+
+    # Preemption is always accepted.
+    is_accepted = gcs_client.drain_node(
+        node2_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+    )
+    assert is_accepted
+
+    cluster.remove_node(n, graceful)
+    try:
+        ray.get(actor.ping.remote())
+        raise
+    except ray.exceptions.RayActorError as e:
+        assert e.preempted
 
 
 if __name__ == "__main__":

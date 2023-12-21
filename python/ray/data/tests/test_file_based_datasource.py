@@ -1,44 +1,56 @@
 import os
+from typing import Iterator
+from unittest import mock
 
 import pyarrow
 import pytest
 
 import ray
-from ray.data.block import BlockAccessor
-from ray.data.datasource import FileBasedDatasource
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import (
     OPEN_FILE_MAX_ATTEMPTS,
+    FileBasedDatasource,
     _open_file_with_retry,
 )
+from ray.data.datasource.path_util import _is_local_windows_path
 
 
 class MockFileBasedDatasource(FileBasedDatasource):
-    def _write_block(
-        self, f: "pyarrow.NativeFile", block: BlockAccessor, **writer_args
-    ):
-        f.write(b"")
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+        builder = DelegatingBlockBuilder()
+        builder.add({"data": f.readall()})
+        yield builder.build()
 
 
-@pytest.mark.parametrize("num_rows", [0, 1])
-def test_write_preserves_user_directory(num_rows, tmp_path, ray_start_regular_shared):
-    ds = ray.data.range(num_rows)
-    path = os.path.join(tmp_path, "test")
-    os.mkdir(path)  # User-created directory
+def test_include_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test.txt")
+    with open(path, "w"):
+        pass
 
-    ds.write_datasource(MockFileBasedDatasource(), dataset_uuid=ds._uuid, path=path)
+    datasource = MockFileBasedDatasource(path, include_paths=True)
+    ds = ray.data.read_datasource(datasource)
 
-    assert os.path.isdir(path)
+    paths = [row["path"] for row in ds.take_all()]
+    assert paths == [path]
 
 
-def test_write_creates_dir(tmp_path, ray_start_regular_shared):
-    ds = ray.data.range(1)
-    path = os.path.join(tmp_path, "test")
+def test_file_extensions(ray_start_regular_shared, tmp_path):
+    csv_path = os.path.join(tmp_path, "file.csv")
+    with open(csv_path, "w") as file:
+        file.write("spam")
 
-    ds.write_datasource(
-        MockFileBasedDatasource(), dataset_uuid=ds._uuid, path=path, try_create_dir=True
-    )
+    txt_path = os.path.join(tmp_path, "file.txt")
+    with open(txt_path, "w") as file:
+        file.write("ham")
 
-    assert os.path.isdir(path)
+    datasource = MockFileBasedDatasource([csv_path, txt_path], file_extensions=None)
+    ds = ray.data.read_datasource(datasource)
+    assert sorted(ds.input_files()) == sorted([csv_path, txt_path])
+
+    datasource = MockFileBasedDatasource([csv_path, txt_path], file_extensions=["csv"])
+    ds = ray.data.read_datasource(datasource)
+    assert ds.input_files() == [csv_path]
 
 
 def test_open_file_with_retry(ray_start_regular_shared):
@@ -71,6 +83,13 @@ def test_open_file_with_retry(ray_start_regular_shared):
         ray.data.datasource.file_based_datasource.OPEN_FILE_MAX_ATTEMPTS = (
             original_max_attempts
         )
+
+
+def test_windows_path():
+    with mock.patch("sys.platform", "win32"):
+        assert _is_local_windows_path("c:/some/where")
+        assert _is_local_windows_path("c:\\some\\where")
+        assert _is_local_windows_path("c:\\some\\where/mixed")
 
 
 if __name__ == "__main__":

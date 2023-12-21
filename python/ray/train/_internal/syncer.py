@@ -1,35 +1,17 @@
 import abc
-import threading
-import traceback
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    List,
-    Union,
-    Optional,
-    Tuple,
-)
-import warnings
-
 import logging
+import threading
 import time
+import traceback
+import warnings
 from dataclasses import dataclass
-
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.air._internal.remote_storage import (
-    fs_hint,
-    upload_to_uri,
-    download_from_uri,
-    delete_at_uri,
-    is_non_local_path_uri,
-)
 from ray.train.constants import _DEPRECATED_VALUE
 from ray.util import log_once
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI
 from ray.widgets import Template
-
 
 logger = logging.getLogger(__name__)
 
@@ -45,21 +27,20 @@ DEFAULT_SYNC_TIMEOUT = 1800
 class SyncConfig:
     """Configuration object for Train/Tune file syncing to `RunConfig(storage_path)`.
 
-    See :ref:`tune-persisted-experiment-data` for an overview of what data is
-    synchronized.
-
     In Ray Train/Tune, here is where syncing (mainly uploading) happens:
 
     The experiment driver (on the head node) syncs the experiment directory to storage
     (which includes experiment state such as searcher state, the list of trials
     and their statuses, and trial metadata).
 
+    It's also possible to sync artifacts from the trial directory to storage
+    by setting `sync_artifacts=True`.
     For a Ray Tune run with many trials, each trial will upload its trial directory
     to storage, which includes arbitrary files that you dumped during the run.
     For a Ray Train run doing distributed training, each remote worker will similarly
     upload its trial directory to storage.
 
-    See :ref:`tune-storage-options` for more details and examples.
+    See :ref:`persistent-storage-guide` for more details and examples.
 
     Args:
         sync_period: Minimum time in seconds to wait between two sync operations.
@@ -102,27 +83,16 @@ class SyncConfig:
     def __post_init__(self):
         for (attr_name, extra_msg) in [
             ("upload_dir", "\nPlease specify `train.RunConfig(storage_path)` instead."),
-            # TODO(justinvyu): Point users to some user guide for custom fs.
             (
                 "syncer",
                 "\nPlease implement custom syncing logic with a custom "
                 "`pyarrow.fs.FileSystem` instead, and pass it into "
-                "`train.RunConfig(storage_filesystem)`.",
+                "`train.RunConfig(storage_filesystem)`. "
+                "See here: https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html#custom-storage",  # noqa: E501
             ),
             ("sync_on_checkpoint", ""),
         ]:
             self._deprecation_warning(attr_name, extra_msg)
-
-        # TODO(justinvyu): [code_removal]
-        from ray.train._internal.storage import _use_storage_context
-
-        if not _use_storage_context():
-            if self.upload_dir == _DEPRECATED_VALUE:
-                self.upload_dir = None
-            if self.syncer == _DEPRECATED_VALUE:
-                self.syncer = "auto"
-            if self.sync_on_checkpoint == _DEPRECATED_VALUE:
-                self.sync_on_checkpoint = True
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig."""
@@ -402,29 +372,6 @@ class Syncer(abc.ABC):
     def _repr_html_(self) -> str:
         return
 
-    @classmethod
-    def validate_upload_dir(cls, upload_dir: str) -> bool:
-        """Checks if ``upload_dir`` is supported by the Syncer.
-
-        Returns True if ``upload_dir`` is valid, otherwise raises
-        ``ValueError``.
-
-        Args:
-            upload_dir: Path to validate.
-        """
-        if not upload_dir:
-            return True
-
-        if upload_dir.startswith("file://"):
-            return True
-
-        if not is_non_local_path_uri(upload_dir):
-            raise ValueError(
-                f"Could not identify external storage filesystem for "
-                f"upload dir `{upload_dir}`. "
-                f"Hint: {fs_hint(upload_dir)}"
-            )
-
 
 class _BackgroundSyncer(Syncer):
     """Syncer using a background process for asynchronous file transfer."""
@@ -488,10 +435,6 @@ class _BackgroundSyncer(Syncer):
     def sync_down(
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
     ) -> bool:
-        from ray.train._internal.storage import _use_storage_context
-
-        assert not _use_storage_context(), "Should never be used in this mode."
-
         if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, "
@@ -544,52 +487,3 @@ class _BackgroundSyncer(Syncer):
         state = self.__dict__.copy()
         state["_sync_process"] = None
         return state
-
-
-class _DefaultSyncer(_BackgroundSyncer):
-    """Default syncer between local and remote storage, using `pyarrow.fs.copy_files`"""
-
-    def _sync_up_command(
-        self, local_path: str, uri: str, exclude: Optional[List] = None
-    ) -> Tuple[Callable, Dict]:
-        return (
-            upload_to_uri,
-            dict(local_path=local_path, uri=uri, exclude=exclude),
-        )
-
-    def _sync_down_command(self, uri: str, local_path: str) -> Tuple[Callable, Dict]:
-        return (
-            download_from_uri,
-            dict(uri=uri, local_path=local_path),
-        )
-
-    def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
-        return delete_at_uri, dict(uri=uri)
-
-
-@DeveloperAPI
-def get_node_to_storage_syncer(
-    sync_config: SyncConfig, upload_dir: Optional[str] = None
-) -> Optional[Syncer]:
-    """"""
-    if sync_config.syncer is None:
-        return None
-
-    if not sync_config.upload_dir and not upload_dir:
-        return None
-
-    if sync_config.syncer == "auto":
-        return _DefaultSyncer(
-            sync_period=sync_config.sync_period, sync_timeout=sync_config.sync_timeout
-        )
-
-    if isinstance(sync_config.syncer, Syncer):
-        return sync_config.syncer
-
-    raise ValueError(
-        f"Unknown syncer type passed in SyncConfig: {type(sync_config.syncer)}. "
-        f"Note that custom sync functions and templates have been deprecated. "
-        f"Instead you can implement you own `Syncer` class. "
-        f"Please leave a comment on GitHub if you run into any issues with this: "
-        f"https://github.com/ray-project/ray/issues"
-    )

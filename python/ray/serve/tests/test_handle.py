@@ -11,7 +11,7 @@ from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle, _HandleOptions
+from ray.serve.handle import DeploymentHandle, _HandleOptions
 
 
 def test_handle_options():
@@ -68,19 +68,15 @@ def test_handle_options():
     assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
 
-@pytest.mark.asyncio
-async def test_async_handle_serializable(serve_instance):
+def test_async_handle_serializable(serve_instance):
     @serve.deployment
     def f():
         return "hello"
 
-    f.deploy()
-
     @ray.remote
     class DelegateActor:
         async def call_handle(self, handle):
-            ref = await handle.remote()
-            return await ref
+            return await handle.remote()
 
     @serve.deployment
     class Ingress:
@@ -93,7 +89,7 @@ async def test_async_handle_serializable(serve_instance):
             return await a.call_handle.remote(self._handle)
 
     app_handle = serve.run(Ingress.bind(f.bind()))
-    assert ray.get(app_handle.remote()) == "hello"
+    assert app_handle.remote().result() == "hello"
 
 
 def test_sync_handle_serializable(serve_instance):
@@ -105,7 +101,7 @@ def test_sync_handle_serializable(serve_instance):
 
     @ray.remote
     def task(handle):
-        return ray.get(handle.remote())
+        return handle.remote().result()
 
     # Test pickling via ray.remote()
     result_ref = task.remote(handle)
@@ -165,7 +161,7 @@ def test_handle_in_endpoint(serve_instance):
             self.handle = handle
 
         async def __call__(self, _):
-            return await (await self.handle.remote())
+            return await self.handle.remote()
 
     end_p1 = Endpoint1.bind()
     end_p2 = Endpoint2.bind(end_p1)
@@ -190,16 +186,21 @@ def test_handle_option_chaining(serve_instance):
             return "__call__"
 
     handle1 = serve.run(MultiMethod.bind())
-    metrics = handle1.request_counter
-    assert ray.get(handle1.remote()) == "__call__"
+    counter = handle1.request_counter
+    counter_info = counter.info
+    assert handle1.remote().result() == "__call__"
 
     handle2 = handle1.options(method_name="method_a")
-    assert ray.get(handle2.remote()) == "method_a"
-    assert handle2.request_counter == metrics
+
+    assert handle2.remote().result() == "method_a"
+    assert handle2.request_counter == counter
+    assert handle2.request_counter.info == counter_info
 
     handle3 = handle1.options(method_name="method_b")
-    assert ray.get(handle3.remote()) == "method_b"
-    assert handle3.request_counter == metrics
+
+    assert handle3.remote().result() == "method_b"
+    assert handle3.request_counter == counter
+    assert handle2.request_counter.info == counter_info
 
 
 def test_repeated_get_handle_cached(serve_instance):
@@ -207,57 +208,63 @@ def test_repeated_get_handle_cached(serve_instance):
     def f(_):
         return ""
 
-    f.deploy()
+    serve.run(f.bind())
 
-    handle_sets = {f.get_handle() for _ in range(100)}
+    handle_sets = {serve.get_app_handle("default") for _ in range(100)}
     assert len(handle_sets) == 1
 
-    handle_sets = {serve.get_deployment("f").get_handle() for _ in range(100)}
+    handle_sets = {serve.get_deployment_handle("f", "default") for _ in range(100)}
     assert len(handle_sets) == 1
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("sync", [True, False])
-async def test_args_kwargs(serve_instance, sync):
+def test_args_kwargs_sync(serve_instance):
     @serve.deployment
     async def f(*args, **kwargs):
         assert args[0] == "hi"
         assert kwargs["kwarg1"] == 1
         assert kwargs["kwarg2"] == "2"
 
-    f.deploy()
-
-    handle = f.get_handle(sync=sync)
-
-    def call():
-        return handle.remote("hi", kwarg1=1, kwarg2="2")
-
-    if sync:
-        obj_ref = call()
-    else:
-        obj_ref = await call()
-
-    ray.get(obj_ref)
+    handle = serve.run(f.bind()).options(use_new_handle_api=True)
+    handle.remote("hi", kwarg1=1, kwarg2="2").result()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("sync", [True, False])
-async def test_nonexistent_method(serve_instance, sync):
+async def test_args_kwargs_async(serve_instance):
+    @serve.deployment
+    async def f(*args, **kwargs):
+        assert args[0] == "hi"
+        assert kwargs["kwarg1"] == 1
+        assert kwargs["kwarg2"] == "2"
+
+    handle = serve.run(f.bind()).options(use_new_handle_api=True)
+    await handle.remote("hi", kwarg1=1, kwarg2="2")
+
+
+def test_nonexistent_method_sync(serve_instance):
     @serve.deployment
     class A:
         def exists(self):
             pass
 
-    A.deploy()
-    handle = A.get_handle(sync=sync)
-
-    if sync:
-        obj_ref = handle.does_not_exist.remote()
-    else:
-        obj_ref = await handle.does_not_exist.remote()
-
+    handle = serve.run(A.bind()).options(use_new_handle_api=True)
     with pytest.raises(RayServeException) as excinfo:
-        ray.get(obj_ref)
+        handle.does_not_exist.remote().result()
+
+    exception_string = str(excinfo.value)
+    assert "'does_not_exist'" in exception_string
+    assert "Available methods: ['exists']" in exception_string
+
+
+@pytest.mark.asyncio
+async def test_nonexistent_method_async(serve_instance):
+    @serve.deployment
+    class A:
+        def exists(self):
+            pass
+
+    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    with pytest.raises(RayServeException) as excinfo:
+        await handle.does_not_exist.remote()
 
     exception_string = str(excinfo.value)
     assert "'does_not_exist'" in exception_string
@@ -280,24 +287,24 @@ async def test_handle_across_loops(serve_instance):
         def exists(self):
             return True
 
-    A.deploy()
+    serve.run(A.bind())
 
     async def refresh_get():
-        handle = A.get_handle(sync=False)
-        assert await (await handle.exists.remote())
+        handle = serve.get_app_handle("default")
+        assert await handle.exists.remote()
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
         asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
 
-    handle = A.get_handle(sync=False)
+    handle = serve.get_app_handle("default")
 
     async def cache_get():
-        assert await (await handle.exists.remote())
+        assert await handle.exists.remote()
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
-        asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
+        asyncio.run_coroutine_threadsafe(cache_get(), loop).result()
 
 
 def test_handle_typing(serve_instance):
@@ -312,14 +319,14 @@ def test_handle_typing(serve_instance):
     @serve.deployment
     class Ingress:
         def __init__(
-            self, class_downstream: RayServeHandle, func_downstream: RayServeHandle
+            self, class_downstream: DeploymentHandle, func_downstream: DeploymentHandle
         ):
             # serve.run()'ing this deployment fails if these assertions fail.
-            assert isinstance(class_downstream, RayServeHandle)
-            assert isinstance(func_downstream, RayServeHandle)
+            assert isinstance(class_downstream, DeploymentHandle)
+            assert isinstance(func_downstream, DeploymentHandle)
 
     h = serve.run(Ingress.bind(DeploymentClass.bind(), deployment_func.bind()))
-    assert isinstance(h, RayServeSyncHandle)
+    assert isinstance(h, DeploymentHandle)
 
 
 def test_call_function_with_argument(serve_instance):
@@ -329,14 +336,14 @@ def test_call_function_with_argument(serve_instance):
 
     @serve.deployment
     class Ingress:
-        def __init__(self, h: RayServeHandle):
+        def __init__(self, h: DeploymentHandle):
             self._h = h
 
         async def __call__(self, name: str):
-            return await (await self._h.remote(name))
+            return await self._h.remote(name)
 
     h = serve.run(Ingress.bind(echo.bind()))
-    assert ray.get(h.remote("sned")) == "Hi sned"
+    assert h.remote("sned").result() == "Hi sned"
 
 
 def test_handle_options_with_same_router(serve_instance):

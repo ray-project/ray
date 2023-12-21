@@ -5,6 +5,7 @@ import random
 import threading
 import collections
 import logging
+import time
 
 
 _logger = logging.getLogger("ray.util.spark.utils")
@@ -87,6 +88,17 @@ def is_port_in_use(host, port):
 
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         return sock.connect_ex((host, port)) == 0
+
+
+def _wait_service_up(host, port, timeout):
+    beg_time = time.time()
+
+    while time.time() - beg_time < timeout:
+        if is_port_in_use(host, port):
+            return True
+        time.sleep(1)
+
+    return False
 
 
 def get_random_unused_port(
@@ -320,10 +332,24 @@ def _get_avail_mem_per_ray_worker_node(
     object_store_memory_per_node,
 ):
     num_cpus = _get_cpu_cores()
+
+    if num_cpus_per_node > num_cpus:
+        raise ValueError(
+            "cpu number per Ray worker node should be <= spark worker node CPU cores, "
+            f"you set cpu number per Ray worker node to {num_cpus_per_node} but "
+            f"spark worker node CPU core number is {num_cpus}."
+        )
     num_task_slots = num_cpus // num_cpus_per_node
 
     if num_gpus_per_node > 0:
         num_gpus = _get_num_physical_gpus()
+        if num_gpus_per_node > num_gpus:
+            raise ValueError(
+                "gpu number per Ray worker node should be <= spark worker node "
+                "GPU number, you set cpu number per Ray worker node to "
+                f"{num_cpus_per_node} but spark worker node CPU core number "
+                f"is {num_cpus}."
+            )
         if num_task_slots > num_gpus // num_gpus_per_node:
             num_task_slots = num_gpus // num_gpus_per_node
 
@@ -371,7 +397,10 @@ def get_avail_mem_per_ray_worker_node(
                 object_store_memory_per_node,
             )
         except Exception as e:
-            return -1, -1, repr(e), None
+            import traceback
+
+            trace_msg = "\n".join(traceback.format_tb(e.__traceback__))
+            return -1, -1, repr(e) + trace_msg, None
 
     # Running memory inference routine on spark executor side since the spark worker
     # nodes may have a different machine configuration compared to the spark driver

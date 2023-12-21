@@ -1,6 +1,5 @@
 import collections
 import os
-import sys
 import time
 from dataclasses import dataclass
 from typing import (
@@ -9,7 +8,9 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Literal,
     Optional,
+    Protocol,
     Tuple,
     TypeVar,
     Union,
@@ -18,7 +19,7 @@ from typing import (
 import numpy as np
 
 import ray
-from ray import ObjectRefGenerator
+from ray import DynamicObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -29,11 +30,6 @@ try:
     import resource
 except ImportError:
     resource = None
-
-if sys.version_info >= (3, 8):
-    from typing import Literal, Protocol
-else:
-    from typing_extensions import Literal, Protocol
 
 if TYPE_CHECKING:
     import pandas
@@ -86,9 +82,10 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = List["BlockMetadata"]
 
-# TODO(ekl/chengsu): replace this with just `ObjectRefGenerator` once block splitting
+# TODO(ekl/chengsu): replace this with just
+# `DynamicObjectRefGenerator` once block splitting
 # is on by default. When block splitting is off, the type is a plain block.
-MaybeBlockPartition = Union[Block, ObjectRefGenerator]
+MaybeBlockPartition = Union[Block, DynamicObjectRefGenerator]
 
 VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", None]
 
@@ -210,6 +207,10 @@ class BlockMetadata:
     def __post_init__(self):
         if self.input_files is None:
             self.input_files = []
+        if self.size_bytes is not None:
+            # Require size_bytes to be int, ray.util.metrics objects
+            # will not take other types like numpy.int64
+            assert isinstance(self.size_bytes, int)
 
 
 @DeveloperAPI

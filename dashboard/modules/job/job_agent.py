@@ -19,7 +19,7 @@ from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.utils import parse_and_validate_request, find_job_by_ids
 
 
-routes = optional_utils.ClassMethodRouteTable
+routes = optional_utils.DashboardAgentRouteTable
 logger = logging.getLogger(__name__)
 
 
@@ -49,6 +49,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 metadata=submit_request.metadata,
                 entrypoint_num_cpus=submit_request.entrypoint_num_cpus,
                 entrypoint_num_gpus=submit_request.entrypoint_num_gpus,
+                entrypoint_memory=submit_request.entrypoint_memory,
                 entrypoint_resources=submit_request.entrypoint_resources,
             )
 

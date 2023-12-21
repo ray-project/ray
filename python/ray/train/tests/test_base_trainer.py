@@ -5,8 +5,9 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import MAX_REPR_LENGTH
+from ray.data.context import DataContext
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
@@ -56,12 +57,6 @@ def test_validate_datasets(ray_start_4_cpus):
     with pytest.raises(ValueError) as e:
         DummyTrainer(train_loop=None, datasets={"train": 1})
     assert "The Dataset under train key is not a `ray.data.Dataset`"
-
-    with pytest.raises(ValueError) as e:
-        DummyTrainer(
-            train_loop=None, datasets={"train": ray.data.from_items([1]).repeat()}
-        )
-    assert "The Dataset under train key is a `ray.data.DatasetPipeline`."
 
 
 def test_resources(ray_start_4_cpus):
@@ -172,6 +167,24 @@ def test_metadata_propagation_data_parallel(ray_start_4_cpus):
     result = trainer.fit()
     meta_out = result.checkpoint.get_metadata()
     assert meta_out == {"a": 1, "b": 2, "c": 3}, meta_out
+
+
+def test_data_context_propagation(ray_start_4_cpus):
+    ctx = DataContext.get_current()
+    # Fake DataContext attribute to propagate to worker.
+    ctx.foo = "bar"
+
+    def training_loop(self):
+        # Dummy train loop that checks that changes in the driver's
+        # DataContext are propagated to the worker.
+        ctx_worker = DataContext.get_current()
+        assert ctx_worker.foo == "bar"
+
+    trainer = DummyTrainer(
+        train_loop=training_loop,
+        datasets={"train": ray.data.range(10)},
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":

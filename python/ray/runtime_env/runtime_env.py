@@ -237,9 +237,12 @@ class RuntimeEnv(dict):
         env_vars: Environment variables to set.
         worker_process_setup_hook: (Experimental) The setup hook that's
             called after workers start and before Tasks and Actors are scheduled.
-            The value has to be a callable when passed to the Job, Task, or Actor.
-            The callable is then exported and this value is converted to
-            the setup hook's function name for observability.
+            A module name (string type) or callable (function) can be passed.
+            When a module name is passed, Ray worker should be able to access the
+            module name. When a callable is passed, callable should be serializable.
+            When a runtime env is specified by job submission API,
+            only a module name (string) is allowed.
+        nsight: Dictionary mapping nsight profile option name to it's value.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
@@ -264,6 +267,8 @@ class RuntimeEnv(dict):
         # with the test.
         "docker",
         "worker_process_setup_hook",
+        "_nsight",
+        "mpi",
     }
 
     extensions_fields: Set[str] = {
@@ -282,8 +287,10 @@ class RuntimeEnv(dict):
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
         worker_process_setup_hook: Optional[Union[Callable, str]] = None,
+        nsight: Optional[Union[str, Dict[str, str]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
+        mpi: Optional[Dict] = None,
         **kwargs,
     ):
         super().__init__()
@@ -297,6 +304,8 @@ class RuntimeEnv(dict):
             runtime_env["pip"] = pip
         if conda is not None:
             runtime_env["conda"] = conda
+        if nsight is not None:
+            runtime_env["_nsight"] = nsight
         if container is not None:
             runtime_env["container"] = container
         if env_vars is not None:
@@ -305,7 +314,8 @@ class RuntimeEnv(dict):
             runtime_env["config"] = config
         if worker_process_setup_hook is not None:
             runtime_env["worker_process_setup_hook"] = worker_process_setup_hook
-
+        if mpi is not None:
+            runtime_env["mpi"] = mpi
         if runtime_env.get("java_jars"):
             runtime_env["java_jars"] = runtime_env.get("java_jars")
 
@@ -330,6 +340,14 @@ class RuntimeEnv(dict):
                 "user-guide/tasks/manage-environments.html"
                 "#create-env-file-manually"
             )
+
+        if self.get("container"):
+            if len(runtime_env) > 1:
+                raise ValueError(
+                    "The 'container' field currently cannot be used "
+                    "together with other fields of runtime_env. "
+                    f"Specified fields: {runtime_env.keys()}"
+                )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = self.get(option)
@@ -438,6 +456,12 @@ class RuntimeEnv(dict):
         if "java_jars" in self:
             return list(self["java_jars"])
         return []
+
+    def mpi(self) -> Optional[Union[str, Dict[str, str]]]:
+        return self.get("mpi", None)
+
+    def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
+        return self.get("_nsight", None)
 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})

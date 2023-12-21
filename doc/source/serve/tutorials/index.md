@@ -14,10 +14,8 @@ stable-diffusion
 text-classification
 object-detection
 aws-neuron-core-inference
-rllib
 gradio-integration
 batch
 streaming
-gradio-dag-visualization
 java
 ```

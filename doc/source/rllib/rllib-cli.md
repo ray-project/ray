@@ -13,9 +13,9 @@ kernelspec:
 
 # Working with the RLlib CLI
 
-RLlib is built in Python and if you're an advanced user, you will primarily use its 
-Python API to build and run your experiments. 
-But RLlib also comes with a command line interface (CLI)[^typer] that allows you to quickly 
+RLlib is built in Python and if you're an advanced user, you will primarily use its
+Python API to build and run your experiments.
+But RLlib also comes with a command line interface (CLI)[^typer] that allows you to quickly
 run and evaluate experiments without having to write any code.
 
 You can also run pre-defined RLlib examples with it.
@@ -29,10 +29,10 @@ using an example built for you by the RLlib team.
 
 ### Searching for examples
 
-The first thing you can to is filter the list of all available examples by the 
+The first thing you can to is filter the list of all available examples by the
 environment name you want to use:
 
-```{margin}
+```{note}
 You can run this command without the `--filter` option to see the full list of almost
 100 examples that come with RLlib.
 ```
@@ -62,7 +62,7 @@ by typing the following CLI command:
 
 ```
 
-The output will be a prompt in the YAML format that contains the configuration of 
+The output will be a prompt in the YAML format that contains the configuration of
 the example.[^formats]
 We're not going to go into the details of the configuration here, but you should know
 that it's a _tuned example_, meaning that you can expect it to train well out of
@@ -74,7 +74,7 @@ Here's the output of the above command (parsed as YAML for readability):
 :language: yaml
 ```
 
-```{margin}
+```{note}
 Note that some of these tuned examples may require resource specifications, like
 multiple GPUs, that you might not have available on your machine.
 To "solve" some of the more advanced environments out there _efficiently_ and provide
@@ -87,7 +87,7 @@ After all, running on Ray Clusters is what RLlib was built for.
 Let's run the example next!
 After showing how to start the training run, we give you some sample output of it below.
 Note that by default, RLlib will create an indicative experiment name for you, and logs
-important metrics such as the `reward`, the `episode_reward_max`, or the 
+important metrics such as the `reward`, the `episode_reward_max`, or the
 `episode_reward_min`.
 
 ```{raw} html
@@ -103,7 +103,7 @@ important metrics such as the `reward`, the `episode_reward_max`, or the
     |   reward |   episode_reward_max |   episode_reward_min | ...
     </span>
     <span data-ty>
-    ... | PPO_CartPole-v0_9931e_00000 | RUNNING | ... 
+    ... | PPO_CartPole-v0_9931e_00000 | RUNNING | ...
     | 23.9756  |                   71 |                   10 | ...
     </span>
 </div>
@@ -165,7 +165,7 @@ If you want to do more than just use the examples that come with RLlib,
 you can also run your own algorithm configurations with `rllib`.
 That's what you use the `rllib train` command for.
 
-```{margin}
+```{note}
 Internally the `rllib example run` command uses the same functionality as
 `rllib train`.
 The only difference is the usage of pre-defined configurations in the former.
@@ -173,7 +173,7 @@ The only difference is the usage of pre-defined configurations in the former.
 
 There are two basic ways to run training.
 You can either provide all the necessary information via the command line, or simply
-point to a configuration file (like the YAML we've already seen in the 
+point to a configuration file (like the YAML we've already seen in the
 previous section).
 Let's briefly go over both options, starting with the recommended one.
 
@@ -261,7 +261,7 @@ The `--config` option is used to provide a JSON string that contains the configu
 that you would otherwise put in your YAML or JSON config files.
 
 The `train` command has many more options that we don't discuss in detail here,
-but you can use the following dropdown to read more about their definition: 
+but you can use the following dropdown to read more about their definition:
 
 :::{dropdown} Click here to see all `train` command line options
 :animate: fade-in-slide-down
@@ -287,7 +287,7 @@ your Ray cluster.
 :::
 
 Probably the best way to get familiar with `rllib train` is to run
-`rllib train --help` and play with your own experiments. 
+`rllib train --help` and play with your own experiments.
 
 ## Evaluating your experiments
 
@@ -297,8 +297,8 @@ By default, checkpoints are generated in `~/ray_results/<experiment>/checkpoints
 and you can use can provide the full path to a checkpoint as argument to the evaluate
 command.
 
-```{margin}
-As you've seen earlier, every successful `rllib example run` generates an 
+```{note}
+As you've seen earlier, every successful `rllib example run` generates an
 `rllib evaluate` command automatically for you from a checkpoint.
 The same holds true for `rllib train` runs.
 ```
@@ -321,7 +321,7 @@ by simply omitting the checkpoint argument:
 ```
 
 Note that the `evaluate` command needs to know about the algorithm and environment
-you want to evaluate. 
+you want to evaluate.
 The overall structure of the command itself is slightly simpler than its `train`
 counterpart, as there are simply fewer options to configure.
 
@@ -343,7 +343,7 @@ and `example`, you have all the tools you need to run simple RLlib experiments f
 the command line.
 
 If you want to learn more about the capabilities of RLlib, you have to learn more about
-its [Python API](rllib-training-api) and how to 
+its [Python API](rllib-training-api) and how to
 [configure algorithms](rllib-algo-configuration) in the first place.
 
 
@@ -356,4 +356,4 @@ its [Python API](rllib-training-api) and how to
     The CLI will automatically detect the format of the file you're using.
 
 [^tune]: These stopping conditions are internally picked up by Ray Tune,
-    which is used by RLlib under the hood. 
+    which is used by RLlib under the hood.

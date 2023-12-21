@@ -60,13 +60,11 @@ class RandomShuffle(AbstractAllToAll):
         input_op: LogicalOperator,
         name: str = "RandomShuffle",
         seed: Optional[int] = None,
-        num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             name,
             input_op,
-            num_outputs=num_outputs,
             sub_progress_bar_names=[
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,

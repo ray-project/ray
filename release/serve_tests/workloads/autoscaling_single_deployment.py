@@ -75,7 +75,6 @@ def deploy_replicas(min_replicas, max_replicas, max_batch_size):
             "downscale_delay_s": 0.2,
             "upscale_delay_s": 0.2,
         },
-        version="v1",
     )
     class Echo:
         @serve.batch(max_batch_size=max_batch_size)
@@ -85,7 +84,7 @@ def deploy_replicas(min_replicas, max_replicas, max_batch_size):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    Echo.deploy()
+    serve.run(Echo.bind(), name="echo", route_prefix="/echo")
 
 
 def deploy_proxy_replicas():
@@ -103,7 +102,7 @@ def deploy_proxy_replicas():
         def __call__(self, request):
             return "Proxy"
 
-    Proxy.deploy()
+    serve.run(Proxy.bind(), name="proxy", route_prefix="/proxy")
 
 
 def save_results(final_result, default_name):
@@ -172,7 +171,7 @@ def main(
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    all_endpoints = list(serve.list_deployments().keys() - {"proxy"})
+    all_endpoints = ["/echo"]
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
     )

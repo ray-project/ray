@@ -1,8 +1,14 @@
 import abc
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.framework import try_import_tf
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+tf1, _, _ = try_import_tf()
 
 
 @ExperimentalAPI
@@ -23,15 +29,24 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     individual Actors are running.
     """
 
-    def __init__(self, *, config, **kwargs):
+    def __init__(self, *, config: "AlgorithmConfig", **kwargs):
         """Initializes an EnvRunner instance.
 
         Args:
-            config: The config to use to setup this EnvRunner.
+            config: The AlgorithmConfig to use to setup this EnvRunner.
             **kwargs: Forward compatibility kwargs.
         """
         self.config = config
         super().__init__(**kwargs)
+
+        # This eager check is necessary for certain all-framework tests
+        # that use tf's eager_mode() context generator.
+        if (
+            tf1
+            and (self.config.framework_str == "tf2" or config.enable_tf1_exec_eagerly)
+            and not tf1.executing_eagerly()
+        ):
+            tf1.enable_eager_execution()
 
     @abc.abstractmethod
     def assert_healthy(self):
@@ -72,12 +87,14 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         Args:
             state: The state dict to restore the state from.
 
-        Examples:
-            >>> from ray.rllib.env.env_runner import EnvRunner
-            >>> env_runner = ... # doctest: +SKIP
-            >>> state = env_runner.get_state() # doctest: +SKIP
-            >>> new_runner = EnvRunner(...) # doctest: +SKIP
-            >>> new_runner.set_state(state) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.env.env_runner import EnvRunner
+            env_runner = ...
+            state = env_runner.get_state()
+            new_runner = EnvRunner(...)
+            new_runner.set_state(state)
         """
         pass
 

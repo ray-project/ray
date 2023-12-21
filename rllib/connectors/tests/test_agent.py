@@ -111,7 +111,7 @@ class TestAgentConnector(unittest.TestCase):
                 "sensor2": 8.8,
             },
             SampleBatch.REWARDS: 5.8,
-            SampleBatch.ACTIONS: [[1, 1], [2]],
+            SampleBatch.ACTIONS: [[1, 1], [2, 2]],
             SampleBatch.INFOS: {"random": "info"},
         }
 

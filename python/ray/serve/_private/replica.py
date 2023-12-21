@@ -18,13 +18,13 @@ import ray
 from ray import cloudpickle
 from ray._private.async_compat import sync_to_async
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorClass, ActorHandle
+from ray.actor import ActorClass
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
-    CONTROL_PLANE_CONCURRENCY_GROUP,
     DeploymentID,
+    ReplicaName,
     ReplicaTag,
     ServeComponentType,
     StreamingHTTPRequest,
@@ -33,10 +33,13 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
+    GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RECONFIGURE_METHOD,
+    REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP,
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -44,7 +47,6 @@ from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIMessageQueue,
     ASGIReceiveProxy,
-    RawASGIResponse,
     Response,
 )
 from ray.serve._private.logging_utils import (
@@ -64,445 +66,397 @@ from ray.serve._private.utils import (
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def create_replica_wrapper(actor_class_name: str):
-    """Creates a replica class wrapping the provided function or class.
+def _load_deployment_def_from_import_path(import_path: str) -> Callable:
+    module_name, attr_name = parse_import_path(import_path)
+    deployment_def = getattr(import_module(module_name), attr_name)
 
-    This approach is picked over inheritance to avoid conflict between user
-    provided class and the RayServeReplica class.
+    # For ray or serve decorated class or function, strip to return
+    # original body.
+    if isinstance(deployment_def, RemoteFunction):
+        deployment_def = deployment_def._function
+    elif isinstance(deployment_def, ActorClass):
+        deployment_def = deployment_def.__ray_metadata__.modified_class
+    elif isinstance(deployment_def, Deployment):
+        logger.warning(
+            f'The import path "{import_path}" contains a '
+            "decorated Serve deployment. The decorator's settings "
+            "are ignored when deploying via import path."
+        )
+        deployment_def = deployment_def.func_or_class
+
+    return deployment_def
+
+
+class ReplicaActor:
+    """Actor definition for replicas of Ray Serve deployments.
+
+    This class defines the interface that the controller and deployment handles
+    (i.e., from proxies and other replicas) use to interact with a replica.
+
+    All interaction with the user-provided callable is done via the
+    `UserCallableWrapper` class.
     """
 
-    # TODO(architkulkarni): Add type hints after upgrading cloudpickle
-    class RayServeWrappedReplica(object):
-        async def __init__(
-            self,
-            deployment_name,
-            replica_tag,
-            serialized_deployment_def: bytes,
-            serialized_init_args: bytes,
-            serialized_init_kwargs: bytes,
-            deployment_config_proto_bytes: bytes,
-            version: DeploymentVersion,
-            controller_name: str,
-            detached: bool,
-            app_name: str = None,
-        ):
-            self._replica_tag = replica_tag
-            configure_component_logger(
-                component_type=ServeComponentType.DEPLOYMENT,
-                component_name=deployment_name,
-                component_id=replica_tag,
+    async def __init__(
+        self,
+        deployment_id: DeploymentID,
+        replica_tag: str,
+        serialized_deployment_def: bytes,
+        serialized_init_args: bytes,
+        serialized_init_kwargs: bytes,
+        deployment_config_proto_bytes: bytes,
+        version: DeploymentVersion,
+    ):
+        deployment_config = DeploymentConfig.from_proto_bytes(
+            deployment_config_proto_bytes
+        )
+        self._configure_logger_and_profilers(
+            replica_tag, LoggingConfig(**(deployment_config.logging_config or {}))
+        )
+        self._event_loop = get_or_create_event_loop()
+
+        deployment_def = cloudpickle.loads(serialized_deployment_def)
+        if isinstance(deployment_def, str):
+            deployment_def = _load_deployment_def_from_import_path(deployment_def)
+
+        self._user_callable_wrapper = UserCallableWrapper(
+            deployment_def,
+            cloudpickle.loads(serialized_init_args),
+            cloudpickle.loads(serialized_init_kwargs),
+            deployment_id=deployment_id,
+            replica_tag=replica_tag,
+            version=version,
+            autoscaling_config=deployment_config.autoscaling_config,
+        )
+
+        # Guards against calling the user's callable constructor multiple times.
+        self._user_callable_initialized = False
+        self._user_callable_initialized_lock = asyncio.Lock()
+
+    def _configure_logger_and_profilers(
+        self, replica_tag: ReplicaTag, logging_config: LoggingConfig
+    ):
+        replica_name = ReplicaName.from_replica_tag(replica_tag)
+        if replica_name.app_name:
+            component_name = f"{replica_name.app_name}_{replica_name.deployment_name}"
+        else:
+            component_name = f"{replica_name.deployment_name}"
+        component_id = replica_name.replica_suffix
+
+        configure_component_logger(
+            component_type=ServeComponentType.REPLICA,
+            component_name=component_name,
+            component_id=component_id,
+            logging_config=logging_config,
+        )
+        configure_component_memory_profiler(
+            component_type=ServeComponentType.REPLICA,
+            component_name=component_name,
+            component_id=component_id,
+        )
+        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
+            component_type=ServeComponentType.REPLICA,
+            component_name=component_name,
+            component_id=component_id,
+        )
+
+    @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
+    def get_num_ongoing_requests(self) -> int:
+        """Fetch the number of ongoing requests at this replica (queue length).
+
+        This runs on a separate thread (using a Ray concurrency group) so it will
+        not be blocked by user code.
+        """
+        return self._user_callable_wrapper.get_num_pending_and_running_requests()
+
+    async def handle_request(
+        self,
+        pickled_request_metadata: bytes,
+        *request_args,
+        **request_kwargs,
+    ) -> Tuple[bytes, Any]:
+        request_metadata = pickle.loads(pickled_request_metadata)
+        if request_metadata.is_grpc_request:
+            # Ensure the request args are a single gRPCRequest object.
+            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
+            result = await self._user_callable_wrapper.call_user_method_grpc_unary(
+                request_metadata=request_metadata, request=request_args[0]
             )
-            configure_component_memory_profiler(
-                component_type=ServeComponentType.DEPLOYMENT,
-                component_name=deployment_name,
-                component_id=replica_tag,
-            )
-            self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-                component_type=ServeComponentType.DEPLOYMENT,
-                component_name=deployment_name,
-                component_id=replica_tag,
-            )
-
-            self._event_loop = get_or_create_event_loop()
-
-            deployment_def = cloudpickle.loads(serialized_deployment_def)
-
-            if isinstance(deployment_def, str):
-                import_path = deployment_def
-                module_name, attr_name = parse_import_path(import_path)
-                deployment_def = getattr(import_module(module_name), attr_name)
-                # For ray or serve decorated class or function, strip to return
-                # original body
-                if isinstance(deployment_def, RemoteFunction):
-                    deployment_def = deployment_def._function
-                elif isinstance(deployment_def, ActorClass):
-                    deployment_def = deployment_def.__ray_metadata__.modified_class
-                elif isinstance(deployment_def, Deployment):
-                    logger.warning(
-                        f'The import path "{import_path}" contains a '
-                        "decorated Serve deployment. The decorator's settings "
-                        "are ignored when deploying via import path."
-                    )
-                    deployment_def = deployment_def.func_or_class
-
-            init_args = cloudpickle.loads(serialized_init_args)
-            init_kwargs = cloudpickle.loads(serialized_init_kwargs)
-
-            deployment_config = DeploymentConfig.from_proto_bytes(
-                deployment_config_proto_bytes
-            )
-
-            if inspect.isfunction(deployment_def):
-                is_function = True
-            elif inspect.isclass(deployment_def):
-                is_function = False
-            else:
-                assert False, (
-                    "deployment_def must be function, class, or "
-                    "corresponding import path. Instead, it's type was "
-                    f"{type(deployment_def)}."
-                )
-
-            # Set the controller name so that serve.connect() in the user's
-            # code will connect to the instance that this deployment is running
-            # in.
-            ray.serve.context._set_internal_replica_context(
-                app_name=app_name,
-                deployment=deployment_name,
-                replica_tag=replica_tag,
-                servable_object=None,
-                controller_name=controller_name,
-            )
-
-            assert controller_name, "Must provide a valid controller_name"
-
-            controller_handle = ray.get_actor(
-                controller_name, namespace=SERVE_NAMESPACE
-            )
-
-            # Indicates whether the replica has finished initializing.
-            self._initialized = False
-
-            # This closure initializes user code and finalizes replica
-            # startup. By splitting the initialization step like this,
-            # we can already access this actor before the user code
-            # has finished initializing.
-            # The supervising state manager can then wait
-            # for allocation of this replica by using the `is_allocated`
-            # method. After that, it calls `reconfigure` to trigger
-            # user code initialization.
-            async def initialize_replica():
-                if is_function:
-                    _callable = deployment_def
-                else:
-                    # This allows deployments to define an async __init__
-                    # method (mostly used for testing).
-                    _callable = deployment_def.__new__(deployment_def)
-                    await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
-
-                    if isinstance(_callable, ASGIAppReplicaWrapper):
-                        await _callable._run_asgi_lifespan_startup()
-
-                # Setting the context again to update the servable_object.
-                ray.serve.context._set_internal_replica_context(
-                    app_name=app_name,
-                    deployment=deployment_name,
-                    replica_tag=replica_tag,
-                    servable_object=_callable,
-                    controller_name=controller_name,
-                )
-
-                self.replica = RayServeReplica(
-                    _callable,
-                    deployment_name,
-                    replica_tag,
-                    deployment_config.autoscaling_config,
-                    version,
-                    is_function,
-                    controller_handle,
-                    app_name,
-                )
-                self._initialized = True
-
-            # Is it fine that replica is None here?
-            # Should we add a check in all methods that use self.replica
-            # or, alternatively, create an async get_replica() method?
-            self.replica = None
-            self._initialize_replica = initialize_replica
-
-            # Used to guard `initialize_replica` so that it isn't called twice.
-            self._replica_init_lock = asyncio.Lock()
-
-        @ray.method(concurrency_group=CONTROL_PLANE_CONCURRENCY_GROUP)
-        def get_num_ongoing_requests(self) -> int:
-            """Fetch the number of ongoing requests at this replica (queue length).
-
-            This runs on a separate thread (using a Ray concurrency group) so it will
-            not be blocked by user code.
-            """
-            return self.replica.get_num_pending_and_running_requests()
-
-        async def handle_request(
-            self,
-            pickled_request_metadata: bytes,
-            *request_args,
-            **request_kwargs,
-        ) -> Tuple[bytes, Any]:
-            request_metadata = pickle.loads(pickled_request_metadata)
-            if request_metadata.is_grpc_request:
-                # Ensure the request args are a single gRPCRequest object.
-                assert len(request_args) == 1 and isinstance(
-                    request_args[0], gRPCRequest
-                )
-                result = await self.replica.call_user_method_grpc_unary(
-                    request_metadata=request_metadata, request=request_args[0]
-                )
-            else:
-                result = await self.replica.call_user_method(
-                    request_metadata, request_args, request_kwargs
-                )
-
-            return result
-
-        async def _handle_http_request_generator(
-            self,
-            request_metadata: RequestMetadata,
-            request: StreamingHTTPRequest,
-        ) -> AsyncGenerator[Message, None]:
-            """Handle an HTTP request and stream ASGI messages to the caller.
-
-            This is a generator that yields ASGI-compliant messages sent by user code
-            via an ASGI send interface.
-            """
-            receiver_task = None
-            call_user_method_task = None
-            wait_for_message_task = None
-            try:
-                receiver = ASGIReceiveProxy(
-                    request_metadata.request_id, request.http_proxy_handle
-                )
-                receiver_task = self._event_loop.create_task(
-                    receiver.fetch_until_disconnect()
-                )
-
-                scope = pickle.loads(request.pickled_asgi_scope)
-                asgi_queue_send = ASGIMessageQueue()
-                request_args = (scope, receiver, asgi_queue_send)
-                request_kwargs = {}
-
-                # Handle the request in a background asyncio.Task. It's expected that
-                # this task will use the provided ASGI send interface to send its HTTP
-                # the response. We will poll for the sent messages and yield them back
-                # to the caller.
-                call_user_method_task = self._event_loop.create_task(
-                    self.replica.call_user_method(
-                        request_metadata, request_args, request_kwargs
-                    )
-                )
-
-                while True:
-                    wait_for_message_task = self._event_loop.create_task(
-                        asgi_queue_send.wait_for_message()
-                    )
-                    done, _ = await asyncio.wait(
-                        [call_user_method_task, wait_for_message_task],
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-                    # Consume and yield all available messages in the queue.
-                    # The messages are batched into a list to avoid unnecessary RPCs and
-                    # we use vanilla pickle because it's faster than cloudpickle and we
-                    # know it's safe for these messages containing primitive types.
-                    yield pickle.dumps(asgi_queue_send.get_messages_nowait())
-
-                    # Exit once `call_user_method` has finished. In this case, all
-                    # messages must have already been sent.
-                    if call_user_method_task in done:
-                        break
-
-                e = call_user_method_task.exception()
-                if e is not None:
-                    raise e from None
-            finally:
-                if receiver_task is not None:
-                    receiver_task.cancel()
-
-                if (
-                    call_user_method_task is not None
-                    and not call_user_method_task.done()
-                ):
-                    call_user_method_task.cancel()
-
-                if (
-                    wait_for_message_task is not None
-                    and not wait_for_message_task.done()
-                ):
-                    wait_for_message_task.cancel()
-
-        async def handle_request_streaming(
-            self,
-            pickled_request_metadata: bytes,
-            *request_args,
-            **request_kwargs,
-        ) -> AsyncGenerator[Any, None]:
-            """Generator that is the entrypoint for all `stream=True` handle calls."""
-            request_metadata = pickle.loads(pickled_request_metadata)
-            if request_metadata.is_grpc_request:
-                # Ensure the request args are a single gRPCRequest object.
-                assert len(request_args) == 1 and isinstance(
-                    request_args[0], gRPCRequest
-                )
-                generator = self.replica.call_user_method_with_grpc_unary_stream(
-                    request_metadata, request_args[0]
-                )
-            elif request_metadata.is_http_request:
-                assert len(request_args) == 1 and isinstance(
-                    request_args[0], StreamingHTTPRequest
-                )
-                generator = self._handle_http_request_generator(
-                    request_metadata, request_args[0]
-                )
-            else:
-                generator = self.replica.call_user_method_generator(
-                    request_metadata, request_args, request_kwargs
-                )
-
-            async for result in generator:
-                yield result
-
-        async def handle_request_from_java(
-            self,
-            proto_request_metadata: bytes,
-            *request_args,
-            **request_kwargs,
-        ) -> Any:
-            from ray.serve.generated.serve_pb2 import (
-                RequestMetadata as RequestMetadataProto,
-            )
-
-            proto = RequestMetadataProto.FromString(proto_request_metadata)
-            request_metadata: RequestMetadata = RequestMetadata(
-                proto.request_id, proto.endpoint, call_method=proto.call_method
-            )
-            request_args = request_args[0]
-            return await self.replica.call_user_method(
+        else:
+            result = await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
 
-        async def is_allocated(self) -> str:
-            """poke the replica to check whether it's alive.
+        return result
 
-            When calling this method on an ActorHandle, it will complete as
-            soon as the actor has started running. We use this mechanism to
-            detect when a replica has been allocated a worker slot.
-            At this time, the replica can transition from PENDING_ALLOCATION
-            to PENDING_INITIALIZATION startup state.
+    async def _handle_http_request_generator(
+        self,
+        request_metadata: RequestMetadata,
+        request: StreamingHTTPRequest,
+    ) -> AsyncGenerator[Message, None]:
+        """Handle an HTTP request and stream ASGI messages to the caller.
 
-            Returns:
-                The PID, actor ID, node ID, node IP, and log filepath id of the replica.
-            """
-
-            return (
-                os.getpid(),
-                ray.get_runtime_context().get_actor_id(),
-                ray.get_runtime_context().get_worker_id(),
-                ray.get_runtime_context().get_node_id(),
-                ray.util.get_node_ip_address(),
-                get_component_logger_file_path(),
+        This is a generator that yields ASGI-compliant messages sent by user code
+        via an ASGI send interface.
+        """
+        receiver_task = None
+        call_user_method_task = None
+        wait_for_message_task = None
+        try:
+            receiver = ASGIReceiveProxy(
+                request_metadata.request_id, request.http_proxy_handle
+            )
+            receiver_task = self._event_loop.create_task(
+                receiver.fetch_until_disconnect()
             )
 
-        async def initialize_and_get_metadata(
-            self,
-            deployment_config: DeploymentConfig = None,
-            _after: Optional[Any] = None,
-        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            # Unused `_after` argument is for scheduling: passing an ObjectRef
-            # allows delaying this call until after the `_after` call has returned.
-            try:
-                # Ensure that initialization is only performed once.
-                # When controller restarts, it will call this method again.
-                async with self._replica_init_lock:
-                    if not self._initialized:
-                        await self._initialize_replica()
-                    if deployment_config:
-                        await self.replica.update_user_config(
-                            deployment_config.user_config
-                        )
+            scope = pickle.loads(request.pickled_asgi_scope)
+            asgi_queue_send = ASGIMessageQueue()
+            request_args = (scope, receiver, asgi_queue_send)
+            request_kwargs = {}
 
-                # A new replica should not be considered healthy until it passes
-                # an initial health check. If an initial health check fails,
-                # consider it an initialization failure.
-                await self.check_health()
-                return await self._get_metadata()
-            except Exception:
-                raise RuntimeError(traceback.format_exc()) from None
-
-        async def reconfigure(
-            self,
-            deployment_config: DeploymentConfig,
-        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            try:
-                await self.replica.reconfigure(deployment_config)
-                return await self._get_metadata()
-            except Exception:
-                raise RuntimeError(traceback.format_exc()) from None
-
-        async def _get_metadata(
-            self,
-        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            return self.replica.version.deployment_config, self.replica.version
-
-        def _save_cpu_profile_data(self) -> str:
-            """Saves CPU profiling data, if CPU profiling is enabled.
-
-            Logs a warning if CPU profiling is disabled.
-            """
-
-            if self.cpu_profiler is not None:
-                import marshal
-
-                self.cpu_profiler.snapshot_stats()
-                with open(self.cpu_profiler_log, "wb") as f:
-                    marshal.dump(self.cpu_profiler.stats, f)
-                logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
-                return self.cpu_profiler_log
-            else:
-                logger.error(
-                    "Attempted to save CPU profile data, but failed because no "
-                    "CPU profiler was running! Enable CPU profiling by enabling "
-                    "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+            # Handle the request in a background asyncio.Task. It's expected that
+            # this task will use the provided ASGI send interface to send its HTTP
+            # the response. We will poll for the sent messages and yield them back
+            # to the caller.
+            call_user_method_task = self._event_loop.create_task(
+                self._user_callable_wrapper.call_user_method(
+                    request_metadata, request_args, request_kwargs
                 )
+            )
 
-        async def prepare_for_shutdown(self):
-            if self.replica is not None:
-                return await self.replica.prepare_for_shutdown()
+            while True:
+                wait_for_message_task = self._event_loop.create_task(
+                    asgi_queue_send.wait_for_message()
+                )
+                done, _ = await asyncio.wait(
+                    [call_user_method_task, wait_for_message_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                # Consume and yield all available messages in the queue.
+                # The messages are batched into a list to avoid unnecessary RPCs and
+                # we use vanilla pickle because it's faster than cloudpickle and we
+                # know it's safe for these messages containing primitive types.
+                yield pickle.dumps(asgi_queue_send.get_messages_nowait())
 
-        @ray.method(concurrency_group=CONTROL_PLANE_CONCURRENCY_GROUP)
-        async def check_health(self):
-            await self.replica.check_health()
+                # Exit once `call_user_method` has finished. In this case, all
+                # messages must have already been sent.
+                if call_user_method_task in done:
+                    break
 
-    # Dynamically create a new class with custom name here so Ray picks it up
-    # correctly in actor metadata table and observability stack.
-    return type(
-        actor_class_name,
-        (RayServeWrappedReplica,),
-        dict(RayServeWrappedReplica.__dict__),
-    )
+            e = call_user_method_task.exception()
+            if e is not None:
+                raise e from None
+        finally:
+            if receiver_task is not None:
+                receiver_task.cancel()
+
+            if call_user_method_task is not None and not call_user_method_task.done():
+                call_user_method_task.cancel()
+
+            if wait_for_message_task is not None and not wait_for_message_task.done():
+                wait_for_message_task.cancel()
+
+    async def handle_request_streaming(
+        self,
+        pickled_request_metadata: bytes,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncGenerator[Any, None]:
+        """Generator that is the entrypoint for all `stream=True` handle calls."""
+        request_metadata = pickle.loads(pickled_request_metadata)
+        if request_metadata.is_grpc_request:
+            # Ensure the request args are a single gRPCRequest object.
+            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
+            generator = (
+                self._user_callable_wrapper.call_user_method_with_grpc_unary_stream(
+                    request_metadata, request_args[0]
+                )
+            )
+        elif request_metadata.is_http_request:
+            assert len(request_args) == 1 and isinstance(
+                request_args[0], StreamingHTTPRequest
+            )
+            generator = self._handle_http_request_generator(
+                request_metadata, request_args[0]
+            )
+        else:
+            generator = self._user_callable_wrapper.call_user_method_generator(
+                request_metadata, request_args, request_kwargs
+            )
+
+        async for result in generator:
+            yield result
+
+    async def handle_request_from_java(
+        self,
+        proto_request_metadata: bytes,
+        *request_args,
+        **request_kwargs,
+    ) -> Any:
+        from ray.serve.generated.serve_pb2 import (
+            RequestMetadata as RequestMetadataProto,
+        )
+
+        proto = RequestMetadataProto.FromString(proto_request_metadata)
+        request_metadata: RequestMetadata = RequestMetadata(
+            proto.request_id,
+            proto.endpoint,
+            call_method=proto.call_method,
+            multiplexed_model_id=proto.multiplexed_model_id,
+            route=proto.route,
+        )
+        request_args = request_args[0]
+        return await self._user_callable_wrapper.call_user_method(
+            request_metadata, request_args, request_kwargs
+        )
+
+    async def is_allocated(self) -> str:
+        """poke the replica to check whether it's alive.
+
+        When calling this method on an ActorHandle, it will complete as
+        soon as the actor has started running. We use this mechanism to
+        detect when a replica has been allocated a worker slot.
+        At this time, the replica can transition from PENDING_ALLOCATION
+        to PENDING_INITIALIZATION startup state.
+
+        Returns:
+            The PID, actor ID, node ID, node IP, and log filepath id of the replica.
+        """
+
+        return (
+            os.getpid(),
+            ray.get_runtime_context().get_actor_id(),
+            ray.get_runtime_context().get_worker_id(),
+            ray.get_runtime_context().get_node_id(),
+            ray.util.get_node_ip_address(),
+            get_component_logger_file_path(),
+        )
+
+    async def initialize_and_get_metadata(
+        self,
+        deployment_config: DeploymentConfig = None,
+        _after: Optional[Any] = None,
+    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        # Unused `_after` argument is for scheduling: passing an ObjectRef
+        # allows delaying this call until after the `_after` call has returned.
+        try:
+            # Ensure that initialization is only performed once.
+            # When controller restarts, it will call this method again.
+            async with self._user_callable_initialized_lock:
+                if not self._user_callable_initialized:
+                    await self._user_callable_wrapper.initialize_callable()
+                    self._user_callable_initialized = True
+                if deployment_config:
+                    await self._user_callable_wrapper.update_user_config(
+                        deployment_config.user_config
+                    )
+
+            # A new replica should not be considered healthy until it passes
+            # an initial health check. If an initial health check fails,
+            # consider it an initialization failure.
+            await self.check_health()
+            return await self._get_metadata()
+        except Exception:
+            raise RuntimeError(traceback.format_exc()) from None
+
+    async def reconfigure(
+        self,
+        deployment_config: DeploymentConfig,
+    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        try:
+            await self._user_callable_wrapper.reconfigure(deployment_config)
+            return await self._get_metadata()
+        except Exception:
+            raise RuntimeError(traceback.format_exc()) from None
+
+    async def _get_metadata(
+        self,
+    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        return (
+            self._user_callable_wrapper.version.deployment_config,
+            self._user_callable_wrapper.version,
+        )
+
+    def _save_cpu_profile_data(self) -> str:
+        """Saves CPU profiling data, if CPU profiling is enabled.
+
+        Logs a warning if CPU profiling is disabled.
+        """
+
+        if self.cpu_profiler is not None:
+            import marshal
+
+            self.cpu_profiler.snapshot_stats()
+            with open(self.cpu_profiler_log, "wb") as f:
+                marshal.dump(self.cpu_profiler.stats, f)
+            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+            return self.cpu_profiler_log
+        else:
+            logger.error(
+                "Attempted to save CPU profile data, but failed because no "
+                "CPU profiler was running! Enable CPU profiling by enabling "
+                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+            )
+
+    async def prepare_for_shutdown(self):
+        if self._user_callable_initialized:
+            return await self._user_callable_wrapper.prepare_for_shutdown()
+
+    @ray.method(concurrency_group=REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP)
+    async def check_health(self):
+        await self._user_callable_wrapper.check_health()
 
 
-class RayServeReplica:
-    """Handles requests with the provided callable."""
+class UserCallableWrapper:
+    """Wraps a user-provided callable that is used to handle requests to a replica."""
 
     def __init__(
         self,
-        _callable: Callable,
-        deployment_name: str,
+        deployment_def: Callable,
+        init_args: Tuple,
+        init_kwargs: Dict,
+        *,
+        deployment_id: DeploymentID,
         replica_tag: ReplicaTag,
-        autoscaling_config: Any,
         version: DeploymentVersion,
-        is_function: bool,
-        controller_handle: ActorHandle,
-        app_name: str,
+        autoscaling_config: Any,
     ) -> None:
-        self.deployment_id = DeploymentID(deployment_name, app_name)
+        if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
+            raise TypeError(
+                "deployment_def must be a function or class. Instead, its type was "
+                f"{type(deployment_def)}."
+            )
+
+        self.deployment_def = deployment_def
+        self.init_args = init_args
+        self.init_kwargs = init_kwargs
+        self.is_function = inspect.isfunction(deployment_def)
+        self.deployment_id = deployment_id
         self.replica_tag = replica_tag
-        self.callable = _callable
-        self.is_function = is_function
         self.version = version
         self.deployment_config: DeploymentConfig = version.deployment_config
         self.rwlock = aiorwlock.RWLock()
         self.delete_lock = asyncio.Lock()
 
-        user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
-        if not callable(user_health_check):
+        # Will be populated in `initialize_callable`.
+        self.callable = None
+        self.user_health_check = None
 
-            def user_health_check():
-                pass
-
-        self.user_health_check = sync_to_async(user_health_check)
+        # Set initial metadata for logs and metrics.
+        # servable_object will be populated in `initialize_callable`.
+        ray.serve.context._set_internal_replica_context(
+            app_name=self.deployment_id.app,
+            deployment=self.deployment_id.name,
+            replica_tag=self.replica_tag,
+            servable_object=None,
+        )
 
         self.request_counter = metrics.Counter(
             "serve_deployment_request_counter",
@@ -549,7 +503,12 @@ class RayServeReplica:
         self.autoscaling_metrics_store = InMemoryMetricsStore()
         self.metrics_pusher = MetricsPusher()
         if autoscaling_config:
-            process_remote_func = controller_handle.record_autoscaling_metrics.remote
+            self.controller_handle = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
+            process_remote_func = (
+                self.controller_handle.record_autoscaling_metrics.remote
+            )
             config = autoscaling_config
             self.metrics_pusher.register_task(
                 self.collect_autoscaling_metrics,
@@ -570,6 +529,53 @@ class RayServeReplica:
             RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
         self.metrics_pusher.start()
+
+    async def initialize_callable(self):
+        # This closure initializes user code and finalizes replica
+        # startup. By splitting the initialization step like this,
+        # we can already access this actor before the user code
+        # has finished initializing.
+        # The supervising state manager can then wait
+        # for allocation of this replica by using the `is_allocated`
+        # method. After that, it calls `reconfigure` to trigger
+        # user code initialization.
+        logger.info(
+            "Started initializing replica.",
+            extra={"log_to_stderr": False},
+        )
+
+        if self.is_function:
+            self.callable = self.deployment_def
+        else:
+            # This allows deployments to define an async __init__
+            # method (mostly used for testing).
+            self.callable = self.deployment_def.__new__(self.deployment_def)
+            await sync_to_async(self.callable.__init__)(
+                *self.init_args, **self.init_kwargs
+            )
+
+            if isinstance(self.callable, ASGIAppReplicaWrapper):
+                await self.callable._run_asgi_lifespan_startup()
+
+        user_health_check = getattr(self.callable, HEALTH_CHECK_METHOD, None)
+        if not callable(user_health_check):
+
+            def user_health_check():
+                pass
+
+        self.user_health_check = sync_to_async(user_health_check)
+
+        # Setting the context again to update the servable_object.
+        ray.serve.context._set_internal_replica_context(
+            app_name=self.deployment_id.app,
+            deployment=self.deployment_id.name,
+            replica_tag=self.replica_tag,
+            servable_object=self.callable,
+        )
+        logger.info(
+            "Finished initializing replica.",
+            extra={"log_to_stderr": False},
+        )
 
     def _add_autoscaling_metrics_point(self, data, send_timestamp: float):
         self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
@@ -645,10 +651,10 @@ class RayServeReplica:
         is converted to a custom Response type that handles serialization for
         common Python objects.
         """
-        if not isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            await Response(result).send(scope, receive, send)
-        else:
+        if isinstance(result, starlette.responses.Response):
             await result(scope, receive, send)
+        else:
+            await Response(result).send(scope, receive, send)
 
     async def reconfigure(self, deployment_config: DeploymentConfig):
         old_user_config = self.deployment_config.user_config
@@ -656,6 +662,15 @@ class RayServeReplica:
         self.version = DeploymentVersion.from_deployment_version(
             self.version, self.deployment_config
         )
+
+        if deployment_config.logging_config:
+            logging_config = LoggingConfig(**deployment_config.logging_config)
+            configure_component_logger(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self.deployment_id.name,
+                component_id=self.replica_tag,
+                logging_config=logging_config,
+            )
 
         if old_user_config != deployment_config.user_config:
             await self.update_user_config(deployment_config.user_config)
@@ -696,12 +711,13 @@ class RayServeReplica:
                 request_metadata.request_id,
                 self.deployment_id.app,
                 request_metadata.multiplexed_model_id,
+                request_metadata.grpc_context,
             )
         )
 
         logger.info(
             f"Started executing request {request_metadata.request_id}",
-            extra={"log_to_stderr": False},
+            extra={"log_to_stderr": False, "serve_access_log": True},
         )
         start_time = time.time()
         user_exception = None
@@ -709,7 +725,7 @@ class RayServeReplica:
             yield
         except Exception as e:
             user_exception = e
-            logger.exception(f"Request failed due to {type(e).__name__}:")
+            logger.error(f"Request failed:\n{e}")
             if ray.util.pdb._is_ray_debugger_enabled():
                 ray.util.pdb._post_mortem()
 
@@ -730,7 +746,8 @@ class RayServeReplica:
                 method=request_metadata.call_method,
                 status=status_str,
                 latency_ms=latency_ms,
-            )
+            ),
+            extra={"serve_access_log": True},
         )
         if user_exception is None:
             self.request_counter.inc(tags={"route": request_metadata.route})
@@ -740,7 +757,7 @@ class RayServeReplica:
 
     async def call_user_method_with_grpc_unary_stream(
         self, request_metadata: RequestMetadata, request: gRPCRequest
-    ) -> AsyncGenerator[bytes, None]:
+    ) -> AsyncGenerator[Tuple[RayServegRPCContext, bytes], None]:
         """Call a user method that is expected to be a generator.
 
         Deserializes gRPC request into protobuf object and pass into replica's runner
@@ -749,16 +766,22 @@ class RayServeReplica:
         async with self.wrap_user_method_call(request_metadata):
             user_method = self.get_runner_method(request_metadata)
             user_request = pickle.loads(request.grpc_user_request)
-            result_generator = user_method(user_request)
+            if GRPC_CONTEXT_ARG_NAME in inspect.signature(user_method).parameters:
+                result_generator = user_method(
+                    user_request,
+                    grpc_context=request_metadata.grpc_context,
+                )
+            else:
+                result_generator = user_method(user_request)
             if inspect.iscoroutine(result_generator):
                 result_generator = await result_generator
 
             if inspect.isgenerator(result_generator):
                 for result in result_generator:
-                    yield result.SerializeToString()
+                    yield request_metadata.grpc_context, result.SerializeToString()
             elif inspect.isasyncgen(result_generator):
                 async for result in result_generator:
-                    yield result.SerializeToString()
+                    yield request_metadata.grpc_context, result.SerializeToString()
             else:
                 raise TypeError(
                     "When using `stream=True`, the called method must be a generator "
@@ -767,7 +790,7 @@ class RayServeReplica:
 
     async def call_user_method_grpc_unary(
         self, request_metadata: RequestMetadata, request: gRPCRequest
-    ) -> bytes:
+    ) -> Tuple[RayServegRPCContext, bytes]:
         """Call a user method that is *not* expected to be a generator.
 
         Deserializes gRPC request into protobuf object and pass into replica's runner
@@ -788,8 +811,14 @@ class RayServeReplica:
 
             method_to_call = sync_to_async(runner_method)
 
-            result = await method_to_call(user_request)
-            return result.SerializeToString()
+            if GRPC_CONTEXT_ARG_NAME in inspect.signature(runner_method).parameters:
+                result = await method_to_call(
+                    user_request,
+                    grpc_context=request_metadata.grpc_context,
+                )
+            else:
+                result = await method_to_call(user_request)
+            return request_metadata.grpc_context, result.SerializeToString()
 
     async def call_user_method(
         self,
@@ -877,11 +906,6 @@ class RayServeReplica:
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
-        # TODO(edoakes): this is only here because there is an issue where async
-        # generators in actors have the `asyncio.current_task()` change between
-        # iterations: https://github.com/ray-project/ray/issues/37147. `aiorwlock`
-        # relies on the current task being stable, so it raises an exception.
-        # This flag should be removed once the above issue is closed.
         async with self.wrap_user_method_call(request_metadata):
             assert (
                 not request_metadata.is_http_request

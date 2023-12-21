@@ -76,7 +76,11 @@ class ActorHandle {
   /// \param[in] builder Task spec builder.
   /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
   /// raylet-based actor restart.
-  void SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor);
+  void SetActorTaskSpec(TaskSpecBuilder &builder,
+                        const ObjectID new_cursor,
+                        int max_retries,
+                        bool retry_exceptions,
+                        const std::string &serialized_retry_exception_allowlist);
 
   /// Reset the actor task spec fields of an existing task so that the task can
   /// be re-executed.

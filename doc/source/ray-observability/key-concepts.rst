@@ -77,7 +77,7 @@ Profiling is way of analyzing the performance of an application by sampling the 
 
 - CPU profiling for Driver and Worker processes, including integration with :ref:`py-spy <profiling-pyspy>` and :ref:`cProfile <profiling-cprofile>`
 - Memory profiling for Driver and Worker processes with :ref:`memray <profiling-memray>`
-- GPU profiling with :ref:`Pytorch Profiler <profiling-pytoch-profiler>`
+- GPU profiling with :ref:`Pytorch Profiler <profiling-pytorch-profiler>` and :ref:`Nsight System <profiling-nsight-profiler>`
 - Built in Task and Actor profiling tool called :ref:`Ray Timeline <profiling-timeline>`
 
 View :ref:`Profiling <profiling>` for more details. Note that this list isn't comprehensive and feel free to contribute to it if you find other useful tools.

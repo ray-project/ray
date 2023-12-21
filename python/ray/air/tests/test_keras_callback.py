@@ -1,5 +1,6 @@
 from typing import Dict, Tuple
 from unittest.mock import patch
+import os
 
 import pytest
 import numpy as np
@@ -137,6 +138,22 @@ class TestReportCheckpointCallback:
         # specified in `report_metrics_on`.
         assert second_metric == {"loss": 1}
         assert second_checkpoint is not None
+
+    @patch("ray.train.report")
+    def test_report_delete_tempdir(self, mock_report, model):
+        # This tests `ReportCheckpointCallback`. The test simulates the end of an epoch,
+        # and asserts that the temporary checkpoint directory is deleted afterwards.
+        callback = ReportCheckpointCallback()
+        callback.model = model
+
+        callback.on_epoch_end(0, {"loss": 0})
+
+        assert len(ray.train.report.call_args_list) == 1
+        metrics, checkpoint = self.parse_call(ray.train.report.call_args_list[0])
+        assert metrics == {"loss": 0}
+        assert checkpoint is not None
+        assert checkpoint.path is not None
+        assert not os.path.exists(checkpoint.path)
 
     def parse_call(self, call) -> Tuple[Dict, train.Checkpoint]:
         (metrics,), kwargs = call

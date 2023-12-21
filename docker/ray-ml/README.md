@@ -12,7 +12,7 @@ Images are `tagged` with the format `{Ray version}[-{Python version}][-{Platform
 | `nightly`                    | The most recent Ray development build (a recent commit from Github `master`) |
 | `6 character Git SHA prefix` | A specific development build (uses a SHA from the Github `master`, e.g. `8960af`). |
 
-The optional `Python version` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. `py37`, `py38`, `py39` and `py310`. If unspecified, the tag points to an image using `Python 3.7`.
+The optional `Python version` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. `py38`, `py39` and `py310`. If unspecified, the tag points to an image using `Python 3.8`.
 
 The optional `Platform` tag specifies the platform where the image is intended for:
 
@@ -25,7 +25,7 @@ The optional `Platform` tag specifies the platform where the image is intended f
 
 Examples tags:
 - none: equivalent to `latest`
-- `latest`: equivalent to `latest-py37-gpu`, i.e. image for the most recent Ray release
+- `latest`: equivalent to `latest-py38-gpu`, i.e. image for the most recent Ray release
 - `nightly-py38-cpu`
 - `806c18-py38-cu112`
 

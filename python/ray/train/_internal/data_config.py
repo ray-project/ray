@@ -1,27 +1,15 @@
-from typing import Optional, Union, Dict, List
+import copy
+from typing import Dict, List, Literal, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
+from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+from ray.data.preprocessor import Preprocessor
 
 # TODO(justinvyu): Fix the circular import error
 from ray.train.constants import TRAIN_DATASET_KEY  # noqa
-from ray.train._internal.dataset_spec import DataParallelIngestSpec
-from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.air.config import DatasetConfig
-from ray.data import (
-    Dataset,
-    DataIterator,
-    ExecutionOptions,
-    NodeIdStr,
-)
-from ray.data.preprocessor import Preprocessor
-
-import sys
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 @PublicAPI(stability="stable")
@@ -60,6 +48,19 @@ class DataConfig:
             execution_options or DataConfig.default_ingest_options()
         )
 
+        self._num_train_cpus = 0.0
+        self._num_train_gpus = 0.0
+
+    def set_train_total_resources(self, num_train_cpus: float, num_train_gpus: float):
+        """Set the total number of CPUs and GPUs used by training.
+
+        If CPU or GPU resource limits are not set, they will be set to the
+        total cluster resources minus the resources used by training.
+        """
+        # TODO: We may also include other resources besides CPU and GPU.
+        self._num_train_cpus = num_train_cpus
+        self._num_train_gpus = num_train_gpus
+
     @DeveloperAPI
     def configure(
         self,
@@ -92,7 +93,17 @@ class DataConfig:
 
         for name, ds in datasets.items():
             ds = ds.copy(ds)
-            ds.context.execution_options = self._execution_options
+            ds.context.execution_options = copy.deepcopy(self._execution_options)
+
+            # Add training-reserved resources to Data's exclude_resources.
+            ds.context.execution_options.exclude_resources = (
+                ds.context.execution_options.exclude_resources.add(
+                    ExecutionResources(
+                        cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                    )
+                )
+            )
+
             if name in datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
@@ -130,38 +141,3 @@ class DataConfig:
         This will be removed in the future.
         """
         return datasets  # No-op for non-legacy configs.
-
-
-class _LegacyDataConfigWrapper(DataConfig):
-    """Backwards-compatibility wrapper for the legacy dict-based datasets config.
-
-    This will be removed in the future.
-    """
-
-    def __init__(
-        self,
-        cls_config: Dict[str, DatasetConfig],
-        user_config: Dict[str, DatasetConfig],
-        datasets: Dict[str, Dataset],
-    ):
-        self._dataset_config = DatasetConfig.validated(
-            DatasetConfig.merge(cls_config, user_config), datasets
-        )
-        self._ingest_spec = DataParallelIngestSpec(
-            dataset_config=self._dataset_config,
-        )
-
-    def configure(
-        self,
-        datasets: Dict[str, Dataset],
-        world_size: int,
-        worker_handles: Optional[List[ActorHandle]],
-        worker_node_ids: Optional[List[NodeIdStr]],
-        **kwargs,
-    ) -> Dict[int, Dict[str, DataIterator]]:
-        return self._ingest_spec.get_dataset_shards(worker_handles)
-
-    def _legacy_preprocessing(
-        self, datasets: Dict[str, Dataset], preprocessor: Optional[Preprocessor]
-    ) -> Dict[str, Dataset]:
-        return self._ingest_spec.preprocess_datasets(preprocessor, datasets)

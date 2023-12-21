@@ -4,7 +4,11 @@ import tempfile
 from contextlib import contextmanager
 
 import ray
-from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.interfaces.physical_operator import (
+    DataOpTask,
+    MetadataOpTask,
+    PhysicalOperator,
+)
 
 
 @ray.remote
@@ -43,6 +47,14 @@ def column_udf(col, udf):
     return wraps
 
 
+def column_udf_class(col, udf):
+    class UDFClass:
+        def __call__(self, row):
+            return {col: udf(row[col])}
+
+    return UDFClass
+
+
 # Ex: named_values("id", [1, 2, 3])
 # Ex: named_values(["id", "id2"], [(1, 1), (2, 2), (3, 3)])
 def named_values(col_names, tuples):
@@ -74,7 +86,11 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
             fetch_local=False,
         )
         for task in tasks:
-            task.on_waitable_ready()
+            if isinstance(task, DataOpTask):
+                task.on_data_ready(None)
+            else:
+                assert isinstance(task, MetadataOpTask)
+                task.on_task_finished()
         if only_existing:
             return
         tasks = op.get_active_tasks()
@@ -87,4 +103,9 @@ def run_one_op_task(op):
     ready, _ = ray.wait(
         list(waitable_to_tasks.keys()), num_returns=1, fetch_local=False
     )
-    waitable_to_tasks[ready[0]].on_waitable_ready()
+    task = waitable_to_tasks[ready[0]]
+    if isinstance(task, DataOpTask):
+        task.on_data_ready(None)
+    else:
+        assert isinstance(task, MetadataOpTask)
+        task.on_task_finished()

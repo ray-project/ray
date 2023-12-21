@@ -26,7 +26,7 @@ from ray.dashboard.optional_deps import aiohttp, hdrs
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 def setup_static_dir():
@@ -87,7 +87,7 @@ class HttpServerDashboardHead:
                 logger.warning(ex)
             else:
                 raise ex
-        dashboard_optional_utils.ClassMethodRouteTable.bind(self)
+        dashboard_optional_utils.DashboardHeadRouteTable.bind(self)
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
@@ -130,15 +130,34 @@ class HttpServerDashboardHead:
     @aiohttp.web.middleware
     async def path_clean_middleware(self, request, handler):
         if request.path.startswith("/static") or request.path.startswith("/logs"):
-            parent = pathlib.Path(
+            parent = pathlib.PurePosixPath(
                 "/logs" if request.path.startswith("/logs") else "/static"
             )
 
             # If the destination is not relative to the expected directory,
             # then the user is attempting path traversal, so deny the request.
-            request_path = pathlib.Path(request.path).resolve()
+            request_path = pathlib.PurePosixPath(
+                pathlib.posixpath.realpath(request.path)
+            )
             if request_path != parent and parent not in request_path.parents:
+                logger.info(
+                    f"Rejecting {request_path=} because it is not relative to {parent=}"
+                )
                 raise aiohttp.web.HTTPForbidden()
+        return await handler(request)
+
+    @aiohttp.web.middleware
+    async def browsers_no_post_put_middleware(self, request, handler):
+        if (
+            # A best effort test for browser traffic. All common browsers
+            # start with Mozilla at the time of writing.
+            request.headers["User-Agent"].startswith("Mozilla")
+            and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
+        ):
+            return aiohttp.web.Response(
+                status=405, text="Method Not Allowed for browser traffic."
+            )
+
         return await handler(request)
 
     @aiohttp.web.middleware
@@ -174,13 +193,17 @@ class HttpServerDashboardHead:
     async def run(self, modules):
         # Bind http routes of each module.
         for c in modules:
-            dashboard_optional_utils.ClassMethodRouteTable.bind(c)
+            dashboard_optional_utils.DashboardHeadRouteTable.bind(c)
 
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(
             client_max_size=100 * 1024**2,
-            middlewares=[self.metrics_middleware, self.path_clean_middleware],
+            middlewares=[
+                self.metrics_middleware,
+                self.path_clean_middleware,
+                self.browsers_no_post_put_middleware,
+            ],
         )
         app.add_routes(routes=routes.bound_routes())
 

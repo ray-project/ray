@@ -3,9 +3,7 @@ import ray._private.worker
 try:
     from ray.serve.api import (
         Application,
-        BuiltApplication,
         Deployment,
-        build,
         delete,
         deployment,
         get_app_handle,
@@ -24,7 +22,6 @@ try:
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
 
-    from ray.serve.air_integrations import PredictorDeployment  # isort:skip
 except ModuleNotFoundError as e:
     e.msg += (
         '. You can run `pip install "ray[serve]"` to install all Ray Serve'
@@ -39,7 +36,6 @@ ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
     "batch",
-    "build",
     "start",
     "HTTPOptions",
     "get_replica_context",
@@ -49,10 +45,8 @@ __all__ = [
     "get_deployment",
     "list_deployments",
     "run",
-    "PredictorDeployment",
     "delete",
     "Application",
-    "BuiltApplication",
     "Deployment",
     "multiplexed",
     "get_multiplexed_model_id",

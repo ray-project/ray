@@ -1,18 +1,17 @@
-from typing import Optional, Dict, Union
 import uuid
+from typing import Dict, Optional, Union
 from unittest import mock
+
+import numpy as np
+import pandas as pd
 import pytest
 
-import pandas as pd
-import numpy as np
-
 import ray
-from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
+from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.train.predictor import Predictor, PredictorNotSerializableException
-
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 

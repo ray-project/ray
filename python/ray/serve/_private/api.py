@@ -1,11 +1,10 @@
 import inspect
 import logging
 from types import FunctionType
-from typing import Any, Dict, Tuple, Union
-
-from pydantic.main import ModelMetaclass
+from typing import Any, Dict, Union
 
 import ray
+from ray._private.pydantic_compat import is_subclass_of_base_model
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.usage import usage_lib
 from ray.actor import ActorHandle
@@ -17,11 +16,11 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.controller import ServeController
-from ray.serve._private.utils import format_actor_name, get_random_letters
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(__file__)
 
@@ -110,12 +109,11 @@ def _check_http_options(
 
 
 def _start_controller(
-    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    global_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
-) -> Tuple[ActorHandle, str]:
+) -> ActorHandle:
     """Start Ray Serve controller.
 
     The function makes sure controller is ready to start deploying apps
@@ -123,7 +121,7 @@ def _start_controller(
 
     Parameters are same as ray.serve._private.api.serve_start().
 
-    Returns: A tuple with controller actor handle and controller name.
+    Returns: controller actor handle.
     """
 
     # Initialize ray if needed.
@@ -131,15 +129,10 @@ def _start_controller(
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
-    if detached:
-        controller_name = SERVE_CONTROLLER_NAME
-    else:
-        controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
-
     controller_actor_options = {
-        "num_cpus": 1 if dedicated_cpu else 0,
-        "name": controller_name,
-        "lifetime": "detached" if detached else None,
+        "num_cpus": 0,
+        "name": SERVE_CONTROLLER_NAME,
+        "lifetime": "detached",
         "max_restarts": -1,
         "max_task_retries": -1,
         "resources": {HEAD_NODE_RESOURCE_NAME: 0.001},
@@ -164,11 +157,15 @@ def _start_controller(
     if isinstance(grpc_options, dict):
         grpc_options = gRPCOptions(**grpc_options)
 
+    if global_logging_config is None:
+        global_logging_config = LoggingConfig()
+    elif isinstance(global_logging_config, dict):
+        global_logging_config = LoggingConfig(**global_logging_config)
+
     controller = ServeController.options(**controller_actor_options).remote(
-        controller_name,
         http_config=http_options,
-        detached=detached,
         grpc_options=grpc_options,
+        global_logging_config=global_logging_config,
     )
 
     proxy_handles = ray.get(controller.get_proxies.remote())
@@ -182,14 +179,13 @@ def _start_controller(
             raise TimeoutError(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
-    return controller, controller_name
+    return controller
 
 
 async def serve_start_async(
-    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    global_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -216,44 +212,34 @@ async def serve_start_async(
     except RayServeException:
         pass
 
-    controller, controller_name = (
+    controller = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(detached, http_options, dedicated_cpu, grpc_options, **kwargs)
+        .remote(http_options, grpc_options, global_logging_config, **kwargs)
     )
 
     client = ServeControllerClient(
         controller,
-        controller_name,
-        detached=detached,
     )
     _set_global_client(client)
-    logger.info(
-        f"Started{' detached ' if detached else ' '}Serve instance in "
-        f'namespace "{SERVE_NAMESPACE}".'
-    )
+    logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
 
 
 def serve_start(
-    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    global_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
 
     By default, the instance will be scoped to the lifetime of the returned
-    Client object (or when the script exits). If detached is set to True, the
-    instance will instead persist until serve.shutdown() is called. This is
+    Client object (or when the script exits). This is
     only relevant if connecting to a long-running Ray cluster (e.g., with
     ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
-        detached: Whether not the instance should be detached from this
-          script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
@@ -277,8 +263,6 @@ def serve_start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        dedicated_cpu: Whether to reserve a CPU core for the internal
-          Serve controller actor.  Defaults to False.
         grpc_options: [Experimental] Configuration options for gRPC proxy.
           You can pass in a gRPCOptions object with fields:
 
@@ -302,20 +286,15 @@ def serve_start(
     except RayServeException:
         pass
 
-    controller, controller_name = _start_controller(
-        detached, http_options, dedicated_cpu, grpc_options, **kwargs
+    controller = _start_controller(
+        http_options, grpc_options, global_logging_config, **kwargs
     )
 
     client = ServeControllerClient(
         controller,
-        controller_name,
-        detached=detached,
     )
     _set_global_client(client)
-    logger.info(
-        f"Started{' detached ' if detached else ' '}Serve instance in "
-        f'namespace "{SERVE_NAMESPACE}".'
-    )
+    logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
 
 
@@ -358,7 +337,9 @@ def call_app_builder_with_args_if_necessary(
     # that model. This will perform standard pydantic validation (e.g., raise an
     # exception if required fields are missing).
     param = signature.parameters[list(signature.parameters.keys())[0]]
-    if issubclass(type(param.annotation), ModelMetaclass):
+    if inspect.isclass(param.annotation) and is_subclass_of_base_model(
+        param.annotation
+    ):
         args = param.annotation.parse_obj(args)
 
     app = builder(args)

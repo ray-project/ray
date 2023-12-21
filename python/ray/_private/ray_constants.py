@@ -372,6 +372,15 @@ CALL_STACK_LINE_DELIMITER = " | "
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
 GRPC_CPP_MAX_MESSAGE_SIZE = 250 * 1024 * 1024
 
+# The gRPC send & receive max length for "dashboard agent" server.
+# NOTE: This is equal to the C++ limit of RayConfig::max_grpc_message_size
+#       and HAVE TO STAY IN SYNC with it (ie, meaning that both of these values
+#       have to be set at the same time)
+AGENT_GRPC_MAX_MESSAGE_LENGTH = env_integer(
+    "AGENT_GRPC_MAX_MESSAGE_LENGTH", 20 * 1024 * 1024  # 20MB
+)
+
+
 # GRPC options
 GRPC_ENABLE_HTTP_PROXY = (
     1
@@ -398,11 +407,7 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
 # Accelerator constants
-NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR = (
-    "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES"
-)
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
-NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
 NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
@@ -412,18 +417,7 @@ NEURON_CORES = "neuron_cores"
 GPU = "GPU"
 TPU = "TPU"
 
-# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/inf2-arch.html#aws-inf2-arch
-# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trn1-arch.html#aws-trn1-arch
-# Subject to removal after the information is available via public API
-AWS_NEURON_INSTANCE_MAP = {
-    "trn1.2xlarge": 2,
-    "trn1.32xlarge": 32,
-    "trn1n.32xlarge": 32,
-    "inf2.xlarge": 2,
-    "inf2.8xlarge": 2,
-    "inf2.24xlarge": 12,
-    "inf2.48xlarge": 24,
-}
+
 RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
 # Default max_retries option in @ray.remote for non-actor
@@ -448,7 +442,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
@@ -479,6 +473,7 @@ RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
     "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
 )
 
+# RuntimeEnv env var to indicate it exports a function
 WORKER_PROCESS_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_PROCESS_SETUP_HOOK_ENV_VAR"
 RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
     "RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT"  # noqa
@@ -487,33 +482,6 @@ RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
 RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
 
 RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
-RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
 
-# Constants for accessing the `accelerator-type` from TPU VM
-# instance metadata.
-# See https://cloud.google.com/compute/docs/metadata/overview
-# for more details about VM instance metadata.
-RAY_GCE_TPU_ACCELERATOR_ENDPOINT = (
-    "http://metadata.google.internal/computeMetadata/"
-    "v1/instance/attributes/accelerator-type"
-)
-RAY_GCE_TPU_HEADERS = {"Metadata-Flavor": "Google"}
-
-# TPU VMs come with 4 chips per host and 2 tensorcores per chip.
-# For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
-RAY_TPU_NUM_CHIPS_PER_HOST = 4
-RAY_TPU_CORES_PER_CHIP = 2
-
-# The following defines environment variables that allow
-# us to access a subset of TPU visible chips.
-#
-# See: https://github.com/google/jax/issues/14977 for an example/more details.
-TPU_VALID_CHIP_OPTIONS = (1, 2, 4)
-TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
-TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
-TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
-
-TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
-TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 
 RAY_NODE_IP_FILENAME = "node_ip_address.json"

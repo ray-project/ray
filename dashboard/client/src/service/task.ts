@@ -18,7 +18,7 @@ export const getTask = (taskId: string) => {
 };
 
 export const downloadTaskTimelineHref = (jobId: string | undefined) => {
-  let url = "/api/v0/tasks/timeline?download=1";
+  let url = "api/v0/tasks/timeline?download=1";
   if (jobId) {
     url += `&job_id=${jobId}`;
   }

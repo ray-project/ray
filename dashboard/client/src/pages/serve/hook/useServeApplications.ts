@@ -1,6 +1,5 @@
-import { useContext, useState } from "react";
+import { useState } from "react";
 import useSWR from "swr";
-import { GlobalContext } from "../../../App";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getServeApplications } from "../../../service/serve";
 import { ServeSystemActorStatus } from "../../../type/serve";
@@ -15,7 +14,6 @@ const SERVE_PROXY_STATUS_SORT_ORDER: Record<ServeSystemActorStatus, number> = {
 
 export const useServeApplications = () => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
-  const { ipLogMap } = useContext(GlobalContext);
   const [filter, setFilter] = useState<
     {
       key: "name" | "status";
@@ -87,7 +85,6 @@ export const useServeApplications = () => {
     proxiesPage,
     setProxiesPage: (key: string, val: number) =>
       setProxiesPage({ ...proxiesPage, [key]: val }),
-    ipLogMap,
     allServeApplications: serveApplicationsList,
   };
 };
@@ -96,7 +93,6 @@ export const useServeApplicationDetails = (
   applicationName: string | undefined,
 ) => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
-  const { ipLogMap } = useContext(GlobalContext);
   const [filter, setFilter] = useState<
     {
       key: "name" | "status";
@@ -151,7 +147,6 @@ export const useServeApplicationDetails = (
     changeFilter,
     page,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
-    ipLogMap,
     allDeployments: deployments,
   };
 };

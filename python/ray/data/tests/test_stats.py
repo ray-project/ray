@@ -1,6 +1,9 @@
 import re
+import threading
 import time
 from collections import Counter
+from contextlib import contextmanager
+from typing import List, Optional
 from unittest.mock import patch
 
 import numpy as np
@@ -9,45 +12,124 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.stats import DatasetStats, _StatsActor
+from ray.data._internal.stats import (
+    DatasetStats,
+    StatsManager,
+    _get_or_create_stats_actor,
+    _StatsActor,
+)
+from ray.data._internal.util import create_dataset_tag
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
 
-STANDARD_EXTRA_METRICS = (
-    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
-    "'obj_store_mem_peak': N, 'obj_store_mem_spilled': Z, "
-    "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}}"
+
+def gen_expected_metrics(
+    is_map: bool,
+    spilled: bool = False,
+    extra_metrics: Optional[List[str]] = None,
+):
+    if is_map:
+        metrics = [
+            "'num_inputs_received': N",
+            "'bytes_inputs_received': N",
+            "'num_inputs_processed': N",
+            "'bytes_inputs_processed': N",
+            "'bytes_inputs_of_submitted_tasks': N",
+            "'num_outputs_generated': N",
+            "'bytes_outputs_generated': N",
+            "'rows_outputs_generated': N",
+            "'num_outputs_taken': N",
+            "'bytes_outputs_taken': N",
+            "'num_outputs_of_finished_tasks': N",
+            "'bytes_outputs_of_finished_tasks': N",
+            "'num_tasks_submitted': N",
+            "'num_tasks_running': Z",
+            "'num_tasks_have_outputs': N",
+            "'num_tasks_finished': N",
+            "'num_tasks_failed': Z",
+            "'obj_store_mem_alloc': N",
+            "'obj_store_mem_freed': N",
+            "'obj_store_mem_cur': Z",
+            "'obj_store_mem_peak': N",
+            f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
+            "'block_generation_time': N",
+            "'cpu_usage': Z",
+            "'gpu_usage': Z",
+        ]
+    else:
+        metrics = [
+            "'num_inputs_received': N",
+            "'bytes_inputs_received': N",
+            "'num_outputs_taken': N",
+            "'bytes_outputs_taken': N",
+            "'cpu_usage': Z",
+            "'gpu_usage': Z",
+        ]
+    if extra_metrics:
+        metrics.extend(extra_metrics)
+    return "{" + ", ".join(metrics) + "}"
+
+
+STANDARD_EXTRA_METRICS = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
 )
 
-LARGE_ARGS_EXTRA_METRICS = (
-    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
-    "'obj_store_mem_peak': N, 'obj_store_mem_spilled': Z, "
-    "'ray_remote_args': {'num_cpus': Z.N, 'scheduling_strategy': 'DEFAULT'}}"
-)
-
-MEM_SPILLED_EXTRA_METRICS = (
-    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
-    "'obj_store_mem_peak': N, 'obj_store_mem_spilled': N, "
-    "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}}"
+LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'DEFAULT'}"
+    ],
 )
 
 
-def canonicalize(stats: str) -> str:
+MEM_SPILLED_EXTRA_METRICS = gen_expected_metrics(
+    is_map=True,
+    spilled=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+)
+
+
+CLUSTER_MEMORY_STATS = """
+Cluster memory:
+* Spilled to disk: M
+* Restored from disk: M
+"""
+
+DATASET_MEMORY_STATS = """
+Dataset memory:
+* Spilled to disk: M
+"""
+
+
+def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     # Dataset UUID expression.
     s0 = re.sub("([a-f\d]{32})", "U", stats)
     # Time expressions.
     s1 = re.sub("[0-9\.]+(ms|us|s)", "T", s0)
     # Memory expressions.
     s2 = re.sub("[0-9\.]+(B|MB|GB)", "M", s1)
+    # Handle floats in (0, 1)
+    s3 = re.sub(" (0\.0*[1-9][0-9]*)", " N", s2)
     # Handle zero values specially so we can check for missing values.
-    s3 = re.sub(" [0]+(\.[0]+)?", " Z", s2)
+    s4 = re.sub(" [0]+(\.[0])?", " Z", s3)
     # Other numerics.
-    s4 = re.sub("[0-9]+(\.[0-9]+)?", "N", s3)
+    s5 = re.sub("[0-9]+(\.[0-9]+)?", "N", s4)
     # Replace tabs with spaces.
-    s5 = re.sub("\t", "    ", s4)
-    return s5
+    s6 = re.sub("\t", "    ", s5)
+    if filter_global_stats:
+        s7 = s6.replace(CLUSTER_MEMORY_STATS, "")
+        s8 = s7.replace(DATASET_MEMORY_STATS, "")
+        return s8
+    return s6
 
 
 def dummy_map_batches(x):
@@ -68,11 +150,32 @@ def enable_get_object_locations_flag():
     ctx.enable_get_object_locations_for_metrics = True
 
 
+@contextmanager
+def patch_update_stats_actor():
+    with patch(
+        "ray.data._internal.stats.StatsManager.update_execution_metrics"
+    ) as update_fn:
+        yield update_fn
+
+
+@contextmanager
+def patch_update_stats_actor_iter():
+    with patch(
+        "ray.data._internal.stats.StatsManager.update_iteration_metrics"
+    ) as update_fn, patch(
+        "ray.data._internal.stats.StatsManager.clear_iteration_metrics"
+    ):
+        yield update_fn
+
+
 def test_streaming_split_stats(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
     list(it.iter_batches())
     stats = it.stats()
+    extra_metrics = gen_expected_metrics(
+        is_map=False, extra_metrics=["'num_output_N': N"]
+    )
     assert (
         canonicalize(stats)
         == f"""Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
@@ -87,7 +190,7 @@ def test_streaming_split_stats(ray_start_regular_shared):
 Stage N split(N, equal=False): \n"""
         # Workaround to preserve trailing whitespace in the above line without
         # causing linter failures.
-        "* Extra metrics: {'num_output_N': N}\n"
+        f"""* Extra metrics: {extra_metrics}\n"""
         """
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
@@ -351,50 +454,6 @@ Dataset iterator time breakdown:
             )
 
 
-def test_dataset_stats_stage_execution_time(ray_start_regular_shared):
-    # Disable stage/operator fusion in order to test the stats
-    # of two different map_batches operators without fusing them together,
-    # so that we can observe different execution times for each.
-    ctx = ray.data.DataContext.get_current()
-    curr_optimizer_enabled = ctx.optimizer_enabled
-    curr_optimize_fuse_stages = ctx.optimize_fuse_stages
-    ctx.optimize_fuse_stages = False
-    ctx.optimizer_enabled = False
-
-    sleep_1 = 1
-    sleep_2 = 3
-    ds = (
-        ray.data.range(100, parallelism=1)
-        .map_batches(lambda batch: map_batches_sleep(batch, sleep_1))
-        .map_batches(lambda batch: map_batches_sleep(batch, sleep_2))
-        .materialize()
-    )
-
-    # Check that each map_batches operator has the corresponding execution time.
-    map_batches_1_stats = ds._get_stats_summary().parents[0].stages_stats[0]
-    map_batches_2_stats = ds._get_stats_summary().stages_stats[0]
-    assert sleep_1 <= map_batches_1_stats.time_total_s
-    assert sleep_2 <= map_batches_2_stats.time_total_s
-
-    ctx.optimize_fuse_stages = curr_optimize_fuse_stages
-    ctx.optimizer_enabled = curr_optimizer_enabled
-
-    # The following case runs 2 tasks with 1 CPU, with each task sleeping for
-    # `sleep_2` seconds. We expect the overall reported stage time to be
-    # at least `2 * sleep_2` seconds`, and less than the total elapsed time.
-    num_tasks = 2
-    ds = ray.data.range(100, parallelism=num_tasks).map_batches(
-        lambda batch: map_batches_sleep(batch, sleep_2)
-    )
-    start_time = time.time()
-    ds.take_all()
-    end_time = time.time()
-
-    stage_stats = ds._get_stats_summary().stages_stats[0]
-    stage_time = stage_stats.time_total_s
-    assert num_tasks * sleep_2 <= stage_time <= end_time - start_time
-
-
 def test_dataset__repr__(ray_start_regular_shared):
     n = 100
     ds = ray.data.range(n)
@@ -403,7 +462,7 @@ def test_dataset__repr__(ray_start_regular_shared):
 
     expected_stats = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=None,\n"
         "   number=N,\n"
         "   extra_metrics={},\n"
@@ -459,14 +518,35 @@ def test_dataset__repr__(ray_start_regular_shared):
     assert len(ds2.take_all()) == n
     expected_stats2 = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
         "   extra_metrics={\n"
+        "      num_inputs_received: N,\n"
+        "      bytes_inputs_received: N,\n"
+        "      num_inputs_processed: N,\n"
+        "      bytes_inputs_processed: N,\n"
+        "      bytes_inputs_of_submitted_tasks: N,\n"
+        "      num_outputs_generated: N,\n"
+        "      bytes_outputs_generated: N,\n"
+        "      rows_outputs_generated: N,\n"
+        "      num_outputs_taken: N,\n"
+        "      bytes_outputs_taken: N,\n"
+        "      num_outputs_of_finished_tasks: N,\n"
+        "      bytes_outputs_of_finished_tasks: N,\n"
+        "      num_tasks_submitted: N,\n"
+        "      num_tasks_running: Z,\n"
+        "      num_tasks_have_outputs: N,\n"
+        "      num_tasks_finished: N,\n"
+        "      num_tasks_failed: Z,\n"
         "      obj_store_mem_alloc: N,\n"
         "      obj_store_mem_freed: N,\n"
+        "      obj_store_mem_cur: Z,\n"
         "      obj_store_mem_peak: N,\n"
         "      obj_store_mem_spilled: Z,\n"
+        "      block_generation_time: N,\n"
+        "      cpu_usage: Z,\n"
+        "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   stage_stats=[\n"
@@ -499,7 +579,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   dataset_bytes_spilled=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
-        "         dataset_uuid=U,\n"
+        "         dataset_uuid=N,\n"
         "         base_name=None,\n"
         "         number=N,\n"
         "         extra_metrics={},\n"
@@ -557,7 +637,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     stats = canonicalize(ds.materialize().stats())
     assert (
         stats
-        == """Stage N ReadRange->RandomShuffle: executed in T
+        == f"""Stage N ReadRange->RandomShuffle: executed in T
 
     Substage Z ReadRange->RandomShuffleMap: N/N blocks executed
     * Remote wall time: T min, T max, T mean, T total
@@ -574,6 +654,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output num rows: N min, N max, N mean, N total
     * Output size bytes: N min, N max, N mean, N total
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Extra metrics: {gen_expected_metrics(is_map=False)}
 
 Stage N Repartition: executed in T
 
@@ -592,6 +673,7 @@ Stage N Repartition: executed in T
     * Output num rows: N min, N max, N mean, N total
     * Output size bytes: N min, N max, N mean, N total
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Extra metrics: {gen_expected_metrics(is_map=False)}
 """
     )
 
@@ -731,354 +813,6 @@ Stage N Map(<lambda>): N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 """
             )
-
-
-def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
-
-    if context.new_execution_backend:
-        if context.use_streaming_executor:
-            logger = DatasetLogger(
-                "ray.data._internal.execution.streaming_executor"
-            ).get_logger(
-                log_to_stdout=enable_auto_log_stats,
-            )
-        else:
-            logger = DatasetLogger(
-                "ray.data._internal.execution.bulk_executor"
-            ).get_logger(
-                log_to_stdout=enable_auto_log_stats,
-            )
-    else:
-        logger = DatasetLogger("ray.data._internal.plan").get_logger(
-            log_to_stdout=enable_auto_log_stats,
-        )
-
-    with patch.object(logger, "info") as mock_logger:
-        ds = ray.data.range(1000, parallelism=10)
-        ds = ds.map_batches(dummy_map_batches).materialize()
-
-        if enable_auto_log_stats:
-            logger_args, logger_kwargs = mock_logger.call_args
-
-            if context.new_execution_backend:
-                assert (
-                    canonicalize(logger_args[0])
-                    == f"""Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-"""
-                )
-            else:
-                assert (
-                    canonicalize(logger_args[0])
-                    == """Stage N Read->MapBatches(dummy_map_batches): N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-"""
-                )
-
-        pipe = ds.repeat(5)
-        pipe = pipe.map(dummy_map_batches)
-        if enable_auto_log_stats:
-            # Stats only include first stage, and not for pipelined map
-            logger_args, logger_kwargs = mock_logger.call_args
-            if context.new_execution_backend:
-                assert (
-                    canonicalize(logger_args[0])
-                    == f"""Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-"""
-                )
-            else:
-                assert (
-                    canonicalize(logger_args[0])
-                    == """Stage N Read->MapBatches(dummy_map_batches): N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-"""
-                )
-
-        stats = canonicalize(pipe.stats())
-        assert "No stats available" in stats, stats
-        for batch in pipe.iter_batches():
-            pass
-
-        if enable_auto_log_stats:
-            # Now stats include the pipelined map stage
-            logger_args, logger_kwargs = mock_logger.call_args
-            if context.new_execution_backend:
-                assert (
-                    canonicalize(logger_args[0])
-                    == f"""Stage N Map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-"""
-                )
-            else:
-                assert (
-                    canonicalize(logger_args[0])
-                    == """Stage N Map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-"""
-                )
-
-        stats = canonicalize(pipe.stats())
-        if context.new_execution_backend:
-            assert (
-                stats
-                == f"""== Pipeline Window N ==
-Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Stage N Map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-
-== Pipeline Window N ==
-Stage N ReadRange->MapBatches(dummy_map_batches): [execution cached]
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Stage N Map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-
-== Pipeline Window N ==
-Stage N ReadRange->MapBatches(dummy_map_batches): [execution cached]
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Stage N Map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-
-##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
-
-DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
-* In ray.wait(): T
-* In ray.get(): T
-* In next_batch(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
-"""
-            )
-        else:
-            assert (
-                stats
-                == """== Pipeline Window N ==
-Stage N Read->MapBatches(dummy_map_batches): N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-
-Stage N Map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-
-== Pipeline Window N ==
-Stage N Read->MapBatches(dummy_map_batches): [execution cached]
-
-Stage N Map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-
-== Pipeline Window N ==
-Stage N Read->MapBatches(dummy_map_batches): [execution cached]
-
-Stage N Map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-
-##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
-
-DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
-* In ray.wait(): T
-* In ray.get(): T
-* In next_batch(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
-"""
-            )
-
-
-def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
-    # NOT CACHED (lazy read stage).
-    ds = ray.data.range(10).repeat(2).map_batches(lambda x: x)
-    ds.take(999)
-    stats = ds.stats()
-    assert "[execution cached]" not in stats
-
-    # CACHED (called cache()).
-    ds = ray.data.range(10).materialize().repeat(2).map_batches(lambda x: x)
-    ds.take(999)
-    stats = ds.stats()
-    print("STATS", stats)
-    assert "[execution cached]" in stats
-
-    # CACHED (eager map stage).
-    ds = ray.data.range(10).map_batches(dummy_map_batches).repeat(2)
-    ds.take(999)
-    stats = ds.stats()
-    assert "[execution cached]" in stats
-    assert "ReadRange->MapBatches(dummy_map_batches)" in stats
-
-
-def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
-    ds = ray.data.range(1000, parallelism=10)
-    pipe = ds.repeat(2)
-
-    @ray.remote
-    def consume(split):
-        for batch in split.iter_batches():
-            pass
-        return split.stats()
-
-    s0, s1 = pipe.split(2)
-    stats = ray.get([consume.remote(s0), consume.remote(s1)])
-    if context.new_execution_backend:
-        print("XXX stats:", canonicalize(stats[0]))
-        assert (
-            canonicalize(stats[0])
-            == f"""== Pipeline Window Z ==
-Stage N ReadRange: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-
-== Pipeline Window N ==
-Stage N ReadRange: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
-
-##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
-
-DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
-* In ray.wait(): T
-* In ray.get(): T
-* In next_batch(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
-"""
-        )
-    else:
-        assert (
-            canonicalize(stats[0])
-            == """== Pipeline Window Z ==
-Stage N Read: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-
-== Pipeline Window N ==
-Stage N Read: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-
-##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
-
-DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
-* In ray.wait(): T
-* In ray.get(): T
-* In next_batch(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
-"""
-        )
 
 
 def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
@@ -1232,6 +966,10 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
+@pytest.mark.skip(
+    reason="Temporarily disable to deflake rest of test suite. "
+    "See: https://github.com/ray-project/ray/pull/40173"
+)
 def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
@@ -1263,6 +1001,55 @@ Dataset iterator time breakdown:
     * In batch formatting: T min, T max, T avg, T total
 """
     )
+
+
+def test_write_ds_stats(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(100, parallelism=100)
+    ds.write_parquet(str(tmp_path))
+    stats = ds.stats()
+
+    assert (
+        canonicalize(stats)
+        == f"""Stage N ReadRange->Write: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {STANDARD_EXTRA_METRICS}
+"""
+    )
+
+    assert stats == ds._write_ds.stats()
+
+    ds = ray.data.range(100, parallelism=100).map_batches(lambda x: x).materialize()
+    ds.write_parquet(str(tmp_path))
+    stats = ds.stats()
+
+    assert (
+        canonicalize(stats)
+        == f"""Stage N ReadRange->MapBatches(<lambda>): N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {STANDARD_EXTRA_METRICS}
+
+Stage N Write: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {STANDARD_EXTRA_METRICS}
+"""
+    )
+
+    assert stats == ds._write_ds.stats()
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
@@ -1309,15 +1096,11 @@ def test_stats_actor_cap_num_stats(ray_start_cluster):
 def test_spilled_stats(shutdown_only):
     # The object store is about 100MB.
     ray.init(object_store_memory=100e6)
-    # The size of dataset is 1000*(80*80*4)*8B, about 200MB.
-    ds = (
-        ray.data.range_tensor(1000, shape=(80, 80, 4), parallelism=100)
-        .map_batches(lambda x: x)
-        .materialize()
-    )
+    # The size of dataset is 1000*80*80*4*8B, about 200MB.
+    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
     assert (
-        canonicalize(ds.stats())
+        canonicalize(ds.stats(), filter_global_stats=False)
         == f"""Stage N ReadRange->MapBatches(<lambda>): N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -1340,9 +1123,9 @@ Dataset memory:
     assert ds._plan.stats().dataset_bytes_spilled > 100e6
 
     ds = (
-        ray.data.range_tensor(1000, shape=(80, 80, 4), parallelism=100)
+        ray.data.range(1000 * 80 * 80 * 4)
         .map_batches(lambda x: x)
-        .limit(1000)
+        .materialize()
         .map_batches(lambda x: x)
         .materialize()
     )
@@ -1351,12 +1134,230 @@ Dataset memory:
 
     # The size of dataset is around 50MB, there should be no spillage
     ds = (
-        ray.data.range_tensor(250, shape=(80, 80, 4), parallelism=100)
+        ray.data.range(250 * 80 * 80 * 4, parallelism=1)
         .map_batches(lambda x: x)
         .materialize()
     )
 
     assert ds._plan.stats().dataset_bytes_spilled == 0
+
+
+def test_stats_actor_metrics():
+    ray.init(object_store_memory=100e6)
+    with patch_update_stats_actor() as update_fn:
+        ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+
+    # last emitted metrics from map operator
+    final_metric = update_fn.call_args_list[-1].args[1][-1]
+
+    assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
+    assert (
+        final_metric.obj_store_mem_alloc
+        == ds._plan.stats().extra_metrics["obj_store_mem_alloc"]
+    )
+    assert (
+        final_metric.obj_store_mem_freed
+        == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
+    )
+    assert final_metric.bytes_outputs_generated == 1000 * 80 * 80 * 4 * 8  # 8B per int
+    assert final_metric.rows_outputs_generated == 1000 * 80 * 80 * 4
+    # There should be nothing in object store at the end of execution.
+    assert final_metric.obj_store_mem_cur == 0
+
+    args = update_fn.call_args_list[-1].args
+    assert args[0] == f"dataset_{ds._uuid}"
+    assert args[2][0] == "Input0"
+    assert args[2][1] == "ReadRange->MapBatches(<lambda>)1"
+
+    def sleep_three(x):
+        import time
+
+        time.sleep(3)
+        return x
+
+    with patch_update_stats_actor() as update_fn:
+        ds = ray.data.range(3).map_batches(sleep_three, batch_size=1).materialize()
+
+    final_metric = update_fn.call_args_list[-1].args[1][-1]
+    assert final_metric.block_generation_time >= 9
+
+
+def test_stats_actor_iter_metrics():
+    ds = ray.data.range(1e6).map_batches(lambda x: x)
+    with patch_update_stats_actor_iter() as update_fn:
+        ds.take_all()
+
+    ds_stats = ds._plan.stats()
+    final_stats = update_fn.call_args_list[-1].args[0]
+
+    assert final_stats == ds_stats
+    assert f"dataset_{ds._uuid}" == update_fn.call_args_list[-1].args[1]
+
+
+def test_dataset_name():
+    ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
+    ds._set_name("test_ds")
+    assert ds._name == "test_ds"
+    assert (
+        str(ds)
+        == """MapBatches(<lambda>)
++- Dataset(name=test_ds, num_blocks=20, num_rows=100, schema={id: int64})"""
+    )
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
+
+    # Names persist after an execution
+    ds = ds.random_shuffle()
+    assert ds._name == "test_ds"
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
+
+    ds._set_name("test_ds_two")
+    ds = ds.map_batches(lambda x: x)
+    assert ds._name == "test_ds_two"
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[0] == f"test_ds_two_{mds._uuid}"
+
+    ds._set_name(None)
+    ds = ds.map_batches(lambda x: x)
+    assert ds._name is None
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[0] == f"dataset_{mds._uuid}"
+
+    ds = ray.data.range(100, parallelism=20)
+    ds._set_name("very_loooooooong_name")
+    assert (
+        str(ds)
+        == """Dataset(
+   name=very_loooooooong_name,
+   num_blocks=20,
+   num_rows=100,
+   schema={id: int64}
+)"""
+    )
+
+
+def test_op_metrics_logging():
+    logger = DatasetLogger(
+        "ray.data._internal.execution.streaming_executor"
+    ).get_logger()
+    with patch.object(logger, "info") as mock_logger:
+        ray.data.range(100).map_batches(lambda x: x).materialize()
+        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
+        input_str = (
+            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
+            + gen_expected_metrics(is_map=False)
+        )
+        map_str = (
+            "Operator InputDataBuffer[Input] -> "
+            "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
+            "Operator Metrics:\n"
+        ) + STANDARD_EXTRA_METRICS
+
+        # Check that these strings are logged exactly once.
+        assert sum([log == input_str for log in logs]) == 1
+        assert sum([log == map_str for log in logs]) == 1
+
+
+def test_op_state_logging():
+    logger = DatasetLogger(
+        "ray.data._internal.execution.streaming_executor"
+    ).get_logger()
+    with patch.object(logger, "info") as mock_logger:
+        ray.data.range(100).map_batches(lambda x: x).materialize()
+        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
+
+        times_asserted = 0
+        for i, log in enumerate(logs):
+            if log == "Execution Progress:":
+                times_asserted += 1
+                assert "Input" in logs[i + 1]
+                assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
+        assert times_asserted > 0
+
+
+def test_stats_actor_datasets(ray_start_cluster):
+    ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
+    ds._set_name("test_stats_actor_datasets")
+    ds.materialize()
+    stats_actor = _get_or_create_stats_actor()
+
+    datasets = ray.get(stats_actor.get_datasets.remote())
+    dataset_name = list(filter(lambda x: x.startswith(ds._name), datasets))
+    assert len(dataset_name) == 1
+    dataset = datasets[dataset_name[0]]
+
+    assert dataset["state"] == "FINISHED"
+    assert dataset["progress"] == 20
+    assert dataset["total"] == 20
+    assert dataset["end_time"] is not None
+
+    operators = dataset["operators"]
+    assert len(operators) == 2
+    assert "Input0" in operators
+    assert "ReadRange->MapBatches(<lambda>)1" in operators
+    for value in operators.values():
+        assert value["progress"] == 20
+        assert value["total"] == 20
+        assert value["state"] == "FINISHED"
+
+
+@patch.object(StatsManager, "STATS_ACTOR_UPDATE_INTERVAL_SECONDS", new=0.5)
+@patch.object(StatsManager, "_stats_actor_handle")
+@patch.object(StatsManager, "UPDATE_THREAD_INACTIVITY_LIMIT", new=1)
+def test_stats_manager(shutdown_only):
+    ray.init()
+    num_threads = 10
+
+    datasets = [None] * num_threads
+    # Mock clear methods so that _last_execution_stats and _last_iteration_stats
+    # are not cleared. We will assert on them afterwards.
+    with patch.object(StatsManager, "clear_execution_metrics"), patch.object(
+        StatsManager, "clear_iteration_metrics"
+    ):
+
+        def update_stats_manager(i):
+            datasets[i] = ray.data.range(10).map_batches(lambda x: x)
+            for _ in datasets[i].iter_batches(batch_size=1):
+                pass
+
+        threads = [
+            threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
+            for i in range(num_threads)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+    assert len(StatsManager._last_execution_stats) == num_threads
+    assert len(StatsManager._last_iteration_stats) == num_threads
+
+    # Clear dataset tags manually.
+    for dataset in datasets:
+        dataset_tag = create_dataset_tag(dataset._name, dataset._uuid)
+        assert dataset_tag in StatsManager._last_execution_stats
+        assert dataset_tag in StatsManager._last_iteration_stats
+        StatsManager.clear_execution_metrics(
+            dataset_tag, ["Input0", "ReadRange->MapBatches(<lambda>)1"]
+        )
+        StatsManager.clear_iteration_metrics(dataset_tag)
+
+    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+    prev_thread = StatsManager._update_thread
+
+    ray.data.range(100).map_batches(lambda x: x).materialize()
+    # Check that a new different thread is spawned.
+    assert StatsManager._update_thread != prev_thread
+    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
 
 
 if __name__ == "__main__":

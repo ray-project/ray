@@ -30,8 +30,6 @@ def fast_repartition(
             DatasetStats(stages={}, parent=None),
             run_by_consumer=blocks._owned_by_consumer,
         ),
-        0,
-        lazy=False,
         logical_plan=logical_plan,
     )
     # Compute the (n-1) indices needed for an equal split of the data.

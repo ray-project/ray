@@ -7,7 +7,11 @@ class Operator:
     Operators live on the driver side of the Dataset only.
     """
 
-    def __init__(self, name: str, input_dependencies: List["Operator"]):
+    def __init__(
+        self,
+        name: str,
+        input_dependencies: List["Operator"],
+    ):
         self._name = name
         self._input_dependencies = input_dependencies
         self._output_dependencies = []

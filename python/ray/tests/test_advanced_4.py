@@ -116,6 +116,11 @@ def test_jemalloc_env_var_propagate():
 
 def test_check_health(shutdown_only):
     assert not check_health("127.0.0.1:8888")
+    # Should not raise error: https://github.com/ray-project/ray/issues/38785
+    assert not check_health("ip:address:with:colon:name:8265")
+
+    with pytest.raises(ValueError):
+        check_health("bad_address_no_port")
 
     conn = ray.init()
     addr = conn.address_info["address"]

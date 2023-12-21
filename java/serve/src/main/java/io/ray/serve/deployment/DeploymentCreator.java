@@ -1,12 +1,20 @@
 package io.ray.serve.deployment;
 
 import com.google.common.base.Preconditions;
+import io.ray.serve.api.Serve;
 import io.ray.serve.config.AutoscalingConfig;
 import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.generated.DeploymentLanguage;
+import io.ray.serve.util.CommonUtil;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DeploymentCreator {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(Serve.class);
 
   private String deploymentDef;
 
@@ -21,14 +29,7 @@ public class DeploymentCreator {
    * is re-deployed with a version change, a rolling update of the replicas will be performed. If
    * not provided, every deployment will be treated as a new version.
    */
-  private String version;
-
-  /**
-   * Version of the existing deployment which is used as a precondition for the next deployment. If
-   * prev_version does not match with the existing deployment's version, the deployment will fail.
-   * If not provided, deployment procedure will not check the existing deployment's version.
-   */
-  private String prevVersion;
+  @Deprecated private String version;
 
   /**
    * The number of processes to start up that will handle requests to this deployment. Defaults to
@@ -50,7 +51,7 @@ public class DeploymentCreator {
    * and '/a/b/c' go to B. Routes must not end with a '/' unless they're the root (just '/'), which
    * acts as a catch-all.
    */
-  private String routePrefix;
+  @Deprecated private String routePrefix;
 
   /** Options to be passed to the Ray actor constructor such as resource requirements. */
   private Map<String, Object> rayActorOptions;
@@ -77,19 +78,33 @@ public class DeploymentCreator {
 
   private Double healthCheckTimeoutS;
 
-  private boolean routed;
-
   private DeploymentLanguage language;
 
-  public Deployment create() {
+  // TODO is_driver_deployment\placement_group_bundles\placement_group_strategy
 
-    Preconditions.checkArgument(
-        numReplicas == null || numReplicas == 0 || autoscalingConfig == null,
-        "Manually setting num_replicas is not allowed when autoscalingConfig is provided.");
+  public Deployment create(boolean check) {
 
-    DeploymentConfig config =
+    if (check) {
+      Preconditions.checkArgument(
+          numReplicas == null || numReplicas != 0, "num_replicas is expected to larger than 0");
+
+      Preconditions.checkArgument(
+          numReplicas == null || autoscalingConfig == null,
+          "Manually setting num_replicas is not allowed when autoscalingConfig is provided.");
+    }
+
+    if (version != null) {
+      LOGGER.warn(
+          "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. Explicitly specifying version will raise an error in the future!");
+    }
+    if (routePrefix != null) {
+      LOGGER.warn(
+          "DeprecationWarning: `route_prefix` in `@serve.deployment` has been deprecated. To specify a route prefix for an application, pass it into `serve.run` instead.");
+    }
+
+    DeploymentConfig deploymentConfig =
         new DeploymentConfig()
-            .setNumReplicas(numReplicas)
+            .setNumReplicas(numReplicas != null ? numReplicas : 1)
             .setMaxConcurrentQueries(maxConcurrentQueries)
             .setUserConfig(userConfig)
             .setAutoscalingConfig(autoscalingConfig)
@@ -99,15 +114,22 @@ public class DeploymentCreator {
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setDeploymentLanguage(language);
 
+    ReplicaConfig replicaConfig = new ReplicaConfig(deploymentDef, initArgs, rayActorOptions);
+
     return new Deployment(
-        deploymentDef,
-        name,
-        config,
+        StringUtils.isNotBlank(name) ? name : CommonUtil.getDeploymentName(deploymentDef),
+        deploymentConfig,
+        replicaConfig,
         version,
-        prevVersion,
-        initArgs,
-        routed ? routePrefix : "/" + name,
-        rayActorOptions);
+        routePrefix);
+  }
+
+  public Deployment create() {
+    return create(true);
+  }
+
+  public Application bind(Object... args) {
+    return create().bind(args);
   }
 
   public String getDeploymentDef() {
@@ -137,15 +159,6 @@ public class DeploymentCreator {
     return this;
   }
 
-  public String getPrevVersion() {
-    return prevVersion;
-  }
-
-  public DeploymentCreator setPrevVersion(String prevVersion) {
-    this.prevVersion = prevVersion;
-    return this;
-  }
-
   public Integer getNumReplicas() {
     return numReplicas;
   }
@@ -170,7 +183,6 @@ public class DeploymentCreator {
 
   public DeploymentCreator setRoutePrefix(String routePrefix) {
     this.routePrefix = routePrefix;
-    this.routed = true;
     return this;
   }
 

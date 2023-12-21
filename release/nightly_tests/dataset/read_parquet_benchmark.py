@@ -29,7 +29,7 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
     for parallelism in [1, 2, 4]:
         for use_threads in [True, False]:
             test_name = f"read-parquet-downsampled-nyc-taxi-2009-{parallelism}-{use_threads}"  # noqa: E501
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 read_parquet,
                 root="s3://anonymous@air-example-data/ursa-labs-taxi-data/downsampled_2009_full_year_data.parquet",  # noqa: E501
@@ -75,7 +75,7 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
                 data_dir=data_dirs[-1],
             )
             test_name = f"read-parquet-random-data-{num_files}-{compression}"
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 read_parquet,
                 root=data_dirs[-1],
@@ -101,7 +101,7 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
     #     data_dir=many_files_dir,
     # )
     test_name = f"read-many-parquet-files-s3-{num_files}-{compression}"
-    benchmark.run(
+    benchmark.run_materialize_ds(
         test_name,
         read_parquet,
         root=many_files_dir,

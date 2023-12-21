@@ -7,17 +7,17 @@ import sys
 
 import ray
 from ray import tune
-from ray.air import CheckpointConfig
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train import CheckpointConfig
 from ray.tune import Experiment, PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
-
-from ray.train.tests.util import mock_storage_context
 from ray.tune.experiment import Trial
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.search import BasicVariantGenerator
-
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+
+from ray.train.tests.util import mock_storage_context
+
 
 STORAGE = mock_storage_context()
 

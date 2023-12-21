@@ -1,0 +1,8 @@
+name: "ray-py$PYTHON_VERSION-cpu-base"
+froms: ["ubuntu:focal"]
+dockerfile: docker/base-deps/Dockerfile
+build_args:
+  - PYTHON_VERSION
+  - BASE_IMAGE=ubuntu:focal
+tags:
+  - cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base

@@ -10,15 +10,12 @@ import string
 import threading
 import time
 import traceback
+from abc import ABC, abstractmethod
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import __main__
-import fastapi.encoders
-import numpy as np
-import pydantic
-import pydantic.json
 import requests
 
 import ray
@@ -37,6 +34,11 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 MESSAGE_PACK_OFFSET = 9
 
@@ -95,26 +97,14 @@ class _ServeCustomEncoders:
         return obj.to_dict(orient="records")
 
 
-serve_encoders = {
-    np.ndarray: _ServeCustomEncoders.encode_np_array,
-    np.generic: _ServeCustomEncoders.encode_np_scaler,
-    Exception: _ServeCustomEncoders.encode_exception,
-}
+serve_encoders = {Exception: _ServeCustomEncoders.encode_exception}
+
+if np is not None:
+    serve_encoders[np.ndarray] = _ServeCustomEncoders.encode_np_array
+    serve_encoders[np.generic] = _ServeCustomEncoders.encode_np_scaler
 
 if pd is not None:
     serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
-
-
-def install_serve_encoders_to_fastapi():
-    """Inject Serve's encoders so FastAPI's jsonable_encoder can pick it up."""
-    # https://stackoverflow.com/questions/62311401/override-default-encoders-for-jsonable-encoder-in-fastapi # noqa
-    pydantic.json.ENCODERS_BY_TYPE.update(serve_encoders)
-    # FastAPI cache these encoders at import time, so we also needs to refresh it.
-    fastapi.encoders.encoders_by_class_tuples = (
-        fastapi.encoders.generate_encoders_by_class_tuples(
-            pydantic.json.ENCODERS_BY_TYPE
-        )
-    )
 
 
 @ray.remote(num_cpus=0)
@@ -144,16 +134,16 @@ def block_until_http_ready(
         time.sleep(backoff_time_s)
 
 
-def get_random_letters(length=6):
-    return "".join(random.choices(string.ascii_letters, k=length))
+# Match the standard alphabet used for UUIDs.
+RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
 
 
-def format_actor_name(actor_name, controller_name=None, *modifiers):
-    if controller_name is None:
-        name = actor_name
-    else:
-        name = "{}:{}".format(controller_name, actor_name)
+def get_random_string(length=8):
+    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
 
+
+def format_actor_name(actor_name, *modifiers):
+    name = actor_name
     for modifier in modifiers:
         name += "-{}".format(modifier)
 
@@ -205,50 +195,6 @@ def merge_dict(dict1, dict2):
     for key in dict1.keys() | dict2.keys():
         result[key] = sum([e.get(key, 0) for e in (dict1, dict2)])
     return result
-
-
-def get_deployment_import_path(
-    deployment, replace_main=False, enforce_importable=False
-):
-    """
-    Gets the import path for deployment's func_or_class.
-
-    deployment: A deployment object whose import path should be returned
-    replace_main: If this is True, the function will try to replace __main__
-        with __main__'s file name if the deployment's module is __main__
-    """
-
-    body = deployment.func_or_class
-
-    if isinstance(body, str):
-        # deployment's func_or_class is already an import path
-        return body
-    elif hasattr(body, "__ray_actor_class__"):
-        # If ActorClass, get the class or function inside
-        body = body.__ray_actor_class__
-
-    import_path = f"{body.__module__}.{body.__qualname__}"
-
-    if enforce_importable and "<locals>" in body.__qualname__:
-        raise RuntimeError(
-            "Deployment definitions must be importable to build the Serve app, "
-            f"but deployment '{deployment.name}' is inline defined or returned "
-            "from another function. Please restructure your code so that "
-            f"'{import_path}' can be imported (i.e., put it in a module)."
-        )
-
-    if replace_main:
-        # Replaces __main__ with its file name. E.g. suppose the import path
-        # is __main__.classname and classname is defined in filename.py.
-        # Its import path becomes filename.classname.
-
-        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
-            file_name = os.path.basename(__main__.__file__)
-            extensionless_file_name = file_name.split(".")[0]
-            attribute_name = import_path.split(".")[-1]
-            import_path = f"{extensionless_file_name}.{attribute_name}"
-
-    return import_path
 
 
 def parse_import_path(import_path: str):
@@ -417,23 +363,6 @@ def snake_to_camel_case(snake_str: str) -> str:
 
     words = snake_str.strip("_").split("_")
     return words[0] + "".join(word[:1].upper() + word[1:] for word in words[1:])
-
-
-def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
-    """Converts dictionary's keys from snake case to camel case.
-
-    Does not modify original dictionary.
-    """
-
-    camel_dict = dict()
-
-    for key, val in snake_dict.items():
-        if isinstance(key, str):
-            camel_dict[snake_to_camel_case(key)] = val
-        else:
-            camel_dict[key] = val
-
-    return camel_dict
 
 
 def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
@@ -679,3 +608,39 @@ def is_running_in_asyncio_loop() -> bool:
         return True
     except RuntimeError:
         return False
+
+
+class TimerBase(ABC):
+    @abstractmethod
+    def time(self) -> float:
+        """Return the current time."""
+        raise NotImplementedError
+
+
+class Timer(TimerBase):
+    def time(self) -> float:
+        return time.time()
+
+
+def get_capacity_adjusted_num_replicas(
+    num_replicas: int, target_capacity: Optional[float]
+) -> int:
+    """Return the `num_replicas` adjusted by the `target_capacity`.
+
+    The output will only ever be 0 if `target_capacity` is 0 or `num_replicas` is
+    0 (to support autoscaling deployments using scale-to-zero).
+
+    Rather than using the default `round` behavior in Python, which rounds half to
+    even, uses the `decimal` module to round half up (standard rounding behavior).
+    """
+    if target_capacity is None or target_capacity == 100:
+        return num_replicas
+
+    if target_capacity == 0 or num_replicas == 0:
+        return 0
+
+    adjusted_num_replicas = Decimal(num_replicas * target_capacity) / Decimal(100.0)
+    rounded_adjusted_num_replicas = adjusted_num_replicas.to_integral_value(
+        rounding=ROUND_HALF_UP
+    )
+    return max(1, int(rounded_adjusted_num_replicas))

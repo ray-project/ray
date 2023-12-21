@@ -1,16 +1,14 @@
-import pytest
 import pandas as pd
+import pytest
+from sklearn.datasets import load_breast_cancer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 
 import ray
 from ray import tune
-from ray.train.constants import TRAIN_DATASET_KEY
-
-from ray.train.sklearn import SklearnTrainer
 from ray.train import ScalingConfig
-
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
+from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.sklearn import SklearnTrainer
 
 
 @pytest.fixture
@@ -141,7 +139,8 @@ def test_validation(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

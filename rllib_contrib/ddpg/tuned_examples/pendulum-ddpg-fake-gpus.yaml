@@ -1,0 +1,36 @@
+# Run this experiment by doing:
+# $ rllib train file [this very file]
+
+pendulum-ddpg-fake-gpus:
+    env: Pendulum-v1
+    run: DDPG
+    stop:
+        sampler_results/episode_reward_mean: -1000
+        timesteps_total: 40000
+    config:
+        # Works for both torch and tf.
+        seed: 42
+        framework: torch
+        actor_hiddens: [64, 64]
+        critic_hiddens: [64, 64]
+        n_step: 1
+        model: {}
+        gamma: 0.99
+        exploration_config:
+            final_scale: 0.02
+        min_sample_timesteps_per_iteration: 600
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          capacity: 10000
+          worker_side_prioritization: false
+        num_steps_sampled_before_learning_starts: 500
+        clip_rewards: false
+        use_huber: true
+        train_batch_size: 64
+        num_workers: 0
+        actor_lr: 0.0001
+        critic_lr: 0.0001
+
+        # Fake 2 GPUs.
+        num_gpus: 2
+        _fake_gpus: true

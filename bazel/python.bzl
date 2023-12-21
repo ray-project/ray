@@ -52,7 +52,6 @@ def py_test_module_list(files, size, deps, extra_srcs=[], name_suffix="", **kwar
 
 def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
     for file in native.glob(include = include, exclude = exclude, allow_empty=False):
-        print(file)
         basename = paths.split_extension(file)[0]
         if basename == file:
             basename = basename + "_test"

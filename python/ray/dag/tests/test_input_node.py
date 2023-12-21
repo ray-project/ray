@@ -4,6 +4,7 @@ request, for all DAGNode types.
 """
 
 import pytest
+from ray.dag.dag_node import DAGNode
 from ray.dag.input_node import InputNode
 from typing import Any, TypeVar
 
@@ -347,6 +348,35 @@ def test_ensure_input_node_singleton(shared_ray_instance):
         AssertionError, match="Each DAG should only have one unique InputNode"
     ):
         _ = ray.get(dag.execute(2))
+
+
+def test_apply_recursive_caching(shared_ray_instance):
+    @ray.remote
+    def f(input):
+        return input
+
+    input = InputNode()
+    f_node = f.bind(input)
+
+    a, b = input, f_node
+    for _ in range(10):
+        a, b = f.bind(a, b), f.bind(a, b)
+
+    counter = 0
+    original_apply_recursive = DAGNode.apply_recursive
+
+    def _apply_recursive_with_counter(self, fn):
+        nonlocal counter
+        counter += 1
+        return original_apply_recursive(self, fn)
+
+    DAGNode.apply_recursive = _apply_recursive_with_counter
+
+    a.apply_recursive(lambda node: node)
+
+    # Prior to #40337; count was 2559
+    assert counter == 40
+    DAGNode.apply_recursive = original_apply_recursive
 
 
 if __name__ == "__main__":
