@@ -122,7 +122,7 @@ This is supported for basic HTTP ingress deployments using a `__call__` method a
 
 The code below defines a Serve application that incrementally streams numbers up to a provided `max`.
 The client-side code is also updated to handle the streaming outputs.
-This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced/#streaming-requests) library.
+This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced.html#streaming-requests) library.
 
 ```{literalinclude} doc_code/http_guide/streaming_example.py
 :start-after: __begin_example__

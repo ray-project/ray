@@ -1024,7 +1024,7 @@
   group: Workspace templates
   working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
   python: "3.9"
-  frequency: nightly-3x
+  frequency: manual
   team: ml
   cluster:
     byod:
@@ -1049,7 +1049,7 @@
   group: Workspace templates
   working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
   python: "3.9"
-  frequency: nightly-3x
+  frequency: manual
   team: ml
   cluster:
     byod:

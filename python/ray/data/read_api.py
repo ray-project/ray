@@ -1935,8 +1935,21 @@ def read_databricks_tables(
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
     from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
-    from ray.util.spark.databricks_hook import get_dbutils
     from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
+
+    def get_dbutils():
+        no_dbutils_error = RuntimeError("No dbutils module found.")
+        try:
+            import IPython
+
+            ip_shell = IPython.get_ipython()
+            if ip_shell is None:
+                raise no_dbutils_error
+            return ip_shell.ns_table["user_global"]["dbutils"]
+        except ImportError:
+            raise no_dbutils_error
+        except KeyError:
+            raise no_dbutils_error
 
     token = os.environ.get("DATABRICKS_TOKEN")
 
@@ -1960,12 +1973,11 @@ def read_databricks_tables(
                 '(e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").'
             )
 
-    spark = get_spark_session()
     if not catalog:
-        catalog = spark.sql("SELECT CURRENT_CATALOG()").collect()[0][0]
+        catalog = get_spark_session().sql("SELECT CURRENT_CATALOG()").collect()[0][0]
 
     if not schema:
-        schema = spark.sql("SELECT CURRENT_DATABASE()").collect()[0][0]
+        schema = get_spark_session().sql("SELECT CURRENT_DATABASE()").collect()[0][0]
 
     if query is not None and table is not None:
         raise ValueError("Only one of 'query' and 'table' arguments can be set.")
