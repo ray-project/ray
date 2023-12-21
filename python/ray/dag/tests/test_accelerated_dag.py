@@ -176,19 +176,31 @@ def test_dag_errors(ray_start_regular):
         dag.experimental_compile()
 
 
-def test_cluster(ray_start_cluster):
+@pytest.mark.parametrize("num_actors", [1, 4])
+def test_cluster(ray_start_cluster, num_actors):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=num_actors)
 
-    actor = Actor.remote(0)
+    actors = [Actor.remote(0) for _ in range(num_actors)]
 
     with InputNode() as i:
-        dag = actor.inc.bind(i)
-
+        dag = [actor.inc.bind(i) for actor in actors]
+        dag = MultiOutputNode(dag)
     dag = dag.experimental_compile()
-    print(ray.get(dag.execute(1)))
+
+    for _ in range(3):
+        start = time.perf_counter()
+        for _ in range(1000):
+            #ray.get(dag.execute(1))
+
+            output_channels = dag.execute(1)
+            results = [chan.begin_read() for chan in output_channels]
+            for chan in output_channels:
+                chan.end_read()
+        end = time.perf_counter()
+        print(end - start, 1000 / (end - start))
 
 
 if __name__ == "__main__":
