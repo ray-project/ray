@@ -17,7 +17,7 @@ class EnvToModulePipeline(ConnectorPipelineV2):
         data: Optional[Any] = None,
         episodes: List[EpisodeType],
         explore: bool,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ):
         # Make sure user does not necessarily send initial input into this pipeline.
@@ -27,6 +27,6 @@ class EnvToModulePipeline(ConnectorPipelineV2):
             data=data if data is not None else {},
             episodes=episodes,
             explore=explore,
-            persistent_data=persistent_data,
+            shared_data=shared_data,
             **kwargs,
         )

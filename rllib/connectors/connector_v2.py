@@ -128,7 +128,7 @@ class ConnectorV2(abc.ABC):
         data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         """Method for transforming input data into output data.
@@ -147,7 +147,7 @@ class ConnectorV2(abc.ABC):
             explore: Whether `explore` is currently on. Per convention, if True, the
                 RLModule's `forward_exploration` method should be called, if False, the
                 EnvRunner should call `forward_inference` instead.
-            persistent_data: Optional additional context data that needs to be exchanged
+            shared_data: Optional additional context data that needs to be exchanged
                 between different Connector pieces and -pipelines.
             kwargs: Forward API-compatibility kwargs.
 

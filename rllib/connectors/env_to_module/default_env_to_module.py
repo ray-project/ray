@@ -37,7 +37,7 @@ class DefaultEnvToModule(ConnectorV2):
         data: Optional[Any] = None,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         # If observations cannot be found in `input`, add the most recent ones (from all

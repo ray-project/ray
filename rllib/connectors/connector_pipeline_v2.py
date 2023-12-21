@@ -36,7 +36,7 @@ class ConnectorPipelineV2(ConnectorV2):
         data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         """In a pipeline, we simply call each of our connector pieces after each other.
@@ -55,7 +55,7 @@ class ConnectorPipelineV2(ConnectorV2):
                     data=ret,
                     episodes=episodes,
                     explore=explore,
-                    persistent_data=persistent_data,
+                    shared_data=shared_data,
                     **kwargs,
                 )
         return ret

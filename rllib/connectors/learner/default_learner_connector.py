@@ -46,7 +46,7 @@ class DefaultLearnerConnector(ConnectorV2):
         data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         # If episodes are provided, extract the essential data from them, but only if

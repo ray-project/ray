@@ -56,7 +56,7 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         data: Optional[Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         # This is a data-in-data-out connector, so we expect `data` to be a dict

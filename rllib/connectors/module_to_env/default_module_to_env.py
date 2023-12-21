@@ -86,7 +86,7 @@ class DefaultModuleToEnv(ConnectorV2):
         data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
-        persistent_data: Optional[dict] = None,
+        shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
 
