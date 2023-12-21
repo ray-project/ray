@@ -726,7 +726,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         get_queue_state_tasks = []
         for c in candidates:
-            t = self._loop.create_task(c.get_queue_state(queue_len_response_deadline_s))
+            t = self._loop.create_task(c.get_queue_state(deadline_s=queue_len_response_deadline_s))
             t.replica_id = c.replica_id
             get_queue_state_tasks.append(t)
 
