@@ -300,20 +300,6 @@ More examples and explanations on how to implement custom Tuple/Dict processing 
 custom RNNs, custom model APIs (on top of default models) follow further below.
 
 
-Wrapping a Custom Model (TF and PyTorch) with an LSTM- or Attention Net
-```````````````````````````````````````````````````````````````````````
-
-You can also use a custom (TF or PyTorch) model with our auto-wrappers for LSTMs (``use_lstm=True``) or Attention networks (``use_attention=True``).
-For example, if you would like to wrap some non-default model logic with an LSTM, simply do:
-
-.. literalinclude:: ../../../rllib/examples/lstm_auto_wrapping.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-
-.. _rnns:
-
 Implementing custom Recurrent Networks
 ``````````````````````````````````````
 
@@ -351,8 +337,7 @@ Check out RLlib's `GTrXL (Attention Net) <https://arxiv.org/abs/1910.06764>`__ i
 to get a better idea on how to write your own models of this type. These are the models we use
 as wrappers when ``use_attention=True``.
 
-You can run `this example script <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__ to run these nets within some of our algorithms.
-`There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/models/tests/test_attention_nets.py>`__, which confirms their learning capabilities in PPO and IMPALA.
+This `test case <https://github.com/ray-project/ray/blob/master/rllib/models/tests/test_attention_nets.py>`__ confirms their learning capabilities in PPO and IMPALA.
 
 Batch Normalization
 ```````````````````
