@@ -1,15 +1,11 @@
 import tempfile
-from collections import Counter
 import unittest
 
 import ray
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
-import ray.rllib.algorithms.dqn as dqn
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
-from ray.rllib.evaluation.episode import Episode
-from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
 

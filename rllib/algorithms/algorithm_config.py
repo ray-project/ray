@@ -1,5 +1,6 @@
 import copy
 from enum import Enum
+import inspect
 import logging
 import math
 import os
@@ -768,6 +769,22 @@ class AlgorithmConfig(_Config):
         # TODO (sven): Add some structure to this method. Subdivide it into smaller
         #  private methods, each responsible for one "theme" of the config, e.g.
         #  evaluation, RLModule, env, etc...
+
+        # Check and error if `on_episode_created` callback has been overridden on the
+        # new API stack.
+        if self.uses_new_env_runners and self.callbacks_class is not DefaultCallbacks:
+            default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
+            user_src = inspect.getsource(self.callbacks_class.on_episode_created)
+            if default_src != user_src:
+                raise ValueError(
+                    "When using the new API stack with EnvRunners, you cannot override "
+                    "the `DefaultCallbacks.on_episode_created()` method anymore! "
+                    "This particular callback is no longer supported as we are now "
+                    "using gym.vector.Env, which automatically resets individual "
+                    "sub-environments when they are terminated. Override the "
+                    "`on_episode_start` method instead, which gets fired right after "
+                    "the `env.reset()` call."
+                )
 
         # Validate rollout settings.
         if (
@@ -3016,6 +3033,12 @@ class AlgorithmConfig(_Config):
             env.close()
 
         return self._is_atari
+
+    @property
+    def uses_new_env_runners(self):
+        return self.env_runner_cls is not None and not issubclass(
+            self.env_runner_cls, RolloutWorker
+        )
 
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         """Automatically infers a proper rollout_fragment_length setting if "auto".

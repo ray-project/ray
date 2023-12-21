@@ -2,12 +2,9 @@ from collections import Counter
 import unittest
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
-import ray.rllib.algorithms.dqn as dqn
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.evaluation.episode import Episode
-from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -33,9 +30,7 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
 
 
 class OnEnvironmentCreatedCallback(DefaultCallbacks):
-    def on_environment_created(
-        self, *, worker, sub_environment, env_context, **kwargs
-    ):
+    def on_environment_created(self, *, worker, sub_environment, env_context, **kwargs):
         # Create a vector-index-sum property per remote worker.
         if not hasattr(worker, "sum_sub_env_vector_indices"):
             worker.sum_sub_env_vector_indices = 0
@@ -46,6 +41,23 @@ class OnEnvironmentCreatedCallback(DefaultCallbacks):
             f"worker={worker.worker_index}; "
             f"vector-idx={env_context.vector_index}"
         )
+
+
+class OnEpisodeCreatedCallback(DefaultCallbacks):
+    def on_episode_created(
+        self,
+        *,
+        episode,
+        worker=None,
+        env_runner=None,
+        base_env=None,
+        env=None,
+        policies=None,
+        rl_module=None,
+        env_index: int,
+        **kwargs,
+    ) -> None:
+        print("Some code here to test the expected error on new API stack!")
 
 
 class TestCallbacks(unittest.TestCase):
@@ -99,51 +111,12 @@ class TestCallbacks(unittest.TestCase):
 
             algo.stop()
 
-    def test_on_environment_created_with_remote_envs(self):
-        config = (
-            dqn.DQNConfig()
-            .environment("CartPole-v1")
-            .rollouts(
-                # Make each sub-environment a ray actor.
-                remote_worker_envs=True,
-                # Create 2 remote workers.
-                num_rollout_workers=2,
-                # Create 4 sub-environments (ray remote actors) per remote
-                # worker.
-                num_envs_per_worker=4,
-            )
-        )
-
-        for callbacks in (
-            OnSubEnvironmentCreatedCallback,
-            make_multi_callbacks([OnSubEnvironmentCreatedCallback]),
-        ):
-            config.callbacks(callbacks)
-
-            for _ in framework_iterator(config, frameworks=("tf", "torch")):
-                algo = config.build()
-                # Fake the counter on the local worker (doesn't have an env) and
-                # set it to -1 so the below `foreach_worker()` won't fail.
-                algo.workers.local_worker().sum_sub_env_vector_indices = -1
-
-                # Get sub-env vector index sums from the 2 remote workers:
-                sum_sub_env_vector_indices = algo.workers.foreach_worker(
-                    lambda w: w.sum_sub_env_vector_indices
-                )
-                # Local worker has no environments -> Expect the -1 special
-                # value returned by the above lambda.
-                self.assertTrue(sum_sub_env_vector_indices[0] == -1)
-                # Both remote workers (index 1 and 2) have a vector index counter
-                # of 6 (sum of vector indices: 0 + 1 + 2 + 3).
-                self.assertTrue(sum_sub_env_vector_indices[1] == 6)
-                self.assertTrue(sum_sub_env_vector_indices[2] == 6)
-                algo.stop()
-
     def test_overriding_on_episode_created_throws_error_on_new_api_stack(self):
+        """Tests, whw"""
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
+            .rollouts(env_runner_cls=SingleAgentEnvRunner)
             .callbacks(OnEpisodeCreatedCallback)
         )
         self.assertRaises(ValueError, lambda: config.validate())

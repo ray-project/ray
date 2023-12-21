@@ -20,7 +20,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     PublicAPI,
 )
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
     _MovingMeanStd,
     compute_states_entropy,
@@ -350,7 +350,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         The exact time of the call of this callback is after `env.step([action])` and
         also after the results of this step (observation, reward, terminated, truncated,
-        infos) have been logged to the given `episode` object.        
+        infos) have been logged to the given `episode` object.
 
         Args:
             episode: The episode that has been stepped. On the new API stack, this will
@@ -465,7 +465,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_postprocess_trajectory(
         self,
         *,
-        worker: "RolloutWorker",
+        worker: "EnvRunner",
         episode: Episode,
         agent_id: AgentID,
         policy_id: PolicyID,
@@ -684,7 +684,6 @@ def make_multi_callbacks(
         def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
             for callback in self._callback_list:
                 callback.on_create_policy(policy_id=policy_id, policy=policy)
-
 
         @override(DefaultCallbacks)
         def on_environment_created(
