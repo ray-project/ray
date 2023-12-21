@@ -5,8 +5,10 @@ from typing import List, Optional
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
-from ray.serve._private.utils import calculate_desired_num_replicas
-from ray.serve._private.utils import get_capacity_adjusted_num_replicas
+from ray.serve._private.utils import (
+    calculate_desired_num_replicas,
+    get_capacity_adjusted_num_replicas,
+)
 from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
