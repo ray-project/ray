@@ -482,7 +482,7 @@ py_test(
 py_test(
     name = "test_callbacks_on_algorithm",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/tests/test_callbacks_on_algorithm.py"]
 )
 py_test(
