@@ -229,12 +229,9 @@ if setup_spec.type == SetupType.RAY:
     numpy_dep = "numpy >= 1.20"
     if sys.platform != "win32":
         pyarrow_dep = "pyarrow >= 6.0.1"
-        memray_dep = "memray >= 1.10.0"
     else:
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
-        # Memray is not supported in Windows
         pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
-        memray_dep = ""
     setup_spec.extras = {
         "data": [
             numpy_dep,
@@ -257,7 +254,6 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
-            memray_dep,
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:

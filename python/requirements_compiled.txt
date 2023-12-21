@@ -1052,9 +1052,7 @@ mdit-py-plugins==0.2.8
     #   jupytext
     #   myst-parser
 memray==1.10.0 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
-    # via 
-    #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 minigrid==2.1.1
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 mistune==0.8.4
