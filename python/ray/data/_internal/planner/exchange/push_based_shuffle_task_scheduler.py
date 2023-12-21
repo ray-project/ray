@@ -719,9 +719,16 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # Each merge task should be grouped with `merge_factor` map tasks for
         # pipelining. These groups should then be spread across nodes according
         # to CPU availability for load-balancing.
+        num_input_blocks_remaining = num_input_blocks
         for node, num_cpus in num_cpus_per_node_map.items():
             # First find how many merge tasks we should run on this node.
-            num_merge_tasks_on_cur_node = num_cpus // num_tasks_per_map_merge_group
+            # We take the min of the number of CPUs on this node and the number
+            # of input blocks that we haven't scheduled yet, in case there are
+            # fewer input blocks than CPU slots on this node.
+            num_cpu_slots = min(num_cpus, num_input_blocks_remaining)
+            num_merge_tasks_on_cur_node = int(
+                num_cpu_slots // num_tasks_per_map_merge_group
+            )
             # For small datasets, the number of tasks to run may be less than
             # the total CPU slots available.
             num_merge_tasks_on_cur_node = min(
@@ -729,6 +736,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             )
             for i in range(num_merge_tasks_on_cur_node):
                 merge_task_placement.append(node)
+                num_input_blocks_remaining -= merge_factor
             num_merge_tasks_per_round += num_merge_tasks_on_cur_node
 
             # Handle the case where a single node cannot fit a group of map and
@@ -739,6 +747,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 merge_task_placement.append(node)
                 num_merge_tasks_per_round += 1
                 leftover_cpus -= num_tasks_per_map_merge_group
+                num_input_blocks_remaining -= merge_factor
 
         if num_merge_tasks_per_round == 0:
             # For small datasets, make sure we have at least one merge task.
