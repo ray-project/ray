@@ -1161,9 +1161,9 @@ class AlgorithmConfig(_Config):
         )
 
     def build_env_to_module_connector(self, env):
-        from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
-            DefaultEnvToModule,
+        from ray.rllib.connectors.env_to_module import (
             EnvToModulePipeline,
+            DefaultEnvToModule,
         )
 
         custom_connectors = []
@@ -1173,7 +1173,6 @@ class AlgorithmConfig(_Config):
             val_ = self._env_to_module_connector(env)
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
-            from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
             if isinstance(val_, ConnectorV2) and not isinstance(
                 val_, EnvToModulePipeline
@@ -1190,18 +1189,20 @@ class AlgorithmConfig(_Config):
             input_action_space=env.single_action_space,
             env=env,
         )
-        pipeline.append(DefaultEnvToModule(
-            input_observation_space=pipeline.observation_space,
-            input_action_space=pipeline.action_space,
-            env=env,
-        ))
+        pipeline.append(
+            DefaultEnvToModule(
+                input_observation_space=pipeline.observation_space,
+                input_action_space=pipeline.action_space,
+                env=env,
+            )
+        )
         return pipeline
 
     def build_module_to_env_connector(self, env):
 
-        from ray.rllib.connectors.module_to_env.module_to_env_pipeline import (
-            ModuleToEnvPipeline,
+        from ray.rllib.connectors.module_to_env import (
             DefaultModuleToEnv,
+            ModuleToEnvPipeline,
         )
 
         custom_connectors = []
@@ -1227,17 +1228,19 @@ class AlgorithmConfig(_Config):
             input_action_space=env.single_action_space,
             env=env,
         )
-        pipeline.append(DefaultModuleToEnv(
-            input_observation_space=pipeline.observation_space,
-            input_action_space=pipeline.action_space,
-            env=env,
-            normalize_actions=self.normalize_actions,
-            clip_actions=self.clip_actions,
-        ))
+        pipeline.append(
+            DefaultModuleToEnv(
+                input_observation_space=pipeline.observation_space,
+                input_action_space=pipeline.action_space,
+                env=env,
+                normalize_actions=self.normalize_actions,
+                clip_actions=self.clip_actions,
+            )
+        )
         return pipeline
 
     def build_learner_connector(self, input_observation_space, input_action_space):
-        from ray.rllib.connectors.learner.learner_connector_pipeline import (
+        from ray.rllib.connectors.learner import (
             DefaultLearnerConnector,
             LearnerConnectorPipeline,
         )
@@ -1249,7 +1252,6 @@ class AlgorithmConfig(_Config):
             val_ = self._learner_connector(input_observation_space, input_action_space)
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
-            from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 
             if isinstance(val_, ConnectorV2) and not isinstance(
                 val_, LearnerConnectorPipeline
@@ -1265,10 +1267,12 @@ class AlgorithmConfig(_Config):
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
         )
-        pipeline.append(DefaultLearnerConnector(
-            input_observation_space=pipeline.observation_space,
-            input_action_space=pipeline.action_space,
-        ))
+        pipeline.append(
+            DefaultLearnerConnector(
+                input_observation_space=pipeline.observation_space,
+                input_action_space=pipeline.action_space,
+            )
+        )
         return pipeline
 
     def build_learner_group(
