@@ -548,7 +548,7 @@ class ReplicaActor:
             await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = (
-                self._queue_manager.get_num_pending_and_running_requests()
+                self._queue_metrics_manager.get_num_pending_and_running_requests()
             )
             if num_ongoing_requests > 0:
                 logger.info(
