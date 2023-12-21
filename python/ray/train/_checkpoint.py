@@ -130,7 +130,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
         If no metadata is stored, an empty dict is returned.
         """
-        metadata_path = (Path(self.path) / _METADATA_FILE_NAME).as_posix()
+        metadata_path = Path(self.path,  _METADATA_FILE_NAME).as_posix()
         if not _exists_at_fs_path(self.filesystem, metadata_path):
             return {}
 
