@@ -765,6 +765,10 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
+        # TODO (sven): Add some structure to this method. Subdivide it into smaller
+        #  private methods, each responsible for one "theme" of the config, e.g.
+        #  evaluation, RLModule, env, etc...
+
         # Validate rollout settings.
         if (
             self.evaluation_interval

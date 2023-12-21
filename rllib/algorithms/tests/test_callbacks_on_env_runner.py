@@ -48,27 +48,6 @@ class OnEnvironmentCreatedCallback(DefaultCallbacks):
         )
 
 
-class OnEpisodeCreatedCallback(DefaultCallbacks):
-    def __init__(self):
-        super().__init__()
-        self._reset_counter = 0
-
-    def on_episode_created(
-        self, *, worker, base_env, policies, env_index, episode, **kwargs
-    ):
-        print(f"Sub-env {env_index} is going to be reset.")
-        self._reset_counter += 1
-
-        # Make sure the passed in episode is really brand new.
-        assert episode.env_id == env_index
-        if isinstance(episode, Episode):
-            assert episode.length == 0
-            assert episode.started is False
-        else:
-            assert episode.length == -1
-        assert episode.worker is worker
-
-
 class TestCallbacks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -114,6 +93,10 @@ class TestCallbacks(unittest.TestCase):
             )
             # We must have taken exactly `train_batch_size` steps.
             self.assertEqual(callback_obj.counts["step"], 50)
+
+            # We are still expecting to only have one env created.
+            self.assertEqual(callback_obj.counts["env_created"], 1)
+
             algo.stop()
 
     def test_on_environment_created_with_remote_envs(self):
@@ -156,44 +139,14 @@ class TestCallbacks(unittest.TestCase):
                 self.assertTrue(sum_sub_env_vector_indices[2] == 6)
                 algo.stop()
 
-    TODO: error if user overrides on_episode_created on new stack
-    this does not work as the gym.vector.Env automatically resets itself so we canno
-    fire this event before the reset() happens (only at the very beginning of the first EnvRunner `sample()`)
-    def test_on_episode_created(self):
-        # 1000 steps sampled (2.5 episodes on each sub-environment) before training
-        # starts.
+    def test_overriding_on_episode_created_throws_error_on_new_api_stack(self):
         config = (
-            dqn.DQNConfig()
-            .environment(
-                RandomEnv,
-                env_config={
-                    "max_episode_len": 200,
-                    "p_terminated": 0.0,
-                },
-            )
+            PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
             .callbacks(OnEpisodeCreatedCallback)
         )
-
-        # Test with and without Connectors.
-        for connector in [True, False]:
-            config.rollouts(enable_connectors=connector)
-            algo = config.build()
-            algo.train()
-            # Two sub-environments share 1000 steps in the first training iteration
-            # (min_sample_timesteps_per_iteration = 1000).
-            # -> 1000 / 2 [sub-envs] = 500 [per sub-env]
-            # -> 1 episode = 200 timesteps
-            # -> 2.5 episodes per sub-env
-            # -> 3 episodes created [per sub-env] = 6 episodes total
-            self.assertEqual(
-                6,
-                algo.workers.foreach_worker(
-                    lambda w: w.callbacks._reset_counter,
-                    local_worker=False,
-                )[0],
-            )
-            algo.stop()
+        self.assertRaises(ValueError, lambda: config.validate())
 
 
 if __name__ == "__main__":
