@@ -456,7 +456,6 @@ const ActorTable = ({
                       <MemoryProfilingButton
                         pid={pid}
                         ip={address?.ipAddress}
-                        type=""
                       />
                     </React.Fragment>
                   </TableCell>

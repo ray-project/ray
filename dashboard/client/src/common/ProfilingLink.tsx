@@ -56,7 +56,7 @@ type MemoryProfilingProps = PropsWithChildren<
   {
     pid: string | number | null | undefined;
     ip: string | null | undefined;
-    type: string | null;
+    type?: string | null;
   } & ClassNameProps
 >;
 

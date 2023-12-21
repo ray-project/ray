@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import React from "react";
 import "@testing-library/jest-dom";
 import { ProfilerButton } from "./ProfilingLink";
@@ -6,7 +7,6 @@ import { ProfilerButton } from "./ProfilingLink";
 describe("ProfilerButton", () => {
   const mockProps = {
     profilerUrl: "http://localhost:3000/worker/memory_profile",
-    type: "",
   };
   it("renders button correctly", () => {
     render(<ProfilerButton {...mockProps} />);
@@ -15,10 +15,11 @@ describe("ProfilerButton", () => {
   });
 
   it("opens the dialog when the button is clicked", async () => {
+    const user = userEvent.setup();
     render(<ProfilerButton {...mockProps} />);
     const button = screen.getByLabelText(/Memory Profiling/);
 
-    fireEvent.click(button);
+    user.click(button);
 
     // check all components exist in dialog
     await waitFor(() => {
@@ -38,13 +39,14 @@ describe("ProfilerButton", () => {
   });
 
   it("closes the dialog when the cancel button is clicked", async () => {
+    const user = userEvent.setup();
     render(<ProfilerButton {...mockProps} />);
     const button = screen.getByLabelText(/Memory Profiling/);
 
-    fireEvent.click(button);
+    await user.click(button);
 
     const cancelButton = screen.getByRole("button", { name: /Cancel/ });
-    fireEvent.click(cancelButton);
+    await user.click(cancelButton);
 
     await waitFor(() => {
       const dialogTitle = screen.queryByText(/Memory Profiling Config/);
@@ -52,10 +54,11 @@ describe("ProfilerButton", () => {
     });
   });
 
-  it('selects "flamegraph" as the default format', () => {
+  it('selects "flamegraph" as the default format', async () => {
+    const user = userEvent.setup();
     render(<ProfilerButton {...mockProps} />);
     const button = screen.getByLabelText(/Memory Profiling/);
-    fireEvent.click(button);
+    await user.click(button);
 
     const formatSelect = screen.getByLabelText(/flamegraph/);
     expect(formatSelect).toBeInTheDocument();
