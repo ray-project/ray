@@ -1122,7 +1122,7 @@ class Learner:
         Args:
             batch: An optional batch of training data. If None, the `episodes` arg
                 must be provided.
-            episodes: An optional list of episodes objects. If None, the `batch` arg
+            episodes: An optional list of episode objects. If None, the `batch` arg
                 must be provided.
             reduce_fn: reduce_fn: A function to reduce the results from a list of
                 minibatch updates. This can be any arbitrary function that takes a

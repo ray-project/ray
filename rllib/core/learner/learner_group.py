@@ -66,14 +66,7 @@ def _default_should_module_be_updated_fn(
 
 @PublicAPI(stability="alpha")
 class LearnerGroup:
-    """Coordinator of n (possibly remote) Learner workers.
-
-    Args:
-        learner_spec: The specification for constructing Learners.
-        max_queue_len: The maximum number of batches to queue up if doing async_update
-            If the queue is full it will evict the oldest batch first.
-
-    """
+    """Coordinator of n (possibly remote) Learner workers."""
 
     def __init__(
         self,
@@ -247,11 +240,17 @@ class LearnerGroup:
             a list of dictionaries of results from the updates from the Learner(s).
         """
 
+        if (batch is None) == (episodes is None):
+            raise ValueError(
+                "Exactly one of `batch` and `episodes` must be provided "
+                "in your call to `LearnerGroup.update()`!"
+            )
+
         # Construct a multi-agent batch with only those modules in it that should
         # be updated.
-        # TODO (sven): Move this into individual Learners. It might be that
-        #  batch/episodes postprocessing on each Learner requires the non-trainable
-        #  modules' data.
+        # TODO (sven): Move this filtering of input data into individual Learners.
+        #  It might be that the postprocessing of batch/episodes on each Learner
+        #  requires the non-trainable modules' data.
         train_batch = None
         if batch is not None:
             train_batch = {}
@@ -287,7 +286,6 @@ class LearnerGroup:
 
             # Only batch provided, split it up into n shards.
             if episodes is None:
-                assert batch is not None
                 results = self._get_results(
                     self._worker_manager.foreach_actor(
                         [
@@ -299,8 +297,7 @@ class LearnerGroup:
                     )
                 )
             # Only episodes provided, split them up into n shards.
-            elif batch is None:
-                assert episodes is not None
+            else:
                 results = self._get_results(
                     self._worker_manager.foreach_actor(
                         [
@@ -311,10 +308,6 @@ class LearnerGroup:
                         ]
                     )
                 )
-            # TODO (sven): Implement the case in which both batch and episodes might
-            #  already be provided (or figure out whether this makes sense at all).
-            else:
-                raise NotImplementedError
 
         # TODO (sven): Move reduce_fn to the training_step
         if reduce_fn is None:
@@ -372,92 +365,90 @@ class LearnerGroup:
                 "Cannot call `async_update` when running in local mode "
                 "(`config.num_learner_workers=0`)!"
             )
-        else:
-            if minibatch_size is not None:
-                minibatch_size //= len(self._workers)
-
-            # Define remote function to be called on all Learner actors.
-            def _learner_update(learner, batch_shard=None, episodes_shard=None):
-                return learner.update(
-                    batch=batch_shard,
-                    episodes=episodes_shard,
-                    reduce_fn=reduce_fn,
-                    minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                )
-
-            # Queue the new batches.
-            # If queue is full, kick out the oldest item (and thus add its
-            # length to the "dropped ts" counter).
-            if len(self._in_queue) == self._in_queue.maxlen:
-                self._in_queue_ts_dropped += len(self._in_queue[0])
-
-            self._in_queue.append((batch, episodes))
-
-            # Retrieve all ready results (kicked off by prior calls to this method).
-            results = self._worker_manager.fetch_ready_async_reqs(
-                tags=list(self._inflight_request_tags)
+        if (batch is None) == (episodes is None):
+            raise ValueError(
+                "Exactly one of `batch` and `episodes` must be provided "
+                "in your call to `LearnerGroup.update()`!"
             )
-            # Only if there are no more requests in-flight on any of the learners,
-            # we can send in one new batch for sharding and parallel learning.
-            if self._worker_manager_ready():
-                count = 0
-                # TODO (sven): This probably works even without any restriction
-                #  (allowing for any arbitrary number of requests in-flight). Test with
-                #  3 first, then with unlimited, and if both show the same behavior on
-                #  an async algo, remove this restriction entirely.
-                while len(self._in_queue) > 0 and count < 3:
-                    # Pull a single batch from the queue (from the left side, meaning:
-                    # use the oldest one first).
-                    update_tag = str(uuid.uuid4())
-                    self._inflight_request_tags.add(update_tag)
-                    batch, episodes = self._in_queue.popleft()
 
-                    # Only batch provided, split it up into n shards.
-                    if episodes is None:
-                        assert batch is not None
-                        self._worker_manager.foreach_actor_async(
-                            [
-                                partial(_learner_update, batch_shard=batch_shard)
-                                for batch_shard in ShardBatchIterator(
-                                    batch, len(self._workers)
-                                )
-                            ],
-                            tag=update_tag,
-                        )
-                    # Only episodes provided, split them up into n shards.
-                    elif batch is None:
-                        assert episodes is not None
-                        self._worker_manager.foreach_actor(
-                            [
-                                partial(_learner_update, episodes_shard=episodes_shard)
-                                for episodes_shard in ShardEpisodesIterator(
-                                    episodes, len(self._workers)
-                                )
-                            ],
-                            tag=update_tag,
-                        )
-                    # TODO (sven): Implement the case in which both batch and episodes
-                    #  might already be provided (or figure out whether this makes sense
-                    #  at all).
-                    else:
-                        raise NotImplementedError
+        if minibatch_size is not None:
+            minibatch_size //= len(self._workers)
 
-                    count += 1
+        # Define remote function to be called on all Learner actors.
+        def _learner_update(learner, batch_shard=None, episodes_shard=None):
+            return learner.update(
+                batch=batch_shard,
+                episodes=episodes_shard,
+                reduce_fn=reduce_fn,
+                minibatch_size=minibatch_size,
+                num_iters=num_iters,
+            )
 
-            # NOTE: There is a strong assumption here that the requests launched to
-            # learner workers will return at the same time, since they have a
-            # barrier inside themselves for gradient aggregation. Therefore, results
-            # should be a list of lists where each inner list should be the length of
-            # the number of learner workers, if results from a non-blocking update are
-            # ready.
-            results = self._get_async_results(results)
+        # Queue the new batches.
+        # If queue is full, kick out the oldest item (and thus add its
+        # length to the "dropped ts" counter).
+        if len(self._in_queue) == self._in_queue.maxlen:
+            self._in_queue_ts_dropped += len(self._in_queue[0])
 
-            # TODO(sven): Move reduce_fn to the training_step
-            if reduce_fn is None:
-                return results
-            else:
-                return [reduce_fn(r) for r in results]
+        self._in_queue.append((batch, episodes))
+
+        # Retrieve all ready results (kicked off by prior calls to this method).
+        results = self._worker_manager.fetch_ready_async_reqs(
+            tags=list(self._inflight_request_tags)
+        )
+        # Only if there are no more requests in-flight on any of the learners,
+        # we can send in one new batch for sharding and parallel learning.
+        if self._worker_manager_ready():
+            count = 0
+            # TODO (sven): This probably works even without any restriction
+            #  (allowing for any arbitrary number of requests in-flight). Test with
+            #  3 first, then with unlimited, and if both show the same behavior on
+            #  an async algo, remove this restriction entirely.
+            while len(self._in_queue) > 0 and count < 3:
+                # Pull a single batch from the queue (from the left side, meaning:
+                # use the oldest one first).
+                update_tag = str(uuid.uuid4())
+                self._inflight_request_tags.add(update_tag)
+                batch, episodes = self._in_queue.popleft()
+
+                # Only batch provided, split it up into n shards.
+                if episodes is None:
+                    self._worker_manager.foreach_actor_async(
+                        [
+                            partial(_learner_update, batch_shard=batch_shard)
+                            for batch_shard in ShardBatchIterator(
+                                batch, len(self._workers)
+                            )
+                        ],
+                        tag=update_tag,
+                    )
+                # Only episodes provided, split them up into n shards.
+                else:
+                    self._worker_manager.foreach_actor(
+                        [
+                            partial(_learner_update, episodes_shard=episodes_shard)
+                            for episodes_shard in ShardEpisodesIterator(
+                                episodes, len(self._workers)
+                            )
+                        ],
+                        tag=update_tag,
+                    )
+
+                count += 1
+
+        # NOTE: There is a strong assumption here that the requests launched to
+        # learner workers will return at the same time, since they have a
+        # barrier inside themselves for gradient aggregation. Therefore, results
+        # should be a list of lists where each inner list should be the length of
+        # the number of learner workers, if results from a non-blocking update are
+        # ready.
+        results = self._get_async_results(results)
+
+        # TODO(sven): Move reduce_fn to the training_step
+        if reduce_fn is None:
+            return results
+        else:
+            return [reduce_fn(r) for r in results]
 
     def _worker_manager_ready(self):
         # TODO (sven): This probably works even without any restriction (allowing for
