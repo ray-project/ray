@@ -5,6 +5,7 @@ from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
+from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentMode,
@@ -19,6 +20,12 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
 )
+
+fake_policy_return_value = 123
+
+
+def fake_policy():
+    return fake_policy_return_value
 
 
 def test_autoscaling_config_validation():
@@ -532,6 +539,30 @@ def test_proxy_location_to_deployment_mode():
 
     with pytest.raises(TypeError):
         ProxyLocation._to_deployment_mode({"some_other_obj"})
+
+
+@pytest.mark.parametrize(
+    "policy", [None, fake_policy, "ray.serve.tests.unit.test_config:fake_policy"]
+)
+def test_autoscaling_policy_serializations(policy):
+    """Test that autoscaling policy can be serialized and deserialized.
+
+    This test checks that the autoscaling policy can be serialized and deserialized for
+    when the policy is a function, a string, or None (default).
+    """
+    autoscaling_config = AutoscalingConfig()
+    if policy:
+        autoscaling_config = AutoscalingConfig(policy=policy)
+
+    config = DeploymentConfig.from_default(autoscaling_config=autoscaling_config)
+    deserialized_autoscaling_policy = DeploymentConfig.from_proto_bytes(
+        config.to_proto_bytes()
+    ).autoscaling_config.get_policy()
+
+    if policy is None:
+        assert deserialized_autoscaling_policy == BasicAutoscalingPolicy
+    else:
+        assert deserialized_autoscaling_policy() == fake_policy_return_value
 
 
 if __name__ == "__main__":
