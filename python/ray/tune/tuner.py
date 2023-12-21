@@ -328,7 +328,7 @@ class Tuner:
             bool: True if this path exists and contains the Tuner state to resume from
         """
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
-        return _exists_at_fs_path(fs, (Path(fs_path) / _TUNER_PKL).as_posix())
+        return _exists_at_fs_path(fs, Path(fs_path, _TUNER_PKL).as_posix())
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
         run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
