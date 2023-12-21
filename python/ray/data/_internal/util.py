@@ -13,6 +13,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
     Iterable,
     Iterator,
     List,
@@ -60,7 +61,7 @@ cluster_resources_last_fetch_time = 0
 CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS = 10
 
 
-def cluster_resources():
+def cluster_resources() -> Dict[str, float]:
     """Fetch Ray cluster resources with cache."""
     global cached_cluster_resources
     global cluster_resources_last_fetch_time
