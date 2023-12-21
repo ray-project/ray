@@ -455,7 +455,9 @@ class ApplicationState:
             return ApplicationStatus.DELETING, ""
 
         ranked = sorted(self.get_deployments_statuses(), key=lambda info: info.rank)
-        if ranked[0].status == DeploymentStatus.UNHEALTHY:
+        choice_status = ranked[0].status
+        choice_status_trigger = ranked[0].status_trigger
+        if choice_status == DeploymentStatus.UNHEALTHY:
             unhealthy_deployment_names = [
                 s.name for s in ranked if s.status == DeploymentStatus.UNHEALTHY
             ]
@@ -467,13 +469,11 @@ class ApplicationState:
                 return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
                 return ApplicationStatus.UNHEALTHY, status_msg
-        elif ranked[0].status == DeploymentStatus.UPDATING:
+        elif choice_status == DeploymentStatus.UPDATING:
             return ApplicationStatus.DEPLOYING, ""
         elif (
-            ranked[0].status
-            in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
-            and ranked[0].status_trigger
-            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+            choice_status in [DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING]
+            and choice_status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
         ):
             return ApplicationStatus.DEPLOYING, ""
         else:

@@ -23,7 +23,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
-    DeploymentStatusTransition,
+    DeploymentStatusInternalTrigger,
     DeploymentStatusTrigger,
     Duration,
     MultiplexedReplicaInfo,
@@ -1411,8 +1411,8 @@ class DeploymentState:
         self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
         self._target_state = target_state
-        self._curr_status_info = self._curr_status_info.transition(
-            DeploymentStatusTransition.DELETE
+        self._curr_status_info = self._curr_status_info.handle_transition(
+            DeploymentStatusInternalTrigger.DELETE
         )
         app_msg = f" in application '{self.app_name}'" if self.app_name else ""
         logger.info(
@@ -1461,27 +1461,27 @@ class DeploymentState:
             new_num = new_target_state.target_num_replicas
 
             if new_num > curr_num:
-                self._curr_status_info = self._curr_status_info.transition(
-                    DeploymentStatusTransition.AUTOSCALE_UP
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    DeploymentStatusInternalTrigger.AUTOSCALE_UP
                     if autoscale
-                    else DeploymentStatusTransition.MANUALLY_INCREASE_NUM_REPLICAS,
+                    else DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS,
                     message=f"Upscaling from {curr_num} to {new_num} replicas.",
-                    is_within_autoscaling_bounds=self.should_autoscale()
+                    should_autoscale=self.should_autoscale()
                     and self._is_within_autoscaling_bounds(),
                 )
             elif new_num < curr_num:
-                self._curr_status_info = self._curr_status_info.transition(
-                    DeploymentStatusTransition.AUTOSCALE_DOWN
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    DeploymentStatusInternalTrigger.AUTOSCALE_DOWN
                     if autoscale
-                    else DeploymentStatusTransition.MANUALLY_DECREASE_NUM_REPLICAS,
+                    else DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS,
                     message=f"Downscaling from {curr_num} to {new_num} replicas.",
-                    is_within_autoscaling_bounds=self.should_autoscale()
+                    should_autoscale=self.should_autoscale()
                     and self._is_within_autoscaling_bounds(),
                 )
         else:
             # Otherwise, the deployment configuration has actually been updated.
-            self._curr_status_info = self._curr_status_info.transition(
-                DeploymentStatusTransition.CONFIG_UPDATE
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                DeploymentStatusInternalTrigger.CONFIG_UPDATE
             )
 
         self._target_state = new_target_state
@@ -1909,8 +1909,8 @@ class DeploymentState:
                 # reached target replica count
                 self._replica_constructor_retry_counter = -1
             else:
-                self._curr_status_info = self._curr_status_info.transition(
-                    DeploymentStatusTransition.REPLICA_STARTUP_FAILED,
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
                     message=(
                         f"The deployment failed to start {failed_to_start_count} times "
                         "in a row. This may be due to a problem with its "
@@ -1943,8 +1943,8 @@ class DeploymentState:
                 == running_at_target_version_replica_cnt
                 and running_at_target_version_replica_cnt == all_running_replica_cnt
             ):
-                self._curr_status_info = self._curr_status_info.transition(
-                    DeploymentStatusTransition.HEALTHY
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    DeploymentStatusInternalTrigger.HEALTHY
                 )
                 return False, any_replicas_recovering
 
@@ -2090,8 +2090,8 @@ class DeploymentState:
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
                 if replica.version == self._target_state.version:
-                    self._curr_status_info = self._curr_status_info.transition(
-                        DeploymentStatusTransition.HEALTH_CHECK_FAILED,
+                    self._curr_status_info = self._curr_status_info.handle_transition(
+                        DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
                         message="A replica's health check failed. This "
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",
@@ -2213,8 +2213,8 @@ class DeploymentState:
                 "Exception occurred trying to update deployment state:\n"
                 + traceback.format_exc()
             )
-            self._curr_status_info = self._curr_status_info.transition(
-                DeploymentStatusTransition.INTERNAL_ERROR,
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                DeploymentStatusInternalTrigger.INTERNAL_ERROR,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
 
