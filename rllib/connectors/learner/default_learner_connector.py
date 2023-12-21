@@ -32,8 +32,8 @@ class DefaultLearnerConnector(ConnectorV2):
     will be zero-padded, if necessary.
 
     If the user wants to customize their own data under the given keys (e.g. obs,
-    actions, ...), they can extract from the episodes or recompute from `input_`
-    their own data and store it in `input_` under those keys. In this case, the default
+    actions, ...), they can extract from the episodes or recompute from `data`
+    their own data and store it in `data` under those keys. In this case, the default
     connector will not change the data under these keys and simply act as a
     pass-through.
     """
@@ -43,16 +43,16 @@ class DefaultLearnerConnector(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        input_: Any,
+        data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         persistent_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         # If episodes are provided, extract the essential data from them, but only if
-        # respective keys are not present yet in `input_`.
+        # respective keys are not present yet in `data`.
         if not episodes:
-            return input_
+            return data
 
         # Get the data dicts for all episodes.
         data_dicts = [episode.get_data_dict() for episode in episodes]
@@ -60,10 +60,10 @@ class DefaultLearnerConnector(ConnectorV2):
         state_in = None
         T = rl_module.config.model_config_dict.get("max_seq_len")
 
-        # RLModule is stateful and STATE_IN is not found in `input_` (user's custom
+        # RLModule is stateful and STATE_IN is not found in `data` (user's custom
         # connectors have not provided this information yet) -> Perform separate
         # handling of STATE_OUT/STATE_IN keys:
-        if rl_module.is_stateful() and STATE_IN not in input_:
+        if rl_module.is_stateful() and STATE_IN not in data:
             if T is None:
                 raise ValueError(
                     "You are using a stateful RLModule and are not providing custom "
@@ -104,11 +104,11 @@ class DefaultLearnerConnector(ConnectorV2):
             # Concatenate the individual episodes' STATE_INs.
             state_in = tree.map_structure(lambda *s: np.concatenate(s), *state_ins)
 
-            # Before adding anything else to the `input_`, add the time axis to existing
+            # Before adding anything else to the `data`, add the time axis to existing
             # data.
-            input_ = tree.map_structure(
+            data = tree.map_structure(
                 lambda s: split_and_pad_single_record(s, episodes, T=T),
-                input_,
+                data,
             )
 
             # Set the reduce function for all the data we might still have to extract
@@ -125,8 +125,8 @@ class DefaultLearnerConnector(ConnectorV2):
             # episodes along the batch axis (axis=0).
             reduce_fn = np.concatenate
 
-        # Extract all data from the episodes and add to `input_`, if not already in
-        # `input_`.
+        # Extract all data from the episodes and add to `data`, if not already in
+        # `data`.
         for key in [
             SampleBatch.OBS,
             SampleBatch.ACTIONS,
@@ -136,35 +136,32 @@ class DefaultLearnerConnector(ConnectorV2):
             SampleBatch.T,  # TODO: remove (normally not needed in train batch)
             *episodes[0].extra_model_outputs.keys(),
         ]:
-            if key not in input_ and key != STATE_OUT:
+            if key not in data and key != STATE_OUT:
                 # Concatenate everything together (along B-axis=0).
-                input_[key] = tree.map_structure(
+                data[key] = tree.map_structure(
                     lambda *s: reduce_fn(s),
                     *[d[key] for d in data_dicts],
                 )
 
         # Handle infos (always lists, not numpy arrays).
-        if SampleBatch.INFOS not in input_:
-            input_[SampleBatch.INFOS] = sum(
+        if SampleBatch.INFOS not in data:
+            data[SampleBatch.INFOS] = sum(
                 [d[SampleBatch.INFOS] for d in data_dicts],
                 [],
             )
 
         # Now that all "normal" fields are time-dim'd and zero-padded, add
-        # the STATE_IN column to `input_`.
+        # the STATE_IN column to `data`.
         if rl_module.is_stateful():
-            input_[STATE_IN] = state_in
+            data[STATE_IN] = state_in
             # Also, create the loss mask (b/c of our now possibly zero-padded data) as
-            # well as the seq_lens array and add these to `input_` as well.
-            (
-                input_["loss_mask"],
-                input_[SampleBatch.SEQ_LENS],
-            ) = create_mask_and_seq_lens(
+            # well as the seq_lens array and add these to `data` as well.
+            (data["loss_mask"], data[SampleBatch.SEQ_LENS],) = create_mask_and_seq_lens(
                 episode_lens=[len(episode) for episode in episodes],
                 T=T,
             )
 
-        return input_
+        return data
 
 
 def split_and_pad(episodes_data, T):

@@ -14,7 +14,7 @@ class EnvToModulePipeline(ConnectorPipelineV2):
         self,
         *,
         rl_module: RLModule,
-        input_: Optional[Any] = None,
+        data: Optional[Any] = None,
         episodes: List[EpisodeType],
         explore: bool,
         persistent_data: Optional[dict] = None,
@@ -24,7 +24,7 @@ class EnvToModulePipeline(ConnectorPipelineV2):
         # Might just be empty and to be populated from `episodes`.
         return super().__call__(
             rl_module=rl_module,
-            input_=input_ if input_ is not None else {},
+            data=data if data is not None else {},
             episodes=episodes,
             explore=explore,
             persistent_data=persistent_data,

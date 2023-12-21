@@ -33,7 +33,7 @@ class ConnectorPipelineV2(ConnectorV2):
     def __call__(
         self,
         rl_module: RLModule,
-        input_: Any,
+        data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         persistent_data: Optional[dict] = None,
@@ -46,13 +46,13 @@ class ConnectorPipelineV2(ConnectorV2):
         """
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
-        ret = input_
+        ret = data
         for connector in self.connectors:
             timer = self.timers[str(connector)]
             with timer:
                 ret = connector(
                     rl_module=rl_module,
-                    input_=ret,
+                    data=ret,
                     episodes=episodes,
                     explore=explore,
                     persistent_data=persistent_data,

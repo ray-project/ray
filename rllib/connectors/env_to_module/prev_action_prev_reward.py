@@ -53,16 +53,16 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        input_: Optional[Any],
+        data: Optional[Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         persistent_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # This is a data-in-data-out connector, so we expect `input_` to be a dict
+        # This is a data-in-data-out connector, so we expect `data` to be a dict
         # with: key=column name, e.g. "obs" and value=[data to be processed by
         # RLModule]. We will just extract the most recent rewards and/or most recent
-        # actions from all episodes and store them inside the `input_` data dict.
+        # actions from all episodes and store them inside the `data` data dict.
 
         prev_a = []
         prev_r = []
@@ -122,9 +122,9 @@ class _PrevRewardPrevActionConnector(ConnectorV2):
                     )
                 )
 
-        input_[SampleBatch.PREV_ACTIONS] = batch(prev_a)
-        input_[SampleBatch.PREV_REWARDS] = np.array(prev_r)
-        return input_
+        data[SampleBatch.PREV_ACTIONS] = batch(prev_a)
+        data[SampleBatch.PREV_REWARDS] = np.array(prev_r)
+        return data
 
 
 PrevRewardPrevActionEnvToModule = partial(

@@ -125,7 +125,7 @@ class ConnectorV2(abc.ABC):
         self,
         *,
         rl_module: RLModule,
-        input_: Any,
+        data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         persistent_data: Optional[dict] = None,
@@ -138,7 +138,7 @@ class ConnectorV2(abc.ABC):
                 about. Note that normally, only module-to-env connectors get this
                 information at construction time, but env-to-module and learner
                 connectors won't (b/c they get constructed before the RLModule).
-            input_: The input data abiding to `self.input_type` to be transformed by
+            data: The input data abiding to `self.input_type` to be transformed by
                 this connector. Transformations might either be done in-place or a new
                 structure may be returned that matches `self.output_type`.
             episodes: The list of SingleAgentEpisode or MultiAgentEpisode objects,

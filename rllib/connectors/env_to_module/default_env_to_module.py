@@ -34,7 +34,7 @@ class DefaultEnvToModule(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        input_: Optional[Any] = None,
+        data: Optional[Any] = None,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         persistent_data: Optional[dict] = None,
@@ -42,17 +42,17 @@ class DefaultEnvToModule(ConnectorV2):
     ) -> Any:
         # If observations cannot be found in `input`, add the most recent ones (from all
         # episodes).
-        if SampleBatch.OBS not in input_:
+        if SampleBatch.OBS not in data:
             # Collect all most-recent observations from given episodes.
             observations = []
             for episode in episodes:
                 observations.append(episode.get_observations(indices=-1))
             # Batch all collected observations together.
-            input_[SampleBatch.OBS] = batch(observations)
+            data[SampleBatch.OBS] = batch(observations)
 
         # If our module is stateful:
-        # - Add the most recent STATE_OUTs to `input_`.
-        # - Make all data in `input_` have a time rank (T=1).
+        # - Add the most recent STATE_OUTs to `data`.
+        # - Make all data in `data` have a time rank (T=1).
         if rl_module.is_stateful():
             # Collect all most recently computed STATE_OUT (or use initial states from
             # RLModule if at beginning of episode).
@@ -71,10 +71,10 @@ class DefaultEnvToModule(ConnectorV2):
                 states.append(state)
 
             # Make all other inputs have an additional T=1 axis.
-            input_ = tree.map_structure(lambda s: np.expand_dims(s, axis=1), input_)
+            data = tree.map_structure(lambda s: np.expand_dims(s, axis=1), data)
 
             # Batch states (from list of individual vector sub-env states).
             # Note that state ins should NOT have the extra time dimension.
-            input_[STATE_IN] = batch(states)
+            data[STATE_IN] = batch(states)
 
-        return input_
+        return data
