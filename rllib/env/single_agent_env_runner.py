@@ -265,6 +265,8 @@ class SingleAgentEnvRunner(EnvRunner):
             ts += self.num_envs
 
             for env_index in range(self.num_envs):
+                # TODO (sven): Will be replaced soon by RLlib's default
+                #  ConnectorV2 in near future PR.
                 # Extract state for vector sub_env.
                 s_env_index = {k: s[env_index] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset

@@ -4,8 +4,10 @@ import platform
 import tracemalloc
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
+import gymnasium as gym
 import numpy as np
 
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.episode import Episode
@@ -24,7 +26,7 @@ from ray.rllib.utils.exploration.random_encoder import (
     compute_states_entropy,
     update_beta,
 )
-from ray.rllib.utils.typing import AgentID, EnvType, PolicyID
+from ray.rllib.utils.typing import AgentID, EnvType, EpisodeType, PolicyID
 from ray.tune.callback import _CallbackMeta
 
 # Import psutil after ray so the packaged version is used.
@@ -167,7 +169,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """
         pass
 
-    @override(DefaultCallbacks)
+    @OverrideToImplementCustomLogic
     def on_environment_created(
         self,
         *,
@@ -183,8 +185,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         Args:
             env_runner: Reference to the current EnvRunner instance.
-            env: The environment object that has been created. This is usually a
-                gym.Env object.
+            env: The environment object that has been created on `env_runner`. This is
+                usually a gym.Env (or a gym.vector.Env) object.
             env_config: The config dict that has been passed to the `gym.make()` call
                 as kwargs.
             kwargs: Forward compatibility placeholder.
@@ -196,7 +198,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_sub_environment_created(
         self,
         *,
-        worker: EnvRunner,
+        worker: "EnvRunner",
         sub_environment: EnvType,
         env_context: EnvContext,
         env_index: Optional[int] = None,
@@ -498,10 +500,10 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_sample_end(
         self,
         *,
-        # TODO (sven): Replace with `env_runner` arg.
-        worker: Optional["EnvRunner"] = None,
         env_runner: Optional["EnvRunner"] = None,
         samples: SampleBatch,
+        # TODO (sven): Replace with `env_runner` arg.
+        worker: Optional["EnvRunner"] = None,
         **kwargs,
     ) -> None:
         """Called at the end of `EnvRunner.sample()`.
@@ -708,7 +710,7 @@ def make_multi_callbacks(
         def on_sub_environment_created(
             self,
             *,
-            worker: "RolloutWorker",
+            worker: "EnvRunner",
             sub_environment: EnvType,
             env_context: EnvContext,
             env_index: Optional[int] = None,
@@ -866,7 +868,7 @@ def make_multi_callbacks(
         def on_postprocess_trajectory(
             self,
             *,
-            worker: "RolloutWorker",
+            worker: "EnvRunner",
             episode: Episode,
             agent_id: AgentID,
             policy_id: PolicyID,
@@ -889,7 +891,7 @@ def make_multi_callbacks(
 
         @override(DefaultCallbacks)
         def on_sample_end(
-            self, *, worker: "RolloutWorker", samples: SampleBatch, **kwargs
+            self, *, worker: "EnvRunner", samples: SampleBatch, **kwargs
         ) -> None:
             for callback in self._callback_list:
                 callback.on_sample_end(worker=worker, samples=samples, **kwargs)
