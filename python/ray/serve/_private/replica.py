@@ -150,6 +150,7 @@ class ReplicaQueueMetricsManager:
                 self._add_autoscaling_metrics_point,
             )
 
+    def start(self):
         self._metrics_pusher.start()
 
     def shutdown(self):
@@ -225,9 +226,6 @@ class ReplicaActor:
         )
         self._configure_logger_and_profilers(self._deployment_config.logging_config)
         self._event_loop = get_or_create_event_loop()
-        self._queue_metrics_manager = ReplicaQueueMetricsManager(
-            replica_tag, deployment_id, self._deployment_config.autoscaling_config
-        )
 
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
@@ -244,6 +242,11 @@ class ReplicaActor:
         # Guards against calling the user's callable constructor multiple times.
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
+
+        self._queue_metrics_manager = ReplicaQueueMetricsManager(
+            replica_tag, deployment_id, self._deployment_config.autoscaling_config
+        )
+        self._queue_metrics_manager.start()
 
     def _configure_logger_and_profilers(
         self, logging_config: Union[None, Dict, LoggingConfig]
