@@ -26,7 +26,7 @@ def do_allocate_channel(
     buffer_size_bytes: int,
     num_readers: int = 1,
     reader_node_id: Optional[str] = None,
-    writer_channel: Optional[ChannelType] = None,
+    writer_channel: Optional[Channel] = None,
 ) -> Channel:
     """Generic actor method to allocate an output channel.
 
@@ -37,7 +37,7 @@ def do_allocate_channel(
     Returns:
         The allocated channel.
     """
-    return ray_channel.Channel(
+    return Channel(
             buffer_size_bytes, num_readers,
             _reader_node_id=reader_node_id,
             _writer_channel=writer_channel)
@@ -46,9 +46,9 @@ def do_allocate_channel(
 @DeveloperAPI
 def do_exec_compiled_task(
     self,
-    inputs: List[Union[Any, ChannelType]],
+    inputs: List[Union[Any, Channel]],
     actor_method_name: str,
-    output_channel: ChannelType,
+    output_channel: Channel,
 ) -> None:
     """Generic actor method to begin executing a compiled DAG. This runs an
     infinite loop to repeatedly read input channel(s), execute the given
@@ -395,7 +395,7 @@ class CompiledDAG:
                         )
                     )
                 else:
-                    task.output_writer_channel = ray_channel.Channel(
+                    task.output_writer_channel = Channel(
                         buffer_size_bytes=self._buffer_size_bytes,
                         num_readers=writer_channel_num_readers,
                         _reader_node_id=reader_ray_node_hex_id,
@@ -416,7 +416,7 @@ class CompiledDAG:
                         )
                     else:
                         # The downstream "task" is the driver.
-                        task.output_channel = ray_channel.Channel(
+                        task.output_channel = Channel(
                             buffer_size_bytes=self._buffer_size_bytes,
                             num_readers=task.num_readers,
                             _writer_channel=task.output_writer_channel,
@@ -467,7 +467,6 @@ class CompiledDAG:
                     task.output_writer_channel,
                 )
             )
-            print("args", resolved_args, "output channel", task.output_writer_channel)
 
         self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_writer_channel
 
