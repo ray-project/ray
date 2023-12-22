@@ -119,7 +119,6 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
         """
 
         try:
-            # e.g. {"card0": {"GPU ID": "0x740f"}, "card1": {"GPU ID": "0x740f"}}
             amd_pci_ids = subprocess.check_output(
                 ["rocm-smi", "--showid", "--json"]
             ).decode("utf-8")
