@@ -42,10 +42,9 @@ echo "--- Run bazel tests"
 
 # Needs to send in the kubeconfig file in base64 encoding.
 
-bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless \
+bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
     --build-name k8sbuild \
     --network host \
-    --only-tags kuberay_operator \
     --test-env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test \
     --test-env=PULL_POLICY=Never \
     --test-env=KUBECONFIG=/tmp/rayci-kubeconfig \
