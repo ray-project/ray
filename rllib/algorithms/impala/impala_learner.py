@@ -1,12 +1,24 @@
+import abc
 from typing import Any, Dict
+
+import numpy as np
 
 from ray.rllib.algorithms.impala.impala import (
     ImpalaConfig,
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.postprocessing.episodes import (
+    add_one_ts_to_episodes_and_truncate,
+    remove_last_ts_from_data,
+    remove_last_ts_from_episodes_and_restore_truncateds,
+)
+from ray.rllib.utils.postprocessing.value_predictions import extract_bootstrapped_values
+from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ModuleID
 
@@ -43,7 +55,7 @@ class ImpalaLearner(Learner):
         # Make all episodes one ts longer in order to just have a single batch
         # (and distributed forward pass) for both vf predictions AND the bootstrap
         # vf computations.
-        orig_truncateds = self._add_ts_to_episodes_and_truncate(episodes)
+        orig_truncateds = add_one_ts_to_episodes_and_truncate(episodes)
         episode_lens_p1 = [len(e) for e in episodes]
 
         # Call the learner connector (on the artificially elongated episodes)
@@ -56,45 +68,23 @@ class ImpalaLearner(Learner):
         )
         # Perform the value model's forward pass.
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
-        # Remove all zero-padding again, if applicable for the upcoming
-        # GAE computations.
-        vf_preds = self._unpad_data_if_necessary(episode_lens_p1, vf_preds)
-        # Compute value targets.
-        value_targets = compute_value_targets(
-            values=vf_preds,
-            rewards=self._unpad_data_if_necessary(
-                episode_lens_p1, batch_for_vf[SampleBatch.REWARDS]
-            ),
-            terminateds=self._unpad_data_if_necessary(
-                episode_lens_p1, batch_for_vf[SampleBatch.TERMINATEDS]
-            ),
-            truncateds=self._unpad_data_if_necessary(
-                episode_lens_p1, batch_for_vf[SampleBatch.TRUNCATEDS]
-            ),
-            gamma=self.config.gamma,
-            lambda_=self.config.lambda_,
-        )
 
+        # Remove all zero-padding again, if applicable, for the upcoming
+        # GAE computations.
+        vf_preds = unpad_data_if_necessary(episode_lens_p1, vf_preds)
+        # Generate the bootstrap value column (with only one entry per batch row).
+        batch[SampleBatch.VALUES_BOOTSTRAPPED] = extract_bootstrapped_values(
+            episode_lens_p1, vf_preds
+        )
         # Remove the extra timesteps again from vf_preds and value targets. Now that
         # the GAE computation is done, we don't need this last timestep anymore in any
         # of our data.
-        (
-            batch[SampleBatch.VF_PREDS],
-            batch[Postprocessing.VALUE_TARGETS],
-        ) = self._remove_last_ts_from_data(
-            episode_lens_p1,
-            vf_preds,
-            value_targets,
-        )
-        advantages = batch[Postprocessing.VALUE_TARGETS] - batch[SampleBatch.VF_PREDS]
-        # Standardize advantages (used for more stable and better weighted
-        # policy gradient computations).
-        batch[Postprocessing.ADVANTAGES] = (advantages - advantages.mean()) / max(
-            1e-4, advantages.std()
+        batch[SampleBatch.VF_PREDS] = remove_last_ts_from_data(
+            episode_lens_p1, vf_preds
         )
 
         # Remove the extra (artificial) timesteps again at the end of all episodes.
-        self._remove_last_ts_from_episodes_and_restore_truncateds(
+        remove_last_ts_from_episodes_and_restore_truncateds(
             episodes,
             orig_truncateds,
         )
@@ -121,3 +111,17 @@ class ImpalaLearner(Learner):
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 
         return results
+
+    @abc.abstractmethod
+    def _compute_values(self, batch) -> np._typing.NDArray:
+        """Computes the values using the value function module given a batch of data.
+
+        Args:
+            batch: The input batch to pass through our RLModule (value function
+                encoder and vf-head).
+
+        Returns:
+            The batch (numpy) of value function outputs (already squeezed over the last
+            dimension (which should have shape (1,) b/c of the single value output
+            node).
+        """

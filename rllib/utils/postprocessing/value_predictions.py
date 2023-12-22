@@ -33,3 +33,7 @@ def compute_value_targets(
     value_targets = np.stack(list(reversed(Rs)), axis=0)
 
     return value_targets
+
+
+def extract_bootstrapped_values(episode_lens_p1, vf_preds):
+

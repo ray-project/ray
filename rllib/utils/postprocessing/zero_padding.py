@@ -133,3 +133,37 @@ def split_and_pad_single_record(
     # Send everything through `split_and_pad` to perform the actual splitting into
     # sub-chunks of max len=T and zero-padding.
     return split_and_pad(episodes_data, T)
+
+
+def unpad_data_if_necessary(episode_lens, data):
+    # If data des NOT have time dimension, return right away.
+    if len(data.shape) == 1:
+        return data
+
+    # Assert we only have B and T dimensions (meaning this function only operates
+    # on single-float data, such as value function predictions).
+    assert len(data.shape) == 2
+
+    new_data = []
+    row_idx = 0
+
+    T = data.shape[1]
+    for len_ in episode_lens:
+        # Calculate how many full rows this array occupies and how many elements are
+        # in the last, potentially partial row.
+        num_rows, col_idx = divmod(len_, T)
+
+        # If the array spans multiple full rows, fully include these rows.
+        for i in range(num_rows):
+            new_data.append(data[row_idx])
+            row_idx += 1
+
+        # If there are elements in the last, potentially partial row, add this
+        # partial row as well.
+        if col_idx > 0:
+            new_data.append(data[row_idx, :col_idx])
+
+            # Move to the next row for the next array (skip the zero-padding zone).
+            row_idx += 1
+
+    return np.concatenate(new_data)
