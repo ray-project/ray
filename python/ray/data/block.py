@@ -139,6 +139,7 @@ class BlockExecStats:
         # Max memory usage. May be an overestimate since we do not
         # differentiate from previous tasks on the same worker.
         self.max_rss_bytes: int = 0
+        self.task_idx: Optional[int] = None
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":

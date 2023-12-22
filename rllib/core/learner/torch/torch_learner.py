@@ -215,6 +215,7 @@ class TorchLearner(Learner):
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch) -> MultiAgentBatch:
         batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
+        # TODO (sven): This computation of `env_steps` is not accurate!
         length = max(len(b) for b in batch.values())
         batch = MultiAgentBatch(batch, env_steps=length)
         return batch
