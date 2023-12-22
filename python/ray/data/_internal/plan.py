@@ -661,7 +661,7 @@ class ExecutionPlan:
                         blocks, clear_input_blocks, self._run_by_consumer
                     )
                     if stage_info:
-                        stats = stats_builder.build_multistage(stage_info)
+                        stats = stats_builder.build_multioperator(stage_info)
                     else:
                         stats = stats_builder.build(blocks)
                     stats.dataset_uuid = self._dataset_uuid
@@ -740,7 +740,7 @@ class ExecutionPlan:
         If the plan isn't executed, an empty stats object will be returned.
         """
         if not self._snapshot_stats:
-            return DatasetStats(stages={}, parent=None)
+            return DatasetStats(metadata={}, parent=None)
         return self._snapshot_stats
 
     def stats_summary(self) -> DatasetStatsSummary:
@@ -1318,7 +1318,7 @@ def _rewrite_read_stage(
         TaskPoolStrategy(),
         remote_args,
     )
-    stats = DatasetStats(stages={}, parent=None)
+    stats = DatasetStats(metadata={}, parent=None)
     stages.insert(0, stage)
     return block_list, stats, stages
 

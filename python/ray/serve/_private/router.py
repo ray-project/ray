@@ -29,6 +29,7 @@ from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, RequestProtocol, RunningReplicaInfo
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
@@ -159,8 +160,11 @@ class ReplicaWrapper(ABC):
         """Set of model IDs on this replica."""
         pass
 
-    async def get_queue_state(self) -> Tuple[int, bool]:
-        """Returns tuple of (queue_len, accepted)."""
+    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
+        """Returns tuple of (queue_len, accepted).
+
+        `deadline_s` is passed to verify backoff for testing.
+        """
         pass
 
     def send_query(
@@ -196,7 +200,7 @@ class ActorReplicaWrapper:
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
-    async def get_queue_state(self) -> Tuple[int, bool]:
+    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
@@ -317,7 +321,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
+    # If this deadline is repeatedly missed, it will be exponentially increased up to
+    # the maximum configured here.
     queue_len_response_deadline_s = RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S
+    max_queue_len_response_deadline_s = RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S
 
     # Hard limit on the maximum number of scheduling tasks to run. Having too many of
     # these tasks can cause stability issue due to too much load on the local process
@@ -691,35 +698,53 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 )
 
     async def select_from_candidate_replicas(
-        self, candidates: List[ReplicaWrapper]
+        self,
+        candidates: List[ReplicaWrapper],
+        backoff_index: int,
     ) -> Optional[ReplicaWrapper]:
         """Chooses the best replica from the list of candidates.
 
         If none of the replicas can be scheduled, returns `None`.
 
         The queue length at each replica is queried directly from it. The time waited
-        for these queries is capped by `self.queue_len_response_deadline_s`; if a
-        replica doesn't respond within the deadline it is not considered.
+        for these queries is capped by a response deadline; if a replica doesn't
+        doesn't respond within the deadline it is not considered. The deadline will be
+        increased exponentially in backoff.
 
         Among replicas that respond within the deadline and accept the request (don't
         have full queues), the one with the lowest queue length is chosen.
         """
+        # Ensure the max deadline is always >= the initial deadline.
+        max_queue_len_response_deadline_s = max(
+            self.queue_len_response_deadline_s,
+            self.max_queue_len_response_deadline_s,
+        )
+        queue_len_response_deadline_s = min(
+            self.queue_len_response_deadline_s * (2**backoff_index),
+            max_queue_len_response_deadline_s,
+        )
+
         get_queue_state_tasks = []
         for c in candidates:
-            t = self._loop.create_task(c.get_queue_state())
+            t = self._loop.create_task(
+                c.get_queue_state(deadline_s=queue_len_response_deadline_s)
+            )
             t.replica_id = c.replica_id
             get_queue_state_tasks.append(t)
 
         done, pending = await asyncio.wait(
             get_queue_state_tasks,
-            timeout=self.queue_len_response_deadline_s,
+            timeout=queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
         for t in pending:
             t.cancel()
             logger.warning(
                 f"Failed to get queue length from replica {t.replica_id} "
-                f"within {self.queue_len_response_deadline_s}s."
+                f"within {queue_len_response_deadline_s}s. If this happens repeatedly "
+                "it's likely caused by high network latency in the cluster. You can "
+                "configure the deadline using the "
+                "`RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` environment variable."
             )
 
         chosen_replica_id = None
@@ -821,14 +846,19 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         try:
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
+                backoff_index = 0
                 request_metadata = self._get_next_pending_request_metadata_to_schedule()
                 async for candidates in self.choose_two_replicas_with_backoff(
                     request_metadata
                 ):
-                    replica = await self.select_from_candidate_replicas(candidates)
+                    replica = await self.select_from_candidate_replicas(
+                        candidates, backoff_index
+                    )
                     if replica is not None:
                         self.fulfill_next_pending_request(replica, request_metadata)
                         break
+
+                    backoff_index += 1
 
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")

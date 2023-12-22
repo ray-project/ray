@@ -36,6 +36,10 @@ SERVE_DEFAULT_APP_NAME = "default"
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
+# Concurrency group used for replica operations that cannot be blocked by user code
+# (e.g., health checks and fetching queue length).
+REPLICA_CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
+
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
 
@@ -254,6 +258,12 @@ RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = (
     os.environ.get("RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0") == "1"
 )
 
+# Initial deadline for queue length responses in the router.
 RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 0.1)
+)
+
+# Maximum deadline for queue length responses in the router (in backoff).
+RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
+    os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
 )
