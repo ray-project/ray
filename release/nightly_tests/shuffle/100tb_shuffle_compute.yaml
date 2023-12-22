@@ -23,4 +23,3 @@ worker_node_types:
       min_workers: 99
       max_workers: 99
       use_spot: false
-      resources: {"cpu": 8}
