@@ -9,7 +9,7 @@ import {
 } from "react-icons/ri";
 import { StatusChip } from "../components/StatusChip";
 import { JobStatus, UnifiedJob } from "../type/job";
-import { ClassNameProps } from "./props";
+import { ClassNameProps, DataTestIdProps } from "./props";
 
 const useJobRunningIconStyles = makeStyles((theme) =>
   createStyles({
@@ -39,15 +39,18 @@ const useJobRunningIconStyles = makeStyles((theme) =>
   }),
 );
 
-type JobRunningIconProps = { small?: boolean } & ClassNameProps;
+type JobRunningIconProps = { small?: boolean } & ClassNameProps &
+  DataTestIdProps;
 
 export const JobRunningIcon = ({
   className,
   small = false,
+  "data-testid": dataTestId,
 }: JobRunningIconProps) => {
   const classes = useJobRunningIconStyles();
   return (
     <RiLoader4Line
+      data-testid={dataTestId}
       className={classNames(
         classes.icon,
         classes.iconRunning,
