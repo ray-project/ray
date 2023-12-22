@@ -404,9 +404,11 @@ class BufferWithInfiniteLookback:
     def __len__(self):
         """Return the length of our data, excluding the lookback buffer."""
         if self.finalized:
-            return len(tree.flatten(self.data)[0]) - self.lookback
+            len_ = len(tree.flatten(self.data)[0])
         else:
-            return len(self.data) - self.lookback
+            len_ = len(self.data)
+        # Only count the data after the lookback.
+        return max(len_ - self.lookback, 0)
 
     def _get_all_data(self, one_hot_discrete=False):
         data = self[:]

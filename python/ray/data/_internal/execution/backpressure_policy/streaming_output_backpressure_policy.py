@@ -23,7 +23,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
       the streaming generator of each OpDataTask. When it's reached, the task will
       be blocked at `yield` until the caller reads another `ObjectRef.
     - At the Ray Data level, we use
-      `MAX_BLOCKS_IN_GENERATOR_BUFFER` to limit the number of blocks buffered in the
+      `MAX_BLOCKS_IN_OP_OUTPUT_QUEUE` to limit the number of blocks buffered in the
       output queue of each operator. When it's reached, we'll stop reading from the
       streaming generators of the op's tasks, and thus trigger backpressure at the
       Ray Core level.
