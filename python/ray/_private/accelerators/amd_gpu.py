@@ -1,15 +1,8 @@
-import re
 import os
 import sys
 import logging
 import subprocess
-import importlib
-from typing import Optional, List, Tuple
-
-try:
-    import GPUtil
-except ImportError:
-    pass
+from typing import Optional, List, Tuple, Dict, Any
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
@@ -23,12 +16,11 @@ amd_product_dict = {
     "0x7408": "AMD Instinct MI250X",
     "0x740c": "AMD Instinct MI250X / MI250",
     "0x740f": "AMD Instinct MI210",
-    "0x740f": "AMD Instinct MI210",
     "0x74a1": "AMD Instinct MI300X OAM",
     "0x6798": "AMD Radeon R9 200 / HD 7900",
     "0x6799": "AMD Radeon HD 7900",
-    "0x679A": "AMD Radeon HD 7900", 
-    "0x679B": "AMD Radeon HD 7900"
+    "0x679A": "AMD Radeon HD 7900",
+    "0x679B": "AMD Radeon HD 7900",
 }
 
 
@@ -117,8 +109,17 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
             AMDGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join([str(i) for i in visible_amd_devices])
 
-    def _get_amd_pci_ids() -> dict:
+    def _get_amd_pci_ids() -> Dict[str, Any]:
+        """Get the list of GPUs IDs in JSON format
+        Example:
+            On a node with 2x MI210 GPUs
+            return: {"card0": {"GPU ID": "0x740f"}, "card1": {"GPU ID": "0x740f"}}
+        Returns:
+            A json string contain a list of GPU IDs
+        """
+
         try:
+            # e.g. {"card0": {"GPU ID": "0x740f"}, "card1": {"GPU ID": "0x740f"}}
             amd_pci_ids = subprocess.check_output(
                 ["rocm-smi", "--showid", "--json"]
             ).decode("utf-8")

@@ -37,12 +37,12 @@ def test_visible_amd_gpu_type(shutdown_only):
     ):
         manager = None
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
-        assert manager.get_current_node_accelerator_type() == None
+        assert manager.get_current_node_accelerator_type() is None
 
     with patch.object(Accelerator, "_get_amd_pci_ids", return_value=None):
         manager = None
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
-        assert manager.get_current_node_accelerator_type() == None
+        assert manager.get_current_node_accelerator_type() is None
 
 
 def test_amd_gpu_accelerator_manager_api():
