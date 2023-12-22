@@ -217,7 +217,7 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
     # stats, see `StreamingExecutor._generate_stats`.
     # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
     if isinstance(plan._in_blocks, LazyBlockList):
-        return DatasetStats(stages={}, parent=None)
+        return DatasetStats(metadata={}, parent=None)
     else:
         return plan._in_stats
 
