@@ -7,7 +7,7 @@ import {
   Tabs,
   Typography,
 } from "@material-ui/core";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { RiExternalLinkLine, RiSortAsc, RiSortDesc } from "react-icons/ri";
 import { Link } from "react-router-dom";
 import { useStateApiLogs } from "../pages/log/hooks";
@@ -40,6 +40,13 @@ export const MultiTabLogViewer = ({
   const classes = useStyles();
   const [value, setValue] = useState(tabs[0]?.title);
   const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    // If current tab value is not valid, reset to first tab.
+    if (!tabs.some((tab) => tab.title === value)) {
+      setValue(tabs[0]?.title);
+    }
+  }, [tabs, value]);
 
   const currentTab = tabs.find((tab) => tab.title === value);
 
