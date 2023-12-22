@@ -33,6 +33,12 @@ parser.add_argument(
     help="The number of GPUs (Learner workers) to use.",
 )
 parser.add_argument(
+    "--num-env-runners",
+    type=int,
+    default=2,
+    help="The number of EnvRunners to use.",
+)
+parser.add_argument(
     "--num-frames",
     type=int,
     default=4,
@@ -130,6 +136,7 @@ if __name__ == "__main__":
             # ... new EnvRunner and our frame stacking env-to-module connector.
             env_runner_cls=SingleAgentEnvRunner,
             env_to_module_connector=_make_env_to_module_connector,
+            num_rollout_workers=args.num_env_runners,
         )
         .resources(
             num_learner_workers=args.num_gpus,
