@@ -1650,7 +1650,7 @@ class Dataset:
         splits = []
 
         for bs, ms in zip(blocks, metadata):
-            stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
+            stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
 
             split_block_list = BlockList(
@@ -1915,7 +1915,7 @@ class Dataset:
                 logical_plan = LogicalPlan(op)
 
         stats = DatasetStats(
-            stages={"Union": []},
+            metadata={"Union": []},
             parent=[d._plan.stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time

@@ -75,10 +75,12 @@ class BaseID {
 
  protected:
   BaseID(const std::string &binary) {
-    RAY_CHECK(binary.size() == Size() || binary.size() == 0)
-        << "expected size is " << Size() << ", but got data " << binary << " of size "
-        << binary.size();
-    std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), binary.size());
+    if (!binary.empty()) {
+      RAY_CHECK(binary.size() == Size())
+          << "expected size is " << Size() << ", but got data " << binary << " of size "
+          << binary.size();
+      std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), Size());
+    }
   }
   // All IDs are immutable for hash evaluations. MutableData is only allow to use
   // in construction time, so this function is protected.
@@ -401,10 +403,12 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
                                                                                          \
    private:                                                                              \
     explicit type(const std::string &binary) {                                           \
-      RAY_CHECK(binary.size() == Size() || binary.size() == 0)                           \
-          << "expected size is " << Size() << ", but got data " << binary << " of size " \
-          << binary.size();                                                              \
-      std::memcpy(&id_, binary.data(), binary.size());                                   \
+      if (!binary.empty()) {                                                             \
+        RAY_CHECK(binary.size() == Size())                                               \
+            << "expected size is " << Size() << ", but got data " << binary              \
+            << " of size " << binary.size();                                             \
+        std::memcpy(&id_, binary.data(), Size());                                        \
+      }                                                                                  \
     }                                                                                    \
   };
 
@@ -431,10 +435,14 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
-  RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
-      << "expected size is " << T::Size() << ", but got data size is " << binary.size();
   T t;
-  std::memcpy(t.MutableData(), binary.data(), binary.size());
+  if (binary.empty()) {
+    return t;  // nil
+  }
+  RAY_CHECK(binary.size() == T::Size())
+      << "expected size is " << T::Size() << ", but got data size is " << binary.size();
+
+  std::memcpy(t.MutableData(), binary.data(), T::Size());
   return t;
 }
 
@@ -485,8 +493,7 @@ const T &BaseID<T>::Nil() {
 
 template <typename T>
 bool BaseID<T>::IsNil() const {
-  static T nil_id = T::Nil();
-  return *this == nil_id;
+  return *this == T::Nil();
 }
 
 template <typename T>

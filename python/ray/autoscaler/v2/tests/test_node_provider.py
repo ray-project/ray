@@ -12,7 +12,7 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
 )
 from ray.autoscaler.node_launch_exception import NodeLaunchException
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
 from ray.autoscaler.v2.tests.util import FakeCounter
 from ray.core.generated.instance_manager_pb2 import Instance
@@ -29,11 +29,9 @@ class NodeProviderTest(unittest.TestCase):
             EventSummarizer(),
             self.availability_tracker,
         )
-        self.instance_config_provider = NodeProviderConfig(
-            load_test_config("test_ray_complex.yaml")
-        )
+        self.config = AutoscalingConfig(load_test_config("test_ray_complex.yaml"))
         self.node_provider = NodeProviderAdapter(
-            self.base_provider, self.node_launcher, self.instance_config_provider
+            self.base_provider, self.node_launcher, self.config
         )
 
     def test_node_providers_pass_through(self):
