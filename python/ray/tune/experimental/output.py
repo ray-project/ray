@@ -626,7 +626,11 @@ class ProgressReporter(Callback):
         start_time: Optional[float] = None,
         **kwargs,
     ):
-        self._start_time = start_time
+        # setup may be called to update time by the AirProgressReporter, but is
+        # also called with arguments derived from the spec which won't set
+        # start_time, in which case we don't wish to update it
+        if start_time is not None:
+            self._start_time = start_time
 
     def _start_block(self, indicator: Any):
         if self._in_block != indicator:
