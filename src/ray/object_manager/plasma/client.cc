@@ -110,9 +110,6 @@ struct ObjectInUseEntry {
   /// objects, ReadRelease resets this to false, and ReadAcquire resets to
   /// true.
   bool read_acquired = false;
-  /// The last version that we wrote. To write again, we must pass a newer
-  /// version than this.
-  int64_t next_version_to_write = 1;
 };
 
 class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Impl> {
@@ -163,6 +160,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                                                std::shared_ptr<Buffer> *data);
 
   Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
+
+  Status ExperimentalMutableObjectSetError(const ObjectID &object_id);
 
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
@@ -445,8 +444,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
                                    ") is larger than allocated buffer size " +
                                    std::to_string(entry->object.allocated_size));
   }
-  plasma_header->WriteAcquire(
-      entry->next_version_to_write, data_size, metadata_size, num_readers);
+  RAY_RETURN_NOT_OK(plasma_header->WriteAcquire(data_size, metadata_size, num_readers));
 
   // Prepare the data buffer and return to the client instead of sending
   // the IPC to object store.
@@ -474,10 +472,6 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteRelease(
     return Status::Invalid(
         "Plasma buffer for mutable object not in scope. Are you sure you're the writer?");
   }
-  if (!object_entry->second->is_writer) {
-    return Status::Invalid(
-        "Mutable objects can only be written by the original creator process.");
-  }
   RAY_CHECK(object_entry != objects_in_use_.end());
 
   auto &entry = object_entry->second;
@@ -487,10 +481,25 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectWriteRelease(
 
   entry->is_sealed = true;
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  plasma_header->WriteRelease(
-      /*write_version=*/entry->next_version_to_write);
-  // The next Write must pass a higher version.
-  entry->next_version_to_write++;
+  RAY_RETURN_NOT_OK(plasma_header->WriteRelease());
+#endif
+  return Status::OK();
+}
+
+Status PlasmaClient::Impl::ExperimentalMutableObjectSetError(const ObjectID &object_id) {
+#ifdef __linux__
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  auto object_entry = objects_in_use_.find(object_id);
+  if (object_entry == objects_in_use_.end()) {
+    return Status::Invalid(
+        "Plasma buffer for mutable object not in scope. Are you sure you're the writer?");
+  }
+  RAY_CHECK(object_entry != objects_in_use_.end());
+
+  auto &entry = object_entry->second;
+  RAY_CHECK(entry->object.is_experimental_mutable_object);
+  auto plasma_header = GetPlasmaObjectHeader(entry->object);
+  plasma_header->SetErrorUnlocked();
 #endif
   return Status::OK();
 }
@@ -751,12 +760,14 @@ Status PlasmaClient::Impl::EnsureGetAcquired(
   }
 
   int64_t version_read = 0;
-  bool success =
+
+  // Need to unlock the client mutex since ReadAcquire() is blocking. This is
+  // thread-safe since mutable plasma object are never deallocated.
+  client_mutex_.unlock();
+  Status status =
       plasma_header->ReadAcquire(object_entry->next_version_to_read, &version_read);
-  if (!success) {
-    return Status::Invalid(
-        "Reader missed a value. Are you sure there are num_readers many readers?");
-  }
+  client_mutex_.lock();
+  RAY_RETURN_NOT_OK(status);
 
   object_entry->read_acquired = true;
   RAY_CHECK(version_read > 0);
@@ -798,7 +809,7 @@ Status PlasmaClient::Impl::ExperimentalMutableObjectReadRelease(
   RAY_RETURN_NOT_OK(EnsureGetAcquired(entry));
   RAY_LOG(DEBUG) << "Release shared object " << object_id;
   auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  plasma_header->ReadRelease(entry->next_version_to_read);
+  RAY_RETURN_NOT_OK(plasma_header->ReadRelease(entry->next_version_to_read));
   // The next read needs to read at least this version.
   entry->next_version_to_read++;
   entry->read_acquired = false;
@@ -835,29 +846,37 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
 
   if (object_entry->second->count == 0) {
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
-    MEMFD_TYPE fd = object_entry->second->object.store_fd;
+    // If the fd may be unmapped, we wait for the plasma server to send a ReleaseReply.
+    // Otherwise, skip the reply to boost performance.
+    // Q: since both server and client knows this fd is fallback allocated, why do we
+    //    need to pass it in PlasmaReleaseRequest?
+    // A: becuase we wanna be idempotent, and in the 2nd call, the server does not know
+    //    about the object.
+    const MEMFD_TYPE fd = object_entry->second->object.store_fd;
+    bool may_unmap = object_entry->second->object.fallback_allocated;
     // Tell the store that the client no longer needs the object.
     RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
-    RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id));
-    std::vector<uint8_t> buffer;
-    RAY_RETURN_NOT_OK(
-        PlasmaReceive(store_conn_, MessageType::PlasmaReleaseReply, &buffer));
-    ObjectID released_object_id;
+    RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id, may_unmap));
+    if (may_unmap) {
+      // Now, since the object release may unmap the mmap, we wait for a reply.
+      std::vector<uint8_t> buffer;
+      RAY_RETURN_NOT_OK(
+          PlasmaReceive(store_conn_, MessageType::PlasmaReleaseReply, &buffer));
+      ObjectID released_object_id;
 
-    // `should_unmap` is set to true by the plasma server, when the mmap section is
-    // fallback-allocated and is no longer used. i.e. if the object ID is in the main
-    // memory, this boolean is always false.
-    bool should_unmap;
-    RAY_RETURN_NOT_OK(ReadReleaseReply(
-        buffer.data(), buffer.size(), &released_object_id, &should_unmap));
-    if (should_unmap) {
-      auto mmap_entry = mmap_table_.find(fd);
-      // Release call is idempotent: if we already released, it's ok.
-      if (mmap_entry != mmap_table_.end()) {
-        mmap_table_.erase(mmap_entry);
+      // `should_unmap` is set to true by the plasma server, when the mmap section is
+      // fallback-allocated and is no longer used.
+      bool should_unmap;
+      RAY_RETURN_NOT_OK(ReadReleaseReply(
+          buffer.data(), buffer.size(), &released_object_id, &should_unmap));
+      if (should_unmap) {
+        auto mmap_entry = mmap_table_.find(fd);
+        // Release call is idempotent: if we already released, it's ok.
+        if (mmap_entry != mmap_table_.end()) {
+          mmap_table_.erase(mmap_entry);
+        }
       }
     }
-
     auto iter = deletion_cache_.find(object_id);
     if (iter != deletion_cache_.end()) {
       deletion_cache_.erase(object_id);
@@ -1061,6 +1080,10 @@ Status PlasmaClient::ExperimentalMutableObjectWriteAcquire(
 
 Status PlasmaClient::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {
   return impl_->ExperimentalMutableObjectWriteRelease(object_id);
+}
+
+Status PlasmaClient::ExperimentalMutableObjectSetError(const ObjectID &object_id) {
+  return impl_->ExperimentalMutableObjectSetError(object_id);
 }
 
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,

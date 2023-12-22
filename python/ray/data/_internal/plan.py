@@ -714,7 +714,7 @@ class ExecutionPlan:
         If the plan isn't executed, an empty stats object will be returned.
         """
         if not self._snapshot_stats:
-            return DatasetStats(stages={}, parent=None)
+            return DatasetStats(metadata={}, parent=None)
         return self._snapshot_stats
 
     def stats_summary(self) -> DatasetStatsSummary:

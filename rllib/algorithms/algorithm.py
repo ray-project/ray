@@ -564,6 +564,11 @@ class Algorithm(Trainable, AlgorithmBase):
             config_obj.env = self._env_id
             self.config = config_obj
 
+        self._uses_new_env_runners = (
+            self.config.env_runner_cls is not None
+            and not issubclass(self.config.env_runner_cls, RolloutWorker)
+        )
+
         # Set Algorithm's seed after we have - if necessary - enabled
         # tf eager-execution.
         update_global_seed_if_necessary(self.config.framework_str, self.config.seed)
@@ -715,10 +720,6 @@ class Algorithm(Trainable, AlgorithmBase):
             #  the two we need to loop through the policy modules and create a simple
             #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
-            policy_dict, _ = self.config.get_multi_agent_setup(
-                env=local_worker.env,
-                spaces=getattr(local_worker, "spaces", None),
-            )
             # TODO (Sven): Unify the inference of the MARLModuleSpec. Right now,
             #  we get this from the EnvRunner's `marl_module_spec` property.
             #  However, this is hacky (information leak) and should not remain this
@@ -727,9 +728,13 @@ class Algorithm(Trainable, AlgorithmBase):
             if hasattr(local_worker, "marl_module_spec"):
                 module_spec = local_worker.marl_module_spec
             else:
-                module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
-            learner_group_config = self.config.get_learner_group_config(module_spec)
-            self.learner_group = learner_group_config.build()
+                module_spec = self.config.get_marl_module_spec(
+                    env=local_worker.env,
+                    spaces=getattr(local_worker, "spaces", None),
+                )
+            self.learner_group = self.config.build_learner_group(
+                rl_module_spec=module_spec,
+            )
 
             # Check if there are modules to load from the `module_spec`.
             rl_module_ckpt_dirs = {}
@@ -751,13 +756,12 @@ class Algorithm(Trainable, AlgorithmBase):
             )
 
             # Only when using RolloutWorkers: Update also the worker set's
-            # `should_module_be_updated_fn` (analogous to is_policy_to_train).
+            # `is_policy_to_train` (analogous to LearnerGroup's
+            # `should_module_be_updated_fn`).
             # Note that with the new EnvRunner API in combination with the new stack,
             # this information only needs to be kept in the LearnerGroup and not on the
             # EnvRunners anymore.
-            if self.config.env_runner_cls is None or issubclass(
-                self.config.env_runner_cls, RolloutWorker
-            ):
+            if not self._uses_new_env_runners:
                 update_fn = self.learner_group.should_module_be_updated_fn
                 self.workers.foreach_worker(
                     lambda w: w.set_is_policy_to_train(update_fn),
@@ -3030,11 +3034,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         eval_func_to_use = (
             self._evaluate_async_with_env_runner
-            if (
-                self.config.enable_async_evaluation
-                and self.config.env_runner_cls is not None
-                and not issubclass(self.config.env_runner_cls, RolloutWorker)
-            )
+            if (self.config.enable_async_evaluation and self._uses_new_env_runners)
             else self._evaluate_async
             if self.config.enable_async_evaluation
             else self.evaluate

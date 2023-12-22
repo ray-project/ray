@@ -110,6 +110,8 @@ struct PlasmaObjectSpec {
   // for immutable objects, but for mutable objects, the data size
   // and metadata size may change.
   allocated_size: ulong;
+  // Whether this object is on a fallback allocated mmap.
+  fallback_allocated: bool;
   // Device to create buffer on.
   device_num: int;
   // Whether this is an experimental mutable object that can be written
@@ -242,6 +244,9 @@ table PlasmaGetReply {
 table PlasmaReleaseRequest {
   // ID of the object to be released.
   object_id: string;
+  // Client concerns this request may unmap a mmap region, and will wait for a reply.
+  // If false, the server should not send a PlasmaReleaseReply.
+  may_unmap: bool;
 }
 
 table PlasmaReleaseReply {
