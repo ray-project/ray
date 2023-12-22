@@ -1,6 +1,7 @@
 import {
   Box,
   createStyles,
+  InputAdornment,
   makeStyles,
   Table,
   TableBody,
@@ -8,8 +9,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
+  TextFieldProps,
   Typography,
 } from "@material-ui/core";
+import { Autocomplete, Pagination } from "@material-ui/lab";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -50,10 +54,14 @@ export const ServeDeploymentDetailPage = () => {
   const classes = useStyles();
   const { applicationName, deploymentName } = useParams();
 
-  const { application, deployment } = useServeDeploymentDetails(
-    applicationName,
-    deploymentName,
-  );
+  const {
+    application,
+    deployment,
+    filteredReplicas,
+    page,
+    setPage,
+    changeFilter,
+  } = useServeDeploymentDetails(applicationName, deploymentName);
 
   if (!application) {
     return (
@@ -137,6 +145,56 @@ export const ServeDeploymentDetailPage = () => {
       />
       <CollapsibleSection title="Replicas" startExpanded>
         <TableContainer>
+          <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+            <Autocomplete
+              style={{ margin: 8, width: 120 }}
+              options={Array.from(
+                new Set(deployment.replicas.map((e) => e.replica_id)),
+              )}
+              onInputChange={(_: any, value: string) => {
+                changeFilter(
+                  "replica_id",
+                  value.trim() !== "-" ? value.trim() : "",
+                );
+              }}
+              renderInput={(params: TextFieldProps) => (
+                <TextField {...params} label="ID" />
+              )}
+            />
+            <Autocomplete
+              style={{ margin: 8, width: 120 }}
+              options={Array.from(
+                new Set(deployment.replicas.map((e) => e.state)),
+              )}
+              onInputChange={(_: any, value: string) => {
+                changeFilter("state", value.trim());
+              }}
+              renderInput={(params: TextFieldProps) => (
+                <TextField {...params} label="State" />
+              )}
+            />
+            <TextField
+              style={{ margin: 8, width: 120 }}
+              label="Page Size"
+              size="small"
+              defaultValue={10}
+              InputProps={{
+                onChange: ({ target: { value } }) => {
+                  setPage("pageSize", Math.min(Number(value), 500) || 10);
+                },
+                endAdornment: (
+                  <InputAdornment position="end">Per Page</InputAdornment>
+                ),
+              }}
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <Pagination
+              count={Math.ceil(filteredReplicas.length / page.pageSize)}
+              page={page.pageNo}
+              onChange={(e, pageNo) => setPage("pageNo", pageNo)}
+            />
+          </div>
           <Table>
             <TableHead>
               <TableRow>
@@ -163,13 +221,18 @@ export const ServeDeploymentDetailPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {deployment.replicas.map((replica) => (
-                <ServeReplicaRow
-                  key={replica.replica_id}
-                  deployment={deployment}
-                  replica={replica}
-                />
-              ))}
+              {filteredReplicas
+                .slice(
+                  (page.pageNo - 1) * page.pageSize,
+                  page.pageNo * page.pageSize,
+                )
+                .map((replica) => (
+                  <ServeReplicaRow
+                    key={replica.replica_id}
+                    deployment={deployment}
+                    replica={replica}
+                  />
+                ))}
             </TableBody>
           </Table>
         </TableContainer>
