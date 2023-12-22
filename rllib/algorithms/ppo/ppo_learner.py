@@ -68,7 +68,7 @@ class PPOLearner(Learner):
         # bootstrapped vf) computations.
         batch_for_vf = self._learner_connector(
             rl_module=self.module["default_policy"],  # TODO: make multi-agent capable
-            input_={},
+            data={},
             episodes=episodes,
         )
         # Perform the value model's forward pass.
