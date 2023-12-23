@@ -241,7 +241,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
     absl::MutexLock lock(&objet_ref_stream_ops_mu_);
     auto inserted =
-        object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
+        object_ref_streams_.emplace(generator_id, std::make_shared<ObjectRefStream>(generator_id));
     ref_stream_execution_signal_callbacks_.emplace(
         generator_id, std::vector<ExecutionSignalCallback>());
     RAY_CHECK(inserted.second);
@@ -456,29 +456,39 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
 }
 
 void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
 
   RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
   absl::flat_hash_set<ObjectID> object_ids_unconsumed;
 
-  auto it = object_ref_streams_.find(generator_id);
-  auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-  if (it == object_ref_streams_.end()) {
-    RAY_CHECK(signal_it == ref_stream_execution_signal_callbacks_.end());
-    return;
+
+  std::shared_ptr<ObjectRefStream> object_ref_stream_ptr;
+
+  {
+    absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+
+    auto it = object_ref_streams_.find(generator_id);
+    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
+    if (it == object_ref_streams_.end()) {
+      RAY_CHECK(signal_it == ref_stream_execution_signal_callbacks_.end());
+      return;
+    }
+
+    // If a stream is deleted, signal the executor to just resume.
+    // Otherwise the executor will pause forever.
+    RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
+    for (const auto &execution_signal : signal_it->second) {
+      execution_signal(Status::NotFound("Stream is deleted."), -1);
+    }
+    ref_stream_execution_signal_callbacks_.erase(signal_it);
+
+    object_ref_stream_ptr = it->second;
+    object_ref_streams_.erase(generator_id);
   }
 
-  // If a stream is deleted, signal the executor to just resume.
-  // Otherwise the executor will pause forever.
-  RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
-  for (const auto &execution_signal : signal_it->second) {
-    execution_signal(Status::NotFound("Stream is deleted."), -1);
+  {
+    absl::ReaderMutexLock lock(&object_ref_stream_ptr->mu_);
+    object_ids_unconsumed = object_ref_stream_ptr->GetItemsUnconsumed();
   }
-  ref_stream_execution_signal_callbacks_.erase(signal_it);
-
-  const auto &stream = it->second;
-  object_ids_unconsumed = stream.GetItemsUnconsumed();
-  object_ref_streams_.erase(generator_id);
 
   // When calling RemoveLocalReference, we shouldn't hold a lock.
   for (const auto &object_id : object_ids_unconsumed) {
@@ -505,22 +515,26 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     }
   }
 
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
-  RAY_CHECK(object_id_out != nullptr);
-  auto stream_it = object_ref_streams_.find(generator_id);
-  RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "TryReadObjectRefStream API can be used only when the stream has been "
-         "created "
-         "and not removed.";
-  auto status = stream_it->second.TryReadNextItem(object_id_out);
+
+  std::shared_ptr<ObjectRefStream> object_ref_stream_ptr = GetObjectRefStream(generator_id);
+
+  Status status;
+  uint64_t total_consumed, total_generated;
+  {
+    absl::WriterMutexLock lock(&object_ref_stream_ptr->mu_);
+
+    status = object_ref_stream_ptr->TryReadNextItem(object_id_out);
+    total_generated = object_ref_stream_ptr->TotalNumObjectWritten();
+    total_consumed = object_ref_stream_ptr->TotalNumObjectConsumed();
+  }
 
   /// If you could read the next item, signal the executor to resume
   /// if necessary.
   if (status.ok()) {
-    auto total_generated = stream_it->second.TotalNumObjectWritten();
-    auto total_consumed = stream_it->second.TotalNumObjectConsumed();
     auto total_unconsumed = total_generated - total_consumed;
     if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
+      absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+
       auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
       if (it != ref_stream_execution_signal_callbacks_.end()) {
         for (const auto &execution_signal : it->second) {
@@ -539,49 +553,46 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
 }
 
 bool TaskManager::IsFinished(const ObjectID &generator_id) const {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
-  auto stream_it = object_ref_streams_.find(generator_id);
-  RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "IsFinished API can be used only when the stream has been "
-         "created "
-         "and not removed.";
-  return stream_it->second.IsFinished();
+  std::shared_ptr<ObjectRefStream> object_ref_stream_ptr = GetObjectRefStream(generator_id);
+
+  absl::ReaderMutexLock lock(&object_ref_stream_ptr->mu_);
+  return object_ref_stream_ptr->IsFinished();
 }
 
 std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
-  ObjectID next_object_id;
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
-  auto stream_it = object_ref_streams_.find(generator_id);
-  RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "PeekObjectRefStream API can be used only when the stream has been "
-         "created and not removed.";
-  const auto &result = stream_it->second.PeekNextItem();
+  std::shared_ptr<ObjectRefStream> object_ref_stream_ptr = GetObjectRefStream(generator_id);
+
+  std::pair<ObjectID, bool> result;
+  {
+    absl::ReaderMutexLock lock(&object_ref_stream_ptr->mu_);
+    result = object_ref_stream_ptr->PeekNextItem();
+  }
 
   // Temporarily own the ref since the corresponding reference is probably
   // not reported yet.
   TemporarilyOwnGeneratorReturnRefIfNeededInternal(result.first /*=object_id*/,
-                                                   generator_id);
+                                                   object_ref_stream_ptr);
   return result;
 }
 
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
-  auto it = object_ref_streams_.find(generator_id);
-  return it != object_ref_streams_.end();
+  return bool(GetObjectRefStream(generator_id, /*should_assert=*/ false));
 }
 
 void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
                                   int64_t end_of_stream_index) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
-  ObjectID last_object_id;
-
-  auto stream_it = object_ref_streams_.find(generator_id);
-  if (stream_it == object_ref_streams_.end()) {
+  auto object_ref_stream_ptr = GetObjectRefStream(generator_id, /*should_assert=*/ false);
+  if (!object_ref_stream_ptr) {
     // Stream has been already deleted. Do not handle it.
     return;
   }
 
-  stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
+  ObjectID last_object_id;
+  {
+    absl::WriterMutexLock lock(&object_ref_stream_ptr->mu_);
+    object_ref_stream_ptr->MarkEndOfStream(end_of_stream_index, &last_object_id);
+  }
+
   RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index
                  << ". Last object id: " << last_object_id;
 
@@ -635,9 +646,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   // it is always empty.
   const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
 
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
-  auto stream_it = object_ref_streams_.find(generator_id);
-  if (stream_it == object_ref_streams_.end()) {
+  // NOTE: ObjectRefStream is thread-safe, hence we only hold the global lock while
+  //       fetching it
+  std::shared_ptr<ObjectRefStream> object_ref_stream_ptr = GetObjectRefStream(generator_id, /*should_assert=*/ false);
+  if (!object_ref_stream_ptr) {
     // Stream has been already deleted. Do not handle it.
     execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
     return false;
@@ -650,7 +662,12 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;
-    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
+
+    bool index_not_used_yet;
+    {
+      absl::WriterMutexLock lock(&object_ref_stream_ptr->mu_);
+      index_not_used_yet = object_ref_stream_ptr->InsertToStream(object_id, item_index);
+    }
 
     // If the ref was written to a stream, we should also
     // own the dynamically generated task return.
@@ -668,12 +685,19 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // Handle backpressure if needed.
-  auto total_generated = stream_it->second.TotalNumObjectWritten();
-  auto total_consumed = stream_it->second.TotalNumObjectConsumed();
+  int64_t total_generated, total_consumed, last_consumed_index;
 
-  if (stream_it->second.IsObjectConsumed(item_index)) {
-    execution_signal_callback(Status::OK(), total_consumed);
-    return false;
+  {
+    absl::ReaderMutexLock lock(&object_ref_stream_ptr->mu_);
+
+    total_generated = object_ref_stream_ptr->TotalNumObjectWritten();
+    total_consumed = object_ref_stream_ptr->TotalNumObjectConsumed();
+    last_consumed_index = object_ref_stream_ptr->LastConsumedIndex();
+
+    if (object_ref_stream_ptr->IsObjectConsumed(item_index)) {
+      execution_signal_callback(Status::OK(), total_consumed);
+      return false;
+    }
   }
 
   // Otherwise, follow the regular backpressure logic.
@@ -681,7 +705,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   // instead of the number of unconsumed items, because we may receive the
   // `HandleReportGeneratorItemReturns` requests out of order.
   if (backpressure_threshold != -1 &&
-      (item_index - stream_it->second.LastConsumedIndex()) >= backpressure_threshold) {
+      (item_index - last_consumed_index) >= backpressure_threshold) {
+
+    absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+
     RAY_LOG(DEBUG) << "Stream " << generator_id
                    << " is backpressured. total_generated: " << total_generated
                    << ". total_consumed: " << total_consumed
@@ -698,25 +725,25 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
 bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
                                                            const ObjectID &generator_id) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
-  return TemporarilyOwnGeneratorReturnRefIfNeededInternal(object_id, generator_id);
+  std::shared_ptr<ObjectRefStream> object_ref_stream_ptr = GetObjectRefStream(generator_id, /*should_assert=*/ false);
+  return TemporarilyOwnGeneratorReturnRefIfNeededInternal(object_id, object_ref_stream_ptr);
 }
 
 bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeededInternal(
-    const ObjectID &object_id, const ObjectID &generator_id) {
+    const ObjectID &object_id, std::shared_ptr<ObjectRefStream> object_ref_stream_ptr) {
   bool inserted_to_stream = false;
-  auto stream_it = object_ref_streams_.find(generator_id);
-  if (stream_it == object_ref_streams_.end()) {
+  if (!object_ref_stream_ptr) {
     return false;
   }
 
-  auto &stream = stream_it->second;
-  inserted_to_stream = stream.TemporarilyInsertToStreamIfNeeded(object_id);
+  {
+    absl::WriterMutexLock lock(&object_ref_stream_ptr->mu_);
+    inserted_to_stream = object_ref_stream_ptr->TemporarilyInsertToStreamIfNeeded(object_id);
+  }
 
-  // We shouldn't hold a lock when calling refernece counter API.
   if (inserted_to_stream) {
     RAY_LOG(DEBUG) << "Added streaming ref " << object_id;
-    reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+    reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, object_ref_stream_ptr->generator_id_);
     return true;
   }
 
@@ -796,17 +823,19 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
         const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
 
-        absl::MutexLock lock(&objet_ref_stream_ops_mu_);
-        auto stream_it = object_ref_streams_.find(generator_id);
+        auto object_ref_stream_ptr = GetObjectRefStream(generator_id, /*should_assert=*/ false);
 
-        RAY_CHECK(stream_it != object_ref_streams_.end())
-            << "Streaming generator not found!";
-
-        auto &object_ref_stream = stream_it->second;
-        // Upon the first complete execution, set the number of streaming
-        // generator returns.
-        int64_t num_streaming_generator_returns =
-            object_ref_stream.TotalNumObjectWritten();
+        int64_t num_streaming_generator_returns;
+        if (object_ref_stream_ptr) {
+          absl::ReaderMutexLock lock(&object_ref_stream_ptr->mu_);
+          // Upon the first complete execution, set the number of streaming
+          // generator returns.
+          num_streaming_generator_returns =
+              object_ref_stream_ptr->TotalNumObjectWritten();
+        } else {
+          // TODO fix
+          num_streaming_generator_returns = 0;
+        }
 
         spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
 

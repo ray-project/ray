@@ -108,15 +108,15 @@ class ObjectRefStream {
   /// \param[out] object_id_out The next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
   /// \return KeyError if it reaches to EoF. Ok otherwise.
-  Status TryReadNextItem(ObjectID *object_id_out);
+  Status TryReadNextItem(ObjectID *object_id_out) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Return True if there's no more object to read. False otherwise.
-  bool IsFinished() const;
+  bool IsFinished() const ABSL_SHARED_LOCKS_REQUIRED(mu_);
 
-  std::pair<ObjectID, bool> PeekNextItem();
+  std::pair<ObjectID, bool> PeekNextItem() ABSL_SHARED_LOCKS_REQUIRED(mu_);
 
   /// Return True if the item_index is already consumed.
-  bool IsObjectConsumed(int64_t item_index);
+  bool IsObjectConsumed(int64_t item_index) ABSL_SHARED_LOCKS_REQUIRED(mu_);
 
   /// Insert the object id to the stream of an index item_index.
   ///
@@ -129,7 +129,7 @@ class ObjectRefStream {
   /// If -1 is given, it means an index is not known yet. In this case,
   /// the ref will be temporarily written until it is written with an index.
   /// \return True if the ref is written to a stream. False otherwise.
-  bool InsertToStream(const ObjectID &object_id, int64_t item_index);
+  bool InsertToStream(const ObjectID &object_id, int64_t item_index) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Sometimes, index of the object ID is not known.
   ///
@@ -143,30 +143,42 @@ class ObjectRefStream {
   ///
   /// \param[in] object_id The temporarily written object id.
   /// \return True if object ID is temporarily written. False otherwise.
-  bool TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id);
+  bool TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Mark that after a given item_index, the stream cannot be written
   /// anymore.
   ///
   /// \param[in] The last item index that means the end of stream.
-  void MarkEndOfStream(int64_t item_index, ObjectID *object_id_in_last_index);
+  void MarkEndOfStream(int64_t item_index, ObjectID *object_id_in_last_index) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
   ///
   /// \return A list of object IDs that are not read yet.
-  absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
+  absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const ABSL_SHARED_LOCKS_REQUIRED(mu_);
 
   /// \return Index of the last consumed item, -1 if nothing is consumed yet.
-  int64_t LastConsumedIndex() const { return next_index_ - 1; }
+  int64_t LastConsumedIndex() const ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+    return next_index_ - 1;
+  }
 
   /// Total number of object that's written to the stream
-  int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
-  int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
+  int64_t TotalNumObjectWritten() const ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+    return total_num_object_written_;
+  }
+
+  int64_t TotalNumObjectConsumed() const ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+    return total_num_object_consumed_;
+  }
+
+  // TODO make private
+  /// The lock to protect the stream mutable fields
+  mutable absl::Mutex mu_;
+
+  const ObjectID generator_id_;
 
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
 
-  const ObjectID generator_id_;
   const TaskID generator_task_id_;
 
   /// Refs that are temporarily owned. It means a ref is
@@ -185,7 +197,7 @@ class ObjectRefStream {
   /// this in case the first execution fails mid-generator, and the second task
   /// ends with fewer returns. Then, we mark one past this index as the end of
   /// the stream.
-  int64_t max_index_seen_ = -1;
+  int64_t max_index_seen_ = -1 ;
   /// The total number of the objects that are written to stream.
   int64_t total_num_object_written_;
   /// The total number of the objects that are consumed from stream.
@@ -701,6 +713,17 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     bool is_retry_ = false;
   };
 
+  std::shared_ptr<ObjectRefStream> GetObjectRefStream(const ObjectID &generator_id, bool should_assert = true) const {
+    absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+    auto stream_it = object_ref_streams_.find(generator_id);
+    if (stream_it == object_ref_streams_.end()) {
+      RAY_CHECK(!should_assert) << "ObjectRef stream not found!";
+      return std::shared_ptr<ObjectRefStream>();
+    }
+
+    return stream_it->second;
+  }
+
   /// Update nested ref count info and store the in-memory value for a task's
   /// return object. Returns true if the task's return object was returned
   /// directly by value.
@@ -794,8 +817,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.
   bool TemporarilyOwnGeneratorReturnRefIfNeededInternal(const ObjectID &object_id,
-                                                        const ObjectID &generator_id)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(objet_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
+                                                        std::shared_ptr<ObjectRefStream> object_ref_stream_ptr)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
@@ -806,7 +829,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   std::shared_ptr<ReferenceCounter> reference_counter_;
 
   /// Mapping from a streaming generator task id -> object ref stream.
-  absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
+  absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectRefStream>> object_ref_streams_
       ABSL_GUARDED_BY(objet_ref_stream_ops_mu_);
 
   /// The consumer side of object ref stream should signal the executor
