@@ -97,7 +97,7 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
         .. tip::
 
-            You can set ``ASCEND_RT_VISIBLE_DEVICES`` environment variable before starting a Ray node
+            You can set the ``ASCEND_RT_VISIBLE_DEVICES`` environment variable before starting a Ray node
             to limit the Huawei Ascend NPUs that are visible to Ray.
             For example, ``ASCEND_RT_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'``
             will let Ray only see devices 1 and 3.
