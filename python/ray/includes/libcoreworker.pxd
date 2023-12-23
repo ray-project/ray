@@ -285,7 +285,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CAddress &caller_address,
             int64_t item_index,
             uint64_t attempt_number,
-            c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
             shared_ptr[CGeneratorBackpressureWaiter] waiter)
         c_string MemoryUsageString()
         int GetMemoryStoreSize()
@@ -361,7 +360,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string serialized_retry_exception_allowlist,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
-            c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,

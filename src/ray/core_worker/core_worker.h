@@ -842,7 +842,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const rpc::Address &caller_address,
       int64_t item_index,
       uint64_t attempt_number,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       std::shared_ptr<GeneratorBackpressureWaiter> waiter);
 
   /// Implements gRPC server handler.
@@ -1506,7 +1505,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounter::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
       std::string *application_error);
