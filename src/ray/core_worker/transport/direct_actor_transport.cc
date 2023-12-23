@@ -94,14 +94,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
-    std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
+
     bool is_retryable_error = false;
     std::string application_error = "";
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
                                 &dynamic_return_objects,
-                                &streaming_generator_returns,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
                                 &application_error);
