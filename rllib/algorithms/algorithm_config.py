@@ -771,8 +771,7 @@ class AlgorithmConfig(_Config):
         # Validate rollout settings.
         if (
             self.evaluation_interval
-            and self.env_runner_cls is not None
-            and not issubclass(self.env_runner_cls, RolloutWorker)
+            and self.uses_new_env_runners
             and not self.enable_async_evaluation
         ):
             raise ValueError(
@@ -1120,7 +1119,7 @@ class AlgorithmConfig(_Config):
                 "(i.e. num_learner_workers = 0)"
             )
 
-    def build(
+    def build_algorithm(
         self,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
@@ -3042,6 +3041,13 @@ class AlgorithmConfig(_Config):
         else:
             return self.train_batch_size
 
+    @property
+    def uses_new_env_runners(self):
+        return (
+            self.env_runner_cls is not None
+            and not issubclass(self.env_runner_cls, RolloutWorker)
+        )
+
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
@@ -3984,6 +3990,10 @@ class AlgorithmConfig(_Config):
                 "eager_tracing=True in order to reach similar execution "
                 "speed as with static-graph mode."
             )
+
+    @Deprecated(new="AlgorithmConfig.build_algorithm()", error=False)
+    def build(self, *args, **kwargs):
+        return self.build_algorithm(*args, **kwargs)
 
     @property
     @Deprecated(

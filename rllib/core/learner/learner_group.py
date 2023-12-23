@@ -24,7 +24,7 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
-from ray.rllib.utils.minibatch_utils import ShardBatchIterator, ShardEpisodesIterator
+from ray.rllib.utils.minibatch_utils import ShardBatchIterator, ShardEpisodesIterator, ShardObjectRefIterator
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     EpisodeType,
@@ -369,9 +369,10 @@ class LearnerGroup:
                 "num_workers=0."
             )
 
-        def _learner_update(learner, minibatch):
+        def _learner_update(learner, _batch=None, _episodes=None):
             return learner.update(
-                minibatch,
+                batch=_batch,
+                episodes=_episodes,
                 minibatch_size=minibatch_size,
                 num_iters=num_iters,
                 reduce_fn=reduce_fn,
@@ -402,14 +403,28 @@ class LearnerGroup:
                 # use the oldest one first).
                 update_tag = str(uuid.uuid4())
                 self._inflight_request_tags.add(update_tag)
-                batch = self._in_queue.popleft()
-                self._worker_manager.foreach_actor_async(
-                    [
-                        partial(_learner_update, minibatch=minibatch)
-                        for minibatch in ShardBatchIterator(batch, len(self._workers))
-                    ],
-                    tag=update_tag,
-                )
+                batch_or_episodes = self._in_queue.popleft()
+                if episodes is None:
+                    self._worker_manager.foreach_actor_async(
+                        [
+                            partial(_learner_update, _batch=minibatch)
+                            for minibatch in ShardBatchIterator(batch, len(self._workers))
+                        ],
+                        tag=update_tag,
+                    )
+                elif batch is None:
+                    self._worker_manager.foreach_actor_async(
+                        [
+                            partial(_learner_update, _episodes=_episodes)
+                            for _episodes in ShardObjectRefIterator(episodes, len(self._workers))
+                        ],
+                        tag=update_tag,
+                    )
+                # TODO (sven): Implement the case in which both batch and episodes might
+                #  already be provided (or figure out whether this makes sense at all).
+                else:
+                    raise NotImplementedError
+
                 count += 1
 
         # NOTE: There is a strong assumption here that the requests launched to

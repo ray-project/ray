@@ -18,7 +18,11 @@ from typing import (
     Union,
 )
 
+import tree  # pip install dm_tree
+
 import ray
+import tree
+from ray import ObjectRef
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline
@@ -1158,6 +1162,8 @@ class Learner:
         self._check_is_built()
 
         if batch is not None:
+            if isinstance(batch, ObjectRef):
+                batch = ray.get(batch)
             unknown_module_ids = set(batch.policy_batches.keys()) - set(
                 self.module.keys()
             )
@@ -1166,6 +1172,13 @@ class Learner:
                     "Batch contains module ids that are not in the learner: "
                     f"{unknown_module_ids}"
                 )
+        if episodes is not None:
+            if (
+                isinstance(episodes, ObjectRef)
+                or (isinstance(episodes, list) and isinstance(episodes[0], ObjectRef))
+            ):
+                episodes = ray.get(episodes)
+                episodes = tree.flatten(episodes)
 
         if num_iters < 1:
             # We must do at least one pass on the batch for training.
@@ -1177,7 +1190,7 @@ class Learner:
         # Call the learner connector.
         batch = self._learner_connector(
             rl_module=self.module["default_policy"],  # TODO: make multi-agent capable
-            input_=batch,
+            data=batch,
             episodes=episodes,
             # persistent_data=None, # TODO
         )

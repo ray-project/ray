@@ -1,3 +1,5 @@
+import numpy as np
+
 
 def add_one_ts_to_episodes_and_truncate(episodes):
     """Adds an artificial timestep to an episode at the end.
@@ -57,7 +59,7 @@ def remove_last_ts_from_data(episode_lens, *data):
     ret = []
     for d in data:
         ret.append(np.concatenate([d[s] for s in slices]))
-    return tuple(ret)
+    return tuple(ret) if len(ret) > 1 else ret[0]
 
 
 def remove_last_ts_from_episodes_and_restore_truncateds(episodes, orig_truncateds):

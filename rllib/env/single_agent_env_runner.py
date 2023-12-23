@@ -203,7 +203,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    input_=to_env,
+                    data=to_env,
                     episodes=self._episodes,
                     explore=explore,
                     # persistent_data=None, #TODO
@@ -345,7 +345,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    input_=to_env,
+                    data=to_env,
                     episodes=self._episodes,
                     explore=explore,
                 )

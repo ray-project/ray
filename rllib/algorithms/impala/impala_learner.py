@@ -55,6 +55,7 @@ class ImpalaLearner(Learner):
         # Make all episodes one ts longer in order to just have a single batch
         # (and distributed forward pass) for both vf predictions AND the bootstrap
         # vf computations.
+        episode_lens = [len(e) for e in episodes]
         orig_truncateds = add_one_ts_to_episodes_and_truncate(episodes)
         episode_lens_p1 = [len(e) for e in episodes]
 
@@ -63,7 +64,7 @@ class ImpalaLearner(Learner):
         # bootstrapped vf) computations.
         batch_for_vf = self._learner_connector(
             rl_module=self.module["default_policy"],  # TODO: make multi-agent capable
-            input_={},
+            data={},
             episodes=episodes,
         )
         # Perform the value model's forward pass.
@@ -74,7 +75,9 @@ class ImpalaLearner(Learner):
         vf_preds = unpad_data_if_necessary(episode_lens_p1, vf_preds)
         # Generate the bootstrap value column (with only one entry per batch row).
         batch[SampleBatch.VALUES_BOOTSTRAPPED] = extract_bootstrapped_values(
-            episode_lens_p1, vf_preds
+            vf_preds=vf_preds,
+            episode_lengths=episode_lens,
+            T=self.config.get_rollout_fragment_length(),
         )
         # Remove the extra timesteps again from vf_preds and value targets. Now that
         # the GAE computation is done, we don't need this last timestep anymore in any
@@ -84,10 +87,7 @@ class ImpalaLearner(Learner):
         )
 
         # Remove the extra (artificial) timesteps again at the end of all episodes.
-        remove_last_ts_from_episodes_and_restore_truncateds(
-            episodes,
-            orig_truncateds,
-        )
+        remove_last_ts_from_episodes_and_restore_truncateds(episodes, orig_truncateds)
 
         return batch, episodes
 
