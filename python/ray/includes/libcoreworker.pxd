@@ -285,6 +285,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CAddress &caller_address,
             int64_t item_index,
             uint64_t attempt_number,
+            c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
             shared_ptr[CGeneratorBackpressureWaiter] waiter)
         c_string MemoryUsageString()
         int GetMemoryStoreSize()

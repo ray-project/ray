@@ -2991,7 +2991,9 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const rpc::Address &caller_address,
     int64_t item_index,
     uint64_t attempt_number,
-    std::shared_ptr<GeneratorBackpressureWaiter> waiter) {
+    std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
+    std::shared_ptr<GeneratorBackpressureWaiter> waiter
+) {
   rpc::ReportGeneratorItemReturnsRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_item_index(item_index);
@@ -3000,6 +3002,10 @@ Status CoreWorker::ReportGeneratorItemReturns(
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
   if (!dynamic_return_object.first.IsNil()) {
+    streaming_generator_returns->push_back(
+      std::make_pair(dynamic_return_object.first, dynamic_return_object.second->GetData()->IsPlasmaBuffer())
+    );
+
     auto return_object_proto = request.add_dynamic_return_objects();
     SerializeReturnObject(
         dynamic_return_object.first, dynamic_return_object.second, return_object_proto);

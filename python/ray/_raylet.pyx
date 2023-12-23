@@ -589,15 +589,6 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise RaySystemError(message)
 
 
-cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj) nogil:
-    """Return True if the given object is a plasma object."""
-    # assert obj.get() != NULL
-    if (obj.get().GetData().get() != NULL
-            and obj.get().GetData().get().IsPlasmaBuffer()):
-        return True
-    return False
-
-
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
     data_metadata_pairs = []
@@ -1296,18 +1287,15 @@ cdef report_streaming_generator_output(
     del output_or_exception
 
     with nogil:
-        context.streaming_generator_returns[0].push_back(
-            c_pair[CObjectID, c_bool](
-                return_obj.first,
-                is_plasma_object(return_obj.second)))
-
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
             return_obj,
             context.generator_id,
             context.caller_address,
             generator_index,
             context.attempt_number,
-            context.waiter))
+            context.streaming_generator_returns,
+            context.waiter
+        ))
 
 
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
