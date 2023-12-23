@@ -30,15 +30,11 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
+from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
-from ray.data._internal.logical.rules.set_read_parallelism import (
-    compute_additional_split_factor,
-)
-from ray.data._internal.planner.plan_read_op import (
-    apply_output_blocks_handling_to_read_task,
-)
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import (
     capitalize,
@@ -401,7 +397,6 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
-        from ray.data._internal.stage_impl import RandomizeBlocksStage
 
         if self._schema is not None:
             return self._schema
@@ -411,8 +406,9 @@ class ExecutionPlan:
             # inherit the schema or we can compute the schema without having to
             # execute any of the dataset: limit, filter, map_batches for
             # add/drop columns, etc.
+            last_op = self._logical_plan.dag
             if fetch_if_missing:
-                if isinstance(self._stages_after_snapshot[-1], RandomizeBlocksStage):
+                if isinstance(last_op, RandomizeBlocks):
                     # TODO(ekl): this is a hack to optimize the case where we have a
                     # trailing randomize block stages. That stage has no effect and
                     # so we don't need to execute all blocks to get the schema.
@@ -424,10 +420,10 @@ class ExecutionPlan:
                 else:
                     self.execute()
             elif len(self._stages_after_snapshot) == 1 and isinstance(
-                self._stages_after_snapshot[-1], RandomizeBlocksStage
+                last_op, RandomizeBlocks
             ):
-                # If RandomizeBlocksStage is last stage, we execute it (regardless of
-                # the fetch_if_missing), since RandomizeBlocksStage is just changing
+                # If RandomizeBlocks is the last operator, we execute it (regardless of
+                # the fetch_if_missing), since RandomizeBlocks is just changing
                 # the order of references (hence super cheap).
                 self.execute()
             else:
@@ -647,30 +643,10 @@ class ExecutionPlan:
                     blocks._owned_by_consumer = False
 
             else:
-                blocks, stats, stages = self._optimize()
-
-                for stage_idx, stage in enumerate(stages):
-                    if allow_clear_input_blocks:
-                        clear_input_blocks = self._should_clear_input_blocks(
-                            blocks, stage_idx
-                        )
-                    else:
-                        clear_input_blocks = False
-                    stats_builder = stats.child_builder(stage.name)
-                    blocks, stage_info = stage(
-                        blocks, clear_input_blocks, self._run_by_consumer
-                    )
-                    if stage_info:
-                        stats = stats_builder.build_multioperator(stage_info)
-                    else:
-                        stats = stats_builder.build(blocks)
-                    stats.dataset_uuid = self._dataset_uuid
-                    stats_summary_string = stats.to_summary().to_string(
-                        include_parent=False,
-                    )
-                    logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                        stats_summary_string,
-                    )
+                raise DeprecationWarning(
+                    "Legacy Dataset execution backend is "
+                    "deprecated starting in Ray 2.10."
+                )
             # Retrieve memory-related stats from ray.
             reply = get_memory_info_reply(
                 get_state_from_address(ray.get_runtime_context().gcs_address)
@@ -768,61 +744,6 @@ class ExecutionPlan:
             # execution plan, so we don't clear these.
             return False
 
-    def _optimize(self) -> Tuple[BlockList, DatasetStats, List[Stage]]:
-        """Apply stage fusion optimizations, returning an updated source block list and
-        associated stats, and a set of optimized stages.
-        """
-        context = self._context
-        blocks, stats, stages = self._get_source_blocks_and_stages()
-        logical_op = self._logical_plan.dag
-        if isinstance(logical_op, Read) and isinstance(blocks, LazyBlockList):
-            # TODO(swang): Currently the legacy backend is used to execute
-            # Datasets that only contain a Read. Handle read task parallelism
-            # and output block splitting here. This duplicates logic in
-            # SetReadParallelismRule and can be removed once legacy backend
-            # is deprecated.
-            ctx = DataContext.get_current()
-            (
-                detected_parallelism,
-                reason,
-                estimated_num_blocks,
-                k,
-            ) = compute_additional_split_factor(
-                logical_op._datasource_or_legacy_reader,
-                logical_op._parallelism,
-                logical_op._mem_size,
-                ctx.target_max_block_size,
-                cur_additional_split_factor=None,
-            )
-            if logical_op._parallelism == -1:
-                assert reason != ""
-                logger.get_logger().info(
-                    f"Using autodetected parallelism={detected_parallelism} "
-                    f"for stage {logical_op.name} to satisfy {reason}."
-                )
-            if k is not None:
-                logger.get_logger().info(
-                    f"To satisfy the requested parallelism of {detected_parallelism}, "
-                    f"each read task output is split into {k} smaller blocks."
-                )
-
-            for read_task in blocks._tasks:
-                apply_output_blocks_handling_to_read_task(read_task, k)
-            blocks._estimated_num_blocks = estimated_num_blocks
-
-        if context.optimize_reorder_stages:
-            stages = _reorder_stages(stages)
-        if context.optimize_fuse_stages:
-            if context.optimize_fuse_read_stages:
-                # If using a lazy datasource, rewrite read stage into one-to-one stage
-                # so it can be fused into downstream stages.
-                blocks, stats, stages = _rewrite_read_stages(
-                    blocks, stats, stages, self._dataset_uuid
-                )
-            stages = _fuse_one_to_one_stages(stages)
-            self._last_optimized_stages = stages
-        return blocks, stats, stages
-
     def _get_source_blocks_and_stages(
         self,
     ) -> Tuple[BlockList, DatasetStats, List[Stage]]:
@@ -873,14 +794,13 @@ class ExecutionPlan:
 
     def is_read_stage_equivalent(self) -> bool:
         """Return whether this plan can be executed as only a read stage."""
-        from ray.data._internal.stage_impl import RandomizeBlocksStage
 
         context = self._context
         remaining_stages = self._stages_after_snapshot
         if (
             context.optimize_fuse_stages
             and remaining_stages
-            and isinstance(remaining_stages[0], RandomizeBlocksStage)
+            and isinstance(self._logical_plan.dag, RandomizeBlocks)
         ):
             remaining_stages = remaining_stages[1:]
         return (
@@ -913,12 +833,18 @@ class ExecutionPlan:
         """Whether this plan requires to preserve order when running with new
         backend.
         """
-        from ray.data._internal.stage_impl import SortStage, ZipStage
+        from ray.data._internal.logical.operators.all_to_all_operator import Sort
+        from ray.data._internal.logical.operators.n_ary_operator import Zip
 
-        for stage in self._stages_after_snapshot:
-            if isinstance(stage, ZipStage) or isinstance(stage, SortStage):
+        def check(op: LogicalOperator):
+            if isinstance(op, (Zip, Sort)):
                 return True
-        return False
+            for input_op in op.input_dependencies:
+                if check(input_op):
+                    return True
+            return False
+
+        return check(self._logical_plan.dag)
 
 
 def _pack_args(
@@ -1147,211 +1073,6 @@ class OneToOneStage(Stage):
         assert isinstance(blocks, BlockList), blocks
         blocks._owned_by_consumer = run_by_consumer
         return blocks, {}
-
-
-class AllToAllStage(Stage):
-    """A stage that transforms blocks holistically (e.g., shuffle)."""
-
-    def __init__(
-        self,
-        name: str,
-        num_blocks: Optional[int],
-        fn: Callable[[BlockList, bool, Callable], Tuple[BlockList, dict]],
-        supports_block_udf: bool = False,
-        block_udf: Optional[BlockTransform] = None,
-        remote_args: Optional[Dict[str, Any]] = None,
-        sub_stage_names: Optional[List[str]] = None,
-    ):
-        super().__init__(name, num_blocks)
-        self.fn = fn
-        self.supports_block_udf = supports_block_udf
-        self.block_udf = block_udf
-        self.ray_remote_args = remote_args or {}
-        self.sub_stage_names = sub_stage_names
-
-    def can_fuse(self, prev: Stage):
-        context = DataContext.get_current()
-        # TODO(ekl) also support fusing shuffle stages to subsequent 1:1 stages.
-        if not context.optimize_fuse_shuffle_stages:
-            return False
-        if not self.supports_block_udf:
-            return False
-        if not isinstance(prev, OneToOneStage):
-            return False
-        if not is_task_compute(prev.compute):
-            return False
-        if not _are_remote_args_compatible(prev.ray_remote_args, self.ray_remote_args):
-            return False
-        return True
-
-    def fuse(self, prev: Stage):
-        if not self.can_fuse(prev):
-            raise ValueError(
-                f"Tried to fuse {prev} with {self}, but these are not fusable."
-            )
-        assert self.supports_block_udf
-        assert prev.fn_constructor_args is None and prev.fn_constructor_kwargs is None
-        name = prev.name + "->" + self.name
-        prev_fn_args = prev.fn_args or tuple()
-        prev_fn_args = prev_fn_args if prev.fn is None else (prev.fn,) + prev_fn_args
-        prev_fn_kwargs = prev.fn_kwargs or {}
-        prev_block_fn = prev.block_fn
-        if self.block_udf is None:
-
-            def block_udf(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-                yield from prev_block_fn(blocks, ctx, *prev_fn_args, **prev_fn_kwargs)
-
-        else:
-            self_block_udf = self.block_udf
-
-            def block_udf(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-                blocks = prev_block_fn(
-                    blocks,
-                    ctx,
-                    *prev_fn_args,
-                    **prev_fn_kwargs,
-                )
-                yield from self_block_udf(blocks, ctx)
-
-        return AllToAllStage(
-            name,
-            self.num_blocks,
-            self.fn,
-            True,
-            block_udf,
-            prev.ray_remote_args,
-            self.sub_stage_names,
-        )
-
-    def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
-    ) -> Tuple[BlockList, dict]:
-        from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-        in_blocks_owned_by_consumer = blocks._owned_by_consumer
-        if in_blocks_owned_by_consumer:
-            assert (
-                run_by_consumer
-            ), "Blocks owned by consumer can only be consumed by consumer"
-        blocks, stage_info = self.fn(
-            blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
-        )
-        assert isinstance(blocks, BlockList), blocks
-
-        # RandomizeBlocksStage is an in-place transformation, so the ownership
-        # of blocks doesn't change.
-        if isinstance(self, RandomizeBlocksStage):
-            blocks._owned_by_consumer = in_blocks_owned_by_consumer
-        else:
-            blocks._owned_by_consumer = run_by_consumer
-
-        return blocks, stage_info
-
-
-def _rewrite_read_stages(
-    blocks: BlockList,
-    stats: DatasetStats,
-    stages: List[Stage],
-    dataset_uuid: str,
-) -> Tuple[BlockList, DatasetStats, List[Stage]]:
-    """Rewrites read stages into one-to-one stages, if needed."""
-    if _is_lazy(blocks) and stages:
-        blocks, stats, stages = _rewrite_read_stage(blocks, stages)
-        stats.dataset_uuid = dataset_uuid
-    return blocks, stats, stages
-
-
-def _rewrite_read_stage(
-    in_blocks: LazyBlockList, stages: List[Stage]
-) -> Tuple[BlockList, DatasetStats, List[Stage]]:
-    """Rewrite the read stage to a OneToOne stage over read tasks as input.
-
-    For example, suppose the plan was [Read -> MapBatches(Fn)]. These stages cannot
-    be fused, since read stages are handled specially.
-    After rewriting to [GetReadTasks -> MapBatches(DoRead) -> MapBatches(Fn)],
-    now we can fuse the latter two MapBatches stages into a single OneToOne stage:
-    [GetReadTasks -> MapBatches(DoRead -> Fn)].
-
-    Args:
-        blocks: Lazy block list representing read stage.
-        stages: List of current stages.
-
-    Returns:
-        Non-lazy block list containing read tasks for not-yet-read block partitions,
-        new stats for the block list, and the new list of stages.
-    """
-    from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-    # Generate the "GetReadTasks" stage blocks.
-    remote_args = in_blocks._remote_args
-    blocks, metadata = [], []
-    for read_task in in_blocks._tasks:
-        blocks.append(ray.put(read_task._read_fn))
-        metadata.append(read_task.get_metadata())
-    block_list = BlockList(
-        blocks, metadata, owned_by_consumer=in_blocks._owned_by_consumer
-    )
-
-    @_adapt_for_multiple_blocks
-    def block_fn(
-        read_fn: Callable[[], Iterator[Block]], ctx: TaskContext
-    ) -> Iterator[Block]:
-        for block in read_fn():
-            yield block
-
-    name = in_blocks._read_operator_name or "Read"
-    if isinstance(name, list):
-        name = "->".join(name)
-
-    # Fuse downstream randomize stage with the read stage if possible. This is needed
-    # when .window() is called right after read->randomize, since it forces execution.
-    has_randomize = stages and isinstance(stages[0], RandomizeBlocksStage)
-    if has_randomize:
-        if stages and isinstance(stages[0], RandomizeBlocksStage):
-            block_list, _ = stages[0].do_randomize(block_list)
-            stages = stages[1:]
-        name += "->RandomizeBlockOrder"
-
-    stage = OneToOneStage(
-        name,
-        block_fn,
-        TaskPoolStrategy(),
-        remote_args,
-    )
-    stats = DatasetStats(metadata={}, parent=None)
-    stages.insert(0, stage)
-    return block_list, stats, stages
-
-
-def _reorder_stages(stages: List[Stage]) -> List[Stage]:
-    """Reorder randomize stages to the end to enable better stage fusion.
-
-    This applies to RandomizeBlockOrder stages specifically (issue #26057).
-
-    Args:
-        stages: Stages to try to reorder.
-
-    Returns:
-        Reordered stages.
-    """
-    from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-    output: List[Stage] = []
-    reorder_buf: List[RandomizeBlocksStage] = []
-
-    for s in stages:
-        if isinstance(s, RandomizeBlocksStage):
-            # Buffer it for later reordering.
-            reorder_buf.append(s)
-        else:
-            # Barrier: flush the reorder buffer.
-            if isinstance(s, AllToAllStage) or s.name == "Write":
-                output.extend(reorder_buf)
-                reorder_buf = []
-            output.append(s)
-
-    output.extend(reorder_buf)
-    return output
 
 
 def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:

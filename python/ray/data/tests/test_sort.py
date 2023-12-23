@@ -10,7 +10,7 @@ import ray
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
+from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
 from ray.data._internal.sort import SortKey
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
@@ -146,7 +146,7 @@ def test_sort_arrow_with_empty_blocks(
         ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
         assert (
             len(
-                ray.data._internal.sort.sample_boundaries(
+                SortTaskSpec.sample_boundaries(
                     ds._plan.execute().get_blocks(), SortKey("id"), 3
                 )
             )
@@ -245,7 +245,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
     assert (
         len(
-            ray.data._internal.sort.sample_boundaries(
+            SortTaskSpec.sample_boundaries(
                 ds._plan.execute().get_blocks(), SortKey("id"), 3
             )
         )
@@ -266,15 +266,11 @@ def test_sort_with_one_block(shutdown_only, use_push_based_shuffle):
     ).sum("token_counts")
 
 
-@pytest.mark.parametrize("streaming", [False, True])
-def test_push_based_shuffle_schedule(streaming):
+def test_push_based_shuffle_schedule():
     def _test(num_input_blocks, merge_factor, num_cpus_per_node_map):
         num_cpus = sum(v for v in num_cpus_per_node_map.values())
-        if streaming:
-            op_cls = PushBasedShuffleTaskScheduler
-        else:
-            op_cls = PushBasedShufflePlan
-        schedule = op_cls._compute_shuffle_schedule(
+
+        schedule = PushBasedShuffleTaskScheduler._compute_shuffle_schedule(
             num_cpus_per_node_map, num_input_blocks, merge_factor, num_input_blocks
         )
         # All input blocks will be processed.
