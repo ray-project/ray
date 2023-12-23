@@ -118,14 +118,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       reply->set_task_execution_error(application_error);
     }
 
-    for (const auto &it : streaming_generator_returns) {
-      const auto &object_id = it.first;
-      bool is_plasma_object = it.second;
-      auto return_id_proto = reply->add_streaming_generator_return_ids();
-      return_id_proto->set_object_id(object_id.Binary());
-      return_id_proto->set_is_plasma_object(is_plasma_object);
-    }
-
     bool objects_valid = return_objects.size() == num_returns;
     for (const auto &return_object : return_objects) {
       if (return_object.second == NULL) {

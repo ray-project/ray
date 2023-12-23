@@ -621,6 +621,13 @@ bool TaskManager::HandleReportGeneratorItemReturns(
             Status::NotFound("Stale object reports from the previous attempt."), -1);
         return false;
       }
+    } else {
+      for (const auto &return_object : request.dynamic_return_objects()) {
+        if (return_object.in_plasma()) {
+          it->second.reconstructable_return_ids.insert(
+              ObjectID::FromBinary(return_object.object_id()));
+        }
+      }
     }
   }
 
@@ -784,22 +791,28 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       }
 
       if (spec.IsStreamingGenerator()) {
+        RAY_CHECK(reply.return_objects_size() == 1)
+            << "Streaming generator should be returned as the only directly returned object";
+
+        const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
+
+        absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+        auto stream_it = object_ref_streams_.find(generator_id);
+
+        RAY_CHECK(stream_it != object_ref_streams_.end())
+            << "Streaming generator not found!";
+
+        auto &object_ref_stream = stream_it->second;
         // Upon the first complete execution, set the number of streaming
         // generator returns.
-        auto num_streaming_generator_returns =
-            reply.streaming_generator_return_ids_size();
-        if (num_streaming_generator_returns > 0) {
-          spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
-          RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
-                         << " has " << spec.NumStreamingGeneratorReturns()
+        int64_t num_streaming_generator_returns =
+            object_ref_stream.TotalNumObjectWritten();
+
+        spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
+
+        RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
+                         << " has " << num_streaming_generator_returns
                          << " return objects.";
-          for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
-            if (return_id_info.is_plasma_object()) {
-              it->second.reconstructable_return_ids.insert(
-                  ObjectID::FromBinary(return_id_info.object_id()));
-            }
-          }
-        }
       }
     }
 
@@ -856,7 +869,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
     if (first_execution) {
       ObjectID last_ref_in_stream;
-      MarkEndOfStream(generator_id, reply.streaming_generator_return_ids_size());
+      MarkEndOfStream(generator_id, spec.NumStreamingGeneratorReturns());
     } else {
       // The end of the stream should already have been marked on the first
       // successful execution.
