@@ -97,6 +97,10 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
 @pytest.mark.parametrize("leaks", ["0", "1"])
 def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
     # Sanity check memray are installed.
@@ -172,6 +176,10 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
 def test_profiler_failure_message(ray_start_with_dashboard):
     # Sanity check py-spy and memray is installed.
     subprocess.check_call(["py-spy", "--version"])

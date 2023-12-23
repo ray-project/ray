@@ -809,6 +809,10 @@ def test_get_task_traceback_running_task(shutdown_only):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
 def test_get_memory_profile_running_task(shutdown_only):
     """
     Verify that we can get the memory profile for a running task.
@@ -944,6 +948,10 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
 def test_task_get_memory_profile_missing_params(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
