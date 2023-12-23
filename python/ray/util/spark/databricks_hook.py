@@ -9,6 +9,15 @@ import time
 _logger = logging.getLogger(__name__)
 
 
+def get_databricks_function(func_name):
+    import IPython
+
+    ip_shell = IPython.get_ipython()
+    if ip_shell is None:
+        raise RuntimeError("No IPython environment.")
+    return ip_shell.ns_table["user_global"][func_name]
+
+
 def get_db_entry_point():
     """
     Return databricks entry_point instance, it is for calling some
@@ -71,6 +80,15 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
     def on_cluster_created(self, ray_cluster_handler):
         db_api_entry = get_db_entry_point()
+
+        try:
+            get_databricks_function("displayHTML")(
+                "<b style='background-color:yellow;'>When you are using Ray on Spark "
+                "cluster, you only pay for Spark cluster usage.</b>"
+            )
+        except Exception:
+            pass
+
         if ray_cluster_handler.autoscale or self.is_global:
             # Disable auto shutdown if
             # 1) autoscaling enabled
