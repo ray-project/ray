@@ -490,7 +490,8 @@ Status RedisContext::Connect(const std::string &address,
   // Connect to async context
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
   {
-    auto resp = ConnectWithRetries<redisAsyncContext>(address, port, redisAsyncConnect);
+    auto resp =
+        ConnectWithRetries<redisAsyncContext>(ip_addresses[0], port, redisAsyncConnect);
     RAY_CHECK_OK(resp.first);
     async_context = std::move(resp.second);
   }
