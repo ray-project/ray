@@ -1,6 +1,4 @@
 group: ml tests
-tags:
-  - disabled
 steps:
   # builds
   # - name: minbuild-ml
