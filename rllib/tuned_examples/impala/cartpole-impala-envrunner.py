@@ -11,7 +11,7 @@ config = (
         env_runner_cls=SingleAgentEnvRunner,
         num_rollout_workers=2,
     )
-    .resources(num_learner_workers=1)
+    .resources(num_learner_workers=0)
     .training(
         grad_clip=40.0,
         grad_clip_by="global_norm",

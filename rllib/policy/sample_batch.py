@@ -1178,7 +1178,9 @@ class SampleBatch(dict):
             infos = self.pop(SampleBatch.INFOS, None)
             data = tree.map_structure_with_path(map_, self)
             if infos is not None and isinstance(infos, list):
-                data[SampleBatch.INFOS] = infos[start_unpadded:stop_unpadded]
+                data[SampleBatch.INFOS] = self[SampleBatch.INFOS] = (
+                    infos[start_unpadded:stop_unpadded]
+                )
 
             return SampleBatch(
                 data,
@@ -1191,8 +1193,8 @@ class SampleBatch(dict):
         else:
             infos = self.pop(SampleBatch.INFOS, None)
             data = tree.map_structure(lambda s: s[start:stop], self)
-            if infos is not None and isinstance(infos, list):
-                data[SampleBatch.INFOS] = infos[start:stop]
+            if infos is not None and isinstance(infos, (list, np.ndarray)):
+                data[SampleBatch.INFOS] = self[SampleBatch.INFOS] = infos[start:stop]
 
             return SampleBatch(
                 data,
@@ -1649,6 +1651,8 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
 
     # Collect the concat'd data.
     concatd_data = {}
+
+    print(concated_samples)#TODO
 
     for k in concated_samples[0].keys():
         if k == SampleBatch.INFOS:
