@@ -56,7 +56,7 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     )
 
     stats = materialized_ds.stats()
-    assert "Stage 1 ReadCSV->MapBatches" in stats, stats
+    assert "Operator 1 ReadCSV->MapBatches" in stats, stats
 
     ds = ray.data.read_csv("example://iris.csv", parallelism=10)
     assert ds.num_blocks() == 1
@@ -89,8 +89,8 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
 
     ds = ds.map_batches(lambda x: x).materialize()
     stats = ds.stats()
-    assert "Stage 1 ReadCSV->SplitBlocks(100)" in stats, stats
-    assert "Stage 2 MapBatches" in stats, stats
+    assert "Operator 1 ReadCSV->SplitBlocks(100)" in stats, stats
+    assert "Operator 2 MapBatches" in stats, stats
 
     ctx = ray.data.context.DataContext.get_current()
     # Smaller than a single row.
