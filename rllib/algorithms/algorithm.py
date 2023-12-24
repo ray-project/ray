@@ -372,6 +372,7 @@ class Algorithm(Trainable, AlgorithmBase):
         new_algo = algorithm_class(config=config)
         # Set the new algo's state.
         new_algo.__setstate__(state)
+        
         # Return the new algo.
         return new_algo
 
@@ -2815,6 +2816,15 @@ class Algorithm(Trainable, AlgorithmBase):
                     "data found in state!"
                 )
 
+        if self.config._enable_new_api_stack:
+            if "learner_state_dir" in state:
+                self.learner_group.load_state(state["learner_state_dir"])
+            else:
+                logger.warning(
+                    "`_enable_new_api_stack` is `True`, but no learner state "
+                    "directory found."
+                )
+
         if "counters" in state:
             self._counters = state["counters"]
 
@@ -2965,6 +2975,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 or worker_state["is_policy_to_train"] == NOT_SERIALIZABLE
             ):
                 worker_state["is_policy_to_train"] = policies_to_train
+            
+            if new_config._enable_new_api_stack:                        
+                state["learner_state_dir"] = os.path.join(checkpoint_info["checkpoint_dir"], "learner")                
 
         return state
 
