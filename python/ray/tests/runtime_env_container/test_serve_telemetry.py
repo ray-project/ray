@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
 args = parser.parse_args()
-worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+worker_pth = "/home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/workers/default_worker.py"  # noqa
 
 os.environ["RAY_USAGE_STATS_ENABLED"] = "1"
 os.environ["RAY_USAGE_STATS_REPORT_URL"] = "http://127.0.0.1:8000/telemetry"

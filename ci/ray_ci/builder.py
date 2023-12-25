@@ -34,7 +34,7 @@ from ci.ray_ci.utils import logger, docker_login
 )
 @click.option(
     "--python-version",
-    default="3.8",
+    default="3.9",
     type=click.Choice(list(PYTHON_VERSIONS.keys())),
     help=("Python version to build the wheel with"),
 )

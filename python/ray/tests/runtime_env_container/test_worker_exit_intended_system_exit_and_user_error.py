@@ -11,7 +11,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
 args = parser.parse_args()
-worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+worker_pth = "/home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/workers/default_worker.py"  # noqa
 
 
 ray.init(num_cpus=1)
