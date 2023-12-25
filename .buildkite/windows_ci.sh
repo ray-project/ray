@@ -12,7 +12,7 @@ cd ray
 
 git checkout -f "${BUILDKITE_COMMIT}"
 
-export PYTHON="3.8"
+export PYTHON="3.9"
 export RAY_USE_RANDOM_PORTS="1"
 export RAY_DEFAULT_BUILD="1"
 export LC_ALL="en_US.UTF-8"
