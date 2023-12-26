@@ -227,11 +227,7 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
-    if sys.platform != "win32":
-        pyarrow_dep = "pyarrow >= 6.0.1"
-    else:
-        # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
-        pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
+    pyarrow_dep = "pyarrow >= 6.0.1"
     setup_spec.extras = {
         "data": [
             numpy_dep,
