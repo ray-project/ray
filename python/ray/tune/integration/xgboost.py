@@ -84,12 +84,6 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     """
 
-    _checkpoint_callback_cls = None
-    # ATTN: There's a typo here (callback_s_) compared to lightgbm.
-    # The property is used in e.g. XGBoost-Ray, so we can't just rename it.
-    # Just be aware of it when changing logic in both xgboost + lightgbm
-    _report_callbacks_cls = None
-
     def __init__(
         self,
         metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
@@ -150,24 +144,8 @@ class TuneReportCheckpointCallback(TuneCallback):
 
         return report_dict
 
-    @staticmethod
-    def _create_checkpoint(model: Booster, epoch: int, filename: str, frequency: int):
-        # Deprecate: Remove in Ray 2.8
-        if not frequency or epoch % frequency > 0 or (not epoch and frequency > 1):
-            # Skip 0th checkpoint if frequency > 1
-            return
-        with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
-            model.save_model(os.path.join(checkpoint_dir, filename))
-
     @contextmanager
-    def _get_checkpoint(self, model: Booster, epoch: int) -> Optional[Checkpoint]:
-        checkpointing_disabled = self._frequency == 0
-        # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
-        should_checkpoint = (epoch + 1) % self._frequency == 0
-        if checkpointing_disabled or not should_checkpoint:
-            yield None
-            return
-
+    def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             checkpoint = self._checkpoint_cls.from_model(
                 model, path=temp_checkpoint_dir
@@ -177,23 +155,18 @@ class TuneReportCheckpointCallback(TuneCallback):
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
         self._evals_log = evals_log
 
-        if self._frequency > 0 and self._checkpoint_callback_cls:
-            self._checkpoint_callback_cls.after_iteration(self, model, epoch, evals_log)
-        if self._report_callbacks_cls:
-            # Deprecate: Raise error in Ray 2.8
-            if log_once("xgboost_ray_legacy"):
-                warnings.warn(
-                    "You are using an outdated version of XGBoost-Ray that won't be "
-                    "compatible with future releases of Ray. Please update XGBoost-Ray "
-                    "with `pip install -U xgboost_ray`."
-                )
+        checkpointing_disabled = self._frequency == 0
+        # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
+        should_checkpoint = (
+            not checkpointing_disabled and (epoch + 1) % self._frequency == 0
+        )
 
-            self._report_callbacks_cls.after_iteration(self, model, epoch, evals_log)
-            return
-
-        with self._get_checkpoint(model=model, epoch=epoch) as checkpoint:
-            report_dict = self._get_report_dict(evals_log)
-            train.report(report_dict, checkpoint=checkpoint)
+        report_dict = self._get_report_dict(evals_log)
+        if should_checkpoint:
+            with self._get_checkpoint(model=model) as checkpoint:
+                train.report(report_dict, checkpoint=checkpoint)
+        else:
+            train.report(report_dict)
 
     def after_training(self, model: Booster):
         if not self._checkpoint_at_end:
@@ -201,8 +174,7 @@ class TuneReportCheckpointCallback(TuneCallback):
 
         assert self._evals_log is not None
 
-        total_epochs = model.num_boosted_rounds()
-        with self._get_checkpoint(model=model, epoch=total_epochs) as checkpoint:
+        with self._get_checkpoint(model=model) as checkpoint:
             final_metrics = self._get_report_dict(self._evals_log)
             train.report(final_metrics, checkpoint=checkpoint)
 

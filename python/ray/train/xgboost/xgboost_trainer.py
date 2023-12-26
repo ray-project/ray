@@ -113,9 +113,6 @@ class XGBoostTrainer(GBDTTrainer):
     def _load_checkpoint(self, checkpoint: Checkpoint) -> xgboost.Booster:
         return self.__class__.get_model(checkpoint)
 
-    def _save_model(self, model: xgboost.Booster, path: str):
-        model.save_model(os.path.join(path, XGBoostCheckpoint.MODEL_FILENAME))
-
     def _model_iteration(self, model: xgboost.Booster) -> int:
         if not hasattr(model, "num_boosted_rounds"):
             # Compatibility with XGBoost < 1.4

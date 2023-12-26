@@ -269,24 +269,6 @@ class GBDTTrainer(BaseTrainer):
                     self._ray_params.num_actors
                 )
 
-    def _checkpoint_at_end(self, model, evals_result: dict) -> None:
-        # We need to call session.report to save checkpoints, so we report
-        # the last received metrics (possibly again).
-        result_dict = flatten_dict(evals_result, delimiter="-")
-        for k in list(result_dict):
-            result_dict[k] = result_dict[k][-1]
-
-        if getattr(self._tune_callback_checkpoint_cls, "_report_callbacks_cls", None):
-            # Deprecate: Remove in Ray 2.8
-            with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
-                self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
-            tune.report(**result_dict)
-        else:
-            with tempfile.TemporaryDirectory() as checkpoint_dir:
-                self._save_model(model, path=checkpoint_dir)
-                checkpoint = Checkpoint.from_directory(checkpoint_dir)
-                train.report(result_dict, checkpoint=checkpoint)
-
     def training_loop(self) -> None:
         config = self.train_kwargs.copy()
         config[self._num_iterations_argument] = self.num_boost_round
@@ -343,7 +325,7 @@ class GBDTTrainer(BaseTrainer):
                 f"({self._num_iterations_argument}={num_iterations})."
             )
 
-        model = self._train(
+        self._train(
             params=self.params,
             dtrain=train_dmatrix,
             evals_result=evals_result,
