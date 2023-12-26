@@ -209,30 +209,11 @@ class TuneReportCheckpointCallback(TuneCallback):
         return model
 
 
-class _TuneCheckpointCallback(TuneCallback):
-    def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
-            "`ray.tune.integration.xgboost._TuneCheckpointCallback` is deprecated."
-        )
-
-
 @Deprecated
 class TuneReportCallback(TuneReportCheckpointCallback):
-    def __init__(
-        self,
-        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        results_postprocessing_fn: Optional[
-            Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
-        ] = None,
-    ):
-        if log_once("tune_xgboost_report_deprecated"):
-            warnings.warn(
-                "`ray.tune.integration.xgboost.TuneReportCallback` is deprecated. "
-                "Use `ray.tune.integration.xgboost.TuneCheckpointReportCallback` "
-                "instead."
-            )
-        super().__init__(
-            metrics=metrics,
-            results_postprocessing_fn=results_postprocessing_fn,
-            frequency=0,
+    def __new__(cls: type, *args, **kwargs):
+        # TODO(justinvyu): [code_removal] Remove in 2.11.
+        raise DeprecationWarning(
+            "`TuneReportCallback` is deprecated. "
+            "Use `ray.tune.integration.xgboost.TuneReportCheckpointCallback` instead."
         )
