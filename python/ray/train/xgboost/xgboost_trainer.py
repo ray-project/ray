@@ -2,8 +2,6 @@ import os
 from typing import Any, Dict
 
 import xgboost
-import xgboost_ray
-from xgboost_ray.tune import TuneReportCheckpointCallback
 
 from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
@@ -79,15 +77,23 @@ class XGBoostTrainer(GBDTTrainer):
         **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.
     """
 
-    _dmatrix_cls: type = xgboost_ray.RayDMatrix
-    _ray_params_cls: type = xgboost_ray.RayParams
-    _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "num_actors": 1,
         "cpus_per_actor": 1,
         "gpus_per_actor": 0,
     }
     _init_model_arg_name: str = "xgb_model"
+
+    def __init__(self, *args, **kwargs):
+        # TODO(justinvyu): Fix circular import by moving xgboost_ray into ray
+        import xgboost_ray
+
+        self._dmatrix_cls: type = xgboost_ray.RayDMatrix
+        self._ray_params_cls: type = xgboost_ray.RayParams
+        self._tune_callback_checkpoint_cls: type = (
+            xgboost_ray.tune.TuneReportCheckpointCallback
+        )
+        super().__init__(*args, **kwargs)
 
     @staticmethod
     def get_model(checkpoint: Checkpoint) -> xgboost.Booster:
@@ -100,6 +106,8 @@ class XGBoostTrainer(GBDTTrainer):
             return booster
 
     def _train(self, **kwargs):
+        import xgboost_ray
+
         return xgboost_ray.train(**kwargs)
 
     def _load_checkpoint(self, checkpoint: Checkpoint) -> xgboost.Booster:
@@ -120,5 +128,7 @@ class XGBoostTrainer(GBDTTrainer):
         # XGBoost/LightGBM-Ray requires each dataset to have at least as many
         # blocks as there are workers.
         # This is only applicable for xgboost-ray<0.1.16
+        import xgboost_ray
+
         if Version(xgboost_ray.__version__) < Version("0.1.16"):
             self._repartition_datasets_to_match_num_actors()

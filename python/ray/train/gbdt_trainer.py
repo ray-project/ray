@@ -304,16 +304,23 @@ class GBDTTrainer(BaseTrainer):
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])
 
-        if not any(
+        has_user_supplied_callback = any(
             isinstance(cb, self._tune_callback_checkpoint_cls)
             for cb in config["callbacks"]
-        ):
-            # Only add our own callback if it hasn't been added before
+        )
+        if not has_user_supplied_callback:
+            # Only add our own default callback if the user hasn't supplied one.
             checkpoint_frequency = (
                 self.run_config.checkpoint_config.checkpoint_frequency
             )
+
+            checkpoint_at_end = self.run_config.checkpoint_config.checkpoint_at_end
+            if checkpoint_at_end is None:
+                # Defaults to True
+                checkpoint_at_end = True
+
             callback = self._tune_callback_checkpoint_cls(
-                filename=MODEL_KEY, frequency=checkpoint_frequency
+                frequency=checkpoint_frequency, checkpoint_at_end=checkpoint_at_end
             )
 
             config["callbacks"] += [callback]
@@ -344,13 +351,6 @@ class GBDTTrainer(BaseTrainer):
             ray_params=self._ray_params,
             **config,
         )
-
-        checkpoint_at_end = self.run_config.checkpoint_config.checkpoint_at_end
-        if checkpoint_at_end is None:
-            checkpoint_at_end = True
-
-        if checkpoint_at_end:
-            self._checkpoint_at_end(model, evals_result)
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:
         trainable_cls = super()._generate_trainable_cls()

@@ -1,18 +1,19 @@
 from collections import OrderedDict
 from contextlib import contextmanager
-from typing import Callable, Dict, List, Union, Optional
-
 import os
 import tempfile
+from typing import Callable, Dict, List, Union, Optional, Type
 import warnings
 
-from ray import train, tune
+from xgboost.core import Booster
 
+from ray import train, tune
 from ray.train import Checkpoint
+from ray.train.xgboost import XGBoostCheckpoint
+from ray.train.constants import _DEPRECATED_VALUE
 from ray.tune.utils import flatten_dict
 from ray.util import log_once
 from ray.util.annotations import Deprecated
-from xgboost.core import Booster
 
 try:
     from xgboost.callback import TrainingCallback
@@ -92,18 +93,37 @@ class TuneReportCheckpointCallback(TuneCallback):
     def __init__(
         self,
         metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        filename: str = "checkpoint",
         frequency: int = 1,
+        checkpoint_at_end: bool = True,
         results_postprocessing_fn: Optional[
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
+        checkpoint_cls: Type[XGBoostCheckpoint] = XGBoostCheckpoint,
+        filename: str = _DEPRECATED_VALUE,
     ):
+        if filename != _DEPRECATED_VALUE:
+            raise DeprecationWarning(
+                "`filename` is deprecated. Supply a custom `checkpoint_cls` "
+                "subclassing `ray.train.xgboost.XGBoostCheckpoint` instead."
+            )
+
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
-        self._filename = filename
         self._frequency = frequency
+        self._checkpoint_at_end = checkpoint_at_end
+
+        if not issubclass(checkpoint_cls, XGBoostCheckpoint):
+            raise ValueError(
+                "`checkpoint_cls` must subclass `ray.train.xgboost.XGBoostCheckpoint`"
+            )
+        self._checkpoint_cls = checkpoint_cls
+
         self._results_postprocessing_fn = results_postprocessing_fn
+
+        # Keeps track of the eval metrics from the last iteration,
+        # so that the latest metrics can be reported at the end of training.
+        self._evals_log = None
 
     def _get_report_dict(self, evals_log):
         if isinstance(evals_log, OrderedDict):
@@ -140,20 +160,23 @@ class TuneReportCheckpointCallback(TuneCallback):
             model.save_model(os.path.join(checkpoint_dir, filename))
 
     @contextmanager
-    def _get_checkpoint(
-        self, model: Booster, epoch: int, filename: str, frequency: int
-    ) -> Optional[Checkpoint]:
-        if not frequency or epoch % frequency > 0 or (not epoch and frequency > 1):
-            # Skip 0th checkpoint if frequency > 1
+    def _get_checkpoint(self, model: Booster, epoch: int) -> Optional[Checkpoint]:
+        checkpointing_disabled = self._frequency == 0
+        # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
+        should_checkpoint = (epoch + 1) % self._frequency == 0
+        if checkpointing_disabled or not should_checkpoint:
             yield None
             return
 
-        with tempfile.TemporaryDirectory() as checkpoint_dir:
-            model.save_model(os.path.join(checkpoint_dir, filename))
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            checkpoint = self._checkpoint_cls.from_model(
+                model, path=temp_checkpoint_dir
+            )
             yield checkpoint
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+        self._evals_log = evals_log
+
         if self._frequency > 0 and self._checkpoint_callback_cls:
             self._checkpoint_callback_cls.after_iteration(self, model, epoch, evals_log)
         if self._report_callbacks_cls:
@@ -168,11 +191,22 @@ class TuneReportCheckpointCallback(TuneCallback):
             self._report_callbacks_cls.after_iteration(self, model, epoch, evals_log)
             return
 
-        with self._get_checkpoint(
-            model=model, epoch=epoch, filename=self._filename, frequency=self._frequency
-        ) as checkpoint:
+        with self._get_checkpoint(model=model, epoch=epoch) as checkpoint:
             report_dict = self._get_report_dict(evals_log)
             train.report(report_dict, checkpoint=checkpoint)
+
+    def after_training(self, model: Booster):
+        if not self._checkpoint_at_end:
+            return model
+
+        assert self._evals_log is not None
+
+        total_epochs = model.num_boosted_rounds()
+        with self._get_checkpoint(model=model, epoch=total_epochs) as checkpoint:
+            final_metrics = self._get_report_dict(self._evals_log)
+            train.report(final_metrics, checkpoint=checkpoint)
+
+        return model
 
 
 class _TuneCheckpointCallback(TuneCallback):
