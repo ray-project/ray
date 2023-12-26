@@ -937,7 +937,7 @@ class Impala(Algorithm):
             self.batch_being_built.append(ref)
             if (
                 len(self.batch_being_built) * self.config.get_rollout_fragment_length()
-                >= self.config.train_batch_size
+                >= self.config.total_train_batch_size
             ):
                 self.batches_to_place_on_learner.append(self.batch_being_built)
                 self.batch_being_built = []

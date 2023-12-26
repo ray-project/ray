@@ -1652,8 +1652,6 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     # Collect the concat'd data.
     concatd_data = {}
 
-    print(concated_samples)#TODO
-
     for k in concated_samples[0].keys():
         if k == SampleBatch.INFOS:
             concatd_data[k] = _concat_values(
