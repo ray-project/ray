@@ -32,7 +32,7 @@ class TestAnyscaleDockerContainer(RayCITestBase):
             assert cmd == [
                 "./ci/build/build-anyscale-docker.sh "
                 "rayproject/ray-ml:123456-py39-cu118 "
-                f"{aws_prj}:123456-py39-cu118 requirements_ml_byod_3.9.txt {aws_ecr}",
+                f"{aws_prj}:123456-py39-cu118 requirements_ml_byod_3.9 {aws_ecr}",
                 "./release/gcloud_docker_login.sh release/aws2gce_iam.json",
                 "export PATH=$(pwd)/google-cloud-sdk/bin:$PATH",
                 f"docker tag {aws_prj}:123456-py39-cu118 {aws_prj}:123456-py39-cu118",

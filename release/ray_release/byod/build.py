@@ -123,9 +123,9 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
         for byod_image, test in to_be_built.items():
             py_version = test.get_python_version()
             if test.use_byod_ml_image():
-                byod_requirements = f"{REQUIREMENTS_ML_BYOD}_{py_version}.txt"
+                byod_requirements = f"{REQUIREMENTS_ML_BYOD}_{py_version}"
             else:
-                byod_requirements = f"{REQUIREMENTS_BYOD}_{py_version}.txt"
+                byod_requirements = f"{REQUIREMENTS_BYOD}_{py_version}"
 
             if _image_exist(byod_image):
                 logger.info(f"Image {byod_image} already exists")
