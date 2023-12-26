@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import tempfile
 from typing import TYPE_CHECKING, Optional
 
@@ -23,6 +24,7 @@ class XGBoostCheckpoint(FrameworkCheckpoint):
         booster: xgboost.Booster,
         *,
         preprocessor: Optional["Preprocessor"] = None,
+        path: Optional[str] = None,
     ) -> "XGBoostCheckpoint":
         """Create a :py:class:`~ray.train.Checkpoint` that stores an XGBoost
         model.
@@ -30,6 +32,10 @@ class XGBoostCheckpoint(FrameworkCheckpoint):
         Args:
             booster: The XGBoost model to store in the checkpoint.
             preprocessor: A fitted preprocessor to be applied before inference.
+            path: The path to the directory where the checkpoint file will be saved.
+                This should start as an empty directory, since the *entire*
+                directory will be treated as the checkpoint when reported.
+                By default, a temporary directory will be created.
 
         Returns:
             An :py:class:`XGBoostCheckpoint` containing the specified ``Estimator``.
@@ -50,10 +56,13 @@ class XGBoostCheckpoint(FrameworkCheckpoint):
                 checkpoint = XGBoostCheckpoint.from_model(model.get_booster())
 
         """
-        tmpdir = tempfile.mkdtemp()
-        booster.save_model(os.path.join(tmpdir, cls.MODEL_FILENAME))
+        checkpoint_dir = path or tempfile.mkdtemp()
+        if not Path(checkpoint_dir).is_dir():
+            raise ValueError(f"Must pass in a directory, but got: {checkpoint_dir}")
 
-        checkpoint = cls.from_directory(tmpdir)
+        booster.save_model(os.path.join(checkpoint_dir, cls.MODEL_FILENAME))
+
+        checkpoint = cls.from_directory(checkpoint_dir)
         if preprocessor:
             checkpoint.set_preprocessor(preprocessor)
         return checkpoint
