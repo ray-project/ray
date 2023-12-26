@@ -115,9 +115,8 @@ def init_torch_dist_process_group(
             possible choices are "gloo" or "nccl".
         init_method: The initialization method to use,
             possible choices are "env" or "tcp".
-        kwargs: Additional kwargs to pass to
-            torch.distributed.init_process_group call
-            on the workers.
+        kwargs: Additional kwargs to pass to the call to
+            :meth:`torch.distributed.init_process_group`.
 
     Returns:
         Local ranks on their respective nodes for the list of workers.
