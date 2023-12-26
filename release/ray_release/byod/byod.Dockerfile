@@ -22,5 +22,6 @@ sudo cp /tmp/wrk/wrk /usr/local/bin/wrk
 
 EOF
 
-COPY "$PIP_REQUIREMENTS" .
-RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir -r "${PIP_REQUIREMENTS}"
+COPY "$PIP_REQUIREMENTS.txt" .
+COPY "$PIP_REQUIREMENTS.in" .
+RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir -c "${PIP_REQUIREMENTS}.txt" -r "${PIP_REQUIREMENTS}.in"
