@@ -102,7 +102,7 @@ def init_torch_dist_process_group(
     workers: List[ActorHandle],
     backend: str = "gloo",
     init_method: str = "env",
-    **kwargs,
+    **init_process_group_kwargs,
 ) -> List[int]:
     """Initialize a torch distributed process group.
 
