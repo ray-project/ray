@@ -40,6 +40,7 @@ class TesterContainer(Container):
         self.test_envs = test_envs or []
         self.build_type = build_type
         self.network = network
+        self._init_bazel_log_dir()
         self.gpus = gpus
         assert (
             self.gpus == 0 or self.gpus >= self.shard_count
