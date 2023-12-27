@@ -478,15 +478,18 @@ class StorageContext:
         Invariant: (`storage_filesystem`, `storage_path`) is the location where
         *all* results can be accessed.
 
-        If given storage_path is a local path, then set storage_local_path = storage_path.
+        If given storage_path is a local path,
+        then set storage_local_path = storage_path.
 
         Args:
-            storage_path (str): storage path or URI.
-            storage_filesystem (pyarrow.fs.FileSystem): custom filesystem to use.
-            ray_storage_uri (Optional[str], optional): Ray Storage URI. Defaults to None.
+            storage_path: A storage path or URI.
+            storage_filesystem: custom filesystem to use.
+            ray_storage_uri: Ray Storage URI.
+                Defaults to None.
 
         Returns:
-            Tuple[pyarrow.fs.FileSystem, str, str]: Tuple of (storage_filesystem, storage_fs_path, storage_local_path)
+            Tuple[pyarrow.fs.FileSystem, str, str]: Tuple of
+                (storage_filesystem, storage_fs_path, storage_local_path)
 
         """
         storage_path = storage_path or ray_storage_uri or _get_defaults_results_dir()

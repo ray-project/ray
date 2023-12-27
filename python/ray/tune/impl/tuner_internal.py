@@ -28,7 +28,6 @@ from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
-from ray.tune.result import _get_defaults_results_dir
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
