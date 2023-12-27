@@ -12,15 +12,15 @@ ROCR_VISIBLE_DEVICES_ENV_VAR = "ROCR_VISIBLE_DEVICES"
 NOSET_ROCR_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES"
 
 amd_product_dict = {
-    "0x738c": "AMD Instinct MI100",
-    "0x7408": "AMD Instinct MI250X",
-    "0x740c": "AMD Instinct MI250X / MI250",
-    "0x740f": "AMD Instinct MI210",
-    "0x74a1": "AMD Instinct MI300X OAM",
-    "0x6798": "AMD Radeon R9 200 / HD 7900",
-    "0x6799": "AMD Radeon HD 7900",
-    "0x679A": "AMD Radeon HD 7900",
-    "0x679B": "AMD Radeon HD 7900",
+    "0x738c": "AMD-Instinct-MI100",
+    "0x7408": "AMD-Instinct-MI250X",
+    "0x740c": "AMD-Instinct-MI250X-MI250",
+    "0x740f": "AMD-Instinct-MI210",
+    "0x74a1": "AMD-Instinct-MI300X-OAM",
+    "0x6798": "AMD-Radeon-R9-200-HD-7900",
+    "0x6799": "AMD-Radeon-HD-7900",
+    "0x679A": "AMD-Radeon-HD-7900",
+    "0x679B": "AMD-Radeon-HD-7900",
 }
 
 
@@ -73,14 +73,16 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
-        if sys.platform.startswith("linux"):
-            amd_pci_ids = AMDGPUAcceleratorManager._get_amd_pci_ids()
-            if amd_pci_ids is None:
-                return None
-            return AMDGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                amd_pci_ids["card0"]["GPU ID"]
-            )
-        return None
+        try:
+            if sys.platform.startswith("linux"):
+                amd_pci_ids = AMDGPUAcceleratorManager._get_amd_pci_ids()
+                if amd_pci_ids is None:
+                    return None
+                return AMDGPUAcceleratorManager._gpu_name_to_accelerator_type(
+                    amd_pci_ids["card0"]["GPU ID"]
+                )
+        except Exception:
+            return None
 
     @staticmethod
     def _gpu_name_to_accelerator_type(name):

@@ -7,9 +7,9 @@ import ray
 from ray._private.accelerators import AMDGPUAcceleratorManager as Accelerator
 
 
-def test_visible_amd_gpu_ids(shutdown_only):
+def test_visible_amd_gpu_ids(monkeypatch, shutdown_only):
     with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=4):
-        os.environ["ROCR_VISIBLE_DEVICES"] = "0,1,2"
+        monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,1,2")
         ray.init()
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
         assert manager.get_current_node_num_accelerators() == 4
@@ -30,17 +30,15 @@ def test_visible_amd_gpu_type(shutdown_only):
     ):
         ray.init()
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
-        assert manager.get_current_node_accelerator_type() == "AMD Instinct MI210"
+        assert manager.get_current_node_accelerator_type() == "AMD-Instinct-MI210"
 
     with patch.object(
         Accelerator, "_get_amd_pci_ids", return_value={"card0": {"GPU ID": "0x640f"}}
     ):
-        manager = None
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
         assert manager.get_current_node_accelerator_type() is None
 
     with patch.object(Accelerator, "_get_amd_pci_ids", return_value=None):
-        manager = None
         manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
         assert manager.get_current_node_accelerator_type() is None
 
@@ -51,20 +49,18 @@ def test_amd_gpu_accelerator_manager_api():
     assert Accelerator.validate_resource_request_quantity(0.1) == (True, None)
 
 
-def test_get_current_process_visible_accelerator_ids():
-    os.environ["ROCR_VISIBLE_DEVICES"] = "0,1,2"
+def test_get_current_process_visible_accelerator_ids(monkeypatch):
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,1,2")
     assert Accelerator.get_current_process_visible_accelerator_ids() == ["0", "1", "2"]
 
-    os.environ["ROCR_VISIBLE_DEVICES"] = "0,2,7"
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,2,7")
     assert Accelerator.get_current_process_visible_accelerator_ids() == ["0", "2", "7"]
 
-    del os.environ["ROCR_VISIBLE_DEVICES"]
-    assert Accelerator.get_current_process_visible_accelerator_ids() is None
-
-    os.environ["ROCR_VISIBLE_DEVICES"] = ""
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "")
     assert Accelerator.get_current_process_visible_accelerator_ids() == []
 
     del os.environ["ROCR_VISIBLE_DEVICES"]
+    assert Accelerator.get_current_process_visible_accelerator_ids() is None
 
 
 def test_set_current_process_visible_accelerator_ids():
