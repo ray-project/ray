@@ -20,12 +20,6 @@ compile_pip_requirements(
         "team:ci",
     ],
     visibility = ["//visibility:private"],
-    extra_args = [
-        "--pip-args",
-        "--constraint release/ray_release/byod/requirements_compiled.txt",
-        "--pip-args",
-        "--use-feature=2020-resolver",
-    ],
 )
 
 compile_pip_requirements(
@@ -46,12 +40,6 @@ compile_pip_requirements(
         "team:ci",
     ],
     visibility = ["//visibility:private"],
-    extra_args = [
-        "--pip-args",
-        "--constraint release/ray_release/byod/requirements_compiled.txt",
-        "--pip-args",
-        "--use-feature=2020-resolver",
-    ],
 )
 
 test_srcs = glob(["**/*.py"])

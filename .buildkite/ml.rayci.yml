@@ -2,11 +2,11 @@ group: ml tests
 steps:
   # builds
   - name: minbuild-ml
-    label: "wanda: minbuild-ml-py38"
+    label: "wanda: minbuild-ml-py39"
     wanda: ci/docker/min.build.wanda.yaml
     depends_on: oss-ci-base_build
     env:
-      PYTHON_VERSION: "3.8"
+      PYTHON_VERSION: "3.9"
       EXTRA_DEPENDENCY: ml
 
   - name: mlbuild
@@ -159,7 +159,7 @@ steps:
       - python ./ci/env/check_minimal_install.py
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --parallelism-per-worker 2
-        --build-name minbuild-ml-py3.8
+        --build-name minbuild-ml-py3.9
         --only-tags minimal
     depends_on: [ "minbuild-ml", "forge" ]
 

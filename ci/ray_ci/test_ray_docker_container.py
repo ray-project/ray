@@ -6,7 +6,6 @@ from unittest import mock
 import pytest
 
 from ci.ray_ci.builder_container import DEFAULT_PYTHON_VERSION
-from ci.ray_ci.builder_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.test_base import RayCITestBase
