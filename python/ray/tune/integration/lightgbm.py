@@ -99,14 +99,9 @@ class TuneReportCheckpointCallback(TuneCallback):
 
         if not issubclass(checkpoint_cls, LightGBMCheckpoint):
             raise ValueError(
-                "`checkpoint_cls` must subclass `ray.train.xgboost.XGBoostCheckpoint`"
+                "`checkpoint_cls` must subclass `ray.train.lightgbm.LightGBMCheckpoint`"
             )
         self._checkpoint_cls = checkpoint_cls
-
-        # Keeps track of the metrics from the latest iteration,
-        # so that the latest metrics can be reported with the checkpoint
-        # at the end of training.
-        self._latest_report_dict = None
 
     def _get_report_dict(self, evals_log: Dict[str, Dict[str, list]]) -> dict:
         result_dict = flatten_dict(evals_log, delimiter="-")
@@ -143,17 +138,15 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
-        # with tempfile.TemporaryDirectory() as checkpoint_dir:
-        #     model.save_model(os.path.join(checkpoint_dir, filename))
-        #     checkpoint = Checkpoint.from_directory(checkpoint_dir)
-        #     yield checkpoint
-        # TODO(justinvyu): implement this with lgbm ckpt
-        yield None
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            checkpoint = self._checkpoint_cls.from_model(
+                model, path=temp_checkpoint_dir
+            )
+            yield checkpoint
 
     def __call__(self, env: CallbackEnv) -> None:
         eval_result = self._get_eval_result(env)
         report_dict = self._get_report_dict(eval_result)
-        self._latest_report_dict = report_dict
 
         print("DEBUG!!!", env.iteration, env.end_iteration)
         checkpointing_disabled = self._frequency == 0
