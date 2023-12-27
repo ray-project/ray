@@ -36,6 +36,7 @@ class TuneReportCheckpointCallback(TuneCallback):
         frequency: How often to save checkpoints. Defaults to 0 (no checkpoints
             are saved during training). A checkpoint is always saved at the end
             of training.
+        checkpoint_at_end: Whether or not to checkpoint at the end of training.
         results_postprocessing_fn: An optional Callable that takes in
             the dict that will be reported to Tune (after it has been flattened)
             and returns a modified dict that will be reported instead.
@@ -79,6 +80,7 @@ class TuneReportCheckpointCallback(TuneCallback):
         self,
         metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
         frequency: int = 1,
+        checkpoint_at_end: bool = True,
         results_postprocessing_fn: Optional[
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
@@ -96,6 +98,7 @@ class TuneReportCheckpointCallback(TuneCallback):
             metrics = [metrics]
         self._metrics = metrics
         self._frequency = frequency
+        self._checkpoint_at_end = checkpoint_at_end
         self._results_postprocessing_fn = results_postprocessing_fn
 
         if not issubclass(checkpoint_cls, LightGBMCheckpoint):
@@ -149,12 +152,14 @@ class TuneReportCheckpointCallback(TuneCallback):
         eval_result = self._get_eval_result(env)
         report_dict = self._get_report_dict(eval_result)
 
-        print("DEBUG!!!", env.iteration, env.end_iteration)
+        on_last_iter = env.iteration == env.end_iteration - 1
         checkpointing_disabled = self._frequency == 0
-        # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
+        # Ex: if frequency=2, checkpoint_at_end=True and num_boost_rounds=10,
+        # you will checkpoint at iterations 1, 3, 5, ..., and 9 (checkpoint_at_end)
+        # (counting from 0)
         should_checkpoint = (
             not checkpointing_disabled and (env.iteration + 1) % self._frequency == 0
-        )
+        ) or (on_last_iter and self._checkpoint_at_end)
 
         if should_checkpoint:
             with self._get_checkpoint(model=env.model) as checkpoint:

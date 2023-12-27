@@ -298,7 +298,7 @@ class GBDTTrainer(BaseTrainer):
                 checkpoint_at_end = True
 
             callback = self._tune_callback_checkpoint_cls(
-                frequency=checkpoint_frequency
+                frequency=checkpoint_frequency, checkpoint_at_end=checkpoint_at_end
             )
 
             config["callbacks"] += [callback]
