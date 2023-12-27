@@ -39,7 +39,8 @@ def test_enough_gpus() -> None:
         assert False, "Should not raise an AssertionError"
 
 
-def test_run_tests_in_docker() -> None:
+@mock.patch.object(tempfile, "mkdtemp")
+def test_run_tests_in_docker(tf) -> None:
     inputs = []
 
     def _mock_popen(input: List[str]) -> None:
@@ -127,7 +128,8 @@ def test_ray_installation() -> None:
         ]
 
 
-def test_run_tests() -> None:
+@mock.patch.object(tempfile, "mkdtemp")
+def test_run_tests(tf) -> None:
     def _mock_run_tests_in_docker(
         test_targets: List[str],
         gpu_ids: List[int],
