@@ -436,13 +436,14 @@ class ImpalaConfig(AlgorithmConfig):
         if self._enable_new_api_stack:
             if not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
-                and self.minibatch_size <= self.train_batch_size
+                and self.minibatch_size <= self.total_train_batch_size
             ):
                 raise ValueError(
                     f"`minibatch_size` ({self._minibatch_size}) must either be 'auto' "
                     "or a multiple of `rollout_fragment_length` "
                     f"({self.rollout_fragment_length}) while at the same time smaller "
-                    f"than or equal to `train_batch_size` ({self.train_batch_size})!"
+                    "than or equal to `total_train_batch_size` "
+                    f"({self.total_train_batch_size})!"
                 )
 
     @property
@@ -952,7 +953,7 @@ class Impala(Algorithm):
         def aggregate_into_larger_batch():
             if (
                 sum(b.count for b in self.batch_being_built)
-                >= self.config.train_batch_size
+                >= self.config.total_train_batch_size
             ):
                 batch_to_add = concat_samples(self.batch_being_built)
                 self.batches_to_place_on_learner.append(batch_to_add)
