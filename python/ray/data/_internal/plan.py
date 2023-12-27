@@ -587,63 +587,54 @@ class ExecutionPlan:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            if self._run_with_new_execution_backend():
-                from ray.data._internal.execution.legacy_compat import (
-                    _get_initial_stats_from_plan,
-                    execute_to_legacy_block_list,
-                    get_legacy_lazy_block_list_read_only,
-                )
+            from ray.data._internal.execution.legacy_compat import (
+                _get_initial_stats_from_plan,
+                execute_to_legacy_block_list,
+                get_legacy_lazy_block_list_read_only,
+            )
 
-                if self._is_input_data_only():
-                    # No need to execute MaterializedDatasets with only an InputData
-                    # operator, since the data is already materialized. This also avoids
-                    # recording unnecessary metrics for an empty plan execution.
-                    blocks = self._in_blocks
-                    stats = _get_initial_stats_from_plan(self)
-                elif self.is_read_only():
-                    # If the Dataset is read-only, get the LazyBlockList without
-                    # executing the plan by only fetching metadata available from
-                    # the input Datasource or Reader without executing its ReadTasks.
-                    blocks = get_legacy_lazy_block_list_read_only(self)
-                    stats = _get_initial_stats_from_plan(self)
-                else:
-                    from ray.data._internal.execution.streaming_executor import (
-                        StreamingExecutor,
-                    )
-
-                    metrics_tag = create_dataset_tag(
-                        self._dataset_name, self._dataset_uuid
-                    )
-                    executor = StreamingExecutor(
-                        copy.deepcopy(context.execution_options),
-                        metrics_tag,
-                    )
-                    blocks = execute_to_legacy_block_list(
-                        executor,
-                        self,
-                        allow_clear_input_blocks=allow_clear_input_blocks,
-                        dataset_uuid=self._dataset_uuid,
-                        preserve_order=preserve_order,
-                    )
-                    stats = executor.get_stats()
-                    stats_summary_string = stats.to_summary().to_string(
-                        include_parent=False
-                    )
-                    logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                        stats_summary_string,
-                    )
-                # TODO(ekl) we shouldn't need to set this in the future once we move
-                # to a fully lazy execution model, unless .materialize() is used. Th
-                # reason we need it right now is since the user may iterate over a
-                # Dataset multiple times after fully executing it once.
-                if not self._run_by_consumer:
-                    blocks._owned_by_consumer = False
-
+            if self._is_input_data_only():
+                # No need to execute MaterializedDatasets with only an InputData
+                # operator, since the data is already materialized. This also avoids
+                # recording unnecessary metrics for an empty plan execution.
+                blocks = self._in_blocks
+                stats = _get_initial_stats_from_plan(self)
+            elif self.is_read_only():
+                # If the Dataset is read-only, get the LazyBlockList without
+                # executing the plan by only fetching metadata available from
+                # the input Datasource or Reader without executing its ReadTasks.
+                blocks = get_legacy_lazy_block_list_read_only(self)
+                stats = _get_initial_stats_from_plan(self)
             else:
-                raise DeprecationWarning(
-                    "Legacy Dataset execution backend is "
-                    "deprecated starting in Ray 2.10."
+                from ray.data._internal.execution.streaming_executor import (
+                    StreamingExecutor,
                 )
+
+                metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
+                executor = StreamingExecutor(
+                    copy.deepcopy(context.execution_options),
+                    metrics_tag,
+                )
+                blocks = execute_to_legacy_block_list(
+                    executor,
+                    self,
+                    allow_clear_input_blocks=allow_clear_input_blocks,
+                    dataset_uuid=self._dataset_uuid,
+                    preserve_order=preserve_order,
+                )
+                stats = executor.get_stats()
+                stats_summary_string = stats.to_summary().to_string(
+                    include_parent=False
+                )
+                logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                    stats_summary_string,
+                )
+            # TODO(ekl) we shouldn't need to set this in the future once we move
+            # to a fully lazy execution model, unless .materialize() is used. Th
+            # reason we need it right now is since the user may iterate over a
+            # Dataset multiple times after fully executing it once.
+            if not self._run_by_consumer:
+                blocks._owned_by_consumer = False
 
             # Retrieve memory-related stats from ray.
             reply = get_memory_info_reply(
